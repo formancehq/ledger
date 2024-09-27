@@ -71,9 +71,9 @@
       ]
     },
     "Time": {
-      "type": "string",
-      "format": "date-time",
-      "title": "Normalized date"
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
     },
     "Transaction": {
       "properties": {
@@ -120,8 +120,7 @@
         "postings",
         "metadata",
         "timestamp",
-        "id",
-        "revertedAt"
+        "id"
       ]
     },
     "Volumes": {
@@ -130,6 +129,9 @@
           "$ref": "#/$defs/Int"
         },
         "output": {
+          "$ref": "#/$defs/Int"
+        },
+        "balance": {
           "$ref": "#/$defs/Int"
         }
       },

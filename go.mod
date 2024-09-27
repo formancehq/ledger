@@ -29,7 +29,6 @@ require (
 	github.com/onsi/gomega v1.34.2
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
-	github.com/r3labs/diff v1.1.0
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -42,7 +41,6 @@ require (
 	go.uber.org/fx v1.22.2
 	go.uber.org/mock v0.4.0
 	golang.org/x/oauth2 v0.23.0
-	gotest.tools/v3 v3.5.1
 )
 
 require (

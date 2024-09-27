@@ -1,10 +1,9 @@
 package ledger
 
 import (
+	"github.com/formancehq/ledger/pkg/accounts"
+	"github.com/formancehq/ledger/pkg/assets"
 	"math/big"
-
-	"github.com/formancehq/ledger/pkg/core/accounts"
-	"github.com/formancehq/ledger/pkg/core/assets"
 
 	"github.com/pkg/errors"
 )
