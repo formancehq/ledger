@@ -7,6 +7,7 @@ IMPORT github.com/formancehq/stack/releases:main AS releases
 FROM core+base-image
 
 CACHE --persist --sharing=shared /go
+CACHE --persist --sharing=shared /root/.cache/golangci-lint
 
 sources:
     FROM core+builder-image
