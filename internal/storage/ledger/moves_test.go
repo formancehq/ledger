@@ -52,7 +52,7 @@ func TestMovesInsert(t *testing.T) {
 		t4 := t3.Add(time.Hour)
 
 		// insert a first tx at t0
-		m1 := Move{
+		m1 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      true,
 			Account:       "world",
@@ -69,7 +69,7 @@ func TestMovesInsert(t *testing.T) {
 		}, *m1.PostCommitEffectiveVolumes)
 
 		// add a second move at t3
-		m2 := Move{
+		m2 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      false,
 			Account:       "world",
@@ -86,7 +86,7 @@ func TestMovesInsert(t *testing.T) {
 		}, *m2.PostCommitEffectiveVolumes)
 
 		// add a third move at t1
-		m3 := Move{
+		m3 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      true,
 			Account:       "world",
@@ -103,7 +103,7 @@ func TestMovesInsert(t *testing.T) {
 		}, *m3.PostCommitEffectiveVolumes)
 
 		// add a fourth move at t2
-		m4 := Move{
+		m4 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      false,
 			Account:       "world",
@@ -120,7 +120,7 @@ func TestMovesInsert(t *testing.T) {
 		}, *m4.PostCommitEffectiveVolumes)
 
 		// add a fifth move at t4
-		m5 := Move{
+		m5 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      false,
 			Account:       "world",
