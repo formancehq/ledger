@@ -6,9 +6,10 @@ IMPORT github.com/formancehq/stack/releases:main AS releases
 
 FROM core+base-image
 
+CACHE --persist --sharing=shared /go
+
 sources:
     FROM core+builder-image
-    CACHE --persist --sharing=shared /go/pkg
     WORKDIR /src/pkg/client
     COPY pkg/client/go.mod pkg/client/go.sum ./
     RUN go mod download
@@ -20,9 +21,10 @@ sources:
     SAVE ARTIFACT /src
 
 generate:
-    FROM +sources
+    FROM core+builder-image
     RUN apk update && apk add openjdk11
     DO --pass-args core+GO_INSTALL --package=go.uber.org/mock/mockgen@latest
+    COPY (+sources/*) /src
     WORKDIR /src
     DO --pass-args core+GO_GENERATE
     SAVE ARTIFACT internal AS LOCAL internal
