@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/formancehq/go-libs/publish"
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
 	"strings"
@@ -43,6 +45,7 @@ type Server struct {
 	cancel        func()
 	ctx           context.Context
 	errorChan     chan error
+	id            string
 }
 
 func (s *Server) Start() {
@@ -82,6 +85,7 @@ func (s *Server) Start() {
 			args,
 			"--" + publish.PublisherNatsEnabledFlag,
 			"--" + publish.PublisherNatsURLFlag, s.configuration.NatsURL,
+			"--" + publish.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", s.id),
 		)
 	}
 
@@ -182,10 +186,30 @@ func (s *Server) Database() *bun.DB {
 	return db
 }
 
+func (s *Server) Subscribe() chan *nats.Msg {
+	if s.configuration.NatsURL == "" {
+		require.Fail(s.t, "NATS URL must be set")
+	}
+
+	ret := make(chan *nats.Msg)
+	conn, err := nats.Connect(s.configuration.NatsURL)
+	require.NoError(s.t, err)
+
+	subscription, err := conn.Subscribe(s.id, func(msg *nats.Msg) {
+		ret <- msg
+	})
+	require.NoError(s.t, err)
+	s.t.Cleanup(func() {
+		require.NoError(s.t, subscription.Unsubscribe())
+	})
+	return ret
+}
+
 func New(t T, configuration Configuration) *Server {
 	srv := &Server{
 		t:             t,
 		configuration: configuration,
+		id: uuid.NewString()[:8],
 	}
 	t.Logf("Start testing server")
 	srv.Start()

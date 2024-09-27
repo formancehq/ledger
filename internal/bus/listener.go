@@ -64,7 +64,12 @@ func (lis *LedgerListener) DeletedMetadata(ctx context.Context, l string, target
 }
 
 func (lis *LedgerListener) publish(ctx context.Context, topic string, ev publish.EventMessage) {
-	if err := lis.publisher.Publish(topic, publish.NewMessage(ctx, ev)); err != nil {
+	msg := publish.NewMessage(ctx, ev)
+	logging.FromContext(ctx).WithFields(map[string]any{
+		"payload": string(msg.Payload),
+		"topic":   topic,
+	}).Debugf("send event %s", ev.Type)
+	if err := lis.publisher.Publish(topic, msg); err != nil {
 		logging.FromContext(ctx).Errorf("publishing message: %s", err)
 		return
 	}
