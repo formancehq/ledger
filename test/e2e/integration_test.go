@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/nats-io/nats.go"
 	"io"
 	"math/big"
 
@@ -129,6 +130,15 @@ var _ = Context("Ledger integration tests", func() {
 				It("should be ok", func() {
 					Expect(err).To(BeNil())
 					checkTx()
+				})
+				Context("when listening on event", func() {
+					var msgs chan *nats.Msg
+					BeforeEach(func() {
+						msgs = testServer.GetValue().Subscribe()
+					})
+					It("should receive an event", func() {
+						Eventually(msgs).Should(Receive())
+					})
 				})
 				It("should be listable on api", func() {
 					txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
