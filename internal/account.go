@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
 	"github.com/uptrace/bun"
+	"math/big"
 )
 
 const (
@@ -20,4 +21,13 @@ type Account struct {
 	UpdatedAt        time.Time         `json:"-" bun:"updated_at"`
 	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"pcv,scanonly"`
 	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"pcev,scanonly"`
+}
+
+type AccountsVolumes struct {
+	bun.BaseModel `bun:"accounts_volumes"`
+
+	Account string   `bun:"accounts_address,type:varchar"`
+	Asset   string   `bun:"asset,type:varchar"`
+	Input   *big.Int `bun:"input,type:numeric"`
+	Output  *big.Int `bun:"output,type:numeric"`
 }

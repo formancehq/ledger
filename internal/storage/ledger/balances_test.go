@@ -35,8 +35,7 @@ func TestBalancesGet(t *testing.T) {
 	_, err := store.UpsertAccount(ctx, world)
 	require.NoError(t, err)
 
-	_, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:  store.ledger.Name,
+	_, err = store.updateVolumes(ctx, ledger.AccountsVolumes{
 		Account: "world",
 		Asset:   "USD",
 		Input:   new(big.Int),
