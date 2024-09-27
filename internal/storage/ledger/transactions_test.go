@@ -10,10 +10,8 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/platform/postgres"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/shomali11/xsql"
-
 	"github.com/formancehq/go-libs/time"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/pkg/errors"
 
@@ -146,18 +144,6 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 
 	_, _, err = store.UpdateTransactionMetadata(ctx, tx2.ID, metadata.Metadata{"foo2": "bar2"})
 	require.NoError(t, err)
-
-	rows, err := store.GetDB().NewSelect().ModelTableExpr(store.GetPrefixedRelationName("transactions")).Rows(ctx)
-	require.NoError(t, err)
-
-	data, _ := xsql.Pretty(rows)
-	fmt.Println(data)
-
-	rows, err = store.GetDB().NewSelect().ModelTableExpr(store.GetPrefixedRelationName("moves")).Rows(ctx)
-	require.NoError(t, err)
-
-	data, _ = xsql.Pretty(rows)
-	fmt.Println(data)
 
 	// check that the database returns metadata
 	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
