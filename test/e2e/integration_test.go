@@ -167,15 +167,21 @@ var _ = Context("Ledger integration tests", func() {
 						transactionFromAPI, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
 							Ledger: createLedgerRequest.Ledger,
 							ID:     tx.ID,
+							Expand: pointer.For("volumes,effectiveVolumes"),
 						})
 						Expect(err).To(BeNil())
 						Expect(&components.V2Transaction{
-							Timestamp: transactionFromAPI.Timestamp,
-							Postings:  transactionFromAPI.Postings,
-							Reference: transactionFromAPI.Reference,
-							Metadata:  transactionFromAPI.Metadata,
-							ID:        transactionFromAPI.ID,
-							Reverted:  transactionFromAPI.Reverted,
+							InsertedAt:                 transactionFromAPI.InsertedAt,
+							Timestamp:                  transactionFromAPI.Timestamp,
+							Postings:                   transactionFromAPI.Postings,
+							Reference:                  transactionFromAPI.Reference,
+							Metadata:                   transactionFromAPI.Metadata,
+							ID:                         transactionFromAPI.ID,
+							Reverted:                   transactionFromAPI.Reverted,
+							PreCommitEffectiveVolumes:  transactionFromAPI.PreCommitEffectiveVolumes,
+							PostCommitEffectiveVolumes: transactionFromAPI.PostCommitEffectiveVolumes,
+							PreCommitVolumes:           transactionFromAPI.PreCommitVolumes,
+							PostCommitVolumes:          transactionFromAPI.PostCommitVolumes,
 						}).To(Equal(tx))
 					})
 				})
