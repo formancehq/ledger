@@ -110,6 +110,50 @@ func (tx Transaction) InvolvedAccounts() []string {
 	return slices.Compact(ret)
 }
 
+// todo: add unit tests!
+func (tx Transaction) VolumeUpdates() []AccountsVolumes {
+	aggregatedVolumes := make(map[string]map[string][]Posting)
+	for _, posting := range tx.Postings {
+		if _, ok := aggregatedVolumes[posting.Source]; !ok {
+			aggregatedVolumes[posting.Source] = make(map[string][]Posting)
+		}
+		aggregatedVolumes[posting.Source][posting.Asset] = append(aggregatedVolumes[posting.Source][posting.Asset], posting)
+
+		if posting.Source == posting.Destination {
+			continue
+		}
+
+		if _, ok := aggregatedVolumes[posting.Destination]; !ok {
+			aggregatedVolumes[posting.Destination] = make(map[string][]Posting)
+		}
+		aggregatedVolumes[posting.Destination][posting.Asset] = append(aggregatedVolumes[posting.Destination][posting.Asset], posting)
+	}
+
+	ret := make([]AccountsVolumes, 0)
+	for account, movesByAsset := range aggregatedVolumes {
+		for asset, postings := range movesByAsset {
+			volumes := NewEmptyVolumes()
+			for _, posting := range postings {
+				if account == posting.Source {
+					volumes.Output.Add(volumes.Output, posting.Amount)
+				}
+				if account == posting.Destination {
+					volumes.Input.Add(volumes.Input, posting.Amount)
+				}
+			}
+
+			ret = append(ret, AccountsVolumes{
+				Account: account,
+				Asset:   asset,
+				Input:   volumes.Input,
+				Output:  volumes.Output,
+			})
+		}
+	}
+
+	return ret
+}
+
 func (tx Transaction) MarshalJSON() ([]byte, error) {
 	type Aux Transaction
 	type Ret struct {
