@@ -23,7 +23,7 @@ func getMigrator(name string) *migrations.Migrator {
 		buf := bytes.NewBufferString("")
 
 		t := template.Must(template.New("migration").Parse(s))
-		if err := t.Execute(buf, map[string]interface{}{
+		if err := t.Execute(buf, map[string]any{
 			"Bucket": name,
 		}); err != nil {
 			panic(err)

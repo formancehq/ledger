@@ -29,17 +29,20 @@ require (
 	github.com/onsi/gomega v1.34.2
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
+	github.com/r3labs/diff v1.1.0
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	github.com/uptrace/bun v1.2.3
 	github.com/uptrace/bun/dialect/pgdialect v1.2.3
+	github.com/xeipuuv/gojsonschema v1.2.0
 	go.opentelemetry.io/otel v1.30.0
 	go.opentelemetry.io/otel/trace v1.30.0
 	go.uber.org/fx v1.22.2
 	go.uber.org/mock v0.4.0
 	golang.org/x/oauth2 v0.23.0
+	gotest.tools/v3 v3.5.1
 )
 
 require (
@@ -159,7 +162,6 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
-	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xo/dburl v0.23.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zitadel/oidc/v2 v2.12.2 // indirect
