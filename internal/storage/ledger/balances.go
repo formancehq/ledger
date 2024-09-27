@@ -155,23 +155,33 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 }
 
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
+
+	selectAccountsWithVolumes := s.selectAccountWithVolumes(date, useInsertionDate, builder)
+	sumVolumesForAsset := s.db.NewSelect().
+		TableExpr("(?) values", selectAccountsWithVolumes).
+		Group("asset").
+		Column("asset").
+		ColumnExpr("json_build_object('input', sum((volumes->>'input')::numeric), 'output', sum((volumes->>'output')::numeric)) as volumes")
+
 	return s.db.NewSelect().
-		ModelTableExpr("(?) accounts", s.selectAccountWithVolumes(date, useInsertionDate, builder)).
-		ColumnExpr(`to_json(array_agg(json_build_object('asset', accounts.asset, 'input', (accounts.volumes->>'input')::numeric, 'output', (accounts.volumes->>'output')::numeric))) as aggregated`)
+		TableExpr("(?) values", sumVolumesForAsset).
+		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated")
 }
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 	type AggregatedVolumes struct {
-		Aggregated AggregatedAccountVolumes `bun:"aggregated,type:jsonb"`
+		Aggregated ledger.VolumesByAssets `bun:"aggregated,type:jsonb"`
 	}
+
 	aggregatedVolumes := AggregatedVolumes{}
-	if err := s.SelectAggregatedBalances(q.PIT, q.UseInsertionDate, q.QueryBuilder).
+	if err := s.db.NewSelect().
+		ModelTableExpr("(?) aggregated_volumes", s.SelectAggregatedBalances(q.PIT, q.UseInsertionDate, q.QueryBuilder)).
 		Model(&aggregatedVolumes).
 		Scan(ctx); err != nil {
 		return nil, err
 	}
 
-	return aggregatedVolumes.Aggregated.toCore().Balances(), nil
+	return aggregatedVolumes.Aggregated.Balances(), nil
 }
 
 func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
