@@ -165,7 +165,7 @@ tidy:
     FROM +sources
     WORKDIR /src
     COPY --dir test .
-    DO --pass-args core+GO_TIDY
+    RUN go mod tidy
 
 release:
     FROM core+builder-image
