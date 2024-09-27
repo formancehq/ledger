@@ -4,6 +4,7 @@ package test_suite
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/testing/platform/natstesting"
 	"os"
 
 	"github.com/formancehq/go-libs/logging"
@@ -17,12 +18,14 @@ import (
 var (
 	dockerPool = NewDeferred[*docker.Pool]()
 	pgServer   = NewDeferred[*PostgresServer]()
+	natsServer = NewDeferred[*natstesting.NatsServer]()
 	debug      = os.Getenv("DEBUG") == "true"
 	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false)
 )
 
 type ParallelExecutionContext struct {
 	PostgresServer *PostgresServer
+	NatsServer *natstesting.NatsServer
 }
 
 var _ = SynchronizedBeforeSuite(func() []byte {
@@ -38,13 +41,18 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			WithPGCrypto(),
 		)
 	})
+	natsServer.LoadAsync(func() *natstesting.NatsServer {
+		By("Initializing nats server")
+		return natstesting.CreateServer(GinkgoT(), debug, logger)
+	})
 
 	By("Waiting services alive")
-	Wait(pgServer)
+	Wait(pgServer, natsServer)
 	By("All services ready.")
 
 	data, err := json.Marshal(ParallelExecutionContext{
 		PostgresServer: pgServer.GetValue(),
+		NatsServer:     natsServer.GetValue(),
 	})
 	Expect(err).To(BeNil())
 

@@ -33,6 +33,7 @@ var _ = Context("Ledger integration tests", func() {
 			PostgresConfiguration: db.GetValue().ConnectionOptions(),
 			Output:                GinkgoWriter,
 			Debug:                 debug,
+			NatsURL:               natsServer.GetValue().URL,
 		}
 	})
 	When("starting the service", func() {
