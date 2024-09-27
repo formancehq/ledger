@@ -65,7 +65,7 @@ type Account struct {
 	UpdatedAt     time.Time         `bun:"updated_at"`
 	FirstUsage    time.Time         `bun:"first_usage"`
 
-	PostCommitVolumes          AggregatedAccountVolumes `bun:"pcv,scanonly"`
+	PostCommitVolumes          ledger.VolumesByAssets   `bun:"pcv,scanonly"`
 	PostCommitEffectiveVolumes AggregatedAccountVolumes `bun:"pcev,scanonly"`
 }
 
@@ -76,7 +76,7 @@ func (account Account) toCore() ledger.Account {
 		FirstUsage:       account.FirstUsage,
 		InsertionDate:    account.InsertionDate,
 		UpdatedAt:        account.UpdatedAt,
-		Volumes:          account.PostCommitVolumes.toCore(),
+		Volumes:          account.PostCommitVolumes,
 		EffectiveVolumes: account.PostCommitEffectiveVolumes.toCore(),
 	}
 }
@@ -126,6 +126,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 	ret := s.db.NewSelect()
 
+	// todo: rename to volumes, pcv is ok in transactions context
 	needPCV := expandVolumes
 	if qb != nil {
 		// analyze filters to check for errors and find potentially additional table to load
@@ -176,19 +177,17 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		ret = ret.ColumnExpr("accounts.metadata")
 	}
 
-	// todo: should join on histories only if pit is specified
-	// otherwise the accounts_volumes table is enough
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needPCV {
-		ret = ret.
-			Join(
-				`left join (?) pcv on pcv.accounts_address = accounts.address`,
-				s.db.NewSelect().
-					TableExpr("(?) v", s.SelectDistinctMovesBySeq(date)).
-					Column("accounts_address").
-					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_volumes->>'input')::numeric, 'output', (v.post_commit_volumes->>'output')::numeric))) as pcv`).
-					Group("accounts_address"),
-			).
-			ColumnExpr("pcv.*")
+		selectAccountWithAssetAndVolumes := s.selectAccountWithAssetAndVolumes(date, true, nil)
+		selectAccountWithVolumes := s.db.NewSelect().
+			TableExpr("(?) values", selectAccountWithAssetAndVolumes).
+			Group("accounts_address").
+			Column("accounts_address").
+			ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as pcv")
+		ret = ret.Join(
+			`left join (?) pcv on pcv.accounts_address = accounts.address`,
+			selectAccountWithVolumes,
+		).Column("pcv.*")
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
@@ -217,6 +216,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 				// todo: use moves only if feature is enabled
 				return s.db.NewSelect().
+					// todo: use already loaded pcv
 					TableExpr(
 						"(?) balance",
 						s.selectBalance(date).

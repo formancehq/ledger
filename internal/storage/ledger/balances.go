@@ -17,7 +17,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
+func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
 	var (
@@ -156,7 +156,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
 
-	selectAccountsWithVolumes := s.selectAccountWithVolumes(date, useInsertionDate, builder)
+	selectAccountsWithVolumes := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, builder)
 	sumVolumesForAsset := s.db.NewSelect().
 		TableExpr("(?) values", selectAccountsWithVolumes).
 		Group("asset").
