@@ -88,7 +88,7 @@ func (s *Store) validateAddressFilter(operator string, value any) error {
 }
 
 // dev util
-func (s *Store) dumpTables(ctx context.Context, tables ... string) {
+func (s *Store) dumpTables(ctx context.Context, tables ...string) {
 	for _, table := range tables {
 		s.dumpQuery(
 			ctx,
@@ -99,6 +99,7 @@ func (s *Store) dumpTables(ctx context.Context, tables ... string) {
 }
 
 func (s *Store) dumpQuery(ctx context.Context, query *bun.SelectQuery) {
+	fmt.Println(query)
 	rows, err := query.Rows(ctx)
 	if err != nil {
 		panic(err)

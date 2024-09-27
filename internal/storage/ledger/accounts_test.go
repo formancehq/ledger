@@ -271,7 +271,6 @@ func TestGetAccount(t *testing.T) {
 			},
 			FirstUsage:       now.Add(-time.Minute),
 			EffectiveVolumes: map[string]ledger.Volumes{},
-			Volumes:          map[string]ledger.Volumes{},
 		}, *account)
 
 		account, err = store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("world"))
@@ -280,8 +279,7 @@ func TestGetAccount(t *testing.T) {
 			Address:          "world",
 			Metadata:         metadata.Metadata{},
 			FirstUsage:       now.Add(-time.Minute),
-			EffectiveVolumes: map[string]ledger.Volumes{},
-			Volumes:          map[string]ledger.Volumes{},
+			EffectiveVolumes: ledger.VolumesByAssets{},
 		}, *account)
 	})
 
@@ -294,8 +292,7 @@ func TestGetAccount(t *testing.T) {
 			Address:          "multi",
 			Metadata:         metadata.Metadata{},
 			FirstUsage:       now.Add(-time.Minute),
-			Volumes:          map[string]ledger.Volumes{},
-			EffectiveVolumes: map[string]ledger.Volumes{},
+			EffectiveVolumes: ledger.VolumesByAssets{},
 		}, *account)
 	})
 
@@ -331,7 +328,6 @@ func TestGetAccount(t *testing.T) {
 			EffectiveVolumes: ledger.VolumesByAssets{
 				"USD/2": ledger.NewVolumesInt64(100, 0),
 			},
-			Volumes: map[string]ledger.Volumes{},
 		}, *account)
 	})
 
