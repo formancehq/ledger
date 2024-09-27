@@ -1,11 +1,12 @@
 package ledger
 
 import (
+	"slices"
+
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/time"
 	"github.com/uptrace/bun"
-	"slices"
 )
 
 type Move struct {

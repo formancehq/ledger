@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
