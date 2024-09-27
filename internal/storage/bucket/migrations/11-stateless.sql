@@ -85,16 +85,9 @@ alter column hash
 drop not null;
 
 -- Change from jsonb to json to keep keys order and ensure consistent hashing
--- todo: check if still required
 alter table "{{.Bucket}}".logs
 alter column data
 type json;
-
---drop index transactions_metadata_ledger;
---drop index transactions_metadata_revisions;
-
---drop index accounts_metadata_ledger;
---drop index accounts_metadata_revisions;
 
 create unique index accounts_metadata_ledger on "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision);
 create index accounts_metadata_revisions on "{{.Bucket}}".accounts_metadata(accounts_address asc, revision desc) include (metadata, date);
@@ -142,21 +135,15 @@ from (
 	order by seq desc
 ) moves;
 
---drop index moves_post_commit_volumes;
---drop index moves_effective_post_commit_volumes;
-
 drop trigger "insert_account"  on "{{.Bucket}}".accounts;
 drop trigger "update_account"  on "{{.Bucket}}".accounts;
 drop trigger "insert_transaction"  on "{{.Bucket}}".transactions;
 drop trigger "update_transaction"  on "{{.Bucket}}".transactions;
 
---drop index moves_account_address_array;
---drop index moves_account_address_array_length;
 drop index transactions_sources_arrays;
 drop index transactions_destinations_arrays;
 drop index accounts_address_array;
 drop index accounts_address_array_length;
-
 drop index transactions_sources;
 drop index transactions_destinations;
 
