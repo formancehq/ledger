@@ -260,7 +260,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		}
 	}
 
-	postCommitVolumes, err := s.updateVolumes(ctx, volumeUpdates(s.ledger.Name, tx)...)
+	postCommitVolumes, err := s.updateVolumes(ctx, volumeUpdates(tx)...)
 	if err != nil {
 		return errors.Wrap(err, "failed to update balances")
 	}
@@ -560,7 +560,7 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 	}
 }
 
-func volumeUpdates(l string, transaction *ledger.Transaction) []AccountsVolumes {
+func volumeUpdates(transaction *ledger.Transaction) []ledger.AccountsVolumes {
 	aggregatedVolumes := make(map[string]map[string][]ledger.Posting)
 	for _, posting := range transaction.Postings {
 		if _, ok := aggregatedVolumes[posting.Source]; !ok {
@@ -578,7 +578,7 @@ func volumeUpdates(l string, transaction *ledger.Transaction) []AccountsVolumes 
 		aggregatedVolumes[posting.Destination][posting.Asset] = append(aggregatedVolumes[posting.Destination][posting.Asset], posting)
 	}
 
-	ret := make([]AccountsVolumes, 0)
+	ret := make([]ledger.AccountsVolumes, 0)
 	for account, movesByAsset := range aggregatedVolumes {
 		for asset, postings := range movesByAsset {
 			volumes := ledger.NewEmptyVolumes()
@@ -591,8 +591,7 @@ func volumeUpdates(l string, transaction *ledger.Transaction) []AccountsVolumes 
 				}
 			}
 
-			ret = append(ret, AccountsVolumes{
-				Ledger:  l,
+			ret = append(ret, ledger.AccountsVolumes{
 				Account: account,
 				Asset:   asset,
 				Input:   volumes.Input,

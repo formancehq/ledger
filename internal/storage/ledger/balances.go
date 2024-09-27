@@ -204,15 +204,22 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			}
 		}
 
-		accountsVolumes := make([]AccountsVolumes, 0)
+		type AccountsVolumesWithLedger struct {
+			ledger.AccountsVolumes `bun:",extend"`
+			Ledger string `bun:"ledger,type:varchar"`
+		}
+
+		accountsVolumes := make([]AccountsVolumesWithLedger, 0)
 		for account, assets := range query {
 			for _, asset := range assets {
-				accountsVolumes = append(accountsVolumes, AccountsVolumes{
-					Ledger:  s.ledger.Name,
-					Account: account,
-					Asset:   asset,
-					Input:   new(big.Int),
-					Output:  new(big.Int),
+				accountsVolumes = append(accountsVolumes, AccountsVolumesWithLedger{
+					Ledger: s.ledger.Name,
+					AccountsVolumes: ledger.AccountsVolumes{
+						Account: account,
+						Asset:   asset,
+						Input:   new(big.Int),
+						Output:  new(big.Int),
+					},
 				})
 			}
 		}
@@ -262,32 +269,3 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		return ret, nil
 	})
 }
-
-/**
-SELECT to_json(array_agg(json_build_object('asset', accounts.asset, 'input', (accounts.volumes->>'input')::numeric, 'output', (accounts.volumes->>'output')::numeric))) AS aggregated
-FROM (
-	SELECT *
-   	FROM (
-		SELECT *, accounts.address_array
-      	FROM (
-			SELECT "asset", "accounts_address", post_commit_volumes AS volumes
-         	FROM (
-				SELECT DISTINCT ON (accounts_address, asset)
-					"accounts_address",
-                    "asset",
-                    first_value(post_commit_volumes) OVER (PARTITION BY (accounts_address, asset) ORDER BY seq DESC) AS post_commit_volumes
-            	FROM (
-					SELECT *
-               		FROM "87b28082".moves
-               		WHERE (ledger = '87b28082') AND (insertion_date <= '2024-09-26T14:45:10.568382Z')
-	                ORDER BY "seq" DESC
-				) moves
-            	WHERE (ledger = '87b28082') AND (insertion_date <= '2024-09-26T14:45:10.568382Z')
-			) moves
-		) accounts_volumes
-      	JOIN "87b28082".accounts accounts ON accounts.address = accounts_volumes.accounts_address
-	) accounts
-	WHERE (jsonb_array_length(accounts.address_array) = 2
-	AND accounts.address_array @@ ('$[0] == "users"')::jsonpath)
-) accounts
-*/
