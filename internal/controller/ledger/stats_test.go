@@ -25,7 +25,7 @@ func TestStats(t *testing.T) {
 		Return(10, nil)
 
 	ledgerController := NewDefaultController(
-		ledger.Must(ledger.NewWithDefaults("foo")),
+		ledger.MustNewWithDefault("foo"),
 		store,
 		NewMockListener(ctrl),
 		machineFactory,

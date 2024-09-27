@@ -40,8 +40,8 @@ func TestListLedgers(t *testing.T) {
 			name:        "nominal",
 			expectQuery: ledgercontroller.NewListLedgersQuery(15),
 			returnData: []ledger.Ledger{
-				ledger.Must(ledger.NewWithDefaults(uuid.NewString())),
-				ledger.Must(ledger.NewWithDefaults(uuid.NewString())),
+				ledger.MustNewWithDefault(uuid.NewString()),
+				ledger.MustNewWithDefault(uuid.NewString()),
 			},
 			expectBackendCall: true,
 		},
