@@ -174,29 +174,6 @@ var _ = Context("Ledger integration tests", func() {
 						})))
 					})
 				})
-				Context("when adding a metadata on the newly created transaction", func() {
-					metadata := map[string]string{
-						"status": "succeeded",
-					}
-					JustBeforeEach(func() {
-						err := AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
-							Ledger:      createLedgerRequest.Ledger,
-							ID:          tx.ID,
-							RequestBody: metadata,
-						})
-						Expect(err).To(BeNil())
-					})
-					It("should be ok", func() {
-						By("it should send an event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata, bus.SavedMetadata{
-								Ledger:     createLedgerRequest.Ledger,
-								TargetType: ledger.MetaTargetTypeTransaction,
-								TargetID:   tx.ID.String(),
-								Metadata:   metadata,
-							})))
-						})
-					})
-				})
 				It("should be listable on api", func() {
 					txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
 						Ledger: createLedgerRequest.Ledger,
@@ -262,13 +239,14 @@ var _ = Context("Ledger integration tests", func() {
 					})
 				})
 				When("adding a metadata on the transaction", func() {
+					metadata := map[string]string{
+						"foo": "bar",
+					}
 					JustBeforeEach(func() {
 						Expect(AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
-							Ledger: createLedgerRequest.Ledger,
-							ID:     tx.ID,
-							RequestBody: map[string]string{
-								"foo": "bar",
-							},
+							Ledger:      createLedgerRequest.Ledger,
+							ID:          tx.ID,
+							RequestBody: metadata,
 						})).To(BeNil())
 					})
 					It("should be ok", func() {
@@ -278,6 +256,15 @@ var _ = Context("Ledger integration tests", func() {
 						})
 						Expect(err).To(Succeed())
 						Expect(transaction.Metadata).To(HaveKeyWithValue("foo", "bar"))
+
+						By("it should send an event", func() {
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata, bus.SavedMetadata{
+								Ledger:     createLedgerRequest.Ledger,
+								TargetType: ledger.MetaTargetTypeTransaction,
+								TargetID:   tx.ID.String(),
+								Metadata:   metadata,
+							})))
+						})
 					})
 					When("deleting metadata", func() {
 						JustBeforeEach(func() {
@@ -294,6 +281,15 @@ var _ = Context("Ledger integration tests", func() {
 							})
 							Expect(err).To(Succeed())
 							Expect(transaction.Metadata).NotTo(HaveKey("foo"))
+
+							By("it should send an event", func() {
+								Eventually(events).Should(Receive(Event(ledgerevents.EventTypeDeletedMetadata, bus.DeletedMetadata{
+									Ledger:     createLedgerRequest.Ledger,
+									TargetType: ledger.MetaTargetTypeTransaction,
+									TargetID:   tx.ID.String(),
+									Key:        "foo",
+								})))
+							})
 						})
 					})
 				})
