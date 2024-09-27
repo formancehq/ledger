@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
 	"github.com/formancehq/ledger/internal/bus"
-	"github.com/formancehq/ledger/pkg/events"
+	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
 	"io"
 	"math/big"
@@ -41,6 +41,11 @@ var _ = Context("Ledger integration tests", func() {
 			NatsURL:               natsServer.GetValue().ClientURL(),
 		}
 	})
+	var events chan *nats.Msg
+	BeforeEach(func() {
+		events = testServer.GetValue().Subscribe()
+	})
+
 	When("starting the service", func() {
 		It("should be ok", func() {
 			info, err := testServer.GetValue().Client().Ledger.V2.GetInfo(ctx)
@@ -134,18 +139,9 @@ var _ = Context("Ledger integration tests", func() {
 				It("should be ok", func() {
 					Expect(err).To(BeNil())
 					checkTx()
-				})
-				It("should be ok", func() {
-					Expect(err).To(BeNil())
-					checkTx()
-				})
-				Context("when listening on event", func() {
-					var msgs chan *nats.Msg
-					BeforeEach(func() {
-						msgs = testServer.GetValue().Subscribe()
-					})
-					It("should receive an event", func() {
-						Eventually(msgs).Should(Receive(Event(events.EventTypeCommittedTransactions, bus.CommittedTransactions{
+
+					By("it should also send an event", func() {
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, bus.CommittedTransactions{
 							Ledger: "foo",
 							Transactions: []ledger.Transaction{{
 								TransactionData: ledger.TransactionData{
@@ -176,6 +172,29 @@ var _ = Context("Ledger integration tests", func() {
 							}},
 							AccountMetadata: ledger.AccountMetadata{},
 						})))
+					})
+				})
+				Context("when adding a metadata on the newly created transaction", func() {
+					metadata := map[string]string{
+						"status": "succeeded",
+					}
+					JustBeforeEach(func() {
+						err := AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
+							Ledger:      createLedgerRequest.Ledger,
+							ID:          tx.ID,
+							RequestBody: metadata,
+						})
+						Expect(err).To(BeNil())
+					})
+					It("should be ok", func() {
+						By("it should send an event", func() {
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata, bus.SavedMetadata{
+								Ledger:     createLedgerRequest.Ledger,
+								TargetType: ledger.MetaTargetTypeTransaction,
+								TargetID:   tx.ID.String(),
+								Metadata:   metadata,
+							})))
+						})
 					})
 				})
 				It("should be listable on api", func() {
