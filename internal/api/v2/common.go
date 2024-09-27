@@ -3,7 +3,9 @@ package v2
 import (
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/formancehq/go-libs/api"
 
@@ -12,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
 )
@@ -70,9 +71,19 @@ func getPITFilterWithVolumes(r *http.Request) (*ledgercontroller.PITFilterWithVo
 	}
 	return &ledgercontroller.PITFilterWithVolumes{
 		PITFilter:              *pit,
-		ExpandVolumes:          collectionutils.Contains(r.URL.Query()["expand"], "volumes"),
-		ExpandEffectiveVolumes: collectionutils.Contains(r.URL.Query()["expand"], "effectiveVolumes"),
+		ExpandVolumes:          hasExpandVolumes(r),
+		ExpandEffectiveVolumes: hasExpandEffectiveVolumes(r),
 	}, nil
+}
+
+func hasExpandVolumes(r *http.Request) bool {
+	parts := strings.Split(r.URL.Query().Get("expand"), ",")
+	return slices.Contains(parts, "volumes")
+}
+
+func hasExpandEffectiveVolumes(r *http.Request) bool {
+	parts := strings.Split(r.URL.Query().Get("expand"), ",")
+	return slices.Contains(parts, "effectiveVolumes")
 }
 
 func getFiltersForVolumes(r *http.Request) (*ledgercontroller.FiltersForVolumes, error) {

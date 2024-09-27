@@ -5,7 +5,6 @@ import (
 	"net/url"
 
 	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -22,10 +21,10 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := ledgercontroller.NewGetAccountQuery(param)
-	if collectionutils.Contains(r.URL.Query()["expand"], "volumes") {
+	if hasExpandVolumes(r) {
 		query = query.WithExpandVolumes()
 	}
-	if collectionutils.Contains(r.URL.Query()["expand"], "effectiveVolumes") {
+	if hasExpandEffectiveVolumes(r) {
 		query = query.WithExpandEffectiveVolumes()
 	}
 	pitFilter, err := getPITFilter(r)
