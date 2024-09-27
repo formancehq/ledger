@@ -71,9 +71,9 @@
       ]
     },
     "Time": {
-      "properties": {},
-      "additionalProperties": false,
-      "type": "object"
+      "type": "string",
+      "format": "date-time",
+      "title": "Normalized date"
     },
     "Transaction": {
       "properties": {
