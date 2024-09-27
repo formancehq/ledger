@@ -1,8 +1,9 @@
 package bucket
 
 import (
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"testing"
+
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
 
