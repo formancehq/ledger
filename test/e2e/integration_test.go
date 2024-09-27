@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
@@ -142,34 +141,8 @@ var _ = Context("Ledger integration tests", func() {
 
 					By("it should also send an event", func() {
 						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, bus.CommittedTransactions{
-							Ledger: "foo",
-							Transactions: []ledger.Transaction{{
-								TransactionData: ledger.TransactionData{
-									Postings: []ledger.Posting{
-										ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-									},
-									Timestamp:  time.New(tx.Timestamp),
-									InsertedAt: time.New(tx.Timestamp),
-									Metadata:   metadata.Metadata{},
-								},
-								ID: 1,
-								PostCommitVolumes: ledger.PostCommitVolumes{
-									"world": {
-										"USD/2": ledger.NewVolumesInt64(0, 100),
-									},
-									"bank": {
-										"USD/2": ledger.NewVolumesInt64(100, 0),
-									},
-								},
-								PostCommitEffectiveVolumes: ledger.PostCommitVolumes{
-									"world": {
-										"USD/2": ledger.NewVolumesInt64(0, 100),
-									},
-									"bank": {
-										"USD/2": ledger.NewVolumesInt64(100, 0),
-									},
-								},
-							}},
+							Ledger:          "foo",
+							Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(tx)},
 							AccountMetadata: ledger.AccountMetadata{},
 						})))
 					})
@@ -233,7 +206,11 @@ var _ = Context("Ledger integration tests", func() {
 							newTx, err = CreateTransaction(ctx, testServer.GetValue(), createTransactionRequest)
 							Expect(err).To(BeNil())
 						})
-						It("should respond with the same tx as previously", func() {
+						It("should respond with the same tx as previously minus pre commit volumes", func() {
+							tx.PreCommitVolumes = nil
+							tx.PostCommitVolumes = nil
+							tx.PreCommitEffectiveVolumes = nil
+							tx.PostCommitEffectiveVolumes = nil
 							Expect(newTx).To(Equal(tx))
 						})
 					})
@@ -336,13 +313,24 @@ var _ = Context("Ledger integration tests", func() {
 						Expect(reversedTx.Reference).To(BeNil())
 						Expect(reversedTx.Timestamp.Compare(tx.Timestamp)).To(BeNumerically(">", 0))
 
-						By("the original transaction should be marked as reverted")
-						tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
-							Ledger: createLedgerRequest.Ledger,
-							ID:     tx.ID,
+						By("the original transaction should be marked as reverted", func() {
+							tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
+								Ledger: createLedgerRequest.Ledger,
+								ID:     tx.ID,
+							})
+							Expect(err).To(BeNil())
+							Expect(tx.Reverted).To(BeTrue())
 						})
-						Expect(err).To(BeNil())
-						Expect(tx.Reverted).To(BeTrue())
+
+						By("it should send an event", func() {
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, bus.RevertedTransaction{
+								Ledger: createLedgerRequest.Ledger,
+								RevertedTransaction: ConvertSDKTxToCoreTX(tx).
+									WithRevertedAt(time.New(reversedTx.Timestamp)).
+									WithPostCommitEffectiveVolumes(nil),
+								RevertTransaction: ConvertSDKTxToCoreTX(reversedTx),
+							})))
+						})
 					})
 					When("trying to revert again", func() {
 						It("should fail", func() {

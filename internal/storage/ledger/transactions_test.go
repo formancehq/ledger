@@ -618,7 +618,7 @@ func TestTransactionsList(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
-	tx4 := tx3BeforeRevert.Reverse(false).WithTimestamp(now)
+	tx4 := tx3BeforeRevert.Reverse().WithTimestamp(now)
 	err = store.CommitTransaction(ctx, &tx4)
 	require.NoError(t, err)
 

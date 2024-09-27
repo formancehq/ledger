@@ -34,6 +34,7 @@ type DefaultController struct {
 	ledger         ledger.Ledger
 }
 
+// todo: could decline controller as some kinf of middlewares
 func NewDefaultController(
 	ledger ledger.Ledger,
 	store Store,
@@ -402,7 +403,12 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 				return nil, errors.Wrap(err, "failed to get balances")
 			}
 
-			reversedTx := originalTransaction.Reverse(atEffectiveDate)
+			reversedTx := originalTransaction.Reverse()
+			if atEffectiveDate {
+				reversedTx = reversedTx.WithTimestamp(originalTransaction.Timestamp)
+			} else {
+				reversedTx = reversedTx.WithTimestamp(*originalTransaction.RevertedAt)
+			}
 
 			// Check balances after the revert
 			// must be greater than 0

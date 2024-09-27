@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: c2e3359d7485797fe05bc7c81df33a2d
+  docChecksum: aab50c683ca7f0a7dec27a59b8eb6a91
   docVersion: LEDGER_VERSION
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.4.3
-  configChecksum: 5b9f3d061f8b36714f92e03d6ef0fc87
+  releaseVersion: 0.4.8
+  configChecksum: 7ae8e5ff8f460992fb233a182b16933e
 features:
   go:
     additionalDependencies: 0.1.0
@@ -145,6 +145,7 @@ generatedFiles:
   - /models/components/v2bulkresponse.go
   - /models/components/v2bulkelementresult.go
   - /models/components/v2transaction.go
+  - /models/components/v2volume.go
   - /models/components/v2posting.go
   - /models/components/v2bulkelement.go
   - /models/components/v2bulkelementcreatetransaction.go
@@ -156,7 +157,6 @@ generatedFiles:
   - /models/components/v2bulkelementdeletemetadata.go
   - /models/components/v2accountscursorresponse.go
   - /models/components/v2account.go
-  - /models/components/v2volume.go
   - /models/components/v2accountresponse.go
   - /models/components/v2statsresponse.go
   - /models/components/v2stats.go
@@ -327,6 +327,7 @@ generatedFiles:
   - docs/models/components/v2bulkelementresultcreatetransaction.md
   - docs/models/components/v2bulkelementresult.md
   - docs/models/components/v2transaction.md
+  - docs/models/components/v2volume.md
   - docs/models/components/v2posting.md
   - docs/models/components/v2bulkelement.md
   - docs/models/components/v2bulkelementcreatetransaction.md
@@ -343,7 +344,6 @@ generatedFiles:
   - docs/models/components/v2accountscursorresponsecursor.md
   - docs/models/components/v2accountscursorresponse.md
   - docs/models/components/v2account.md
-  - docs/models/components/v2volume.md
   - docs/models/components/v2accountresponse.md
   - docs/models/components/v2statsresponse.md
   - docs/models/components/v2stats.md
