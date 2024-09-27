@@ -462,7 +462,7 @@ func TestTransactionsRevert(t *testing.T) {
 	require.True(t, revertedTx.IsReverted())
 	revertedTx.RevertedAt = nil
 	tx1.PostCommitEffectiveVolumes = nil
-	//tx1.PostCommitVolumes = ledger.PostCommitVolumes{}
+	//tx1.Volumes = ledger.Volumes{}
 	require.Equal(t, tx1, *revertedTx)
 
 	// try to revert again

@@ -18,37 +18,10 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
-
-type Account struct {
-	bun.BaseModel `bun:"table:accounts"`
-
-	Ledger        string            `bun:"ledger"`
-	Address       string            `bun:"address"`
-	Metadata      metadata.Metadata `bun:"metadata,type:jsonb"`
-	InsertionDate time.Time         `bun:"insertion_date"`
-	UpdatedAt     time.Time         `bun:"updated_at"`
-	FirstUsage    time.Time         `bun:"first_usage"`
-
-	PostCommitVolumes          ledger.VolumesByAssets `bun:"pcv,scanonly"`
-	PostCommitEffectiveVolumes ledger.VolumesByAssets `bun:"pcev,scanonly"`
-}
-
-func (account Account) toCore() ledger.Account {
-	return ledger.Account{
-		Address:          account.Address,
-		Metadata:         account.Metadata,
-		FirstUsage:       account.FirstUsage,
-		InsertionDate:    account.InsertionDate,
-		UpdatedAt:        account.UpdatedAt,
-		Volumes:          account.PostCommitVolumes,
-		EffectiveVolumes: account.PostCommitEffectiveVolumes,
-	}
-}
 
 var (
 	balanceRegex = regexp.MustCompile(`balance\[(.*)]`)
@@ -229,7 +202,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*Cursor[ledger.Account], error) {
 	return tracing.TraceWithLatency(ctx, "ListAccounts", func(ctx context.Context) (*Cursor[ledger.Account], error) {
-		ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], Account](
+		ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](
 			ctx,
 			s.selectAccounts(
 				q.Options.Options.PIT,
@@ -244,13 +217,13 @@ func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccount
 			return nil, err
 		}
 
-		return MapCursor(ret, Account.toCore), nil
+		return ret, nil
 	})
 }
 
 func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
 	return tracing.TraceWithLatency(ctx, "GetAccount", func(ctx context.Context) (*ledger.Account, error) {
-		ret := &Account{}
+		ret := &ledger.Account{}
 		if err := s.selectAccounts(q.PIT, q.ExpandVolumes, q.ExpandEffectiveVolumes, nil).
 			Model(ret).
 			Where("accounts.address = ?", q.Addr).
@@ -259,7 +232,7 @@ func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQue
 			return nil, postgres.ResolveError(err)
 		}
 
-		return pointer.For(ret.toCore()), nil
+		return ret, nil
 	})
 }
 
@@ -279,15 +252,23 @@ func (s *Store) CountAccounts(ctx context.Context, q ledgercontroller.ListAccoun
 func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
 	_, err := tracing.TraceWithLatency(ctx, "UpdateAccountsMetadata", tracing.NoResult(func(ctx context.Context) error {
 		now := time.Now()
-		accounts := make([]Account, 0)
+
+		type AccountWithLedger struct {
+			ledger.Account `bun:",extend"`
+			Ledger         string `bun:"ledger,type:varchar"`
+		}
+
+		accounts := make([]AccountWithLedger, 0)
 		for account, accountMetadata := range m {
-			accounts = append(accounts, Account{
-				Ledger:        s.ledger.Name,
-				Address:       account,
-				Metadata:      accountMetadata,
-				InsertionDate: now,
-				UpdatedAt:     now,
-				FirstUsage:    now,
+			accounts = append(accounts, AccountWithLedger{
+				Ledger: s.ledger.Name,
+				Account: ledger.Account{
+					Address:       account,
+					Metadata:      accountMetadata,
+					InsertionDate: now,
+					UpdatedAt:     now,
+					FirstUsage:    now,
+				},
 			})
 		}
 
@@ -316,34 +297,12 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 	return err
 }
 
-func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) error {
-	mappedAccount := &Account{
-		Ledger:        s.ledger.Name,
-		Address:       account.Address,
-		FirstUsage:    account.FirstUsage,
-		InsertionDate: account.InsertionDate,
-		UpdatedAt:     account.UpdatedAt,
-		Metadata:      account.Metadata,
-	}
-	_, err := s.upsertAccount(ctx, mappedAccount)
-	if err != nil {
-		return err
-	}
-
-	account.FirstUsage = mappedAccount.FirstUsage
-	account.InsertionDate = mappedAccount.InsertionDate
-	account.UpdatedAt = mappedAccount.UpdatedAt
-	account.Metadata = mappedAccount.Metadata
-
-	return nil
-}
-
-func (s *Store) upsertAccount(ctx context.Context, account *Account) (bool, error) {
+func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
 	var rollbacked = errors.New("rollbacked")
 	upserted, err := tracing.TraceWithLatency(ctx, "UpsertAccount", func(ctx context.Context) (bool, error) {
 		type upsertedEntity struct {
-			Account  `bun:",extend"`
-			Upserted bool `bun:"upserted"`
+			ledger.Account `bun:",extend"`
+			Upserted       bool `bun:"upserted"`
 		}
 		upserted := &upsertedEntity{}
 
