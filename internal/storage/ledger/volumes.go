@@ -3,8 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
-	"math/big"
-
+	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/platform/postgres"
 
 	"github.com/formancehq/ledger/internal/tracing"
@@ -17,21 +16,23 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type AccountsVolumes struct {
-	bun.BaseModel `bun:"accounts_volumes"`
-
-	Ledger  string   `bun:"ledger,type:varchar"`
-	Account string   `bun:"accounts_address,type:varchar"`
-	Asset   string   `bun:"asset,type:varchar"`
-	Input   *big.Int `bun:"input,type:numeric"`
-	Output  *big.Int `bun:"output,type:numeric"`
-}
-
-func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVolumes) (ledger.PostCommitVolumes, error) {
+func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
 	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (ledger.PostCommitVolumes, error) {
 
+		type AccountsVolumesWithLedger struct {
+			ledger.AccountsVolumes `bun:",extend"`
+			Ledger                 string `bun:"ledger,type:varchar"`
+		}
+
+		accountsVolumesWithLedger := collectionutils.Map(accountVolumes, func(from ledger.AccountsVolumes) AccountsVolumesWithLedger {
+			return AccountsVolumesWithLedger{
+				AccountsVolumes: from,
+				Ledger:          s.ledger.Name,
+			}
+		})
+
 		_, err := s.db.NewInsert().
-			Model(&accountVolumes).
+			Model(&accountsVolumesWithLedger).
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 			On("conflict (ledger, accounts_address, asset) do update").
 			Set("input = accounts_volumes.input + excluded.input").
