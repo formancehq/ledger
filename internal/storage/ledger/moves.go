@@ -2,14 +2,9 @@ package ledger
 
 import (
 	"context"
-	"slices"
-
-	. "github.com/formancehq/go-libs/collectionutils"
-	ledger "github.com/formancehq/ledger/internal"
-
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/time"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
 )
@@ -57,7 +52,7 @@ func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQ
 	return ret
 }
 
-func (s *Store) insertMoves(ctx context.Context, moves ...*Move) error {
+func (s *Store) insertMoves(ctx context.Context, moves ...*ledger.Move) error {
 	_, err := tracing.TraceWithLatency(ctx, "InsertMoves", tracing.NoResult(func(ctx context.Context) error {
 		_, err := s.db.NewInsert().
 			Model(&moves).
@@ -70,54 +65,4 @@ func (s *Store) insertMoves(ctx context.Context, moves ...*Move) error {
 	}))
 
 	return err
-}
-
-type Move struct {
-	bun.BaseModel `bun:"table:moves"`
-
-	Ledger                     string              `bun:"ledger,type:varchar"`
-	TransactionID              int                 `bun:"transactions_id,type:bigint"`
-	IsSource                   bool                `bun:"is_source,type:bool"`
-	Account                    string              `bun:"accounts_address,type:varchar"`
-	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
-	Asset                      string              `bun:"asset,type:varchar"`
-	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`
-	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp"`
-	PostCommitVolumes          *ledger.Volumes     `bun:"post_commit_volumes,type:jsonb"`
-	PostCommitEffectiveVolumes *ledger.Volumes     `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
-}
-
-type Moves []*Move
-
-func (m Moves) ComputePostCommitEffectiveVolumes() ledger.PostCommitVolumes {
-	type key struct {
-		Account string
-		Asset   string
-	}
-
-	visited := Set[key]{}
-
-	// we need to find the more recent move for each account/asset
-	slices.Reverse(m)
-
-	ret := ledger.PostCommitVolumes{}
-	for _, move := range m {
-		if visited.Contains(key{
-			Account: move.Account,
-			Asset:   move.Asset,
-		}) {
-			continue
-		}
-		ret = ret.Merge(ledger.PostCommitVolumes{
-			move.Account: ledger.VolumesByAssets{
-				move.Asset: *move.PostCommitEffectiveVolumes,
-			},
-		})
-		visited.Put(key{
-			Account: move.Account,
-			Asset:   move.Asset,
-		})
-	}
-
-	return ret
 }
