@@ -3,6 +3,8 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"testing"
 
@@ -87,7 +89,10 @@ func TestRevertTransaction(t *testing.T) {
 	txToRevert := &ledger.Transaction{}
 	sqlTX.EXPECT().
 		RevertTransaction(gomock.Any(), 1).
-		Return(txToRevert, true, nil)
+		DoAndReturn(func(_ context.Context, _ int) (*ledger.Transaction, bool, error) {
+			txToRevert.RevertedAt = pointer.For(time.Now())
+			return txToRevert, true, nil
+		})
 
 	sqlTX.EXPECT().
 		GetBalances(gomock.Any(), gomock.Any()).

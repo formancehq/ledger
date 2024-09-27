@@ -2,14 +2,12 @@ package ledger
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/time"
 	"github.com/invopop/jsonschema"
+	"github.com/uptrace/bun"
 	"math/big"
 	"slices"
 	"sort"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/pointer"
 
@@ -62,12 +60,8 @@ func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema) {
 	schema.Properties.Set("preCommitEffectiveVolumes", postCommitVolumesSchema)
 }
 
-func (tx Transaction) Reverse(atEffectiveDate bool) Transaction {
+func (tx Transaction) Reverse() Transaction {
 	ret := NewTransaction().WithPostings(tx.Postings.Reverse()...)
-	if atEffectiveDate {
-		ret = ret.WithTimestamp(tx.Timestamp)
-	}
-
 	return ret
 }
 
@@ -210,6 +204,17 @@ func (tx Transaction) MarshalJSON() ([]byte, error) {
 
 func (tx Transaction) IsReverted() bool {
 	return tx.RevertedAt != nil && !tx.RevertedAt.IsZero()
+}
+
+func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction {
+	tx.RevertedAt = &timestamp
+	return tx
+}
+
+func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) Transaction {
+	tx.PostCommitEffectiveVolumes = volumes
+
+	return tx
 }
 
 func NewTransaction() Transaction {
