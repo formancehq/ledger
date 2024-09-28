@@ -36,6 +36,7 @@ jobs:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
           earthly
+          --ci
           --allow-privileged
           --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
@@ -68,6 +69,7 @@ jobs:
       - run: >
           earthly
           --no-output
+          --ci
           --allow-privileged
           --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}

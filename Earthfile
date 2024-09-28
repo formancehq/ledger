@@ -1,3 +1,4 @@
+# Why BUILD + FROM : https://github.com/earthly/earthly/issues/4100
 VERSION 0.8
 PROJECT FormanceHQ/ledger
 
@@ -6,64 +7,117 @@ IMPORT github.com/formancehq/stack/releases:main AS releases
 
 FROM core+base-image
 
-CACHE --persist --sharing=shared /go
-CACHE --persist --sharing=shared /root/.cache/golangci-lint
+golang-image:
+    RUN apk update && apk add go
+    ENV GOPATH=/go
+    ENV GOCACHE=$GOPATH/cache
+    ENV PATH=$GOPATH/bin:$PATH
+    CACHE --persist --sharing=shared $GOPATH
+
+    RUN go build -v std
+
+    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:golang-image
+
+golang-deps:
+    BUILD +golang-image
+    FROM +golang-image
+    WORKDIR /src
+    COPY main.go go.mod go.sum .
+    COPY pkg/client/go.* pkg/client/
+    RUN go mod download
+    RUN go get github.com/formancehq/go-libs/...
+    RUN go install github.com/formancehq/go-libs/...
+
+    SAVE ARTIFACT /go
+    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:deps
 
 sources:
-    FROM core+builder-image
-    WORKDIR /src/pkg/client
-    COPY pkg/client/go.mod pkg/client/go.sum ./
-    RUN go mod download
     WORKDIR /src
-    COPY go.mod go.sum ./
-    RUN go mod download
     COPY --dir internal pkg cmd .
-    COPY main.go .
+    COPY main.go go.sum go.mod .
     SAVE ARTIFACT /src
 
-generate:
-    FROM core+builder-image
-    RUN apk update && apk add openjdk11
+test-sources:
+    FROM +sources
+    COPY --dir test .
+    SAVE ARTIFACT /src
+
+tidy:
+    BUILD +golang-image
+    BUILD +golang-deps
+    FROM +golang-image
+    COPY (+golang-deps/go) /go
+    COPY (+test-sources/src) /src
+    WORKDIR /src
+    RUN go mod tidy
+
+    SAVE ARTIFACT go.sum
+    SAVE ARTIFACT go.mod
+
+    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:tidy
+
+compile:
+    BUILD +golang-image
+    BUILD +golang-deps
+    FROM +golang-image
+    COPY (+golang-deps/go) /go
+    COPY (+sources/src) /src
+    ENV CGO_ENABLED=0
+    WORKDIR /src
+    ARG VERSION=latest
+    RUN go build -v -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
+        -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
+        -X ${GIT_PATH}/cmd.Commit=${EARTHLY_BUILD_SHA}"
+    SAVE ARTIFACT main
+
+build-image:
+    BUILD +compile
+    ENTRYPOINT ["/bin/ledger"]
+    CMD ["serve"]
+    COPY (+compile/main) /bin/ledger
+    ARG REPOSITORY=ghcr.io
+    ARG tag=latest
+    DO core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
+
+mockgen-image:
+    FROM +golang-image
+    RUN apk update && apk add openjdk11 bash curl gcc musl-dev
     RUN go install go.uber.org/mock/mockgen@latest
-    COPY (+sources/*) /src
+
+    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:mockgen
+
+generate-mocks:
+    BUILD +mockgen-image
+    FROM +mockgen-image
+    #COPY (+golang-deps/go) /go
+    COPY (+sources/src) /src
     WORKDIR /src
     RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT cmd AS LOCAL cmd
 
-compile:
-    FROM +sources
-    WORKDIR /src
-    ARG VERSION=latest
-    RUN go build
-    RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
-        -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
-        -X ${GIT_PATH}/cmd.Commit=${EARTHLY_BUILD_SHA}"
-    SAVE ARTIFACT main
-
-build-image:
-    FROM core+final-image
-    ENTRYPOINT ["/bin/ledger"]
-    CMD ["serve"]
-    COPY --pass-args (+compile/main) /bin/ledger
-    ARG REPOSITORY=ghcr.io
-    ARG tag=latest
-    DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
-
 tests:
-    FROM +tidy
-    RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-    COPY --dir --pass-args (+generate/*) .
+    BUILD +generate-mocks
+    BUILD +golang-image
+    BUILD +golang-deps
 
-    ARG includeIntegrationTests="true"
-    ARG includeEnd2EndTests="true"
+    FROM +golang-image
+    RUN apk update && apk add gcc musl-dev
+
+    COPY (+golang-deps/go) /go
+    COPY --dir (+test-sources/src) /src
+    COPY --dir (+generate-mocks/*) /src/
+    COPY (+tidy/*) /src
+    WORKDIR /src
+    RUN go install github.com/onsi/ginkgo/v2/ginkgo
+
+    ARG it="true"
     ARG coverage=""
     ARG debug=false
 
+    ENV CGO_ENABLED=1
     ENV DEBUG=$debug
-    ENV CGO_ENABLED=1 # required for -race
-    RUN apk add gcc musl-dev
 
     LET goFlags="-race"
     IF [ "$coverage" = "true" ]
@@ -76,13 +130,13 @@ tests:
         SET goFlags="$goFlags -coverprofile cover.out"
     END
 
-    IF [ "$includeIntegrationTests" = "true" ]
+    IF [ "$it" = "true" ]
         SET goFlags="$goFlags -tags it"
         WITH DOCKER --pull=postgres:15-alpine
             RUN ginkgo -r -p $goFlags
         END
     ELSE
-        RUN ginkgo -r -p $goFlags
+        RUN go test -v $goFlags ./...
     END
     IF [ "$coverage" = "true" ]
         # exclude files suffixed with _generated.go, these are mocks used by tests
@@ -96,13 +150,13 @@ deploy:
     COPY (+sources/*) /src
     LET tag=$(tar cf - /src | sha1sum | awk '{print $1}')
     WAIT
-        BUILD --pass-args +build-image --tag=$tag
+        BUILD +build-image --tag=$tag
     END
-    FROM --pass-args core+vcluster-deployer-image
+    FROM core+vcluster-deployer-image
     RUN kubectl patch Versions.formance.com default -p "{\"spec\":{\"ledger\": \"${tag}\"}}" --type=merge
 
 deploy-staging:
-    BUILD --pass-args core+deploy-staging
+    BUILD core+deploy-staging
 
 lint:
     FROM +tidy
@@ -119,6 +173,9 @@ pre-commit:
     BUILD +openapi
     BUILD +generate-client
     BUILD +export-docs-events
+    IF [ "$EARTHLY_CI" = "true" ]
+        BUILD +tests
+    END
 
 bench:
     FROM +tidy
@@ -147,8 +204,8 @@ benchstat:
     FROM core+builder-image
     RUN go install golang.org/x/perf/cmd/benchstat@latest
     ARG compareAgainstRevision=main
-    COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
-    COPY --pass-args +bench/results.txt /tmp/branch.txt
+    COPY github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
+    COPY +bench/results.txt /tmp/branch.txt
     RUN --no-cache benchstat /tmp/main.txt /tmp/branch.txt
 
 openapi:
@@ -160,12 +217,6 @@ openapi:
     RUN openapi-merge-cli --config ./openapi/openapi-merge.json
     RUN yq -oy ./openapi.json > openapi.yaml
     SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
-
-tidy:
-    FROM +sources
-    WORKDIR /src
-    COPY --dir test .
-    RUN go mod tidy
 
 release:
     FROM core+builder-image
@@ -187,6 +238,7 @@ generate-client:
     SAVE ARTIFACT client AS LOCAL ./pkg/client
 
 export-database-schema:
+    BUILD +sources
     FROM +sources
     RUN go install github.com/roerohan/wait-for-it@latest
     WORKDIR /src/components/ledger
@@ -197,6 +249,7 @@ export-database-schema:
     SAVE ARTIFACT docs/database AS LOCAL docs/database
 
 export-docs-events:
+    BUILD +tidy
     FROM +tidy
     RUN go run main.go doc events --write-dir docs/events
     SAVE ARTIFACT docs/events AS LOCAL docs/events
