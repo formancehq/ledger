@@ -7,6 +7,8 @@ IMPORT github.com/formancehq/stack/releases:main AS releases
 
 FROM core+base-image
 
+ARG --global REPOSITORY=ghcr.io
+
 golang-image:
     RUN apk update && apk add go
     ENV GOPATH=/go
@@ -16,49 +18,31 @@ golang-image:
 
     RUN go build -v std
 
-    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:golang-image
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-golang-image
 
 golang-deps:
     BUILD +golang-image
+
     FROM +golang-image
     WORKDIR /src
-    COPY main.go go.mod go.sum .
     COPY pkg/client/go.* pkg/client/
+    COPY go.mod go.sum .
     RUN go mod download
-    RUN go get github.com/formancehq/go-libs/...
-    RUN go install github.com/formancehq/go-libs/...
 
     SAVE ARTIFACT /go
-    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:deps
+
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-deps
 
 sources:
     WORKDIR /src
-    COPY --dir internal pkg cmd .
+    COPY --dir internal pkg cmd test .
     COPY main.go go.sum go.mod .
     SAVE ARTIFACT /src
-
-test-sources:
-    FROM +sources
-    COPY --dir test .
-    SAVE ARTIFACT /src
-
-tidy:
-    BUILD +golang-image
-    BUILD +golang-deps
-    FROM +golang-image
-    COPY (+golang-deps/go) /go
-    COPY (+test-sources/src) /src
-    WORKDIR /src
-    RUN go mod tidy
-
-    SAVE ARTIFACT go.sum
-    SAVE ARTIFACT go.mod
-
-    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:tidy
 
 compile:
     BUILD +golang-image
     BUILD +golang-deps
+
     FROM +golang-image
     COPY (+golang-deps/go) /go
     COPY (+sources/src) /src
@@ -79,12 +63,27 @@ build-image:
     ARG tag=latest
     DO core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
+tidy:
+    BUILD +golang-image
+    BUILD +golang-deps
+
+    FROM +golang-image
+    COPY (+golang-deps/go) /go
+    COPY (+sources/src) /src
+    WORKDIR /src
+    RUN go mod tidy
+
+    SAVE ARTIFACT go.sum
+    SAVE ARTIFACT go.mod
+
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-tidy
+
 mockgen-image:
     FROM +golang-image
     RUN apk update && apk add openjdk11 bash curl gcc musl-dev
     RUN go install go.uber.org/mock/mockgen@latest
 
-    SAVE IMAGE --push 192.168.0.83:5555/formancehq/ledger:mockgen
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-mockgen
 
 generate-mocks:
     BUILD +mockgen-image
@@ -97,18 +96,20 @@ generate-mocks:
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT cmd AS LOCAL cmd
 
+tests-image:
+    FROM +golang-image
+    RUN apk update && apk add gcc musl-dev docker jq
+
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-tests
+
 tests:
-    BUILD +generate-mocks
-    BUILD +golang-image
+    BUILD +tests-image
     BUILD +golang-deps
 
-    FROM +golang-image
-    RUN apk update && apk add gcc musl-dev
+    FROM +tests-image
 
     COPY (+golang-deps/go) /go
-    COPY --dir (+test-sources/src) /src
-    COPY --dir (+generate-mocks/*) /src/
-    COPY (+tidy/*) /src
+    COPY --dir (+sources/src) /src
     WORKDIR /src
     RUN go install github.com/onsi/ginkgo/v2/ginkgo
 
@@ -158,9 +159,20 @@ deploy:
 deploy-staging:
     BUILD core+deploy-staging
 
+lint-image:
+    FROM +golang-image
+    RUN wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.61.0
+
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-lint
+
 lint:
-    FROM +tidy
-    RUN golangci-lint run --fix --build-tags it --timeout 2m
+    BUILD +lint-image
+
+    FROM +lint-image
+    COPY (+golang-deps/go) /go
+    COPY (+sources/src) /src
+    WORKDIR /src
+    RUN golangci-lint run --fix --build-tags it --timeout 5m
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
@@ -173,9 +185,7 @@ pre-commit:
     BUILD +openapi
     BUILD +generate-client
     BUILD +export-docs-events
-    IF [ "$EARTHLY_CI" = "true" ]
-        BUILD +tests
-    END
+    BUILD +tests
 
 bench:
     FROM +tidy
@@ -218,17 +228,32 @@ openapi:
     RUN yq -oy ./openapi.json > openapi.yaml
     SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
 
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-openapi
+
 release:
     FROM core+builder-image
     ARG mode=local
     COPY --dir . /src
     DO core+GORELEASER --mode=$mode
 
+speakeasy-image:
+    RUN apk update && apk add yarn jq unzip curl
+    ARG VERSION=v1.351.0
+    ARG TARGETARCH
+    RUN curl -fsSL https://github.com/speakeasy-api/speakeasy/releases/download/${VERSION}/speakeasy_linux_$TARGETARCH.zip -o /tmp/speakeasy_linux_$TARGETARCH.zip
+    RUN unzip /tmp/speakeasy_linux_$TARGETARCH.zip speakeasy
+    RUN chmod +x speakeasy
+    SAVE ARTIFACT speakeasy
+
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-speakeasy
+
 generate-client:
-    FROM node:20-alpine
+    BUILD +speakeasy-image
+    BUILD +openapi
+
     RUN apk update && apk add yq jq
     WORKDIR /src
-    COPY (core+sources-speakeasy/speakeasy) /bin/speakeasy
+    COPY (+speakeasy-image/speakeasy) /bin/speakeasy
     COPY (+openapi/openapi.yaml) openapi.yaml
     RUN cat ./openapi.yaml |  yq e -o json > openapi.json
     COPY (releases+sources/src/openapi-overlay.json) openapi-overlay.json
@@ -236,6 +261,8 @@ generate-client:
     COPY --dir pkg/client client
     RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./final.json -o ./client -l go
     SAVE ARTIFACT client AS LOCAL ./pkg/client
+
+    SAVE IMAGE --push ${REPOSITORY}/formancehq/ledger:cache-sdk
 
 export-database-schema:
     BUILD +sources
