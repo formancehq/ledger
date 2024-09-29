@@ -20,7 +20,7 @@ func (fn TransactionExecutorFn) ExecuteScript(ctx context.Context, script string
 
 type Env interface {
 	Executor() TransactionExecutor
-	Stop() error
+	Stop(ctx context.Context) error
 }
 
 type EnvFactory interface {

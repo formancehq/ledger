@@ -86,7 +86,10 @@ func (benchmark *Benchmark) Run(ctx context.Context) error {
 					b.ReportMetric(report.TPS(), "t/s")
 					b.ReportMetric(float64(report.AverageDuration().Milliseconds()), "ms/transaction")
 
-					require.NoError(benchmark.b, env.Stop())
+					stopContext, cancel := context.WithTimeout(ctx, 10*time.Second)
+					b.Cleanup(cancel)
+
+					require.NoError(benchmark.b, env.Stop(stopContext))
 				})
 			}
 		}

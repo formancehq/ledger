@@ -6,13 +6,12 @@ import (
 	"github.com/formancehq/go-libs/publish"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"github.com/uptrace/bun"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/httpclient"
@@ -33,7 +32,7 @@ type T interface {
 
 type Configuration struct {
 	PostgresConfiguration bunconnect.ConnectionOptions
-	NatsURL string
+	NatsURL               string
 	Output                io.Writer
 	Debug                 bool
 }
@@ -83,9 +82,9 @@ func (s *Server) Start() {
 	if s.configuration.NatsURL != "" {
 		args = append(
 			args,
-			"--" + publish.PublisherNatsEnabledFlag,
-			"--" + publish.PublisherNatsURLFlag, s.configuration.NatsURL,
-			"--" + publish.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", s.id),
+			"--"+publish.PublisherNatsEnabledFlag,
+			"--"+publish.PublisherNatsURLFlag, s.configuration.NatsURL,
+			"--"+publish.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", s.id),
 		)
 	}
 
@@ -140,7 +139,7 @@ func (s *Server) Start() {
 	)
 }
 
-func (s *Server) Stop() {
+func (s *Server) Stop(ctx context.Context) {
 	s.t.Helper()
 
 	if s.cancel == nil {
@@ -152,7 +151,7 @@ func (s *Server) Stop() {
 	// Wait app to be marked as stopped
 	select {
 	case <-service.Stopped(s.ctx):
-	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
 		require.Fail(s.t, "service should have been stopped")
 	}
 
@@ -160,7 +159,7 @@ func (s *Server) Stop() {
 	select {
 	case err := <-s.errorChan:
 		require.NoError(s.t, err)
-	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
 		require.Fail(s.t, "service should have been stopped without error")
 	}
 }
@@ -169,10 +168,10 @@ func (s *Server) Client() *ledgerclient.Formance {
 	return s.httpClient
 }
 
-func (s *Server) Restart() {
+func (s *Server) Restart(ctx context.Context) {
 	s.t.Helper()
 
-	s.Stop()
+	s.Stop(ctx)
 	s.Start()
 }
 
@@ -209,13 +208,16 @@ func New(t T, configuration Configuration) *Server {
 	srv := &Server{
 		t:             t,
 		configuration: configuration,
-		id: uuid.NewString()[:8],
+		id:            uuid.NewString()[:8],
 	}
 	t.Logf("Start testing server")
 	srv.Start()
 	t.Cleanup(func() {
 		t.Logf("Stop testing server")
-		srv.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		srv.Stop(ctx)
 	})
 
 	return srv

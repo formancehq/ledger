@@ -107,7 +107,7 @@ func (r *RemoteLedgerEnv) Executor() TransactionExecutor {
 	})
 }
 
-func (r *RemoteLedgerEnv) Stop() error {
+func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 	return nil
 }
 

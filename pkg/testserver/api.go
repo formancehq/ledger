@@ -17,6 +17,10 @@ func CreateLedger(ctx context.Context, srv *Server, request operations.V2CreateL
 	return mapSDKError(err)
 }
 
+func GetInfo(ctx context.Context, srv *Server) (*operations.V2GetInfoResponse, error) {
+	return srv.Client().Ledger.V2.GetInfo(ctx)
+}
+
 func CreateTransaction(ctx context.Context, srv *Server, request operations.V2CreateTransactionRequest) (*components.V2Transaction, error) {
 	response, err := srv.Client().Ledger.V2.CreateTransaction(ctx, request)
 
