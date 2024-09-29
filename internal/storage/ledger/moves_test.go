@@ -5,6 +5,7 @@ package ledger
 import (
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/pointer"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -42,7 +43,7 @@ func TestMovesInsert(t *testing.T) {
 
 		now := time.Now()
 
-		// we will insert 5 tx at five different timestamps
+		// We will insert 5 moves at five different timestamps and check than pv(c)e evolves correctly
 		// t0 ---------> t1 ---------> t2 ---------> t3 ----------> t4
 		// m1 ---------> m3 ---------> m4 ---------> m2 ----------> m5
 		t0 := now
@@ -51,7 +52,7 @@ func TestMovesInsert(t *testing.T) {
 		t3 := t2.Add(time.Hour)
 		t4 := t3.Add(time.Hour)
 
-		// insert a first tx at t0
+		// Insert a first move at t0
 		m1 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      true,
@@ -68,7 +69,7 @@ func TestMovesInsert(t *testing.T) {
 			Output: big.NewInt(100),
 		}, *m1.PostCommitEffectiveVolumes)
 
-		// add a second move at t3
+		// Add a second move at t3
 		m2 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      false,
@@ -85,7 +86,7 @@ func TestMovesInsert(t *testing.T) {
 			Output: big.NewInt(100),
 		}, *m2.PostCommitEffectiveVolumes)
 
-		// add a third move at t1
+		// Add a third move at t1
 		m3 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      true,
@@ -102,7 +103,7 @@ func TestMovesInsert(t *testing.T) {
 			Output: big.NewInt(300),
 		}, *m3.PostCommitEffectiveVolumes)
 
-		// add a fourth move at t2
+		// Add a fourth move at t2
 		m4 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      false,
@@ -119,7 +120,7 @@ func TestMovesInsert(t *testing.T) {
 			Output: big.NewInt(300),
 		}, *m4.PostCommitEffectiveVolumes)
 
-		// add a fifth move at t4
+		// Add a fifth move at t4
 		m5 := ledger.Move{
 			Ledger:        store.ledger.Name,
 			IsSource:      false,
@@ -170,7 +171,11 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedBalances, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{}, nil, true))
+		aggregatedBalances, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
+			// By using a PIT, we force the usage of the moves table.
+			// If it was not specified, the test would not been correct.
+			PIT: pointer.For(time.Now()),
+		}, nil, true))
 		require.NoError(t, err)
 		RequireEqual(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0),

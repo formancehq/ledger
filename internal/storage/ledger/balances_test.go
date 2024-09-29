@@ -79,7 +79,7 @@ func TestBalancesGet(t *testing.T) {
 		case <-libtime.After(500 * time.Millisecond):
 			// notes(gfyrag): Wait for 500ms to ensure the parallel tx does not have the ability to update balances
 			// of the already taken accounts.
-			// 500ms seems ok. I don't like to play with times in tests, but I don't know how to do otherwise
+			// 500ms seems ok. I need to find another way to not relying on time, it's brittle.
 		case <-getBalancesAccepted:
 			t.Fatalf("parallel tx should not have been blocked")
 		}

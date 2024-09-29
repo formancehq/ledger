@@ -141,8 +141,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 							DistinctOn("transactions_id, accounts_address, asset").
 							ModelTableExpr(s.GetPrefixedRelationName("moves")).
 							Column("transactions_id").
-							// use strings.Replace for logs
-							ColumnExpr(strings.Replace(`
+							ColumnExpr(`
 								json_build_object(
 									moves.accounts_address,
 									json_build_object(
@@ -150,14 +149,14 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc)
 									)
 								) as pcev
-							`, "\n", "", -1)),
+							`),
 					).
 					Group("transactions_id"),
 			).
 			ColumnExpr("pcev.*")
 	}
 
-	// create a parent query which set reverted_at to null if the date passed as argument is before
+	// Create a parent query which set reverted_at to null if the date passed as argument is before
 	ret = s.db.NewSelect().
 		ModelTableExpr("(?) transactions", ret).
 		Column(
@@ -403,7 +402,7 @@ func (s *Store) insertTransaction(ctx context.Context, tx *ledger.Transaction) e
 	return err
 }
 
-// updateTxWithRetrieve try to apply to provided query and check (if the update return no rows modified), that the row exists
+// updateTxWithRetrieve try to apply to provided update query and check (if the update return no rows modified), that the row exists
 func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
 	type modifiedEntity struct {
 		ledger.Transaction `bun:",extend"`

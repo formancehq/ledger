@@ -20,7 +20,7 @@ type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
 	ID       int               `bun:"id,type:int,scanonly"`
-	Name     string            `bun:"name,type:varchar(255),pk"` // Primary key
+	Name     string            `bun:"name,type:varchar(255),pk"`
 	AddedAt  time.Time         `bun:"addedat,type:timestamp"`
 	Bucket   string            `bun:"bucket,type:varchar(255)"`
 	Metadata map[string]string `bun:"metadata,type:jsonb"`
