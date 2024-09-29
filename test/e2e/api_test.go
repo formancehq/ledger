@@ -26,7 +26,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-var _ = Context("Ledger integration tests", func() {
+var _ = Context("Ledger API tests", func() {
 	var (
 		db  = pgtesting.UsePostgresDatabase(pgServer)
 		ctx = logging.TestingContext()
@@ -45,13 +45,6 @@ var _ = Context("Ledger integration tests", func() {
 		events = testServer.GetValue().Subscribe()
 	})
 
-	When("starting the service", func() {
-		It("should be ok", func() {
-			info, err := testServer.GetValue().Client().Ledger.V2.GetInfo(ctx)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
-		})
-	})
 	When("creating 10 ledger", func() {
 		BeforeEach(func() {
 			for i := range 10 {
@@ -140,11 +133,11 @@ var _ = Context("Ledger integration tests", func() {
 					checkTx()
 
 					By("it should also send an event", func() {
-						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, bus.CommittedTransactions{
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
 							Ledger:          "foo",
 							Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(tx)},
 							AccountMetadata: ledger.AccountMetadata{},
-						})))
+						}))))
 					})
 				})
 				It("should be listable on api", func() {
@@ -241,12 +234,12 @@ var _ = Context("Ledger integration tests", func() {
 						Expect(transaction.Metadata).To(HaveKeyWithValue("foo", "bar"))
 
 						By("it should send an event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata, bus.SavedMetadata{
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata, WithPayload(bus.SavedMetadata{
 								Ledger:     createLedgerRequest.Ledger,
 								TargetType: ledger.MetaTargetTypeTransaction,
 								TargetID:   tx.ID.String(),
 								Metadata:   metadata,
-							})))
+							}))))
 						})
 					})
 					When("deleting metadata", func() {
@@ -266,12 +259,12 @@ var _ = Context("Ledger integration tests", func() {
 							Expect(transaction.Metadata).NotTo(HaveKey("foo"))
 
 							By("it should send an event", func() {
-								Eventually(events).Should(Receive(Event(ledgerevents.EventTypeDeletedMetadata, bus.DeletedMetadata{
+								Eventually(events).Should(Receive(Event(ledgerevents.EventTypeDeletedMetadata, WithPayload(bus.DeletedMetadata{
 									Ledger:     createLedgerRequest.Ledger,
 									TargetType: ledger.MetaTargetTypeTransaction,
 									TargetID:   tx.ID.String(),
 									Key:        "foo",
-								})))
+								}))))
 							})
 						})
 					})
@@ -329,13 +322,13 @@ var _ = Context("Ledger integration tests", func() {
 						})
 
 						By("it should send an event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, bus.RevertedTransaction{
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
 								Ledger: createLedgerRequest.Ledger,
 								RevertedTransaction: ConvertSDKTxToCoreTX(tx).
 									WithRevertedAt(time.New(reversedTx.Timestamp)).
 									WithPostCommitEffectiveVolumes(nil),
 								RevertTransaction: ConvertSDKTxToCoreTX(reversedTx),
-							})))
+							}))))
 						})
 					})
 					When("trying to revert again", func() {

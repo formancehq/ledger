@@ -107,7 +107,7 @@ func (r *RemoteStackEnv) Executor() TransactionExecutor {
 	})
 }
 
-func (r *RemoteStackEnv) Stop() error {
+func (r *RemoteStackEnv) Stop(_ context.Context) error {
 	return nil
 }
 

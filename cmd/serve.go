@@ -56,7 +56,7 @@ func NewServeCommand() *cobra.Command {
 				fx.NopLogger,
 				otlptraces.FXModuleFromFlags(cmd),
 			}
-			// todo: move in dedicated shared package
+			// todo(libs): move in dedicated shared package
 			if enablePProf {
 				logging.FromContext(cmd.Context()).Info("Enabling pprof...")
 				options = append(options,
