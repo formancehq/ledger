@@ -2,8 +2,10 @@ package ledger
 
 import (
 	"crypto/sha256"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"github.com/uptrace/bun"
 	"reflect"
 	"strconv"
 	"strings"
@@ -14,14 +16,38 @@ import (
 	"github.com/pkg/errors"
 )
 
-type LogType int16
-
 const (
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
 	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
 )
+
+type LogType int16
+
+func (lt LogType) Value() (driver.Value, error) {
+	return lt.String(), nil
+}
+
+func (lt *LogType) Scan(src interface{}) error {
+	*lt = LogTypeFromString(string(src.([]byte)))
+	return nil
+}
+
+func (lt LogType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(lt.String())
+}
+
+func (lt *LogType) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	*lt = LogTypeFromString(s)
+
+	return nil
+}
 
 func (l LogType) String() string {
 	switch l {
@@ -53,32 +79,17 @@ func LogTypeFromString(logType string) LogType {
 	panic(errors.New("invalid log type"))
 }
 
-// Needed in order to keep the compatibility with the openapi response for
-// ListLogs.
-func (lt LogType) MarshalJSON() ([]byte, error) {
-	return json.Marshal(lt.String())
-}
-
-func (lt *LogType) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-
-	*lt = LogTypeFromString(s)
-
-	return nil
-}
-
 // Log represents atomic actions made on the ledger.
 // notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
 type Log struct {
-	Type           LogType   `json:"type"`
-	Data           any       `json:"data"`
-	Date           time.Time `json:"date"`
-	IdempotencyKey string    `json:"idempotencyKey"`
-	ID             int       `json:"id"`
-	Hash           []byte    `json:"hash"`
+	bun.BaseModel `bun:"table:logs,alias:logs"`
+
+	Type           LogType   `json:"type" bun:"type,type:log_type"`
+	Data           any       `json:"data" bun:"data,type:jsonb"`
+	Date           time.Time `json:"date" bun:"date,type:timestamptz"`
+	IdempotencyKey string    `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
+	ID             int       `json:"id" bun:"id,unique,type:numeric"`
+	Hash           []byte    `json:"hash" bun:"hash,type:bytea,scanonly"`
 }
 
 func (l Log) WithIdempotencyKey(key string) Log {

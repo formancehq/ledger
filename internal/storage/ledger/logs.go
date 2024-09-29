@@ -12,45 +12,28 @@ import (
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
-	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
-	"github.com/uptrace/bun"
 )
 
+// Log override ledger.Log to be able to properly read/write payload which is jsonb
+// on the database and 'any' on the Log structure (data column)
 type Log struct {
-	bun.BaseModel `bun:"table:logs,alias:logs"`
+	*ledger.Log `bun:",extend"`
 
-	Ledger         string     `bun:"ledger,type:varchar"`
-	ID             int        `bun:"id,unique,type:numeric"`
-	Type           string     `bun:"type,type:log_type"`
-	Hash           []byte     `bun:"hash,type:bytea,scanonly"`
-	Date           time.Time  `bun:"date,type:timestamptz"`
-	Data           RawMessage `bun:"data,type:jsonb"`
-	IdempotencyKey *string    `bun:"idempotency_key,type:varchar(256),unique"`
+	Ledger string     `bun:"ledger,type:varchar"`
+	Data   RawMessage `bun:"data,type:jsonb"`
 }
 
 func (log Log) toCore() ledger.Log {
-
-	payload, err := ledger.HydrateLog(ledger.LogTypeFromString(log.Type), log.Data)
+	payload, err := ledger.HydrateLog(log.Type, log.Data)
 	if err != nil {
 		panic(errors.Wrap(err, "hydrating log data"))
 	}
+	log.Log.Data = payload
 
-	return ledger.Log{
-		Type: ledger.LogTypeFromString(log.Type),
-		Data: payload,
-		IdempotencyKey: func() string {
-			if log.IdempotencyKey != nil {
-				return *log.IdempotencyKey
-			}
-			return ""
-		}(),
-		Date: log.Date.UTC(),
-		ID:   log.ID,
-		Hash: log.Hash,
-	}
+	return *log.Log
 }
 
 type RawMessage json.RawMessage
@@ -79,22 +62,13 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 			return errors.Wrap(err, "failed to marshal log data")
 		}
 
-		newLog := &Log{
-			Ledger: s.ledger.Name,
-			Type:   log.Type.String(),
-			Data:   data,
-			Date:   log.Date,
-			IdempotencyKey: func() *string {
-				if log.IdempotencyKey == "" {
-					return nil
-				}
-				return &log.IdempotencyKey
-			}(),
-		}
-
 		_, err = s.db.
 			NewInsert().
-			Model(newLog).
+			Model(&Log{
+				Log:    log,
+				Ledger: s.ledger.Name,
+				Data:   data,
+			}).
 			ModelTableExpr(s.GetPrefixedRelationName("logs")).
 			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID))).
 			Returning("*").
@@ -110,9 +84,6 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 				return errors.Wrap(err, "inserting log")
 			}
 		}
-
-		log.ID = newLog.ID
-		log.Hash = newLog.Hash
 
 		return nil
 	}))
