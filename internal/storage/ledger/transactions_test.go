@@ -120,7 +120,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	// create some transactions
+	// Create some transactions
 	tx1 := ledger.NewTransaction().
 		WithPostings(
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
@@ -137,7 +137,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx2)
 	require.NoError(t, err)
 
-	// update their metadata
+	// Update their metadata
 	_, modified, err := store.UpdateTransactionMetadata(ctx, tx1.ID, metadata.Metadata{"foo1": "bar2"})
 	require.NoError(t, err)
 	require.True(t, modified)
@@ -145,7 +145,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	_, _, err = store.UpdateTransactionMetadata(ctx, tx2.ID, metadata.Metadata{"foo2": "bar2"})
 	require.NoError(t, err)
 
-	// check that the database returns metadata
+	// Check that the database returns metadata
 	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar2"}, "metadata should be equal")
@@ -154,12 +154,12 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo2": "bar2"}, "metadata should be equal")
 
-	// update metadata of a transaction already having those metadata
+	// Update metadata of a transaction already having those metadata
 	_, modified, err = store.UpdateTransactionMetadata(ctx, tx1.ID, metadata.Metadata{"foo1": "bar2"})
 	require.NoError(t, err)
 	require.False(t, modified)
 
-	// update metadata of non existing transactions
+	// Update metadata of non existing transactions
 	_, modified, err = store.UpdateTransactionMetadata(ctx, 10, metadata.Metadata{"foo2": "bar2"})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
@@ -172,7 +172,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	// create a tx with some metadata
+	// Create a tx with some metadata
 	tx1 := pointer.For(ledger.NewTransaction().
 		WithPostings(
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
@@ -182,12 +182,12 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	err := store.CommitTransaction(ctx, tx1)
 	require.NoError(t, err)
 
-	// get from database and check metadata presence
+	// Get from database and check metadata presence
 	tx, err := store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx1.ID))
 	require.NoError(t, err)
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"})
 
-	// delete a metadata
+	// Delete a metadata
 	tx1, modified, err := store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.True(t, modified)
@@ -196,12 +196,12 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, metadata.Metadata{"foo2": "bar2"}, tx.Metadata)
 
-	// delete a not existing metadata
+	// Delete a not existing metadata
 	_, modified, err = store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.False(t, modified)
 
-	// delete metadata of a non existing transaction
+	// Delete metadata of a non existing transaction
 	_, modified, err = store.DeleteTransactionMetadata(ctx, 10, "foo1")
 	require.Error(t, err)
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
@@ -288,8 +288,8 @@ func TestTransactionsCommit(t *testing.T) {
 
 		store := newLedgerStore(t)
 
-		// Create a new sql transaction to commit a transaction from account:1 to account:2
-		// it will block until storeWithBlockingTx is commited or rollbacked.
+		// Create a new sql transaction to commit a transaction from account:1 to account:2.
+		// It will block until storeWithBlockingTx is commited or rollbacked.
 		txWithAccount1AsSource, err := store.db.BeginTx(ctx, &sql.TxOptions{})
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -326,8 +326,8 @@ func TestTransactionsCommit(t *testing.T) {
 			require.Fail(t, "tx should have been started")
 		}
 
-		// Create a new sql transaction to commit a transaction from account:2 to account:1
-		// it will block until storeWithBlockingTx is commited or rollbacked.
+		// Create a new sql transaction to commit a transaction from account:2 to account:1.
+		// It will block until storeWithBlockingTx is commited or rollbacked.
 		txWithAccount2AsSource, err := store.db.BeginTx(ctx, &sql.TxOptions{})
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -362,8 +362,8 @@ func TestTransactionsCommit(t *testing.T) {
 			require.Fail(t, "tx should have been started")
 		}
 
-		// at this point, each sql transaction hold a RowExclusiveLock on balances tables on an account
-		// unlocking them should trigger a deadlock
+		// At this point, each sql transaction hold a RowExclusiveLock on balances tables on an account.
+		// Unlocking them should trigger a deadlock.
 		close(unlockTx1)
 		close(unlockTx2)
 
@@ -444,7 +444,7 @@ func TestTransactionsRevert(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	// create a simple tx
+	// Create a simple tx
 	tx1 := ledger.NewTransaction().
 		WithPostings(
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
@@ -454,23 +454,24 @@ func TestTransactionsRevert(t *testing.T) {
 	err := store.CommitTransaction(ctx, &tx1)
 	require.NoError(t, err)
 
-	// revert the tx
+	// Revert the tx
 	revertedTx, reverted, err := store.RevertTransaction(ctx, tx1.ID)
 	require.NoError(t, err)
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
 	require.True(t, revertedTx.IsReverted())
 	revertedTx.RevertedAt = nil
+	// As the RevertTransaction method does not return post commit effective volumes,
+	// we remove them to be able to compare revertedTx with tx1
 	tx1.PostCommitEffectiveVolumes = nil
-	//tx1.Volumes = ledger.Volumes{}
 	require.Equal(t, tx1, *revertedTx)
 
-	// try to revert again
+	// Try to revert again
 	_, reverted, err = store.RevertTransaction(ctx, tx1.ID)
 	require.NoError(t, err)
 	require.False(t, reverted)
 
-	// revert a not existing transaction
+	// Revert a not existing transaction
 	revertedTx, reverted, err = store.RevertTransaction(ctx, 2)
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
 	require.False(t, reverted)
@@ -488,7 +489,7 @@ func TestTransactionsInsert(t *testing.T) {
 
 		store := newLedgerStore(t)
 
-		// create a simple tx
+		// Create a simple tx
 		tx1 := ledger.Transaction{
 			TransactionData: ledger.TransactionData{
 				Timestamp: now,
@@ -502,7 +503,7 @@ func TestTransactionsInsert(t *testing.T) {
 		require.NoError(t, err)
 		require.NotZero(t, tx1.ID)
 
-		// create another tx with the same reference
+		// Create another tx with the same reference
 		tx2 := ledger.Transaction{
 			TransactionData: ledger.TransactionData{
 				Timestamp: now,
@@ -521,7 +522,7 @@ func TestTransactionsInsert(t *testing.T) {
 
 		store := newLedgerStore(t)
 
-		// create a tx with no timestamp
+		// Create a tx with no timestamp
 		tx1 := ledger.Transaction{
 			TransactionData: ledger.TransactionData{
 				Postings: []ledger.Posting{

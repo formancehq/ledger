@@ -77,7 +77,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 					return err
 				}
 				if !needSegmentAddress {
-					needSegmentAddress = isSegmentedAddress(value.(string)) // safe cast
+					needSegmentAddress = isSegmentedAddress(value.(string)) // Safe cast
 				}
 			case metadataRegex.Match([]byte(key)):
 				if operator != "$match" {

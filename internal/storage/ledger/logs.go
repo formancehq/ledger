@@ -64,7 +64,7 @@ func (j RawMessage) Value() (driver.Value, error) {
 
 func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 
-	// we lock logs table as we need than the last log does not change until the transaction commit
+	// We lock logs table as we need than the last log does not change until the transaction commit
 	if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
 		_, err := s.db.NewRaw(`select pg_advisory_xact_lock(hashtext(?))`, s.ledger.Name).Exec(ctx)
 		if err != nil {

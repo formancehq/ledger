@@ -88,6 +88,7 @@ func (ctrl *DefaultController) forgeLog(ctx context.Context, parameters Paramete
 			return nil, err
 		}
 		if err == nil {
+			// todo: prevent errors by checking than the original parameters match the actual parameters.
 			return log, nil
 		}
 	}
@@ -178,15 +179,18 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, q GetLogsQuery) (*b
 
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error {
 	err := tracing.SkipResult(tracing.Trace(ctx, "Import", tracing.NoResult(func(ctx context.Context) error {
-		// use serializable isolation level to ensure no concurrent request use the store
+		// Use serializable isolation level to ensure no concurrent request use the store.
+		// If a concurrent transactions is made while we are importing some logs, the transaction importing logs will
+		// be canceled with serialization error.
 		return ctrl.store.WithTX(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable}, func(sqlTx TX) (bool, error) {
 
-			// due to the serializable isolation level, and since we explicitly ask for the ledger state in the sql transaction context
+			// Due to the serializable isolation level, and since we explicitly ask for the ledger state in the sql transaction context
 			// if the state change, the sql transaction will be aborted with a serialization error
 			if err := sqlTx.LockLedger(ctx); err != nil {
 				return false, errors.Wrap(err, "failed to lock ledger")
 			}
 
+			// We can import only if the ledger is empty.
 			logs, err := sqlTx.ListLogs(ctx, NewListLogsQuery(PaginatedQueryOptions[any]{
 				PageSize: 1,
 			}))
@@ -410,8 +414,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 				reversedTx = reversedTx.WithTimestamp(*originalTransaction.RevertedAt)
 			}
 
-			// Check balances after the revert
-			// must be greater than 0
+			// Check balances after the revert, all balances must be greater than 0
 			if !force {
 				for _, posting := range reversedTx.Postings {
 					balances[posting.Source][posting.Asset] = balances[posting.Source][posting.Asset].Add(

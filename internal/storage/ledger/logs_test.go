@@ -32,7 +32,7 @@ func TestInsertLog(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	t.Run("check hash against core", func(t *testing.T) {
-		// insert a first tx (we don't have any previous hash to use at this moment)
+		// Insert a first tx (we don't have any previous hash to use at this moment)
 		log1 := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
 		log1Copy := log1
 
@@ -42,12 +42,12 @@ func TestInsertLog(t *testing.T) {
 		require.Equal(t, 1, log1.ID)
 		require.NotZero(t, log1.Hash)
 
-		// ensure than the database hashing is the same as the go hashing
+		// Ensure than the database hashing is the same as the go hashing
 		chainedLog1 := log1Copy.ChainLog(nil)
 		require.Equal(t, chainedLog1.Hash, log1.Hash)
 
-		// insert a new log to test the hash when a previous hash exists
-		// adding an idempotency key to check for conflicts
+		// Insert a new log to test the hash when a previous hash exists
+		// We also addi an idempotency key to check for conflicts
 		log2 := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
 		log2Copy := log2
 		err = store.InsertLog(ctx, &log2)
@@ -55,13 +55,13 @@ func TestInsertLog(t *testing.T) {
 		require.Equal(t, 2, log2.ID)
 		require.NotZero(t, log2.Hash)
 
-		// ensure than the database hashing is the same as the go hashing
+		// Ensure than the database hashing is the same as the go hashing
 		chainedLog2 := log2Copy.ChainLog(&log1)
 		require.Equal(t, chainedLog2.Hash, log2.Hash)
 	})
 
 	t.Run("duplicate IK", func(t *testing.T) {
-		// insert a first tx (we don't have any previous hash to use at this moment)
+		// Insert a first tx (we don't have any previous hash to use at this moment)
 		logTx := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{}).
 			WithIdempotencyKey("foo")
 
@@ -71,8 +71,7 @@ func TestInsertLog(t *testing.T) {
 		require.NotZero(t, logTx.ID)
 		require.NotZero(t, logTx.Hash)
 
-		// create a new logs with the same IK as previous
-		// it should fail
+		// Create a new log with the same IK as previous should fail
 		logTx = ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{}).
 			WithIdempotencyKey("foo")
 		err = store.InsertLog(ctx, &logTx)
@@ -181,30 +180,3 @@ func TestGetLogs(t *testing.T) {
 	require.Len(t, cursor.Data, 1)
 	require.EqualValues(t, 2, cursor.Data[0].ID)
 }
-
-//func TestGetBalance(t *testing.T) {
-//	t.Parallel()
-//	store := newLedgerStore(t)
-//	ctx := logging.TestingContext()
-//
-//	const (
-//		batchNumber = 100
-//		batchSize   = 10
-//		input       = 100
-//		output      = 10
-//	)
-//
-//	for i := 0; i < batchNumber; i++ {
-//		for j := 0; j < batchSize; j++ {
-//			_, err := store.CommitTransaction(ctx, ledger.NewTransactionData().WithPostings(
-//				ledger.NewPosting("world", fmt.Sprintf("account:%d", j), "EUR/2", big.NewInt(input)),
-//				ledger.NewPosting(fmt.Sprintf("account:%d", j), "starbucks", "EUR/2", big.NewInt(output)),
-//			))
-//			require.NoError(t, err)
-//		}
-//	}
-//
-//	balance, err := store.GetBalance(context.Background(), "account:1", "EUR/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt((input-output)*batchNumber), balance)
-//}
