@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/platform/postgres"
 
@@ -10,6 +11,16 @@ import (
 )
 
 func getMigrator() *migrations.Migrator {
+
+	// configuration table has been removed, we keep the model to keep migrations consistent but the table is now removed
+	type configuration struct {
+		bun.BaseModel `bun:"_system.configuration,alias:configuration"`
+
+		Key     string    `bun:"key,type:varchar(255),pk"`
+		Value   string    `bun:"value,type:text"`
+		AddedAt time.Time `bun:"addedAt,type:timestamp"`
+	}
+
 	migrator := migrations.NewMigrator(migrations.WithSchema(Schema, true))
 	migrator.RegisterMigrations(
 		migrations.Migration{
@@ -130,6 +141,15 @@ func getMigrator() *migrations.Migrator {
 				_, err := tx.ExecContext(ctx, `
 					alter table _system.ledgers
 					drop column state;
+				`)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Remove configuration table",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					drop table _system.configuration;
 				`)
 				return err
 			},
