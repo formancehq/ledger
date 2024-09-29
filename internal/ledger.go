@@ -2,12 +2,62 @@ package ledger
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/time"
+	"github.com/uptrace/bun"
 	"regexp"
 	"slices"
 
 	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/time"
 )
+
+type Ledger struct {
+	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
+
+	Configuration
+	ID      int       `json:"id" bun:"id,type:int,scanonly"`
+	Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
+	AddedAt time.Time `json:"addedAt" bun:"addedat,type:timestamp"`
+}
+
+func (l Ledger) HasFeature(feature, value string) bool {
+	if err := validateFeatureWithValue(feature, value); err != nil {
+		panic(err)
+	}
+
+	return l.Features[feature] == value
+}
+
+func New(name string, configuration Configuration) (*Ledger, error) {
+
+	if err := configuration.Validate(); err != nil {
+		return nil, err
+	}
+
+	if !ledgerNameFormat.MatchString(name) {
+		return nil, newErrInvalidLedgerName(name, fmt.Errorf("name must match format '%s'", ledgerNameFormat.String()))
+	}
+	if !bucketNameFormat.MatchString(configuration.Bucket) {
+		return nil, newErrInvalidBucketName(configuration.Bucket, fmt.Errorf("name must match format '%s'", bucketNameFormat.String()))
+	}
+
+	return &Ledger{
+		Configuration: configuration,
+		Name:          name,
+		AddedAt:       time.Now(),
+	}, nil
+}
+
+func NewWithDefaults(name string) (*Ledger, error) {
+	return New(name, NewDefaultConfiguration())
+}
+
+func MustNewWithDefault(name string) Ledger {
+	ledger, err := NewWithDefaults(name)
+	if err != nil {
+		panic(err)
+	}
+	return *ledger
+}
 
 const (
 	// todo: add feature to completely disable logs
@@ -81,9 +131,9 @@ func (f FeatureSet) With(feature, value string) FeatureSet {
 }
 
 type Configuration struct {
-	Bucket   string            `json:"bucket"`
-	Metadata metadata.Metadata `json:"metadata"`
-	Features map[string]string `bun:"features,type:jsonb" json:"features"`
+	Bucket   string            `json:"bucket" bun:"bucket,type:varchar(255)"`
+	Metadata metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb"`
+	Features map[string]string `json:"features" bun:"features,type:jsonb"`
 }
 
 func (c *Configuration) SetDefaults() {
@@ -117,51 +167,4 @@ func NewDefaultConfiguration() Configuration {
 		Metadata: metadata.Metadata{},
 		Features: DefaultFeatures,
 	}
-}
-
-type Ledger struct {
-	Configuration
-	ID      int       `json:"id"`
-	Name    string    `json:"name"`
-	AddedAt time.Time `json:"addedAt"`
-}
-
-func (l Ledger) HasFeature(feature, value string) bool {
-	if err := validateFeatureWithValue(feature, value); err != nil {
-		panic(err)
-	}
-
-	return l.Features[feature] == value
-}
-
-func New(name string, configuration Configuration) (*Ledger, error) {
-
-	if err := configuration.Validate(); err != nil {
-		return nil, err
-	}
-
-	if !ledgerNameFormat.MatchString(name) {
-		return nil, newErrInvalidLedgerName(name, fmt.Errorf("name must match format '%s'", ledgerNameFormat.String()))
-	}
-	if !bucketNameFormat.MatchString(configuration.Bucket) {
-		return nil, newErrInvalidBucketName(configuration.Bucket, fmt.Errorf("name must match format '%s'", bucketNameFormat.String()))
-	}
-
-	return &Ledger{
-		Configuration: configuration,
-		Name:          name,
-		AddedAt:       time.Now(),
-	}, nil
-}
-
-func NewWithDefaults(name string) (*Ledger, error) {
-	return New(name, NewDefaultConfiguration())
-}
-
-func MustNewWithDefault(name string) Ledger {
-	ledger, err := New(name, NewDefaultConfiguration())
-	if err != nil {
-		panic(err)
-	}
-	return *ledger
 }

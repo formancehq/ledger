@@ -7,46 +7,18 @@ import (
 
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/platform/postgres"
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-
-	"github.com/uptrace/bun"
 )
-
-type Ledger struct {
-	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
-
-	ID       int               `bun:"id,type:int,scanonly"`
-	Name     string            `bun:"name,type:varchar(255),pk"`
-	AddedAt  time.Time         `bun:"addedat,type:timestamp"`
-	Bucket   string            `bun:"bucket,type:varchar(255)"`
-	Metadata map[string]string `bun:"metadata,type:jsonb"`
-	Features map[string]string `bun:"features,type:jsonb"`
-}
-
-func (l Ledger) toCore() ledger.Ledger {
-	return ledger.Ledger{
-		Name: l.Name,
-		Configuration: ledger.Configuration{
-			Bucket:   l.Bucket,
-			Metadata: l.Metadata,
-			Features: l.Features,
-		},
-		AddedAt: l.AddedAt,
-		ID:      l.ID,
-	}
-}
 
 func (s *Store) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	query := s.db.NewSelect().
-		Model(&Ledger{}).
+		Model(&ledger.Ledger{}).
 		Column("*").
 		Order("addedat asc")
 
-	cursor, err := bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], Ledger](
+	cursor, err := bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
 		ctx,
 		query,
 		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
@@ -55,7 +27,7 @@ func (s *Store) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQ
 		return nil, err
 	}
 
-	return bunpaginate.MapCursor(cursor, Ledger.toCore), nil
+	return cursor, nil
 }
 
 func (s *Store) CreateLedger(ctx context.Context, l *ledger.Ledger) (bool, error) {
@@ -63,16 +35,8 @@ func (s *Store) CreateLedger(ctx context.Context, l *ledger.Ledger) (bool, error
 		l.Metadata = metadata.Metadata{}
 	}
 
-	mappedLedger := &Ledger{
-		BaseModel: bun.BaseModel{},
-		Name:      l.Name,
-		AddedAt:   l.AddedAt,
-		Bucket:    l.Bucket,
-		Metadata:  l.Metadata,
-		Features:  l.Features,
-	}
 	ret, err := s.db.NewInsert().
-		Model(mappedLedger).
+		Model(l).
 		Ignore().
 		Returning("id").
 		Exec(ctx)
@@ -85,13 +49,11 @@ func (s *Store) CreateLedger(ctx context.Context, l *ledger.Ledger) (bool, error
 		return false, postgres.ResolveError(err)
 	}
 
-	l.ID = mappedLedger.ID
-
 	return affected > 0, nil
 }
 
 func (s *Store) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
-	ret := &Ledger{}
+	ret := &ledger.Ledger{}
 	if err := s.db.NewSelect().
 		Model(ret).
 		Column("*").
@@ -100,12 +62,12 @@ func (s *Store) GetLedger(ctx context.Context, name string) (*ledger.Ledger, err
 		return nil, postgres.ResolveError(err)
 	}
 
-	return pointer.For(ret.toCore()), nil
+	return ret, nil
 }
 
 func (s *Store) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
 	_, err := s.db.NewUpdate().
-		Model(&Ledger{}).
+		Model(&ledger.Ledger{}).
 		Set("metadata = metadata || ?", m).
 		Where("name = ?", name).
 		Exec(ctx)
@@ -114,7 +76,7 @@ func (s *Store) UpdateLedgerMetadata(ctx context.Context, name string, m metadat
 
 func (s *Store) UpdateLedgerState(ctx context.Context, name string, state string) error {
 	_, err := s.db.NewUpdate().
-		Model(&Ledger{}).
+		Model(&ledger.Ledger{}).
 		Set("state = ?", state).
 		Where("name = ?", name).
 		Exec(ctx)
@@ -123,7 +85,7 @@ func (s *Store) UpdateLedgerState(ctx context.Context, name string, state string
 
 func (s *Store) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
 	_, err := s.db.NewUpdate().
-		Model(&Ledger{}).
+		Model(&ledger.Ledger{}).
 		Set("metadata = metadata - ?", key).
 		Where("name = ?", name).
 		Exec(ctx)
