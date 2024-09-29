@@ -72,10 +72,10 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	// todo: rename to volumes, pcv is ok in transactions context
 	needPCV := expandVolumes
 	if qb != nil {
-		// analyze filters to check for errors and find potentially additional table to load
+		// Analyze filters to check for errors and find potentially additional table to load
 		if err := qb.Walk(func(operator, key string, value any) error {
 			switch {
-			// balances requires pvc, force load in this case
+			// Balances requires pvc, force load in this case
 			case balanceRegex.Match([]byte(key)):
 				needPCV = true
 			case key == "address":
@@ -98,7 +98,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		}
 	}
 
-	// build the query
+	// Build the query
 	ret = ret.
 		ModelTableExpr(s.GetPrefixedRelationName("accounts")).
 		Column("accounts.address", "accounts.first_usage").
@@ -135,7 +135,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	}
 
 	if qb != nil {
-		// convert filters to where clause
+		// Convert filters to where clause
 		where, args, err := qb.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 			switch {
 			case key == "address":
@@ -348,9 +348,8 @@ func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (boo
 			account.Metadata = upserted.Metadata
 
 			if !upserted.Upserted {
-				// by roll-backing the transaction, we release the lock, allowing a concurrent transaction
-				// to use the table
-				// but at this point, we have fill the Account model with the account sequence in the bucket
+				// By roll-backing the transaction, we release the lock, allowing a concurrent transaction
+				// to use the accounts.
 				if err := tx.Rollback(); err != nil {
 					return err
 				}

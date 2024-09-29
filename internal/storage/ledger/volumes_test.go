@@ -755,8 +755,8 @@ func TestUpdateVolumes(t *testing.T) {
 		})
 		storeTx2 := store.WithDB(sqlTx2)
 
-		// at this stage, the accounts_volumes is empty
-		// taking balance of the 'world' account should force a lock
+		// At this stage, the accounts_volumes table is empty.
+		// Take balance of the 'world' account should force a lock.
 		volumes, err := storeTx1.GetBalances(ctx, ledgercontroller.BalanceQuery{
 			"world": {"USD"},
 		})
@@ -767,13 +767,13 @@ func TestUpdateVolumes(t *testing.T) {
 			},
 		}, volumes)
 
-		// take an arbitrary lock on tx2
+		// Take an advisory lock on tx2
 		_, err = storeTx2.GetDB().NewRaw(`select pg_advisory_xact_lock(1)`).Exec(ctx)
 		require.NoError(t, err)
 
 		errChan := make(chan error, 2)
 		go func() {
-			// this call should lock since the lock iw owned by tx1
+			// This call should block as the lock for the row holding 'world' balance is owned by tx1
 			_, err := storeTx2.GetBalances(ctx, ledgercontroller.BalanceQuery{
 				"world": {"USD"},
 			})
@@ -781,14 +781,14 @@ func TestUpdateVolumes(t *testing.T) {
 		}()
 
 		go func() {
-			// take the same advisory lock for tx1 as tx2
-			// as tx1 hold a lock on the world balance, and tx2 is waiting for that balance
-			// it should trigger a deadlock
+			// Take the same advisory lock for tx1 as tx2.
+			// As tx1 hold a lock on the world balance, and tx2 is waiting for that balance,
+			// it should trigger a deadlock.
 			_, err = storeTx1.GetDB().NewRaw(`select pg_advisory_xact_lock(1)`).Exec(ctx)
 			errChan <- postgres.ResolveError(err)
 		}()
 
-		// either tx1 or tx2 should be cancelled by PG with a deadlock error
+		// Either tx1 or tx2 should be cancelled by PG with a deadlock error
 		select {
 		case err := <-errChan:
 			if err == nil {

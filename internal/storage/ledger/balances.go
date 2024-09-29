@@ -33,7 +33,8 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 					return err
 				}
 				if !needAddressSegment {
-					needAddressSegment = isSegmentedAddress(value.(string)) // cast is safe, the type has been validated by validatedAddressFilter
+					// Cast is safe, the type has been validated by validatedAddressFilter
+					needAddressSegment = isSegmentedAddress(value.(string))
 				}
 
 			case key == "metadata":
@@ -206,7 +207,7 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 
 		type AccountsVolumesWithLedger struct {
 			ledger.AccountsVolumes `bun:",extend"`
-			Ledger string `bun:"ledger,type:varchar"`
+			Ledger                 string `bun:"ledger,type:varchar"`
 		}
 
 		accountsVolumes := make([]AccountsVolumesWithLedger, 0)
@@ -227,8 +228,9 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		err := s.db.NewSelect().
 			With(
 				"ins",
-				// try to insert volumes with 0 values
-				// this way, if the account has a 0 balance at this point, it will be locked also
+				// Try to insert volumes with 0 values.
+				// This way, if the account has a 0 balance at this point, it will be locked as any other accounts.
+				// It the complete sql transaction fail, the account volumes will not be inserted.
 				s.db.NewInsert().
 					Model(&accountsVolumes).
 					ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
@@ -239,7 +241,7 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			Column("accounts_address", "asset", "input", "output").
 			Where("("+strings.Join(conditions, ") OR (")+")", args...).
 			For("update").
-			// notes(gfyrag): keep order, it ensures consistent locking order and limit deadlocks
+			// notes(gfyrag): Keep order, it ensures consistent locking order and limit deadlocks
 			Order("accounts_address", "asset").
 			Scan(ctx)
 		if err != nil {
@@ -254,7 +256,8 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			ret[volumes.Account][volumes.Asset] = new(big.Int).Sub(volumes.Input, volumes.Output)
 		}
 
-		// fill empty balances with 0 value
+		// Fill empty balances with 0 value
+		// todo: still required as we insert balances earlier
 		for account, assets := range query {
 			if _, ok := ret[account]; !ok {
 				ret[account] = map[string]*big.Int{}

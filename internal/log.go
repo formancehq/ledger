@@ -70,7 +70,8 @@ func (lt *LogType) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// notes(gfyrag): keep key ordered! the order matter when hashing the log.
+// Log represents atomic actions made on the ledger.
+// notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
 type Log struct {
 	Type           LogType   `json:"type"`
 	Data           any       `json:"data"`
@@ -148,13 +149,12 @@ type NewTransactionLogPayload struct {
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
-// MarshalJSON override default json marshalling
+// MarshalJSON override default json marshalling to remove postCommitVolumes and postCommitEffectiveVolumes fields
 // We don't want to store pc(v)e on the logs
-// because :
+// Because :
 //  1. It can change (effective only)
 //  2. They are not part of the decision-making process
 func (p NewTransactionLogPayload) MarshalJSON() ([]byte, error) {
-	// strip MarshalJSON of Transaction
 	type aux Transaction
 	type tx struct {
 		aux
@@ -171,7 +171,6 @@ func (p NewTransactionLogPayload) MarshalJSON() ([]byte, error) {
 		},
 		AccountMetadata: p.AccountMetadata,
 	})
-
 }
 
 func NewTransactionLog(tx Transaction, accountMetadata AccountMetadata) Log {

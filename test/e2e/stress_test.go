@@ -105,6 +105,9 @@ var _ = Context("Ledger stress tests", func() {
 			When("trying to revert concurrently all transactions", func() {
 				It("should be handled correctly", func() {
 					const (
+						// We will introduce attempts to duplicate transactions twice.
+						// At the end we will check than the correct number of revert has
+						// succeeded and the correct number has failed.
 						duplicates = 1
 					)
 					var (

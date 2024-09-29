@@ -34,7 +34,8 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes {
 
 	visited := collectionutils.Set[key]{}
 
-	// we need to find the more recent move for each account/asset
+	// We need to find the more recent move for each account/asset.
+	// We will iterate on moves by starting by the more recent.
 	slices.Reverse(m)
 
 	ret := PostCommitVolumes{}

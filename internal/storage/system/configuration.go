@@ -13,7 +13,7 @@ import (
 type configuration struct {
 	bun.BaseModel `bun:"_system.configuration,alias:configuration"`
 
-	Key     string    `bun:"key,type:varchar(255),pk"` // Primary key
+	Key     string    `bun:"key,type:varchar(255),pk"`
 	Value   string    `bun:"value,type:text"`
 	AddedAt time.Time `bun:"addedAt,type:timestamp"`
 }

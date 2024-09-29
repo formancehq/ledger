@@ -33,7 +33,7 @@ type TX interface {
 	GetBalances(ctx context.Context, query BalanceQuery) (Balances, error)
 	CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error
 	// RevertTransaction revert the transaction with identifier id
-	// it returns :
+	// It returns :
 	//  * the reverted transaction
 	//  * a boolean indicating if the transaction has been reverted. false indicates an already reverted transaction (unless error != nil)
 	//  * an error

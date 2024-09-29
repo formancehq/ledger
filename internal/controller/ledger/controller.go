@@ -28,7 +28,7 @@ type Controller interface {
 	GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 	GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
 
-	// CreateTransaction accept a numscript script and returns a CreatedTransaction
+	// CreateTransaction accept a numscript script and returns a transaction
 	// It can return following errors:
 	//  * ErrCompilationFailed
 	//  * ErrMetadataOverride
