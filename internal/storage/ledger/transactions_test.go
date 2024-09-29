@@ -1,6 +1,6 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"context"
@@ -290,7 +290,7 @@ func TestTransactionsCommit(t *testing.T) {
 
 		// Create a new sql transaction to commit a transaction from account:1 to account:2.
 		// It will block until storeWithBlockingTx is commited or rollbacked.
-		txWithAccount1AsSource, err := store.db.BeginTx(ctx, &sql.TxOptions{})
+		txWithAccount1AsSource, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			_ = txWithAccount1AsSource.Rollback()
@@ -328,7 +328,7 @@ func TestTransactionsCommit(t *testing.T) {
 
 		// Create a new sql transaction to commit a transaction from account:2 to account:1.
 		// It will block until storeWithBlockingTx is commited or rollbacked.
-		txWithAccount2AsSource, err := store.db.BeginTx(ctx, &sql.TxOptions{})
+		txWithAccount2AsSource, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			_ = txWithAccount2AsSource.Rollback()
@@ -499,7 +499,7 @@ func TestTransactionsInsert(t *testing.T) {
 				},
 			},
 		}
-		err := store.insertTransaction(ctx, &tx1)
+		err := store.InsertTransaction(ctx, &tx1)
 		require.NoError(t, err)
 		require.NotZero(t, tx1.ID)
 
@@ -513,7 +513,7 @@ func TestTransactionsInsert(t *testing.T) {
 				},
 			},
 		}
-		err = store.insertTransaction(ctx, &tx2)
+		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrReferenceConflict{}))
 	})
@@ -530,7 +530,7 @@ func TestTransactionsInsert(t *testing.T) {
 				},
 			},
 		}
-		err := store.insertTransaction(ctx, &tx1)
+		err := store.InsertTransaction(ctx, &tx1)
 		require.NoError(t, err)
 	})
 	t.Run("check denormalization", func(t *testing.T) {
@@ -548,7 +548,7 @@ func TestTransactionsInsert(t *testing.T) {
 				Metadata: metadata.Metadata{},
 			},
 		}
-		err := store.insertTransaction(ctx, &tx1)
+		err := store.InsertTransaction(ctx, &tx1)
 		require.NoError(t, err)
 
 		type Model struct {
@@ -560,7 +560,8 @@ func TestTransactionsInsert(t *testing.T) {
 		}
 
 		m := Model{}
-		err = store.db.NewSelect().
+		err = store.GetDB().
+			NewSelect().
 			Model(&m).
 			ModelTableExpr(store.GetPrefixedRelationName("transactions") + " as model").
 			Scan(ctx)

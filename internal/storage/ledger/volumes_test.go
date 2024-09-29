@@ -1,6 +1,6 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"database/sql"
@@ -695,7 +695,7 @@ func TestUpdateVolumes(t *testing.T) {
 		store := newLedgerStore(t)
 		ctx := logging.TestingContext()
 
-		volumes, err := store.updateVolumes(ctx, ledger.AccountsVolumes{
+		volumes, err := store.UpdateVolumes(ctx, ledger.AccountsVolumes{
 			Account: "world",
 			Asset:   "USD/2",
 			Input:   big.NewInt(0),
@@ -708,7 +708,7 @@ func TestUpdateVolumes(t *testing.T) {
 			},
 		}, volumes)
 
-		volumes, err = store.updateVolumes(ctx, ledger.AccountsVolumes{
+		volumes, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
 			Account: "world",
 			Asset:   "USD/2",
 			Input:   big.NewInt(50),
@@ -721,7 +721,7 @@ func TestUpdateVolumes(t *testing.T) {
 			},
 		}, volumes)
 
-		volumes, err = store.updateVolumes(ctx, ledger.AccountsVolumes{
+		volumes, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
 			Account: "world",
 			Asset:   "USD/2",
 			Input:   big.NewInt(50),

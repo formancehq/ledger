@@ -1,6 +1,6 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"context"
@@ -84,7 +84,7 @@ func TestInsertLog(t *testing.T) {
 		const countLogs = 100
 		for range countLogs {
 			wp.Submit(func() {
-				tx, err := store.db.BeginTx(ctx, &sql.TxOptions{})
+				tx, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
 				require.NoError(t, err)
 				defer func() {
 					_ = tx.Rollback()
