@@ -23,8 +23,8 @@ type TestServerEnv struct {
 	ledger     ledger.Ledger
 }
 
-func (e *TestServerEnv) Stop() error {
-	e.testServer.Stop()
+func (e *TestServerEnv) Stop(ctx context.Context) error {
+	e.testServer.Stop(ctx)
 	return nil
 }
 

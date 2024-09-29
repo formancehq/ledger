@@ -26,7 +26,7 @@ type CoreEnv struct {
 	pgDatabase *pgtesting.Database
 }
 
-func (e *CoreEnv) Stop() error {
+func (e *CoreEnv) Stop(_ context.Context) error {
 	return errors.Wrap(e.bunDB.Close(), "failed to close database connection")
 }
 
