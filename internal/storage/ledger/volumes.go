@@ -16,7 +16,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
+func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
 	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (ledger.PostCommitVolumes, error) {
 
 		type AccountsVolumesWithLedger struct {

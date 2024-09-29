@@ -1,11 +1,11 @@
 //go:build it
 
-package bucket
+package bucket_test
 
 import (
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"testing"
-
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
 
@@ -24,8 +24,8 @@ func TestBuckets(t *testing.T) {
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
 
-	require.NoError(t, systemstore.Migrate(ctx, db))
+	require.NoError(t, driver.Migrate(ctx, db))
 
-	bucket := New(db, name)
-	require.NoError(t, bucket.Migrate(ctx))
+	b := bucket.New(db, name)
+	require.NoError(t, b.Migrate(ctx))
 }

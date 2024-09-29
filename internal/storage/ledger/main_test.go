@@ -1,9 +1,11 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"database/sql"
+	systemstore "github.com/formancehq/ledger/internal/storage/driver"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"testing"
 
@@ -13,7 +15,6 @@ import (
 	. "github.com/formancehq/go-libs/testing/utils"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -60,7 +61,7 @@ type T interface {
 	Cleanup(func())
 }
 
-func newLedgerStore(t T) *Store {
+func newLedgerStore(t T) *ledgerstore.Store {
 	t.Helper()
 
 	ledgerName := uuid.NewString()[:8]
@@ -85,9 +86,9 @@ func newLedgerStore(t T) *Store {
 
 	b := bucket.New(db, ledgerName)
 	require.NoError(t, b.Migrate(ctx))
-	require.NoError(t, Migrate(ctx, db, l))
+	require.NoError(t, ledgerstore.Migrate(ctx, db, l))
 
-	return New(db, l)
+	return ledgerstore.New(db, l)
 }
 
 func bigIntComparer(v1 *big.Int, v2 *big.Int) bool {

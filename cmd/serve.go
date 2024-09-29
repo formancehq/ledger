@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"net/http"
 
 	"github.com/formancehq/ledger/internal/bus"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/formancehq/go-libs/ballast"
 	"github.com/formancehq/go-libs/service"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 
@@ -113,7 +113,7 @@ func NewServeCommand() *cobra.Command {
 	otlptraces.AddFlags(cmd.Flags())
 	auth.AddFlags(cmd.Flags())
 	publish.AddFlags(ServiceName, cmd.Flags(), func(cd *publish.ConfigDefault) {
-		cd.PublisherCircuitBreakerSchema = systemstore.Schema
+		cd.PublisherCircuitBreakerSchema = driver.SchemaSystem
 	})
 	iam.AddFlags(cmd.Flags())
 

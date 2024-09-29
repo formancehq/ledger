@@ -1,4 +1,4 @@
-package system
+package driver
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func getMigrator() *migrations.Migrator {
+func GetMigrator() *migrations.Migrator {
 
 	// configuration table has been removed, we keep the model to keep migrations consistent but the table is now removed
 	type configuration struct {
@@ -21,7 +21,7 @@ func getMigrator() *migrations.Migrator {
 		AddedAt time.Time `bun:"addedAt,type:timestamp"`
 	}
 
-	migrator := migrations.NewMigrator(migrations.WithSchema(Schema, true))
+	migrator := migrations.NewMigrator(migrations.WithSchema(SchemaSystem, true))
 	migrator.RegisterMigrations(
 		migrations.Migration{
 			Name: "Init schema",
@@ -160,7 +160,7 @@ func getMigrator() *migrations.Migrator {
 }
 
 func Migrate(ctx context.Context, db bun.IDB) error {
-	return getMigrator().Up(ctx, db)
+	return GetMigrator().Up(ctx, db)
 }
 
 // Postgres is able to compact json natively.

@@ -3,21 +3,26 @@ package driver
 import (
 	"context"
 	"database/sql"
+	. "github.com/formancehq/go-libs/collectionutils"
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/platform/postgres"
 
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/logging"
+)
+
+const (
+	SchemaSystem = "_system"
 )
 
 type Driver struct {
@@ -94,11 +99,24 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		_ = tx.Rollback()
 	}()
 
-	created, err := system.New(tx).CreateLedger(ctx, l)
+	if l.Metadata == nil {
+		l.Metadata = metadata.Metadata{}
+	}
+
+	ret, err := d.db.NewInsert().
+		Model(l).
+		Ignore().
+		Returning("id").
+		Exec(ctx)
+	if err != nil {
+		return nil, postgres.ResolveError(err)
+	}
+
+	affected, err := ret.RowsAffected()
 	if err != nil {
 		return nil, errors.Wrap(err, "creating ledger")
 	}
-	if !created {
+	if affected == 0 {
 		return nil, systemcontroller.ErrLedgerAlreadyExists
 	}
 
@@ -115,27 +133,86 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 }
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
-	l, err := system.New(d.db).GetLedger(ctx, name)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "opening ledger")
+	ret := &ledger.Ledger{}
+	if err := d.db.NewSelect().
+		Model(ret).
+		Column("*").
+		Where("name = ?", name).
+		Scan(ctx); err != nil {
+		return nil, nil, postgres.ResolveError(err)
 	}
 
-	return ledgerstore.New(d.db, *l), l, nil
+	return ledgerstore.New(d.db, *ret), ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
-	return errors.Wrap(system.Migrate(ctx, d.db), "migrating system store")
+	return errors.Wrap(Migrate(ctx, d.db), "migrating system store")
+}
+
+func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("metadata = metadata || ?", m).
+		Where("name = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (d *Driver) UpdateLedgerState(ctx context.Context, name string, state string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("state = ?", state).
+		Where("name = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("metadata = metadata - ?", key).
+		Where("name = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+	query := d.db.NewSelect().
+		Model(&ledger.Ledger{}).
+		Column("*").
+		Order("addedat asc")
+
+	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
+		ctx,
+		query,
+		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
+	)
+}
+
+func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
+	ret := &ledger.Ledger{}
+	if err := d.db.NewSelect().
+		Model(ret).
+		Column("*").
+		Where("name = ?", name).
+		Scan(ctx); err != nil {
+		return nil, postgres.ResolveError(err)
+	}
+
+	return ret, nil
+}
+
+func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
+	return bucket.New(d.db, name).Migrate(ctx)
 }
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 
-	systemStore := system.New(d.db)
-
-	bucketsNames := collectionutils.Set[string]{}
+	bucketsNames := Set[string]{}
 	err := bunpaginate.Iterate(ctx, ledgercontroller.NewListLedgersQuery(10),
 		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-			return systemStore.ListLedgers(ctx, q)
+			return d.ListLedgers(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
 			for _, name := range cursor.Data {
@@ -147,7 +224,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 		return err
 	}
 
-	for _, bucketName := range collectionutils.Keys(bucketsNames) {
+	for _, bucketName := range Keys(bucketsNames) {
 		b := bucket.New(d.db, bucketName)
 
 		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
@@ -157,10 +234,6 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	return bucket.New(d.db, name).Migrate(ctx)
 }
 
 func New(db *bun.DB) *Driver {

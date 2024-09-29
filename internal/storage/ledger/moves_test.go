@@ -1,6 +1,6 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"database/sql"
@@ -33,7 +33,7 @@ func TestMovesInsert(t *testing.T) {
 		tx := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 		)
-		require.NoError(t, store.insertTransaction(ctx, &tx))
+		require.NoError(t, store.InsertTransaction(ctx, &tx))
 
 		account := &ledger.Account{
 			Address: "world",
@@ -54,7 +54,7 @@ func TestMovesInsert(t *testing.T) {
 
 		// Insert a first move at t0
 		m1 := ledger.Move{
-			Ledger:        store.ledger.Name,
+			Ledger:        store.GetLedger().Name,
 			IsSource:      true,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(100)),
@@ -62,7 +62,7 @@ func TestMovesInsert(t *testing.T) {
 			InsertionDate: t0,
 			EffectiveDate: t0,
 		}
-		require.NoError(t, store.insertMoves(ctx, &m1))
+		require.NoError(t, store.InsertMoves(ctx, &m1))
 		require.NotNil(t, m1.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(0),
@@ -71,7 +71,7 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a second move at t3
 		m2 := ledger.Move{
-			Ledger:        store.ledger.Name,
+			Ledger:        store.GetLedger().Name,
 			IsSource:      false,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
@@ -79,7 +79,7 @@ func TestMovesInsert(t *testing.T) {
 			InsertionDate: t3,
 			EffectiveDate: t3,
 		}
-		require.NoError(t, store.insertMoves(ctx, &m2))
+		require.NoError(t, store.InsertMoves(ctx, &m2))
 		require.NotNil(t, m2.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(50),
@@ -88,7 +88,7 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a third move at t1
 		m3 := ledger.Move{
-			Ledger:        store.ledger.Name,
+			Ledger:        store.GetLedger().Name,
 			IsSource:      true,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(200)),
@@ -96,7 +96,7 @@ func TestMovesInsert(t *testing.T) {
 			InsertionDate: t1,
 			EffectiveDate: t1,
 		}
-		require.NoError(t, store.insertMoves(ctx, &m3))
+		require.NoError(t, store.InsertMoves(ctx, &m3))
 		require.NotNil(t, m3.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(0),
@@ -105,7 +105,7 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a fourth move at t2
 		m4 := ledger.Move{
-			Ledger:        store.ledger.Name,
+			Ledger:        store.GetLedger().Name,
 			IsSource:      false,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
@@ -113,7 +113,7 @@ func TestMovesInsert(t *testing.T) {
 			InsertionDate: t2,
 			EffectiveDate: t2,
 		}
-		require.NoError(t, store.insertMoves(ctx, &m4))
+		require.NoError(t, store.InsertMoves(ctx, &m4))
 		require.NotNil(t, m4.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(50),
@@ -122,7 +122,7 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a fifth move at t4
 		m5 := ledger.Move{
-			Ledger:        store.ledger.Name,
+			Ledger:        store.GetLedger().Name,
 			IsSource:      false,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
@@ -130,7 +130,7 @@ func TestMovesInsert(t *testing.T) {
 			InsertionDate: t4,
 			EffectiveDate: t4,
 		}
-		require.NoError(t, store.insertMoves(ctx, &m5))
+		require.NoError(t, store.InsertMoves(ctx, &m5))
 		require.NotNil(t, m5.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(150),

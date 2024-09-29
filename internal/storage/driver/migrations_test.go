@@ -1,10 +1,11 @@
 //go:build it
 
-package system
+package driver_test
 
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"testing"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
@@ -75,7 +76,7 @@ func TestMigrations(t *testing.T) {
 	})
 
 	test := MigrationTest{
-		migrator: getMigrator(),
+		migrator: driver.GetMigrator(),
 		hooks: []Hook{
 			{},
 			{},

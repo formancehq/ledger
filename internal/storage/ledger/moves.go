@@ -53,7 +53,7 @@ func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQ
 	return ret
 }
 
-func (s *Store) insertMoves(ctx context.Context, moves ...*ledger.Move) error {
+func (s *Store) InsertMoves(ctx context.Context, moves ...*ledger.Move) error {
 	_, err := tracing.TraceWithLatency(ctx, "InsertMoves", tracing.NoResult(func(ctx context.Context) error {
 		_, err := s.db.NewInsert().
 			Model(&moves).

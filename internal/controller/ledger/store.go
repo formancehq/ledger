@@ -45,7 +45,6 @@ type TX interface {
 	UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error)
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertLog(ctx context.Context, log *ledger.Log) error
-	SwitchLedgerState(ctx context.Context, name string, state string) error
 
 	LockLedger(ctx context.Context) error
 	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)

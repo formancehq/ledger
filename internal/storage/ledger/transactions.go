@@ -259,13 +259,13 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		}
 	}
 
-	postCommitVolumes, err := s.updateVolumes(ctx, tx.VolumeUpdates()...)
+	postCommitVolumes, err := s.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
 		return errors.Wrap(err, "failed to update balances")
 	}
 	tx.PostCommitVolumes = postCommitVolumes.Copy()
 
-	err = s.insertTransaction(ctx, tx)
+	err = s.InsertTransaction(ctx, tx)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert transaction")
 	}
@@ -304,7 +304,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 		slices.Reverse(moves)
 
-		if err := s.insertMoves(ctx, moves...); err != nil {
+		if err := s.InsertMoves(ctx, moves...); err != nil {
 			return errors.Wrap(err, "failed to insert moves")
 		}
 
@@ -370,7 +370,7 @@ func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetT
 	})
 }
 
-func (s *Store) insertTransaction(ctx context.Context, tx *ledger.Transaction) error {
+func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) error {
 	_, err := tracing.TraceWithLatency(ctx, "InsertTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
 		_, err := s.db.NewInsert().
 			Model(tx).

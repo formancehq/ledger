@@ -90,6 +90,10 @@ func (s *Store) LockLedger(ctx context.Context) error {
 	return postgres.ResolveError(err)
 }
 
+func (s *Store) GetLedger() ledger.Ledger {
+	return s.ledger
+}
+
 func New(db bun.IDB, ledger ledger.Ledger) *Store {
 	return &Store{
 		db:     db,
