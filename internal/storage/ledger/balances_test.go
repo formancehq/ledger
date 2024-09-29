@@ -1,6 +1,6 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"database/sql"
@@ -35,7 +35,7 @@ func TestBalancesGet(t *testing.T) {
 	_, err := store.UpsertAccount(ctx, world)
 	require.NoError(t, err)
 
-	_, err = store.updateVolumes(ctx, ledger.AccountsVolumes{
+	_, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
 		Account: "world",
 		Asset:   "USD",
 		Input:   new(big.Int),

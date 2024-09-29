@@ -1,6 +1,6 @@
 //go:build it
 
-package bucket
+package bucket_test
 
 import (
 	"testing"

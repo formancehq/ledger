@@ -27,6 +27,11 @@ func (l Ledger) HasFeature(feature, value string) bool {
 	return l.Features[feature] == value
 }
 
+func (l Ledger) WithMetadata(m metadata.Metadata) Ledger {
+	l.Metadata = m
+	return l
+}
+
 func New(name string, configuration Configuration) (*Ledger, error) {
 
 	if err := configuration.Validate(); err != nil {

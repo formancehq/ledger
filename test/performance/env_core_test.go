@@ -4,6 +4,7 @@ package performance_test
 
 import (
 	"context"
+	systemstore "github.com/formancehq/ledger/internal/storage/driver"
 	"testing"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
@@ -14,7 +15,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"

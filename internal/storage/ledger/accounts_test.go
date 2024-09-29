@@ -1,6 +1,6 @@
 //go:build it
 
-package ledger
+package ledger_test
 
 import (
 	"context"
