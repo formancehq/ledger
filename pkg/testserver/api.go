@@ -56,6 +56,14 @@ func GetBalancesAggregated(ctx context.Context, srv *Server, request operations.
 	return response.V2AggregateBalancesResponse.Data, nil
 }
 
+func GetVolumesWithBalances(ctx context.Context, srv *Server, request operations.V2GetVolumesWithBalancesRequest) (*components.V2VolumesWithBalanceCursorResponseCursor, error) {
+	response, err := srv.Client().Ledger.V2.GetVolumesWithBalances(ctx, request)
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+	return &response.V2VolumesWithBalanceCursorResponse.Cursor, nil
+}
+
 func UpdateLedgerMetadata(ctx context.Context, srv *Server, request operations.V2UpdateLedgerMetadataRequest) error {
 	_, err := srv.Client().Ledger.V2.UpdateLedgerMetadata(ctx, request)
 	return mapSDKError(err)
