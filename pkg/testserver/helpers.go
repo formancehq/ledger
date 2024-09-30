@@ -25,6 +25,12 @@ func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 			Timestamp:  time.New(tx.Timestamp),
 			InsertedAt: time.New(tx.InsertedAt),
 			Metadata:   tx.Metadata,
+			Reference: func() string {
+				if tx.Reference == nil {
+					return ""
+				}
+				return *tx.Reference
+			}(),
 		},
 		ID:                         int(tx.ID.Int64()),
 		PostCommitVolumes:          ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitVolumes),

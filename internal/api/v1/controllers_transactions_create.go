@@ -101,7 +101,6 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-
 		api.Ok(w, []any{mapTransactionToV1(*res)})
 		return
 	}

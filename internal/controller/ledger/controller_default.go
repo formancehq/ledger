@@ -4,10 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"reflect"
-
-	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -34,7 +33,7 @@ type DefaultController struct {
 	ledger         ledger.Ledger
 }
 
-// todo: could decline controller as some kinf of middlewares
+// todo: could decline controller as some kind of middlewares
 func NewDefaultController(
 	ledger ledger.Ledger,
 	store Store,
@@ -80,6 +79,7 @@ func (ctrl *DefaultController) runTx(ctx context.Context, parameters Parameters,
 	return log, err
 }
 
+// todo: handle too many clients error
 func (ctrl *DefaultController) forgeLog(ctx context.Context, parameters Parameters, fn func(sqlTX TX) (*ledger.Log, error)) (*ledger.Log, error) {
 
 	if parameters.IdempotencyKey != "" {

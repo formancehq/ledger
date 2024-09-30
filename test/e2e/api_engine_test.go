@@ -3,14 +3,11 @@
 package test_suite
 
 import (
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"github.com/formancehq/go-libs/time"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
-	"io"
 	"math/big"
 
 	"github.com/formancehq/go-libs/logging"
@@ -23,10 +20,9 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/uptrace/bun"
 )
 
-var _ = Context("Ledger API tests", func() {
+var _ = Context("Ledger engine tests", func() {
 	var (
 		db  = pgtesting.UsePostgresDatabase(pgServer)
 		ctx = logging.TestingContext()
@@ -44,22 +40,6 @@ var _ = Context("Ledger API tests", func() {
 	BeforeEach(func() {
 		events = testServer.GetValue().Subscribe()
 	})
-
-	When("creating 10 ledger", func() {
-		BeforeEach(func() {
-			for i := range 10 {
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
-					Ledger: fmt.Sprintf("ledger%d", i),
-				})
-				Expect(err).To(BeNil())
-			}
-		})
-		It("should be listable", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{})
-			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(10))
-		})
-	})
 	When("creating a new ledger", func() {
 		var (
 			createLedgerRequest operations.V2CreateLedgerRequest
@@ -72,29 +52,7 @@ var _ = Context("Ledger API tests", func() {
 		})
 		JustBeforeEach(func() {
 			err = CreateLedger(ctx, testServer.GetValue(), createLedgerRequest)
-		})
-		It("should be ok", func() {
 			Expect(err).To(BeNil())
-		})
-		Context("with invalid ledger name", func() {
-			BeforeEach(func() {
-				createLedgerRequest.Ledger = "invalid\\name\\contains\\some\\backslash"
-			})
-			It("should fail", func() {
-				Expect(err).NotTo(BeNil())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
-			})
-		})
-		Context("with invalid bucket name", func() {
-			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest = &components.V2CreateLedgerRequest{
-					Bucket: pointer.For("invalid\\name\\contains\\some\\backslash"),
-				}
-			})
-			It("should fail", func() {
-				Expect(err).NotTo(BeNil())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
-			})
 		})
 		When("creating a new transaction", func() {
 			var (
@@ -107,7 +65,6 @@ var _ = Context("Ledger API tests", func() {
 				}
 			})
 			JustBeforeEach(func() {
-				Expect(err).To(BeNil())
 				tx, err = CreateTransaction(ctx, testServer.GetValue(), createTransactionRequest)
 			})
 			Context("from world to bank", func() {
@@ -481,7 +438,6 @@ var _ = Context("Ledger API tests", func() {
 		})
 		When("adding some metadata on 'world' account", func() {
 			JustBeforeEach(func() {
-				Expect(err).To(BeNil())
 				Expect(AddMetadataToAccount(ctx, testServer.GetValue(), operations.V2AddMetadataToAccountRequest{
 					Ledger:  createLedgerRequest.Ledger,
 					Address: "world",
@@ -513,194 +469,6 @@ var _ = Context("Ledger API tests", func() {
 					})
 					Expect(err).To(Succeed())
 					Expect(account.Metadata).NotTo(HaveKey("foo"))
-				})
-			})
-		})
-		Context("with a set of all possible actions", func() {
-			JustBeforeEach(func() {
-				Expect(err).To(BeNil())
-				tx, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
-					Ledger: createLedgerRequest.Ledger,
-					V2PostTransaction: components.V2PostTransaction{
-						Script: &components.V2PostTransactionScript{
-							Plain: `send [COIN 100] (
-								source = @world
-								destination = @bob
-							)
-							set_account_meta(@world, "foo", "bar")
-							`,
-						},
-					},
-				})
-				Expect(err).To(BeNil())
-
-				Expect(AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
-					Ledger: createLedgerRequest.Ledger,
-					ID:     tx.ID,
-					RequestBody: map[string]string{
-						"foo": "bar",
-					},
-				})).To(BeNil())
-
-				Expect(AddMetadataToAccount(ctx, testServer.GetValue(), operations.V2AddMetadataToAccountRequest{
-					Ledger:  createLedgerRequest.Ledger,
-					Address: "bank",
-					RequestBody: map[string]string{
-						"foo": "bar",
-					},
-				})).To(BeNil())
-
-				Expect(DeleteTransactionMetadata(ctx, testServer.GetValue(), operations.V2DeleteTransactionMetadataRequest{
-					Ledger: createLedgerRequest.Ledger,
-					ID:     tx.ID,
-					Key:    "foo",
-				})).To(BeNil())
-
-				Expect(DeleteAccountMetadata(ctx, testServer.GetValue(), operations.V2DeleteAccountMetadataRequest{
-					Ledger:  createLedgerRequest.Ledger,
-					Address: "world",
-					Key:     "foo",
-				})).To(BeNil())
-
-				_, err = RevertTransaction(ctx, testServer.GetValue(), operations.V2RevertTransactionRequest{
-					Ledger: createLedgerRequest.Ledger,
-					ID:     tx.ID,
-				})
-				Expect(err).To(BeNil())
-			})
-			When("exporting the logs", func() {
-				var (
-					reader io.Reader
-					err    error
-				)
-				JustBeforeEach(func() {
-					reader, err = Export(ctx, testServer.GetValue(), operations.V2ExportLogsRequest{
-						Ledger: createLedgerRequest.Ledger,
-					})
-					Expect(err).To(BeNil())
-				})
-				It("should be ok", func() {})
-				When("then create a new ledger", func() {
-					var ledgerCopyName string
-					JustBeforeEach(func() {
-						ledgerCopyName = createLedgerRequest.Ledger + "-copy"
-						err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
-							Ledger: ledgerCopyName,
-							V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-								Features: ledger.MinimalFeatureSet,
-							},
-						})
-						Expect(err).To(BeNil())
-					})
-
-					importLogs := func() error {
-						GinkgoHelper()
-
-						data, err := io.ReadAll(reader)
-						Expect(err).To(BeNil())
-
-						return Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
-							Ledger:      ledgerCopyName,
-							RequestBody: pointer.For(string(data)),
-						})
-					}
-
-					When("importing data", func() {
-						It("should be ok", func() {
-							Expect(importLogs()).To(Succeed())
-						})
-					})
-					Context("with state to 'in-use'", func() {
-						JustBeforeEach(func() {
-							_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
-								Ledger: ledgerCopyName,
-								V2PostTransaction: components.V2PostTransaction{
-									Postings: []components.V2Posting{{
-										Source:      "world",
-										Destination: "dst",
-										Asset:       "USD",
-										Amount:      big.NewInt(100),
-									}},
-								},
-							})
-							Expect(err).To(BeNil())
-						})
-						When("importing data", func() {
-							It("Should fail with IMPORT code", func() {
-								err := importLogs()
-								Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumImport)))
-							})
-						})
-					})
-					Context("with concurrent transaction creation", func() {
-						var (
-							sqlTx         bun.Tx
-							importErrChan chan error
-							db            *bun.DB
-						)
-						// the import process is relying on the ledger state
-						// it the ledger already has some logs, it is considered as in use and import must fails.
-						// as the sdk does not allow to control the stream passed to the Import function
-						// we take a lock on the ledgers table to force the process to wait
-						// while we will make a concurrent request
-						JustBeforeEach(func() {
-							db = testServer.GetValue().Database()
-							sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
-							Expect(err).To(BeNil())
-
-							DeferCleanup(func() {
-								_ = sqlTx.Rollback()
-							})
-
-							_, err := sqlTx.NewRaw("lock table _default.logs").Exec(ctx)
-							Expect(err).To(BeNil())
-
-							go func() {
-								defer GinkgoRecover()
-
-								// should block
-								_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
-									Ledger: ledgerCopyName,
-									Force:  pointer.For(true),
-									V2PostTransaction: components.V2PostTransaction{
-										Postings: []components.V2Posting{{
-											Source:      "a",
-											Destination: "b",
-											Asset:       "USD",
-											Amount:      big.NewInt(100),
-										}},
-									},
-								})
-								Expect(err).To(BeNil())
-							}()
-
-							// check postgres locks
-							// we wait for two active locks. The first is the one we took in the test.
-							// the second is the one took by the call to the CreateTransaction
-							// Once we have the two locks, we know that the CreateTransaction is in a sql tx.
-							Eventually(func(g Gomega) int {
-								count, err := db.NewSelect().
-									Table("pg_stat_activity").
-									Where("state <> 'idle' and pid <> pg_backend_pid()").
-									Where(`query like 'lock table _default.logs%' or query like 'INSERT INTO "_default".logs%'`).
-									Count(ctx)
-								g.Expect(err).To(BeNil())
-								return count
-							}).Should(Equal(2))
-
-							importErrChan = make(chan error, 1)
-							go func() {
-								defer GinkgoRecover()
-
-								// the call on importLogs() should block too since the logs table is locked
-								importErrChan <- importLogs()
-							}()
-						})
-						It("should fail", func() {
-							Expect(sqlTx.Rollback()).To(Succeed())
-							Eventually(importErrChan).Should(Receive(HaveErrorCode(string(components.V2ErrorsEnumImport))))
-						})
-					})
 				})
 			})
 		})

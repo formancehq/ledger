@@ -3,11 +3,11 @@
 package components
 
 type V2TransactionsCursorResponseCursor struct {
-	PageSize int64                   `json:"pageSize"`
-	HasMore  bool                    `json:"hasMore"`
-	Previous *string                 `json:"previous,omitempty"`
-	Next     *string                 `json:"next,omitempty"`
-	Data     []V2ExpandedTransaction `json:"data"`
+	PageSize int64           `json:"pageSize"`
+	HasMore  bool            `json:"hasMore"`
+	Previous *string         `json:"previous,omitempty"`
+	Next     *string         `json:"next,omitempty"`
+	Data     []V2Transaction `json:"data"`
 }
 
 func (o *V2TransactionsCursorResponseCursor) GetPageSize() int64 {
@@ -38,9 +38,9 @@ func (o *V2TransactionsCursorResponseCursor) GetNext() *string {
 	return o.Next
 }
 
-func (o *V2TransactionsCursorResponseCursor) GetData() []V2ExpandedTransaction {
+func (o *V2TransactionsCursorResponseCursor) GetData() []V2Transaction {
 	if o == nil {
-		return []V2ExpandedTransaction{}
+		return []V2Transaction{}
 	}
 	return o.Data
 }
