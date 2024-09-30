@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
@@ -127,7 +126,7 @@ func (s *Server) Start() {
 		MaxIdleConnsPerHost: 100,
 		MaxConnsPerHost:     100,
 	}
-	if testing.Verbose() {
+	if s.configuration.Debug {
 		transport = httpclient.NewDebugHTTPTransport(transport)
 	}
 

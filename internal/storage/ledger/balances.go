@@ -132,7 +132,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		where, args, err := builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 			switch {
 			case key == "address":
-				return filterAccountAddress(value.(string), "accounts.address"), nil, nil
+				return filterAccountAddress(value.(string), "accounts_address"), nil, nil
 			case metadataRegex.Match([]byte(key)):
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
 

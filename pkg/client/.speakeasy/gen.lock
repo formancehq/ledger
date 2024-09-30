@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: aab50c683ca7f0a7dec27a59b8eb6a91
+  docChecksum: 302ced639acd69d468571e054f1fd99a
   docVersion: LEDGER_VERSION
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.4.8
-  configChecksum: 7ae8e5ff8f460992fb233a182b16933e
+  releaseVersion: 0.4.9
+  configChecksum: ba631015bfe7d302c9826620e37eda7c
 features:
   go:
     additionalDependencies: 0.1.0
@@ -161,7 +161,6 @@ generatedFiles:
   - /models/components/v2statsresponse.go
   - /models/components/v2stats.go
   - /models/components/v2transactionscursorresponse.go
-  - /models/components/v2expandedtransaction.go
   - /models/components/v2createtransactionresponse.go
   - /models/components/v2gettransactionresponse.go
   - /models/components/v2reverttransactionresponse.go
@@ -349,7 +348,6 @@ generatedFiles:
   - docs/models/components/v2stats.md
   - docs/models/components/v2transactionscursorresponsecursor.md
   - docs/models/components/v2transactionscursorresponse.md
-  - docs/models/components/v2expandedtransaction.md
   - docs/models/components/v2createtransactionresponse.md
   - docs/models/components/v2gettransactionresponse.md
   - docs/models/components/v2reverttransactionresponse.md
