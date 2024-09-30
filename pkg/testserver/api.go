@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"math/big"
+	"strconv"
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/stack/ledger/client/models/components"
@@ -15,6 +16,14 @@ import (
 func CreateLedger(ctx context.Context, srv *Server, request operations.V2CreateLedgerRequest) error {
 	_, err := srv.Client().Ledger.V2.CreateLedger(ctx, request)
 	return mapSDKError(err)
+}
+
+func GetLedger(ctx context.Context, srv *Server, request operations.V2GetLedgerRequest) (*components.V2Ledger, error) {
+	ret, err := srv.Client().Ledger.V2.GetLedger(ctx, request)
+	if err := mapSDKError(err); err != nil {
+		return nil, err
+	}
+	return &ret.V2GetLedgerResponse.Data, nil
 }
 
 func GetInfo(ctx context.Context, srv *Server) (*operations.V2GetInfoResponse, error) {
@@ -29,6 +38,32 @@ func CreateTransaction(ctx context.Context, srv *Server, request operations.V2Cr
 	}
 
 	return &response.V2CreateTransactionResponse.Data, nil
+}
+
+func CreateBulk(ctx context.Context, srv *Server, request operations.V2CreateBulkRequest) ([]components.V2BulkElementResult, error) {
+	response, err := srv.Client().Ledger.V2.CreateBulk(ctx, request)
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+	return response.V2BulkResponse.Data, nil
+}
+
+func GetBalancesAggregated(ctx context.Context, srv *Server, request operations.V2GetBalancesAggregatedRequest) (map[string]*big.Int, error) {
+	response, err := srv.Client().Ledger.V2.GetBalancesAggregated(ctx, request)
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+	return response.V2AggregateBalancesResponse.Data, nil
+}
+
+func UpdateLedgerMetadata(ctx context.Context, srv *Server, request operations.V2UpdateLedgerMetadataRequest) error {
+	_, err := srv.Client().Ledger.V2.UpdateLedgerMetadata(ctx, request)
+	return mapSDKError(err)
+}
+
+func DeleteLedgerMetadata(ctx context.Context, srv *Server, request operations.V2DeleteLedgerMetadataRequest) error {
+	_, err := srv.Client().Ledger.V2.DeleteLedgerMetadata(ctx, request)
+	return mapSDKError(err)
 }
 
 func AddMetadataToAccount(ctx context.Context, srv *Server, request operations.V2AddMetadataToAccountRequest) error {
@@ -61,7 +96,7 @@ func RevertTransaction(ctx context.Context, srv *Server, request operations.V2Re
 	return &response.V2RevertTransactionResponse.Data, nil
 }
 
-func GetTransaction(ctx context.Context, srv *Server, request operations.V2GetTransactionRequest) (*components.V2ExpandedTransaction, error) {
+func GetTransaction(ctx context.Context, srv *Server, request operations.V2GetTransactionRequest) (*components.V2Transaction, error) {
 	response, err := srv.Client().Ledger.V2.GetTransaction(ctx, request)
 
 	if err != nil {
@@ -89,6 +124,56 @@ func ListTransactions(ctx context.Context, srv *Server, request operations.V2Lis
 	}
 
 	return &response.V2TransactionsCursorResponse.Cursor, nil
+}
+
+func CountTransactions(ctx context.Context, srv *Server, request operations.V2CountTransactionsRequest) (int, error) {
+	response, err := srv.Client().Ledger.V2.CountTransactions(ctx, request)
+
+	if err != nil {
+		return 0, mapSDKError(err)
+	}
+
+	ret, err := strconv.ParseInt(response.Headers["Count"][0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(ret), nil
+}
+
+func ListAccounts(ctx context.Context, srv *Server, request operations.V2ListAccountsRequest) (*components.V2AccountsCursorResponseCursor, error) {
+	response, err := srv.Client().Ledger.V2.ListAccounts(ctx, request)
+
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+
+	return &response.V2AccountsCursorResponse.Cursor, nil
+}
+
+func ListLogs(ctx context.Context, srv *Server, request operations.V2ListLogsRequest) (*components.V2LogsCursorResponseCursor, error) {
+	response, err := srv.Client().Ledger.V2.ListLogs(ctx, request)
+
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+
+	return &response.V2LogsCursorResponse.Cursor, nil
+}
+
+func CountAccounts(ctx context.Context, srv *Server, request operations.V2CountAccountsRequest) (int, error) {
+	response, err := srv.Client().Ledger.V2.CountAccounts(ctx, request)
+
+	if err != nil {
+		return 0, mapSDKError(err)
+	}
+
+	ret, err := strconv.ParseInt(response.Headers["Count"][0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(ret), nil
 }
 
 func ListLedgers(ctx context.Context, srv *Server, request operations.V2ListLedgersRequest) (*components.V2LedgerListResponseCursor, error) {

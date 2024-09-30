@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"math/big"
 	"net/http"
 	"strings"
 
@@ -9,13 +10,46 @@ import (
 )
 
 func mapTransactionToV1(tx ledger.Transaction) any {
-	return struct {
-		ledger.Transaction
-		TxID int `json:"txid"`
-		ID   int `json:"-"`
-	}{
-		Transaction: tx,
-		TxID:        tx.ID,
+	type Aux ledger.Transaction
+	type Ret struct {
+		Aux
+
+		Reverted                  bool                     `json:"reverted"`
+		PreCommitVolumes          ledger.PostCommitVolumes `json:"preCommitVolumes,omitempty"`
+		PreCommitEffectiveVolumes ledger.PostCommitVolumes `json:"preCommitEffectiveVolumes,omitempty"`
+		TxID                      int                      `json:"txid"`
+		ID                        int                      `json:"-"`
+	}
+
+	var (
+		preCommitVolumes          ledger.PostCommitVolumes
+		preCommitEffectiveVolumes ledger.PostCommitVolumes
+	)
+	if len(tx.PostCommitVolumes) > 0 {
+		if tx.PostCommitVolumes != nil {
+			preCommitVolumes = tx.PostCommitVolumes.Copy()
+			for _, posting := range tx.Postings {
+				preCommitVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+				preCommitVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+			}
+		}
+	}
+	if len(tx.PostCommitEffectiveVolumes) > 0 {
+		if tx.PostCommitEffectiveVolumes != nil {
+			preCommitEffectiveVolumes = tx.PostCommitEffectiveVolumes.Copy()
+			for _, posting := range tx.Postings {
+				preCommitEffectiveVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+				preCommitEffectiveVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+			}
+		}
+	}
+
+	return &Ret{
+		Aux:                       Aux(tx),
+		Reverted:                  tx.RevertedAt != nil && !tx.RevertedAt.IsZero(),
+		PreCommitVolumes:          preCommitVolumes,
+		PreCommitEffectiveVolumes: preCommitEffectiveVolumes,
+		TxID:                      tx.ID,
 	}
 }
 
