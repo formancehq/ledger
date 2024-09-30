@@ -97,36 +97,29 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 				Join(
 					`left join (?) accounts_metadata on accounts_metadata.accounts_address = accounts_volumes.accounts_address`,
 					s.selectDistinctAccountMetadataHistories(date),
-				).
-				ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata")
-
-			if needAddressSegment {
-				selectAccountsWithVolumes = selectAccountsWithVolumes.
-					Join("join " + s.GetPrefixedRelationName("accounts") + " on accounts.address = accounts_volumes.accounts_address").
-					Column("accounts.address_array")
-			}
+				)
 		} else {
 			selectAccountsWithVolumes = selectAccountsWithVolumes.
 				Join(
 					`join (?) accounts on accounts.address = accounts_volumes.accounts_address`,
 					s.db.NewSelect().ModelTableExpr(s.GetPrefixedRelationName("accounts")),
 				)
-
-			if needAddressSegment {
-				selectAccountsWithVolumes = selectAccountsWithVolumes.Column("accounts.address_array")
-			}
-		}
-	} else {
-		if needAddressSegment {
-			selectAccountsWithVolumes = s.db.NewSelect().
-				TableExpr(
-					"(?) accounts",
-					selectAccountsWithVolumes.
-						Join("join "+s.GetPrefixedRelationName("accounts")+" accounts on accounts.address = accounts_volumes.accounts_address"),
-				).
-				ColumnExpr("*")
 		}
 	}
+
+	if needAddressSegment {
+		selectAccountsWithVolumes = s.db.NewSelect().
+			TableExpr(
+				"(?) accounts",
+				selectAccountsWithVolumes.
+					Join("join "+s.GetPrefixedRelationName("accounts")+" accounts on accounts.address = accounts_volumes.accounts_address"),
+			).
+			ColumnExpr("address, asset, volumes, metadata").
+			ColumnExpr("accounts.address_array as accounts_address_array")
+	}
+
+	finalQuery := s.db.NewSelect().
+		TableExpr("(?) accounts", selectAccountsWithVolumes)
 
 	if builder != nil {
 		where, args, err := builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
@@ -149,10 +142,10 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		if err != nil {
 			return ret.Err(errors.Wrap(err, "building where clause"))
 		}
-		selectAccountsWithVolumes = selectAccountsWithVolumes.Where(where, args...)
+		finalQuery = finalQuery.Where(where, args...)
 	}
 
-	return selectAccountsWithVolumes
+	return finalQuery
 }
 
 func (s *Store) selectAccountWithAggregatedVolumes(date *time.Time, useInsertionDate bool, alias string) *bun.SelectQuery {
@@ -272,3 +265,42 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		return ret, nil
 	})
 }
+
+/**
+SELECT "aggregated_volumes"."aggregated"
+FROM
+  (SELECT aggregate_objects(json_build_object(asset, volumes)::JSONB) AS aggregated
+   FROM
+     (SELECT "asset",
+             json_build_object('input', sum((volumes->>'input')::numeric), 'output', sum((volumes->>'output')::numeric)) AS volumes
+      FROM
+        (SELECT *
+         FROM
+           (SELECT *,
+                   coalesce(accounts_metadata.metadata, '{}'::JSONB) AS metadata
+            FROM
+              (SELECT "asset",
+                      "accounts_address",
+                      moves.post_commit_effective_volumes AS volumes
+               FROM
+                 (SELECT DISTINCT ON (accounts_address,
+                                      asset) "accounts_address",
+                                     "asset",
+                                     first_value(post_commit_effective_volumes) OVER (PARTITION BY (accounts_address, asset)
+                                                                                      ORDER BY effective_date DESC, seq DESC) AS post_commit_effective_volumes
+                  FROM "3c29654b".moves
+                  WHERE (ledger = '3c29654b')
+                    AND (effective_date <= '2024-09-30T15:06:25.591246Z')) moves) accounts_volumes
+            LEFT JOIN
+              (SELECT DISTINCT ON (accounts_address) "accounts_address",
+                                  "metadata"
+               FROM "3c29654b".accounts_metadata
+               WHERE (ledger = '3c29654b')
+                 AND (date <= '2024-09-30T15:06:25.591246Z')
+               ORDER BY "accounts_address",
+                        "revision" DESC) accounts_metadata ON accounts_metadata.accounts_address = accounts_volumes.accounts_address) accounts
+         WHERE (metadata @> '{"category":"premium"}'))
+      VALUES
+      GROUP BY "asset")
+   VALUES) aggregated_volumes
+*/
