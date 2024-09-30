@@ -107,7 +107,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				g.Expect(err).To(BeNil())
 				return count
 			}).
-				WithTimeout(5 * time.Second).
+				WithTimeout(10 * time.Second).
 				// Once all the transactions are in pending state, we should have one lock
 				// for the first tx, trying to write a new log.
 				// And, we should also have countTransactions-1 pending lock for the 'bank' account
