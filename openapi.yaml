@@ -3059,7 +3059,7 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/V2ExpandedTransaction'
+                $ref: '#/components/schemas/V2Transaction'
     V2LogsCursorResponse:
       type: object
       required:
@@ -3267,8 +3267,6 @@ components:
         - metadata
         - reverted
         - insertedAt
-    V2ExpandedTransaction:
-      $ref: '#/components/schemas/V2Transaction'
     V2PostTransaction:
       type: object
       required:
@@ -3363,7 +3361,7 @@ components:
     V2GetTransactionResponse:
       properties:
         data:
-          $ref: '#/components/schemas/V2ExpandedTransaction'
+          $ref: '#/components/schemas/V2Transaction'
       type: object
       required:
         - data
