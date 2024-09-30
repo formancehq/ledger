@@ -93,6 +93,7 @@ var _ = Context("Ledger engine tests", func() {
 				ID:     big.NewInt(2),
 				Ledger: "default",
 			})
+			Expect(err).To(Succeed())
 
 			Expect(*tx).To(Equal(components.V2Transaction{
 				ID: big.NewInt(1),
