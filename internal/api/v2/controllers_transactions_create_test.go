@@ -12,7 +12,6 @@ import (
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
@@ -408,11 +407,13 @@ func TestTransactionCreate(t *testing.T) {
 				expect := ledgerController.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
 						DryRun: tc.expectedDryRun,
-						Input: testCase.expectedRunScript,
+						Input:  testCase.expectedRunScript,
 					})
 
 				if tc.returnError == nil {
-					expect.Return(pointer.For(expectedTx), nil)
+					expect.Return(&ledgercontroller.CreateTransactionResult{
+						Transaction: expectedTx,
+					}, nil)
 				} else {
 					expect.Return(nil, tc.returnError)
 				}

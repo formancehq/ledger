@@ -28,7 +28,6 @@ import (
 
 type DefaultController struct {
 	store          Store
-	listener       Listener
 	machineFactory MachineFactory
 	ledger         ledger.Ledger
 }
@@ -36,12 +35,10 @@ type DefaultController struct {
 func NewDefaultController(
 	ledger ledger.Ledger,
 	store Store,
-	listener Listener,
 	machineFactory MachineFactory,
 ) *DefaultController {
 	ret := &DefaultController{
 		store:          store,
-		listener:       listener,
 		ledger:         ledger,
 		machineFactory: machineFactory,
 	}
@@ -208,7 +205,7 @@ func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q Get
 	return ctrl.store.GetVolumesWithBalances(ctx, q)
 }
 
-func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Transaction, error) {
+func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
@@ -273,12 +270,13 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	transaction := log.Data.(ledger.NewTransactionLogPayload).Transaction
 	accountMetadata := log.Data.(ledger.NewTransactionLogPayload).AccountMetadata
 
-	ctrl.listener.CommittedTransactions(ctx, ctrl.ledger.Name, transaction, accountMetadata)
-
-	return &transaction, nil
+	return &CreateTransactionResult{
+		Transaction:     transaction,
+		AccountMetadata: accountMetadata,
+	}, nil
 }
 
-func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Transaction, error) {
+func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error) {
 	var originalTransaction *ledger.Transaction
 	log, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RevertTransaction) (*ledger.Log, error) {
 
@@ -343,16 +341,10 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 		return nil, err
 	}
 
-	if ctrl.listener != nil {
-		ctrl.listener.RevertedTransaction(
-			ctx,
-			ctrl.ledger.Name,
-			*originalTransaction,
-			log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction,
-		)
-	}
-
-	return pointer.For(log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction), nil
+	return &RevertTransactionResult{
+		RevertedTransaction: *originalTransaction,
+		ReversedTransaction:   log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction,
+	}, nil
 }
 
 func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
@@ -365,16 +357,6 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 	})
 	if err != nil {
 		return err
-	}
-
-	if ctrl.listener != nil {
-		ctrl.listener.SavedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeTransaction,
-			fmt.Sprint(parameters.Input.TransactionID),
-			parameters.Input.Metadata,
-		)
 	}
 
 	return nil
@@ -395,21 +377,8 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 
 		return pointer.For(ledger.NewSetMetadataOnAccountLog(input.Address, input.Metadata)), nil
 	})
-	if err != nil {
-		return err
-	}
 
-	if ctrl.listener != nil {
-		ctrl.listener.SavedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeAccount,
-			parameters.Input.Address,
-			parameters.Input.Metadata,
-		)
-	}
-
-	return nil
+	return err
 }
 
 func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
@@ -425,49 +394,20 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 
 		return pointer.For(ledger.NewDeleteTransactionMetadataLog(input.TransactionID, input.Key)), nil
 	})
-	if err != nil {
-		return err
-	}
 
-	// todo: events should not be sent in dry run!
-	if ctrl.listener != nil {
-		ctrl.listener.DeletedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeTransaction,
-			fmt.Sprint(parameters.Input.TransactionID),
-			parameters.Input.Key,
-		)
-	}
-
-	return nil
+	return err
 }
 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
-	if err := tracing.SkipResult(tracing.Trace(ctx, "DeleteAccountMetadata", func(ctx context.Context) (*ledger.Log, error) {
-		return forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteAccountMetadata) (*ledger.Log, error) {
-			err := sqlTX.DeleteAccountMetadata(ctx, input.Address, input.Key)
-			if err != nil {
-				return nil, err
-			}
+	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteAccountMetadata) (*ledger.Log, error) {
+		err := sqlTX.DeleteAccountMetadata(ctx, input.Address, input.Key)
+		if err != nil {
+			return nil, err
+		}
 
-			return pointer.For(ledger.NewDeleteAccountMetadataLog(input.Address, input.Key)), nil
-		})
-	})); err != nil {
-		return err
-	}
-
-	if ctrl.listener != nil {
-		ctrl.listener.DeletedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeAccount,
-			parameters.Input.Address,
-			parameters.Input.Key,
-		)
-	}
-
-	return nil
+		return pointer.For(ledger.NewDeleteAccountMetadataLog(input.Address, input.Key)), nil
+	})
+	return err
 }
 
 var _ Controller = (*DefaultController)(nil)

@@ -27,7 +27,6 @@ func TestStats(t *testing.T) {
 	ledgerController := NewDefaultController(
 		ledger.MustNewWithDefault("foo"),
 		store,
-		NewMockListener(ctrl),
 		machineFactory,
 	)
 	stats, err := ledgerController.GetStats(ctx)

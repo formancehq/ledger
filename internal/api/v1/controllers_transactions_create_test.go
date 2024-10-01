@@ -13,7 +13,6 @@ import (
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
@@ -228,9 +227,11 @@ func TestTransactionsCreate(t *testing.T) {
 				ledgerController.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
 						DryRun: tc.expectedPreview,
-						Input: testCase.expectedRunScript,
+						Input:  testCase.expectedRunScript,
 					}).
-					Return(pointer.For(expectedTx), nil)
+					Return(&ledgercontroller.CreateTransactionResult{
+						Transaction: expectedTx,
+					}, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
