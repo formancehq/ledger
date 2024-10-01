@@ -37,6 +37,9 @@ func runTx[INPUT any](ctx context.Context, store Store, parameters Parameters[IN
 }
 
 // todo: handle too many clients error
+// notes(gfyrag): how?
+// By retrying? Is the server already overloaded? Add a limit on the retries number?
+// Ask the client to retry later?
 func forgeLog[INPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, error)) (*ledger.Log, error) {
 	if parameters.IdempotencyKey != "" {
 		log, err := store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
