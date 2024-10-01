@@ -2,6 +2,8 @@ package ledger
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/ledger/internal/machine/vm"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/migrations"
@@ -35,7 +37,7 @@ type Controller interface {
 	//  * ErrTransactionReferenceConflict
 	//  * ErrIdempotencyKeyConflict
 	//  * ErrInsufficientFunds
-	CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Transaction, error)
+	CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error)
 	// RevertTransaction allow to revert a transaction.
 	// It can return following errors:
 	//  * ErrInsufficientFunds
@@ -43,7 +45,7 @@ type Controller interface {
 	//  * ErrNotFound
 	// Parameter force indicate we want to force revert the transaction even if the accounts does not have funds
 	// Parameter atEffectiveDate indicate we want to set the timestamp of the newly created transaction on the timestamp of the reverted transaction
-	RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Transaction, error)
+	RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error)
 	// SaveTransactionMetadata allow to add metadata to an existing transaction
 	// It can return following errors:
 	//  * ErrNotFound
@@ -66,4 +68,44 @@ type Controller interface {
 	Import(ctx context.Context, stream chan ledger.Log) error
 	// Export allow to export the logs of a ledger
 	Export(ctx context.Context, w ExportWriter) error
+}
+
+type RunScript = vm.RunScript
+type Script = vm.Script
+type ScriptV1 = vm.ScriptV1
+
+type CreateTransactionResult struct {
+	Transaction ledger.Transaction
+	AccountMetadata ledger.AccountMetadata
+}
+
+type RevertTransaction struct {
+	Force           bool
+	AtEffectiveDate bool
+	TransactionID   int
+}
+
+type RevertTransactionResult struct {
+	RevertedTransaction ledger.Transaction
+	ReversedTransaction   ledger.Transaction
+}
+
+type SaveTransactionMetadata struct {
+	TransactionID int
+	Metadata      metadata.Metadata
+}
+
+type SaveAccountMetadata struct {
+	Address  string
+	Metadata metadata.Metadata
+}
+
+type DeleteTransactionMetadata struct {
+	TransactionID int
+	Key           string
+}
+
+type DeleteAccountMetadata struct {
+	Address string
+	Key     string
 }

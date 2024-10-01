@@ -51,5 +51,5 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, res)
+	api.Ok(w, res.Transaction)
 }

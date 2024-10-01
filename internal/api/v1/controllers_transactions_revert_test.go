@@ -76,7 +76,9 @@ func TestTransactionsRevert(t *testing.T) {
 						Force: tc.expectForce,
 					},
 				}).
-				Return(pointer.For(tc.returnTx), tc.returnErr)
+				Return(pointer.For(ledgercontroller.RevertTransactionResult{
+					ReversedTransaction: tc.returnTx,
+				}), tc.returnErr)
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
@@ -76,7 +75,9 @@ func TestTransactionsRevert(t *testing.T) {
 						Force: tc.expectForce,
 					},
 				}).
-				Return(pointer.For(tc.returnTx), tc.returnErr)
+				Return(&ledgercontroller.RevertTransactionResult{
+					ReversedTransaction: tc.returnTx,
+				}, tc.returnErr)
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
 
