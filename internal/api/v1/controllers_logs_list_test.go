@@ -76,8 +76,8 @@ func TestGetLogs(t *testing.T) {
 
 			expectedCursor := bunpaginate.Cursor[ledger.Log]{
 				Data: []ledger.Log{
-					ledger.NewTransactionLog(ledger.CreatedTransaction{
-						Transaction: ledger.NewTransaction(),
+					ledger.NewLog(ledger.CreatedTransaction{
+						Transaction:     ledger.NewTransaction(),
 						AccountMetadata: ledger.AccountMetadata{},
 					}).ChainLog(nil),
 				},

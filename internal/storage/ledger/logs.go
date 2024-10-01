@@ -53,7 +53,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 		if err != nil {
 			return err
 		}
-		lastLog := &ledger.Log{}
+		lastLog := &Log{}
 		err = s.db.NewSelect().
 			Model(lastLog).
 			ModelTableExpr(s.GetPrefixedRelationName("logs")).
@@ -67,7 +67,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 			}
 			log.ComputeHash(nil)
 		} else {
-			log.ComputeHash(lastLog)
+			log.ComputeHash(pointer.For(lastLog.toCore()))
 		}
 	}
 

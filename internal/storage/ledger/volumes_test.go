@@ -107,14 +107,14 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	//		//ledger.NewSetMetadataOnAccountLog(time.Now(), "account:1", metadata.Metadata{"category": "1"}).WithTimestamp(now),
 	//		//ledger.NewSetMetadataOnAccountLog(time.Now(), "account:2", metadata.Metadata{"category": "2"}).WithTimestamp(now),
 	//		//ledger.NewSetMetadataOnAccountLog(time.Now(), "world", metadata.Metadata{"foo": "bar"}).WithTimestamp(now),
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 	//		//		WithTimestamp(now.Add(-4*time.Minute)),
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now.Add(4*time.Minute)),
 	//		//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 	//		//		WithIDUint64(1).
@@ -122,7 +122,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now.Add(3*time.Minute)),
 	//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("account:1", "bank", "USD", big.NewInt(50))).
 	//		//		WithTimestamp(now.Add(-2*time.Minute)).
@@ -130,7 +130,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now.Add(2*time.Minute)),
 	//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(0))).
 	//		//		WithTimestamp(now.Add(-time.Minute)).
@@ -138,14 +138,14 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now.Add(1*time.Minute)),
 	//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("world", "account:2", "USD", big.NewInt(50))).
 	//		//		WithTimestamp(now).WithIDUint64(4),
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now),
 	//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("world", "account:2", "USD", big.NewInt(50))).
 	//		//		WithIDUint64(5).
@@ -153,7 +153,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now.Add(-1*time.Minute)),
 	//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("account:2", "bank", "USD", big.NewInt(50))).
 	//		//		WithTimestamp(now.Add(2*time.Minute)).
@@ -161,7 +161,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	//		//	map[string]metadata.Metadata{},
 	//		//).WithTimestamp(now.Add(-2*time.Minute)),
 	//
-	//		//ledger.NewTransactionLog(
+	//		//ledger.NewLog(
 	//		//	ledger.NewTransaction().
 	//		//		WithPostings(ledger.NewPosting("world", "account:2", "USD", big.NewInt(25))).
 	//		//		WithTimestamp(now.Add(3*time.Minute)).

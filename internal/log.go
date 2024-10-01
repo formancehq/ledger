@@ -19,7 +19,7 @@ import (
 
 const (
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
-	NewTransactionLogType                     // "NEW_TRANSACTION"
+	NewLogType                                // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
 )
@@ -54,7 +54,7 @@ func (l LogType) String() string {
 	switch l {
 	case SetMetadataLogType:
 		return "SET_METADATA"
-	case NewTransactionLogType:
+	case NewLogType:
 		return "NEW_TRANSACTION"
 	case RevertedTransactionLogType:
 		return "REVERTED_TRANSACTION"
@@ -70,7 +70,7 @@ func LogTypeFromString(logType string) LogType {
 	case "SET_METADATA":
 		return SetMetadataLogType
 	case "NEW_TRANSACTION":
-		return NewTransactionLogType
+		return NewLogType
 	case "REVERTED_TRANSACTION":
 		return RevertedTransactionLogType
 	case "DELETE_METADATA":
@@ -84,10 +84,10 @@ func LogTypeFromString(logType string) LogType {
 type Log struct {
 	bun.BaseModel `bun:"table:logs,alias:logs"`
 
-	Type           LogType   `json:"type" bun:"type,type:log_type"`
-	Data           any       `json:"data" bun:"data,type:jsonb"`
-	Date           time.Time `json:"date" bun:"date,type:timestamptz"`
-	IdempotencyKey string    `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
+	Type           LogType    `json:"type" bun:"type,type:log_type"`
+	Data           LogPayload `json:"data" bun:"data,type:jsonb"`
+	Date           time.Time  `json:"date" bun:"date,type:timestamptz"`
+	IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
@@ -141,7 +141,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		}
 	}
 
-	payload := l.Data
+	payload := l.Data.(any)
 	if hv, ok := payload.(hashValuer); ok {
 		payload = hv.hashValue()
 	}
@@ -168,12 +168,16 @@ func (l *Log) ComputeHash(previous *Log) {
 	l.Hash = digest.Sum(nil)
 }
 
-func NewLog(t LogType, payload any) Log {
+func NewLog(payload LogPayload) Log {
 	return Log{
-		Type: t,
+		Type: payload.Type(),
 		Data: payload,
 		Date: time.Now(),
 	}
+}
+
+type LogPayload interface {
+	Type() LogType
 }
 
 type hashValuer interface {
@@ -186,6 +190,12 @@ type CreatedTransaction struct {
 	Transaction     Transaction     `json:"transaction"`
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
+
+func (p CreatedTransaction) Type() LogType {
+	return NewLogType
+}
+
+var _ LogPayload = (*CreatedTransaction)(nil)
 
 func (p CreatedTransaction) hashValue() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
@@ -201,15 +211,17 @@ func (p CreatedTransaction) hashValue() any {
 
 var _ hashValuer = (*CreatedTransaction)(nil)
 
-func NewTransactionLog(createdTransaction CreatedTransaction) Log {
-	return NewLog(NewTransactionLogType, createdTransaction)
-}
-
 type SavedMetadata struct {
 	TargetType string            `json:"targetType"`
 	TargetID   any               `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
+
+func (s SavedMetadata) Type() LogType {
+	return SetMetadataLogType
+}
+
+var _ LogPayload = (*SavedMetadata)(nil)
 
 func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
@@ -245,19 +257,17 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataOnAccountLog(setMetadata SavedMetadata) Log {
-	return NewLog(SetMetadataLogType, setMetadata)
-}
-
-func NewSetMetadataOnTransactionLog(setMetadata SavedMetadata) Log {
-	return NewLog(SetMetadataLogType, setMetadata)
-}
-
 type DeletedMetadata struct {
 	TargetType string `json:"targetType"`
 	TargetID   any    `json:"targetId"`
 	Key        string `json:"key"`
 }
+
+func (s DeletedMetadata) Type() LogType {
+	return DeleteMetadataLogType
+}
+
+var _ LogPayload = (*DeletedMetadata)(nil)
 
 func (s *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
@@ -293,26 +303,16 @@ func (s *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewDeleteTransactionMetadataLog(id int, key string) Log {
-	return NewLog(DeleteMetadataLogType, DeletedMetadata{
-		TargetType: MetaTargetTypeTransaction,
-		TargetID:   id,
-		Key:        key,
-	})
-}
-
-func NewDeleteAccountMetadataLog(id string, key string) Log {
-	return NewLog(DeleteMetadataLogType, DeletedMetadata{
-		TargetType: MetaTargetTypeAccount,
-		TargetID:   id,
-		Key:        key,
-	})
-}
-
 type RevertedTransaction struct {
 	RevertedTransaction Transaction `json:"revertedTransaction"`
 	RevertTransaction   Transaction `json:"transaction"`
 }
+
+func (r RevertedTransaction) Type() LogType {
+	return RevertedTransactionLogType
+}
+
+var _ LogPayload = (*RevertedTransaction)(nil)
 
 func (r RevertedTransaction) hashValue() any {
 	return struct {
@@ -326,17 +326,10 @@ func (r RevertedTransaction) hashValue() any {
 
 var _ hashValuer = (*RevertedTransaction)(nil)
 
-func NewRevertedTransactionLog(revertedTx, tx Transaction) Log {
-	return NewLog(RevertedTransactionLogType, RevertedTransaction{
-		RevertedTransaction: revertedTx,
-		RevertTransaction:   tx,
-	})
-}
-
-func HydrateLog(_type LogType, data []byte) (any, error) {
+func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
 	switch _type {
-	case NewTransactionLogType:
+	case NewLogType:
 		payload = &CreatedTransaction{}
 	case SetMetadataLogType:
 		payload = &SavedMetadata{}
@@ -352,7 +345,7 @@ func HydrateLog(_type LogType, data []byte) (any, error) {
 		return nil, err
 	}
 
-	return reflect.ValueOf(payload).Elem().Interface(), nil
+	return reflect.ValueOf(payload).Elem().Interface().(LogPayload), nil
 }
 
 func ComputeIdempotencyHash(inputs any) string {
