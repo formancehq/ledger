@@ -95,14 +95,14 @@ func (ctrl *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q 
 	})
 }
 
-func (ctrl *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error) {
-	return tracing.Trace(ctx, "CreateTransaction", func(ctx context.Context) (*CreateTransactionResult, error) {
+func (ctrl *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+	return tracing.Trace(ctx, "CreateTransaction", func(ctx context.Context) (*ledger.CreatedTransaction, error) {
 		return ctrl.underlying.CreateTransaction(ctx, parameters)
 	})
 }
 
-func (ctrl *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error) {
-	return tracing.Trace(ctx, "RevertTransaction", func(ctx context.Context) (*RevertTransactionResult, error) {
+func (ctrl *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
+	return tracing.Trace(ctx, "RevertTransaction", func(ctx context.Context) (*ledger.RevertedTransaction, error) {
 		return ctrl.underlying.RevertTransaction(ctx, parameters)
 	})
 }
