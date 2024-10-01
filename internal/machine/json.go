@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 type ValueJSON struct {
@@ -18,12 +18,12 @@ func NewValueFromString(typ Type, data string) (Value, error) {
 	switch typ {
 	case TypeAccount:
 		if err := ValidateAccountAddress(AccountAddress(data)); err != nil {
-			return nil, errors.Wrapf(err, "value %s", data)
+			return nil, fmt.Errorf("value %s: %w", data, err)
 		}
 		value = AccountAddress(data)
 	case TypeAsset:
 		if err := ValidateAsset(Asset(data)); err != nil {
-			return nil, errors.Wrapf(err, "value %s", data)
+			return nil, fmt.Errorf("value %s: %v", data, err)
 		}
 		value = Asset(data)
 	case TypeNumber:
@@ -46,7 +46,7 @@ func NewValueFromString(typ Type, data string) (Value, error) {
 			Amount: mi,
 		}
 		if err := ParseMonetary(mon); err != nil {
-			return nil, errors.Wrapf(err, "value %s", mon.String())
+			return nil, fmt.Errorf("value %s: %w", mon.String(), err)
 		}
 		value = mon
 	case TypePortion:

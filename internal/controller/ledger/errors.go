@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var ErrNotFound = postgres.ErrNotFound

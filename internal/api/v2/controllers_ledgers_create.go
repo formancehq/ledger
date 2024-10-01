@@ -9,9 +9,9 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/go-chi/chi/v5"
-	"github.com/pkg/errors"
 )
 
 func createLedger(systemController system.Controller) http.HandlerFunc {

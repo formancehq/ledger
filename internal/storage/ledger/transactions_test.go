@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/go-libs/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/pkg/errors"
+	"errors"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/pointer"

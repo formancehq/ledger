@@ -3,6 +3,7 @@ package testserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/publish"
@@ -12,7 +13,6 @@ import (
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	"github.com/pkg/errors"
 	"github.com/xeipuuv/gojsonschema"
 	"math/big"
 	"reflect"

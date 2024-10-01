@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"github.com/pkg/errors"
+	"errors"
 
 	"github.com/formancehq/ledger/internal/controller/system"
 

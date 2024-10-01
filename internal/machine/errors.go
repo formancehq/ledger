@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var (

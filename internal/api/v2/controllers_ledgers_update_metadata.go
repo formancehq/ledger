@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
-	"github.com/pkg/errors"
 )
 
 func updateLedgerMetadata(systemController systemcontroller.Controller) http.HandlerFunc {

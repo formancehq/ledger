@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"net/http"
 
@@ -20,7 +21,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/ballast"
 	"github.com/formancehq/go-libs/service"

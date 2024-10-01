@@ -7,11 +7,11 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/go-chi/chi/v5"
-	"github.com/pkg/errors"
 )
 
 func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {

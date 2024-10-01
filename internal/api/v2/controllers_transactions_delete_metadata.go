@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"errors"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/api"
 )

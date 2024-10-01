@@ -7,10 +7,10 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
+	"errors"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 	"github.com/formancehq/ledger/internal/machine/script/parser"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
-	"github.com/pkg/errors"
 )
 
 type parseVisitor struct {
@@ -526,8 +526,7 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 			addr, err = p.AllocateResource(program.Variable{Typ: ty, Name: name})
 			if err != nil {
 				return &CompileError{
-					Msg: errors.Wrap(err,
-						"allocating variable resource").Error(),
+					Msg: fmt.Errorf("allocating variable resource: %w", err).Error(),
 				}
 			}
 			p.varIdx[name] = *addr

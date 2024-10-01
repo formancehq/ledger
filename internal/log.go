@@ -13,8 +13,8 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
+	"errors"
 	"github.com/formancehq/go-libs/metadata"
-	"github.com/pkg/errors"
 )
 
 const (

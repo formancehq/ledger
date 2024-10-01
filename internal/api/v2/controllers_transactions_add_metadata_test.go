@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/pkg/errors"
+	"errors"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 

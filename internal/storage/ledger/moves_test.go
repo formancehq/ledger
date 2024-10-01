@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"errors"
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/logging"
@@ -17,7 +18,6 @@ import (
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 

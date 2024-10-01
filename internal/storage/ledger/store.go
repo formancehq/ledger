@@ -8,12 +8,12 @@ import (
 
 	"github.com/formancehq/ledger/internal/tracing"
 
+	"errors"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -52,7 +52,7 @@ func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
 		return bucket.New(s.db, s.ledger.Bucket).IsUpToDate(ctx)
 	})
 	if err != nil {
-		return false, errors.Wrap(err, "failed to check if bucket is up to date")
+		return false, fmt.Errorf("failed to check if bucket is up to date: %w", err)
 	}
 	if !bucketUpToDate {
 		logging.FromContext(ctx).Errorf("bucket %s is not up to date", s.ledger.Bucket)

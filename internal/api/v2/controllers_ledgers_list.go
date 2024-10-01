@@ -3,12 +3,12 @@ package v2
 import (
 	"net/http"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/pointer"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/controller/system"
-	"github.com/pkg/errors"
 )
 
 func listLedgers(b system.Controller) http.HandlerFunc {

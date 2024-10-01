@@ -5,7 +5,7 @@ import (
 	"github.com/formancehq/ledger/pkg/assets"
 	"math/big"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 type Posting struct {

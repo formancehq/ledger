@@ -7,8 +7,8 @@ import (
 
 	"github.com/formancehq/go-libs/platform/postgres"
 
+	"errors"
 	"github.com/formancehq/go-libs/migrations"
-	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
 

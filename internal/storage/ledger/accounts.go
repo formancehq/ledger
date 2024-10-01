@@ -9,11 +9,11 @@ import (
 	. "github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/tracing"
 
+	"errors"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -94,7 +94,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 			return nil
 		}); err != nil {
-			return ret.Err(errors.Wrap(err, "failed to check filters"))
+			return ret.Err(fmt.Errorf("failed to check filters: %w", err))
 		}
 	}
 
@@ -189,7 +189,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			panic("unreachable")
 		}))
 		if err != nil {
-			return ret.Err(errors.Wrap(err, "evaluating filters"))
+			return ret.Err(fmt.Errorf("evaluating filters: %w", err))
 		}
 		if len(args) > 0 {
 			ret = ret.Where(where, args...)
@@ -359,7 +359,7 @@ func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (boo
 			return nil
 		})
 		if err != nil && !errors.Is(err, rollbacked) {
-			return false, errors.Wrap(err, "upserting account")
+			return false, fmt.Errorf("upserting account: %w", err)
 		}
 
 		return upserted.Upserted, nil
@@ -370,7 +370,7 @@ func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (boo
 		)
 	})
 	if err != nil && !errors.Is(err, rollbacked) {
-		return false, errors.Wrap(err, "failed to upsert account")
+		return false, fmt.Errorf("failed to upsert account: %w", err)
 	} else if upserted {
 		logging.FromContext(ctx).Debugf("account upserted")
 	} else {

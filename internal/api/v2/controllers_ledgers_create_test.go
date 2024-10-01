@@ -9,10 +9,10 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/logging"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/auth"
 	"github.com/google/uuid"
