@@ -11,21 +11,21 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 )
 
-func runTx[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, *OUTPUT, error)) (*OUTPUT, error) {
+func runTx[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
 	var (
-		log    *ledger.Log
-		output *OUTPUT
+		payload *OUTPUT
 	)
 	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
-		log, output, err = fn(ctx, tx, parameters.Input)
+		payload, err = fn(ctx, tx, parameters.Input)
 		if err != nil {
 			return false, err
 		}
+		log := ledger.NewLog(*payload)
 		log.IdempotencyKey = parameters.IdempotencyKey
 		log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
 
 		_, err = tracing.TraceWithLatency(ctx, "InsertLog", func(ctx context.Context) (*struct{}, error) {
-			return nil, tx.InsertLog(ctx, log)
+			return nil, tx.InsertLog(ctx, &log)
 		})
 		if err != nil {
 			return false, fmt.Errorf("failed to insert log: %w", err)
@@ -38,14 +38,14 @@ func runTx[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Param
 
 		return true, nil
 	})
-	return output, err
+	return payload, err
 }
 
 // todo: handle too many clients error
 // notes(gfyrag): how?
 // By retrying? Is the server already overloaded? Add a limit on the retries number?
 // Ask the client to retry later?
-func forgeLog[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, *OUTPUT, error)) (*OUTPUT, error) {
+func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
 		log, err := store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 		if err != nil && !errors.Is(err, postgres.ErrNotFound) {

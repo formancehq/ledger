@@ -54,7 +54,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	sqlTX.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-			return x.(*ledger.Log).Type == ledger.NewTransactionLogType
+			return x.(*ledger.Log).Type == ledger.NewLogType
 		})).
 		DoAndReturn(func(ctx context.Context, x any) any {
 			return x
