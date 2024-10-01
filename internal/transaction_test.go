@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReverseTransaction(t *testing.T) {
+func TestTransactionsReverse(t *testing.T) {
 	tx := NewTransaction().
 		WithPostings(
 			NewPosting("world", "users:001", "COIN", big.NewInt(100)),
@@ -27,4 +27,34 @@ func TestReverseTransaction(t *testing.T) {
 	reversed.Timestamp = time.Time{}
 	expected.Timestamp = time.Time{}
 	require.Equal(t, expected, reversed)
+}
+
+func TestTransactionsVolumesUpdate(t *testing.T) {
+	tx := NewTransaction().
+		WithPostings(
+			NewPosting("world", "users:001", "COIN", big.NewInt(100)),
+			NewPosting("users:001", "payments:001", "COIN", big.NewInt(100)),
+			NewPosting("payments:001", "world", "COIN", big.NewInt(100)),
+		)
+
+	require.Equal(t, []AccountsVolumes{
+		{
+			Account: "world",
+			Asset:   "COIN",
+			Input:   big.NewInt(100),
+			Output:  big.NewInt(100),
+		},
+		{
+			Account: "users:001",
+			Asset:   "COIN",
+			Input:   big.NewInt(100),
+			Output:  big.NewInt(100),
+		},
+		{
+			Account: "payments:001",
+			Asset:   "COIN",
+			Input:   big.NewInt(100),
+			Output:  big.NewInt(100),
+		},
+	}, tx.VolumeUpdates())
 }

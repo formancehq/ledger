@@ -65,7 +65,6 @@ func MustNewWithDefault(name string) Ledger {
 }
 
 const (
-	// todo: add feature to completely disable logs
 	FeatureMovesHistory = "MOVES_HISTORY"
 	// todo: depends on FeatureMovesHistory (dependency should be checked)
 	FeatureMovesHistoryPostCommitEffectiveVolumes = "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES"
