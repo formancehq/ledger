@@ -66,7 +66,7 @@ func (mr *MockListenerMockRecorder) DeletedMetadata(ctx, ledger, targetType, tar
 }
 
 // RevertedTransaction mocks base method.
-func (m *MockListener) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *ledger.Transaction) {
+func (m *MockListener) RevertedTransaction(ctx context.Context, ledger string, reverted, revert ledger.Transaction) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "RevertedTransaction", ctx, ledger, reverted, revert)
 }
