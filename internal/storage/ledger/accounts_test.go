@@ -327,29 +327,23 @@ func TestGetAccount(t *testing.T) {
 		}, *account)
 	})
 
-	// todo: sometimes failing, need to debug
-	//t.Run("find account using pit", func(t *testing.T) {
-	//	t.Parallel()
-	//
-	//	account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now))
-	//	require.NoError(t, err)
-	//	require.Equal(t, ledger.Account{
-	//		Account: ledger.Account{
-	//			Address:    "multi",
-	//			Metadata:   metadata.Metadata{},
-	//			FirstUsage: now.Add(-time.Minute),
-	//		},
-	//		AggregatedAccountVolumes:          map[string]ledger.AggregatedAccountVolumes{},
-	//		EffectiveVolumes: map[string]ledger.AggregatedAccountVolumes{},
-	//	}, *account)
-	//})
+	t.Run("find account using pit", func(t *testing.T) {
+		t.Parallel()
+
+		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now))
+		require.NoError(t, err)
+		require.Equal(t, ledger.Account{
+			Address:    "multi",
+			Metadata:   metadata.Metadata{},
+			FirstUsage: now.Add(-time.Minute),
+		}, *account)
+	})
 
 	t.Run("not existent account", func(t *testing.T) {
 		t.Parallel()
 		_, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("account_not_existing"))
 		require.Error(t, err)
 	})
-
 }
 
 func TestGetAccountWithVolumes(t *testing.T) {
