@@ -11,6 +11,6 @@ import (
 type Listener interface {
 	CommittedTransactions(ctx context.Context, ledger string, res ledger.Transaction, accountMetadata ledger.AccountMetadata)
 	SavedMetadata(ctx context.Context, ledger string, targetType, id string, metadata metadata.Metadata)
-	RevertedTransaction(ctx context.Context, ledger string, reverted, revert *ledger.Transaction)
+	RevertedTransaction(ctx context.Context, ledger string, reverted, revert ledger.Transaction)
 	DeletedMetadata(ctx context.Context, ledger string, targetType string, targetID any, key string)
 }

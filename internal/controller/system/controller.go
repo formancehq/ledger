@@ -39,16 +39,20 @@ func (c *DefaultController) GetLedgerController(ctx context.Context, name string
 			return nil, err
 		}
 
-		return ledgercontroller.NewControllerWithCache(
+		var ctrl ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
-			ledgercontroller.NewDefaultController(
-				*l,
-				store,
-				c.listener,
-				ledgercontroller.NewDefaultMachineFactory(c.compiler),
-			),
-			c.registry,
-		), nil
+			store,
+			c.listener,
+			ledgercontroller.NewDefaultMachineFactory(c.compiler),
+		)
+
+		// add cache regarding database state
+		ctrl = ledgercontroller.NewControllerWithCache(*l, ctrl, c.registry)
+
+		// add traces
+		ctrl = ledgercontroller.NewControllerWithTraces(ctrl)
+
+		return ctrl, nil
 	})
 }
 

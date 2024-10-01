@@ -44,12 +44,12 @@ func (lis *LedgerListener) SavedMetadata(ctx context.Context, l string, targetTy
 		}))
 }
 
-func (lis *LedgerListener) RevertedTransaction(ctx context.Context, l string, reverted, revert *ledger.Transaction) {
+func (lis *LedgerListener) RevertedTransaction(ctx context.Context, l string, reverted, revert ledger.Transaction) {
 	lis.publish(ctx, events.EventTypeRevertedTransaction,
 		newEventRevertedTransaction(RevertedTransaction{
 			Ledger:              l,
-			RevertedTransaction: *reverted,
-			RevertTransaction:   *revert,
+			RevertedTransaction: reverted,
+			RevertTransaction:   revert,
 		}))
 }
 
