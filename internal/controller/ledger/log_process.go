@@ -2,12 +2,13 @@ package ledger
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/pkg/errors"
 )
 
 func runTx[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, *OUTPUT, error)) (*OUTPUT, error) {
@@ -27,7 +28,7 @@ func runTx[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Param
 			return nil, tx.InsertLog(ctx, log)
 		})
 		if err != nil {
-			return false, errors.Wrap(err, "failed to insert log")
+			return false, fmt.Errorf("failed to insert log: %w", err)
 		}
 		logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
 
@@ -79,7 +80,7 @@ func forgeLog[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Pa
 
 				return pointer.For(log.Data.(OUTPUT)), nil
 			default:
-				return nil, errors.Wrap(err, "unexpected error while forging log")
+				return nil, fmt.Errorf("unexpected error while forging log: %w", err)
 			}
 		}
 

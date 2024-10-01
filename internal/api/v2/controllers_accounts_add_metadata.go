@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"net/url"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/go-chi/chi/v5"
-	"github.com/pkg/errors"
 )
 
 func addAccountMetadata(w http.ResponseWriter, r *http.Request) {

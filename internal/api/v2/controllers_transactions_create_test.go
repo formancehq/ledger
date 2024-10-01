@@ -10,11 +10,11 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

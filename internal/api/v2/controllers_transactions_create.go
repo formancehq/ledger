@@ -6,9 +6,9 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/pkg/errors"
 )
 
 func createTransaction(w http.ResponseWriter, r *http.Request) {

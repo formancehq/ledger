@@ -8,12 +8,12 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/pkg/errors"
 )
 
 type Script struct {
@@ -38,11 +38,11 @@ func (s Script) ToCore() (*ledgercontroller.Script, error) {
 		// Is a monetary
 		var asset string
 		if err := json.Unmarshal(m["asset"], &asset); err != nil {
-			return nil, errors.Wrap(err, "unmarshalling asset")
+			return nil, fmt.Errorf("unmarshalling asset: %w", err)
 		}
 		amount := &big.Int{}
 		if err := json.Unmarshal(m["amount"], amount); err != nil {
-			return nil, errors.Wrap(err, "unmarshalling amount")
+			return nil, fmt.Errorf("unmarshalling amount: %w", err)
 		}
 
 		s.Script.Vars[k] = fmt.Sprintf("%s %s", asset, amount)

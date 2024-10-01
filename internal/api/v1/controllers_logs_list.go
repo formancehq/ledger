@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/formancehq/go-libs/api"
@@ -8,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/query"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 )
 
 func buildGetLogsQuery(r *http.Request) (query.Builder, error) {
@@ -42,7 +42,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
-			api.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
+			api.BadRequest(w, ErrValidation, fmt.Errorf("invalid '%s' query param: %w", QueryKeyCursor, err))
 			return
 		}
 	} else {

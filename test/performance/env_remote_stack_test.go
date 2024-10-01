@@ -4,6 +4,7 @@ package performance_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -13,7 +14,6 @@ import (
 	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,7 +72,7 @@ func (r *RemoteStackEnv) Executor() TransactionExecutor {
 			Ledger: r.ledger.Name,
 		})
 		if err != nil {
-			return nil, errors.Wrap(err, "creating transaction")
+			return nil, fmt.Errorf("creating transaction: %w", err)
 		}
 
 		return &ledger.Transaction{

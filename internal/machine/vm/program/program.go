@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/internal/machine"
-
-	"github.com/pkg/errors"
 )
 
 type Program struct {
@@ -48,23 +46,23 @@ func (p *Program) ParseVariables(vars map[string]machine.Value) (map[string]mach
 				switch val.GetType() {
 				case machine.TypeAccount:
 					if err := machine.ValidateAccountAddress(val.(machine.AccountAddress)); err != nil {
-						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, string(val.(machine.AccountAddress)))
+						return nil, fmt.Errorf("invalid variable $%s value '%s': %w",
+							variable.Name, string(val.(machine.AccountAddress)), err)
 					}
 				case machine.TypeAsset:
 					if err := machine.ValidateAsset(val.(machine.Asset)); err != nil {
-						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, string(val.(machine.Asset)))
+						return nil, fmt.Errorf("invalid variable $%s value '%s': %w",
+							variable.Name, string(val.(machine.Asset)), err)
 					}
 				case machine.TypeMonetary:
 					if err := machine.ParseMonetary(val.(machine.Monetary)); err != nil {
-						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, val.(machine.Monetary).String())
+						return nil, fmt.Errorf("invalid variable $%s value '%s': %w",
+							variable.Name, val.(machine.Monetary).String(), err)
 					}
 				case machine.TypePortion:
 					if err := machine.ValidatePortionSpecific(val.(machine.Portion)); err != nil {
-						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, val.(machine.Portion).String())
+						return nil, fmt.Errorf("invalid variable $%s value '%s': %w",
+							variable.Name, val.(machine.Portion).String(), err)
 					}
 				case machine.TypeString:
 				case machine.TypeNumber:

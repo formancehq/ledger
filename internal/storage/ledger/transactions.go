@@ -11,10 +11,10 @@ import (
 
 	"github.com/formancehq/ledger/internal/tracing"
 
+	"errors"
 	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -255,19 +255,19 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			Metadata:      make(metadata.Metadata),
 		})
 		if err != nil {
-			return errors.Wrap(err, "upserting account")
+			return fmt.Errorf("upserting account: %w", err)
 		}
 	}
 
 	postCommitVolumes, err := s.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
-		return errors.Wrap(err, "failed to update balances")
+		return fmt.Errorf("failed to update balances: %w", err)
 	}
 	tx.PostCommitVolumes = postCommitVolumes.Copy()
 
 	err = s.InsertTransaction(ctx, tx)
 	if err != nil {
-		return errors.Wrap(err, "failed to insert transaction")
+		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
@@ -305,7 +305,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		slices.Reverse(moves)
 
 		if err := s.InsertMoves(ctx, moves...); err != nil {
-			return errors.Wrap(err, "failed to insert moves")
+			return fmt.Errorf("failed to insert moves: %w", err)
 		}
 
 		if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {

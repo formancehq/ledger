@@ -7,10 +7,10 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/pkg/errors"
 )
 
 func importLogs(w http.ResponseWriter, r *http.Request) {

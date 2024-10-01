@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/internal/tracing"
 
+	"errors"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 )
 
 // Log override ledger.Log to be able to properly read/write payload which is jsonb
@@ -29,7 +29,7 @@ type Log struct {
 func (log Log) toCore() ledger.Log {
 	payload, err := ledger.HydrateLog(log.Type, log.Data)
 	if err != nil {
-		panic(errors.Wrap(err, "hydrating log data"))
+		panic(fmt.Errorf("hydrating log data: %w", err))
 	}
 	log.Log.Data = payload
 
@@ -63,7 +63,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 			Scan(ctx)
 		if err != nil {
 			if !errors.Is(err, sql.ErrNoRows) {
-				return errors.Wrap(err, "retrieving last log")
+				return fmt.Errorf("retrieving last log: %w", err)
 			}
 			log.ComputeHash(nil)
 		} else {
@@ -74,7 +74,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	_, err := tracing.TraceWithLatency(ctx, "InsertLog", tracing.NoResult(func(ctx context.Context) error {
 		data, err := json.Marshal(log.Data)
 		if err != nil {
-			return errors.Wrap(err, "failed to marshal log data")
+			return fmt.Errorf("failed to marshal log data: %w", err)
 		}
 
 		_, err = s.db.
@@ -96,7 +96,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 					return ledgercontroller.NewErrIdempotencyKeyConflict(log.IdempotencyKey)
 				}
 			default:
-				return errors.Wrap(err, "inserting log")
+				return fmt.Errorf("inserting log: %w", err)
 			}
 		}
 

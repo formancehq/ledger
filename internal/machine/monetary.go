@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 type Monetary struct {
@@ -28,13 +28,13 @@ var Zero = NewMonetaryInt(0)
 
 func ParseMonetary(mon Monetary) error {
 	if err := ValidateAsset(mon.Asset); err != nil {
-		return errors.Wrapf(err, "asset '%s'", mon.Asset)
+		return fmt.Errorf("asset '%s': %w", mon.Asset, err)
 	}
 	if mon.Amount == nil {
-		return errors.Errorf("nil amount")
+		return fmt.Errorf("nil amount")
 	}
 	if mon.Amount.Ltz() {
-		return errors.Errorf("negative amount")
+		return fmt.Errorf("negative amount")
 	}
 	return nil
 }
