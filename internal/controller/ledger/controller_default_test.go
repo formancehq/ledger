@@ -24,10 +24,9 @@ func TestCreateTransaction(t *testing.T) {
 	store := NewMockStore(ctrl)
 	machine := NewMockMachine(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	sqlTX := NewMockTX(ctrl)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 
 	runScript := RunScript{}
 
@@ -61,9 +60,6 @@ func TestCreateTransaction(t *testing.T) {
 			return x
 		})
 
-	listener.EXPECT().
-		CommittedTransactions(gomock.Any(), "", gomock.Any(), ledger.AccountMetadata{})
-
 	_, err := l.CreateTransaction(context.Background(), Parameters[RunScript]{
 		Input: runScript,
 	})
@@ -76,10 +72,9 @@ func TestRevertTransaction(t *testing.T) {
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
 	sqlTX := NewMockTX(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 
 	store.EXPECT().
 		WithTX(gomock.Any(), nil, gomock.Any()).
@@ -102,11 +97,7 @@ func TestRevertTransaction(t *testing.T) {
 
 	sqlTX.EXPECT().
 		CommitTransaction(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, newTx *ledger.Transaction) error {
-			listener.EXPECT().
-				RevertedTransaction(gomock.Any(), "", txToRevert, *newTx)
-			return nil
-		})
+		Return(nil)
 
 	sqlTX.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
@@ -128,10 +119,9 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
 	sqlTX := NewMockTX(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 
 	store.EXPECT().
 		WithTX(gomock.Any(), nil, gomock.Any()).
@@ -153,9 +143,6 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		})).
 		Return(nil)
 
-	listener.EXPECT().
-		SavedMetadata(gomock.Any(), "", ledger.MetaTargetTypeTransaction, "1", m)
-
 	err := l.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
 		Input: SaveTransactionMetadata{
 			Metadata:      m,
@@ -171,10 +158,9 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
 	sqlTX := NewMockTX(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 
 	store.EXPECT().
 		WithTX(gomock.Any(), nil, gomock.Any()).
@@ -193,9 +179,6 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		})).
 		Return(nil)
 
-	listener.EXPECT().
-		DeletedMetadata(gomock.Any(), "", ledger.MetaTargetTypeTransaction, "1", "foo")
-
 	err := l.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
 		Input: DeleteTransactionMetadata{
 			TransactionID: 1,
@@ -210,7 +193,6 @@ func TestListTransactions(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	cursor := &bunpaginate.Cursor[ledger.Transaction]{}
@@ -219,7 +201,7 @@ func TestListTransactions(t *testing.T) {
 		ListTransactions(gomock.Any(), query).
 		Return(cursor, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.ListTransactions(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, cursor, ret)
@@ -230,13 +212,12 @@ func TestCountAccounts(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	query := NewListAccountsQuery(NewPaginatedQueryOptions[PITFilterWithVolumes](PITFilterWithVolumes{}))
 	store.EXPECT().CountAccounts(gomock.Any(), query).Return(1, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	count, err := l.CountAccounts(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
@@ -247,7 +228,6 @@ func TestGetTransaction(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	tx := ledger.Transaction{}
@@ -256,7 +236,7 @@ func TestGetTransaction(t *testing.T) {
 		GetTransaction(gomock.Any(), query).
 		Return(&tx, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.GetTransaction(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, tx, *ret)
@@ -267,7 +247,6 @@ func TestGetAccount(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	account := ledger.Account{}
@@ -276,7 +255,7 @@ func TestGetAccount(t *testing.T) {
 		GetAccount(gomock.Any(), query).
 		Return(&account, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.GetAccount(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, account, *ret)
@@ -287,13 +266,12 @@ func TestCountTransactions(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	query := NewListTransactionsQuery(NewPaginatedQueryOptions[PITFilterWithVolumes](PITFilterWithVolumes{}))
 	store.EXPECT().CountTransactions(gomock.Any(), query).Return(1, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	count, err := l.CountTransactions(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
@@ -304,7 +282,6 @@ func TestListAccounts(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	cursor := &bunpaginate.Cursor[ledger.Account]{}
@@ -313,7 +290,7 @@ func TestListAccounts(t *testing.T) {
 		ListAccounts(gomock.Any(), query).
 		Return(cursor, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.ListAccounts(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, cursor, ret)
@@ -324,7 +301,6 @@ func TestGetAggregatedBalances(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	balancesByAssets := ledger.BalancesByAssets{}
@@ -333,7 +309,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 		GetAggregatedBalances(gomock.Any(), query).
 		Return(balancesByAssets, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.GetAggregatedBalances(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, balancesByAssets, ret)
@@ -344,7 +320,6 @@ func TestListLogs(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	cursor := &bunpaginate.Cursor[ledger.Log]{}
@@ -353,7 +328,7 @@ func TestListLogs(t *testing.T) {
 		ListLogs(gomock.Any(), query).
 		Return(cursor, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.ListLogs(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, cursor, ret)
@@ -364,7 +339,6 @@ func TestGetVolumesWithBalances(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
@@ -373,7 +347,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 		GetVolumesWithBalances(gomock.Any(), query).
 		Return(balancesByAssets, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.GetVolumesWithBalances(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, balancesByAssets, ret)
@@ -384,7 +358,6 @@ func TestGetMigrationsInfo(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	migrationsInfo := make([]migrations.Info, 0)
@@ -392,7 +365,7 @@ func TestGetMigrationsInfo(t *testing.T) {
 		GetMigrationsInfo(gomock.Any()).
 		Return(migrationsInfo, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.GetMigrationsInfo(ctx)
 	require.NoError(t, err)
 	require.Equal(t, migrationsInfo, ret)
@@ -403,14 +376,13 @@ func TestIsDatabaseUpToDate(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	machineFactory := NewMockMachineFactory(ctrl)
-	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
 	store.EXPECT().
 		IsUpToDate(gomock.Any()).
 		Return(true, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
+	l := NewDefaultController(ledger.Ledger{}, store, machineFactory)
 	ret, err := l.IsDatabaseUpToDate(ctx)
 	require.NoError(t, err)
 	require.True(t, ret)

@@ -32,31 +32,35 @@ type DefaultController struct {
 	registry *ledgercontroller.StateRegistry
 }
 
-func (c *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
+func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
 	return tracing.Trace(ctx, "GetLedgerController", func(ctx context.Context) (ledgercontroller.Controller, error) {
-		store, l, err := c.store.OpenLedger(ctx, name)
+		store, l, err := ctrl.store.OpenLedger(ctx, name)
 		if err != nil {
 			return nil, err
 		}
 
-		var ctrl ledgercontroller.Controller = ledgercontroller.NewDefaultController(
+		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			c.listener,
-			ledgercontroller.NewDefaultMachineFactory(c.compiler),
+			ledgercontroller.NewDefaultMachineFactory(ctrl.compiler),
 		)
 
-		// add cache regarding database state
-		ctrl = ledgercontroller.NewControllerWithCache(*l, ctrl, c.registry)
+		// Add cache regarding database state
+		ledgerController = ledgercontroller.NewControllerWithCache(*l, ledgerController, ctrl.registry)
 
-		// add traces
-		ctrl = ledgercontroller.NewControllerWithTraces(ctrl)
+		// Add traces
+		ledgerController = ledgercontroller.NewControllerWithTraces(ledgerController)
 
-		return ctrl, nil
+		// Add events listener
+		if ctrl.listener != nil {
+			ledgerController = ledgercontroller.NewControllerWithEvents(*l, ledgerController, ctrl.listener)
+		}
+
+		return ledgerController, nil
 	})
 }
 
-func (c *DefaultController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
+func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
 	return tracing.SkipResult(tracing.Trace(ctx, "CreateLedger", tracing.NoResult(func(ctx context.Context) error {
 		configuration.SetDefaults()
 		l, err := ledger.New(name, configuration)
@@ -64,31 +68,31 @@ func (c *DefaultController) CreateLedger(ctx context.Context, name string, confi
 			return err
 		}
 
-		return c.store.CreateLedger(ctx, l)
+		return ctrl.store.CreateLedger(ctx, l)
 	})))
 }
 
-func (c *DefaultController) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
+func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	return tracing.Trace(ctx, "GetLedger", func(ctx context.Context) (*ledger.Ledger, error) {
-		return c.store.GetLedger(ctx, name)
+		return ctrl.store.GetLedger(ctx, name)
 	})
 }
 
-func (c *DefaultController) ListLedgers(ctx context.Context, query ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context, query ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return tracing.Trace(ctx, "ListLedgers", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Ledger], error) {
-		return c.store.ListLedgers(ctx, query)
+		return ctrl.store.ListLedgers(ctx, query)
 	})
 }
 
-func (c *DefaultController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
+func (ctrl *DefaultController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, "UpdateLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return c.store.UpdateLedgerMetadata(ctx, name, m)
+		return ctrl.store.UpdateLedgerMetadata(ctx, name, m)
 	})))
 }
 
-func (c *DefaultController) DeleteLedgerMetadata(ctx context.Context, param string, key string) error {
+func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param string, key string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return c.store.DeleteLedgerMetadata(ctx, param, key)
+		return ctrl.store.DeleteLedgerMetadata(ctx, param, key)
 	})))
 }
 

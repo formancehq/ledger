@@ -21,7 +21,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(
+	ret, err := l.RevertTransaction(
 		r.Context(),
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "disableChecks"),
@@ -43,5 +43,5 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Created(w, mapTransactionToV1(*tx))
+	api.Created(w, mapTransactionToV1(ret.ReversedTransaction))
 }

@@ -44,7 +44,7 @@ func (e *CoreEnv) Executor() TransactionExecutor {
 			return nil, err
 		}
 
-		return ret, nil
+		return &ret.Transaction, nil
 	})
 }
 
@@ -84,7 +84,7 @@ func (f *CoreEnvFactory) Create(ctx context.Context, b *testing.B, l ledger.Ledg
 	)
 
 	return &CoreEnv{
-		writer:     ledgercontroller.NewDefaultController(l, ledgerStore, nil, machineFactory),
+		writer:     ledgercontroller.NewDefaultController(l, ledgerStore, machineFactory),
 		bunDB:      bunDB,
 		pgDatabase: pgDatabase,
 	}

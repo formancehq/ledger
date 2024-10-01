@@ -86,7 +86,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 			}
 			rs := req.ToRunScript(false)
 
-			tx, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
+			createTransactionResult, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
 				DryRun:         false,
 				IdempotencyKey: element.IdempotencyKey,
 				Input: *rs,
@@ -115,7 +115,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 				}
 			} else {
 				ret = append(ret, Result{
-					Data:         tx,
+					Data:         createTransactionResult.Transaction,
 					ResponseType: element.Action,
 				})
 			}
@@ -187,7 +187,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			tx, err := l.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
+			revertTransactionResult, err := l.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 				DryRun:         false,
 				IdempotencyKey: element.IdempotencyKey,
 				Input: ledgercontroller.RevertTransaction{
@@ -210,7 +210,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 				}
 			} else {
 				ret = append(ret, Result{
-					Data:         tx,
+					Data:         revertTransactionResult.ReversedTransaction,
 					ResponseType: element.Action,
 				})
 			}
