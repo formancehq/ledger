@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/query"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
@@ -77,8 +76,10 @@ func TestGetLogs(t *testing.T) {
 
 			expectedCursor := bunpaginate.Cursor[ledger.Log]{
 				Data: []ledger.Log{
-					ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{}).
-						ChainLog(nil),
+					ledger.NewTransactionLog(ledger.CreatedTransaction{
+						Transaction: ledger.NewTransaction(),
+						AccountMetadata: ledger.AccountMetadata{},
+					}).ChainLog(nil),
 				},
 			}
 

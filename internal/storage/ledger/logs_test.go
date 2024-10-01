@@ -17,7 +17,6 @@ import (
 
 	"github.com/formancehq/go-libs/logging"
 
-	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
@@ -31,7 +30,10 @@ func TestInsertLog(t *testing.T) {
 
 	t.Run("duplicate IK", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
-		logTx := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{}).
+		logTx := ledger.NewTransactionLog(ledger.CreatedTransaction{
+			Transaction:     ledger.NewTransaction(),
+			AccountMetadata: ledger.AccountMetadata{},
+		}).
 			WithIdempotencyKey("foo")
 
 		err := store.InsertLog(ctx, &logTx)
@@ -41,7 +43,10 @@ func TestInsertLog(t *testing.T) {
 		require.NotZero(t, logTx.Hash)
 
 		// Create a new log with the same IK as previous should fail
-		logTx = ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{}).
+		logTx = ledger.NewTransactionLog(ledger.CreatedTransaction{
+			Transaction:     ledger.NewTransaction(),
+			AccountMetadata: ledger.AccountMetadata{},
+		}).
 			WithIdempotencyKey("foo")
 		err = store.InsertLog(ctx, &logTx)
 		require.Error(t, err)
@@ -62,7 +67,10 @@ func TestInsertLog(t *testing.T) {
 				}()
 				store := store.WithDB(tx)
 
-				logTx := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
+				logTx := ledger.NewTransactionLog(ledger.CreatedTransaction{
+					Transaction:     ledger.NewTransaction(),
+					AccountMetadata: ledger.AccountMetadata{},
+				})
 				err = store.InsertLog(ctx, &logTx)
 				if err != nil {
 					return err
@@ -98,11 +106,13 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	logTx := ledger.NewTransactionLog(
-		ledger.NewTransaction().
-			WithPostings(
-				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-			),
-		map[string]metadata.Metadata{},
+		ledger.CreatedTransaction{
+			Transaction: ledger.NewTransaction().
+				WithPostings(
+					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+				),
+			AccountMetadata: ledger.AccountMetadata{},
+		},
 	)
 	log := logTx.WithIdempotencyKey("test")
 	err := store.InsertLog(ctx, &log)
@@ -121,7 +131,10 @@ func TestGetLogs(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	for i := 1; i <= 3; i++ {
-		newLog := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
+		newLog := ledger.NewTransactionLog(ledger.CreatedTransaction{
+			Transaction:     ledger.NewTransaction(),
+			AccountMetadata: ledger.AccountMetadata{},
+		})
 		newLog.Date = now.Add(-time.Duration(i) * time.Hour)
 
 		err := store.InsertLog(ctx, &newLog)

@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
@@ -46,7 +45,10 @@ func TestLogsExport(t *testing.T) {
 				tc.expectStatusCode = http.StatusOK
 			}
 
-			log := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
+			log := ledger.NewTransactionLog(ledger.CreatedTransaction{
+				Transaction: ledger.NewTransaction(),
+				AccountMetadata: ledger.AccountMetadata{},
+			})
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			ledgerController.EXPECT().

@@ -11,7 +11,6 @@ import (
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -47,7 +46,10 @@ func TestLogsImport(t *testing.T) {
 				tc.expectStatusCode = http.StatusNoContent
 			}
 
-			log := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
+			log := ledger.NewTransactionLog(ledger.CreatedTransaction{
+				Transaction:     ledger.NewTransaction(),
+				AccountMetadata: ledger.AccountMetadata{},
+			})
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			ledgerController.EXPECT().

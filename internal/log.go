@@ -201,23 +201,17 @@ func (p CreatedTransaction) hashValue() any {
 
 var _ hashValuer = (*CreatedTransaction)(nil)
 
-func NewTransactionLog(tx Transaction, accountMetadata AccountMetadata) Log {
-	if accountMetadata == nil {
-		accountMetadata = AccountMetadata{}
-	}
-	return NewLog(NewTransactionLogType, CreatedTransaction{
-		Transaction:     tx,
-		AccountMetadata: accountMetadata,
-	})
+func NewTransactionLog(createdTransaction CreatedTransaction) Log {
+	return NewLog(NewTransactionLogType, createdTransaction)
 }
 
-type SetMetadata struct {
+type SavedMetadata struct {
 	TargetType string            `json:"targetType"`
 	TargetID   any               `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func (s *SetMetadata) UnmarshalJSON(data []byte) error {
+func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string            `json:"targetType"`
 		TargetID   json.RawMessage   `json:"targetId"`
@@ -243,7 +237,7 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*s = SetMetadata{
+	*s = SavedMetadata{
 		TargetType: x.TargetType,
 		TargetID:   id,
 		Metadata:   x.Metadata,
@@ -251,20 +245,12 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataOnAccountLog(account string, metadata metadata.Metadata) Log {
-	return NewLog(SetMetadataLogType, SetMetadata{
-		TargetType: MetaTargetTypeAccount,
-		TargetID:   account,
-		Metadata:   metadata,
-	})
+func NewSetMetadataOnAccountLog(setMetadata SavedMetadata) Log {
+	return NewLog(SetMetadataLogType, setMetadata)
 }
 
-func NewSetMetadataOnTransactionLog(txID int, metadata metadata.Metadata) Log {
-	return NewLog(SetMetadataLogType, SetMetadata{
-		TargetType: MetaTargetTypeTransaction,
-		TargetID:   txID,
-		Metadata:   metadata,
-	})
+func NewSetMetadataOnTransactionLog(setMetadata SavedMetadata) Log {
+	return NewLog(SetMetadataLogType, setMetadata)
 }
 
 type DeletedMetadata struct {
@@ -353,7 +339,7 @@ func HydrateLog(_type LogType, data []byte) (any, error) {
 	case NewTransactionLogType:
 		payload = &CreatedTransaction{}
 	case SetMetadataLogType:
-		payload = &SetMetadata{}
+		payload = &SavedMetadata{}
 	case DeleteMetadataLogType:
 		payload = &DeletedMetadata{}
 	case RevertedTransactionLogType:
