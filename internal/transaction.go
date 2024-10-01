@@ -117,7 +117,6 @@ func (tx Transaction) InvolvedAccounts() []string {
 	return slices.Compact(ret)
 }
 
-// todo: add unit tests!
 func (tx Transaction) VolumeUpdates() []AccountsVolumes {
 	aggregatedVolumes := make(map[string]map[string][]Posting)
 	for _, posting := range tx.Postings {
