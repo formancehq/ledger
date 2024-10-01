@@ -434,8 +434,8 @@ func TestRun(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, m.ResolveBalances(context.Background(), tc.store))
 
-			result, err := Run(m, ledger.RunScript{
-				Script: ledger.Script{
+			result, err := Run(m, RunScript{
+				Script: Script{
 					Plain: tc.script,
 					Vars:  tc.vars,
 				},

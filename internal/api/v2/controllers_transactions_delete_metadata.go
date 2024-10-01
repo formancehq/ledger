@@ -25,7 +25,10 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 
 	metadataKey := chi.URLParam(r, "key")
 
-	if err := l.DeleteTransactionMetadata(r.Context(), getCommandParameters(r), int(txID), metadataKey); err != nil {
+	if err := l.DeleteTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.DeleteTransactionMetadata{
+		TransactionID: int(txID),
+		Key:           metadataKey,
+	})); err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)

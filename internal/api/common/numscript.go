@@ -1,7 +1,9 @@
-package ledger
+package common
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/internal"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"sort"
 	"strings"
 
@@ -13,7 +15,7 @@ type variable struct {
 	value string
 }
 
-func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunScript {
+func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool) ledgercontroller.RunScript {
 	sb := strings.Builder{}
 	monetaryToVars := map[string]variable{}
 	accountsToVars := map[string]variable{}
@@ -21,7 +23,7 @@ func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunSc
 	j := 0
 	for _, p := range txData.Postings {
 		if _, ok := accountsToVars[p.Source]; !ok {
-			if p.Source != WORLD {
+			if p.Source != ledger.WORLD {
 				accountsToVars[p.Source] = variable{
 					name:  fmt.Sprintf("va%d", i),
 					value: p.Source,
@@ -30,7 +32,7 @@ func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunSc
 			}
 		}
 		if _, ok := accountsToVars[p.Destination]; !ok {
-			if p.Destination != WORLD {
+			if p.Destination != ledger.WORLD {
 				accountsToVars[p.Destination] = variable{
 					name:  fmt.Sprintf("va%d", i),
 					value: p.Destination,
@@ -74,7 +76,7 @@ func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunSc
 			panic(fmt.Sprintf("monetary %s not found", m))
 		}
 		sb.WriteString(fmt.Sprintf("send $%s (\n", mon.name))
-		if p.Source == WORLD {
+		if p.Source == ledger.WORLD {
 			sb.WriteString("\tsource = @world\n")
 		} else {
 			src, ok := accountsToVars[p.Source]
@@ -87,7 +89,7 @@ func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunSc
 			}
 			sb.WriteString("\n")
 		}
-		if p.Destination == WORLD {
+		if p.Destination == ledger.WORLD {
 			sb.WriteString("\tdestination = @world\n")
 		} else {
 			dest, ok := accountsToVars[p.Destination]
@@ -111,8 +113,8 @@ func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunSc
 		txData.Metadata = metadata.Metadata{}
 	}
 
-	return RunScript{
-		Script: Script{
+	return ledgercontroller.RunScript{
+		Script: ledgercontroller.Script{
 			Plain: sb.String(),
 			Vars:  vars,
 		},

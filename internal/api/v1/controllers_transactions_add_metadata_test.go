@@ -50,7 +50,12 @@ func TestTransactionsAddMetadata(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				ledgerController.EXPECT().
-					SaveTransactionMetadata(gomock.Any(), ledgercontroller.Parameters{}, 0, testCase.body).
+					SaveTransactionMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
+						Input: ledgercontroller.SaveTransactionMetadata{
+							TransactionID: 0,
+							Metadata:      testCase.body.(metadata.Metadata),
+						},
+					}).
 					Return(nil)
 			}
 

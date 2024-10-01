@@ -66,14 +66,15 @@ func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgercon
 		WithPageSize(pageSize)), nil
 }
 
-func getCommandParameters(r *http.Request) ledgercontroller.Parameters {
+func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontroller.Parameters[INPUT] {
 	dryRunAsString := r.URL.Query().Get("preview")
 	dryRun := strings.ToUpper(dryRunAsString) == "YES" || strings.ToUpper(dryRunAsString) == "TRUE" || dryRunAsString == "1"
 
 	idempotencyKey := r.Header.Get("Idempotency-Key")
 
-	return ledgercontroller.Parameters{
+	return ledgercontroller.Parameters[INPUT]{
 		DryRun:         dryRun,
 		IdempotencyKey: idempotencyKey,
+		Input: input,
 	}
 }

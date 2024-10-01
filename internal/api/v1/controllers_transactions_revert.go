@@ -21,8 +21,14 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), int(txId),
-		api.QueryParamBool(r, "disableChecks"), false)
+	tx, err := l.RevertTransaction(
+		r.Context(),
+		getCommandParameters(r, ledgercontroller.RevertTransaction{
+			Force:           api.QueryParamBool(r, "disableChecks"),
+			AtEffectiveDate: false,
+			TransactionID:   int(txId),
+		}),
+	)
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):

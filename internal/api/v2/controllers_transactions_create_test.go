@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,7 @@ func TestTransactionCreate(t *testing.T) {
 	type testCase struct {
 		name                 string
 		expectedDryRun       bool
-		expectedRunScript    ledger.RunScript
+		expectedRunScript    ledgercontroller.RunScript
 		returnError          error
 		payload              any
 		expectedStatusCode   int
@@ -35,15 +36,15 @@ func TestTransactionCreate(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "using plain numscript",
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `XXX`,
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `XXX`,
 					Vars:  map[string]string{},
 				},
@@ -52,9 +53,9 @@ func TestTransactionCreate(t *testing.T) {
 		},
 		{
 			name: "using plain numscript with variables",
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `vars {
 						monetary $val
 					}
@@ -70,8 +71,8 @@ func TestTransactionCreate(t *testing.T) {
 				},
 			},
 			expectControllerCall: true,
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `vars {
 						monetary $val
 					}
@@ -89,9 +90,9 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "using plain numscript with variables (legacy format)",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `vars {
 						monetary $val
 					}
@@ -109,8 +110,8 @@ func TestTransactionCreate(t *testing.T) {
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `vars {
 						monetary $val
 					}
@@ -128,9 +129,9 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "using plain numscript and dry run",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `send (
 						source = @world
 						destination = @bank
@@ -138,8 +139,8 @@ func TestTransactionCreate(t *testing.T) {
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `send (
 						source = @world
 						destination = @bank
@@ -155,12 +156,12 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "using JSON postings",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
+			payload: TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
 			},
-			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -170,19 +171,19 @@ func TestTransactionCreate(t *testing.T) {
 			queryParams: url.Values{
 				"dryRun": []string{"true"},
 			},
-			payload: ledger.TransactionRequest{
+			payload: TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
 			},
 			expectedDryRun: true,
-			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
 		{
 			name: "no postings or script",
-			payload: ledger.TransactionRequest{
+			payload: TransactionRequest{
 				Metadata: map[string]string{},
 			},
 			expectedStatusCode: http.StatusBadRequest,
@@ -191,7 +192,7 @@ func TestTransactionCreate(t *testing.T) {
 		},
 		{
 			name: "postings and script",
-			payload: ledger.TransactionRequest{
+			payload: TransactionRequest{
 				Postings: ledger.Postings{
 					{
 						Source:      "world",
@@ -200,8 +201,8 @@ func TestTransactionCreate(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `
 						send [COIN 100] (
 						  source = @world
@@ -222,15 +223,15 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "with insufficient funds",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `XXX`,
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `XXX`,
 					Vars:  map[string]string{},
 				},
@@ -241,7 +242,7 @@ func TestTransactionCreate(t *testing.T) {
 		},
 		{
 			name: "using JSON postings and negative amount",
-			payload: ledger.TransactionRequest{
+			payload: TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
 				},
@@ -249,7 +250,7 @@ func TestTransactionCreate(t *testing.T) {
 			expectControllerCall: true,
 			expectedStatusCode:   http.StatusBadRequest,
 			expectedErrorCode:    ErrCompilationFailed,
-			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
 			), false),
 			returnError: &ledgercontroller.ErrInvalidVars{},
@@ -257,9 +258,9 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			expectControllerCall: true,
 			name:                 "numscript and negative amount",
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `send [COIN -100] (
 						source = @world
 						destination = @bob
@@ -269,8 +270,8 @@ func TestTransactionCreate(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  ErrCompilationFailed,
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `send [COIN -100] (
 						source = @world
 						destination = @bob
@@ -283,9 +284,9 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "numscript and compilation failed",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `send [COIN XXX] (
 						source = @world
 						destination = @bob
@@ -295,8 +296,8 @@ func TestTransactionCreate(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  ErrCompilationFailed,
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `send [COIN XXX] (
 						source = @world
 						destination = @bob
@@ -309,17 +310,17 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "numscript and no postings",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `vars {}`,
 					},
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  ErrNoPostings,
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `vars {}`,
 					Vars:  map[string]string{},
 				},
@@ -329,9 +330,9 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "numscript and metadata override",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `send [COIN 100] (
 						source = @world
 						destination = @bob
@@ -346,8 +347,8 @@ func TestTransactionCreate(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  ErrMetadataOverride,
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `send [COIN 100] (
 						source = @world
 						destination = @bob
@@ -365,9 +366,9 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "unexpected error",
 			expectControllerCall: true,
-			payload: ledger.TransactionRequest{
-				Script: ledger.ScriptV1{
-					Script: ledger.Script{
+			payload: TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{
 						Plain: `send [COIN 100] (
 						source = @world
 						destination = @bob
@@ -377,8 +378,8 @@ func TestTransactionCreate(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedErrorCode:  api.ErrorInternal,
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `send [COIN 100] (
 						source = @world
 						destination = @bob
@@ -405,9 +406,10 @@ func TestTransactionCreate(t *testing.T) {
 			if testCase.expectControllerCall {
 				testCase.expectedRunScript.Timestamp = time.Time{}
 				expect := ledgerController.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
 						DryRun: tc.expectedDryRun,
-					}, testCase.expectedRunScript)
+						Input: testCase.expectedRunScript,
+					})
 
 				if tc.returnError == nil {
 					expect.Return(pointer.For(expectedTx), nil)

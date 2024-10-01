@@ -384,7 +384,7 @@ func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) e
 			switch {
 			case errors.Is(err, postgres.ErrConstraintsFailed{}):
 				if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
-					return nil, ledgercontroller.NewErrReferenceConflict(tx.Reference)
+					return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
 				}
 			default:
 				return nil, err

@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/sha256"
 	"database/sql/driver"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/uptrace/bun"
@@ -355,4 +356,15 @@ func HydrateLog(_type LogType, data []byte) (any, error) {
 	}
 
 	return reflect.ValueOf(payload).Elem().Interface(), nil
+}
+
+func ComputeIdempotencyHash(inputs any) string {
+	digest := sha256.New()
+	enc := json.NewEncoder(digest)
+
+	if err := enc.Encode(inputs); err != nil {
+		panic(err)
+	}
+
+	return base64.URLEncoding.EncodeToString(digest.Sum(nil))
 }
