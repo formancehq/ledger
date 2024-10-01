@@ -145,27 +145,28 @@ func NewErrIdempotencyKeyConflict(ik string) ErrIdempotencyKeyConflict {
 	}
 }
 
-type ErrReferenceConflict struct {
+type ErrTransactionReferenceConflict struct {
 	reference string
 }
 
-func (e ErrReferenceConflict) Error() string {
+func (e ErrTransactionReferenceConflict) Error() string {
 	return fmt.Sprintf("duplicate reference %q", e.reference)
 }
 
-func (e ErrReferenceConflict) Is(err error) bool {
-	_, ok := err.(ErrReferenceConflict)
+func (e ErrTransactionReferenceConflict) Is(err error) bool {
+	_, ok := err.(ErrTransactionReferenceConflict)
 	return ok
 }
 
-func NewErrReferenceConflict(reference string) ErrReferenceConflict {
-	return ErrReferenceConflict{
+func NewErrTransactionReferenceConflict(reference string) ErrTransactionReferenceConflict {
+	return ErrTransactionReferenceConflict{
 		reference: reference,
 	}
 }
 
 type ErrInvalidVars = machine.ErrInvalidVars
 
+// ErrCompilationFailed is used for any errors returned by the numscript interpreter
 type ErrCompilationFailed struct {
 	err error
 }
@@ -185,6 +186,7 @@ func newErrCompilationFailed(err error) ErrCompilationFailed {
 	}
 }
 
+// ErrMetadataOverride is used when a metadata is defined at numscript level AND at the input level
 type ErrMetadataOverride struct {
 	key string
 }
@@ -201,5 +203,35 @@ func (e *ErrMetadataOverride) Is(err error) bool {
 func newErrMetadataOverride(key string) *ErrMetadataOverride {
 	return &ErrMetadataOverride{
 		key: key,
+	}
+}
+
+// ErrInvalidIdempotencyInput is used when a IK is used with an inputs different from the original one.
+// For example, try to use the same IK with a different numscript script will result with that error.
+type ErrInvalidIdempotencyInput struct {
+	idempotencyKey          string
+	expectedIdempotencyHash string
+	computedIdempotencyHash string
+}
+
+func (e ErrInvalidIdempotencyInput) Error() string {
+	return fmt.Sprintf(
+		"invalid idempotency hash when using idempotency key '%s', has computed '%s' but '%s' is stored",
+		e.idempotencyKey,
+		e.computedIdempotencyHash,
+		e.expectedIdempotencyHash,
+	)
+}
+
+func (e ErrInvalidIdempotencyInput) Is(err error) bool {
+	_, ok := err.(ErrInvalidIdempotencyInput)
+	return ok
+}
+
+func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, gotIdempotencyHash string) ErrInvalidIdempotencyInput {
+	return ErrInvalidIdempotencyInput{
+		idempotencyKey:          idempotencyKey,
+		expectedIdempotencyHash: expectedIdempotencyHash,
+		computedIdempotencyHash: gotIdempotencyHash,
 	}
 }

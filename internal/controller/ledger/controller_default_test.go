@@ -29,7 +29,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
 
-	runScript := ledger.RunScript{}
+	runScript := RunScript{}
 
 	machineFactory.EXPECT().
 		Make(runScript.Plain).
@@ -64,7 +64,9 @@ func TestCreateTransaction(t *testing.T) {
 	listener.EXPECT().
 		CommittedTransactions(gomock.Any(), "", gomock.Any(), ledger.AccountMetadata{})
 
-	_, err := l.CreateTransaction(context.Background(), Parameters{}, runScript)
+	_, err := l.CreateTransaction(context.Background(), Parameters[RunScript]{
+		Input: runScript,
+	})
 	require.NoError(t, err)
 }
 
@@ -112,7 +114,11 @@ func TestRevertTransaction(t *testing.T) {
 		})).
 		Return(nil)
 
-	_, err := l.RevertTransaction(ctx, Parameters{}, 1, false, false)
+	_, err := l.RevertTransaction(ctx, Parameters[RevertTransaction]{
+		Input: RevertTransaction{
+			TransactionID: 1,
+		},
+	})
 	require.NoError(t, err)
 }
 
@@ -150,7 +156,12 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	listener.EXPECT().
 		SavedMetadata(gomock.Any(), "", ledger.MetaTargetTypeTransaction, "1", m)
 
-	err := l.SaveTransactionMetadata(ctx, Parameters{}, 1, m)
+	err := l.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
+		Input: SaveTransactionMetadata{
+			Metadata:      m,
+			TransactionID: 1,
+		},
+	})
 	require.NoError(t, err)
 }
 
@@ -185,7 +196,12 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 	listener.EXPECT().
 		DeletedMetadata(gomock.Any(), "", ledger.MetaTargetTypeTransaction, "1", "foo")
 
-	err := l.DeleteTransactionMetadata(ctx, Parameters{}, 1, "foo")
+	err := l.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
+		Input: DeleteTransactionMetadata{
+			TransactionID: 1,
+			Key:           "foo",
+		},
+	})
 	require.NoError(t, err)
 }
 

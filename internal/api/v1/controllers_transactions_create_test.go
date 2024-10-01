@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,7 @@ func TestTransactionsCreate(t *testing.T) {
 	type testCase struct {
 		name               string
 		expectedPreview    bool
-		expectedRunScript  ledger.RunScript
+		expectedRunScript  ledgercontroller.RunScript
 		payload            any
 		expectedStatusCode int
 		expectedErrorCode  string
@@ -35,13 +36,13 @@ func TestTransactionsCreate(t *testing.T) {
 			name: "using plain numscript",
 			payload: CreateTransactionRequest{
 				Script: Script{
-					Script: ledger.Script{
+					Script: ledgercontroller.Script{
 						Plain: `XXX`,
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `XXX`,
 					Vars:  map[string]string{},
 				},
@@ -51,7 +52,7 @@ func TestTransactionsCreate(t *testing.T) {
 			name: "using plain numscript with variables",
 			payload: CreateTransactionRequest{
 				Script: Script{
-					Script: ledger.Script{
+					Script: ledgercontroller.Script{
 						Plain: `vars {
 						monetary $val
 					}
@@ -66,8 +67,8 @@ func TestTransactionsCreate(t *testing.T) {
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `vars {
 						monetary $val
 					}
@@ -86,7 +87,7 @@ func TestTransactionsCreate(t *testing.T) {
 			name: "using plain numscript with variables (legacy format)",
 			payload: CreateTransactionRequest{
 				Script: Script{
-					Script: ledger.Script{
+					Script: ledgercontroller.Script{
 						Plain: `vars {
 						monetary $val
 					}
@@ -104,8 +105,8 @@ func TestTransactionsCreate(t *testing.T) {
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `vars {
 						monetary $val
 					}
@@ -124,7 +125,7 @@ func TestTransactionsCreate(t *testing.T) {
 			name: "using plain numscript and dry run",
 			payload: CreateTransactionRequest{
 				Script: Script{
-					Script: ledger.Script{
+					Script: ledgercontroller.Script{
 						Plain: `send (
 						source = @world
 						destination = @bank
@@ -132,8 +133,8 @@ func TestTransactionsCreate(t *testing.T) {
 					},
 				},
 			},
-			expectedRunScript: ledger.RunScript{
-				Script: ledger.Script{
+			expectedRunScript: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
 					Plain: `send (
 						source = @world
 						destination = @bank
@@ -153,7 +154,7 @@ func TestTransactionsCreate(t *testing.T) {
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
 			},
-			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -168,7 +169,7 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedPreview: true,
-			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -190,7 +191,7 @@ func TestTransactionsCreate(t *testing.T) {
 					},
 				},
 				Script: Script{
-					Script: ledger.Script{
+					Script: ledgercontroller.Script{
 						Plain: `
 						send [COIN 100] (
 						  source = @world
@@ -225,9 +226,10 @@ func TestTransactionsCreate(t *testing.T) {
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
 				testCase.expectedRunScript.Timestamp = time.Time{}
 				ledgerController.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
 						DryRun: tc.expectedPreview,
-					}, testCase.expectedRunScript).
+						Input: testCase.expectedRunScript,
+					}).
 					Return(pointer.For(expectedTx), nil)
 			}
 

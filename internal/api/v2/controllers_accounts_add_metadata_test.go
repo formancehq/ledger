@@ -60,7 +60,12 @@ func TestAccountsAddMetadata(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				ledgerController.EXPECT().
-					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters{}, testCase.account, testCase.body).
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address:  testCase.account,
+							Metadata: testCase.body.(metadata.Metadata),
+						},
+					}).
 					Return(nil)
 			}
 

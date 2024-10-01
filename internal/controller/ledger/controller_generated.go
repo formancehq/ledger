@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/bun/bunpaginate"
-	metadata "github.com/formancehq/go-libs/metadata"
 	migrations "github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
@@ -74,46 +73,46 @@ func (mr *MockControllerMockRecorder) CountTransactions(ctx, query any) *gomock.
 }
 
 // CreateTransaction mocks base method.
-func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters, data ledger.RunScript) (*ledger.Transaction, error) {
+func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters, data)
+	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateTransaction indicates an expected call of CreateTransaction.
-func (mr *MockControllerMockRecorder) CreateTransaction(ctx, parameters, data any) *gomock.Call {
+func (mr *MockControllerMockRecorder) CreateTransaction(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTransaction", reflect.TypeOf((*MockController)(nil).CreateTransaction), ctx, parameters, data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTransaction", reflect.TypeOf((*MockController)(nil).CreateTransaction), ctx, parameters)
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *MockController) DeleteAccountMetadata(ctx context.Context, parameters Parameters, targetID, key string) error {
+func (m *MockController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, parameters, targetID, key)
+	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, parameters)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAccountMetadata indicates an expected call of DeleteAccountMetadata.
-func (mr *MockControllerMockRecorder) DeleteAccountMetadata(ctx, parameters, targetID, key any) *gomock.Call {
+func (mr *MockControllerMockRecorder) DeleteAccountMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockController)(nil).DeleteAccountMetadata), ctx, parameters, targetID, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockController)(nil).DeleteAccountMetadata), ctx, parameters)
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *MockController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters, id int, key string) error {
+func (m *MockController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, parameters, id, key)
+	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, parameters)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteTransactionMetadata indicates an expected call of DeleteTransactionMetadata.
-func (mr *MockControllerMockRecorder) DeleteTransactionMetadata(ctx, parameters, id, key any) *gomock.Call {
+func (mr *MockControllerMockRecorder) DeleteTransactionMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTransactionMetadata", reflect.TypeOf((*MockController)(nil).DeleteTransactionMetadata), ctx, parameters, id, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTransactionMetadata", reflect.TypeOf((*MockController)(nil).DeleteTransactionMetadata), ctx, parameters)
 }
 
 // Export mocks base method.
@@ -295,44 +294,44 @@ func (mr *MockControllerMockRecorder) ListTransactions(ctx, query any) *gomock.C
 }
 
 // RevertTransaction mocks base method.
-func (m *MockController) RevertTransaction(ctx context.Context, parameters Parameters, id int, force, atEffectiveDate bool) (*ledger.Transaction, error) {
+func (m *MockController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters, id, force, atEffectiveDate)
+	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RevertTransaction indicates an expected call of RevertTransaction.
-func (mr *MockControllerMockRecorder) RevertTransaction(ctx, parameters, id, force, atEffectiveDate any) *gomock.Call {
+func (mr *MockControllerMockRecorder) RevertTransaction(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockController)(nil).RevertTransaction), ctx, parameters, id, force, atEffectiveDate)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockController)(nil).RevertTransaction), ctx, parameters)
 }
 
 // SaveAccountMetadata mocks base method.
-func (m_2 *MockController) SaveAccountMetadata(ctx context.Context, parameters Parameters, id string, m metadata.Metadata) error {
-	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "SaveAccountMetadata", ctx, parameters, id, m)
+func (m *MockController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveAccountMetadata", ctx, parameters)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveAccountMetadata indicates an expected call of SaveAccountMetadata.
-func (mr *MockControllerMockRecorder) SaveAccountMetadata(ctx, parameters, id, m any) *gomock.Call {
+func (mr *MockControllerMockRecorder) SaveAccountMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveAccountMetadata", reflect.TypeOf((*MockController)(nil).SaveAccountMetadata), ctx, parameters, id, m)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveAccountMetadata", reflect.TypeOf((*MockController)(nil).SaveAccountMetadata), ctx, parameters)
 }
 
 // SaveTransactionMetadata mocks base method.
-func (m_2 *MockController) SaveTransactionMetadata(ctx context.Context, parameters Parameters, id int, m metadata.Metadata) error {
-	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "SaveTransactionMetadata", ctx, parameters, id, m)
+func (m *MockController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveTransactionMetadata", ctx, parameters)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveTransactionMetadata indicates an expected call of SaveTransactionMetadata.
-func (mr *MockControllerMockRecorder) SaveTransactionMetadata(ctx, parameters, id, m any) *gomock.Call {
+func (mr *MockControllerMockRecorder) SaveTransactionMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*MockController)(nil).SaveTransactionMetadata), ctx, parameters, id, m)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*MockController)(nil).SaveTransactionMetadata), ctx, parameters)
 }

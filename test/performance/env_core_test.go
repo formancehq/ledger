@@ -32,10 +32,12 @@ func (e *CoreEnv) Stop(_ context.Context) error {
 
 func (e *CoreEnv) Executor() TransactionExecutor {
 	return TransactionExecutorFn(func(ctx context.Context, plain string, vars map[string]string) (*ledger.Transaction, error) {
-		ret, err := e.writer.CreateTransaction(ctx, ledgercontroller.Parameters{}, ledger.RunScript{
-			Script: ledger.Script{
-				Plain: plain,
-				Vars:  vars,
+		ret, err := e.writer.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
+			Input: ledgercontroller.RunScript{
+				Script: ledgercontroller.Script{
+					Plain: plain,
+					Vars:  vars,
+				},
 			},
 		})
 		if err != nil {

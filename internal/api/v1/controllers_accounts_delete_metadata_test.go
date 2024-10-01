@@ -60,7 +60,15 @@ func TestAccountsDeleteMetadata(t *testing.T) {
 
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
-					DeleteAccountMetadata(gomock.Any(), ledgercontroller.Parameters{}, tc.account, "foo").
+					DeleteAccountMetadata(
+						gomock.Any(),
+						ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
+							Input: ledgercontroller.DeleteAccountMetadata{
+								Address: tc.account,
+								Key:     "foo",
+							},
+						},
+					).
 					Return(tc.returnErr)
 			}
 

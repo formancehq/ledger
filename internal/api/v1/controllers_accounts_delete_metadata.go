@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/url"
 
@@ -10,7 +11,7 @@ import (
 )
 
 func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
-	param, err := url.PathUnescape(chi.URLParam(r, "address"))
+	address, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
 		api.BadRequestWithDetails(w, ErrValidation, err, err.Error())
 		return
@@ -19,9 +20,10 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	if err := common.LedgerFromContext(r.Context()).
 		DeleteAccountMetadata(
 			r.Context(),
-			getCommandParameters(r),
-			param,
-			chi.URLParam(r, "key"),
+			getCommandParameters(r, ledger.DeleteAccountMetadata{
+				Address: address,
+				Key:     chi.URLParam(r, "key"),
+			}),
 		); err != nil {
 		api.InternalServerError(w, r, err)
 		return

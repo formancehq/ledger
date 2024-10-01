@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/url"
 
@@ -27,7 +28,10 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r), address, m)
+	err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
+		Address:  address,
+		Metadata: m,
+	}))
 	if err != nil {
 		api.InternalServerError(w, r, err)
 		return

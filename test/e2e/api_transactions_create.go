@@ -293,29 +293,29 @@ var _ = Context("Ledger accounts list API tests", func() {
 		var (
 			err      error
 			response *components.V2Transaction
+			req      operations.V2CreateTransactionRequest
 		)
 		createTransaction := func() {
-			response, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
-					IdempotencyKey: pointer.For("testing"),
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Postings: []components.V2Posting{
-							{
-								Amount:      big.NewInt(100),
-								Asset:       "USD",
-								Source:      "world",
-								Destination: "alice",
-							},
+			response, err = CreateTransaction(ctx, testServer.GetValue(), req)
+		}
+		BeforeEach(func() {
+			req = operations.V2CreateTransactionRequest{
+				IdempotencyKey: pointer.For("testing"),
+				V2PostTransaction: components.V2PostTransaction{
+					Metadata: map[string]string{},
+					Postings: []components.V2Posting{
+						{
+							Amount:      big.NewInt(100),
+							Asset:       "USD",
+							Source:      "world",
+							Destination: "alice",
 						},
 					},
-					Ledger: "default",
 				},
-			)
-		}
-		BeforeEach(createTransaction)
+				Ledger: "default",
+			}
+		})
+		JustBeforeEach(createTransaction)
 		It("should be ok", func() {
 			Expect(err).To(Succeed())
 			Expect(response.ID).To(Equal(big.NewInt(1)))
@@ -325,6 +325,18 @@ var _ = Context("Ledger accounts list API tests", func() {
 			It("should respond with the same tx id", func() {
 				Expect(err).To(Succeed())
 				Expect(response.ID).To(Equal(big.NewInt(1)))
+			})
+		})
+		When("creating another tx with the same IK but different input", func() {
+			JustBeforeEach(func() {
+				req.V2PostTransaction.Metadata = metadata.Metadata{
+					"foo": "bar",
+				}
+				createTransaction()
+			})
+			It("should fail", func() {
+				Expect(err).NotTo(Succeed())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 			})
 		})
 	})

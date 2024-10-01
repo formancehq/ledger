@@ -71,7 +71,11 @@ func TestTransactionsRevert(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			ledgerController.
 				EXPECT().
-				RevertTransaction(gomock.Any(), ledgercontroller.Parameters{}, 0, tc.expectForce, false).
+				RevertTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
+					Input: ledgercontroller.RevertTransaction{
+						Force: tc.expectForce,
+					},
+				}).
 				Return(pointer.For(tc.returnTx), tc.returnErr)
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())

@@ -57,7 +57,12 @@ func TestTransactionsDeleteMetadata(t *testing.T) {
 
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
-					DeleteTransactionMetadata(gomock.Any(), ledgercontroller.Parameters{}, 1, "foo").
+					DeleteTransactionMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
+						Input: ledgercontroller.DeleteTransactionMetadata{
+							TransactionID: 1,
+							Key:           "foo",
+						},
+					}).
 					Return(tc.returnErr)
 			}
 

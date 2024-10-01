@@ -16,9 +16,10 @@ const (
 	QueryKeyCursor = "cursor"
 )
 
-func getCommandParameters(r *http.Request) ledger.Parameters {
-	return ledger.Parameters{
+func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledger.Parameters[INPUT] {
+	return ledger.Parameters[INPUT]{
 		DryRun:         api.QueryParamBool(r, "dryRun"),
 		IdempotencyKey: api.IdempotencyKeyFromRequest(r),
+		Input: input,
 	}
 }

@@ -178,20 +178,6 @@ func (mr *MockTXMockRecorder) RevertTransaction(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockTX)(nil).RevertTransaction), ctx, id)
 }
 
-// SwitchLedgerState mocks base method.
-func (m *MockTX) SwitchLedgerState(ctx context.Context, name, state string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SwitchLedgerState", ctx, name, state)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SwitchLedgerState indicates an expected call of SwitchLedgerState.
-func (mr *MockTXMockRecorder) SwitchLedgerState(ctx, name, state any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SwitchLedgerState", reflect.TypeOf((*MockTX)(nil).SwitchLedgerState), ctx, name, state)
-}
-
 // UpdateAccountsMetadata mocks base method.
 func (m_2 *MockTX) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
 	m_2.ctrl.T.Helper()
