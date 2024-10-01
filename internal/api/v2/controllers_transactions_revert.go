@@ -21,9 +21,13 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), int(txId),
-		api.QueryParamBool(r, "force"),
-		api.QueryParamBool(r, "atEffectiveDate"),
+	tx, err := l.RevertTransaction(
+		r.Context(),
+		getCommandParameters(r, ledgercontroller.RevertTransaction{
+			Force:           api.QueryParamBool(r, "force"),
+			AtEffectiveDate: api.QueryParamBool(r, "atEffectiveDate"),
+			TransactionID:   int(txId),
+		}),
 	)
 	if err != nil {
 		switch {

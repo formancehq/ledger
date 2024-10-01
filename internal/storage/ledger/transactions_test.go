@@ -515,7 +515,7 @@ func TestTransactionsInsert(t *testing.T) {
 		}
 		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ledgercontroller.ErrReferenceConflict{}))
+		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
 	})
 	t.Run("create a tx with no timestamp", func(t *testing.T) {
 		t.Parallel()

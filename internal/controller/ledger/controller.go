@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -33,10 +32,10 @@ type Controller interface {
 	//  * ErrCompilationFailed
 	//  * ErrMetadataOverride
 	//  * ErrInvalidVars
-	//  * ErrReferenceConflict
+	//  * ErrTransactionReferenceConflict
 	//  * ErrIdempotencyKeyConflict
 	//  * ErrInsufficientFunds
-	CreateTransaction(ctx context.Context, parameters Parameters, data ledger.RunScript) (*ledger.Transaction, error)
+	CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Transaction, error)
 	// RevertTransaction allow to revert a transaction.
 	// It can return following errors:
 	//  * ErrInsufficientFunds
@@ -44,22 +43,22 @@ type Controller interface {
 	//  * ErrNotFound
 	// Parameter force indicate we want to force revert the transaction even if the accounts does not have funds
 	// Parameter atEffectiveDate indicate we want to set the timestamp of the newly created transaction on the timestamp of the reverted transaction
-	RevertTransaction(ctx context.Context, parameters Parameters, id int, force, atEffectiveDate bool) (*ledger.Transaction, error)
+	RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Transaction, error)
 	// SaveTransactionMetadata allow to add metadata to an existing transaction
 	// It can return following errors:
 	//  * ErrNotFound
-	SaveTransactionMetadata(ctx context.Context, parameters Parameters, id int, m metadata.Metadata) error
+	SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error
 	// SaveAccountMetadata allow to add metadata to an account
 	// If the account does not exist, it is created
-	SaveAccountMetadata(ctx context.Context, parameters Parameters, id string, m metadata.Metadata) error
+	SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error
 	// DeleteTransactionMetadata allow to remove metadata of a transaction
 	// It can return following errors:
 	//  * ErrNotFound : indicate the transaction was not found OR the metadata does not exist on the transaction
-	DeleteTransactionMetadata(ctx context.Context, parameters Parameters, id int, key string) error
+	DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error
 	// DeleteAccountMetadata allow to remove metadata of an account
 	// It can return following errors:
 	//  * ErrNotFound : indicate the account was not found OR the metadata does not exist on the account
-	DeleteAccountMetadata(ctx context.Context, parameters Parameters, targetID string, key string) error
+	DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error
 	// Import allow to import the logs of an existing ledger
 	// It can return following errors:
 	//  * ErrImport

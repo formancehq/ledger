@@ -17,11 +17,11 @@ import (
 )
 
 type Script struct {
-	ledger.Script
+	ledgercontroller.Script
 	Vars map[string]json.RawMessage `json:"vars"`
 }
 
-func (s Script) ToCore() (*ledger.Script, error) {
+func (s Script) ToCore() (*ledgercontroller.Script, error) {
 	s.Script.Vars = map[string]string{}
 	for k, v := range s.Vars {
 
@@ -83,7 +83,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), ledger.TxToScriptData(txData, false))
+		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, common.TxToScriptData(txData, false)))
 		if err != nil {
 			switch {
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
@@ -92,9 +92,10 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 				api.BadRequest(w, ErrScriptCompilationFailed, err)
 			case errors.Is(err, &ledgercontroller.ErrMetadataOverride{}):
 				api.BadRequest(w, ErrScriptMetadataOverride, err)
-			case errors.Is(err, ledgercontroller.ErrNoPostings):
+			case errors.Is(err, ledgercontroller.ErrNoPostings) ||
+				errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
 				api.BadRequest(w, ErrValidation, err)
-			case errors.Is(err, ledgercontroller.ErrReferenceConflict{}):
+			case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 			default:
 				api.InternalServerError(w, r, err)
@@ -111,14 +112,14 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runScript := ledger.RunScript{
+	runScript := ledgercontroller.RunScript{
 		Script:    *script,
 		Timestamp: payload.Timestamp,
 		Reference: payload.Reference,
 		Metadata:  payload.Metadata,
 	}
 
-	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), runScript)
+	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, runScript))
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
@@ -126,9 +127,10 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) ||
 			errors.Is(err, ledgercontroller.ErrCompilationFailed{}) ||
 			errors.Is(err, &ledgercontroller.ErrMetadataOverride{}) ||
+			errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
 			errors.Is(err, ledgercontroller.ErrNoPostings):
 			api.BadRequest(w, ErrValidation, err)
-		case errors.Is(err, ledgercontroller.ErrReferenceConflict{}):
+		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 		default:
 			api.InternalServerError(w, r, err)

@@ -7,7 +7,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/api"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/pkg/errors"
 )
@@ -15,7 +14,7 @@ import (
 func createTransaction(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	payload := ledger.TransactionRequest{}
+	payload := TransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		api.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
 		return
@@ -31,7 +30,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), *payload.ToRunScript(api.QueryParamBool(r, "force")))
+	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *payload.ToRunScript(api.QueryParamBool(r, "force"))))
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
@@ -42,8 +41,10 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			api.BadRequest(w, ErrMetadataOverride, err)
 		case errors.Is(err, ledgercontroller.ErrNoPostings):
 			api.BadRequest(w, ErrNoPostings, err)
-		case errors.Is(err, ledgercontroller.ErrReferenceConflict{}):
+		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
+		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+			api.BadRequest(w, ErrValidation, err)
 		default:
 			api.InternalServerError(w, r, err)
 		}

@@ -78,20 +78,19 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 	}
 
 	for i, element := range bulk {
-		parameters := ledgercontroller.Parameters{
-			DryRun:         false,
-			IdempotencyKey: element.IdempotencyKey,
-		}
-
 		switch element.Action {
 		case ActionCreateTransaction:
-			req := &ledger.TransactionRequest{}
+			req := &TransactionRequest{}
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 			rs := req.ToRunScript(false)
 
-			tx, err := l.CreateTransaction(ctx, parameters, *rs)
+			tx, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
+				DryRun:         false,
+				IdempotencyKey: element.IdempotencyKey,
+				Input: *rs,
+			})
 			if err != nil {
 				var code string
 
@@ -104,7 +103,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 					code = ErrMetadataOverride
 				case errors.Is(err, ledgercontroller.ErrNoPostings):
 					code = ErrNoPostings
-				case errors.Is(err, ledgercontroller.ErrReferenceConflict{}):
+				case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 					code = ErrConflict
 				default:
 					code = api.ErrorInternal
@@ -134,17 +133,31 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 			var err error
 			switch req.TargetType {
 			case ledger.MetaTargetTypeAccount:
-				targetID := ""
-				if err := json.Unmarshal(req.TargetID, &targetID); err != nil {
+				address := ""
+				if err := json.Unmarshal(req.TargetID, &address); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.SaveAccountMetadata(ctx, parameters, targetID, req.Metadata)
+				err = l.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+					DryRun:         false,
+					IdempotencyKey: element.IdempotencyKey,
+					Input: ledgercontroller.SaveAccountMetadata{
+						Address:  address,
+						Metadata: req.Metadata,
+					},
+				})
 			case ledger.MetaTargetTypeTransaction:
-				targetID := 0
-				if err := json.Unmarshal(req.TargetID, &targetID); err != nil {
+				transactionID := 0
+				if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.SaveTransactionMetadata(ctx, parameters, targetID, req.Metadata)
+				err = l.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
+					DryRun:         false,
+					IdempotencyKey: element.IdempotencyKey,
+					Input: ledgercontroller.SaveTransactionMetadata{
+						TransactionID: transactionID,
+						Metadata:      req.Metadata,
+					},
+				})
 			}
 			if err != nil {
 				var code string
@@ -174,7 +187,15 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			tx, err := l.RevertTransaction(ctx, parameters, req.ID, req.Force, req.AtEffectiveDate)
+			tx, err := l.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
+				DryRun:         false,
+				IdempotencyKey: element.IdempotencyKey,
+				Input: ledgercontroller.RevertTransaction{
+					Force:           req.Force,
+					AtEffectiveDate: req.AtEffectiveDate,
+					TransactionID:   req.ID,
+				},
+			})
 			if err != nil {
 				var code string
 				switch {
@@ -207,17 +228,31 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 			var err error
 			switch req.TargetType {
 			case ledger.MetaTargetTypeAccount:
-				targetID := ""
-				if err := json.Unmarshal(req.TargetID, &targetID); err != nil {
+				address := ""
+				if err := json.Unmarshal(req.TargetID, &address); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.DeleteAccountMetadata(ctx, parameters, targetID, req.Key)
+				err = l.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
+					DryRun:         false,
+					IdempotencyKey: element.IdempotencyKey,
+					Input: ledgercontroller.DeleteAccountMetadata{
+						Address: address,
+						Key:     req.Key,
+					},
+				})
 			case ledger.MetaTargetTypeTransaction:
-				targetID := 0
-				if err := json.Unmarshal(req.TargetID, &targetID); err != nil {
+				transactionID := 0
+				if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.DeleteTransactionMetadata(ctx, parameters, targetID, req.Key)
+				err = l.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
+					DryRun:         false,
+					IdempotencyKey: element.IdempotencyKey,
+					Input: ledgercontroller.DeleteTransactionMetadata{
+						TransactionID: transactionID,
+						Key:           req.Key,
+					},
+				})
 			}
 			if err != nil {
 				var code string

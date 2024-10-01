@@ -32,7 +32,14 @@ type DefaultMachineAdapter struct {
 func (d *DefaultMachineAdapter) Execute(ctx context.Context, store vm.Store, vars map[string]string) (*MachineResult, error) {
 
 	d.machine = vm.NewMachine(d.program)
-	if err := d.machine.SetVarsFromJSON(vars); err != nil {
+
+	// notes(gfyrag): machines modify the map, copy it to keep our original parameters unchanged
+	varsCopy := make(map[string]string)
+	for k, v := range vars {
+		varsCopy[k] = v
+	}
+
+	if err := d.machine.SetVarsFromJSON(varsCopy); err != nil {
 		return nil, errors.Wrap(err, "failed to set vars from JSON")
 	}
 	err := d.machine.ResolveResources(ctx, store)

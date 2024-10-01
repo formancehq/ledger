@@ -9,8 +9,6 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/formancehq/go-libs/pointer"
-
 	"github.com/formancehq/go-libs/metadata"
 )
 
@@ -219,34 +217,5 @@ func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) 
 func NewTransaction() Transaction {
 	return Transaction{
 		TransactionData: NewTransactionData(),
-	}
-}
-
-type TransactionRequest struct {
-	Postings  Postings          `json:"postings"`
-	Script    ScriptV1          `json:"script"`
-	Timestamp time.Time         `json:"timestamp"`
-	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
-}
-
-func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) *RunScript {
-
-	if len(req.Postings) > 0 {
-		txData := TransactionData{
-			Postings:  req.Postings,
-			Timestamp: req.Timestamp,
-			Reference: req.Reference,
-			Metadata:  req.Metadata,
-		}
-
-		return pointer.For(TxToScriptData(txData, allowUnboundedOverdrafts))
-	}
-
-	return &RunScript{
-		Script:    req.Script.ToCore(),
-		Timestamp: req.Timestamp,
-		Reference: req.Reference,
-		Metadata:  req.Metadata,
 	}
 }

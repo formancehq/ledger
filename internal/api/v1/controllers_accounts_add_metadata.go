@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/accounts"
 	"net/http"
 	"net/url"
@@ -15,13 +16,13 @@ import (
 
 func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
-	param, err := url.PathUnescape(chi.URLParam(r, "address"))
+	address, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
 		api.BadRequestWithDetails(w, ErrValidation, err, err.Error())
 		return
 	}
 
-	if !accounts.ValidateAddress(param) {
+	if !accounts.ValidateAddress(address) {
 		api.BadRequest(w, ErrValidation, errors.New("invalid account address format"))
 		return
 	}
@@ -32,7 +33,10 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r), param, m)
+	err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
+		Address:  address,
+		Metadata: m,
+	}))
 	if err != nil {
 		api.InternalServerError(w, r, err)
 		return

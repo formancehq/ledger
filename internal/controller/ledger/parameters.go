@@ -1,6 +1,7 @@
 package ledger
 
-type Parameters struct {
+type Parameters[INPUT any] struct {
 	DryRun         bool
 	IdempotencyKey string
+	Input          INPUT
 }
