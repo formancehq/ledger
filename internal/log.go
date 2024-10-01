@@ -141,6 +141,11 @@ func (l *Log) ComputeHash(previous *Log) {
 		}
 	}
 
+	payload := l.Data
+	if hv, ok := payload.(hashValuer); ok {
+		payload = hv.hashValue()
+	}
+
 	if err := enc.Encode(struct {
 		// notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
 		Type           LogType   `json:"type"`
@@ -151,7 +156,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		Hash           []byte    `json:"hash"`
 	}{
 		Type:           l.Type,
-		Data:           l.Data,
+		Data:           payload,
 		Date:           l.Date,
 		IdempotencyKey: l.IdempotencyKey,
 		ID:             l.ID,
@@ -171,6 +176,10 @@ func NewLog(t LogType, payload any) Log {
 	}
 }
 
+type hashValuer interface {
+	hashValue() any
+}
+
 type AccountMetadata map[string]metadata.Metadata
 
 type NewTransactionLogPayload struct {
@@ -178,29 +187,19 @@ type NewTransactionLogPayload struct {
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
-// MarshalJSON override default json marshalling to remove postCommitVolumes and postCommitEffectiveVolumes fields
-// We don't want to store pc(v)e on the logs
-// Because :
-//  1. It can change (effective only)
-//  2. They are not part of the decision-making process
-func (p NewTransactionLogPayload) MarshalJSON() ([]byte, error) {
-	type aux Transaction
-	type tx struct {
-		aux
-		PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty"`
-		PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty"`
-	}
-
-	return json.Marshal(struct {
-		Transaction     tx              `json:"transaction"`
-		AccountMetadata AccountMetadata `json:"accountMetadata"`
+func (p NewTransactionLogPayload) hashValue() any {
+	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
+	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
+	return struct {
+		TransactionData
+		ID int `json:"id"`
 	}{
-		Transaction: tx{
-			aux: aux(p.Transaction),
-		},
-		AccountMetadata: p.AccountMetadata,
-	})
+		TransactionData: p.Transaction.TransactionData,
+		ID:              p.Transaction.ID,
+	}
 }
+
+var _ hashValuer = (*NewTransactionLogPayload)(nil)
 
 func NewTransactionLog(tx Transaction, accountMetadata AccountMetadata) Log {
 	if accountMetadata == nil {
