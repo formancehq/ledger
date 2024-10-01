@@ -4,15 +4,19 @@ import (
 	"context"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/pkg/errors"
 )
 
-func runTx[INPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, error)) (*ledger.Log, error) {
-	var log *ledger.Log
+func runTx[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, *OUTPUT, error)) (*OUTPUT, error) {
+	var (
+		log    *ledger.Log
+		output *OUTPUT
+	)
 	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
-		log, err = fn(ctx, tx, parameters.Input)
+		log, output, err = fn(ctx, tx, parameters.Input)
 		if err != nil {
 			return false, err
 		}
@@ -33,14 +37,14 @@ func runTx[INPUT any](ctx context.Context, store Store, parameters Parameters[IN
 
 		return true, nil
 	})
-	return log, err
+	return output, err
 }
 
 // todo: handle too many clients error
 // notes(gfyrag): how?
 // By retrying? Is the server already overloaded? Add a limit on the retries number?
 // Ask the client to retry later?
-func forgeLog[INPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, error)) (*ledger.Log, error) {
+func forgeLog[INPUT, OUTPUT any](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*ledger.Log, *OUTPUT, error)) (*OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
 		log, err := store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 		if err != nil && !errors.Is(err, postgres.ErrNotFound) {
@@ -51,12 +55,12 @@ func forgeLog[INPUT any](ctx context.Context, store Store, parameters Parameters
 				return nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
 			}
 
-			return log, nil
+			return pointer.For(log.Data.(OUTPUT)), nil
 		}
 	}
 
 	for {
-		log, err := runTx(ctx, store, parameters, fn)
+		output, err := runTx(ctx, store, parameters, fn)
 		if err != nil {
 			switch {
 			case errors.Is(err, postgres.ErrDeadlockDetected):
@@ -73,12 +77,12 @@ func forgeLog[INPUT any](ctx context.Context, store Store, parameters Parameters
 					return nil, err
 				}
 
-				return log, nil
+				return pointer.For(log.Data.(OUTPUT)), nil
 			default:
 				return nil, errors.Wrap(err, "unexpected error while forging log")
 			}
 		}
 
-		return log, nil
+		return output, nil
 	}
 }

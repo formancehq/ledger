@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/google/uuid"
+	// todo: remove as it is in maintenance mode
 	"github.com/pkg/errors"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -42,6 +43,7 @@ func NewDefaultController(
 		ledger:         ledger,
 		machineFactory: machineFactory,
 	}
+
 	return ret
 }
 
@@ -138,7 +140,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 		if err != nil {
 			return errors.Wrap(err, "failed to revert transaction")
 		}
-	case ledger.SetMetadata:
+	case ledger.SavedMetadata:
 		switch payload.TargetType {
 		case ledger.MetaTargetTypeTransaction:
 			if _, _, err := sqlTx.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
@@ -215,16 +217,16 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 		return nil, errors.Wrap(err, "failed to compile script")
 	}
 
-	log, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.Log, error) {
+	output, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.Log, *ledger.CreatedTransaction, error) {
 		result, err := tracing.TraceWithLatency(ctx, "ExecuteMachine", func(ctx context.Context) (*MachineResult, error) {
 			return m.Execute(ctx, newVmStoreAdapter(sqlTX), input.Vars)
 		})
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to execute program")
+			return nil, nil, errors.Wrap(err, "failed to execute program")
 		}
 
 		if len(result.Postings) == 0 {
-			return nil, ErrNoPostings
+			return nil, nil, ErrNoPostings
 		}
 
 		finalMetadata := result.Metadata
@@ -233,7 +235,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 		}
 		for k, v := range input.Metadata {
 			if finalMetadata[k] != "" {
-				return nil, newErrMetadataOverride(k)
+				return nil, nil, newErrMetadataOverride(k)
 			}
 			finalMetadata[k] = v
 		}
@@ -252,51 +254,49 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 			WithReference(input.Reference)
 		err = sqlTX.CommitTransaction(ctx, &transaction)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if len(result.AccountMetadata) > 0 {
 			if err := sqlTX.UpdateAccountsMetadata(ctx, result.AccountMetadata); err != nil {
-				return nil, errors.Wrapf(err, "updating metadata of account '%s'", Keys(result.AccountMetadata))
+				return nil, nil, errors.Wrapf(err, "updating metadata of account '%s'", Keys(result.AccountMetadata))
 			}
 		}
 
-		return pointer.For(ledger.NewTransactionLog(transaction, result.AccountMetadata)), err
+		createdTransaction := ledger.CreatedTransaction{
+			Transaction:     transaction,
+			AccountMetadata: result.AccountMetadata,
+		}
+
+		return pointer.For(ledger.NewTransactionLog(createdTransaction)), &createdTransaction, err
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	transaction := log.Data.(ledger.CreatedTransaction).Transaction
-	accountMetadata := log.Data.(ledger.CreatedTransaction).AccountMetadata
-
-	return &ledger.CreatedTransaction{
-		Transaction:     transaction,
-		AccountMetadata: accountMetadata,
-	}, nil
+	return output, nil
 }
 
 func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
-	var originalTransaction *ledger.Transaction
-	log, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RevertTransaction) (*ledger.Log, error) {
+	return forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RevertTransaction) (*ledger.Log, *ledger.RevertedTransaction, error) {
 
 		var (
 			hasBeenReverted bool
 			err             error
 		)
-		originalTransaction, hasBeenReverted, err = sqlTX.RevertTransaction(ctx, input.TransactionID)
+		originalTransaction, hasBeenReverted, err := sqlTX.RevertTransaction(ctx, input.TransactionID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !hasBeenReverted {
-			return nil, newErrAlreadyReverted(input.TransactionID)
+			return nil, nil, newErrAlreadyReverted(input.TransactionID)
 		}
 
 		bq := originalTransaction.InvolvedAccountAndAssets()
 
 		balances, err := sqlTX.GetBalances(ctx, bq)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get balances")
+			return nil, nil, errors.Wrap(err, "failed to get balances")
 		}
 
 		reversedTx := originalTransaction.Reverse()
@@ -324,7 +324,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 					if finalBalance.Cmp(new(big.Int)) < 0 {
 						// todo(waiting): break dependency on machine package
 						// notes(gfyrag): wait for the new interpreter
-						return nil, machine.NewErrInsufficientFund("insufficient fund for %s/%s", account, asset)
+						return nil, nil, machine.NewErrInsufficientFund("insufficient fund for %s/%s", account, asset)
 					}
 				}
 			}
@@ -332,39 +332,36 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 
 		err = sqlTX.CommitTransaction(ctx, &reversedTx)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to insert transaction")
+			return nil, nil, errors.Wrap(err, "failed to insert transaction")
 		}
 
-		return pointer.For(ledger.NewRevertedTransactionLog(*originalTransaction, reversedTx)), nil
+		return pointer.For(ledger.NewRevertedTransactionLog(*originalTransaction, reversedTx)), &ledger.RevertedTransaction{
+			RevertedTransaction: *originalTransaction,
+			RevertTransaction:   reversedTx,
+		}, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &ledger.RevertedTransaction{
-		RevertedTransaction: *originalTransaction,
-		RevertTransaction:   log.Data.(ledger.RevertedTransaction).RevertTransaction,
-	}, nil
 }
 
 func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveTransactionMetadata) (*ledger.Log, error) {
+	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveTransactionMetadata) (*ledger.Log, *ledger.SavedMetadata, error) {
 		if _, _, err := sqlTX.UpdateTransactionMetadata(ctx, input.TransactionID, input.Metadata); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		return pointer.For(ledger.NewSetMetadataOnTransactionLog(input.TransactionID, input.Metadata)), nil
-	})
-	if err != nil {
-		return err
-	}
+		setMetadata := ledger.SavedMetadata{
+			TargetType: ledger.MetaTargetTypeTransaction,
+			TargetID:   parameters.Input.TransactionID,
+			Metadata:   parameters.Input.Metadata,
+		}
 
-	return nil
+		return pointer.For(ledger.NewSetMetadataOnTransactionLog(setMetadata)), &setMetadata, nil
+	})
+	return err
 }
 
 func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
 	now := time.Now()
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.Log, error) {
+	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.Log, *ledger.SavedMetadata, error) {
 		if _, err := sqlTX.UpsertAccount(ctx, &ledger.Account{
 			Address:       input.Address,
 			Metadata:      input.Metadata,
@@ -372,40 +369,54 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 			InsertionDate: now,
 			UpdatedAt:     now,
 		}); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		return pointer.For(ledger.NewSetMetadataOnAccountLog(input.Address, input.Metadata)), nil
+		setMetadata := ledger.SavedMetadata{
+			TargetType: ledger.MetaTargetTypeAccount,
+			TargetID:   parameters.Input.Address,
+			Metadata:   parameters.Input.Metadata,
+		}
+
+		return pointer.For(ledger.NewSetMetadataOnAccountLog(setMetadata)), &setMetadata, nil
 	})
 
 	return err
 }
 
 func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteTransactionMetadata) (*ledger.Log, error) {
+	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteTransactionMetadata) (*ledger.Log, *ledger.DeletedMetadata, error) {
 		_, modified, err := sqlTX.DeleteTransactionMetadata(ctx, input.TransactionID, input.Key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if !modified {
-			return nil, postgres.ErrNotFound
+			return nil, nil, postgres.ErrNotFound
 		}
 
-		return pointer.For(ledger.NewDeleteTransactionMetadataLog(input.TransactionID, input.Key)), nil
+		return pointer.For(ledger.NewDeleteTransactionMetadataLog(input.TransactionID, input.Key)), &ledger.DeletedMetadata{
+			TargetType: ledger.MetaTargetTypeTransaction,
+			TargetID:   parameters.Input.TransactionID,
+			Key:        parameters.Input.Key,
+		}, nil
 	})
 
 	return err
 }
 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteAccountMetadata) (*ledger.Log, error) {
+	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteAccountMetadata) (*ledger.Log, *ledger.DeletedMetadata, error) {
 		err := sqlTX.DeleteAccountMetadata(ctx, input.Address, input.Key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		return pointer.For(ledger.NewDeleteAccountMetadataLog(input.Address, input.Key)), nil
+		return pointer.For(ledger.NewDeleteAccountMetadataLog(input.Address, input.Key)), &ledger.DeletedMetadata{
+			TargetType: ledger.MetaTargetTypeAccount,
+			TargetID:   parameters.Input.Address,
+			Key:        parameters.Input.Key,
+		}, nil
 	})
 	return err
 }
