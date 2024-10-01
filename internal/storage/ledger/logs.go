@@ -2,10 +2,10 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
@@ -51,12 +51,27 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
 		_, err := s.db.NewRaw(`select pg_advisory_xact_lock(hashtext(?))`, s.ledger.Name).Exec(ctx)
 		if err != nil {
-			return postgres.ResolveError(err)
+			return err
+		}
+		lastLog := &ledger.Log{}
+		err = s.db.NewSelect().
+			Model(lastLog).
+			ModelTableExpr(s.GetPrefixedRelationName("logs")).
+			Order("seq desc").
+			Where("ledger = ?", s.ledger.Name).
+			Limit(1).
+			Scan(ctx)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return errors.Wrap(err, "retrieving last log")
+			}
+			log.ComputeHash(nil)
+		} else {
+			log.ComputeHash(lastLog)
 		}
 	}
 
 	_, err := tracing.TraceWithLatency(ctx, "InsertLog", tracing.NoResult(func(ctx context.Context) error {
-
 		data, err := json.Marshal(log.Data)
 		if err != nil {
 			return errors.Wrap(err, "failed to marshal log data")
