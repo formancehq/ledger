@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/metadata"
@@ -296,4 +297,35 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 	return ListLedgersQuery{
 		PageSize: pageSize,
 	}
+}
+
+var _ numscript.Store = &numscriptRewriteAdapter{}
+
+type numscriptRewriteAdapter struct {
+	TX TX
+}
+
+func (s *numscriptRewriteAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
+	vmBalances, err := s.TX.GetBalances(ctx, BalanceQuery(q))
+	if err != nil {
+		return nil, err
+	}
+	return numscript.Balances(vmBalances), nil
+}
+
+func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.Metadata, error) {
+	m := numscript.Metadata{}
+
+	// we ignore the needed metadata values and just return all of them
+	for address := range q {
+		v, err := s.TX.GetAccount(ctx, GetAccountQuery{
+			Addr: address,
+		})
+		if err != nil {
+			return nil, err
+		}
+		m[v.Address] = v.Metadata
+	}
+
+	return m, nil
 }

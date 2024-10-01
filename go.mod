@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger
 
-go 1.22.0
+go 1.22.1
 
 toolchain go1.22.7
 
@@ -54,6 +54,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-kafka/v3 v3.0.5 // indirect
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.1 // indirect
 	github.com/ajg/form v1.5.1 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.31.0 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.27.37 // indirect
@@ -84,6 +85,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/formancehq/numscript v0.0.9-0.20240929161330-e9f0ac045211 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/render v1.0.3 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -183,6 +185,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
 	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
