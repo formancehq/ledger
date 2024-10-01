@@ -16,12 +16,11 @@ import (
 	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/platform/postgres"
 
+	"errors"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/google/uuid"
-	// todo: remove as it is in maintenance mode
-	"errors"
 
 	ledger "github.com/formancehq/ledger/internal"
 )
