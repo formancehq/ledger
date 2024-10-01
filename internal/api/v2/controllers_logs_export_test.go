@@ -45,7 +45,7 @@ func TestLogsExport(t *testing.T) {
 				tc.expectStatusCode = http.StatusOK
 			}
 
-			log := ledger.NewTransactionLog(ledger.CreatedTransaction{
+			log := ledger.NewLog(ledger.CreatedTransaction{
 				Transaction:     ledger.NewTransaction(),
 				AccountMetadata: ledger.AccountMetadata{},
 			})

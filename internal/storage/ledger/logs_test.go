@@ -30,7 +30,7 @@ func TestInsertLog(t *testing.T) {
 
 	t.Run("duplicate IK", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
-		logTx := ledger.NewTransactionLog(ledger.CreatedTransaction{
+		logTx := ledger.NewLog(ledger.CreatedTransaction{
 			Transaction:     ledger.NewTransaction(),
 			AccountMetadata: ledger.AccountMetadata{},
 		}).
@@ -43,7 +43,7 @@ func TestInsertLog(t *testing.T) {
 		require.NotZero(t, logTx.Hash)
 
 		// Create a new log with the same IK as previous should fail
-		logTx = ledger.NewTransactionLog(ledger.CreatedTransaction{
+		logTx = ledger.NewLog(ledger.CreatedTransaction{
 			Transaction:     ledger.NewTransaction(),
 			AccountMetadata: ledger.AccountMetadata{},
 		}).
@@ -67,7 +67,7 @@ func TestInsertLog(t *testing.T) {
 				}()
 				store := store.WithDB(tx)
 
-				logTx := ledger.NewTransactionLog(ledger.CreatedTransaction{
+				logTx := ledger.NewLog(ledger.CreatedTransaction{
 					Transaction:     ledger.NewTransaction(),
 					AccountMetadata: ledger.AccountMetadata{},
 				})
@@ -105,7 +105,7 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	logTx := ledger.NewTransactionLog(
+	logTx := ledger.NewLog(
 		ledger.CreatedTransaction{
 			Transaction: ledger.NewTransaction().
 				WithPostings(
@@ -131,7 +131,7 @@ func TestGetLogs(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	for i := 1; i <= 3; i++ {
-		newLog := ledger.NewTransactionLog(ledger.CreatedTransaction{
+		newLog := ledger.NewLog(ledger.CreatedTransaction{
 			Transaction:     ledger.NewTransaction(),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
