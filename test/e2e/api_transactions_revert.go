@@ -195,5 +195,27 @@ var _ = Context("Ledger accounts list API tests", func() {
 				Expect(response.Timestamp).To(Equal(tx.Timestamp))
 			})
 		})
+		When("reverting with dryRun", func() {
+			BeforeEach(func() {
+				_, err := RevertTransaction(
+					ctx,
+					testServer.GetValue(),
+					operations.V2RevertTransactionRequest{
+						Ledger: "default",
+						ID:     tx.ID,
+						DryRun: pointer.For(true),
+					},
+				)
+				Expect(err).To(Succeed())
+			})
+			It("should not revert the transaction", func() {
+				tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
+					Ledger: "default",
+					ID:     tx.ID,
+				})
+				Expect(err).To(BeNil())
+				Expect(tx.Reverted).To(BeFalse())
+			})
+		})
 	})
 })
