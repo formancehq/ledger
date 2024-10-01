@@ -134,7 +134,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 			}
 		}
 	case ledger.RevertedTransactionLogPayload:
-		_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransactionID)
+		_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransaction.ID)
 		if err != nil {
 			return errors.Wrap(err, "failed to revert transaction")
 		}
@@ -335,7 +335,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 			return nil, errors.Wrap(err, "failed to insert transaction")
 		}
 
-		return pointer.For(ledger.NewRevertedTransactionLog(input.TransactionID, reversedTx)), nil
+		return pointer.For(ledger.NewRevertedTransactionLog(*originalTransaction, reversedTx)), nil
 	})
 	if err != nil {
 		return nil, err
@@ -343,7 +343,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 
 	return &RevertTransactionResult{
 		RevertedTransaction: *originalTransaction,
-		ReversedTransaction:   log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction,
+		ReversedTransaction: log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction,
 	}, nil
 }
 

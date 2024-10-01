@@ -324,14 +324,26 @@ func NewDeleteAccountMetadataLog(id string, key string) Log {
 }
 
 type RevertedTransactionLogPayload struct {
-	RevertedTransactionID int         `json:"revertedTransactionID"`
-	RevertTransaction     Transaction `json:"transaction"`
+	RevertedTransaction Transaction `json:"revertedTransaction"`
+	RevertTransaction   Transaction `json:"transaction"`
 }
 
-func NewRevertedTransactionLog(revertedTxID int, tx Transaction) Log {
+func (r RevertedTransactionLogPayload) hashValue() any {
+	return struct {
+		RevertedTransactionID int         `json:"revertedTransactionID"`
+		RevertTransaction     Transaction `json:"transaction"`
+	}{
+		RevertedTransactionID: r.RevertedTransaction.ID,
+		RevertTransaction:     r.RevertTransaction,
+	}
+}
+
+var _ hashValuer = (*RevertedTransactionLogPayload)(nil)
+
+func NewRevertedTransactionLog(revertedTx, tx Transaction) Log {
 	return NewLog(RevertedTransactionLogType, RevertedTransactionLogPayload{
-		RevertedTransactionID: revertedTxID,
-		RevertTransaction:     tx,
+		RevertedTransaction: revertedTx,
+		RevertTransaction:   tx,
 	})
 }
 
