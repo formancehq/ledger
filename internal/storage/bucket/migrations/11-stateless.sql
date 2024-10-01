@@ -58,10 +58,17 @@ drop not null;
 
 -- todo: need migrate
 alter table "{{.Bucket}}".transactions_metadata
-drop column transactions_seq;
+add column transactions_id bigint not null;
+
+update "{{.Bucket}}".transactions_metadata
+set transactions_id = (
+	select transactions_id
+	from "{{.Bucket}}".transactions
+	where ledger = transactions_metadata.ledger and seq = transactions_metadata.transactions_seq
+);
 
 alter table "{{.Bucket}}".transactions_metadata
-add column transactions_id bigint not null;
+drop column transactions_seq;
 
 -- todo: need migrate
 alter table "{{.Bucket}}".accounts_metadata
