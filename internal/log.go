@@ -80,7 +80,6 @@ func LogTypeFromString(logType string) LogType {
 }
 
 // Log represents atomic actions made on the ledger.
-// notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
 type Log struct {
 	bun.BaseModel `bun:"table:logs,alias:logs"`
 
@@ -88,8 +87,11 @@ type Log struct {
 	Data           any       `json:"data" bun:"data,type:jsonb"`
 	Date           time.Time `json:"date" bun:"date,type:timestamptz"`
 	IdempotencyKey string    `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
-	ID             int       `json:"id" bun:"id,unique,type:numeric"`
-	Hash           []byte    `json:"hash" bun:"hash,type:bytea,scanonly"`
+	// IdempotencyHash is a signature used when using IdempotencyKey.
+	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
+	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
+	ID              int    `json:"id" bun:"id,unique,type:numeric"`
+	Hash            []byte `json:"hash" bun:"hash,type:bytea,scanonly"`
 }
 
 func (l Log) WithIdempotencyKey(key string) Log {
@@ -138,7 +140,22 @@ func (l *Log) ComputeHash(previous *Log) {
 		}
 	}
 
-	if err := enc.Encode(l); err != nil {
+	if err := enc.Encode(struct {
+		// notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
+		Type           LogType   `json:"type"`
+		Data           any       `json:"data"`
+		Date           time.Time `json:"date"`
+		IdempotencyKey string    `json:"idempotencyKey"`
+		ID             int       `json:"id"`
+		Hash           []byte    `json:"hash"`
+	}{
+		Type:           l.Type,
+		Data:           l.Data,
+		Date:           l.Date,
+		IdempotencyKey: l.IdempotencyKey,
+		ID:             l.ID,
+		Hash:           l.Hash,
+	}); err != nil {
 		panic(err)
 	}
 
