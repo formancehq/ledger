@@ -182,12 +182,12 @@ type hashValuer interface {
 
 type AccountMetadata map[string]metadata.Metadata
 
-type NewTransactionLogPayload struct {
+type CreatedTransaction struct {
 	Transaction     Transaction     `json:"transaction"`
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
-func (p NewTransactionLogPayload) hashValue() any {
+func (p CreatedTransaction) hashValue() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
 	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
 	return struct {
@@ -199,25 +199,25 @@ func (p NewTransactionLogPayload) hashValue() any {
 	}
 }
 
-var _ hashValuer = (*NewTransactionLogPayload)(nil)
+var _ hashValuer = (*CreatedTransaction)(nil)
 
 func NewTransactionLog(tx Transaction, accountMetadata AccountMetadata) Log {
 	if accountMetadata == nil {
 		accountMetadata = AccountMetadata{}
 	}
-	return NewLog(NewTransactionLogType, NewTransactionLogPayload{
+	return NewLog(NewTransactionLogType, CreatedTransaction{
 		Transaction:     tx,
 		AccountMetadata: accountMetadata,
 	})
 }
 
-type SetMetadataLogPayload struct {
+type SetMetadata struct {
 	TargetType string            `json:"targetType"`
 	TargetID   any               `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
+func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string            `json:"targetType"`
 		TargetID   json.RawMessage   `json:"targetId"`
@@ -243,7 +243,7 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*s = SetMetadataLogPayload{
+	*s = SetMetadata{
 		TargetType: x.TargetType,
 		TargetID:   id,
 		Metadata:   x.Metadata,
@@ -252,7 +252,7 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 }
 
 func NewSetMetadataOnAccountLog(account string, metadata metadata.Metadata) Log {
-	return NewLog(SetMetadataLogType, SetMetadataLogPayload{
+	return NewLog(SetMetadataLogType, SetMetadata{
 		TargetType: MetaTargetTypeAccount,
 		TargetID:   account,
 		Metadata:   metadata,
@@ -260,20 +260,20 @@ func NewSetMetadataOnAccountLog(account string, metadata metadata.Metadata) Log 
 }
 
 func NewSetMetadataOnTransactionLog(txID int, metadata metadata.Metadata) Log {
-	return NewLog(SetMetadataLogType, SetMetadataLogPayload{
+	return NewLog(SetMetadataLogType, SetMetadata{
 		TargetType: MetaTargetTypeTransaction,
 		TargetID:   txID,
 		Metadata:   metadata,
 	})
 }
 
-type DeleteMetadataLogPayload struct {
+type DeletedMetadata struct {
 	TargetType string `json:"targetType"`
 	TargetID   any    `json:"targetId"`
 	Key        string `json:"key"`
 }
 
-func (s *DeleteMetadataLogPayload) UnmarshalJSON(data []byte) error {
+func (s *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string          `json:"targetType"`
 		TargetID   json.RawMessage `json:"targetId"`
@@ -299,7 +299,7 @@ func (s *DeleteMetadataLogPayload) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*s = DeleteMetadataLogPayload{
+	*s = DeletedMetadata{
 		TargetType: x.TargetType,
 		TargetID:   id,
 		Key:        x.Key,
@@ -308,7 +308,7 @@ func (s *DeleteMetadataLogPayload) UnmarshalJSON(data []byte) error {
 }
 
 func NewDeleteTransactionMetadataLog(id int, key string) Log {
-	return NewLog(DeleteMetadataLogType, DeleteMetadataLogPayload{
+	return NewLog(DeleteMetadataLogType, DeletedMetadata{
 		TargetType: MetaTargetTypeTransaction,
 		TargetID:   id,
 		Key:        key,
@@ -316,19 +316,19 @@ func NewDeleteTransactionMetadataLog(id int, key string) Log {
 }
 
 func NewDeleteAccountMetadataLog(id string, key string) Log {
-	return NewLog(DeleteMetadataLogType, DeleteMetadataLogPayload{
+	return NewLog(DeleteMetadataLogType, DeletedMetadata{
 		TargetType: MetaTargetTypeAccount,
 		TargetID:   id,
 		Key:        key,
 	})
 }
 
-type RevertedTransactionLogPayload struct {
+type RevertedTransaction struct {
 	RevertedTransaction Transaction `json:"revertedTransaction"`
 	RevertTransaction   Transaction `json:"transaction"`
 }
 
-func (r RevertedTransactionLogPayload) hashValue() any {
+func (r RevertedTransaction) hashValue() any {
 	return struct {
 		RevertedTransactionID int         `json:"revertedTransactionID"`
 		RevertTransaction     Transaction `json:"transaction"`
@@ -338,10 +338,10 @@ func (r RevertedTransactionLogPayload) hashValue() any {
 	}
 }
 
-var _ hashValuer = (*RevertedTransactionLogPayload)(nil)
+var _ hashValuer = (*RevertedTransaction)(nil)
 
 func NewRevertedTransactionLog(revertedTx, tx Transaction) Log {
-	return NewLog(RevertedTransactionLogType, RevertedTransactionLogPayload{
+	return NewLog(RevertedTransactionLogType, RevertedTransaction{
 		RevertedTransaction: revertedTx,
 		RevertTransaction:   tx,
 	})
@@ -351,13 +351,13 @@ func HydrateLog(_type LogType, data []byte) (any, error) {
 	var payload any
 	switch _type {
 	case NewTransactionLogType:
-		payload = &NewTransactionLogPayload{}
+		payload = &CreatedTransaction{}
 	case SetMetadataLogType:
-		payload = &SetMetadataLogPayload{}
+		payload = &SetMetadata{}
 	case DeleteMetadataLogType:
-		payload = &DeleteMetadataLogPayload{}
+		payload = &DeletedMetadata{}
 	case RevertedTransactionLogType:
-		payload = &RevertedTransactionLogPayload{}
+		payload = &RevertedTransaction{}
 	default:
 		return nil, fmt.Errorf("unknown type '%s'", _type)
 	}

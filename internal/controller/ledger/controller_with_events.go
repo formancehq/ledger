@@ -8,19 +8,19 @@ import (
 
 type ControllerWithEvents struct {
 	Controller
-	ledger ledger.Ledger
-	listener       Listener
+	ledger   ledger.Ledger
+	listener Listener
 }
 
 func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listener Listener) *ControllerWithEvents {
 	ret := &ControllerWithEvents{
 		Controller: underlying,
-		ledger: ledger,
+		ledger:     ledger,
 		listener:   listener,
 	}
 	return ret
 }
-func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error) {
+func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 	ret, err := ctrl.Controller.CreateTransaction(ctx, parameters)
 	if err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, paramet
 	return ret, nil
 }
 
-func (ctrl *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error) {
+func (ctrl *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	ret, err := ctrl.Controller.RevertTransaction(ctx, parameters)
 	if err != nil {
 		return nil, err

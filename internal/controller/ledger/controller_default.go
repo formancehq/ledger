@@ -124,7 +124,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 
 func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledger.Log) error {
 	switch payload := log.Data.(type) {
-	case ledger.NewTransactionLogPayload:
+	case ledger.CreatedTransaction:
 		if err := sqlTx.CommitTransaction(ctx, &payload.Transaction); err != nil {
 			return errors.Wrap(err, "failed to commit transaction")
 		}
@@ -133,12 +133,12 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 				return errors.Wrapf(err, "updating metadata of accounts '%s'", Keys(payload.AccountMetadata))
 			}
 		}
-	case ledger.RevertedTransactionLogPayload:
+	case ledger.RevertedTransaction:
 		_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransaction.ID)
 		if err != nil {
 			return errors.Wrap(err, "failed to revert transaction")
 		}
-	case ledger.SetMetadataLogPayload:
+	case ledger.SetMetadata:
 		switch payload.TargetType {
 		case ledger.MetaTargetTypeTransaction:
 			if _, _, err := sqlTx.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
@@ -151,7 +151,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 				return errors.Wrap(err, "failed to update account metadata")
 			}
 		}
-	case ledger.DeleteMetadataLogPayload:
+	case ledger.DeletedMetadata:
 		switch payload.TargetType {
 		case ledger.MetaTargetTypeTransaction:
 			if _, _, err := sqlTx.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
@@ -205,7 +205,7 @@ func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q Get
 	return ctrl.store.GetVolumesWithBalances(ctx, q)
 }
 
-func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error) {
+func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
@@ -267,16 +267,16 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 		return nil, err
 	}
 
-	transaction := log.Data.(ledger.NewTransactionLogPayload).Transaction
-	accountMetadata := log.Data.(ledger.NewTransactionLogPayload).AccountMetadata
+	transaction := log.Data.(ledger.CreatedTransaction).Transaction
+	accountMetadata := log.Data.(ledger.CreatedTransaction).AccountMetadata
 
-	return &CreateTransactionResult{
+	return &ledger.CreatedTransaction{
 		Transaction:     transaction,
 		AccountMetadata: accountMetadata,
 	}, nil
 }
 
-func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error) {
+func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	var originalTransaction *ledger.Transaction
 	log, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RevertTransaction) (*ledger.Log, error) {
 
@@ -341,9 +341,9 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 		return nil, err
 	}
 
-	return &RevertTransactionResult{
+	return &ledger.RevertedTransaction{
 		RevertedTransaction: *originalTransaction,
-		ReversedTransaction: log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction,
+		RevertTransaction:   log.Data.(ledger.RevertedTransaction).RevertTransaction,
 	}, nil
 }
 

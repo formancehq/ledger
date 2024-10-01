@@ -37,7 +37,7 @@ type Controller interface {
 	//  * ErrTransactionReferenceConflict
 	//  * ErrIdempotencyKeyConflict
 	//  * ErrInsufficientFunds
-	CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error)
+	CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error)
 	// RevertTransaction allow to revert a transaction.
 	// It can return following errors:
 	//  * ErrInsufficientFunds
@@ -45,7 +45,7 @@ type Controller interface {
 	//  * ErrNotFound
 	// Parameter force indicate we want to force revert the transaction even if the accounts does not have funds
 	// Parameter atEffectiveDate indicate we want to set the timestamp of the newly created transaction on the timestamp of the reverted transaction
-	RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error)
+	RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error)
 	// SaveTransactionMetadata allow to add metadata to an existing transaction
 	// It can return following errors:
 	//  * ErrNotFound
@@ -74,20 +74,10 @@ type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
 
-type CreateTransactionResult struct {
-	Transaction ledger.Transaction
-	AccountMetadata ledger.AccountMetadata
-}
-
 type RevertTransaction struct {
 	Force           bool
 	AtEffectiveDate bool
 	TransactionID   int
-}
-
-type RevertTransactionResult struct {
-	RevertedTransaction ledger.Transaction
-	ReversedTransaction   ledger.Transaction
 }
 
 type SaveTransactionMetadata struct {

@@ -89,7 +89,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 			createTransactionResult, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
 				DryRun:         false,
 				IdempotencyKey: element.IdempotencyKey,
-				Input: *rs,
+				Input:          *rs,
 			})
 			if err != nil {
 				var code string
@@ -210,7 +210,7 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 				}
 			} else {
 				ret = append(ret, Result{
-					Data:         revertTransactionResult.ReversedTransaction,
+					Data:         revertTransactionResult.RevertTransaction,
 					ResponseType: element.Action,
 				})
 			}

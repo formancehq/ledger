@@ -67,7 +67,7 @@ func TestBulk(t *testing.T) {
 							Timestamp: now,
 						}, false),
 					}).
-					Return(&ledgercontroller.CreateTransactionResult{
+					Return(&ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{
 							TransactionData: ledger.TransactionData{
 								Postings:  postings,
@@ -166,7 +166,7 @@ func TestBulk(t *testing.T) {
 							TransactionID: 1,
 						},
 					}).
-					Return(&ledgercontroller.RevertTransactionResult{}, nil)
+					Return(&ledger.RevertedTransaction{}, nil)
 			},
 			expectResults: []Result{{
 				Data: map[string]any{

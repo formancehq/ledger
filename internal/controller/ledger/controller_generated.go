@@ -73,10 +73,10 @@ func (mr *MockControllerMockRecorder) CountTransactions(ctx, query any) *gomock.
 }
 
 // CreateTransaction mocks base method.
-func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*CreateTransactionResult, error) {
+func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
-	ret0, _ := ret[0].(*CreateTransactionResult)
+	ret0, _ := ret[0].(*ledger.CreatedTransaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -294,10 +294,10 @@ func (mr *MockControllerMockRecorder) ListTransactions(ctx, query any) *gomock.C
 }
 
 // RevertTransaction mocks base method.
-func (m *MockController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*RevertTransactionResult, error) {
+func (m *MockController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters)
-	ret0, _ := ret[0].(*RevertTransactionResult)
+	ret0, _ := ret[0].(*ledger.RevertedTransaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
