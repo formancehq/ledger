@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"errors"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/common"

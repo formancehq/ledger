@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/platform/postgres"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 const (

@@ -4,6 +4,7 @@ package performance_test
 
 import (
 	"context"
+	"fmt"
 	systemstore "github.com/formancehq/ledger/internal/storage/driver"
 	"testing"
 
@@ -15,7 +16,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
@@ -27,7 +27,11 @@ type CoreEnv struct {
 }
 
 func (e *CoreEnv) Stop(_ context.Context) error {
-	return errors.Wrap(e.bunDB.Close(), "failed to close database connection")
+	err := e.bunDB.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close database connection: %w", err)
+	}
+	return nil
 }
 
 func (e *CoreEnv) Executor() TransactionExecutor {

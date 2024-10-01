@@ -22,7 +22,7 @@ import (
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/google/uuid"
 	// todo: remove as it is in maintenance mode
-	"github.com/pkg/errors"
+	"errors"
 
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -92,7 +92,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 		// Due to the serializable isolation level, and since we explicitly ask for the ledger state in the sql transaction context
 		// if the state change, the sql transaction will be aborted with a serialization error
 		if err := sqlTx.LockLedger(ctx); err != nil {
-			return false, errors.Wrap(err, "failed to lock ledger")
+			return false, fmt.Errorf("failed to lock ledger: %w", err)
 		}
 
 		// We can import only if the ledger is empty.
@@ -100,7 +100,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 			PageSize: 1,
 		}))
 		if err != nil {
-			return false, errors.Wrap(err, "error listing logs")
+			return false, fmt.Errorf("error listing logs: %w", err)
 		}
 
 		if len(logs.Data) > 0 {
@@ -109,7 +109,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 
 		for log := range stream {
 			if err := ctrl.importLog(ctx, sqlTx, log); err != nil {
-				return false, errors.Wrapf(err, "importing log %d", log.ID)
+				return false, fmt.Errorf("importing log %d: %w", log.ID, err)
 			}
 		}
 
@@ -128,47 +128,47 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 	switch payload := log.Data.(type) {
 	case ledger.CreatedTransaction:
 		if err := sqlTx.CommitTransaction(ctx, &payload.Transaction); err != nil {
-			return errors.Wrap(err, "failed to commit transaction")
+			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
 		if len(payload.AccountMetadata) > 0 {
 			if err := sqlTx.UpdateAccountsMetadata(ctx, payload.AccountMetadata); err != nil {
-				return errors.Wrapf(err, "updating metadata of accounts '%s'", Keys(payload.AccountMetadata))
+				return fmt.Errorf("updating metadata of accounts '%s': %w", Keys(payload.AccountMetadata), err)
 			}
 		}
 	case ledger.RevertedTransaction:
 		_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransaction.ID)
 		if err != nil {
-			return errors.Wrap(err, "failed to revert transaction")
+			return fmt.Errorf("failed to revert transaction: %w", err)
 		}
 	case ledger.SavedMetadata:
 		switch payload.TargetType {
 		case ledger.MetaTargetTypeTransaction:
 			if _, _, err := sqlTx.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
-				return errors.Wrap(err, "failed to update transaction metadata")
+				return fmt.Errorf("failed to update transaction metadata: %w", err)
 			}
 		case ledger.MetaTargetTypeAccount:
 			if err := sqlTx.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
 				payload.TargetID.(string): payload.Metadata,
 			}); err != nil {
-				return errors.Wrap(err, "failed to update account metadata")
+				return fmt.Errorf("failed to update account metadata: %w", err)
 			}
 		}
 	case ledger.DeletedMetadata:
 		switch payload.TargetType {
 		case ledger.MetaTargetTypeTransaction:
 			if _, _, err := sqlTx.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
-				return errors.Wrap(err, "failed to delete transaction metadata")
+				return fmt.Errorf("failed to delete transaction metadata: %w", err)
 			}
 		case ledger.MetaTargetTypeAccount:
 			if err := sqlTx.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
-				return errors.Wrap(err, "failed to delete account metadata")
+				return fmt.Errorf("failed to delete account metadata: %w", err)
 			}
 		}
 	}
 
 	logCopy := log
 	if err := sqlTx.InsertLog(ctx, &log); err != nil {
-		return errors.Wrap(err, "failed to insert log")
+		return fmt.Errorf("failed to insert log: %w", err)
 	}
 
 	if ctrl.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
@@ -214,7 +214,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 
 	m, err := ctrl.machineFactory.Make(parameters.Input.Plain)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to compile script")
+		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}
 
 	output, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.Log, *ledger.CreatedTransaction, error) {
@@ -222,7 +222,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 			return m.Execute(ctx, newVmStoreAdapter(sqlTX), input.Vars)
 		})
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "failed to execute program")
+			return nil, nil, fmt.Errorf("failed to execute program: %w", err)
 		}
 
 		if len(result.Postings) == 0 {
@@ -259,7 +259,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 
 		if len(result.AccountMetadata) > 0 {
 			if err := sqlTX.UpdateAccountsMetadata(ctx, result.AccountMetadata); err != nil {
-				return nil, nil, errors.Wrapf(err, "updating metadata of account '%s'", Keys(result.AccountMetadata))
+				return nil, nil, fmt.Errorf("updating metadata of account '%s': %w", Keys(result.AccountMetadata), err)
 			}
 		}
 
@@ -296,7 +296,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 
 		balances, err := sqlTX.GetBalances(ctx, bq)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "failed to get balances")
+			return nil, nil, fmt.Errorf("failed to get balances: %w", err)
 		}
 
 		reversedTx := originalTransaction.Reverse()
@@ -332,7 +332,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 
 		err = sqlTX.CommitTransaction(ctx, &reversedTx)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "failed to insert transaction")
+			return nil, nil, fmt.Errorf("failed to insert transaction: %w", err)
 		}
 
 		return pointer.For(ledger.NewRevertedTransactionLog(*originalTransaction, reversedTx)), &ledger.RevertedTransaction{

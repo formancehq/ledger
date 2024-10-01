@@ -18,9 +18,9 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
 
+	"errors"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/logrusorgru/aurora"
-	"github.com/pkg/errors"
 )
 
 type Machine struct {
@@ -522,7 +522,7 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 	if len(balancesQuery) > 0 {
 		balances, err := store.GetBalances(ctx, balancesQuery)
 		if err != nil {
-			return errors.Wrap(err, "could not get balances")
+			return fmt.Errorf("could not get balances: %w", err)
 		}
 
 		for account, forAssets := range balances {

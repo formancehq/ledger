@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/invopop/jsonschema"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
@@ -21,12 +21,12 @@ func NewDocEventsCommand() *cobra.Command {
 
 			writeDir, err := cmd.Flags().GetString(writeDirFlag)
 			if err != nil {
-				return errors.Wrap(err, "failed to get write-dir flag")
+				return fmt.Errorf("failed to get write-dir flag: %w", err)
 			}
 
 			err = os.MkdirAll(writeDir, 0755)
 			if err != nil {
-				return errors.Wrap(err, "failed to create write-dir")
+				return fmt.Errorf("failed to create write-dir: %w", err)
 			}
 
 			for _, o := range []any{
@@ -38,11 +38,11 @@ func NewDocEventsCommand() *cobra.Command {
 				schema := jsonschema.Reflect(o)
 				data, err := json.MarshalIndent(schema, "", "  ")
 				if err != nil {
-					return errors.Wrap(err, "failed to marshal schema")
+					return fmt.Errorf("failed to marshal schema: %w", err)
 				}
 				err = os.WriteFile(filepath.Join(writeDir, reflect.TypeOf(o).Name()+".json"), data, 0600)
 				if err != nil {
-					return errors.Wrap(err, "failed to write schema")
+					return fmt.Errorf("failed to write schema: %w", err)
 				}
 			}
 

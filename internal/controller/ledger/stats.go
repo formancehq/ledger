@@ -2,8 +2,7 @@ package ledger
 
 import (
 	"context"
-
-	"github.com/pkg/errors"
+	"fmt"
 )
 
 type Stats struct {
@@ -16,12 +15,12 @@ func (ctrl *DefaultController) GetStats(ctx context.Context) (Stats, error) {
 
 	transactions, err := ctrl.store.CountTransactions(ctx, NewListTransactionsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
 	if err != nil {
-		return stats, errors.Wrap(err, "counting transactions")
+		return stats, fmt.Errorf("counting transactions: %w", err)
 	}
 
 	accounts, err := ctrl.store.CountAccounts(ctx, NewListAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
 	if err != nil {
-		return stats, errors.Wrap(err, "counting accounts")
+		return stats, fmt.Errorf("counting accounts: %w", err)
 	}
 
 	return Stats{

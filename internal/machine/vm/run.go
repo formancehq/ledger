@@ -9,7 +9,6 @@ import (
 
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/pkg/errors"
 )
 
 type RunScript struct {
@@ -53,7 +52,7 @@ type Result struct {
 func Run(m *Machine, script RunScript) (*Result, error) {
 	err := m.Execute()
 	if err != nil {
-		return nil, errors.Wrap(err, "script execution failed")
+		return nil, fmt.Errorf("script execution failed: %w", err)
 	}
 
 	result := Result{

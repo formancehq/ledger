@@ -2,15 +2,16 @@ package ledger
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/formancehq/ledger/internal/machine"
 
+	"errors"
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
-	"github.com/pkg/errors"
 )
 
 type MachineResult struct {
@@ -40,15 +41,15 @@ func (d *DefaultMachineAdapter) Execute(ctx context.Context, store vm.Store, var
 	}
 
 	if err := d.machine.SetVarsFromJSON(varsCopy); err != nil {
-		return nil, errors.Wrap(err, "failed to set vars from JSON")
+		return nil, fmt.Errorf("failed to set vars from JSON: %w", err)
 	}
 	err := d.machine.ResolveResources(ctx, store)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to resolve resources")
+		return nil, fmt.Errorf("failed to resolve resources: %w", err)
 	}
 
 	if err := d.machine.ResolveBalances(ctx, store); err != nil {
-		return nil, errors.Wrap(err, "failed to resolve balances")
+		return nil, fmt.Errorf("failed to resolve balances: %w", err)
 	}
 
 	if err := d.machine.Execute(); err != nil {
@@ -58,7 +59,7 @@ func (d *DefaultMachineAdapter) Execute(ctx context.Context, store vm.Store, var
 			_ = errors.As(err, &errMetadataOverride)
 			return nil, newErrMetadataOverride(errMetadataOverride.Key())
 		default:
-			return nil, errors.Wrap(err, "failed to execute machine")
+			return nil, fmt.Errorf("failed to execute machine: %w", err)
 		}
 	}
 

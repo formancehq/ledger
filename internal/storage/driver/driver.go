@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/platform/postgres"
@@ -15,7 +16,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/logging"
@@ -42,25 +42,25 @@ func (d *Driver) CreateBucket(ctx context.Context, bucketName string) (*bucket.B
 
 	isInitialized, err := b.IsInitialized(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "checking if bucket is initialized")
+		return nil, fmt.Errorf("checking if bucket is initialized: %w", err)
 	}
 
 	if isInitialized {
 		isUpToDate, err := b.IsUpToDate(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "checking if bucket is up to date")
+			return nil, fmt.Errorf("checking if bucket is up to date: %w", err)
 		}
 		if !isUpToDate {
 			return nil, systemcontroller.ErrNeedUpgradeBucket
 		}
 	} else {
 		if err := bucket.Migrate(ctx, tx, bucketName); err != nil {
-			return nil, errors.Wrap(err, "migrating bucket")
+			return nil, fmt.Errorf("migrating bucket: %w", err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "committing sql transaction to create bucket schema")
+		return nil, fmt.Errorf("committing sql transaction to create bucket schema: %w", err)
 	}
 
 	return b, nil
@@ -70,20 +70,20 @@ func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledge
 
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return nil, errors.Wrap(err, "begin transaction")
+		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 
 	b := bucket.New(tx, ledger.Bucket)
 	if err := b.Migrate(ctx); err != nil {
-		return nil, errors.Wrap(err, "migrating bucket")
+		return nil, fmt.Errorf("migrating bucket: %w", err)
 	}
 
 	if err := ledgerstore.Migrate(ctx, tx, ledger); err != nil {
-		return nil, errors.Wrap(err, "failed to migrate ledger store")
+		return nil, fmt.Errorf("failed to migrate ledger store: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "committing sql transaction to create ledger and schemas")
+		return nil, fmt.Errorf("committing sql transaction to create ledger and schemas: %w", err)
 	}
 
 	return ledgerstore.New(d.db, ledger), nil
@@ -93,7 +93,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return nil, errors.Wrap(err, "begin transaction")
+		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -114,7 +114,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	affected, err := ret.RowsAffected()
 	if err != nil {
-		return nil, errors.Wrap(err, "creating ledger")
+		return nil, fmt.Errorf("creating ledger: %w", err)
 	}
 	if affected == 0 {
 		return nil, systemcontroller.ErrLedgerAlreadyExists
@@ -126,7 +126,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "committing sql transaction to create ledger schema")
+		return nil, fmt.Errorf("committing sql transaction to create ledger schema: %w", err)
 	}
 
 	return store, nil
@@ -147,7 +147,11 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 
 func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
-	return errors.Wrap(Migrate(ctx, d.db), "migrating system store")
+	err := Migrate(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("migrating system store: %w", err)
+	}
+	return nil
 }
 
 func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {

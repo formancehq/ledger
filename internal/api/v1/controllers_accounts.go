@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
+	"errors"
 
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"

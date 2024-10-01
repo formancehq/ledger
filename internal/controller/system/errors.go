@@ -1,7 +1,7 @@
 package system
 
 import (
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var (

@@ -9,8 +9,8 @@ import (
 	"math/big"
 	"testing"
 
+	"errors"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/time"

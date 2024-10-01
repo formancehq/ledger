@@ -2,11 +2,11 @@ package ledger
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/formancehq/go-libs/platform/postgres"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -140,7 +140,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 			}
 		}))
 		if err != nil {
-			return ret.Err(errors.Wrap(err, "building where clause"))
+			return ret.Err(fmt.Errorf("building where clause: %w", err))
 		}
 		finalQuery = finalQuery.Where(where, args...)
 	}

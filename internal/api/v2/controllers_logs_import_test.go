@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

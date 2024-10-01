@@ -8,9 +8,9 @@ import (
 	"testing"
 	libtime "time"
 
+	"errors"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/time"
 
