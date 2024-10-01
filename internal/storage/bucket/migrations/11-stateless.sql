@@ -89,6 +89,9 @@ alter table "{{.Bucket}}".logs
 alter column data
 type json;
 
+alter table "{{.Bucket}}".logs
+add column idempotency_hash bytea;
+
 create unique index accounts_metadata_ledger on "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision);
 create index accounts_metadata_revisions on "{{.Bucket}}".accounts_metadata(accounts_address asc, revision desc) include (metadata, date);
 

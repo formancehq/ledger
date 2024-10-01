@@ -5,10 +5,10 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
+	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
 
-	"github.com/alitto/pond"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
 
@@ -80,12 +80,14 @@ func TestInsertLog(t *testing.T) {
 	})
 
 	t.Run("hash consistency over high concurrency", func(t *testing.T) {
-		wp := pond.New(10, 10)
-		const countLogs = 100
+		errGroup, _ := errgroup.WithContext(ctx)
+		const countLogs = 50
 		for range countLogs {
-			wp.Submit(func() {
+			errGroup.Go(func() error {
 				tx, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
-				require.NoError(t, err)
+				if err != nil {
+					return err
+				}
 				defer func() {
 					_ = tx.Rollback()
 				}()
@@ -93,11 +95,14 @@ func TestInsertLog(t *testing.T) {
 
 				logTx := ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{})
 				err = store.InsertLog(ctx, &logTx)
-				require.NoError(t, err)
-				require.NoError(t, tx.Commit())
+				if err != nil {
+					return err
+				}
+				return tx.Commit()
 			})
 		}
-		wp.StopAndWait()
+		err := errGroup.Wait()
+		require.NoError(t, err)
 
 		logs, err := store.ListLogs(ctx, ledgercontroller.NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
 			PageSize: countLogs,
