@@ -43,5 +43,5 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Created(w, ret.ReversedTransaction)
+	api.Created(w, ret.RevertTransaction)
 }

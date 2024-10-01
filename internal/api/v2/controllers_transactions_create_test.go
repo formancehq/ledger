@@ -411,7 +411,7 @@ func TestTransactionCreate(t *testing.T) {
 					})
 
 				if tc.returnError == nil {
-					expect.Return(&ledgercontroller.CreateTransactionResult{
+					expect.Return(&ledger.CreatedTransaction{
 						Transaction: expectedTx,
 					}, nil)
 				} else {

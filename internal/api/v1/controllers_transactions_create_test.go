@@ -229,7 +229,7 @@ func TestTransactionsCreate(t *testing.T) {
 						DryRun: tc.expectedPreview,
 						Input:  testCase.expectedRunScript,
 					}).
-					Return(&ledgercontroller.CreateTransactionResult{
+					Return(&ledger.CreatedTransaction{
 						Transaction: expectedTx,
 					}, nil)
 			}
