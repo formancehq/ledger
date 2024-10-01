@@ -18,9 +18,7 @@ func TestBuckets(t *testing.T) {
 	ctx := logging.TestingContext()
 	name := uuid.NewString()[:8]
 
-	<-srv.Done()
-
-	pgDatabase := srv.GetValue().NewDatabase(t)
+	pgDatabase := srv.NewDatabase(t)
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
 

@@ -13,14 +13,12 @@ import (
 )
 
 var (
-	srv = NewDeferred[*pgtesting.PostgresServer]()
+	srv *pgtesting.PostgresServer
 )
 
 func TestMain(m *testing.M) {
 	WithTestMain(func(t *TestingTForMain) int {
-		srv.LoadAsync(func() *pgtesting.PostgresServer {
-			return pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
-		})
+		srv = pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
 
 		return m.Run()
 	})
