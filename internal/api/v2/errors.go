@@ -9,4 +9,7 @@ const (
 	ErrCompilationFailed = "COMPILATION_FAILED"
 	ErrMetadataOverride  = "METADATA_OVERRIDE"
 	ErrBulkSizeExceeded  = "BULK_SIZE_EXCEEDED"
+
+	ErrInterpreterParse   = "INTERPRETER_PARSE"
+	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"
 )

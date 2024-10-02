@@ -115,6 +115,10 @@ func ProcessBulk(
 					code = ErrNoPostings
 				case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 					code = ErrConflict
+				case errors.Is(err, ledgercontroller.ErrParsing{}):
+					code = ErrInterpreterParse
+				case errors.Is(err, ledgercontroller.ErrRuntime{}):
+					code = ErrInterpreterRuntime
 				default:
 					code = api.ErrorInternal
 				}

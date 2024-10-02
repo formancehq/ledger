@@ -183,7 +183,7 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		It("should respond with an error", func() {
 			Expect(bulkResponse[1].Type).To(Equal(components.V2BulkElementResultType("ERROR")))
-			Expect(bulkResponse[1].V2BulkElementResultError.ErrorCode).To(Equal("INSUFFICIENT_FUND"))
+			Expect(bulkResponse[1].V2BulkElementResultError.ErrorCode).To(Equal("INTERPRETER_RUNTIME"))
 		})
 	})
 })
