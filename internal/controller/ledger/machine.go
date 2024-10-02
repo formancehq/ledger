@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger/internal/machine"
-
 	"errors"
 
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/numscript"
 )
 
 type MachineResult struct {
@@ -85,4 +85,47 @@ func NewDefaultMachine(p program.Program) *DefaultMachineAdapter {
 	}
 }
 
-var _ Machine = (*DefaultMachineAdapter)(nil)
+// numscript rewrite implementation
+var _ Machine = (*DefaultInterpreterMachineAdapter)(nil)
+
+type DefaultInterpreterMachineAdapter struct {
+	parseResult numscript.ParseResult
+}
+
+func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult) *DefaultInterpreterMachineAdapter {
+	return &DefaultInterpreterMachineAdapter{
+		parseResult: parseResult,
+	}
+}
+
+func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*MachineResult, error) {
+	execResult, err := d.parseResult.Run(ctx, vars, newNumscriptRewriteAdapter(tx))
+	if err != nil {
+		return nil, err
+	}
+
+	return &MachineResult{
+		Postings: collectionutils.Map(execResult.Postings, func(posting numscript.Posting) ledger.Posting {
+			return ledger.Posting(posting)
+		}),
+		Metadata:        castMetadata(execResult.Metadata),
+		AccountMetadata: castAccountsMetadata(execResult.AccountsMetadata),
+	}, nil
+}
+
+func castMetadata(numscriptMeta numscript.Metadata) metadata.Metadata {
+	meta := metadata.Metadata{}
+	for k, v := range numscriptMeta {
+		meta[k] = v.String()
+	}
+	return meta
+}
+
+func castAccountsMetadata(numscriptAccountsMetadata numscript.AccountsMetadata) map[string]metadata.Metadata {
+	m := make(map[string]metadata.Metadata)
+	for k, v := range numscriptAccountsMetadata {
+		m[k] = v
+	}
+	return m
+
+}
