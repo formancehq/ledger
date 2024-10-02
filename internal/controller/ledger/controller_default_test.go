@@ -3,10 +3,11 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"testing"
+
+	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/migrations"
@@ -43,7 +44,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
 	machine.EXPECT().
-		Execute(gomock.Any(), newVmStoreAdapter(sqlTX), runScript.Vars).
+		Execute(gomock.Any(), sqlTX, runScript.Vars).
 		Return(&MachineResult{
 			Postings: ledger.Postings{posting},
 		}, nil)

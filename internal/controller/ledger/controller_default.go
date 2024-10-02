@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"reflect"
+
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -17,6 +18,7 @@ import (
 	"github.com/formancehq/go-libs/platform/postgres"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
@@ -217,7 +219,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 
 	output, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.CreatedTransaction, error) {
 		result, err := tracing.TraceWithLatency(ctx, "ExecuteMachine", func(ctx context.Context) (*MachineResult, error) {
-			return m.Execute(ctx, newVmStoreAdapter(sqlTX), input.Vars)
+			return m.Execute(ctx, sqlTX, input.Vars)
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute program: %w", err)

@@ -80,7 +80,7 @@ Ledger Controller doc
   - [func \(ctrl \*DefaultController\) SaveTransactionMetadata\(ctx context.Context, parameters Parameters\[SaveTransactionMetadata\]\) error](<#DefaultController.SaveTransactionMetadata>)
 - [type DefaultMachineAdapter](<#DefaultMachineAdapter>)
   - [func NewDefaultMachine\(p program.Program\) \*DefaultMachineAdapter](<#NewDefaultMachine>)
-  - [func \(d \*DefaultMachineAdapter\) Execute\(ctx context.Context, store vm.Store, vars map\[string\]string\) \(\*MachineResult, error\)](<#DefaultMachineAdapter.Execute>)
+  - [func \(d \*DefaultMachineAdapter\) Execute\(ctx context.Context, tx TX, vars map\[string\]string\) \(\*MachineResult, error\)](<#DefaultMachineAdapter.Execute>)
 - [type DefaultMachineFactory](<#DefaultMachineFactory>)
   - [func NewDefaultMachineFactory\(compiler Compiler\) \*DefaultMachineFactory](<#NewDefaultMachineFactory>)
   - [func \(d \*DefaultMachineFactory\) Make\(script string\) \(Machine, error\)](<#DefaultMachineFactory.Make>)
@@ -674,7 +674,7 @@ func (ctrl *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, p
 
 
 <a name="DefaultController"></a>
-## type [DefaultController](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L28-L32>)
+## type [DefaultController](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L30-L34>)
 
 
 
@@ -685,7 +685,7 @@ type DefaultController struct {
 ```
 
 <a name="NewDefaultController"></a>
-### func [NewDefaultController](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L34-L38>)
+### func [NewDefaultController](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L36-L40>)
 
 ```go
 func NewDefaultController(ledger ledger.Ledger, store Store, machineFactory MachineFactory) *DefaultController
@@ -694,7 +694,7 @@ func NewDefaultController(ledger ledger.Ledger, store Store, machineFactory Mach
 
 
 <a name="DefaultController.CountAccounts"></a>
-### func \(\*DefaultController\) [CountAccounts](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L64>)
+### func \(\*DefaultController\) [CountAccounts](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L66>)
 
 ```go
 func (ctrl *DefaultController) CountAccounts(ctx context.Context, a ListAccountsQuery) (int, error)
@@ -703,7 +703,7 @@ func (ctrl *DefaultController) CountAccounts(ctx context.Context, a ListAccounts
 
 
 <a name="DefaultController.CountTransactions"></a>
-### func \(\*DefaultController\) [CountTransactions](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L56>)
+### func \(\*DefaultController\) [CountTransactions](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L58>)
 
 ```go
 func (ctrl *DefaultController) CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error)
@@ -712,7 +712,7 @@ func (ctrl *DefaultController) CountTransactions(ctx context.Context, q ListTran
 
 
 <a name="DefaultController.CreateTransaction"></a>
-### func \(\*DefaultController\) [CreateTransaction](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L208>)
+### func \(\*DefaultController\) [CreateTransaction](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L210>)
 
 ```go
 func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error)
@@ -721,7 +721,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 
 
 <a name="DefaultController.DeleteAccountMetadata"></a>
-### func \(\*DefaultController\) [DeleteAccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L400>)
+### func \(\*DefaultController\) [DeleteAccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L402>)
 
 ```go
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error
@@ -730,7 +730,7 @@ func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parame
 
 
 <a name="DefaultController.DeleteTransactionMetadata"></a>
-### func \(\*DefaultController\) [DeleteTransactionMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L379>)
+### func \(\*DefaultController\) [DeleteTransactionMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L381>)
 
 ```go
 func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error
@@ -739,7 +739,7 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 
 
 <a name="DefaultController.Export"></a>
-### func \(\*DefaultController\) [Export](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L181>)
+### func \(\*DefaultController\) [Export](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L183>)
 
 ```go
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
@@ -748,7 +748,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 
 
 <a name="DefaultController.GetAccount"></a>
-### func \(\*DefaultController\) [GetAccount](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L72>)
+### func \(\*DefaultController\) [GetAccount](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L74>)
 
 ```go
 func (ctrl *DefaultController) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error)
@@ -757,7 +757,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, q GetAccountQuery
 
 
 <a name="DefaultController.GetAggregatedBalances"></a>
-### func \(\*DefaultController\) [GetAggregatedBalances](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L76>)
+### func \(\*DefaultController\) [GetAggregatedBalances](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L78>)
 
 ```go
 func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
@@ -766,7 +766,7 @@ func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q GetA
 
 
 <a name="DefaultController.GetMigrationsInfo"></a>
-### func \(\*DefaultController\) [GetMigrationsInfo](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L48>)
+### func \(\*DefaultController\) [GetMigrationsInfo](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L50>)
 
 ```go
 func (ctrl *DefaultController) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
@@ -784,7 +784,7 @@ func (ctrl *DefaultController) GetStats(ctx context.Context) (Stats, error)
 
 
 <a name="DefaultController.GetTransaction"></a>
-### func \(\*DefaultController\) [GetTransaction](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L60>)
+### func \(\*DefaultController\) [GetTransaction](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L62>)
 
 ```go
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error)
@@ -793,7 +793,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, query GetTran
 
 
 <a name="DefaultController.GetVolumesWithBalances"></a>
-### func \(\*DefaultController\) [GetVolumesWithBalances](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L204>)
+### func \(\*DefaultController\) [GetVolumesWithBalances](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L206>)
 
 ```go
 func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
@@ -802,7 +802,7 @@ func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q Get
 
 
 <a name="DefaultController.Import"></a>
-### func \(\*DefaultController\) [Import](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L84>)
+### func \(\*DefaultController\) [Import](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L86>)
 
 ```go
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error
@@ -811,7 +811,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 
 
 <a name="DefaultController.IsDatabaseUpToDate"></a>
-### func \(\*DefaultController\) [IsDatabaseUpToDate](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L200>)
+### func \(\*DefaultController\) [IsDatabaseUpToDate](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L202>)
 
 ```go
 func (ctrl *DefaultController) IsDatabaseUpToDate(ctx context.Context) (bool, error)
@@ -820,7 +820,7 @@ func (ctrl *DefaultController) IsDatabaseUpToDate(ctx context.Context) (bool, er
 
 
 <a name="DefaultController.ListAccounts"></a>
-### func \(\*DefaultController\) [ListAccounts](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L68>)
+### func \(\*DefaultController\) [ListAccounts](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L70>)
 
 ```go
 func (ctrl *DefaultController) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error)
@@ -829,7 +829,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, a ListAccountsQ
 
 
 <a name="DefaultController.ListLogs"></a>
-### func \(\*DefaultController\) [ListLogs](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L80>)
+### func \(\*DefaultController\) [ListLogs](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L82>)
 
 ```go
 func (ctrl *DefaultController) ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
@@ -838,7 +838,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, q GetLogsQuery) (*b
 
 
 <a name="DefaultController.ListTransactions"></a>
-### func \(\*DefaultController\) [ListTransactions](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L52>)
+### func \(\*DefaultController\) [ListTransactions](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L54>)
 
 ```go
 func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error)
@@ -847,7 +847,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ListTrans
 
 
 <a name="DefaultController.RevertTransaction"></a>
-### func \(\*DefaultController\) [RevertTransaction](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L276>)
+### func \(\*DefaultController\) [RevertTransaction](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L278>)
 
 ```go
 func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error)
@@ -856,7 +856,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 
 
 <a name="DefaultController.SaveAccountMetadata"></a>
-### func \(\*DefaultController\) [SaveAccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L356>)
+### func \(\*DefaultController\) [SaveAccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L358>)
 
 ```go
 func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error
@@ -865,7 +865,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 
 
 <a name="DefaultController.SaveTransactionMetadata"></a>
-### func \(\*DefaultController\) [SaveTransactionMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L341>)
+### func \(\*DefaultController\) [SaveTransactionMetadata](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/controller_default.go#L343>)
 
 ```go
 func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error
@@ -874,7 +874,7 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 
 
 <a name="DefaultMachineAdapter"></a>
-## type [DefaultMachineAdapter](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L28-L31>)
+## type [DefaultMachineAdapter](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L29-L32>)
 
 
 
@@ -885,7 +885,7 @@ type DefaultMachineAdapter struct {
 ```
 
 <a name="NewDefaultMachine"></a>
-### func [NewDefaultMachine](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L80>)
+### func [NewDefaultMachine](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L82>)
 
 ```go
 func NewDefaultMachine(p program.Program) *DefaultMachineAdapter
@@ -894,10 +894,10 @@ func NewDefaultMachine(p program.Program) *DefaultMachineAdapter
 
 
 <a name="DefaultMachineAdapter.Execute"></a>
-### func \(\*DefaultMachineAdapter\) [Execute](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L33>)
+### func \(\*DefaultMachineAdapter\) [Execute](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L34>)
 
 ```go
-func (d *DefaultMachineAdapter) Execute(ctx context.Context, store vm.Store, vars map[string]string) (*MachineResult, error)
+func (d *DefaultMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*MachineResult, error)
 ```
 
 
@@ -1582,13 +1582,13 @@ type Listener interface {
 ```
 
 <a name="Machine"></a>
-## type [Machine](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L24-L26>)
+## type [Machine](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L25-L27>)
 
 
 
 ```go
 type Machine interface {
-    Execute(context.Context, vm.Store, map[string]string) (*MachineResult, error)
+    Execute(context.Context, TX, map[string]string) (*MachineResult, error)
 }
 ```
 
@@ -1606,7 +1606,7 @@ type MachineFactory interface {
 ```
 
 <a name="MachineResult"></a>
-## type [MachineResult](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L17-L21>)
+## type [MachineResult](<https://github.com/formancehq/ledger/blob/main/internal/controller/ledger/machine.go#L18-L22>)
 
 
 

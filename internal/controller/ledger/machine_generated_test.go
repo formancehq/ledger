@@ -9,7 +9,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	vm "github.com/formancehq/ledger/internal/machine/vm"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -37,7 +36,7 @@ func (m *MockMachine) EXPECT() *MockMachineMockRecorder {
 }
 
 // Execute mocks base method.
-func (m *MockMachine) Execute(arg0 context.Context, arg1 vm.Store, arg2 map[string]string) (*MachineResult, error) {
+func (m *MockMachine) Execute(arg0 context.Context, arg1 TX, arg2 map[string]string) (*MachineResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Execute", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*MachineResult)
