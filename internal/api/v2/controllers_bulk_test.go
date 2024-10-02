@@ -33,7 +33,7 @@ func TestBulk(t *testing.T) {
 		name          string
 		queryParams   url.Values
 		body          string
-		expectations  func(mockLedger *ledgercontroller.MockController)
+		expectations  func(mockLedger *LedgerController)
 		expectError   bool
 		expectResults []Result
 	}
@@ -53,7 +53,7 @@ func TestBulk(t *testing.T) {
 					"timestamp": "%s"
 				}
 			}]`, now.Format(time.RFC3339Nano)),
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				postings := []ledger.Posting{{
 					Source:      "world",
 					Destination: "bank",
@@ -107,7 +107,7 @@ func TestBulk(t *testing.T) {
 					}			
 				}
 			}]`,
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					SaveTransactionMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
 						Input: ledgercontroller.SaveTransactionMetadata{
@@ -135,7 +135,7 @@ func TestBulk(t *testing.T) {
 					}			
 				}
 			}]`,
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -159,7 +159,7 @@ func TestBulk(t *testing.T) {
 					"id": 1	
 				}
 			}]`,
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					RevertTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 						Input: ledgercontroller.RevertTransaction{
@@ -189,7 +189,7 @@ func TestBulk(t *testing.T) {
 					"key": "foo"
 				}
 			}]`,
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					DeleteTransactionMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
 						Input: ledgercontroller.DeleteTransactionMetadata{
@@ -237,7 +237,7 @@ func TestBulk(t *testing.T) {
 					}
 				}
 			]`,
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -305,7 +305,7 @@ func TestBulk(t *testing.T) {
 			queryParams: map[string][]string{
 				"continueOnFailure": {"true"},
 			},
-			expectations: func(mockLedger *ledgercontroller.MockController) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{

@@ -26,7 +26,7 @@ type Balance struct {
 type BalanceQuery = vm.BalanceQuery
 type Balances = vm.Balances
 
-//go:generate mockgen -source store.go -destination store_generated.go -package ledger . TX
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . TX
 type TX interface {
 	GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error)
 	// GetBalances must returns balance and lock account until the end of the TX

@@ -20,7 +20,7 @@ type MachineResult struct {
 	AccountMetadata map[string]metadata.Metadata
 }
 
-//go:generate mockgen -source machine.go -destination machine_generated.go -package ledger . Machine
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine.go -destination machine_generated_test.go -package ledger . Machine
 type Machine interface {
 	Execute(context.Context, vm.Store, map[string]string) (*MachineResult, error)
 }
