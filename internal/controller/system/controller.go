@@ -10,8 +10,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-//go:generate mockgen -source controller.go -destination controller_generated.go -package system . Controller
-
 type Controller interface {
 	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)

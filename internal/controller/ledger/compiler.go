@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
-//go:generate mockgen -source compiler.go -destination compiler_generated.go -package ledger . Compiler
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source compiler.go -destination compiler_generated_test.go -package ledger . Compiler
 
 // Compiler can return following errors:
 //   - ErrCompilationFailed
