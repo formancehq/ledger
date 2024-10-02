@@ -240,6 +240,26 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 	return nil
 }
 
+func (d *Driver) UpgradeAllLedgers(ctx context.Context) error {
+	err := bunpaginate.Iterate(ctx, ledgercontroller.NewListLedgersQuery(10),
+		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+			return d.ListLedgers(ctx, q)
+		},
+		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
+			for _, ledger := range cursor.Data {
+				if err := ledgerstore.Migrate(ctx, d.db, ledger); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func New(db *bun.DB) *Driver {
 	return &Driver{
 		db: db,
