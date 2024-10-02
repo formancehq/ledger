@@ -1,3 +1,3 @@
-// Ledger Controller doc
+// System Controller doc
 //go:generate gomarkdoc --output README.md .
-package ledger
+package system

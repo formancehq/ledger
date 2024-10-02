@@ -6,7 +6,7 @@
 import "github.com/formancehq/ledger/internal/controller/ledger"
 ```
 
-Controller doc
+Ledger Controller doc
 
 ## Index
 
