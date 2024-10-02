@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/logging"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -73,8 +72,8 @@ func TestResolverMiddleware(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			ctx := logging.TestingContext()
-			systemController := systemcontroller.NewMockController(ctrl)
-			ledgerController := ledgercontroller.NewMockController(ctrl)
+			systemController := NewSystemController(ctrl)
+			ledgerController := NewLedgerController(ctrl)
 
 			ledger := tc.ledger
 

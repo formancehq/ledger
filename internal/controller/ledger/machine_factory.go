@@ -1,6 +1,6 @@
 package ledger
 
-//go:generate mockgen -source machine_factory.go -destination machine_factory_generated.go -package ledger . MachineFactory
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine_factory.go -destination machine_factory_generated_test.go -package ledger . MachineFactory
 
 type MachineFactory interface {
 	// Make can return following errors:

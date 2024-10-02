@@ -10,7 +10,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-//go:generate mockgen -source controller.go -destination controller_generated.go -package ledger . Controller
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
 
 type Controller interface {
 	// IsDatabaseUpToDate check if the ledger store is up to date, including the bucket and the ledger specifics
