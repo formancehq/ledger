@@ -10,18 +10,20 @@ import (
 type V2ErrorsEnum string
 
 const (
-	V2ErrorsEnumInternal          V2ErrorsEnum = "INTERNAL"
-	V2ErrorsEnumInsufficientFund  V2ErrorsEnum = "INSUFFICIENT_FUND"
-	V2ErrorsEnumValidation        V2ErrorsEnum = "VALIDATION"
-	V2ErrorsEnumConflict          V2ErrorsEnum = "CONFLICT"
-	V2ErrorsEnumCompilationFailed V2ErrorsEnum = "COMPILATION_FAILED"
-	V2ErrorsEnumMetadataOverride  V2ErrorsEnum = "METADATA_OVERRIDE"
-	V2ErrorsEnumNotFound          V2ErrorsEnum = "NOT_FOUND"
-	V2ErrorsEnumRevertOccurring   V2ErrorsEnum = "REVERT_OCCURRING"
-	V2ErrorsEnumAlreadyRevert     V2ErrorsEnum = "ALREADY_REVERT"
-	V2ErrorsEnumNoPostings        V2ErrorsEnum = "NO_POSTINGS"
-	V2ErrorsEnumLedgerNotFound    V2ErrorsEnum = "LEDGER_NOT_FOUND"
-	V2ErrorsEnumImport            V2ErrorsEnum = "IMPORT"
+	V2ErrorsEnumInternal           V2ErrorsEnum = "INTERNAL"
+	V2ErrorsEnumInsufficientFund   V2ErrorsEnum = "INSUFFICIENT_FUND"
+	V2ErrorsEnumValidation         V2ErrorsEnum = "VALIDATION"
+	V2ErrorsEnumConflict           V2ErrorsEnum = "CONFLICT"
+	V2ErrorsEnumCompilationFailed  V2ErrorsEnum = "COMPILATION_FAILED"
+	V2ErrorsEnumMetadataOverride   V2ErrorsEnum = "METADATA_OVERRIDE"
+	V2ErrorsEnumNotFound           V2ErrorsEnum = "NOT_FOUND"
+	V2ErrorsEnumRevertOccurring    V2ErrorsEnum = "REVERT_OCCURRING"
+	V2ErrorsEnumAlreadyRevert      V2ErrorsEnum = "ALREADY_REVERT"
+	V2ErrorsEnumNoPostings         V2ErrorsEnum = "NO_POSTINGS"
+	V2ErrorsEnumLedgerNotFound     V2ErrorsEnum = "LEDGER_NOT_FOUND"
+	V2ErrorsEnumImport             V2ErrorsEnum = "IMPORT"
+	V2ErrorsEnumInterpreterParse   V2ErrorsEnum = "INTERPRETER_PARSE"
+	V2ErrorsEnumInterpreterRuntime V2ErrorsEnum = "INTERPRETER_RUNTIME"
 )
 
 func (e V2ErrorsEnum) ToPointer() *V2ErrorsEnum {
@@ -56,6 +58,10 @@ func (e *V2ErrorsEnum) UnmarshalJSON(data []byte) error {
 	case "LEDGER_NOT_FOUND":
 		fallthrough
 	case "IMPORT":
+		fallthrough
+	case "INTERPRETER_PARSE":
+		fallthrough
+	case "INTERPRETER_RUNTIME":
 		*e = V2ErrorsEnum(v)
 		return nil
 	default:

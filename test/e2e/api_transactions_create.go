@@ -3,16 +3,21 @@
 package test_suite
 
 import (
+	"math/big"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+
+	"github.com/formancehq/go-libs/logging"
+	. "github.com/formancehq/go-libs/testing/api"
+	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
-	"math/big"
-	"time"
 
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/pointer"
@@ -200,7 +205,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 			})
 			It("should fail", func() {
 				Expect(err).To(HaveOccurred())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInsufficientFund)))
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterRuntime)))
 			})
 		})
 		When("with nil amount", func() {
@@ -323,9 +328,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 					Ledger: "default",
 				}
 			})
-			It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+			It("should fail with "+string(components.V2ErrorsEnumInterpreterRuntime)+" code", func() {
 				Expect(err).NotTo(Succeed())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterRuntime)))
 			})
 		})
 		When("using a negative amount in the script with a variable", func() {
@@ -350,9 +355,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 					Ledger: "default",
 				}
 			})
-			It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+			It("should fail with "+string(components.V2ErrorsEnumInterpreterRuntime)+" code", func() {
 				Expect(err).NotTo(Succeed())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterRuntime)))
 			})
 		})
 		Context("with error on script", func() {
@@ -369,9 +374,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 					Ledger: "default",
 				}
 			})
-			It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+			It("should fail with "+string(components.V2ErrorsEnumInterpreterParse)+" code", func() {
 				Expect(err).NotTo(Succeed())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterParse)))
 			})
 		})
 		Context("with no postings", func() {
