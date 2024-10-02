@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/internal/machine"
 
@@ -186,6 +187,36 @@ func newErrCompilationFailed(err error) ErrCompilationFailed {
 	return ErrCompilationFailed{
 		err: err,
 	}
+}
+
+type ErrRuntime struct {
+	Source string
+	Inner  numscript.InterpreterError
+}
+
+func (e ErrRuntime) Error() string {
+	return e.Inner.Error()
+}
+
+func (e ErrRuntime) Is(err error) bool {
+	_, ok := err.(ErrRuntime)
+	return ok
+}
+
+type ErrParsing struct {
+	Source string
+	// Precondition: Errors is not empty
+	Errors []numscript.ParserError
+}
+
+func (e ErrParsing) Error() string {
+	// TODO write a decent description
+	return "Got parsing errors"
+}
+
+func (e ErrParsing) Is(err error) bool {
+	_, ok := err.(ErrParsing)
+	return ok
 }
 
 // ErrMetadataOverride is used when a metadata is defined at numscript level AND at the input level
