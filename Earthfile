@@ -25,12 +25,14 @@ generate:
     FROM core+builder-image
     RUN apk update && apk add openjdk11
     RUN go install go.uber.org/mock/mockgen@latest
+    RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
     COPY (+sources/*) /src
     WORKDIR /src
     RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT cmd AS LOCAL cmd
+    SAVE ARTIFACT README.md AS LOCAL README.md
 
 compile:
     FROM +sources
@@ -117,6 +119,7 @@ pre-commit:
     BUILD +tidy
     BUILD +lint
     BUILD +openapi
+    BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
 
