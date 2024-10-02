@@ -22,7 +22,7 @@ func (b *Bucket) Migrate(ctx context.Context) error {
 }
 
 func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {
-	ret, err := getMigrator(b.name).IsUpToDate(ctx, b.db)
+	ret, err := GetMigrator(b.name).IsUpToDate(ctx, b.db)
 	if err != nil && errors.Is(err, migrations.ErrMissingVersionTable) {
 		return false, nil
 	}
