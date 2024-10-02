@@ -36,8 +36,4 @@ services:
       POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
       DEBUG: "true"
       ENABLE_PPROF: "true"
-      OTEL_TRACES_BATCH: "true"
-      OTEL_TRACES_EXPORTER_OTLP_INSECURE: true
-      OTEL_TRACES_EXPORTER_OTLP_MODE: grpc
-      OTEL_TRACES_EXPORTER: true
-      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: localhost:4317
+      GOWORK: off
