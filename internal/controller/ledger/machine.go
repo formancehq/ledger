@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/internal/machine"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
@@ -22,7 +23,7 @@ type MachineResult struct {
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine.go -destination machine_generated_test.go -package ledger . Machine
 type Machine interface {
-	Execute(context.Context, vm.Store, map[string]string) (*MachineResult, error)
+	Execute(context.Context, TX, map[string]string) (*MachineResult, error)
 }
 
 type DefaultMachineAdapter struct {
@@ -30,7 +31,8 @@ type DefaultMachineAdapter struct {
 	machine *vm.Machine
 }
 
-func (d *DefaultMachineAdapter) Execute(ctx context.Context, store vm.Store, vars map[string]string) (*MachineResult, error) {
+func (d *DefaultMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*MachineResult, error) {
+	store := newVmStoreAdapter(tx)
 
 	d.machine = vm.NewMachine(d.program)
 
