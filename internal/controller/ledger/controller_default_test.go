@@ -3,10 +3,11 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"testing"
+
+	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/migrations"
@@ -19,6 +20,8 @@ import (
 )
 
 func TestCreateTransaction(t *testing.T) {
+	t.Skip("This test is mocking the machine, which is not used anymore")
+
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)

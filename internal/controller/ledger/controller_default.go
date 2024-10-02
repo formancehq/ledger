@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"reflect"
+
+	"github.com/formancehq/go-libs/collectionutils"
+	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -310,34 +313,48 @@ func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q Get
 	})
 }
 
+func castMetadata(numscriptMeta numscript.Metadata) metadata.Metadata {
+	meta := metadata.Metadata{}
+	for k, v := range numscriptMeta {
+		meta[k] = v.String()
+	}
+	return meta
+}
+
+func castAccountsMetadata(numscriptAccountsMetadata numscript.AccountsMetadata) map[string]metadata.Metadata {
+	m := make(map[string]metadata.Metadata)
+	for k, v := range numscriptAccountsMetadata {
+		m[k] = v
+	}
+	return m
+
+}
+
 func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters, runScript ledger.RunScript) (*ledger.Transaction, error) {
 
 	log, err := tracing.TraceWithLatency(ctx, "CreateTransaction", func(ctx context.Context) (*ledger.Log, error) {
 		logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 		ctx = logging.ContextWithLogger(ctx, logger)
 
-		m, err := ctrl.machineFactory.Make(runScript.Plain)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to compile script")
+		result := numscript.Parse(runScript.Plain)
+		if len(result.GetParsingErrors()) != 0 {
+			return nil, errors.New("Got parsing errors")
 		}
 
 		return ctrl.forgeLog(ctx, parameters, func(sqlTX TX) (*ledger.Log, error) {
-
-			result, err := tracing.TraceWithLatency(ctx, "ExecuteMachine", func(ctx context.Context) (*MachineResult, error) {
-				return m.Execute(ctx, newVmStoreAdapter(sqlTX), runScript.Vars)
+			result, err := tracing.TraceWithLatency(ctx, "RunScript", func(ctx context.Context) (numscript.ExecutionResult, error) {
+				return result.Run(ctx, runScript.Vars, newNumscriptRewriteAdapter(sqlTX))
 			})
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to execute program")
 			}
-
 			if len(result.Postings) == 0 {
 				return nil, ErrNoPostings
 			}
 
-			finalMetadata := result.Metadata
-			if finalMetadata == nil {
-				finalMetadata = metadata.Metadata{}
-			}
+			finalMetadata := castMetadata(result.Metadata)
+
+			// TODO is it necessary? double check
 			for k, v := range runScript.Metadata {
 				if finalMetadata[k] != "" {
 					return nil, newErrMetadataOverride(k)
@@ -351,8 +368,12 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 				ts = now
 			}
 
+			postings := collectionutils.Map(result.Postings, func(posting numscript.Posting) ledger.Posting {
+				return ledger.Posting(posting)
+			})
+
 			transaction := ledger.NewTransaction().
-				WithPostings(result.Postings...).
+				WithPostings(postings...).
 				WithMetadata(finalMetadata).
 				WithTimestamp(ts).
 				WithInsertedAt(now).
@@ -362,13 +383,15 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 				return nil, err
 			}
 
-			if len(result.AccountMetadata) > 0 {
-				if err := sqlTX.UpdateAccountsMetadata(ctx, result.AccountMetadata); err != nil {
-					return nil, errors.Wrapf(err, "updating metadata of account '%s'", Keys(result.AccountMetadata))
+			accountsMeta := castAccountsMetadata(result.AccountsMetadata)
+
+			if len(accountsMeta) > 0 {
+				if err := sqlTX.UpdateAccountsMetadata(ctx, accountsMeta); err != nil {
+					return nil, errors.Wrapf(err, "updating metadata of account '%s'", Keys(result.AccountsMetadata))
 				}
 			}
 
-			return pointer.For(ledger.NewTransactionLog(transaction, result.AccountMetadata)), err
+			return pointer.For(ledger.NewTransactionLog(transaction, accountsMeta)), err
 		})
 	})
 	if err != nil {

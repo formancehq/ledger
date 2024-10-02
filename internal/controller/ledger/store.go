@@ -301,6 +301,12 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 
 var _ numscript.Store = &numscriptRewriteAdapter{}
 
+func newNumscriptRewriteAdapter(tx TX) *numscriptRewriteAdapter {
+	return &numscriptRewriteAdapter{
+		TX: tx,
+	}
+}
+
 type numscriptRewriteAdapter struct {
 	TX TX
 }
@@ -313,8 +319,8 @@ func (s *numscriptRewriteAdapter) GetBalances(ctx context.Context, q numscript.B
 	return numscript.Balances(vmBalances), nil
 }
 
-func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.Metadata, error) {
-	m := numscript.Metadata{}
+func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
+	m := numscript.AccountsMetadata{}
 
 	// we ignore the needed metadata values and just return all of them
 	for address := range q {

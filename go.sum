@@ -101,6 +101,12 @@ github.com/formancehq/go-libs v1.7.2-0.20240930151849-9e7ee54046e9 h1:l9ZGJmrgHP
 github.com/formancehq/go-libs v1.7.2-0.20240930151849-9e7ee54046e9/go.mod h1:oLMVltNsXmvqLA0Ox5NSwVSeH8gbnG2ZUo6Lchp23XU=
 github.com/formancehq/numscript v0.0.9-0.20240929161330-e9f0ac045211 h1:dgMb4D9Xmu9x6wV0bs8EvVz4g6ZZUC8LYPLEsHg/+to=
 github.com/formancehq/numscript v0.0.9-0.20240929161330-e9f0ac045211/go.mod h1:P8qnq15PyWUuhskZdsrzTTqVS5CBkhakDKEPAyF4oYQ=
+github.com/formancehq/numscript v0.0.9-0.20241002082510-9fac7bfd6c83 h1:F3vPlKW2BK1f95ZaWUaNu2ifCLXTXxzaizCcqSEYnR4=
+github.com/formancehq/numscript v0.0.9-0.20241002082510-9fac7bfd6c83/go.mod h1:P8qnq15PyWUuhskZdsrzTTqVS5CBkhakDKEPAyF4oYQ=
+github.com/formancehq/numscript v0.0.9-0.20241002094219-ee0fcad829f1 h1:kXuQGYqfluXQEDNljkm94X/9PJeG200A1i6cvJ62cEY=
+github.com/formancehq/numscript v0.0.9-0.20241002094219-ee0fcad829f1/go.mod h1:P8qnq15PyWUuhskZdsrzTTqVS5CBkhakDKEPAyF4oYQ=
+github.com/formancehq/numscript v0.0.9-0.20241002094400-f2e095de4564 h1:n/cTruHOt2zxX0ZXB701egpzL6O/xfeqD0C/i6YHcAw=
+github.com/formancehq/numscript v0.0.9-0.20241002094400-f2e095de4564/go.mod h1:P8qnq15PyWUuhskZdsrzTTqVS5CBkhakDKEPAyF4oYQ=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/go-chi/chi v4.1.2+incompatible h1:fGFk2Gmi/YKXk0OmGfBh0WgmN3XB8lVnEyNz34tQRec=
