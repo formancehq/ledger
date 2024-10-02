@@ -124,7 +124,7 @@ func GetMigrator() *migrations.Migrator {
 		migrations.Migration{
 			Name: "Add aggregate_objects pg aggregator",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
-				_, err := tx.ExecContext(ctx, jsonbMerge)
+				_, err := tx.ExecContext(ctx, aggregateObjects)
 				return err
 			},
 		},
@@ -156,7 +156,7 @@ func Migrate(ctx context.Context, db bun.IDB) error {
 	return GetMigrator().Up(ctx, db)
 }
 
-const jsonbMerge = `
+const aggregateObjects = `
 create or replace function public.jsonb_concat(a jsonb, b jsonb) returns jsonb
     as 'select $1 || $2'
     language sql

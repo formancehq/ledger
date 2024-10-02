@@ -16,7 +16,7 @@ import (
 //go:embed migrations
 var migrationsDir embed.FS
 
-func getMigrator(name string) *migrations.Migrator {
+func GetMigrator(name string) *migrations.Migrator {
 
 	migrator := migrations.NewMigrator(migrations.WithSchema(name, true))
 	migrator.RegisterMigrationsFromFileSystem(migrationsDir, "migrations", func(s string) string {
@@ -39,5 +39,5 @@ func Migrate(ctx context.Context, db bun.IDB, name string) error {
 	ctx, span := tracing.Start(ctx, "Migrate bucket")
 	defer span.End()
 
-	return getMigrator(name).Up(ctx, db)
+	return GetMigrator(name).Up(ctx, db)
 }

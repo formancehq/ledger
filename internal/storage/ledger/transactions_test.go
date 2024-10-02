@@ -517,37 +517,18 @@ func TestTransactionsInsert(t *testing.T) {
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
 	})
-	t.Run("create a tx with no timestamp", func(t *testing.T) {
-		t.Parallel()
-
-		store := newLedgerStore(t)
-
-		// Create a tx with no timestamp
-		tx1 := ledger.Transaction{
-			TransactionData: ledger.TransactionData{
-				Postings: []ledger.Posting{
-					ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-				},
-			},
-		}
-		err := store.InsertTransaction(ctx, &tx1)
-		require.NoError(t, err)
-	})
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()
 
 		store := newLedgerStore(t)
 
-		tx1 := ledger.Transaction{
-			TransactionData: ledger.TransactionData{
-				Timestamp:  now,
-				InsertedAt: now,
-				Postings: []ledger.Posting{
-					ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-				},
-				Metadata: metadata.Metadata{},
-			},
-		}
+		tx1 := ledger.NewTransaction().
+			WithPostings(
+				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+			).
+			WithInsertedAt(now).
+			WithTimestamp(now)
+
 		err := store.InsertTransaction(ctx, &tx1)
 		require.NoError(t, err)
 
