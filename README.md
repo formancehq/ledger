@@ -14,33 +14,14 @@ Formance Ledger works as a standalone binary, the latest of which can be downloa
 
 ```SHELL
 
-ledger server start
+docker compose up -d
 
 # Submit a first transaction
-echo "
-send [USD/2 599] (
-  source = @world
-  destination = @payments:001
-)
-
-send [USD/2 599] (
-  source = @payments:001
-  destination = @rides:0234
-)
-
-send [USD/2 599] (
-  source = @rides:0234
-  destination = {
-    85/100 to @drivers:042
-    15/100 to @platform:fees
-  }
-)
-" > example.num
-
-ledger exec quickstart example.num
+curl -X POST \
+  http://localhost:3068/quickstart/transactions -d '{"postings": [{"source": "world", "destination": "bank", "amount": 100, "asset": "USD"}]}'
 
 # Get the balances of drivers:042
-curl -X GET http://localhost:3068/quickstart/accounts/drivers:042
+curl -X GET http://localhost:3068/quickstart/accounts/bank
 
 # List transactions
 curl -X GET http://localhost:3068/quickstart/transactions
@@ -53,3 +34,7 @@ You can find the complete Numary documentation at [docs.formance.com](https://do
 # Community
 
 If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome on our [Slack](https://bit.ly/formance-slack) - looking forward to see you there!
+
+# Contributing
+
+See [dev](./DEV.md) page to contribute.
