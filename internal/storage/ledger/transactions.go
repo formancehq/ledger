@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"errors"
-	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
@@ -232,16 +231,6 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 }
 
 func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
-
-	sqlQueries := Map(tx.InvolvedAccounts(), func(from string) string {
-		return fmt.Sprintf("select pg_advisory_xact_lock(hashtext('%s'))", fmt.Sprintf("%s_%s", s.ledger.Name, from))
-	})
-
-	_, err := s.db.NewRaw(strings.Join(sqlQueries, ";")).Exec(ctx)
-	if err != nil {
-		return postgres.ResolveError(err)
-	}
-
 	if tx.InsertedAt.IsZero() {
 		tx.InsertedAt = time.Now()
 	}
