@@ -1,2 +1,0 @@
-ledgers
-goose_db_version

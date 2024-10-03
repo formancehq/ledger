@@ -1,8 +1,0 @@
-accounts
-accounts_metadata
-accounts_volumes
-goose_db_version
-logs
-moves
-transactions
-transactions_metadata

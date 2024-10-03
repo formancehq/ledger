@@ -203,7 +203,8 @@ export-database-schema:
     WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
         RUN ./scripts/export-database-schema.sh
     END
-    SAVE ARTIFACT docs/database AS LOCAL docs/database
+    SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
+    SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
 
 export-docs-events:
     FROM +tidy
