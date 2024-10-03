@@ -77,6 +77,6 @@ var addIdOnLedgerTable = migrations.Hook{
 			Returning("*").
 			Exec(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "4", newLedger["id"])
+		require.Equal(t, int64(4), newLedger["id"])
 	},
 }
