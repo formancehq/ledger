@@ -1,5 +1,10 @@
 # Contributing
 
+The project use [Go standard layout](https://github.com/golang-standards/project-layout), please respect it.
+Also, the project use [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/) style for commits.
+
+Development commands involve the usage of [Earthly](https://earthly.dev/) as well as docker for end-to-end testing.
+
 ## Getting started
 
 You can test the ledger using the provided docker-compose:
