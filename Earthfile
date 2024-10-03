@@ -118,6 +118,7 @@ pre-commit:
     BUILD +tidy
     BUILD +lint
     BUILD +openapi
+    BUILD +openapi-markdown
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
@@ -162,6 +163,13 @@ openapi:
     RUN openapi-merge-cli --config ./openapi/openapi-merge.json
     RUN yq -oy ./openapi.json > openapi.yaml
     SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
+
+openapi-markdown:
+    FROM node:20-alpine
+    RUN npm install -g widdershins
+    COPY (+openapi/openapi.yaml) .
+    RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP'
+    SAVE ARTIFACT README.md AS LOCAL docs/api/API.md
 
 tidy:
     FROM +sources

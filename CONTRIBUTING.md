@@ -30,7 +30,7 @@ $ curl -X POST http://localhost:3068/quickstart/transactions -d '{"postings": [{
       "timestamp": "2024-10-03T08:10:37.109371Z",
       "insertedAt": "2024-10-03T08:10:37.109371Z",
       "id": 1,
-      ...
+      ...wiudd
     }
   ]
 }
@@ -204,6 +204,7 @@ Current set of features:
 
 When feature `MOVES_HISTORY` is enabled (= `ON`), the ledger will register any individual funds movements for each account/asset pair.
 There is the table schema :
+
 ![table schema](./docs/database/_default/diagrams/tables/moves.1degree.png "Moves table")
 
 Column `post_commit_effective_volumes` will be set only if feature `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES` is enabled.
@@ -400,6 +401,7 @@ This command will :
 * generate the client sdk (in [pkg/client](pkg/client))
 * fix dependencies
 * generate [openapi](openapi.yaml) specification by combining [api versions](./openapi)
+* ...
 
 ### Run tests
 
@@ -411,6 +413,10 @@ Additionally, the flag ```--coverage=true``` can be passed to generate coverage 
 ```shell
 $ earthly -P +tests --coverage=true # Generated under cover.out
 ```
+
+## API reference
+
+See [API reference](./docs/api/API.md)
 
 ## Terminology
 
