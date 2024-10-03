@@ -55,7 +55,7 @@ build-image:
 tests:
     FROM +tidy
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-    COPY --dir --pass-args (+generate-mocks/*) .
+    COPY --dir --pass-args (+generate/*) .
 
     ARG includeIntegrationTests="true"
     ARG includeEnd2EndTests="true"
