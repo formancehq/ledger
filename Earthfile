@@ -25,6 +25,7 @@ generate:
     FROM core+builder-image
     RUN apk update && apk add openjdk11
     RUN go install go.uber.org/mock/mockgen@latest
+    RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
     COPY (+sources/*) /src
     WORKDIR /src
     RUN go generate ./...
@@ -54,7 +55,7 @@ build-image:
 tests:
     FROM +tidy
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-    COPY --dir --pass-args (+generate/*) .
+    COPY --dir --pass-args (+generate-mocks/*) .
 
     ARG includeIntegrationTests="true"
     ARG includeEnd2EndTests="true"
@@ -120,6 +121,7 @@ pre-commit:
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
+    BUILD +export-database-schema
 
 bench:
     FROM +tidy
@@ -190,7 +192,6 @@ generate-client:
 export-database-schema:
     FROM +sources
     RUN go install github.com/roerohan/wait-for-it@latest
-    WORKDIR /src/components/ledger
     COPY --dir scripts scripts
     WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
         RUN ./scripts/export-database-schema.sh

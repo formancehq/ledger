@@ -65,13 +65,24 @@ func MustNewWithDefault(name string) Ledger {
 }
 
 const (
+	// FeatureMovesHistory is used to define if the ledger has to save funds movements history.
+	// Value is either ON or OFF
 	FeatureMovesHistory = "MOVES_HISTORY"
+	// FeatureMovesHistoryPostCommitEffectiveVolumes is used to define if the pvce property of funds movements history
+	// has to be updated with back dated transaction.
+	// Value is either SYNC or DISABLED.
 	// todo: depends on FeatureMovesHistory (dependency should be checked)
 	FeatureMovesHistoryPostCommitEffectiveVolumes = "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES"
+	// FeatureHashLogs is used to defined it the logs has to be hashed.
 	FeatureHashLogs                               = "HASH_LOGS"
+	// FeatureAccountMetadataHistory is used to defined it the account metadata must be historized.
 	FeatureAccountMetadataHistory                 = "ACCOUNT_METADATA_HISTORY"
+	// FeatureTransactionMetadataHistory is used to defined it the transaction metadata must be historized.
 	FeatureTransactionMetadataHistory             = "TRANSACTION_METADATA_HISTORY"
+	// FeatureIndexAddressSegments is used to defined it we want to index segments of accounts address.
+	// Without this feature, the ledger will not allow filtering on partial account address.
 	FeatureIndexAddressSegments                   = "INDEX_ADDRESS_SEGMENTS"
+	// FeatureIndexTransactionAccounts is used to defined it we want to index accounts used in a transaction.
 	FeatureIndexTransactionAccounts               = "INDEX_TRANSACTION_ACCOUNTS"
 
 	DefaultBucket = "_default"

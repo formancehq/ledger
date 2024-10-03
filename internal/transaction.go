@@ -42,7 +42,11 @@ type Transaction struct {
 	TransactionData
 	ID                         int               `json:"id" bun:"id,type:numeric"`
 	RevertedAt                 *time.Time        `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
+	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
+	// Those volumes will never change as those are computed in flight.
 	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
+	// PostCommitEffectiveVolumes are the volumes of each account/asset after the transaction TransactionData.Timestamp.
+	// Those volumes are also computed in flight, but can be updated if a transaction is inserted in the past.
 	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 

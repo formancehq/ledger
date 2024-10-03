@@ -117,16 +117,6 @@
                                     <td>nextval(&#39;_default.accounts_seq_seq&#39;::regclass)</td>
                                     <td>
                                         <table border='0' cellspacing='0' cellpadding='0'>
-                                            <tr>
-                                                <td title="accounts_metadata.accounts_seq references accounts.seq via accounts_metadata_accounts_seq_fkey"><a href='accounts_metadata.html'>accounts_metadata</a><span class='relatedKey'>.accounts_seq</span></td>
-                                                <td class="constraint detail">accounts_metadata_accounts_seq_fkey</td>
-                                                <td class="constraint detail"><span title='Restrict delete:&#10;Parent cannot be deleted if children exist'>R</span></td>
-                                            </tr>
-                                            <tr>
-                                                <td title="moves.accounts_seq references accounts.seq via moves_accounts_seq_fkey"><a href='moves.html'>moves</a><span class='relatedKey'>.accounts_seq</span></td>
-                                                <td class="constraint detail">moves_accounts_seq_fkey</td>
-                                                <td class="constraint detail"><span title='Restrict delete:&#10;Parent cannot be deleted if children exist'>R</span></td>
-                                            </tr>
                                         </table>
                                     </td>
                                     <td>
@@ -173,7 +163,7 @@
                                     <td><span id="address_array">address_array</span></td>
                                     <td>jsonb</td>
                                     <td>2147483647</td>
-                                    <td title=''></td>
+                                    <td title='nullable'>√</td>
                                     <td title=''></td>
                                     <td>null</td>
                                     <td>
@@ -291,16 +281,16 @@
                                     <td>seq</td>
                                 </tr>
                                 <tr>
-                                    <td class='uniqueKey' title='Unique Key'><i class='icon ion-key iconkey'></i> _default_accounts_ledger</td>
-                                    <td>Must be unique</td>
-                                    <td><span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span></td>
-                                    <td>ledger + address + seq</td>
-                                </tr>
-                                <tr>
                                     <td title='Indexed'>accounts_first_usage</td>
                                     <td>Performance</td>
                                     <td><span title='Ascending'>Asc</span></td>
                                     <td>first_usage</td>
+                                </tr>
+                                <tr>
+                                    <td class='uniqueKey' title='Unique Key'><i class='icon ion-key iconkey'></i> accounts_ledger</td>
+                                    <td>Must be unique</td>
+                                    <td><span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span></td>
+                                    <td>ledger + address + seq</td>
                                 </tr>
                                 </tbody>
                             </table>
@@ -320,25 +310,13 @@
                                 <h5>Close relationships within degrees of separation</h5>
                                 <ul class="nav nav-tabs pull-left ui-sortable-handle">
                                     <li class="active"><a href="#oneDegreeImg-chart" data-toggle="tab" aria-expanded="true">One</a></li>
-                                    <li class=""><a href="#twodegreesDegreeImg-chart" data-toggle="tab" aria-expanded="true">Two degrees</a></li>
                                 </ul>
                                 <div class="tab-content no-padding">
                                     <div class="chart tab-pane active" id="oneDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="oneDegreeRelationshipsDiagram" name="oneDegreeRelationshipsDiagram">
-<area shape="rect" id="node1" href="accounts_metadata.html" target="_top" title="accounts_metadata" alt="" coords="401,5,637,245">
-<area shape="rect" id="node2" href="accounts.html" target="_top" title="accounts" alt="" coords="5,205,324,509">
-<area shape="rect" id="node3" href="moves.html" target="_top" title="moves" alt="" coords="368,263,671,556">
+<area shape="rect" id="node1" href="accounts.html" target="_top" title="accounts" alt="" coords="5,5,324,309">
 </map>
                                         <a name='diagram'><img id="oneDegreeImg" src="../diagrams/tables/accounts.1degree.png" usemap="#oneDegreeRelationshipsDiagram" class="diagram" border="0" align="left"></a>
-                                    </div>
-                                    <div class="chart tab-pane " id="twodegreesDegreeImg-chart" style="position: relative; overflow-x:auto;">
-                                        <map id="twoDegreesRelationshipsDiagram" name="twoDegreesRelationshipsDiagram">
-<area shape="rect" id="node1" href="accounts_metadata.html" target="_top" title="accounts_metadata" alt="" coords="401,316,637,556">
-<area shape="rect" id="node2" href="accounts.html" target="_top" title="accounts" alt="" coords="5,272,324,576">
-<area shape="rect" id="node3" href="moves.html" target="_top" title="moves" alt="" coords="368,5,671,299">
-<area shape="rect" id="node4" href="transactions.html" target="_top" title="transactions" alt="" coords="75,67,255,155">
-</map>
-                                        <a name='diagram'><img id="twodegreesDegreeImg" src="../diagrams/tables/accounts.2degrees.png" usemap="#twoDegreesRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
                                 </div>
                             </div>
