@@ -115,7 +115,7 @@
                             </div>
                         </div>
                         <div class="box-body">
-                            <textarea id="sql-script-codemirror" name="sql-script-codemirror" rows="" style="display: none;">begin&#10;    insert into &quot;_default&quot;.accounts_metadata (ledger, accounts_seq, revision, date, metadata)&#10;    values (new.ledger, new.seq, (select revision + 1&#10;                                  from &quot;_default&quot;.accounts_metadata&#10;                                  where accounts_metadata.accounts_seq &#61; new.seq&#10;                                  order by revision desc&#10;                                  limit 1), new.updated_at, new.metadata);&#10;&#10;    return new;&#10;end;</textarea>
+                            <textarea id="sql-script-codemirror" name="sql-script-codemirror" rows="" style="display: none;">begin&#10;&#9;insert into &quot;_default&quot;.accounts_metadata (ledger, accounts_address, revision, date, metadata)&#10;&#9;values (new.ledger, new.address, (&#10;&#9;&#9;select revision + 1&#10;&#9;&#9;from &quot;_default&quot;.accounts_metadata&#10;&#9;&#9;where accounts_metadata.accounts_address &#61; new.address&#10;&#9;&#9;order by revision desc&#10;&#9;&#9;limit 1&#10;&#9;), new.updated_at, new.metadata);&#10;&#10;&#9;return new;&#10;end;</textarea>
                         </div>
                     </div>
                 </section>

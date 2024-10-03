@@ -109,33 +109,6 @@
                                 </thead>
                                 <tbody>
                                 <tr>
-                                    <td class='primaryKey' title='Primary Key'><i class='icon ion-key iconkey' style='padding-left: 5px;'></i><span id="seq">seq</span></td>
-                                    <td>bigserial</td>
-                                    <td>19</td>
-                                    <td title=''></td>
-                                    <td title='Automatically updated by the database'>√</td>
-                                    <td>nextval(&#39;_default.transactions_seq_seq&#39;::regclass)</td>
-                                    <td>
-                                        <table border='0' cellspacing='0' cellpadding='0'>
-                                            <tr>
-                                                <td title="moves.transactions_seq references transactions.seq via moves_transactions_seq_fkey"><a href='moves.html'>moves</a><span class='relatedKey'>.transactions_seq</span></td>
-                                                <td class="constraint detail">moves_transactions_seq_fkey</td>
-                                                <td class="constraint detail"><span title='Restrict delete:&#10;Parent cannot be deleted if children exist'>R</span></td>
-                                            </tr>
-                                            <tr>
-                                                <td title="transactions_metadata.transactions_seq references transactions.seq via transactions_metadata_transactions_seq_fkey"><a href='transactions_metadata.html'>transactions_metadata</a><span class='relatedKey'>.transactions_seq</span></td>
-                                                <td class="constraint detail">transactions_metadata_transactions_seq_fkey</td>
-                                                <td class="constraint detail"><span title='Restrict delete:&#10;Parent cannot be deleted if children exist'>R</span></td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                    <td>
-                                        <table border='0' cellspacing='0' cellpadding='0'>
-                                        </table>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <tr>
                                     <td class='indexedColumn' title='Indexed'><i class='fa fa-sitemap fa-rotate-120' style='padding-right: 5px;'></i><span id="ledger">ledger</span></td>
                                     <td>varchar</td>
                                     <td>2147483647</td>
@@ -175,7 +148,7 @@
                                     <td>29,6</td>
                                     <td title=''></td>
                                     <td title=''></td>
-                                    <td>now()</td>
+                                    <td>null</td>
                                     <td>
                                         <table border='0' cellspacing='0' cellpadding='0'>
                                         </table>
@@ -345,7 +318,24 @@
                                     <td>29,6</td>
                                     <td title='nullable'>√</td>
                                     <td title=''></td>
-                                    <td>now()</td>
+                                    <td>(now() AT TIME ZONE &#39;utc&#39;::text)</td>
+                                    <td>
+                                        <table border='0' cellspacing='0' cellpadding='0'>
+                                        </table>
+                                    </td>
+                                    <td>
+                                        <table border='0' cellspacing='0' cellpadding='0'>
+                                        </table>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td><span id="post_commit_volumes">post_commit_volumes</span></td>
+                                    <td>jsonb</td>
+                                    <td>2147483647</td>
+                                    <td title=''></td>
+                                    <td title=''></td>
+                                    <td>null</td>
                                     <td>
                                         <table border='0' cellspacing='0' cellpadding='0'>
                                         </table>
@@ -387,34 +377,28 @@
                                 </thead>
                                 <tbody>
                                 <tr>
-                                    <td class='primaryKey' title='Primary Key'><i class='icon ion-key iconkey'></i> transactions_pkey</td>
-                                    <td>Primary key</td>
-                                    <td><span title='Ascending'>Asc</span></td>
-                                    <td>seq</td>
-                                </tr>
-                                <tr>
-                                    <td title='Indexed'>_default_transactions_date</td>
+                                    <td title='Indexed'>transactions_date</td>
                                     <td>Performance</td>
                                     <td><span title='Ascending'>Asc</span></td>
                                     <td>timestamp</td>
                                 </tr>
                                 <tr>
-                                    <td class='uniqueKey' title='Unique Key'><i class='icon ion-key iconkey'></i> _default_transactions_ledger</td>
+                                    <td class='uniqueKey' title='Unique Key'><i class='icon ion-key iconkey'></i> transactions_ledger</td>
                                     <td>Must be unique</td>
                                     <td><span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span></td>
                                     <td>ledger + id</td>
                                 </tr>
                                 <tr>
-                                    <td title='Indexed'>_default_transactions_metadata_index</td>
+                                    <td title='Indexed'>transactions_metadata_index</td>
                                     <td>Performance</td>
                                     <td><span title='Ascending'>Asc</span></td>
                                     <td>metadata</td>
                                 </tr>
                                 <tr>
-                                    <td title='Indexed'>_default_transactions_reference</td>
-                                    <td>Performance</td>
-                                    <td><span title='Ascending'>Asc</span></td>
-                                    <td>reference</td>
+                                    <td class='uniqueKey' title='Unique Key'><i class='icon ion-key iconkey'></i> transactions_reference</td>
+                                    <td>Must be unique</td>
+                                    <td><span title='Ascending'>Asc</span>/<span title='Ascending'>Asc</span></td>
+                                    <td>ledger + reference</td>
                                 </tr>
                                 </tbody>
                             </table>
@@ -434,25 +418,13 @@
                                 <h5>Close relationships within degrees of separation</h5>
                                 <ul class="nav nav-tabs pull-left ui-sortable-handle">
                                     <li class="active"><a href="#oneDegreeImg-chart" data-toggle="tab" aria-expanded="true">One</a></li>
-                                    <li class=""><a href="#twodegreesDegreeImg-chart" data-toggle="tab" aria-expanded="true">Two degrees</a></li>
                                 </ul>
                                 <div class="tab-content no-padding">
                                     <div class="chart tab-pane active" id="oneDegreeImg-chart" style="position: relative; overflow-x:auto;">
                                         <map id="oneDegreeRelationshipsDiagram" name="oneDegreeRelationshipsDiagram">
-<area shape="rect" id="node1" href="moves.html" target="_top" title="moves" alt="" coords="409,5,712,299">
-<area shape="rect" id="node2" href="transactions.html" target="_top" title="transactions" alt="" coords="5,216,365,696">
-<area shape="rect" id="node3" href="transactions_metadata.html" target="_top" title="transactions_metadata" alt="" coords="429,316,693,556">
+<area shape="rect" id="node1" href="transactions.html" target="_top" title="transactions" alt="" coords="5,5,385,485">
 </map>
                                         <a name='diagram'><img id="oneDegreeImg" src="../diagrams/tables/transactions.1degree.png" usemap="#oneDegreeRelationshipsDiagram" class="diagram" border="0" align="left"></a>
-                                    </div>
-                                    <div class="chart tab-pane " id="twodegreesDegreeImg-chart" style="position: relative; overflow-x:auto;">
-                                        <map id="twoDegreesRelationshipsDiagram" name="twoDegreesRelationshipsDiagram">
-<area shape="rect" id="node1" href="moves.html" target="_top" title="moves" alt="" coords="409,365,712,659">
-<area shape="rect" id="node2" href="accounts.html" target="_top" title="accounts" alt="" coords="110,559,261,647">
-<area shape="rect" id="node3" href="transactions.html" target="_top" title="transactions" alt="" coords="5,61,365,541">
-<area shape="rect" id="node4" href="transactions_metadata.html" target="_top" title="transactions_metadata" alt="" coords="429,5,693,245">
-</map>
-                                        <a name='diagram'><img id="twodegreesDegreeImg" src="../diagrams/tables/transactions.2degrees.png" usemap="#twoDegreesRelationshipsDiagram" class="diagram" border="0" align="left"></a>
                                     </div>
                                 </div>
                             </div>

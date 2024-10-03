@@ -1,5 +1,5 @@
-date=2024-09-18 14:18:16+0000
-os=Linux 6.10.7-orbstack-00280-gd3b7ec68d3d4
+date=2024-10-03 09:11:56+0000
+os=Linux 6.10.11-orbstack-00280-g1304bd068592
 schemaspy-version=6.2.4
 schemaspy-build=6.2.4.41 2023-07-21 11:15:12
 renderer=Graphviz dot 2.47.1 
