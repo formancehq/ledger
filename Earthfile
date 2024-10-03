@@ -167,7 +167,7 @@ openapi:
 openapi-markdown:
     FROM node:20-alpine
     RUN npm install -g widdershins
-    COPY (+openapi/openapi.yaml) .
+    COPY openapi/v2.yaml openapi.yaml
     RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP'
     SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
 
