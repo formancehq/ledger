@@ -116,7 +116,7 @@ func GetMigrator() *migrations.Migrator {
 					create sequence ledger_sequence;
 						
 					alter table ledgers 
-					add column id varchar default nextval('ledger_sequence');
+					add column id bigint default nextval('ledger_sequence');
 				`)
 				return err
 			},
