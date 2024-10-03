@@ -187,6 +187,28 @@ When overriding features, all not specified features will receive the default co
 > [!WARNING]
 > Current set of feature is not stable, some can be added, or removed.
 
+Current set of features:
+
+| Name                         | Default value | Possible configuration | Description                                                      |
+|------------------------------|---------------|------------------------|------------------------------------------------------------------|
+| ACCOUNT_METADATA_HISTORY     | SYNC          | SYNC \| DISABLED       | Historize metadata changes on accounts                           |
+| TRANSACTION_METADATA_HISTORY | SYNC          | SYNC \| DISABLED       | Historize metadata changes on transactions                       |
+| HASH_LOGS                    | SYNC          | SYNC \| DISABLED       | [Hash logs](#hashed-log)                                         |
+| INDEX_ADDRESS_SEGMENTS       | ON            | ON \| OFF              | Index accounts addresses segments                                |
+| INDEX_TRANSACTION_ACCOUNTS   | ON            | ON \| OFF              | Index transactions accounts set                                  |
+| MOVES_HISTORY                | ON            | ON \| OFF              | [Historize funds movements by account](#funds-movements-history) |
+| MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES | SYNC          | SYNC \| DISABLED       | Compute and maintains post commit effective volumes              |
+ 
+
+## Funds movements history
+
+When feature `MOVES_HISTORY` is enabled (= `ON`), the ledger will register any individual funds movements for each account/asset pair.
+There is the table schema :
+![table schema](./docs/database/_default/diagrams/tables/moves.1degree.png "Moves table")
+
+Column `post_commit_effective_volumes` will be set only if feature `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES` is enabled.
+See [post commit effective volumes upgrade](#effective-volumes-updates) for details explanation of the process.
+
 ## Numscript
 
 The ledger service is able to use the Numscript interpreter to create transactions.
@@ -200,9 +222,13 @@ You can find them in:
 * [System schema](./docs/database/_system/diagrams)
 * [Bucket schema](./docs/database/_default/diagrams)
 
+## Deadlocks
+
+TODO
+
 ## Data consistency
 
-### Transaction commit
+### Balances locking
 
 The following sequence diagram describe the process of creating a transaction.
 It supposes the minimal set of features.
@@ -336,6 +362,17 @@ sequenceDiagram
 As you may have noticed, logs hashing involve a lock on the ledger.
 It can quickly become a bottleneck of high write throughput.
 
+### Effective volumes updates
+
+[Effective volumes](#post-commit-effective-volumes) are enabled if the following features are enabled : 
+* `MOVES_HISTORY`: `ON`
+* `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES`: `SYNC`
+
+When inserting a fund movement in the database with the `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES` enabled on the ledger, the ledger has to do : 
+* Compute actual post commit effective volumes for the moves by searching for the previous moves for account/asset pair, using the date of the move
+* Inserting the new move
+* Update any futures moves post_commit_effective_volumes
+
 ## Testing strategy
 
 Tests are split in different scopes :
@@ -377,7 +414,9 @@ $ earthly -P +tests --coverage=true # Generated under cover.out
 
 ## Terminology
 
-* Bounded source account: A bounded source account, is an account used in a Numscript script, as a source account, and with a bottom limit. Example:
+### Bounded source account 
+
+A bounded source account, is an account used in a Numscript script, as a source account, and with a bottom limit. Example:
     ```
     send [USD/2 100] {
       source = @bank
@@ -397,5 +436,9 @@ $ earthly -P +tests --coverage=true # Generated under cover.out
   With this script, ```bank``` will not be considered as an unbounded source account.
 > [!NOTE]
 > It is also the case of the ```world``` account, which is always an unbounded overdraft account.
+ 
+### Post commit volumes
 * post commit volumes (pcv): see [description](./internal/README.md#type-transaction)
+
+### Post commit effective volumes
 * post commit effective volumes (pcev): see [description](./internal/README.md#type-transaction)
