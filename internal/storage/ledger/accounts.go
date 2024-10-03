@@ -9,8 +9,6 @@ import (
 	. "github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/tracing"
 
-	"errors"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -300,83 +298,35 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 }
 
 func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
-	var rollbacked = errors.New("rollbacked")
-	upserted, err := tracing.TraceWithLatency(ctx, "UpsertAccount", func(ctx context.Context) (bool, error) {
-		type upsertedEntity struct {
-			ledger.Account `bun:",extend"`
-			Upserted       bool `bun:"upserted"`
-		}
-		upserted := &upsertedEntity{}
-
+	return tracing.TraceWithLatency(ctx, "UpsertAccount", func(ctx context.Context) (bool, error) {
+		upserted := false
 		err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-			if err := tx.NewSelect().
-				With(
-					"ins",
-					tx.NewInsert().
-						Model(account).
-						ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-						On("conflict (ledger, address) do update").
-						Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
-						Set("metadata = accounts.metadata || excluded.metadata").
-						Set("updated_at = ?", account.UpdatedAt).
-						Value("ledger", "?", s.ledger.Name).
-						Returning("*").
-						Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage),
-				).
-				ModelTableExpr(
-					"(?) account",
-					tx.NewSelect().
-						ModelTableExpr("ins").
-						ColumnExpr("ins.*, true as upserted").
-						UnionAll(
-							tx.NewSelect().
-								ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-								ColumnExpr("*, false as upserted").
-								Where("address = ? and ledger = ?", account.Address, s.ledger.Name).
-								Limit(1),
-						),
-				).
-				Model(upserted).
-				ColumnExpr("*").
-				Limit(1).
-				Scan(ctx); err != nil {
-				return postgres.ResolveError(err)
+			ret, err := tx.NewInsert().
+				Model(account).
+				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+				On("conflict (ledger, address) do update").
+				Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
+				Set("metadata = accounts.metadata || excluded.metadata").
+				Set("updated_at = ?", account.UpdatedAt).
+				Value("ledger", "?", s.ledger.Name).
+				Returning("*").
+				Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage).
+				Exec(ctx)
+			if err != nil {
+				return err
 			}
-
-			account.FirstUsage = upserted.FirstUsage
-			account.InsertionDate = upserted.InsertionDate
-			account.UpdatedAt = upserted.UpdatedAt
-			account.Metadata = upserted.Metadata
-
-			if !upserted.Upserted {
-				// By roll-backing the transaction, we release the lock, allowing a concurrent transaction
-				// to use the accounts.
-				if err := tx.Rollback(); err != nil {
-					return err
-				}
-				return rollbacked
+			rowsModified, err := ret.RowsAffected()
+			if err != nil {
+				return err
 			}
-
+			upserted = rowsModified > 0
 			return nil
 		})
-		if err != nil && !errors.Is(err, rollbacked) {
-			return false, fmt.Errorf("upserting account: %w", err)
-		}
-
-		return upserted.Upserted, nil
+		return upserted, err
 	}, func(ctx context.Context, upserted bool) {
 		trace.SpanFromContext(ctx).SetAttributes(
 			attribute.String("address", account.Address),
 			attribute.Bool("upserted", upserted),
 		)
 	})
-	if err != nil && !errors.Is(err, rollbacked) {
-		return false, fmt.Errorf("failed to upsert account: %w", err)
-	} else if upserted {
-		logging.FromContext(ctx).Debugf("account upserted")
-	} else {
-		logging.FromContext(ctx).Debugf("account not modified")
-	}
-
-	return upserted, nil
 }

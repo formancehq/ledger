@@ -102,7 +102,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				count, err := db.NewSelect().
 					Table("pg_stat_activity").
 					Where("state <> 'idle' and pid <> pg_backend_pid()").
-					Where(`query like 'select pg_advisory_xact_lock%'`).
+					Where(`query like 'INSERT INTO "_default".accounts%'`).
 					Count(ctx)
 				g.Expect(err).To(BeNil())
 				return count
