@@ -112,7 +112,7 @@ import "github.com/formancehq/ledger/internal"
 
 ## Constants
 
-<a name="FeatureMovesHistory"></a>
+<a name="FeatureMovesHistory"></a>Current set of features: | Name | Default value | Possible configuration | Description | |\-|\-|\-|\-| | ACCOUNT\_METADATA\_HISTORY |
 
 ```go
 const (
@@ -271,7 +271,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
 
 <a name="Configuration"></a>
-## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L148-L152>)
+## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L152-L156>)
 
 
 
@@ -284,7 +284,7 @@ type Configuration struct {
 ```
 
 <a name="NewDefaultConfiguration"></a>
-### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L179>)
+### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L183>)
 
 ```go
 func NewDefaultConfiguration() Configuration
@@ -293,7 +293,7 @@ func NewDefaultConfiguration() Configuration
 
 
 <a name="Configuration.SetDefaults"></a>
-### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L154>)
+### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L158>)
 
 ```go
 func (c *Configuration) SetDefaults()
@@ -302,7 +302,7 @@ func (c *Configuration) SetDefaults()
 
 
 <a name="Configuration.Validate"></a>
-### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L169>)
+### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L173>)
 
 ```go
 func (c *Configuration) Validate() error
@@ -421,7 +421,7 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="FeatureSet"></a>
-## type [FeatureSet](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L136>)
+## type [FeatureSet](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L140>)
 
 
 
@@ -430,7 +430,7 @@ type FeatureSet map[string]string
 ```
 
 <a name="FeatureSet.With"></a>
-### func \(FeatureSet\) [With](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L138>)
+### func \(FeatureSet\) [With](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L142>)
 
 ```go
 func (f FeatureSet) With(feature, value string) FeatureSet
