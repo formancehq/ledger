@@ -169,7 +169,7 @@ openapi-markdown:
     RUN npm install -g widdershins
     COPY (+openapi/openapi.yaml) .
     RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP'
-    SAVE ARTIFACT README.md AS LOCAL docs/api/API.md
+    SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
 
 tidy:
     FROM +sources
