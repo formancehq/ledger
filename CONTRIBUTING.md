@@ -293,6 +293,49 @@ WHERE address IN (<bounded accounts list>)
 FOR UPDATE
 ```
 
+### Transaction write
+
+TODO
+
+### Hashed log
+
+Ledgers can be configured with feature `HASH_LOGS` to `SYNC`.
+By using this feature, each log will be hashed with the previous hash. 
+The generated signature is included in the log model.
+
+This mechanism allow to audit the full database.
+
+```mermaid
+sequenceDiagram
+    actor Ledger
+    actor Store
+    actor Database
+    Ledger->>Store: Insert log
+    Store->>Database: SELECT pg_advisory_xact_lock(<ledger id>)
+    Database-->>Store: OK
+    note right of Database: The ledger is locked at this point until the end of the current transaction
+    Store->>Database: Get last log
+    Database-->>Store: Last log
+    Store->>Store: Compute hash of new log
+    Store->>Database: Write log
+    Database-->>Store: Log written
+    Store-->>Ledger: Updated log
+```
+
+As you may have noticed, logs hashing involve a lock on the ledger.
+It can quickly become a bottleneck of high write throughput.
+
+### Effective volumes updates
+
+[Effective volumes](#post-commit-effective-volumes) are enabled if the following features are enabled : 
+* `MOVES_HISTORY`: `ON`
+* `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES`: `SYNC`
+
+When inserting a fund movement in the database with the `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES` enabled on the ledger, the ledger has to do : 
+* Compute actual post commit effective volumes for the moves by searching for the previous moves for account/asset pair, using the date of the move
+* Inserting the new move
+* Update any futures moves post_commit_effective_volumes
+
 ### Import
 
 Ledgers can be imported and exported.
@@ -334,45 +377,6 @@ It is the case, because, whatever the ledger is configured, finally, when writin
 
 As said, this isolation level is the strictest Postgres can offer, we could ask why we don't use it all the time.
 That's because, if we would do that, we would have frequent serialization errors, and we would need to retry very often, and probably creating a big bottleneck.
-
-### Hashed log
-
-Ledgers can be configured with feature `HASH_LOGS` to `SYNC`.
-By using this feature, each log will be hashed with the previous hash. 
-The generated signature is included in the log model.
-
-This mechanism allow to audit the full database.
-
-```mermaid
-sequenceDiagram
-    actor Ledger
-    actor Store
-    actor Database
-    Ledger->>Store: Insert log
-    Store->>Database: SELECT pg_advisory_xact_lock(<ledger id>)
-    Database-->>Store: OK
-    note right of Database: The ledger is locked at this point until the end of the current transaction
-    Store->>Database: Get last log
-    Database-->>Store: Last log
-    Store->>Store: Compute hash of new log
-    Store->>Database: Write log
-    Database-->>Store: Log written
-    Store-->>Ledger: Updated log
-```
-
-As you may have noticed, logs hashing involve a lock on the ledger.
-It can quickly become a bottleneck of high write throughput.
-
-### Effective volumes updates
-
-[Effective volumes](#post-commit-effective-volumes) are enabled if the following features are enabled : 
-* `MOVES_HISTORY`: `ON`
-* `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES`: `SYNC`
-
-When inserting a fund movement in the database with the `MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES` enabled on the ledger, the ledger has to do : 
-* Compute actual post commit effective volumes for the moves by searching for the previous moves for account/asset pair, using the date of the move
-* Inserting the new move
-* Update any futures moves post_commit_effective_volumes
 
 ## Testing strategy
 
