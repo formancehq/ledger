@@ -266,7 +266,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 		for _, posting := range postings {
 			moves = append(moves, &ledger.Move{
-				Ledger:            s.ledger.Name,
 				Account:           posting.Destination,
 				Amount:            (*bunpaginate.BigInt)(posting.Amount),
 				Asset:             posting.Asset,
@@ -278,7 +277,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
 
 			moves = append(moves, &ledger.Move{
-				Ledger:            s.ledger.Name,
 				IsSource:          true,
 				Account:           posting.Source,
 				Amount:            (*bunpaginate.BigInt)(posting.Amount),

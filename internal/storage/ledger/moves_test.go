@@ -54,7 +54,6 @@ func TestMovesInsert(t *testing.T) {
 
 		// Insert a first move at t0
 		m1 := ledger.Move{
-			Ledger:        store.GetLedger().Name,
 			IsSource:      true,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(100)),
@@ -71,7 +70,6 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a second move at t3
 		m2 := ledger.Move{
-			Ledger:        store.GetLedger().Name,
 			IsSource:      false,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
@@ -88,7 +86,6 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a third move at t1
 		m3 := ledger.Move{
-			Ledger:        store.GetLedger().Name,
 			IsSource:      true,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(200)),
@@ -105,7 +102,6 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a fourth move at t2
 		m4 := ledger.Move{
-			Ledger:        store.GetLedger().Name,
 			IsSource:      false,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
@@ -122,7 +118,6 @@ func TestMovesInsert(t *testing.T) {
 
 		// Add a fifth move at t4
 		m5 := ledger.Move{
-			Ledger:        store.GetLedger().Name,
 			IsSource:      false,
 			Account:       "world",
 			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
