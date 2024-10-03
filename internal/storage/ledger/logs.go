@@ -49,7 +49,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 
 	// We lock logs table as we need than the last log does not change until the transaction commit
 	if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
-		_, err := s.db.NewRaw(`select pg_advisory_xact_lock(hashtext(?))`, s.ledger.Name).Exec(ctx)
+		_, err := s.db.NewRaw(`select pg_advisory_xact_lock(?)`, s.ledger.ID).Exec(ctx)
 		if err != nil {
 			return err
 		}
