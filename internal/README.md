@@ -886,7 +886,7 @@ type Transaction struct {
 ```
 
 <a name="NewTransaction"></a>
-### func [NewTransaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L221>)
+### func [NewTransaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L239>)
 
 ```go
 func NewTransaction() Transaction
@@ -913,7 +913,7 @@ func (tx Transaction) InvolvedAccounts() []string
 
 
 <a name="Transaction.IsReverted"></a>
-### func \(Transaction\) [IsReverted](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L206>)
+### func \(Transaction\) [IsReverted](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L224>)
 
 ```go
 func (tx Transaction) IsReverted() bool
@@ -931,7 +931,7 @@ func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema)
 
 
 <a name="Transaction.MarshalJSON"></a>
-### func \(Transaction\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L165>)
+### func \(Transaction\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L183>)
 
 ```go
 func (tx Transaction) MarshalJSON() ([]byte, error)
@@ -976,7 +976,7 @@ func (tx Transaction) WithMetadata(m metadata.Metadata) Transaction
 
 
 <a name="Transaction.WithPostCommitEffectiveVolumes"></a>
-### func \(Transaction\) [WithPostCommitEffectiveVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L215>)
+### func \(Transaction\) [WithPostCommitEffectiveVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L233>)
 
 ```go
 func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) Transaction
@@ -1003,7 +1003,7 @@ func (tx Transaction) WithReference(ref string) Transaction
 
 
 <a name="Transaction.WithRevertedAt"></a>
-### func \(Transaction\) [WithRevertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L210>)
+### func \(Transaction\) [WithRevertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L228>)
 
 ```go
 func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction
