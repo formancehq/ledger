@@ -1,4 +1,4 @@
-# Dev
+# Contributing
 
 ## Getting started
 
@@ -116,7 +116,7 @@ Additionally, each ledger is created on a bucket, `quickstart` is installed on b
 >
 > But, automatically created ledgers by v1 api will create a new bucket with the same name as the ledger. That's for compatibility reasons regarding ledger v1 behavior.
 
-## Buckets
+***Buckets***
 
 To create a ledger on a specific bucket, use the command:
 
@@ -145,7 +145,7 @@ $ curl http://localhost:3068/v2/testing | jq
 
 Under the hood, a bucket is a Postgres schema. You can use the bucket feature to implement some kind of horizontal scaling.
 
-## Features
+***Features***
 
 Each usage of the ledger service, is different.
 Some usage involve a high write throughput, some other involve high read throughput, custom aggregation etc...
@@ -182,30 +182,11 @@ When overriding features, all not specified features will receive the default co
 > [!WARNING]
 > Current set of feature is not stable, some can be added, or removed.
 
-### Terminology
+## Numscript
 
-* Bounded source account: A bounded source account, is an account used in a Numscript script, as a source account, and with a bottom limit. Example:
-    ```
-    send [USD/2 100] {
-      source = @bank
-      destination = @user:1
-    }
-    ```
-  In this example, ```bank``` is considered as an unbounded source account.
+The ledger service is able to use the Numscript interpreter to create transactions.
 
-  An account used with an unbounded overdraft will not be considered as a bounded source account.
-  For example:
-    ```
-    send [USD/2 100] {
-      source = @bank allowing unbounded overdraft
-      destination = @user:1
-    }
-    ```
-  With this script, ```bank``` will not be considered as an unbounded source account.
-> [!NOTE]
-> notes: It is also the case of the ```world``` account, which is always an unbounded overdraft account.
-* post commit volumes (pcv): see [description](./internal/README.md#type-transaction)
-* post commit effective volumes (pcev): see [description](./internal/README.md#type-transaction)
+See [Numscript](https://github.com/formancehq/numscript)
 
 ## Database
 
@@ -214,9 +195,9 @@ You can find them in:
 * [System schema](./docs/database/_system/diagrams)
 * [Bucket schema](./docs/database/_default/diagrams)
 
-# Data consistency
+## Data consistency
 
-## Transaction commit
+### Transaction commit
 
 The following sequence diagram describe the process of creating a transaction.
 It supposes the minimal set of features.
@@ -280,7 +261,9 @@ WHERE address IN (<bounded accounts list>)
 FOR UPDATE
 ```
 
-## Import
+### Import
+
+Ledgers can be imported and exported.
 
 ```mermaid
 sequenceDiagram
@@ -320,7 +303,35 @@ It is the case, because, whatever the ledger is configured, finally, when writin
 As said, this isolation level is the strictest Postgres can offer, we could ask why we don't use it all the time.
 That's because, if we would do that, we would have frequent serialization errors, and we would need to retry very often, and probably creating a big bottleneck.
 
-# Testing strategy
+### Hashed log
+
+Ledgers can be configured with feature `HASH_LOGS` to `SYNC`.
+By using this feature, each log will be hashed with the previous hash. 
+The generated signature is included in the log model.
+
+This mechanism allow to audit the full database.
+
+```mermaid
+sequenceDiagram
+    actor Ledger
+    actor Store
+    actor Database
+    Ledger->>Store: Insert log
+    Store->>Database: SELECT pg_advisory_xact_lock(<ledger id>)
+    Database-->>Store: OK
+    note right of Database: The ledger is locked at this point until the end of the current transaction
+    Store->>Database: Get last log
+    Database-->>Store: Last log
+    Store->>Store: Compute hash of new log
+    Store->>Database: Write log
+    Database-->>Store: Log written
+    Store-->>Ledger: Updated log
+```
+
+As you may have noticed, logs hashing involve a lock on the ledger.
+It can quickly become a bottleneck of high write throughput.
+
+## Testing strategy
 
 Tests are split in different scopes :
 * Unit tests: as any go app, you will find unit test along the source code in _test.go files over the app.
@@ -329,14 +340,14 @@ Tests are split in different scopes :
 * [performance](./test/performance) : Performance tests. Tests inside this package test performance of the ledger.
 * [stress](./test/stress) : Stress tests. Tests inside this package ensure than ledger state stay consistent under high concurrency.
 
-# API changes
+## API changes
 
 Openapi specification at [root](./openapi.yaml) must not be edited directly as it is generated.
 Update [v2 spec](./openapi/v2.yaml) and regenerate the client using `earthly +pre-commit` or `earthly +generate-client`.
 
-# Dev commands
+## Dev commands
 
-## Before commit
+### Before commit
 
 ```shell
 $ earthly +pre-commit
@@ -348,7 +359,7 @@ This command will :
 * fix dependencies
 * generate [openapi](openapi.yaml) specification by combining [api versions](./openapi)
 
-## Run tests
+### Run tests
 
 ```shell
 $ earthly -P +tests
@@ -358,3 +369,28 @@ Additionally, the flag ```--coverage=true``` can be passed to generate coverage 
 ```shell
 $ earthly -P +tests --coverage=true # Generated under cover.out
 ```
+
+## Terminology
+
+* Bounded source account: A bounded source account, is an account used in a Numscript script, as a source account, and with a bottom limit. Example:
+    ```
+    send [USD/2 100] {
+      source = @bank
+      destination = @user:1
+    }
+    ```
+  In this example, ```bank``` is considered as an unbounded source account.
+
+  An account used with an unbounded overdraft will not be considered as a bounded source account.
+  For example:
+    ```
+    send [USD/2 100] {
+      source = @bank allowing unbounded overdraft
+      destination = @user:1
+    }
+    ```
+  With this script, ```bank``` will not be considered as an unbounded source account.
+> [!NOTE]
+> It is also the case of the ```world``` account, which is always an unbounded overdraft account.
+* post commit volumes (pcv): see [description](./internal/README.md#type-transaction)
+* post commit effective volumes (pcev): see [description](./internal/README.md#type-transaction)
