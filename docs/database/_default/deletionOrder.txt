@@ -1,8 +1,8 @@
+transactions_metadata
+transactions
+moves
 logs
 goose_db_version
-balances
-moves
-transactions_metadata
+accounts_volumes
 accounts_metadata
-transactions
 accounts
