@@ -121,7 +121,6 @@ pre-commit:
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
-    BUILD +export-database-schema
 
 bench:
     FROM +tidy
