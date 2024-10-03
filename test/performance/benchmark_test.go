@@ -16,21 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type Iterator interface {
-	Next() bool
-}
-
-type RunConfiguration struct {
-	Env      string
-	Script   string
-	Features FeatureConfiguration
-	Ledger   ledger.Ledger
-}
-
-func (c RunConfiguration) String() string {
-	return fmt.Sprintf("%s/%s/%s/%s/%s", c.Env, c.Script, c.Features, c.Ledger.Bucket, c.Ledger.Name)
-}
-
 type Benchmark struct {
 	EnvFactories map[string]EnvFactory
 	Scripts      map[string]func(int) (string, map[string]string)
@@ -61,7 +46,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) error {
 					}
 
 					cpt := atomic.Int64{}
-					report := newReport()
+					report := newReport(ledgerConfiguration.Features)
 
 					env := envFactory.Create(ctx, b, l)
 					b.Logf("ledger: %s/%s", l.Bucket, l.Name)
@@ -70,14 +55,14 @@ func (benchmark *Benchmark) Run(ctx context.Context) error {
 					b.ResetTimer()
 					b.RunParallel(func(pb *testing.PB) {
 						for pb.Next() {
-							id := int(cpt.Add(1))
+							iteration := int(cpt.Add(1))
 
-							script, vars := benchmark.Scripts[scriptName](id)
+							script, vars := benchmark.Scripts[scriptName](iteration)
 							now := time.Now()
 							_, err := env.Executor().ExecuteScript(ctx, script, vars)
 							require.NoError(b, err)
 
-							report.registerTransactionLatency(id, time.Since(now), err)
+							report.registerTransactionLatency(time.Since(now))
 						}
 					})
 					b.StopTimer()

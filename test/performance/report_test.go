@@ -12,17 +12,13 @@ import (
 type Report struct {
 	mu sync.Mutex
 
+	features      map[string]string
+
 	startOfBench time.Time
 	endOfBench   time.Time
 
-	transactionsCount int
-
-	longestTransactionID       int
-	longestTransactionDuration time.Duration
-
 	totalDuration atomic.Int64
-
-	errors map[int]error
+	transactionsCount int
 }
 
 func (r *Report) TPS() float64 {
@@ -33,26 +29,17 @@ func (r *Report) AverageDuration() time.Duration {
 	return time.Duration(r.totalDuration.Load()) * time.Millisecond / time.Duration(r.transactionsCount)
 }
 
-func (r *Report) LongestTransaction() (int, time.Duration) {
-	return r.longestTransactionID, r.longestTransactionDuration
-}
-
-func (r *Report) registerTransactionLatency(id int, latency time.Duration, err error) {
+func (r *Report) registerTransactionLatency(latency time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.transactionsCount = r.transactionsCount + 1
-	if r.longestTransactionDuration < latency {
-		r.longestTransactionDuration = latency
-		r.longestTransactionID = id
-	}
+	r.transactionsCount++
 	r.totalDuration.Add(latency.Milliseconds())
-	r.errors[id] = err
 }
 
-func newReport() *Report {
+func newReport(features map[string]string) *Report {
 	return &Report{
 		startOfBench: time.Now(),
-		errors:       map[int]error{},
+		features: features,
 	}
 }
