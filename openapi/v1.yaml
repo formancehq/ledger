@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Ledger API
   contact: {}
-  version: LEDGER_VERSION
+  version: v1
 paths:
   /_info:
     get:
