@@ -236,11 +236,11 @@ sequenceDiagram
     note right of Ledger: Calling Numscript interpreter
     Ledger-->>Database: Store transaction and update balances
     note left of Database: This diagram simplify the process of writing the transaction. More entities will be saved, <br/>and some computation can happen, depending on the enabled features. More on this later. 
-    Database->>Ledger: Transaction written
+    Database-->>Ledger: Transaction written
     Ledger->>Database: Commit SQL transaction
     note left of Database: Now, updated account balances are written to the database and any <br/>concurrent transaction waiting for those accounts will be unblocked. 
-    Database->>Ledger: Transaction committed
-    Ledger->>Client: Created transaction
+    Database-->>Ledger: Transaction committed
+    Ledger-->>Client: Created transaction
 ```
 
 ***Get and lock balances of bounded source accounts***
@@ -282,7 +282,43 @@ FOR UPDATE
 
 ## Import
 
-TODO
+```mermaid
+sequenceDiagram
+    actor Client
+    actor Ledger
+    actor Database
+    Client->>Ledger: Create transaction
+    Ledger->>Database: Start SQL transaction (Serialization Isolation level)
+    Database-->>Ledger: SQL transaction started
+    Ledger->>Database: Count logs
+    Database-->>Ledger: Count of logs
+    alt id count > 0
+        note left of Ledger: Import is only allowed on empty ledgers
+        Ledger-->>Client: Invalid state error
+    else 
+        Ledger->>Ledger: Read log stream
+        loop over log stream
+            Ledger->>Database: Apply appropriate actions (create transactions, update metadata...)
+            Database-->>Ledger: OK
+        end
+    end
+    Ledger->>Database: Commit SQL transaction
+    alt another action has been made on the ledger in the meantime 
+        Database-->>Ledger: Serialization error
+    else
+        Database-->>Ledger: SQL Transaction committed
+    end
+    Ledger->>Client: OK
+```
+
+To import a ledger, we use the [Serializable Isolation Level](https://www.postgresql.org/docs/7.2/xact-serializable.html).
+This isolation level is the strictest Postgres can offer.
+
+That's way, if another concurrent request write something on the ledger (a new transaction for example), the import request will fail with a serialization error.
+It is the case, because, whatever the ledger is configured, finally, when writing, we will ***always*** write a log describing the action, causing conflict with Serializable Isolation Level.
+
+As said, this isolation level is the strictest Postgres can offer, we could ask why we don't use it all the time.
+That's because, if we would do that, we would have frequent serialization errors, and we would need to retry very often, and probably creating a big bottleneck.
 
 # Testing strategy
 
@@ -318,7 +354,7 @@ This command will :
 $ earthly -P +tests
 ```
 
-Additionnally, the flag ```--coverage=true``` can be passed to generate coverage :
+Additionally, the flag ```--coverage=true``` can be passed to generate coverage :
 ```shell
 $ earthly -P +tests --coverage=true # Generated under cover.out
 ```

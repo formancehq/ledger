@@ -159,6 +159,24 @@ func (tx Transaction) VolumeUpdates() []AccountsVolumes {
 		}
 	}
 
+	slices.SortStableFunc(ret, func(a, b AccountsVolumes) int {
+		switch {
+		case a.Account < b.Account:
+			return -1
+		case a.Account > b.Account:
+			return 1
+		default:
+			switch {
+			case a.Asset < b.Asset:
+				return -1
+			case a.Asset > b.Asset:
+				return 1
+			default:
+				return 0
+			}
+		}
+	})
+
 	return ret
 }
 
