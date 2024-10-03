@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 302ced639acd69d468571e054f1fd99a
-  docVersion: LEDGER_VERSION
+  docChecksum: 46b920c97720c2cf24009a8029141b0e
+  docVersion: v1
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.4.9
-  configChecksum: ba631015bfe7d302c9826620e37eda7c
+  releaseVersion: 0.4.10
+  configChecksum: 80adc8750c319f7d5486bd5211882798
 features:
   go:
     additionalDependencies: 0.1.0

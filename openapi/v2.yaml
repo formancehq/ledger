@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Ledger API
   contact: {}
-  version: LEDGER_VERSION
+  version: v2
 servers:
   - url: http://localhost:8080/
 paths:
