@@ -416,29 +416,29 @@ $ earthly -P +tests --coverage=true # Generated under cover.out
 
 ## API reference
 
-See [API reference](./docs/api/API.md)
+See [API reference](./docs/api/README.md)
 
 ## Terminology
 
 ### Bounded source account 
 
 A bounded source account, is an account used in a Numscript script, as a source account, and with a bottom limit. Example:
-    ```
+
     send [USD/2 100] {
       source = @bank
       destination = @user:1
     }
-    ```
+
   In this example, ```bank``` is considered as an unbounded source account.
 
   An account used with an unbounded overdraft will not be considered as a bounded source account.
   For example:
-    ```
+
     send [USD/2 100] {
       source = @bank allowing unbounded overdraft
       destination = @user:1
     }
-    ```
+
   With this script, ```bank``` will not be considered as an unbounded source account.
 > [!NOTE]
 > It is also the case of the ```world``` account, which is always an unbounded overdraft account.
