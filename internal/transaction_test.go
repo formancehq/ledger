@@ -39,7 +39,7 @@ func TestTransactionsVolumesUpdate(t *testing.T) {
 
 	require.Equal(t, []AccountsVolumes{
 		{
-			Account: "world",
+			Account: "payments:001",
 			Asset:   "COIN",
 			Input:   big.NewInt(100),
 			Output:  big.NewInt(100),
@@ -51,7 +51,7 @@ func TestTransactionsVolumesUpdate(t *testing.T) {
 			Output:  big.NewInt(100),
 		},
 		{
-			Account: "payments:001",
+			Account: "world",
 			Asset:   "COIN",
 			Input:   big.NewInt(100),
 			Output:  big.NewInt(100),

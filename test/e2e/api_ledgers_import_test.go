@@ -42,6 +42,9 @@ var _ = Context("Ledger engine tests", func() {
 		BeforeEach(func() {
 			createLedgerRequest = operations.V2CreateLedgerRequest{
 				Ledger: "foo",
+				V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+					Features: ledger.MinimalFeatureSet,
+				},
 			}
 		})
 		JustBeforeEach(func() {
