@@ -35,7 +35,7 @@ Base URLs:
 
 <h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
-## v2GetInfo
+## Show server information
 
 <a id="opIdv2GetInfo"></a>
 
@@ -50,8 +50,6 @@ Accept: application/json
 
 `GET /v2/_info`
 
-*Show server information*
-
 > Example responses
 
 > 200 Response
@@ -63,7 +61,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2getinfo-responses">Responses</h3>
+<h3 id="show-server-information-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -76,7 +74,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2ListLedgers
+## List ledgers
 
 <a id="opIdv2ListLedgers"></a>
 
@@ -91,9 +89,7 @@ Accept: application/json
 
 `GET /v2`
 
-*List ledgers*
-
-<h3 id="v2listledgers-parameters">Parameters</h3>
+<h3 id="list-ledgers-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -134,7 +130,7 @@ No other parameters can be set when this parameter is set.
 }
 ```
 
-<h3 id="v2listledgers-responses">Responses</h3>
+<h3 id="list-ledgers-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -146,7 +142,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2GetLedger
+## Get a ledger
 
 <a id="opIdv2GetLedger"></a>
 
@@ -161,9 +157,7 @@ Accept: application/json
 
 `GET /v2/{ledger}`
 
-*Get a ledger*
-
-<h3 id="v2getledger-parameters">Parameters</h3>
+<h3 id="get-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -186,7 +180,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2getledger-responses">Responses</h3>
+<h3 id="get-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -198,7 +192,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2CreateLedger
+## Create a ledger
 
 <a id="opIdv2CreateLedger"></a>
 
@@ -213,8 +207,6 @@ Accept: application/json
 ```
 
 `POST /v2/{ledger}`
-
-*Create a ledger*
 
 > Body parameter
 
@@ -231,7 +223,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2createledger-parameters">Parameters</h3>
+<h3 id="create-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -250,7 +242,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2createledger-responses">Responses</h3>
+<h3 id="create-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -262,7 +254,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2UpdateLedgerMetadata
+## Update ledger metadata
 
 <a id="opIdv2UpdateLedgerMetadata"></a>
 
@@ -278,8 +270,6 @@ Accept: application/json
 
 `PUT /v2/{ledger}/metadata`
 
-*Update ledger metadata*
-
 > Body parameter
 
 ```json
@@ -288,7 +278,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2updateledgermetadata-parameters">Parameters</h3>
+<h3 id="update-ledger-metadata-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -307,7 +297,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2updateledgermetadata-responses">Responses</h3>
+<h3 id="update-ledger-metadata-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -320,7 +310,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2DeleteLedgerMetadata
+## Delete ledger metadata by key
 
 <a id="opIdv2DeleteLedgerMetadata"></a>
 
@@ -335,9 +325,7 @@ Accept: application/json
 
 `DELETE /v2/{ledger}/metadata/{key}`
 
-*Delete ledger metadata by key*
-
-<h3 id="v2deleteledgermetadata-parameters">Parameters</h3>
+<h3 id="delete-ledger-metadata-by-key-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -356,7 +344,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2deleteledgermetadata-responses">Responses</h3>
+<h3 id="delete-ledger-metadata-by-key-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -368,7 +356,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2GetLedgerInfo
+## Get information about a ledger
 
 <a id="opIdv2GetLedgerInfo"></a>
 
@@ -383,9 +371,7 @@ Accept: application/json
 
 `GET /v2/{ledger}/_info`
 
-*Get information about a ledger*
-
-<h3 id="v2getledgerinfo-parameters">Parameters</h3>
+<h3 id="get-information-about-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -413,7 +399,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2getledgerinfo-responses">Responses</h3>
+<h3 id="get-information-about-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -425,7 +411,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2CreateBulk
+## Bulk request
 
 <a id="opIdv2CreateBulk"></a>
 
@@ -440,8 +426,6 @@ Accept: application/json
 ```
 
 `POST /v2/{ledger}/_bulk`
-
-*Bulk request*
 
 > Body parameter
 
@@ -475,7 +459,7 @@ Accept: application/json
 ]
 ```
 
-<h3 id="v2createbulk-parameters">Parameters</h3>
+<h3 id="bulk-request-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -579,7 +563,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2createbulk-responses">Responses</h3>
+<h3 id="bulk-request-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -592,7 +576,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2CountAccounts
+## Count the accounts from a ledger
 
 <a id="opIdv2CountAccounts"></a>
 
@@ -608,15 +592,13 @@ Accept: application/json
 
 `HEAD /v2/{ledger}/accounts`
 
-*Count the accounts from a ledger*
-
 > Body parameter
 
 ```json
 {}
 ```
 
-<h3 id="v2countaccounts-parameters">Parameters</h3>
+<h3 id="count-the-accounts-from-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -636,7 +618,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2countaccounts-responses">Responses</h3>
+<h3 id="count-the-accounts-from-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -654,7 +636,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2ListAccounts
+## List accounts from a ledger
 
 <a id="opIdv2ListAccounts"></a>
 
@@ -670,8 +652,6 @@ Accept: application/json
 
 `GET /v2/{ledger}/accounts`
 
-*List accounts from a ledger*
-
 List accounts from a ledger, sorted by address in descending order.
 
 > Body parameter
@@ -680,7 +660,7 @@ List accounts from a ledger, sorted by address in descending order.
 {}
 ```
 
-<h3 id="v2listaccounts-parameters">Parameters</h3>
+<h3 id="list-accounts-from-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -747,7 +727,7 @@ No other parameters can be set when this parameter is set.
 }
 ```
 
-<h3 id="v2listaccounts-responses">Responses</h3>
+<h3 id="list-accounts-from-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -759,7 +739,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2GetAccount
+## Get account by its address
 
 <a id="opIdv2GetAccount"></a>
 
@@ -774,9 +754,7 @@ Accept: application/json
 
 `GET /v2/{ledger}/accounts/{address}`
 
-*Get account by its address*
-
-<h3 id="v2getaccount-parameters">Parameters</h3>
+<h3 id="get-account-by-its-address-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -831,7 +809,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2getaccount-responses">Responses</h3>
+<h3 id="get-account-by-its-address-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -843,7 +821,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2AddMetadataToAccount
+## Add metadata to an account
 
 <a id="opIdv2AddMetadataToAccount"></a>
 
@@ -860,8 +838,6 @@ Idempotency-Key: string
 
 `POST /v2/{ledger}/accounts/{address}/metadata`
 
-*Add metadata to an account*
-
 > Body parameter
 
 ```json
@@ -870,7 +846,7 @@ Idempotency-Key: string
 }
 ```
 
-<h3 id="v2addmetadatatoaccount-parameters">Parameters</h3>
+<h3 id="add-metadata-to-an-account-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -899,45 +875,43 @@ Idempotency-Key: string
 }
 ```
 
-<h3 id="v2addmetadatatoaccount-responses">Responses</h3>
+<h3 id="add-metadata-to-an-account-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<h3 id="v2addmetadatatoaccount-responseschema">Response Schema</h3>
+<h3 id="add-metadata-to-an-account-responseschema">Response Schema</h3>
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2DeleteAccountMetadata
+## Delete metadata by key
 
-<a id="opIdv2DeleteAccountMetadata"></a>
+<a id="opIdv2DeleteTransactionMetadata"></a>
 
 > Code samples
 
 ```http
-DELETE http://localhost:8080/v2/{ledger}/accounts/{address}/metadata/{key} HTTP/1.1
+DELETE http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`DELETE /v2/{ledger}/accounts/{address}/metadata/{key}`
-
-*Delete metadata by key*
+`DELETE /v2/{ledger}/transactions/{id}/metadata/{key}`
 
 Delete metadata by key
 
-<h3 id="v2deleteaccountmetadata-parameters">Parameters</h3>
+<h3 id="delete-metadata-by-key-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
-|address|path|string|true|Account address|
+|id|path|integer(bigint)|true|Transaction ID.|
 |key|path|string|true|The key to remove.|
 
 > Example responses
@@ -952,21 +926,21 @@ Delete metadata by key
 }
 ```
 
-<h3 id="v2deleteaccountmetadata-responses">Responses</h3>
+<h3 id="delete-metadata-by-key-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |2XX|Unknown|Key deleted|None|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<h3 id="v2deleteaccountmetadata-responseschema">Response Schema</h3>
+<h3 id="delete-metadata-by-key-responseschema">Response Schema</h3>
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2ReadStats
+## Get statistics from a ledger
 
 <a id="opIdv2ReadStats"></a>
 
@@ -981,11 +955,9 @@ Accept: application/json
 
 `GET /v2/{ledger}/stats`
 
-*Get statistics from a ledger*
-
 Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 
-<h3 id="v2readstats-parameters">Parameters</h3>
+<h3 id="get-statistics-from-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1004,7 +976,7 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 }
 ```
 
-<h3 id="v2readstats-responses">Responses</h3>
+<h3 id="get-statistics-from-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1016,7 +988,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2CountTransactions
+## Count the transactions from a ledger
 
 <a id="opIdv2CountTransactions"></a>
 
@@ -1032,15 +1004,13 @@ Accept: application/json
 
 `HEAD /v2/{ledger}/transactions`
 
-*Count the transactions from a ledger*
-
 > Body parameter
 
 ```json
 {}
 ```
 
-<h3 id="v2counttransactions-parameters">Parameters</h3>
+<h3 id="count-the-transactions-from-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1060,7 +1030,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2counttransactions-responses">Responses</h3>
+<h3 id="count-the-transactions-from-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1078,7 +1048,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2ListTransactions
+## List transactions from a ledger
 
 <a id="opIdv2ListTransactions"></a>
 
@@ -1094,8 +1064,6 @@ Accept: application/json
 
 `GET /v2/{ledger}/transactions`
 
-*List transactions from a ledger*
-
 List transactions from a ledger, sorted by id in descending order.
 
 > Body parameter
@@ -1104,7 +1072,7 @@ List transactions from a ledger, sorted by id in descending order.
 {}
 ```
 
-<h3 id="v2listtransactions-parameters">Parameters</h3>
+<h3 id="list-transactions-from-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1232,7 +1200,7 @@ No other parameters can be set when this parameter is set.
 }
 ```
 
-<h3 id="v2listtransactions-responses">Responses</h3>
+<h3 id="list-transactions-from-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1244,7 +1212,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2CreateTransaction
+## Create a new transaction to a ledger
 
 <a id="opIdv2CreateTransaction"></a>
 
@@ -1260,8 +1228,6 @@ Idempotency-Key: string
 ```
 
 `POST /v2/{ledger}/transactions`
-
-*Create a new transaction to a ledger*
 
 > Body parameter
 
@@ -1289,7 +1255,7 @@ Idempotency-Key: string
 }
 ```
 
-<h3 id="v2createtransaction-parameters">Parameters</h3>
+<h3 id="create-a-new-transaction-to-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1397,7 +1363,7 @@ Idempotency-Key: string
 }
 ```
 
-<h3 id="v2createtransaction-responses">Responses</h3>
+<h3 id="create-a-new-transaction-to-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1409,7 +1375,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2GetTransaction
+## Get transaction from a ledger by its ID
 
 <a id="opIdv2GetTransaction"></a>
 
@@ -1424,9 +1390,7 @@ Accept: application/json
 
 `GET /v2/{ledger}/transactions/{id}`
 
-*Get transaction from a ledger by its ID*
-
-<h3 id="v2gettransaction-parameters">Parameters</h3>
+<h3 id="get-transaction-from-a-ledger-by-its-id-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1527,7 +1491,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2gettransaction-responses">Responses</h3>
+<h3 id="get-transaction-from-a-ledger-by-its-id-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1539,7 +1503,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2AddMetadataOnTransaction
+## Set the metadata of a transaction by its ID
 
 <a id="opIdv2AddMetadataOnTransaction"></a>
 
@@ -1556,8 +1520,6 @@ Idempotency-Key: string
 
 `POST /v2/{ledger}/transactions/{id}/metadata`
 
-*Set the metadata of a transaction by its ID*
-
 > Body parameter
 
 ```json
@@ -1566,7 +1528,7 @@ Idempotency-Key: string
 }
 ```
 
-<h3 id="v2addmetadataontransaction-parameters">Parameters</h3>
+<h3 id="set-the-metadata-of-a-transaction-by-its-id-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1588,74 +1550,21 @@ Idempotency-Key: string
 }
 ```
 
-<h3 id="v2addmetadataontransaction-responses">Responses</h3>
+<h3 id="set-the-metadata-of-a-transaction-by-its-id-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<h3 id="v2addmetadataontransaction-responseschema">Response Schema</h3>
+<h3 id="set-the-metadata-of-a-transaction-by-its-id-responseschema">Response Schema</h3>
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2DeleteTransactionMetadata
-
-<a id="opIdv2DeleteTransactionMetadata"></a>
-
-> Code samples
-
-```http
-DELETE http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-
-```
-
-`DELETE /v2/{ledger}/transactions/{id}/metadata/{key}`
-
-*Delete metadata by key*
-
-Delete metadata by key
-
-<h3 id="v2deletetransactionmetadata-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|ledger|path|string|true|Name of the ledger.|
-|id|path|integer(bigint)|true|Transaction ID.|
-|key|path|string|true|The key to remove.|
-
-> Example responses
-
-> default Response
-
-```json
-{
-  "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-}
-```
-
-<h3 id="v2deletetransactionmetadata-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|2XX|Unknown|Key deleted|None|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<h3 id="v2deletetransactionmetadata-responseschema">Response Schema</h3>
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:write )
-</aside>
-
-## v2RevertTransaction
+## Revert a ledger transaction by its ID
 
 <a id="opIdv2RevertTransaction"></a>
 
@@ -1670,9 +1579,7 @@ Accept: application/json
 
 `POST /v2/{ledger}/transactions/{id}/revert`
 
-*Revert a ledger transaction by its ID*
-
-<h3 id="v2reverttransaction-parameters">Parameters</h3>
+<h3 id="revert-a-ledger-transaction-by-its-id-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1774,7 +1681,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2reverttransaction-responses">Responses</h3>
+<h3 id="revert-a-ledger-transaction-by-its-id-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1786,7 +1693,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2GetBalancesAggregated
+## Get the aggregated balances from selected accounts
 
 <a id="opIdv2GetBalancesAggregated"></a>
 
@@ -1802,15 +1709,13 @@ Accept: application/json
 
 `GET /v2/{ledger}/aggregate/balances`
 
-*Get the aggregated balances from selected accounts*
-
 > Body parameter
 
 ```json
 {}
 ```
 
-<h3 id="v2getbalancesaggregated-parameters">Parameters</h3>
+<h3 id="get-the-aggregated-balances-from-selected-accounts-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1832,7 +1737,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="v2getbalancesaggregated-responses">Responses</h3>
+<h3 id="get-the-aggregated-balances-from-selected-accounts-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1844,7 +1749,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2GetVolumesWithBalances
+## Get list of volumes with balances for (account/asset)
 
 <a id="opIdv2GetVolumesWithBalances"></a>
 
@@ -1860,15 +1765,13 @@ Accept: application/json
 
 `GET /v2/{ledger}/volumes`
 
-*Get list of volumes with balances for (account/asset)*
-
 > Body parameter
 
 ```json
 {}
 ```
 
-<h3 id="v2getvolumeswithbalances-parameters">Parameters</h3>
+<h3 id="get-list-of-volumes-with-balances-for-(account/asset)-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1914,7 +1817,7 @@ No other parameters can be set when this parameter is set.
 }
 ```
 
-<h3 id="v2getvolumeswithbalances-responses">Responses</h3>
+<h3 id="get-list-of-volumes-with-balances-for-(account/asset)-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1926,7 +1829,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
-## v2ListLogs
+## List the logs from a ledger
 
 <a id="opIdv2ListLogs"></a>
 
@@ -1942,8 +1845,6 @@ Accept: application/json
 
 `GET /v2/{ledger}/logs`
 
-*List the logs from a ledger*
-
 List the logs from a ledger, sorted by ID in descending order.
 
 > Body parameter
@@ -1952,7 +1853,7 @@ List the logs from a ledger, sorted by ID in descending order.
 {}
 ```
 
-<h3 id="v2listlogs-parameters">Parameters</h3>
+<h3 id="list-the-logs-from-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -1995,7 +1896,7 @@ No other parameters can be set when this parameter is set.
 }
 ```
 
-<h3 id="v2listlogs-responses">Responses</h3>
+<h3 id="list-the-logs-from-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -2061,7 +1962,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## v2ExportLogs
+## Export logs
 
 <a id="opIdv2ExportLogs"></a>
 
@@ -2076,9 +1977,7 @@ Accept: application/octet-stream
 
 `POST /v2/{ledger}/logs/export`
 
-*Export logs*
-
-<h3 id="v2exportlogs-parameters">Parameters</h3>
+<h3 id="export-logs-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -2088,7 +1987,7 @@ Accept: application/octet-stream
 
 > default Response
 
-<h3 id="v2exportlogs-responses">Responses</h3>
+<h3 id="export-logs-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
