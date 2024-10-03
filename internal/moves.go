@@ -12,7 +12,6 @@ import (
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	Ledger                     string              `bun:"ledger,type:varchar"`
 	TransactionID              int                 `bun:"transactions_id,type:bigint"`
 	IsSource                   bool                `bun:"is_source,type:bool"`
 	Account                    string              `bun:"accounts_address,type:varchar"`
