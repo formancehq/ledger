@@ -40,7 +40,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			ledgercontroller.NewDefaultMachineFactory(ctrl.compiler),
+			&ledgercontroller.DefaultInterpreterMachineFactory{},
 		)
 
 		// Add cache regarding database state
