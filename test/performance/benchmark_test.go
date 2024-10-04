@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/formancehq/go-libs/collectionutils"
+	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/uuid"
@@ -24,23 +24,23 @@ type Benchmark struct {
 	b       *testing.B
 }
 
-func (benchmark *Benchmark) Run(ctx context.Context) []*Report {
-	reports := make([]*Report, 0)
+func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Report {
+	reports := make(map[string][]Report, 0)
 	for envName, envFactory := range benchmark.EnvFactories {
-		scriptsKeys := collectionutils.Keys(benchmark.Scripts)
+		scriptsKeys := Keys(benchmark.Scripts)
 		sort.Strings(scriptsKeys)
 
 		for _, scriptName := range scriptsKeys {
-			for _, features := range buildAllPossibleConfigurations() {
+			for _, configuration := range buildAllPossibleConfigurations() {
 
-				testName := fmt.Sprintf("%s/%s/%s", envName, scriptName, features)
+				testName := fmt.Sprintf("%s/%s/%s", envName, scriptName, configuration)
 
 				ledgerConfiguration := ledger.Configuration{
-					Features: features,
+					Features: configuration.FeatureSet,
 					Bucket:   uuid.NewString()[:8],
 				}
 				ledgerConfiguration.SetDefaults()
-				report := newReport(ledgerConfiguration.Features, scriptName)
+				report := newReport(configuration, scriptName)
 
 				benchmark.b.Run(testName, func(b *testing.B) {
 					report.reset()
@@ -81,7 +81,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) []*Report {
 				})
 
 				if report.TransactionsCount > 0 {
-					reports = append(reports, report)
+					reports[scriptName] = append(reports[scriptName], report)
 				}
 			}
 		}

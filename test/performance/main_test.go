@@ -32,7 +32,8 @@ var (
 	ledgerURL     string
 
 	parallelism int64
-	reportFile string
+	reportDir   string
+	testCore bool
 
 	envFactories = make(map[string]EnvFactory)
 )
@@ -43,16 +44,27 @@ func init() {
 	flag.StringVar(&authClientSecret, "client.secret", "", "Client secret")
 	flag.StringVar(&ledgerURL, "ledger.url", "", "Ledger url")
 	flag.StringVar(&authIssuerURL, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
-	flag.StringVar(&reportFile, "report.file", "", "Location to write report file")
+	flag.StringVar(&reportDir, "report.dir", "", "Location to write report files")
 	flag.Int64Var(&parallelism, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
+	flag.BoolVar(&testCore, "test-core", false, "Test core only")
 }
 
 func TestMain(m *testing.M) {
 	flag.Parse()
 
 	utils.WithTestMain(func(t *utils.TestingTForMain) int {
-		if stackURL != "" && ledgerURL != "" {
-			t.Errorf("Cannot specify both --stack.url and --ledger.url")
+		selectedEnv := 0
+		if stackURL != "" {
+			selectedEnv++
+		}
+		if ledgerURL != "" {
+			selectedEnv++
+		}
+		if testCore {
+			selectedEnv++
+		}
+		if selectedEnv > 1 {
+			t.Errorf("Cannot specify both --stack.url, --ledger.url or --test-core")
 			t.FailNow()
 		}
 
@@ -61,6 +73,8 @@ func TestMain(m *testing.M) {
 			setupRemoteStackEnv()
 		case ledgerURL != "":
 			setRemoteLedgerEnv()
+		case testCore:
+			setCoreEnv()
 		default:
 			setupLocalEnv(t)
 		}
@@ -78,6 +92,9 @@ func setupLocalEnv(t *utils.TestingTForMain) {
 		dockerPool,
 		pgtesting.WithPGCrypto(),
 	)
+	envFactories = map[string]EnvFactory{
+		"testserver": NewTestServerEnvFactory(pgServer),
+	}
 }
 
 // setupRemoveEnv configure a remote env
@@ -88,6 +105,10 @@ func setupRemoteStackEnv() {
 // setupRemoveEnv configure a remote env
 func setRemoteLedgerEnv() {
 	envFactories["remote"] = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURL), ledgerURL)
+}
+
+func setCoreEnv() {
+	envFactories["core"] = NewCoreEnvFactory(pgServer)
 }
 
 func getHttpClient(authUrl string) *http.Client {
