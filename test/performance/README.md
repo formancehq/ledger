@@ -43,7 +43,7 @@ go test -bench=Write/testserver -run ^$ -tags it -report.dir .
 The exported file is a csv. 
 You can use the [provided plot script](./plot/features_comparison.gp) to generate a bar chart for tps:
 ```shell
-gnuplot -c plot/features_comparison.gp
+gnuplot -c plot/features_comparison_tps.gp
 ```
 
 Each feature is tested against a test script involving a transaction from a source to a destination.

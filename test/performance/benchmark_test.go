@@ -80,7 +80,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Report {
 					require.NoError(benchmark.b, env.Stop(stopContext))
 				})
 
-				if report.TransactionsCount > 0 {
+				if report.Tachymeter.Count > 0 {
 					reports[scriptName] = append(reports[scriptName], report)
 				}
 			}
