@@ -300,9 +300,11 @@ func TestTransactionsCommit(t *testing.T) {
 
 		storeWithTxWithAccount1AsSource := store.WithDB(txWithAccount1AsSource)
 		unlockTx1Chan := make(chan chan struct{}, 1)
+		tx1Context, cancel := context.WithCancel(ctx)
+		t.Cleanup(cancel)
 		go func() {
 			// Simulate a transaction with bounded sources by asking for balances before calling CommitTransaction
-			_, err := storeWithTxWithAccount1AsSource.GetBalances(ctx, ledgercontroller.BalanceQuery{
+			_, err := storeWithTxWithAccount1AsSource.GetBalances(tx1Context, ledgercontroller.BalanceQuery{
 				"account:1": {"USD"},
 			})
 			require.NoError(t, err)
@@ -312,7 +314,7 @@ func TestTransactionsCommit(t *testing.T) {
 			<-ch
 
 			errorsChan <- storeWithTxWithAccount1AsSource.CommitTransaction(
-				ctx,
+				tx1Context,
 				pointer.For(ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("account:1", "account:2", "USD", big.NewInt(100)),
 				)),
@@ -336,9 +338,11 @@ func TestTransactionsCommit(t *testing.T) {
 
 		storeWithTxWithAccount2AsSource := store.WithDB(txWithAccount2AsSource)
 		unlockTx2Chan := make(chan chan struct{}, 1)
+		tx2Context, cancel := context.WithCancel(ctx)
+		t.Cleanup(cancel)
 		go func() {
 			// Simulate a transaction with bounded sources by asking for balances before calling CommitTransaction
-			_, err := storeWithTxWithAccount2AsSource.GetBalances(ctx, ledgercontroller.BalanceQuery{
+			_, err := storeWithTxWithAccount2AsSource.GetBalances(tx2Context, ledgercontroller.BalanceQuery{
 				"account:2": {"USD"},
 			})
 			require.NoError(t, err)
@@ -348,7 +352,7 @@ func TestTransactionsCommit(t *testing.T) {
 			<-ch
 
 			errorsChan <- storeWithTxWithAccount2AsSource.CommitTransaction(
-				ctx,
+				tx2Context,
 				pointer.For(ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("account:2", "account:1", "USD", big.NewInt(100)),
 				)),
