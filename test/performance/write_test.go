@@ -82,7 +82,7 @@ func BenchmarkWrite(b *testing.B) {
 	if reportDir != "" {
 		require.NoError(b, os.MkdirAll(reportDir, 0755))
 
-		featureComparisonCSVLocation := filepath.Join(reportDir, "features_comparison.csv")
+		featureComparisonCSVLocation := filepath.Join(reportDir, "features_comparison_tps.csv")
 		featureComparisonCSVFile, err := os.Create(featureComparisonCSVLocation)
 		require.NoError(b, err)
 
