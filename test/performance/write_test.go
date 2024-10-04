@@ -3,11 +3,14 @@
 package performance_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/require"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/formancehq/go-libs/logging"
-	"github.com/stretchr/testify/require"
 )
 
 var scripts = map[string]func(int) (string, map[string]string){
@@ -54,7 +57,7 @@ send [USD/2 100] (
 
 func BenchmarkWrite(b *testing.B) {
 
-	// set default env factories if not defined (remote mode not used)
+	// Set default env factories if not defined (remote mode not used)
 	if len(envFactories) == 0 {
 		envFactories = map[string]EnvFactory{
 			"core":       NewCoreEnvFactory(pgServer),
@@ -62,6 +65,18 @@ func BenchmarkWrite(b *testing.B) {
 		}
 	}
 
-	err := New(b, envFactories, scripts).Run(logging.TestingContext())
-	require.NoError(b, err)
+	// Execute benchmarks
+	reports := New(b, envFactories, scripts).Run(logging.TestingContext())
+
+	// Write report
+	if reportFile != "" {
+		require.NoError(b, os.MkdirAll(filepath.Dir(reportFile), 0755))
+
+		f, err := os.Create(reportFile)
+		require.NoError(b, err)
+
+		enc := json.NewEncoder(f)
+		enc.SetIndent("", "  ")
+		require.NoError(b, enc.Encode(reports))
+	}
 }
