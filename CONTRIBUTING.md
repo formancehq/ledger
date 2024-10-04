@@ -121,7 +121,7 @@ Additionally, each ledger is created on a bucket, `quickstart` is installed on b
 >
 > But, automatically created ledgers by v1 api will create a new bucket with the same name as the ledger. That's for compatibility reasons regarding ledger v1 behavior.
 
-***Buckets***
+### Buckets
 
 To create a ledger on a specific bucket, use the command:
 
@@ -150,7 +150,7 @@ $ curl http://localhost:3068/v2/testing | jq
 
 Under the hood, a bucket is a Postgres schema. You can use the bucket feature to implement some kind of horizontal scaling.
 
-***Features***
+### Features
 
 Each usage of the ledger service, is different.
 Some usage involve a high write throughput, some other involve high read throughput, custom aggregation etc...

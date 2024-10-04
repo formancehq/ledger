@@ -3,20 +3,22 @@
 package performance_test
 
 import (
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
+	. "github.com/formancehq/go-libs/collectionutils"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
-
-	"github.com/formancehq/go-libs/logging"
 )
 
 var scripts = map[string]func(int) (string, map[string]string){
 	"world->bank":         worldToBank,
 	"world->any":          worldToAny,
 	"any(unbounded)->any": anyUnboundedToAny,
+	"any(bounded)->any": anyBoundedToAny,
 }
 
 func worldToBank(_ int) (string, map[string]string) {
@@ -55,28 +57,55 @@ send [USD/2 100] (
 		}
 }
 
-func BenchmarkWrite(b *testing.B) {
-
-	// Set default env factories if not defined (remote mode not used)
-	if len(envFactories) == 0 {
-		envFactories = map[string]EnvFactory{
-			"core":       NewCoreEnvFactory(pgServer),
-			"testserver": NewTestServerEnvFactory(pgServer),
+func anyBoundedToAny(id int) (string, map[string]string) {
+	return fmt.Sprintf(`
+vars {
+	account $source
+	account $destination
+}
+send [USD/2 100] (
+	source = $source allowing overdraft up to [USD/2 %d]
+	destination = $destination
+)`, (id+1)*100), map[string]string{
+			"source":      fmt.Sprintf("src:%d", id),
+			"destination": fmt.Sprintf("dst:%d", id),
 		}
-	}
+}
+
+// todo: add response time
+func BenchmarkWrite(b *testing.B) {
 
 	// Execute benchmarks
 	reports := New(b, envFactories, scripts).Run(logging.TestingContext())
 
 	// Write report
-	if reportFile != "" {
-		require.NoError(b, os.MkdirAll(filepath.Dir(reportFile), 0755))
+	if reportDir != "" {
+		require.NoError(b, os.MkdirAll(reportDir, 0755))
 
-		f, err := os.Create(reportFile)
+		featureComparisonCSVLocation := filepath.Join(reportDir, "features_comparison.csv")
+		featureComparisonCSVFile, err := os.Create(featureComparisonCSVLocation)
 		require.NoError(b, err)
 
-		enc := json.NewEncoder(f)
-		enc.SetIndent("", "  ")
-		require.NoError(b, enc.Encode(reports))
+		w := csv.NewWriter(featureComparisonCSVFile)
+		w.Comma = ' '
+
+		scripts := Keys(reports)
+		sort.Strings(scripts)
+
+		csvLine := make([]string, 0)
+		csvLine = append(csvLine, "scenario")
+		csvLine = append(csvLine, scripts...)
+		require.NoError(b, w.Write(csvLine))
+
+		for line := 0 ; line < len(reports[scripts[0]]) ; line++ {
+			csvLine = make([]string, 0)
+			csvLine = append(csvLine, reports[scripts[0]][line].Configuration.Name)
+			for j := 0 ; j < len(scripts) ; j++ {
+				csvLine = append(csvLine, fmt.Sprint(reports[scripts[j]][line].TPS()))
+			}
+			require.NoError(b, w.Write(csvLine))
+		}
+
+		w.Flush()
 	}
 }
