@@ -322,7 +322,7 @@ func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (boo
 			upserted = rowsModified > 0
 			return nil
 		})
-		return upserted, err
+		return upserted, postgres.ResolveError(err)
 	}, func(ctx context.Context, upserted bool) {
 		trace.SpanFromContext(ctx).SetAttributes(
 			attribute.String("address", account.Address),
