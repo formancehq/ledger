@@ -3,7 +3,6 @@
 package performance_test
 
 import (
-	"encoding/json"
 	"sync"
 	"sync/atomic"
 
@@ -13,7 +12,6 @@ import (
 type Report struct {
 	mu *sync.Mutex
 
-	Features map[string]string
 
 	Start time.Time
 	End   time.Time
@@ -21,17 +19,7 @@ type Report struct {
 	TotalLatency      *atomic.Int64
 	TransactionsCount int
 	Name              string
-}
-
-func (r *Report) MarshalJSON() ([]byte, error) {
-	type Aux Report
-	return json.Marshal(struct {
-		Aux
-		TotalLatency int64
-	}{
-		Aux:          Aux(*r),
-		TotalLatency: r.TotalLatency.Load(),
-	})
+	Configuration     configuration
 }
 
 func (r *Report) TPS() float64 {
@@ -56,11 +44,11 @@ func (r *Report) reset() {
 	r.Start = time.Now()
 }
 
-func newReport(features map[string]string, name string) *Report {
-	ret := &Report{
-		Name: name,
-		Features:     features,
-		mu:           &sync.Mutex{},
+func newReport(configuration configuration, name string) Report {
+	ret := Report{
+		Name:          name,
+		Configuration: configuration,
+		mu:            &sync.Mutex{},
 	}
 	ret.reset()
 	return ret

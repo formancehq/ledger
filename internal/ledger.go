@@ -2,10 +2,12 @@ package ledger
 
 import (
 	"fmt"
+	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/time"
 	"github.com/uptrace/bun"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/formancehq/go-libs/metadata"
 )
@@ -143,6 +145,27 @@ func (f FeatureSet) With(feature, value string) FeatureSet {
 	ret[feature] = value
 
 	return ret
+}
+
+func (f FeatureSet) String() string {
+	if len(f) == 0 {
+		return ""
+	}
+	keys := Keys(f)
+	slices.Sort(keys)
+
+	ret := ""
+	for _, key := range keys {
+		ret = ret + "," + shortenFeature(key) + "=" + f[key]
+	}
+
+	return ret[1:]
+}
+
+func shortenFeature(feature string) string {
+	return strings.Join(Map(strings.Split(feature, "_"), func(from string) string {
+		return from[:1]
+	}), "")
 }
 
 type Configuration struct {
