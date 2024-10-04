@@ -24,7 +24,8 @@ type Benchmark struct {
 	b       *testing.B
 }
 
-func (benchmark *Benchmark) Run(ctx context.Context) error {
+func (benchmark *Benchmark) Run(ctx context.Context) []*Report {
+	reports := make([]*Report, 0)
 	for envName, envFactory := range benchmark.EnvFactories {
 		scriptsKeys := collectionutils.Keys(benchmark.Scripts)
 		sort.Strings(scriptsKeys)
@@ -34,19 +35,21 @@ func (benchmark *Benchmark) Run(ctx context.Context) error {
 
 				testName := fmt.Sprintf("%s/%s/%s", envName, scriptName, features)
 
+				ledgerConfiguration := ledger.Configuration{
+					Features: features,
+					Bucket:   uuid.NewString()[:8],
+				}
+				ledgerConfiguration.SetDefaults()
+				report := newReport(ledgerConfiguration.Features, scriptName)
+
 				benchmark.b.Run(testName, func(b *testing.B) {
-					ledgerConfiguration := ledger.Configuration{
-						Features: features,
-						Bucket:   uuid.NewString()[:8],
-					}
-					ledgerConfiguration.SetDefaults()
+					report.reset()
 					l := ledger.Ledger{
 						Configuration: ledgerConfiguration,
 						Name:          uuid.NewString()[:8],
 					}
 
 					cpt := atomic.Int64{}
-					report := newReport(ledgerConfiguration.Features)
 
 					env := envFactory.Create(ctx, b, l)
 					b.Logf("ledger: %s/%s", l.Bucket, l.Name)
@@ -66,7 +69,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) error {
 						}
 					})
 					b.StopTimer()
-					report.endOfBench = time.Now()
+					report.End = time.Now()
 
 					b.ReportMetric(report.TPS(), "t/s")
 					b.ReportMetric(float64(report.AverageDuration().Milliseconds()), "ms/transaction")
@@ -76,11 +79,15 @@ func (benchmark *Benchmark) Run(ctx context.Context) error {
 
 					require.NoError(benchmark.b, env.Stop(stopContext))
 				})
+
+				if report.TransactionsCount > 0 {
+					reports = append(reports, report)
+				}
 			}
 		}
 	}
 
-	return nil
+	return reports
 }
 
 func New(b *testing.B, envFactories map[string]EnvFactory, scripts map[string]func(int) (string, map[string]string)) *Benchmark {

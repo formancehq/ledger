@@ -32,6 +32,7 @@ var (
 	ledgerURL     string
 
 	parallelism int64
+	reportFile string
 
 	envFactories = make(map[string]EnvFactory)
 )
@@ -42,6 +43,7 @@ func init() {
 	flag.StringVar(&authClientSecret, "client.secret", "", "Client secret")
 	flag.StringVar(&ledgerURL, "ledger.url", "", "Ledger url")
 	flag.StringVar(&authIssuerURL, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
+	flag.StringVar(&reportFile, "report.file", "", "Location to write report file")
 	flag.Int64Var(&parallelism, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
 }
 
