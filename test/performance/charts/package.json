@@ -1,0 +1,23 @@
+{
+  "name": "charts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npx tsc"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@types/node": "^22.7.4",
+    "@types/promise-fs": "^2.1.5",
+    "chart.js": "^4.4.4",
+    "chartjs-to-image": "^1.2.2",
+    "install": "^0.13.0",
+    "npm": "^10.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2"
+  }
+}

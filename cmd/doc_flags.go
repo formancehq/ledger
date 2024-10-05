@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// todo: export in a /tools folder
 func NewDocFlagsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "flags",
