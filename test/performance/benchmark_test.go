@@ -16,30 +16,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type TransactionProvider interface {
+	Get(iteration int) (string, map[string]string)
+}
+type TransactionProviderFn func(iteration int) (string, map[string]string)
+func (fn TransactionProviderFn) Get(iteration int) (string, map[string]string) {
+	return fn(iteration)
+}
+
 type Benchmark struct {
 	EnvFactory EnvFactory
-	Scripts    map[string]func(int) (string, map[string]string)
+	Scenarios  map[string]TransactionProvider
 
-	reports map[string]map[string]*Report
+	reports map[string]map[string]*report
 	b       *testing.B
 }
 
-func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Report {
-	reports := make(map[string][]Report, 0)
-	scriptsKeys := Keys(benchmark.Scripts)
-	sort.Strings(scriptsKeys)
+func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
+	results := make(map[string][]Result, 0)
+	scenarios := Keys(benchmark.Scenarios)
+	sort.Strings(scenarios)
 
-	for _, scriptName := range scriptsKeys {
+	for _, scenario := range scenarios {
 		for _, configuration := range buildAllPossibleConfigurations() {
 
-			testName := fmt.Sprintf("%s/%s", scriptName, configuration)
+			testName := fmt.Sprintf("%s/%s", scenario, configuration)
 
 			ledgerConfiguration := ledger.Configuration{
 				Features: configuration.FeatureSet,
 				Bucket:   uuid.NewString()[:8],
 			}
 			ledgerConfiguration.SetDefaults()
-			report := newReport(configuration, scriptName)
+			report := newReport(configuration, scenario)
+			var result Result
 
 			benchmark.b.Run(testName, func(b *testing.B) {
 				report.reset()
@@ -59,7 +68,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Report {
 					for pb.Next() {
 						iteration := int(cpt.Add(1))
 
-						script, vars := benchmark.Scripts[scriptName](iteration)
+						script, vars := benchmark.Scenarios[scenario].Get(iteration)
 						now := time.Now()
 						_, err := env.Executor().ExecuteScript(ctx, script, vars)
 						require.NoError(b, err)
@@ -69,9 +78,10 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Report {
 				})
 				b.StopTimer()
 				report.End = time.Now()
+				result = report.GetResult()
 
 				b.ReportMetric(report.TPS(), "t/s")
-				b.ReportMetric(float64(report.Tachymeter.Calc().Time.Avg.Milliseconds()), "ms/transaction")
+				b.ReportMetric(float64(result.Metrics.Time.Avg.Milliseconds()), "ms/transaction")
 
 				stopContext, cancel := context.WithTimeout(ctx, 10*time.Second)
 				b.Cleanup(cancel)
@@ -80,19 +90,19 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Report {
 			})
 
 			if report.Tachymeter.Count > 0 {
-				reports[scriptName] = append(reports[scriptName], report)
+				results[scenario] = append(results[scenario], result)
 			}
 		}
 	}
 
-	return reports
+	return results
 }
 
-func New(b *testing.B, envFactory EnvFactory, scripts map[string]func(int) (string, map[string]string)) *Benchmark {
+func New(b *testing.B, envFactory EnvFactory, scenarios map[string]TransactionProvider) *Benchmark {
 	return &Benchmark{
 		b:          b,
 		EnvFactory: envFactory,
-		Scripts:    scripts,
-		reports:    make(map[string]map[string]*Report),
+		Scenarios:  scenarios,
+		reports:    make(map[string]map[string]*report),
 	}
 }
