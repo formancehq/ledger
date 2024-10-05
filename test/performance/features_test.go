@@ -35,8 +35,8 @@ func buildAllPossibleConfigurations() []configuration {
 }
 
 type configuration struct {
-	Name string
-	FeatureSet ledger.FeatureSet
+	Name string `json:"name"`
+	FeatureSet ledger.FeatureSet `json:"featureSet"`
 }
 
 func (c configuration) String() string {

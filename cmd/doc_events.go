@@ -11,6 +11,7 @@ import (
 	"reflect"
 )
 
+// todo: export in a /tools folder
 func NewDocEventsCommand() *cobra.Command {
 	const (
 		writeDirFlag = "write-dir"
