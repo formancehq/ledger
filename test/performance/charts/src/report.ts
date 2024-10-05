@@ -37,7 +37,7 @@ interface Report {
     start: string,
     end: string,
     metrics: Metrics,
-    name: string,
+    scenario: string,
     configuration: Configuration,
     tps: number
 }
