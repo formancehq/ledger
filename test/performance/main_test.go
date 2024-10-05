@@ -32,8 +32,8 @@ var (
 	ledgerURL     string
 
 	parallelism int64
-	reportDir   string
-	testCore bool
+	reportFile  string
+	testCore    bool
 
 	envFactory EnvFactory
 )
@@ -44,7 +44,7 @@ func init() {
 	flag.StringVar(&authClientSecret, "client.secret", "", "Client secret")
 	flag.StringVar(&ledgerURL, "ledger.url", "", "Ledger url")
 	flag.StringVar(&authIssuerURL, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
-	flag.StringVar(&reportDir, "report.dir", "", "Location to write report files")
+	flag.StringVar(&reportFile, "report.file", "", "Location to write report file")
 	flag.Int64Var(&parallelism, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
 	flag.BoolVar(&testCore, "core", false, "Test core only")
 }
