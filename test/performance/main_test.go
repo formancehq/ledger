@@ -6,10 +6,10 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"github.com/formancehq/go-libs/logging"
 	"net/http"
 	"testing"
 
-	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/testing/docker"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/testing/utils"
@@ -35,7 +35,7 @@ var (
 	reportDir   string
 	testCore bool
 
-	envFactories = make(map[string]EnvFactory)
+	envFactory EnvFactory
 )
 
 func init() {
@@ -46,7 +46,7 @@ func init() {
 	flag.StringVar(&authIssuerURL, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
 	flag.StringVar(&reportDir, "report.dir", "", "Location to write report files")
 	flag.Int64Var(&parallelism, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
-	flag.BoolVar(&testCore, "test-core", false, "Test core only")
+	flag.BoolVar(&testCore, "core", false, "Test core only")
 }
 
 func TestMain(m *testing.M) {
@@ -70,45 +70,25 @@ func TestMain(m *testing.M) {
 
 		switch {
 		case stackURL != "":
-			setupRemoteStackEnv()
+			envFactory = NewRemoteLedgerEnvFactory(getHttpClient(stackURL+"/api/auth"), stackURL+"/api/ledger")
 		case ledgerURL != "":
-			setRemoteLedgerEnv()
+			envFactory = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURL), ledgerURL)
 		case testCore:
-			setCoreEnv()
+			envFactory = NewCoreEnvFactory(pgServer)
 		default:
-			setupLocalEnv(t)
+			// Configure the environment to run benchmarks locally.
+			// Start a docker connection and create a new postgres server.
+			dockerPool = docker.NewPool(t, logging.Testing())
+			pgServer = pgtesting.CreatePostgresServer(
+				t,
+				dockerPool,
+				pgtesting.WithPGCrypto(),
+			)
+			envFactory = NewTestServerEnvFactory(pgServer)
 		}
 
 		return m.Run()
 	})
-}
-
-// setupLocalEnv configure the environment for running benchmarks locally
-// is it start a docker connection and create a new postgres server
-func setupLocalEnv(t *utils.TestingTForMain) {
-	dockerPool = docker.NewPool(t, logging.Testing())
-	pgServer = pgtesting.CreatePostgresServer(
-		t,
-		dockerPool,
-		pgtesting.WithPGCrypto(),
-	)
-	envFactories = map[string]EnvFactory{
-		"testserver": NewTestServerEnvFactory(pgServer),
-	}
-}
-
-// setupRemoveEnv configure a remote env
-func setupRemoteStackEnv() {
-	envFactories["remote"] = NewRemoteStackEnvFactory(getHttpClient(stackURL+"/api/auth"), stackURL)
-}
-
-// setupRemoveEnv configure a remote env
-func setRemoteLedgerEnv() {
-	envFactories["remote"] = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURL), ledgerURL)
-}
-
-func setCoreEnv() {
-	envFactories["core"] = NewCoreEnvFactory(pgServer)
 }
 
 func getHttpClient(authUrl string) *http.Client {

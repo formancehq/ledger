@@ -31,20 +31,10 @@ The output is a standard go bench output.
 
 Additionally, you can pass the flag `-report.dir` to export results:
 ```shell
-go test -bench=Write/testserver -run ^$ -tags it -report.dir .
+go test -bench=testserver -run ^$ -tags it -report.dir .
 ```
 
-> [!WARNING]
-> Benchmarks can be run in different environments:
-> * core: We use the core only, no API.
-> * testserver: A full test server is starter
-> * remote: Target a remote ledger
-
-The exported file is a csv. 
-You can use the [provided plot script](./plot/features_comparison.gp) to generate a bar chart for tps:
-```shell
-gnuplot -c plot/features_comparison_tps.gp
-```
+The exported files are PNG. 
 
 Each feature is tested against a test script involving a transaction from a source to a destination.
 The benchmarks also test the minimal set of features and the full set of features.

@@ -24,10 +24,6 @@ func (r *Report) TPS() float64 {
 	return (float64(time.Duration(r.Tachymeter.Count)) / float64(r.End.Sub(r.Start))) * float64(time.Second)
 }
 
-func (r *Report) AverageDuration() time.Duration {
-	return r.Tachymeter.Calc().Time.Avg
-}
-
 func (r *Report) registerTransactionLatency(latency time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
