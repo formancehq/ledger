@@ -95,6 +95,20 @@ func TestBalancesGet(t *testing.T) {
 
 	t.Run("balance query with empty balance", func(t *testing.T) {
 
+		tx, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, tx.Rollback())
+		})
+
+		store := store.WithDB(tx)
+
+		count, err := store.GetDB().NewSelect().
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Count(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, count)
+
 		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
 			"world":        {"USD"},
 			"not-existing": {"USD"},
@@ -106,6 +120,12 @@ func TestBalancesGet(t *testing.T) {
 
 		require.Equal(t, big.NewInt(-100), balances["world"]["USD"])
 		require.Equal(t, big.NewInt(0), balances["not-existing"]["USD"])
+
+		count, err = store.GetDB().NewSelect().
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Count(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 2, count)
 	})
 }
 
