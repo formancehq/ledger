@@ -250,7 +250,6 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		}
 
 		// Fill empty balances with 0 value
-		// todo: still required as we insert balances earlier
 		for account, assets := range query {
 			if _, ok := ret[account]; !ok {
 				ret[account] = map[string]*big.Int{}
@@ -265,42 +264,3 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		return ret, nil
 	})
 }
-
-/**
-SELECT "aggregated_volumes"."aggregated"
-FROM
-  (SELECT aggregate_objects(json_build_object(asset, volumes)::JSONB) AS aggregated
-   FROM
-     (SELECT "asset",
-             json_build_object('input', sum((volumes->>'input')::numeric), 'output', sum((volumes->>'output')::numeric)) AS volumes
-      FROM
-        (SELECT *
-         FROM
-           (SELECT *,
-                   coalesce(accounts_metadata.metadata, '{}'::JSONB) AS metadata
-            FROM
-              (SELECT "asset",
-                      "accounts_address",
-                      moves.post_commit_effective_volumes AS volumes
-               FROM
-                 (SELECT DISTINCT ON (accounts_address,
-                                      asset) "accounts_address",
-                                     "asset",
-                                     first_value(post_commit_effective_volumes) OVER (PARTITION BY (accounts_address, asset)
-                                                                                      ORDER BY effective_date DESC, seq DESC) AS post_commit_effective_volumes
-                  FROM "3c29654b".moves
-                  WHERE (ledger = '3c29654b')
-                    AND (effective_date <= '2024-09-30T15:06:25.591246Z')) moves) accounts_volumes
-            LEFT JOIN
-              (SELECT DISTINCT ON (accounts_address) "accounts_address",
-                                  "metadata"
-               FROM "3c29654b".accounts_metadata
-               WHERE (ledger = '3c29654b')
-                 AND (date <= '2024-09-30T15:06:25.591246Z')
-               ORDER BY "accounts_address",
-                        "revision" DESC) accounts_metadata ON accounts_metadata.accounts_address = accounts_volumes.accounts_address) accounts
-         WHERE (metadata @> '{"category":"premium"}'))
-      VALUES
-      GROUP BY "asset")
-   VALUES) aggregated_volumes
-*/
