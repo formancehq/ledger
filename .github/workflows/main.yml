@@ -113,6 +113,30 @@ jobs:
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
+  Benchmark:
+    runs-on: "github-001"
+    if: contains(github.event.pull_request.labels.*.name, 'benchmarks') || github.ref == 'refs/heads/main'
+    needs:
+      - Dirty
+    steps:
+      - uses: 'actions/checkout@v4'
+        with:
+          fetch-depth: 0
+      - run: >
+          earthly
+          --allow-privileged
+          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
+          ./test/performance+run --args="-benchtime 10s"
+      - run: >
+          earthly
+          --allow-privileged
+          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
+          ./test/performance+generate-graphs
+      - uses: actions/upload-artifact@v3
+        with:
+          name: graphs
+          path: test/performance/report
+
   Deploy:
     runs-on: "ubuntu-latest"
     if: github.ref == 'refs/heads/main'
