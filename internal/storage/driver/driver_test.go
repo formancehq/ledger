@@ -46,6 +46,7 @@ func TestLedgersCreate(t *testing.T) {
 	_, err := driver.CreateLedger(ctx, &l)
 	require.NoError(t, err)
 	require.Equal(t, 1, l.ID)
+	require.NotEmpty(t, l.AddedAt)
 }
 
 func TestLedgersList(t *testing.T) {
