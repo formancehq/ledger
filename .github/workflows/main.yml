@@ -116,8 +116,6 @@ jobs:
   Benchmark:
     runs-on: "github-001"
     if: contains(github.event.pull_request.labels.*.name, 'benchmarks') || github.ref == 'refs/heads/main'
-    needs:
-      - Dirty
     steps:
       - uses: 'actions/checkout@v4'
         with:
