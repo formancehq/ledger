@@ -50,6 +50,7 @@ func New(name string, configuration Configuration) (*Ledger, error) {
 	return &Ledger{
 		Configuration: configuration,
 		Name:          name,
+		// todo: get from database
 		AddedAt:       time.Now(),
 	}, nil
 }

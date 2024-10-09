@@ -240,17 +240,10 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 			finalMetadata[k] = v
 		}
 
-		now := time.Now()
-		ts := input.Timestamp
-		if ts.IsZero() {
-			ts = now
-		}
-
 		transaction := ledger.NewTransaction().
 			WithPostings(result.Postings...).
 			WithMetadata(finalMetadata).
-			WithTimestamp(ts).
-			WithInsertedAt(now).
+			WithTimestamp(input.Timestamp).
 			WithReference(input.Reference)
 		err = sqlTX.CommitTransaction(ctx, &transaction)
 		if err != nil {
@@ -356,6 +349,7 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 }
 
 func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
+	// todo: let database generate date
 	now := time.Now()
 	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.SavedMetadata, error) {
 		if _, err := sqlTX.UpsertAccount(ctx, &ledger.Account{
