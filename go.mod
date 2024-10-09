@@ -88,7 +88,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/formancehq/numscript v0.0.9-0.20241007145104-93591532fb96 // indirect
+	github.com/formancehq/numscript v0.0.9-0.20241007165056-153e7139a0d6 // indirect
 	github.com/getsentry/sentry-go v0.28.1 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/render v1.0.3 // indirect

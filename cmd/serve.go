@@ -3,8 +3,9 @@ package cmd
 import (
 	"context"
 	"errors"
-	"github.com/formancehq/ledger/internal/storage/driver"
 	"net/http"
+
+	"github.com/formancehq/ledger/internal/storage/driver"
 
 	"github.com/formancehq/ledger/internal/bus"
 	otelpyroscope "github.com/grafana/otel-profiling-go"
@@ -38,6 +39,7 @@ const (
 	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
 	AutoUpgradeFlag            = "auto-upgrade"
 	EnablePProfFlag            = "enable-pprof"
+	NumscriptInterpreterFlag   = "numscript-interpreter"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -106,6 +108,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Bool(EnablePProfFlag, false, "Enable pprof")
+	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
