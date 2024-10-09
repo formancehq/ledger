@@ -101,7 +101,10 @@ func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult) *Def
 func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*MachineResult, error) {
 	execResult, err := d.parseResult.Run(ctx, vars, newNumscriptRewriteAdapter(tx))
 	if err != nil {
-		return nil, err
+		return nil, ErrRuntime{
+			Source: d.parseResult.GetSource(),
+			Inner:  err,
+		}
 	}
 
 	return &MachineResult{

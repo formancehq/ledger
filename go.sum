@@ -109,6 +109,10 @@ github.com/formancehq/numscript v0.0.9-0.20241007145104-93591532fb96 h1:Y+B10r16
 github.com/formancehq/numscript v0.0.9-0.20241007145104-93591532fb96/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
 github.com/formancehq/numscript v0.0.9-0.20241007165056-153e7139a0d6 h1:VtiK2H3svTfUe1UlsaajynICc9t+XwXCBbHgEwv416Q=
 github.com/formancehq/numscript v0.0.9-0.20241007165056-153e7139a0d6/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
+github.com/formancehq/numscript v0.0.9-0.20241009142721-febe5da15eb9 h1:ZvVrISOuEaXqpRdTyaSbHGjzObWtk454EQbdMrDUS/Y=
+github.com/formancehq/numscript v0.0.9-0.20241009142721-febe5da15eb9/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
+github.com/formancehq/numscript v0.0.9-0.20241009144012-1150c14a1417 h1:LOd5hxnXDIBcehFrpW1OnXk+VSs0yJXeu1iAOO+Hji4=
+github.com/formancehq/numscript v0.0.9-0.20241009144012-1150c14a1417/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/getsentry/sentry-go v0.28.1 h1:zzaSm/vHmGllRM6Tpx1492r0YDzauArdBfkJRtY6P5k=

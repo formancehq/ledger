@@ -36,8 +36,10 @@ var _ MachineFactory = (*DefaultInterpreterMachineFactory)(nil)
 
 func (*DefaultInterpreterMachineFactory) Make(script string) (Machine, error) {
 	parseResult := numscript.Parse(script)
-	if len(parseResult.GetParsingErrors()) != 0 {
-		return nil, nil
+	errs := parseResult.GetParsingErrors()
+
+	if len(errs) != 0 {
+		return nil, ErrParsing{Source: script, Errors: errs}
 	}
 
 	return NewDefaultInterpreterMachineAdapter(parseResult), nil
