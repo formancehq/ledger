@@ -6,7 +6,6 @@ run:
     LOCALLY
     ARG args=""
     RUN go test -bench="Write" -run ^$ -tags it -report.file ./report/report.json -timeout 60m $args
-    SAVE ARTIFACT ./report/report.json AS LOCAL ./report/report.json
 
 generate-graphs:
     FROM core+base-image
