@@ -52,8 +52,12 @@ func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store St
 			return nil, err
 		}
 		if err == nil {
-			if computedHash := ledger.ComputeIdempotencyHash(parameters.Input); log.IdempotencyHash != computedHash {
-				return nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
+			// notes(gfyrag): idempotency hash should never be empty in this case, but data from previous
+			// ledger version does not have this field and it cannot be recomputed
+			if log.IdempotencyHash != "" {
+				if computedHash := ledger.ComputeIdempotencyHash(parameters.Input); log.IdempotencyHash != computedHash {
+					return nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
+				}
 			}
 
 			return pointer.For(log.Data.(OUTPUT)), nil
