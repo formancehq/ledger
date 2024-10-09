@@ -91,6 +91,7 @@ func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledge
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
 
+	// start a transaction because we will need to create the schema and apply ledger migrations
 	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -106,7 +107,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	ret, err := d.db.NewInsert().
 		Model(l).
 		Ignore().
-		Returning("id").
+		Returning("id, added_at").
 		Exec(ctx)
 	if err != nil {
 		return nil, postgres.ResolveError(err)
@@ -185,7 +186,7 @@ func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgers
 	query := d.db.NewSelect().
 		Model(&ledger.Ledger{}).
 		Column("*").
-		Order("addedat asc")
+		Order("added_at asc")
 
 	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
 		ctx,

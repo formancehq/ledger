@@ -147,6 +147,22 @@ func GetMigrator() *migrations.Migrator {
 				return err
 			},
 		},
+		migrations.Migration{
+			Name: "Generate addedat of table ledgers",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					alter table _system.ledgers
+					alter column addedat type timestamp without time zone;
+
+					alter table _system.ledgers
+					alter column addedat set default (now() at time zone 'utc');
+
+					alter table _system.ledgers
+					rename column addedat to added_at;
+				`)
+				return err
+			},
+		},
 	)
 
 	return migrator

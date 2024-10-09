@@ -18,7 +18,7 @@ type Ledger struct {
 	Configuration
 	ID      int       `json:"id" bun:"id,type:int,scanonly"`
 	Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
-	AddedAt time.Time `json:"addedAt" bun:"addedat,type:timestamp"`
+	AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
@@ -50,8 +50,6 @@ func New(name string, configuration Configuration) (*Ledger, error) {
 	return &Ledger{
 		Configuration: configuration,
 		Name:          name,
-		// todo: get from database
-		AddedAt:       time.Now(),
 	}, nil
 }
 
