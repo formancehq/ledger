@@ -32,7 +32,6 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
 func NewTransactionData() TransactionData {
 	return TransactionData{
 		Metadata:  metadata.Metadata{},
-		Timestamp: time.Now(),
 	}
 }
 
