@@ -172,6 +172,7 @@ func NewLog(payload LogPayload) Log {
 	return Log{
 		Type: payload.Type(),
 		Data: payload,
+		// todo: get from database
 		Date: time.Now(),
 	}
 }
