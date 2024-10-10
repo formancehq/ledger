@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
       - run: go build -o /tmp/ledger ./
       - run: echo "running actions as ${USER}"
-      - run: systemctl restart ledger
+      - run: sudo systemctl restart ledger
       - run: >
           earthly
           --allow-privileged
