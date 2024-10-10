@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -39,12 +38,10 @@ func readTransaction(w http.ResponseWriter, r *http.Request) {
 	tx, err := l.GetTransaction(r.Context(), query)
 	if err != nil {
 		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case postgres.IsNotFoundError(err):
 			api.NotFound(w, err)
 		default:
-			api.InternalServerError(w, r, err)
+			common.HandleCommonErrors(w, r, err)
 		}
 		return
 	}

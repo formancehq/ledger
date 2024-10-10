@@ -1,8 +1,7 @@
 package v2
 
 import (
-	"errors"
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -14,12 +13,7 @@ import (
 func deleteLedgerMetadata(b system.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := b.DeleteLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), chi.URLParam(r, "key")); err != nil {
-			switch {
-			case errors.Is(err, postgres.ErrTooManyClient{}):
-				api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-			default:
-				api.InternalServerError(w, r, err)
-			}
+			common.HandleCommonErrors(w, r, err)
 			return
 		}
 

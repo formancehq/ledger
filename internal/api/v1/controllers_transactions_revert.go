@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 	"strconv"
 
@@ -32,8 +31,6 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
 			api.BadRequest(w, ErrInsufficientFund, err)
 		case errors.Is(err, ledgercontroller.ErrAlreadyReverted{}):
@@ -41,7 +38,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
 		default:
-			api.InternalServerError(w, r, err)
+			common.HandleCommonErrors(w, r, err)
 		}
 		return
 	}

@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"errors"
-	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"github.com/formancehq/go-libs/api"
@@ -33,12 +31,7 @@ func listTransactions(w http.ResponseWriter, r *http.Request) {
 
 	cursor, err := l.ListTransactions(r.Context(), *query)
 	if err != nil {
-		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-		default:
-			api.InternalServerError(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

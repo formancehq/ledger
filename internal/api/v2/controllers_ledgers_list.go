@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
 	"errors"
@@ -31,12 +31,10 @@ func listLedgers(b system.Controller) http.HandlerFunc {
 		ledgers, err := b.ListLedgers(r.Context(), *query)
 		if err != nil {
 			switch {
-			case errors.Is(err, postgres.ErrTooManyClient{}):
-				api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 			case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 				api.BadRequest(w, ErrValidation, err)
 			default:
-				api.InternalServerError(w, r, err)
+				common.HandleCommonErrors(w, r, err)
 			}
 			return
 		}
