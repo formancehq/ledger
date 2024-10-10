@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -21,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpgradeAllBuckets(t *testing.T) {
+func TestUpgradeAllLedgers(t *testing.T) {
 	t.Parallel()
 
 	d := newStorageDriver(t)
@@ -31,11 +32,12 @@ func TestUpgradeAllBuckets(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		name := fmt.Sprintf("ledger%d", i)
-		_, err := d.CreateBucket(ctx, name)
+		_, err := d.CreateLedger(ctx, pointer.For(ledger.MustNewWithDefault(name)))
 		require.NoError(t, err)
 	}
 
 	require.NoError(t, d.UpgradeAllBuckets(ctx))
+	require.NoError(t, d.UpgradeAllLedgers(ctx))
 }
 
 func TestLedgersCreate(t *testing.T) {
