@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"errors"
@@ -38,6 +39,8 @@ func readVolumes(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 			api.BadRequest(w, ErrValidation, err)
 		default:

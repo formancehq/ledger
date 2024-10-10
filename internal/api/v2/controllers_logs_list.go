@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"errors"
@@ -47,6 +48,8 @@ func listLogs(w http.ResponseWriter, r *http.Request) {
 	cursor, err := l.ListLogs(r.Context(), query)
 	if err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}):
 			api.BadRequest(w, ErrValidation, err)
 		default:

@@ -12,6 +12,7 @@ import (
 )
 
 var ErrNotFound = postgres.ErrNotFound
+type ErrTooManyClient = postgres.ErrTooManyClient
 
 type ErrImport struct {
 	err error

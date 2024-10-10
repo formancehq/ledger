@@ -13,12 +13,11 @@ type ControllerWithEvents struct {
 }
 
 func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listener Listener) *ControllerWithEvents {
-	ret := &ControllerWithEvents{
+	return &ControllerWithEvents{
 		Controller: underlying,
 		ledger:     ledger,
 		listener:   listener,
 	}
-	return ret
 }
 func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 	ret, err := ctrl.Controller.CreateTransaction(ctx, parameters)

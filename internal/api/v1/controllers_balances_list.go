@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"errors"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"math/big"
 	"net/http"
 
@@ -32,7 +34,12 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 
 	cursor, err := l.ListAccounts(r.Context(), q.WithExpandVolumes())
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+		default:
+			api.InternalServerError(w, r, err)
+		}
 		return
 	}
 

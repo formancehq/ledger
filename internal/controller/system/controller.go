@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"time"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -28,6 +29,7 @@ type DefaultController struct {
 	listener ledgercontroller.Listener
 	compiler ledgercontroller.Compiler
 	registry *ledgercontroller.StateRegistry
+	databaseRetryConfiguration DatabaseRetryConfiguration
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
@@ -42,6 +44,15 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			store,
 			ledgercontroller.NewDefaultMachineFactory(ctrl.compiler),
 		)
+
+		// Add too many client error handling
+		ledgerController = ledgercontroller.NewControllerWithTooManyClientHandling(ledgerController, ledgercontroller.DelayCalculatorFn(func(i int) time.Duration {
+			if i < ctrl.databaseRetryConfiguration.MaxRetry {
+				return time.Duration(i+1)*ctrl.databaseRetryConfiguration.Delay
+			}
+
+			return 0
+		}))
 
 		// Add cache regarding database state
 		ledgerController = ledgercontroller.NewControllerWithCache(*l, ledgerController, ctrl.registry)
@@ -106,11 +117,17 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 	return ret
 }
 
-type Option func(r *DefaultController)
+type Option func(ctrl *DefaultController)
 
 func WithCompiler(compiler ledgercontroller.Compiler) Option {
-	return func(r *DefaultController) {
-		r.compiler = compiler
+	return func(ctrl *DefaultController) {
+		ctrl.compiler = compiler
+	}
+}
+
+func WithDatabaseRetryConfiguration(configuration DatabaseRetryConfiguration) Option {
+	return func(ctrl *DefaultController) {
+		ctrl.databaseRetryConfiguration = configuration
 	}
 }
 
