@@ -205,7 +205,6 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			ret = ret.Where(where)
 		}
 	}
-	fmt.Println(ret.String())
 
 	return ret
 }
@@ -271,8 +270,8 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 			accounts = append(accounts, AccountWithLedger{
 				Ledger: s.ledger.Name,
 				Account: ledger.Account{
-					Address:       account,
-					Metadata:      accountMetadata,
+					Address:  account,
+					Metadata: accountMetadata,
 				},
 			})
 		}
