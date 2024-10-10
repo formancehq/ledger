@@ -43,9 +43,20 @@ func convertOperatorToSQL(operator string) string {
 }
 
 func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
-	return s.SortMovesBySeq(date).
-		ColumnExpr("(post_commit_volumes->>'input')::numeric - (post_commit_volumes->>'output')::numeric as balance").
-		Limit(1)
+
+	if date != nil && !date.IsZero() {
+		sortedMoves := s.SortMovesBySeq(date).
+			ColumnExpr("(post_commit_volumes->>'input')::numeric - (post_commit_volumes->>'output')::numeric as balance").
+			Limit(1)
+
+		return s.db.NewSelect().
+			ModelTableExpr("(?) moves", sortedMoves).
+			ColumnExpr("accounts_address, asset")
+	} else {
+		return s.db.NewSelect().
+			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+			ColumnExpr("input - output as balance")
+	}
 }
 
 func (s *Store) selectDistinctAccountMetadataHistories(date *time.Time) *bun.SelectQuery {
@@ -144,13 +155,11 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				match := balanceRegex.FindAllStringSubmatch(key, 2)
 				asset := match[0][1]
 
-				// todo: use moves only if feature is enabled
 				return s.db.NewSelect().
-					// todo: use already loaded pcv
 					TableExpr(
 						"(?) balance",
 						s.selectBalance(date).
-							Where("asset = ? and moves.accounts_address = accounts.address", asset),
+							Where("asset = ? and accounts_address = accounts.address", asset),
 					).
 					ColumnExpr(fmt.Sprintf("balance %s ?", convertOperatorToSQL(operator)), value).
 					String(), nil, nil
@@ -160,7 +169,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 					TableExpr(
 						"(?) balance",
 						s.selectBalance(date).
-							Where("moves.accounts_address = accounts.address"),
+							Where("accounts_address = accounts.address"),
 					).
 					ColumnExpr(fmt.Sprintf("balance %s ?", convertOperatorToSQL(operator)), value).
 					String(), nil, nil
@@ -196,6 +205,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			ret = ret.Where(where)
 		}
 	}
+	fmt.Println(ret.String())
 
 	return ret
 }
