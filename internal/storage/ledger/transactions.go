@@ -421,7 +421,6 @@ func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.Upd
 
 func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithLatency(ctx, "RevertTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
-		now := time.Now()
 		tx, modified, err = s.updateTxWithRetrieve(
 			ctx,
 			id,
@@ -431,8 +430,8 @@ func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Trans
 				Where("id = ?", id).
 				Where("reverted_at is null").
 				Where("ledger = ?", s.ledger.Name).
-				Set("reverted_at = ?", now).
-				Set("updated_at = ?", now).
+				Set("reverted_at = (now() at time zone 'utc')").
+				Set("updated_at = (now() at time zone 'utc')").
 				Returning("*"),
 		)
 		return nil, err
