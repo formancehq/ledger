@@ -163,6 +163,16 @@ func GetMigrator() *migrations.Migrator {
 				return err
 			},
 		},
+		migrations.Migration{
+			Name: "add pgcrypto",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					create extension if not exists pgcrypto
+					with schema public;
+				`)
+				return err
+			},
+		},
 	)
 
 	return migrator
