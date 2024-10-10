@@ -1,0 +1,36 @@
+name: Benchmark
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened, labeled ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Benchmark:
+    runs-on: "github-001"
+    if: contains(github.event.pull_request.labels.*.name, 'benchmarks') || github.ref == 'refs/heads/main'
+    steps:
+      - uses: 'actions/checkout@v4'
+        with:
+          fetch-depth: 0
+      - run: go build -o /tmp/ledger ./
+      - run: echo "running actions as ${USER}"
+      - run: /tmp/ledger serve --postgres-uri=postgres://formance:formance@127.0.0.1/ledger --postgres-conn-max-idle-time=120s --postgres-max-open-conns=500 --postgres-max-idle-conns=100 &
+      - run: >
+          earthly
+          --allow-privileged
+          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
+          ./test/performance+run --args="-benchtime 10s --ledger.url=http://localhost:3068"
+      - run: >
+          earthly
+          --allow-privileged
+          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
+          ./test/performance+generate-graphs
+      - run: kill -9 $(ps aux | grep "ledger serve"| grep -v "grep" | awk '{print $2}')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphs
+          path: test/performance/report
