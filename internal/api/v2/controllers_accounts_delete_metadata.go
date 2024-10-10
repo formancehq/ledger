@@ -1,8 +1,6 @@
 package v2
 
 import (
-	"errors"
-	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/url"
@@ -28,12 +26,7 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 				Key:     chi.URLParam(r, "key"),
 			}),
 		); err != nil {
-		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-		default:
-			api.InternalServerError(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

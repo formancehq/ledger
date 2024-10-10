@@ -2,7 +2,6 @@ package v1
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"errors"
@@ -35,12 +34,10 @@ func countAccounts(w http.ResponseWriter, r *http.Request) {
 	count, err := l.CountAccounts(r.Context(), *query)
 	if err != nil {
 		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 			api.BadRequest(w, ErrValidation, err)
 		default:
-			api.InternalServerError(w, r, err)
+			common.HandleCommonErrors(w, r, err)
 		}
 		return
 	}

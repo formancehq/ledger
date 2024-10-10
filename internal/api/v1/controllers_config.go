@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	_ "embed"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -46,7 +47,7 @@ func getInfo(systemController system.Controller, version string) func(w http.Res
 				return nil
 			},
 		); err != nil {
-			api.InternalServerError(w, r, err)
+			common.HandleCommonErrors(w, r, err)
 			return
 		}
 

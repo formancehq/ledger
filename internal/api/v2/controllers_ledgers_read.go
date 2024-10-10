@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"errors"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -17,12 +17,10 @@ func readLedger(b system.Controller) http.HandlerFunc {
 		ledger, err := b.GetLedger(r.Context(), chi.URLParam(r, "ledger"))
 		if err != nil {
 			switch {
-			case errors.Is(err, postgres.ErrTooManyClient{}):
-				api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 			case postgres.IsNotFoundError(err):
 				api.NotFound(w, err)
 			default:
-				api.InternalServerError(w, r, err)
+				common.HandleCommonErrors(w, r, err)
 			}
 			return
 		}

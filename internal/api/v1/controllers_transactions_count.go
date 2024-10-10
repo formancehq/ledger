@@ -1,9 +1,7 @@
 package v1
 
 import (
-	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"github.com/formancehq/go-libs/api"
@@ -27,12 +25,7 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 	count, err := common.LedgerFromContext(r.Context()).
 		CountTransactions(r.Context(), ledgercontroller.NewListTransactionsQuery(*options))
 	if err != nil {
-		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-		default:
-			api.InternalServerError(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

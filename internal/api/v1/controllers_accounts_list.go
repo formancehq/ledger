@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"errors"
@@ -34,12 +33,10 @@ func listAccounts(w http.ResponseWriter, r *http.Request) {
 	cursor, err := l.ListAccounts(r.Context(), *query)
 	if err != nil {
 		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 			api.BadRequest(w, ErrValidation, err)
 		default:
-			api.InternalServerError(w, r, err)
+			common.HandleCommonErrors(w, r, err)
 		}
 		return
 	}
