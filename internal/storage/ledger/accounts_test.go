@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetAccounts(t *testing.T) {
+func TestAccountsList(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 	now := time.Now()
@@ -214,16 +214,25 @@ func TestGetAccounts(t *testing.T) {
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrInvalidQuery{}))
 	})
+
+	t.Run("filter on first_usage", func(t *testing.T) {
+		t.Parallel()
+
+		ret, err := store.ListAccounts(ctx, ledgercontroller.NewListAccountsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			WithQueryBuilder(query.Lt("first_usage", now)),
+		))
+		require.NoError(t, err)
+		require.Len(t, ret.Data, 2)
+	})
 }
 
-func TestUpdateAccountsMetadata(t *testing.T) {
+func TestAccountsUpdateMetadata(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 
 	m := metadata.Metadata{
 		"foo": "bar",
 	}
-
 	ctx := logging.TestingContext()
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
@@ -237,7 +246,7 @@ func TestUpdateAccountsMetadata(t *testing.T) {
 	require.Equal(t, m, account.Metadata, "account metadata should match")
 }
 
-func TestGetAccount(t *testing.T) {
+func TestAccountsGet(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -341,54 +350,13 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("not existent account", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("account_not_existing"))
 		require.Error(t, err)
 	})
 }
 
-func TestGetAccountWithVolumes(t *testing.T) {
-	t.Parallel()
-	store := newLedgerStore(t)
-	ctx := logging.TestingContext()
-	now := time.Now()
-
-	bigInt, _ := big.NewInt(0).SetString("999999999999999999999999999999999999999999999999999999999999999999999999999999999999999", 10)
-
-	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().WithPostings(
-		ledger.NewPosting("world", "multi", "USD/2", bigInt),
-	).WithTimestamp(now)))
-	require.NoError(t, err)
-
-	accountWithVolumes, err := store.GetAccount(ctx,
-		ledgercontroller.NewGetAccountQuery("multi").WithExpandVolumes())
-	require.NoError(t, err)
-	require.Equal(t, &ledger.Account{
-		Address:    "multi",
-		Metadata:   metadata.Metadata{},
-		FirstUsage: now,
-		Volumes: map[string]ledger.Volumes{
-			"USD/2": ledger.NewEmptyVolumes().WithInput(bigInt),
-		},
-	}, accountWithVolumes)
-}
-
-func TestUpdateAccountMetadata(t *testing.T) {
-	t.Parallel()
-	store := newLedgerStore(t)
-	ctx := logging.TestingContext()
-
-	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
-		"central_bank": {
-			"foo": "bar",
-		},
-	}))
-
-	account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("central_bank"))
-	require.NoError(t, err)
-	require.EqualValues(t, "bar", account.Metadata["foo"])
-}
-
-func TestCountAccounts(t *testing.T) {
+func TestAccountsCount(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -404,7 +372,7 @@ func TestCountAccounts(t *testing.T) {
 	require.EqualValues(t, 2, countAccounts) // world + central_bank
 }
 
-func TestUpsertAccount(t *testing.T) {
+func TestAccountsUpsert(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
