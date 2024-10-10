@@ -31,7 +31,7 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
 
 func NewTransactionData() TransactionData {
 	return TransactionData{
-		Metadata:  metadata.Metadata{},
+		Metadata: metadata.Metadata{},
 	}
 }
 
@@ -39,11 +39,11 @@ type Transaction struct {
 	bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
 	TransactionData
-	ID                         int               `json:"id" bun:"id,type:numeric"`
-	RevertedAt                 *time.Time        `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
+	ID         int        `json:"id" bun:"id,type:numeric"`
+	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.
-	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
+	PostCommitVolumes PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
 	// PostCommitEffectiveVolumes are the volumes of each account/asset after the transaction TransactionData.Timestamp.
 	// Those volumes are also computed in flight, but can be updated if a transaction is inserted in the past.
 	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
@@ -53,10 +53,7 @@ func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema) {
 	schema.Properties.Set("reverted", &jsonschema.Schema{
 		Type: "boolean",
 	})
-	postCommitVolumesSchema, present := schema.Properties.Get("postCommitVolumes")
-	if !present {
-		panic("missing postCommitVolumes schema")
-	}
+	postCommitVolumesSchema, _ := schema.Properties.Get("postCommitVolumes")
 	schema.Properties.Set("preCommitVolumes", postCommitVolumesSchema)
 	schema.Properties.Set("preCommitEffectiveVolumes", postCommitVolumesSchema)
 }
@@ -194,21 +191,17 @@ func (tx Transaction) MarshalJSON() ([]byte, error) {
 		preCommitEffectiveVolumes PostCommitVolumes
 	)
 	if len(tx.PostCommitVolumes) > 0 {
-		if tx.PostCommitVolumes != nil {
-			preCommitVolumes = tx.PostCommitVolumes.Copy()
-			for _, posting := range tx.Postings {
-				preCommitVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-				preCommitVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-			}
+		preCommitVolumes = tx.PostCommitVolumes.Copy()
+		for _, posting := range tx.Postings {
+			preCommitVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+			preCommitVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
 		}
 	}
 	if len(tx.PostCommitEffectiveVolumes) > 0 {
-		if tx.PostCommitEffectiveVolumes != nil {
-			preCommitEffectiveVolumes = tx.PostCommitEffectiveVolumes.Copy()
-			for _, posting := range tx.Postings {
-				preCommitEffectiveVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-				preCommitEffectiveVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-			}
+		preCommitEffectiveVolumes = tx.PostCommitEffectiveVolumes.Copy()
+		for _, posting := range tx.Postings {
+			preCommitEffectiveVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+			preCommitEffectiveVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
 		}
 	}
 

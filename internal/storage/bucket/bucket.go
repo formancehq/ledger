@@ -2,10 +2,7 @@ package bucket
 
 import (
 	"context"
-	"database/sql"
 	_ "embed"
-
-	"github.com/formancehq/go-libs/platform/postgres"
 
 	"errors"
 	"github.com/formancehq/go-libs/migrations"
@@ -27,24 +24,6 @@ func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	return ret, err
-}
-
-func (b *Bucket) IsInitialized(ctx context.Context) (bool, error) {
-	row := b.db.QueryRowContext(ctx, `
-		select schema_name 
-		from information_schema.schemata 
-		where schema_name = ?;
-	`, b.name)
-	if row.Err() != nil {
-		return false, postgres.ResolveError(row.Err())
-	}
-	var t string
-	if err := row.Scan(&t); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-	}
-	return true, nil
 }
 
 func New(db bun.IDB, name string) *Bucket {

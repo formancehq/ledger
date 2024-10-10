@@ -84,7 +84,10 @@ func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, 
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
-			rs := req.ToRunScript(false)
+			rs, err := req.ToRunScript(false)
+			if err != nil {
+				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
 
 			createTransactionResult, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
 				DryRun:         false,

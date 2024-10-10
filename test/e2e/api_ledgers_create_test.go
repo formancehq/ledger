@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/go-libs/pointer"
 	. "github.com/formancehq/go-libs/testing/api"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
+	ledger "github.com/formancehq/ledger/internal"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
@@ -45,6 +46,15 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		It("should be ok", func() {
 			Expect(err).To(BeNil())
+		})
+		Context("with specific features set", func() {
+			BeforeEach(func() {
+				createLedgerRequest.V2CreateLedgerRequest.Features = ledger.MinimalFeatureSet.
+					With(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "DISABLED")
+			})
+			It("should be ok", func() {
+				Expect(err).To(BeNil())
+			})
 		})
 		Context("trying to create another ledger with the same name", func() {
 			JustBeforeEach(func() {

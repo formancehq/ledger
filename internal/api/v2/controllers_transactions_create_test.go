@@ -246,13 +246,8 @@ func TestTransactionCreate(t *testing.T) {
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
 				},
 			},
-			expectControllerCall: true,
-			expectedStatusCode:   http.StatusBadRequest,
-			expectedErrorCode:    ErrCompilationFailed,
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
-				ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
-			), false),
-			returnError: &ledgercontroller.ErrInvalidVars{},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  ErrValidation,
 		},
 		{
 			expectControllerCall: true,
