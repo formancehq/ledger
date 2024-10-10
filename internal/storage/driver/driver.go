@@ -29,43 +29,6 @@ type Driver struct {
 	db *bun.DB
 }
 
-func (d *Driver) CreateBucket(ctx context.Context, bucketName string) (*bucket.Bucket, error) {
-	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	b := bucket.New(d.db, bucketName)
-
-	isInitialized, err := b.IsInitialized(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("checking if bucket is initialized: %w", err)
-	}
-
-	if isInitialized {
-		isUpToDate, err := b.IsUpToDate(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("checking if bucket is up to date: %w", err)
-		}
-		if !isUpToDate {
-			return nil, systemcontroller.ErrNeedUpgradeBucket
-		}
-	} else {
-		if err := bucket.Migrate(ctx, tx, bucketName); err != nil {
-			return nil, fmt.Errorf("migrating bucket: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("committing sql transaction to create bucket schema: %w", err)
-	}
-
-	return b, nil
-}
-
 func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledger.Ledger) (*ledgerstore.Store, error) {
 
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
@@ -159,15 +122,6 @@ func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metada
 	_, err := d.db.NewUpdate().
 		Model(&ledger.Ledger{}).
 		Set("metadata = metadata || ?", m).
-		Where("name = ?", name).
-		Exec(ctx)
-	return err
-}
-
-func (d *Driver) UpdateLedgerState(ctx context.Context, name string, state string) error {
-	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
-		Set("state = ?", state).
 		Where("name = ?", name).
 		Exec(ctx)
 	return err

@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"encoding/json"
@@ -11,13 +11,11 @@ import (
 	"reflect"
 )
 
-// todo: export in a /tools folder
-func NewDocEventsCommand() *cobra.Command {
+func newDocEventsCommand() *cobra.Command {
 	const (
 		writeDirFlag = "write-dir"
 	)
 	cmd := &cobra.Command{
-		Use: "events",
 		RunE: func(cmd *cobra.Command, args []string) error {
 
 			writeDir, err := cmd.Flags().GetString(writeDirFlag)
@@ -51,5 +49,12 @@ func NewDocEventsCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().String(writeDirFlag, "", "directory to write events to")
+
 	return cmd
+}
+
+func main() {
+	if err := newDocEventsCommand().Execute(); err != nil {
+		os.Exit(1)
+	}
 }

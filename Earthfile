@@ -17,7 +17,7 @@ sources:
     WORKDIR /src
     COPY go.mod go.sum ./
     RUN go mod download
-    COPY --dir internal pkg cmd .
+    COPY --dir internal pkg cmd tools .
     COPY main.go .
     SAVE ARTIFACT /src
 
@@ -86,9 +86,9 @@ tests:
         RUN ginkgo -r -p $goFlags
     END
     IF [ "$coverage" = "true" ]
-        # exclude files suffixed with _generated.go, these are mocks used by tests
-        # toremovelater: also exclude machine code as it will be updated soon
-        RUN cat cover.out | grep -v "_generated.go" | grep -v "/machine/" > cover2.out
+        # as special case, exclude files suffixed by debug.go
+        # toremovelater: exclude machine code as it will be updated soon
+        RUN cat cover.out | grep -v debug.go | grep -v "/machine/" > cover2.out
         RUN mv cover2.out cover.out
         SAVE ARTIFACT cover.out AS LOCAL cover.out
     END
@@ -208,5 +208,5 @@ export-database-schema:
 
 export-docs-events:
     FROM +tidy
-    RUN go run main.go doc events --write-dir docs/events
+    RUN go run tools/docs/events/main.go --write-dir docs/events
     SAVE ARTIFACT docs/events AS LOCAL docs/events
