@@ -453,7 +453,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadat
 				Where("id = ?", id).
 				Where("ledger = ?", s.ledger.Name).
 				Set("metadata = metadata || ?", m).
-				Set("updated_at = ?", time.Now()).
+				Set("updated_at = (now() at time zone 'utc')").
 				Where("not (metadata @> ?)", m).
 				Returning("*"),
 		)
@@ -474,7 +474,7 @@ func (s *Store) DeleteTransactionMetadata(ctx context.Context, id int, key strin
 				Model(&ledger.Transaction{}).
 				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 				Set("metadata = metadata - ?", key).
-				Set("updated_at = ?", time.Now()).
+				Set("updated_at = (now() at time zone 'utc')").
 				Where("id = ?", id).
 				Where("ledger = ?", s.ledger.Name).
 				Where("metadata -> ? is not null", key).
