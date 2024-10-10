@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 
@@ -37,6 +38,8 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 	acc, err := l.GetAccount(r.Context(), query)
 	if err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case postgres.IsNotFoundError(err):
 			api.NotFound(w, err)
 		default:

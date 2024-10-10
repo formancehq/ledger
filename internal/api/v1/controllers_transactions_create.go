@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"math/big"
 	"net/http"
 
@@ -86,6 +87,8 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, common.TxToScriptData(txData, false)))
 		if err != nil {
 			switch {
+			case errors.Is(err, postgres.ErrTooManyClient{}):
+				api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
 				api.BadRequest(w, ErrInsufficientFund, err)
 			case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
@@ -122,6 +125,8 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, runScript))
 	if err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
 			api.BadRequest(w, ErrInsufficientFund, err)
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) ||

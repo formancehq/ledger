@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"errors"
@@ -21,7 +22,12 @@ func updateLedgerMetadata(systemController systemcontroller.Controller) http.Han
 		}
 
 		if err := systemController.UpdateLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), m); err != nil {
-			api.InternalServerError(w, r, err)
+			switch {
+			case errors.Is(err, postgres.ErrTooManyClient{}):
+				api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+			default:
+				api.InternalServerError(w, r, err)
+			}
 			return
 		}
 

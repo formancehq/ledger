@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"net/http"
+	"time"
 
 	"github.com/formancehq/ledger/internal/bus"
 	otelpyroscope "github.com/grafana/otel-profiling-go"
@@ -87,6 +88,10 @@ func NewServeCommand() *cobra.Command {
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
 						MaxCount: serveConfiguration.numscriptCacheMaxCount,
+					},
+					DatabaseRetryConfiguration: systemcontroller.DatabaseRetryConfiguration{
+						MaxRetry: 10,
+						Delay:    time.Millisecond*100,
 					},
 				}),
 				bus.NewFxModule(),

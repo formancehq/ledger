@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 	"strconv"
 
@@ -34,6 +35,8 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata:      m,
 	})); err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
 		default:

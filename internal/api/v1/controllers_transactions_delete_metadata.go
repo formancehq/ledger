@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 	"strconv"
 
@@ -28,6 +29,8 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		Key:           metadataKey,
 	})); err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
 		default:

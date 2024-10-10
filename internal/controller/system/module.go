@@ -4,10 +4,17 @@ import (
 	"github.com/formancehq/go-libs/logging"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.uber.org/fx"
+	"time"
 )
+
+type DatabaseRetryConfiguration struct {
+	MaxRetry int
+	Delay time.Duration
+}
 
 type ModuleConfiguration struct {
 	NSCacheConfiguration ledgercontroller.CacheConfiguration
+	DatabaseRetryConfiguration DatabaseRetryConfiguration
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
@@ -27,6 +34,8 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 					configuration.NSCacheConfiguration,
 				)))
 			}
+			options = append(options, WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration))
+
 			return NewDefaultController(store, listener, options...)
 		}),
 	)

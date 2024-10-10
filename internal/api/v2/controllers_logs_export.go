@@ -3,6 +3,8 @@ package v2
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -18,7 +20,12 @@ func exportLogs(w http.ResponseWriter, r *http.Request) {
 	if err := common.LedgerFromContext(r.Context()).Export(r.Context(), ledgercontroller.ExportWriterFn(func(ctx context.Context, log ledger.Log) error {
 		return enc.Encode(log)
 	})); err != nil {
-		api.InternalServerError(w, r, err)
+		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+		default:
+			api.InternalServerError(w, r, err)
+		}
 		return
 	}
 }
