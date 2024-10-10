@@ -67,15 +67,14 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 	ret := s.db.NewSelect()
 
-	// todo: rename to volumes, pcv is ok in transactions context
-	needPCV := expandVolumes
+	needVolumes := expandVolumes
 	if qb != nil {
 		// Analyze filters to check for errors and find potentially additional table to load
 		if err := qb.Walk(func(operator, key string, value any) error {
 			switch {
 			// Balances requires pvc, force load in this case
 			case balanceRegex.Match([]byte(key)):
-				needPCV = true
+				needVolumes = true
 			case key == "address":
 				return s.validateAddressFilter(operator, value)
 			case key == "metadata":
@@ -119,18 +118,18 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		ret = ret.ColumnExpr("accounts.metadata")
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needPCV {
+	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needVolumes {
 		ret = ret.Join(
-			`left join (?) pcv on pcv.accounts_address = accounts.address`,
-			s.selectAccountWithAggregatedVolumes(date, true, "pcv"),
-		).Column("pcv.*")
+			`left join (?) volumes on volumes.accounts_address = accounts.address`,
+			s.selectAccountWithAggregatedVolumes(date, true, "volumes"),
+		).Column("volumes.*")
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.Join(
-			`left join (?) pcev on pcev.accounts_address = accounts.address`,
-			s.selectAccountWithAggregatedVolumes(date, false, "pcev"),
-		).Column("pcev.*")
+			`left join (?) effective_volumes on effective_volumes.accounts_address = accounts.address`,
+			s.selectAccountWithAggregatedVolumes(date, false, "effective_volumes"),
+		).Column("effective_volumes.*")
 	}
 
 	if qb != nil {
