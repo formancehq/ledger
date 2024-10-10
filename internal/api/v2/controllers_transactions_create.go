@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -33,6 +34,8 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *payload.ToRunScript(api.QueryParamBool(r, "force"))))
 	if err != nil {
 		switch {
+		case errors.Is(err, postgres.ErrTooManyClient{}):
+			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
 			api.BadRequest(w, ErrInsufficientFund, err)
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
