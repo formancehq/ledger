@@ -19,8 +19,8 @@ type Account struct {
 	FirstUsage       time.Time         `json:"-" bun:"first_usage,nullzero"`
 	InsertionDate    time.Time         `json:"_" bun:"insertion_date,nullzero"`
 	UpdatedAt        time.Time         `json:"-" bun:"updated_at,nullzero"`
-	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"pcv,scanonly"`
-	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"pcev,scanonly"`
+	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"volumes,scanonly"`
+	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"effective_volumes,scanonly"`
 }
 
 type AccountsVolumes struct {
