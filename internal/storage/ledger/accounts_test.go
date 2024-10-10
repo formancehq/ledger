@@ -410,19 +410,19 @@ func TestUpsertAccount(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	now := time.Now()
-
 	account := ledger.Account{
 		Address:       "foo",
-		FirstUsage:    now,
-		InsertionDate: now,
-		UpdatedAt:     now,
 	}
 
 	// Initial insert
 	upserted, err := store.UpsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.True(t, upserted)
+	require.NotEmpty(t, account.FirstUsage)
+	require.NotEmpty(t, account.InsertionDate)
+	require.NotEmpty(t, account.UpdatedAt)
+
+	now := time.Now()
 
 	// Reset the account model
 	account = ledger.Account{

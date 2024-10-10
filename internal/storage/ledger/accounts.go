@@ -251,9 +251,6 @@ func (s *Store) CountAccounts(ctx context.Context, q ledgercontroller.ListAccoun
 
 func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
 	_, err := tracing.TraceWithLatency(ctx, "UpdateAccountsMetadata", tracing.NoResult(func(ctx context.Context) error {
-		// todo: let database generate date
-		now := time.Now()
-
 		type AccountWithLedger struct {
 			ledger.Account `bun:",extend"`
 			Ledger         string `bun:"ledger,type:varchar"`
@@ -266,9 +263,6 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 				Account: ledger.Account{
 					Address:       account,
 					Metadata:      accountMetadata,
-					InsertionDate: now,
-					UpdatedAt:     now,
-					FirstUsage:    now,
 				},
 			})
 		}
