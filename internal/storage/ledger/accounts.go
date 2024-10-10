@@ -63,7 +63,6 @@ func (s *Store) selectDistinctAccountMetadataHistories(date *time.Time) *bun.Sel
 	return ret
 }
 
-// todo: add filter on first_usage
 func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVolumes bool, qb query.Builder) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
