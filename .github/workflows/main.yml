@@ -50,6 +50,7 @@ jobs:
           if (( $(echo ${#hasChanged}) != 0 )); then
             git status
             echo "There are changes in the repository"
+            git show
             exit 1
           fi
 
