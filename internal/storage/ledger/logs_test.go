@@ -43,8 +43,10 @@ func TestInsertLog(t *testing.T) {
 
 		require.Equal(t, 1, log1.ID)
 		require.NotZero(t, log1.Hash)
+		require.NotEmpty(t, log1.Date)
 
 		// Ensure than the database hashing is the same as the go hashing
+		log1Copy.Date = log1.Date
 		chainedLog1 := log1Copy.ChainLog(nil)
 		require.Equal(t, chainedLog1.Hash, log1.Hash)
 
@@ -59,8 +61,10 @@ func TestInsertLog(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 2, log2.ID)
 		require.NotZero(t, log2.Hash)
+		require.NotZero(t, log2.Date)
 
 		// Ensure than the database hashing is the same as the go hashing
+		log2Copy.Date = log2.Date
 		chainedLog2 := log2Copy.ChainLog(&log1)
 		require.Equal(t, chainedLog2.Hash, log2.Hash)
 	})
