@@ -17,6 +17,7 @@ jobs:
         with:
           fetch-depth: 0
       - run: go build -o /tmp/ledger ./
+      - run: echo "running actions as ${USER}"
       - run: sudo systemctl restart ledger
       - run: >
           earthly
