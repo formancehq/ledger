@@ -16,11 +16,13 @@ jobs:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
+      - run: go build -o /tmp/ledger ./
+      - run: sudo systemctl restart ledger
       - run: >
           earthly
           --allow-privileged
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+ci
+          ./test/performance+run --args="-benchtime 10s --ledger.url=http://localhost:3068"
       - run: >
           earthly
           --allow-privileged
