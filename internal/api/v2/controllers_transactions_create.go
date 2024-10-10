@@ -7,6 +7,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/common"
 )
@@ -45,6 +46,10 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
 			api.BadRequest(w, ErrValidation, err)
+		case errors.Is(err, ledgercontroller.ErrParsing{}):
+			api.BadRequest(w, ErrInterpreterParse, err)
+		case errors.Is(err, ledgercontroller.ErrRuntime{}):
+			api.BadRequest(w, ErrInterpreterRuntime, err)
 		default:
 			api.InternalServerError(w, r, err)
 		}

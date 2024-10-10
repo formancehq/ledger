@@ -220,7 +220,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInsufficientFund)))
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterRuntime)))
 		})
 	})
 
@@ -365,9 +365,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 		})
-		It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+		It("should fail with "+string(components.V2ErrorsEnumInterpreterRuntime)+" code", func() {
 			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterRuntime)))
 		})
 	})
 	When("creating a transaction on a ledger with a negative amount in the script", func() {
@@ -399,9 +399,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 		})
-		It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+		It("should fail with "+string(components.V2ErrorsEnumInterpreterRuntime)+" code", func() {
 			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterRuntime)))
 		})
 	})
 	When("creating a transaction on the ledger v1 with old variable format", func() {
@@ -462,9 +462,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 		})
-		It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+		It("should fail with "+string(components.V2ErrorsEnumInterpreterParse)+" code", func() {
 			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInterpreterParse)))
 		})
 	})
 	When("creating a transaction with no postings", func() {

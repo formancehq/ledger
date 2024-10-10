@@ -3450,6 +3450,8 @@ components:
         - NO_POSTINGS
         - LEDGER_NOT_FOUND
         - IMPORT
+        - INTERPRETER_PARSE
+        - INTERPRETER_RUNTIME
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object
