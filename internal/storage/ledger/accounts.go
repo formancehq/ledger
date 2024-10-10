@@ -87,6 +87,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				if operator != "$match" {
 					return ledgercontroller.NewErrInvalidQuery("'metadata' key filter can only be used with $match")
 				}
+			case key == "first_usage":
 			default:
 				return ledgercontroller.NewErrInvalidQuery("unknown key '%s' when building query", key)
 			}
@@ -139,7 +140,8 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			switch {
 			case key == "address":
 				return filterAccountAddress(value.(string), "accounts.address"), nil, nil
-
+			case key == "first_usage":
+				return fmt.Sprintf("first_usage %s ?", convertOperatorToSQL(operator)), []any{value}, nil
 			case balanceRegex.Match([]byte(key)):
 				match := balanceRegex.FindAllStringSubmatch(key, 2)
 				asset := match[0][1]
