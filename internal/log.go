@@ -92,7 +92,7 @@ type Log struct {
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              int    `json:"id" bun:"id,unique,type:numeric"`
-	Hash            []byte `json:"hash" bun:"hash,type:bytea"`
+	Hash            []byte `json:"hash" bun:"hash,type:bytea,scanonly"`
 }
 
 func (l Log) WithIdempotencyKey(key string) Log {
@@ -201,12 +201,19 @@ var _ LogPayload = (*CreatedTransaction)(nil)
 func (p CreatedTransaction) GetMemento() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
 	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
-	return struct {
+	type transactionResume struct {
 		TransactionData
 		ID int `json:"id"`
+	}
+
+	return struct {
+		Transaction     transactionResume     `json:"transaction"`
+		AccountMetadata AccountMetadata `json:"accountMetadata"`
 	}{
-		TransactionData: p.Transaction.TransactionData,
-		ID:              p.Transaction.ID,
+		Transaction: transactionResume{
+			TransactionData: p.Transaction.TransactionData,
+			ID:              p.Transaction.ID,
+		},
 	}
 }
 
