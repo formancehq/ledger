@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// todo: refine textual errors
 func NewRouter(
 	systemController system.Controller,
 	healthController *health.HealthController,
