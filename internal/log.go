@@ -86,7 +86,7 @@ type Log struct {
 
 	Type           LogType    `json:"type" bun:"type,type:log_type"`
 	Data           LogPayload `json:"data" bun:"data,type:jsonb"`
-	Date           time.Time  `json:"date" bun:"date,type:timestamptz"`
+	Date           time.Time  `json:"date" bun:"date,type:timestamptz,nullzero"`
 	IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
@@ -172,8 +172,6 @@ func NewLog(payload LogPayload) Log {
 	return Log{
 		Type: payload.Type(),
 		Data: payload,
-		// todo: get from database
-		Date: time.Now(),
 	}
 }
 
