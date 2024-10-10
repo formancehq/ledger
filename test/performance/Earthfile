@@ -2,6 +2,12 @@ VERSION 0.8
 
 IMPORT github.com/formancehq/earthly:tags/v0.16.2 AS core
 
+ci:
+    LOCALLY
+    RUN cd ../../ && go build -o /tmp/ledger ./
+    RUN systemctl restart ledger
+    RUN go test -bench="Write" -run ^$ -tags it -report.file ./report/report.json -timeout 60m -benchtime 10s --ledger.url=http://localhost:3068
+
 run:
     LOCALLY
     ARG args=""

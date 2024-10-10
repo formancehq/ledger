@@ -20,13 +20,13 @@ jobs:
           earthly
           --allow-privileged
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+run --args="-benchtime 10s"
+          ./test/performance+ci
       - run: >
           earthly
           --allow-privileged
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
           ./test/performance+generate-graphs
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: graphs
           path: test/performance/report
