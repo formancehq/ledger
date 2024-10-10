@@ -174,5 +174,3 @@ begin
 	return new;
 end
 $$;
---
--- --todo: add test for changing logs format of created transaction and reverted transaction
