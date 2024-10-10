@@ -24,6 +24,7 @@ type Log struct {
 
 	Ledger string     `bun:"ledger,type:varchar"`
 	Data   RawMessage `bun:"data,type:jsonb"`
+	Memento RawMessage `bun:"memento,type:bytea"`
 }
 
 func (log Log) toCore() ledger.Log {
@@ -72,17 +73,28 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	}
 
 	_, err := tracing.TraceWithLatency(ctx, "InsertLog", tracing.NoResult(func(ctx context.Context) error {
-		data, err := json.Marshal(log.Data)
+		payloadData, err := json.Marshal(log.Data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal log data: %w", err)
+		}
+
+		mementoObject := log.Data.(any)
+		if memento, ok := mementoObject.(ledger.Memento); ok {
+			mementoObject = memento
+		}
+
+		mementoData, err := json.Marshal(mementoObject)
+		if err != nil {
+			return err
 		}
 
 		_, err = s.db.
 			NewInsert().
 			Model(&Log{
-				Log:    log,
-				Ledger: s.ledger.Name,
-				Data:   data,
+				Log:     log,
+				Ledger:  s.ledger.Name,
+				Data:    payloadData,
+				Memento: mementoData,
 			}).
 			ModelTableExpr(s.GetPrefixedRelationName("logs")).
 			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID))).
