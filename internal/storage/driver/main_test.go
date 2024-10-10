@@ -1,6 +1,6 @@
 //go:build it
 
-package driver
+package driver_test
 
 import (
 	"testing"
@@ -12,9 +12,11 @@ import (
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 )
 
+var srv *pgtesting.PostgresServer
+
 func TestMain(m *testing.M) {
 	utils.WithTestMain(func(t *utils.TestingTForMain) int {
-		pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
+		srv = pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
 
 		return m.Run()
 	})

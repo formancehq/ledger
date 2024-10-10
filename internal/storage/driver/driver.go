@@ -3,93 +3,34 @@ package driver
 import (
 	"context"
 	"database/sql"
-	"sync"
-
-	"github.com/formancehq/go-libs/bun/bundebug"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"fmt"
+	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/platform/postgres"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/collectionutils"
-	"github.com/pkg/errors"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
+	"github.com/formancehq/go-libs/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/time"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
-
 	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
 )
 
-const defaultBucket = "_default"
-
-var (
-	ErrNeedUpgradeBucket   = errors.New("need to upgrade bucket before add a new ledger on it")
-	ErrLedgerAlreadyExists = errors.New("ledger already exists")
+const (
+	SchemaSystem = "_system"
 )
-
-type LedgerConfiguration struct {
-	Bucket   string            `json:"bucket"`
-	Metadata metadata.Metadata `json:"metadata"`
-}
-
-type LedgerState struct {
-	LedgerConfiguration
-	State string `json:"state"`
-}
 
 type Driver struct {
-	systemStore       *systemstore.Store
-	lock              sync.Mutex
-	connectionOptions bunconnect.ConnectionOptions
-	buckets           map[string]*ledgerstore.Bucket
-	db                *bun.DB
-	debug             bool
+	db *bun.DB
 }
 
-func (d *Driver) GetSystemStore() *systemstore.Store {
-	return d.systemStore
-}
-
-func (d *Driver) OpenBucket(ctx context.Context, name string) (*ledgerstore.Bucket, error) {
-
-	bucket, ok := d.buckets[name]
-	if ok {
-		return bucket, nil
-	}
-
-	hooks := make([]bun.QueryHook, 0)
-	if d.debug {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
-
-	b, err := ledgerstore.ConnectToBucket(ctx, d.connectionOptions, name, hooks...)
-	if err != nil {
-		return nil, err
-	}
-	d.buckets[name] = b
-
-	return b, nil
-}
-
-func (d *Driver) GetLedgerStore(ctx context.Context, name string, configuration LedgerState) (*ledgerstore.Store, error) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
-	bucket, err := d.OpenBucket(ctx, configuration.Bucket)
-	if err != nil {
-		return nil, err
-	}
-
-	return bucket.GetLedgerStore(name)
-}
-
-func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configuration LedgerConfiguration) (*ledgerstore.Store, error) {
-
-	tx, err := f.db.BeginTx(ctx, &sql.TxOptions{})
+func (d *Driver) CreateBucket(ctx context.Context, bucketName string) (*bucket.Bucket, error) {
+	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -97,98 +38,190 @@ func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configurati
 		_ = tx.Rollback()
 	}()
 
-	if _, err := f.systemStore.GetLedger(ctx, name); err == nil {
-		return nil, ErrLedgerAlreadyExists
-	} else if !sqlutils.IsNotFoundError(err) {
-		return nil, err
-	}
+	b := bucket.New(d.db, bucketName)
 
-	bucketName := defaultBucket
-	if configuration.Bucket != "" {
-		bucketName = configuration.Bucket
-	}
-
-	bucket, err := f.OpenBucket(ctx, bucketName)
+	isInitialized, err := b.IsInitialized(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "opening bucket")
-	}
-
-	isInitialized, err := bucket.IsInitialized(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "checking if bucket is initialized")
+		return nil, fmt.Errorf("checking if bucket is initialized: %w", err)
 	}
 
 	if isInitialized {
-		isUpToDate, err := bucket.IsUpToDate(ctx)
+		isUpToDate, err := b.IsUpToDate(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "checking if bucket is up to date")
+			return nil, fmt.Errorf("checking if bucket is up to date: %w", err)
 		}
 		if !isUpToDate {
-			return nil, ErrNeedUpgradeBucket
+			return nil, systemcontroller.ErrNeedUpgradeBucket
 		}
 	} else {
-		if err := ledgerstore.MigrateBucket(ctx, tx, bucketName); err != nil {
-			return nil, errors.Wrap(err, "migrating bucket")
+		if err := bucket.Migrate(ctx, tx, bucketName); err != nil {
+			return nil, fmt.Errorf("migrating bucket: %w", err)
 		}
 	}
 
-	store, err := bucket.GetLedgerStore(name)
-	if err != nil {
-		return nil, errors.Wrap(err, "getting ledger store")
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing sql transaction to create bucket schema: %w", err)
 	}
 
-	_, err = systemstore.RegisterLedger(ctx, tx, &systemstore.Ledger{
-		Name:     name,
-		AddedAt:  time.Now(),
-		Bucket:   bucketName,
-		Metadata: configuration.Metadata,
-		State:    systemstore.StateInitializing,
-	})
+	return b, nil
+}
+
+func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledger.Ledger) (*ledgerstore.Store, error) {
+
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return nil, errors.Wrap(err, "registring ledger on system store")
+		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 
-	return store, errors.Wrap(tx.Commit(), "committing sql transaction")
+	b := bucket.New(tx, ledger.Bucket)
+	if err := b.Migrate(ctx); err != nil {
+		return nil, fmt.Errorf("migrating bucket: %w", err)
+	}
+
+	if err := ledgerstore.Migrate(ctx, tx, ledger); err != nil {
+		return nil, fmt.Errorf("failed to migrate ledger store: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing sql transaction to create ledger and schemas: %w", err)
+	}
+
+	return ledgerstore.New(d.db, ledger), nil
+}
+
+func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
+
+	// start a transaction because we will need to create the schema and apply ledger migrations
+	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if l.Metadata == nil {
+		l.Metadata = metadata.Metadata{}
+	}
+
+	ret, err := d.db.NewInsert().
+		Model(l).
+		Ignore().
+		Returning("id, added_at").
+		Exec(ctx)
+	if err != nil {
+		return nil, postgres.ResolveError(err)
+	}
+
+	affected, err := ret.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("creating ledger: %w", err)
+	}
+	if affected == 0 {
+		return nil, systemcontroller.ErrLedgerAlreadyExists
+	}
+
+	store, err := d.createLedgerStore(ctx, tx, *l)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing sql transaction to create ledger schema: %w", err)
+	}
+
+	return store, nil
+}
+
+func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
+	ret := &ledger.Ledger{}
+	if err := d.db.NewSelect().
+		Model(ret).
+		Column("*").
+		Where("name = ?", name).
+		Scan(ctx); err != nil {
+		return nil, nil, postgres.ResolveError(err)
+	}
+
+	return ledgerstore.New(d.db, *ret), ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
-
-	hooks := make([]bun.QueryHook, 0)
-	if d.debug {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
-
-	var err error
-	d.db, err = bunconnect.OpenSQLDB(ctx, d.connectionOptions, hooks...)
+	err := Migrate(ctx, d.db)
 	if err != nil {
-		return errors.Wrap(err, "connecting to database")
+		return fmt.Errorf("migrating system store: %w", err)
 	}
-
-	if err := systemstore.Migrate(ctx, d.db); err != nil {
-		return errors.Wrap(err, "migrating data")
-	}
-
-	d.systemStore, err = systemstore.Connect(ctx, d.connectionOptions, hooks...)
-	if err != nil {
-		return errors.Wrap(err, "connecting to system store")
-	}
-
 	return nil
+}
+
+func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("metadata = metadata || ?", m).
+		Where("name = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (d *Driver) UpdateLedgerState(ctx context.Context, name string, state string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("state = ?", state).
+		Where("name = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("metadata = metadata - ?", key).
+		Where("name = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+	query := d.db.NewSelect().
+		Model(&ledger.Ledger{}).
+		Column("*").
+		Order("added_at asc")
+
+	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
+		ctx,
+		query,
+		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
+	)
+}
+
+func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
+	ret := &ledger.Ledger{}
+	if err := d.db.NewSelect().
+		Model(ret).
+		Column("*").
+		Where("name = ?", name).
+		Scan(ctx); err != nil {
+		return nil, postgres.ResolveError(err)
+	}
+
+	return ret, nil
+}
+
+func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
+	return bucket.New(d.db, name).Migrate(ctx)
 }
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 
-	systemStore := d.GetSystemStore()
-
-	buckets := collectionutils.Set[string]{}
-	err := bunpaginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
-		func(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[systemstore.Ledger], error) {
-			return systemStore.ListLedgers(ctx, q)
+	bucketsNames := Set[string]{}
+	err := bunpaginate.Iterate(ctx, ledgercontroller.NewListLedgersQuery(10),
+		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+			return d.ListLedgers(ctx, q)
 		},
-		func(cursor *bunpaginate.Cursor[systemstore.Ledger]) error {
+		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
 			for _, name := range cursor.Data {
-				buckets.Put(name.Bucket)
+				bucketsNames.Put(name.Bucket)
 			}
 			return nil
 		})
@@ -196,14 +229,11 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 		return err
 	}
 
-	for _, bucket := range collectionutils.Keys(buckets) {
-		bucket, err := d.OpenBucket(ctx, bucket)
-		if err != nil {
-			return err
-		}
+	for _, bucketName := range Keys(bucketsNames) {
+		b := bucket.New(d.db, bucketName)
 
-		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucket.Name())
-		if err := bucket.Migrate(ctx); err != nil {
+		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
+		if err := b.Migrate(ctx); err != nil {
 			return err
 		}
 	}
@@ -211,24 +241,28 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 	return nil
 }
 
-func (d *Driver) Close() error {
-	if err := d.systemStore.Close(); err != nil {
+func (d *Driver) UpgradeAllLedgers(ctx context.Context) error {
+	err := bunpaginate.Iterate(ctx, ledgercontroller.NewListLedgersQuery(10),
+		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+			return d.ListLedgers(ctx, q)
+		},
+		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
+			for _, ledger := range cursor.Data {
+				if err := ledgerstore.Migrate(ctx, d.db, ledger); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	if err != nil {
 		return err
 	}
-	for _, b := range d.buckets {
-		if err := b.Close(); err != nil {
-			return err
-		}
-	}
-	if err := d.db.Close(); err != nil {
-		return err
-	}
+
 	return nil
 }
 
-func New(connectionOptions bunconnect.ConnectionOptions) *Driver {
+func New(db *bun.DB) *Driver {
 	return &Driver{
-		connectionOptions: connectionOptions,
-		buckets:           make(map[string]*ledgerstore.Bucket),
+		db: db,
 	}
 }

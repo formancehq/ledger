@@ -20,6 +20,11 @@ type CompileErrorList struct {
 	Source string
 }
 
+func (c *CompileErrorList) Is(err error) bool {
+	_, ok := err.(*CompileErrorList)
+	return ok
+}
+
 func (c *CompileErrorList) Error() string {
 	source := strings.ReplaceAll(c.Source, "\t", " ")
 	lines := strings.SplitAfter(strings.ReplaceAll(source, "\r\n", "\n"), "\n")

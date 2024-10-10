@@ -1,29 +1,28 @@
-package v1_test
+package v1
 
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	ledger "github.com/formancehq/ledger/internal"
 
-	"github.com/formancehq/ledger/internal/api/backend"
 	"go.uber.org/mock/gomock"
 )
 
-func newTestingBackend(t *testing.T, expectedSchemaCheck bool) (*backend.MockBackend, *backend.MockLedger) {
+func newTestingSystemController(t *testing.T, expectedSchemaCheck bool) (*SystemController, *LedgerController) {
 	ctrl := gomock.NewController(t)
-	mockLedger := backend.NewMockLedger(ctrl)
-	backend := backend.NewMockBackend(ctrl)
+	mockLedger := NewLedgerController(ctrl)
+	backend := NewSystemController(ctrl)
 	backend.
 		EXPECT().
 		GetLedger(gomock.Any(), gomock.Any()).
 		MinTimes(0).
-		Return(&systemstore.Ledger{}, nil)
+		Return(&ledger.Ledger{}, nil)
 	t.Cleanup(func() {
 		ctrl.Finish()
 	})
 	backend.
 		EXPECT().
-		GetLedgerEngine(gomock.Any(), gomock.Any()).
+		GetLedgerController(gomock.Any(), gomock.Any()).
 		MinTimes(0).
 		Return(mockLedger, nil)
 	t.Cleanup(func() {

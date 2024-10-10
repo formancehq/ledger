@@ -50,13 +50,12 @@ jobs:
           if (( $(echo ${#hasChanged}) != 0 )); then
             git status
             echo "There are changes in the repository"
+            git diff
             exit 1
           fi
 
   Tests:
     runs-on: "ubuntu-latest"
-    needs:
-      - Dirty
     steps:
       - uses: 'actions/checkout@v4'
         with:

@@ -1,0 +1,34 @@
+drop trigger "insert_account"  on "{{.Bucket}}".accounts;
+drop trigger "update_account"  on "{{.Bucket}}".accounts;
+drop trigger "insert_transaction"  on "{{.Bucket}}".transactions;
+drop trigger "update_transaction"  on "{{.Bucket}}".transactions;
+drop trigger "insert_log" on "{{.Bucket}}".logs;
+
+drop aggregate "{{.Bucket}}".aggregate_objects(jsonb);
+drop aggregate "{{.Bucket}}".first(anyelement);
+
+drop function "{{.Bucket}}".array_distinct(anyarray);
+drop function "{{.Bucket}}".insert_posting(_transaction_seq bigint, _ledger character varying, _insertion_date timestamp without time zone, _effective_date timestamp without time zone, posting jsonb, _account_metadata jsonb);
+drop function "{{.Bucket}}".upsert_account(_ledger character varying, _address character varying, _metadata jsonb, _date timestamp without time zone, _first_usage timestamp without time zone);
+drop function "{{.Bucket}}".get_latest_move_for_account_and_asset(_ledger character varying, _account_address character varying, _asset character varying, _before timestamp without time zone);
+drop function "{{.Bucket}}".update_transaction_metadata(_ledger character varying, _id numeric, _metadata jsonb, _date timestamp without time zone);
+drop function "{{.Bucket}}".delete_account_metadata(_ledger character varying, _address character varying, _key character varying, _date timestamp without time zone);
+drop function "{{.Bucket}}".delete_transaction_metadata(_ledger character varying, _id numeric, _key character varying, _date timestamp without time zone);
+drop function "{{.Bucket}}".balance_from_volumes(v "{{.Bucket}}".volumes);
+drop function "{{.Bucket}}".get_all_account_volumes(_ledger character varying, _account character varying, _before timestamp without time zone);
+drop function "{{.Bucket}}".first_agg(anyelement, anyelement);
+drop function "{{.Bucket}}".volumes_to_jsonb(v "{{.Bucket}}".volumes_with_asset);
+drop function "{{.Bucket}}".get_account_aggregated_effective_volumes(_ledger character varying, _account_address character varying, _before timestamp without time zone);
+drop function "{{.Bucket}}".handle_log();
+drop function "{{.Bucket}}".get_account_aggregated_volumes(_ledger character varying, _account_address character varying, _before timestamp without time zone);
+drop function "{{.Bucket}}".get_aggregated_volumes_for_transaction(_ledger character varying, tx numeric);
+drop function "{{.Bucket}}".insert_move(_transactions_seq bigint, _ledger character varying, _insertion_date timestamp without time zone, _effective_date timestamp without time zone, _account_address character varying, _asset character varying, _amount numeric, _is_source boolean, _account_exists boolean);
+drop function "{{.Bucket}}".get_all_assets(_ledger character varying);
+drop function "{{.Bucket}}".insert_transaction(_ledger character varying, data jsonb, _date timestamp without time zone, _account_metadata jsonb);
+drop function "{{.Bucket}}".get_all_account_effective_volumes(_ledger character varying, _account character varying, _before timestamp without time zone);
+drop function "{{.Bucket}}".get_account_balance(_ledger character varying, _account character varying, _asset character varying, _before timestamp without time zone);
+drop function "{{.Bucket}}".get_aggregated_effective_volumes_for_transaction(_ledger character varying, tx numeric);
+drop function "{{.Bucket}}".aggregate_ledger_volumes(_ledger character varying, _before timestamp without time zone, _accounts character varying[], _assets character varying[] );
+drop function "{{.Bucket}}".get_transaction(_ledger character varying, _id numeric, _before timestamp without time zone);
+--drop function "{{.Bucket}}".explode_address(_address character varying);
+drop function "{{.Bucket}}".revert_transaction(_ledger character varying, _id numeric, _date timestamp without time zone);

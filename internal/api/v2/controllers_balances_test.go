@@ -1,4 +1,4 @@
-package v2_test
+package v2
 
 import (
 	"bytes"
@@ -8,27 +8,26 @@ import (
 	"net/url"
 	"testing"
 
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
 	"github.com/formancehq/go-libs/time"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
-	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func TestGetBalancesAggregated(t *testing.T) {
+func TestBalancesAggregates(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
 		name        string
 		queryParams url.Values
 		body        string
-		expectQuery ledgerstore.GetAggregatedBalanceQuery
+		expectQuery ledgercontroller.GetAggregatedBalanceQuery
 	}
 
 	now := time.Now()
@@ -36,8 +35,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &now,
 				},
 			},
@@ -45,8 +44,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 		{
 			name: "using address",
 			body: `{"$match": {"address": "foo"}}`,
-			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &now,
 				},
 				QueryBuilder: query.Match("address", "foo"),
@@ -55,8 +54,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 		{
 			name: "using exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
-			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &now,
 				},
 				QueryBuilder: query.Exists("metadata", "foo"),
@@ -67,8 +66,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 			queryParams: url.Values{
 				"pit": []string{now.Format(time.RFC3339Nano)},
 			},
-			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &now,
 				},
 			},
@@ -79,8 +78,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 				"pit":              []string{now.Format(time.RFC3339Nano)},
 				"useInsertionDate": []string{"true"},
 			},
-			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &now,
 				},
 				UseInsertionDate: true,
@@ -94,12 +93,12 @@ func TestGetBalancesAggregated(t *testing.T) {
 			expectedBalances := ledger.BalancesByAssets{
 				"world": big.NewInt(-100),
 			}
-			backend, mock := newTestingBackend(t, true)
-			mock.EXPECT().
+			systemController, ledgerController := newTestingSystemController(t, true)
+			ledgerController.EXPECT().
 				GetAggregatedBalances(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances?pit="+now.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
@@ -110,7 +109,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 			router.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			balances, ok := sharedapi.DecodeSingleResponse[ledger.BalancesByAssets](t, rec.Body)
+			balances, ok := api.DecodeSingleResponse[ledger.BalancesByAssets](t, rec.Body)
 			require.True(t, ok)
 			require.Equal(t, expectedBalances, balances)
 		})

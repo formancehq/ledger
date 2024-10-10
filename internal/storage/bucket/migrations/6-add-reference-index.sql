@@ -1,0 +1,1 @@
+create index transactions_reference on "{{.Bucket}}".transactions (reference);

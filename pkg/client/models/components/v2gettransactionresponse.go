@@ -3,12 +3,12 @@
 package components
 
 type V2GetTransactionResponse struct {
-	Data V2ExpandedTransaction `json:"data"`
+	Data V2Transaction `json:"data"`
 }
 
-func (o *V2GetTransactionResponse) GetData() V2ExpandedTransaction {
+func (o *V2GetTransactionResponse) GetData() V2Transaction {
 	if o == nil {
-		return V2ExpandedTransaction{}
+		return V2Transaction{}
 	}
 	return o.Data
 }

@@ -1,62 +1,40 @@
 package ledger
 
 import (
-	"context"
 	"crypto/sha256"
+	"database/sql/driver"
+	"encoding/base64"
 	"encoding/json"
-	"math/big"
+	"fmt"
+	"github.com/uptrace/bun"
 	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/formancehq/go-libs/time"
 
+	"errors"
 	"github.com/formancehq/go-libs/metadata"
-	"github.com/pkg/errors"
 )
 
-type LogType int16
-
 const (
-	// TODO(gfyrag): Create dedicated log type for account and metadata
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
-	NewTransactionLogType                     // "NEW_TRANSACTION"
+	NewLogType                                // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
 )
 
-func (l LogType) String() string {
-	switch l {
-	case SetMetadataLogType:
-		return "SET_METADATA"
-	case NewTransactionLogType:
-		return "NEW_TRANSACTION"
-	case RevertedTransactionLogType:
-		return "REVERTED_TRANSACTION"
-	case DeleteMetadataLogType:
-		return "DELETE_METADATA"
-	}
+type LogType int16
 
-	return ""
+func (lt LogType) Value() (driver.Value, error) {
+	return lt.String(), nil
 }
 
-func LogTypeFromString(logType string) LogType {
-	switch logType {
-	case "SET_METADATA":
-		return SetMetadataLogType
-	case "NEW_TRANSACTION":
-		return NewTransactionLogType
-	case "REVERTED_TRANSACTION":
-		return RevertedTransactionLogType
-	case "DELETE_METADATA":
-		return DeleteMetadataLogType
-	}
-
-	panic(errors.New("invalid log type"))
+func (lt *LogType) Scan(src interface{}) error {
+	*lt = LogTypeFromString(string(src.([]byte)))
+	return nil
 }
 
-// Needed in order to keep the compatibility with the openapi response for
-// ListLogs.
 func (lt LogType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(lt.String())
 }
@@ -72,24 +50,69 @@ func (lt *LogType) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type ChainedLogWithContext struct {
-	ChainedLog
-	Context context.Context
+func (l LogType) String() string {
+	switch l {
+	case SetMetadataLogType:
+		return "SET_METADATA"
+	case NewLogType:
+		return "NEW_TRANSACTION"
+	case RevertedTransactionLogType:
+		return "REVERTED_TRANSACTION"
+	case DeleteMetadataLogType:
+		return "DELETE_METADATA"
+	}
+
+	return ""
 }
 
-type ChainedLog struct {
-	Log
-	ID   *big.Int `json:"id"`
-	Hash []byte   `json:"hash"`
+func LogTypeFromString(logType string) LogType {
+	switch logType {
+	case "SET_METADATA":
+		return SetMetadataLogType
+	case "NEW_TRANSACTION":
+		return NewLogType
+	case "REVERTED_TRANSACTION":
+		return RevertedTransactionLogType
+	case "DELETE_METADATA":
+		return DeleteMetadataLogType
+	}
+
+	panic(errors.New("invalid log type"))
 }
 
-func (l *ChainedLog) WithID(id uint64) *ChainedLog {
-	l.ID = big.NewInt(int64(id))
+// Log represents atomic actions made on the ledger.
+type Log struct {
+	bun.BaseModel `bun:"table:logs,alias:logs"`
+
+	Type           LogType    `json:"type" bun:"type,type:log_type"`
+	Data           LogPayload `json:"data" bun:"data,type:jsonb"`
+	Date           time.Time  `json:"date" bun:"date,type:timestamptz,nullzero"`
+	IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
+	// IdempotencyHash is a signature used when using IdempotencyKey.
+	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
+	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
+	ID              int    `json:"id" bun:"id,unique,type:numeric"`
+	Hash            []byte `json:"hash" bun:"hash,type:bytea,scanonly"`
+}
+
+func (l Log) WithIdempotencyKey(key string) Log {
+	l.IdempotencyKey = key
 	return l
 }
 
-func (l *ChainedLog) UnmarshalJSON(data []byte) error {
-	type auxLog ChainedLog
+func (l Log) ChainLog(previous *Log) Log {
+	ret := l
+	ret.ComputeHash(previous)
+	if previous != nil {
+		ret.ID = previous.ID + 1
+	} else {
+		ret.ID = 1
+	}
+	return ret
+}
+
+func (l *Log) UnmarshalJSON(data []byte) error {
+	type auxLog Log
 	type log struct {
 		auxLog
 		Data json.RawMessage `json:"data"`
@@ -104,11 +127,11 @@ func (l *ChainedLog) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*l = ChainedLog(rawLog.auxLog)
+	*l = Log(rawLog.auxLog)
 	return err
 }
 
-func (l *ChainedLog) ComputeHash(previous *ChainedLog) {
+func (l *Log) ComputeHash(previous *Log) {
 	digest := sha256.New()
 	enc := json.NewEncoder(digest)
 
@@ -118,73 +141,103 @@ func (l *ChainedLog) ComputeHash(previous *ChainedLog) {
 		}
 	}
 
-	if err := enc.Encode(l); err != nil {
+	payload := l.Data.(any)
+	if hv, ok := payload.(Memento); ok {
+		payload = hv.GetMemento()
+	}
+
+	if err := enc.Encode(struct {
+		// notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
+		Type           LogType   `json:"type"`
+		Data           any       `json:"data"`
+		Date           time.Time `json:"date"`
+		IdempotencyKey string    `json:"idempotencyKey"`
+		ID             int       `json:"id"`
+		Hash           []byte    `json:"hash"`
+	}{
+		Type:           l.Type,
+		Data:           payload,
+		Date:           l.Date,
+		IdempotencyKey: l.IdempotencyKey,
+		ID:             l.ID,
+		Hash:           l.Hash,
+	}); err != nil {
 		panic(err)
 	}
 
 	l.Hash = digest.Sum(nil)
 }
 
-type Log struct {
-	Type           LogType   `json:"type"`
-	Data           any       `json:"data"`
-	Date           time.Time `json:"date"`
-	IdempotencyKey string    `json:"idempotencyKey"`
-}
-
-func (l *Log) WithDate(date time.Time) *Log {
-	l.Date = date
-	return l
-}
-
-func (l *Log) WithIdempotencyKey(key string) *Log {
-	l.IdempotencyKey = key
-	return l
-}
-
-func (l *Log) ChainLog(previous *ChainedLog) *ChainedLog {
-	ret := &ChainedLog{
-		Log: *l,
-		ID:  big.NewInt(0),
+func NewLog(payload LogPayload) Log {
+	return Log{
+		Type: payload.Type(),
+		Data: payload,
 	}
-	ret.ComputeHash(previous)
-	if previous != nil {
-		ret.ID = ret.ID.Add(previous.ID, big.NewInt(1))
-	}
-	return ret
+}
+
+type LogPayload interface {
+	Type() LogType
+}
+
+type Memento interface {
+	GetMemento() any
 }
 
 type AccountMetadata map[string]metadata.Metadata
 
-type NewTransactionLogPayload struct {
-	Transaction     *Transaction    `json:"transaction"`
+type CreatedTransaction struct {
+	Transaction     Transaction     `json:"transaction"`
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
-func NewTransactionLogWithDate(tx *Transaction, accountMetadata map[string]metadata.Metadata, time time.Time) *Log {
-	// Since the id is unique and the hash is a hash of the previous log, they
-	// will be filled at insertion time during the batch process.
-	return &Log{
-		Type: NewTransactionLogType,
-		Date: time,
-		Data: NewTransactionLogPayload{
-			Transaction:     tx,
-			AccountMetadata: accountMetadata,
+func (p CreatedTransaction) Type() LogType {
+	return NewLogType
+}
+
+var _ LogPayload = (*CreatedTransaction)(nil)
+
+func (p CreatedTransaction) GetMemento() any {
+	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
+	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
+	type transactionResume struct {
+		Postings   Postings          `json:"postings"`
+		Metadata   metadata.Metadata `json:"metadata"`
+		Timestamp  time.Time         `json:"timestamp"`
+		Reference  string            `json:"reference,omitempty"`
+		ID int `json:"id"`
+		Reverted bool `json:"reverted"`
+	}
+
+	return struct {
+		Transaction     transactionResume     `json:"transaction"`
+		AccountMetadata AccountMetadata `json:"accountMetadata"`
+	}{
+		Transaction: transactionResume{
+			Postings:  p.Transaction.Postings,
+			Metadata:  p.Transaction.Metadata,
+			Timestamp: p.Transaction.Timestamp,
+			Reference: p.Transaction.Reference,
+			ID:        p.Transaction.ID,
 		},
+		AccountMetadata: p.AccountMetadata,
 	}
 }
 
-func NewTransactionLog(tx *Transaction, accountMetadata map[string]metadata.Metadata) *Log {
-	return NewTransactionLogWithDate(tx, accountMetadata, time.Now())
-}
+var _ Memento = (*CreatedTransaction)(nil)
 
-type SetMetadataLogPayload struct {
+type SavedMetadata struct {
 	TargetType string            `json:"targetType"`
 	TargetID   any               `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
+func (s SavedMetadata) Type() LogType {
+	return SetMetadataLogType
+}
+
+var _ LogPayload = (*SavedMetadata)(nil)
+
+func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string            `json:"targetType"`
 		TargetID   json.RawMessage   `json:"targetId"`
@@ -201,7 +254,8 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 		id = ""
 		err = json.Unmarshal(x.TargetID, &id)
 	case strings.ToUpper(MetaTargetTypeTransaction):
-		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
+		id, err = strconv.ParseInt(string(x.TargetID), 10, 64)
+		id = int(id.(int64))
 	default:
 		panic("unknown type")
 	}
@@ -209,7 +263,7 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*s = SetMetadataLogPayload{
+	*s = SavedMetadata{
 		TargetType: x.TargetType,
 		TargetID:   id,
 		Metadata:   x.Metadata,
@@ -217,101 +271,120 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(at time.Time, metadata SetMetadataLogPayload) *Log {
-	// Since the id is unique and the hash is a hash of the previous log, they
-	// will be filled at insertion time during the batch process.
-	return &Log{
-		Type: SetMetadataLogType,
-		Date: at,
-		Data: metadata,
-	}
-}
-
-type DeleteMetadataLogPayload struct {
+type DeletedMetadata struct {
 	TargetType string `json:"targetType"`
 	TargetID   any    `json:"targetId"`
 	Key        string `json:"key"`
 }
 
-func NewDeleteMetadataLog(at time.Time, payload DeleteMetadataLogPayload) *Log {
-	// Since the id is unique and the hash is a hash of the previous log, they
-	// will be filled at insertion time during the batch process.
-	return &Log{
-		Type: DeleteMetadataLogType,
-		Date: at,
-		Data: payload,
-	}
+func (s DeletedMetadata) Type() LogType {
+	return DeleteMetadataLogType
 }
 
-func NewSetMetadataOnAccountLog(at time.Time, account string, metadata metadata.Metadata) *Log {
-	return &Log{
-		Type: SetMetadataLogType,
-		Date: at,
-		Data: SetMetadataLogPayload{
-			TargetType: MetaTargetTypeAccount,
-			TargetID:   account,
-			Metadata:   metadata,
+var _ LogPayload = (*DeletedMetadata)(nil)
+
+func (s *DeletedMetadata) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string          `json:"targetType"`
+		TargetID   json.RawMessage `json:"targetId"`
+		Key        string          `json:"key"`
+	}
+	x := X{}
+	err := json.Unmarshal(data, &x)
+	if err != nil {
+		return err
+	}
+	var id interface{}
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		id = ""
+		err = json.Unmarshal(x.TargetID, &id)
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		id, err = strconv.ParseInt(string(x.TargetID), 10, 64)
+		id = int(id.(int64))
+	default:
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
+	}
+	if err != nil {
+		return err
+	}
+
+	*s = DeletedMetadata{
+		TargetType: x.TargetType,
+		TargetID:   id,
+		Key:        x.Key,
+	}
+	return nil
+}
+
+type RevertedTransaction struct {
+	RevertedTransaction Transaction `json:"revertedTransaction"`
+	RevertTransaction   Transaction `json:"transaction"`
+}
+
+func (r RevertedTransaction) Type() LogType {
+	return RevertedTransactionLogType
+}
+
+var _ LogPayload = (*RevertedTransaction)(nil)
+
+func (r RevertedTransaction) GetMemento() any {
+
+	type transactionResume struct {
+		Postings   Postings          `json:"postings"`
+		Metadata   metadata.Metadata `json:"metadata"`
+		Timestamp  time.Time         `json:"timestamp"`
+		Reference  string            `json:"reference,omitempty"`
+		ID int `json:"id"`
+		Reverted bool `json:"reverted"`
+	}
+
+	return struct {
+		RevertedTransactionID int         `json:"revertedTransactionID"`
+		RevertTransaction     transactionResume `json:"transaction"`
+	}{
+		RevertedTransactionID: r.RevertedTransaction.ID,
+		RevertTransaction:     transactionResume{
+			Postings:  r.RevertTransaction.Postings,
+			Metadata:  r.RevertTransaction.Metadata,
+			Timestamp: r.RevertTransaction.Timestamp,
+			Reference: r.RevertTransaction.Reference,
+			ID:        r.RevertTransaction.ID,
 		},
 	}
 }
 
-func NewSetMetadataOnTransactionLog(at time.Time, txID *big.Int, metadata metadata.Metadata) *Log {
-	return &Log{
-		Type: SetMetadataLogType,
-		Date: at,
-		Data: SetMetadataLogPayload{
-			TargetType: MetaTargetTypeTransaction,
-			TargetID:   txID,
-			Metadata:   metadata,
-		},
-	}
-}
+var _ Memento = (*RevertedTransaction)(nil)
 
-type RevertedTransactionLogPayload struct {
-	RevertedTransactionID *big.Int     `json:"revertedTransactionID"`
-	RevertTransaction     *Transaction `json:"transaction"`
-}
-
-func NewRevertedTransactionLog(at time.Time, revertedTxID *big.Int, tx *Transaction) *Log {
-	return &Log{
-		Type: RevertedTransactionLogType,
-		Date: at,
-		Data: RevertedTransactionLogPayload{
-			RevertedTransactionID: revertedTxID,
-			RevertTransaction:     tx,
-		},
-	}
-}
-
-func HydrateLog(_type LogType, data []byte) (any, error) {
+func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
 	switch _type {
-	case NewTransactionLogType:
-		payload = &NewTransactionLogPayload{}
+	case NewLogType:
+		payload = &CreatedTransaction{}
 	case SetMetadataLogType:
-		payload = &SetMetadataLogPayload{}
+		payload = &SavedMetadata{}
+	case DeleteMetadataLogType:
+		payload = &DeletedMetadata{}
 	case RevertedTransactionLogType:
-		payload = &RevertedTransactionLogPayload{}
+		payload = &RevertedTransaction{}
 	default:
-		panic("unknown type " + _type.String())
+		return nil, fmt.Errorf("unknown type '%s'", _type)
 	}
 	err := json.Unmarshal(data, &payload)
 	if err != nil {
 		return nil, err
 	}
 
-	return reflect.ValueOf(payload).Elem().Interface(), nil
+	return reflect.ValueOf(payload).Elem().Interface().(LogPayload), nil
 }
 
-type Accounts map[string]Account
+func ComputeIdempotencyHash(inputs any) string {
+	digest := sha256.New()
+	enc := json.NewEncoder(digest)
 
-func ChainLogs(logs ...*Log) []*ChainedLog {
-	var previous *ChainedLog
-	ret := make([]*ChainedLog, 0)
-	for _, log := range logs {
-		next := log.ChainLog(previous)
-		ret = append(ret, next)
-		previous = next
+	if err := enc.Encode(inputs); err != nil {
+		panic(err)
 	}
-	return ret
+
+	return base64.URLEncoding.EncodeToString(digest.Sum(nil))
 }

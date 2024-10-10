@@ -1,25 +1,25 @@
-package v2_test
+package v2
 
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/go-libs/collectionutils"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
 	"github.com/formancehq/go-libs/time"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	"errors"
+	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/backend"
-	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -33,9 +33,9 @@ func TestBulk(t *testing.T) {
 		name          string
 		queryParams   url.Values
 		body          string
-		expectations  func(mockLedger *backend.MockLedger)
+		expectations  func(mockLedger *LedgerController)
 		expectError   bool
-		expectResults []v2.Result
+		expectResults []Result
 	}
 
 	testCases := []bulkTestCase{
@@ -53,7 +53,7 @@ func TestBulk(t *testing.T) {
 					"timestamp": "%s"
 				}
 			}]`, now.Format(time.RFC3339Nano)),
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				postings := []ledger.Posting{{
 					Source:      "world",
 					Destination: "bank",
@@ -61,20 +61,23 @@ func TestBulk(t *testing.T) {
 					Asset:       "USD/2",
 				}}
 				mockLedger.EXPECT().
-					CreateTransaction(gomock.Any(), command.Parameters{}, ledger.TxToScriptData(ledger.TransactionData{
-						Postings:  postings,
-						Timestamp: now,
-					}, false)).
-					Return(&ledger.Transaction{
-						TransactionData: ledger.TransactionData{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
+						Input: common.TxToScriptData(ledger.TransactionData{
 							Postings:  postings,
-							Metadata:  metadata.Metadata{},
 							Timestamp: now,
+						}, false),
+					}).
+					Return(&ledger.CreatedTransaction{
+						Transaction: ledger.Transaction{
+							TransactionData: ledger.TransactionData{
+								Postings:  postings,
+								Metadata:  metadata.Metadata{},
+								Timestamp: now,
+							},
 						},
-						ID: big.NewInt(0),
 					}, nil)
 			},
-			expectResults: []v2.Result{{
+			expectResults: []Result{{
 				Data: map[string]any{
 					"postings": []any{
 						map[string]any{
@@ -89,7 +92,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"id":        float64(0),
 				},
-				ResponseType: v2.ActionCreateTransaction,
+				ResponseType: ActionCreateTransaction,
 			}},
 		},
 		{
@@ -104,15 +107,20 @@ func TestBulk(t *testing.T) {
 					}			
 				}
 			}]`,
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeTransaction, big.NewInt(1), metadata.Metadata{
-						"foo": "bar",
+					SaveTransactionMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
+						Input: ledgercontroller.SaveTransactionMetadata{
+							TransactionID: 1,
+							Metadata: metadata.Metadata{
+								"foo": "bar",
+							},
+						},
 					}).
 					Return(nil)
 			},
-			expectResults: []v2.Result{{
-				ResponseType: v2.ActionAddMetadata,
+			expectResults: []Result{{
+				ResponseType: ActionAddMetadata,
 			}},
 		},
 		{
@@ -127,15 +135,20 @@ func TestBulk(t *testing.T) {
 					}			
 				}
 			}]`,
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, "world", metadata.Metadata{
-						"foo": "bar",
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo": "bar",
+							},
+						},
 					}).
 					Return(nil)
 			},
-			expectResults: []v2.Result{{
-				ResponseType: v2.ActionAddMetadata,
+			expectResults: []Result{{
+				ResponseType: ActionAddMetadata,
 			}},
 		},
 		{
@@ -146,20 +159,24 @@ func TestBulk(t *testing.T) {
 					"id": 1	
 				}
 			}]`,
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
-					RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(1), false, false).
-					Return(&ledger.Transaction{}, nil)
+					RevertTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
+						Input: ledgercontroller.RevertTransaction{
+							TransactionID: 1,
+						},
+					}).
+					Return(&ledger.RevertedTransaction{}, nil)
 			},
-			expectResults: []v2.Result{{
+			expectResults: []Result{{
 				Data: map[string]any{
-					"id":        nil,
+					"id":        float64(0),
 					"metadata":  nil,
 					"postings":  nil,
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",
 				},
-				ResponseType: v2.ActionRevertTransaction,
+				ResponseType: ActionRevertTransaction,
 			}},
 		},
 		{
@@ -172,13 +189,18 @@ func TestBulk(t *testing.T) {
 					"key": "foo"
 				}
 			}]`,
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
-					DeleteMetadata(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeTransaction, big.NewInt(1), "foo").
+					DeleteTransactionMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
+						Input: ledgercontroller.DeleteTransactionMetadata{
+							TransactionID: 1,
+							Key:           "foo",
+						},
+					}).
 					Return(nil)
 			},
-			expectResults: []v2.Result{{
-				ResponseType: v2.ActionDeleteMetadata,
+			expectResults: []Result{{
+				ResponseType: ActionDeleteMetadata,
 			}},
 		},
 		{
@@ -215,22 +237,32 @@ func TestBulk(t *testing.T) {
 					}
 				}
 			]`,
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, "world", metadata.Metadata{
-						"foo": "bar",
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo": "bar",
+							},
+						},
 					}).
 					Return(nil)
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, "world", metadata.Metadata{
-						"foo2": "bar2",
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo2": "bar2",
+							},
+						},
 					}).
 					Return(errors.New("unexpected error"))
 			},
-			expectResults: []v2.Result{{
-				ResponseType: v2.ActionAddMetadata,
+			expectResults: []Result{{
+				ResponseType: ActionAddMetadata,
 			}, {
-				ErrorCode:        "INTERNAL",
+				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 				ResponseType:     "ERROR",
 			}},
@@ -273,31 +305,46 @@ func TestBulk(t *testing.T) {
 			queryParams: map[string][]string{
 				"continueOnFailure": {"true"},
 			},
-			expectations: func(mockLedger *backend.MockLedger) {
+			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, "world", metadata.Metadata{
-						"foo": "bar",
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo": "bar",
+							},
+						},
 					}).
 					Return(nil)
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, "world", metadata.Metadata{
-						"foo2": "bar2",
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo2": "bar2",
+							},
+						},
 					}).
 					Return(errors.New("unexpected error"))
 				mockLedger.EXPECT().
-					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, "world", metadata.Metadata{
-						"foo3": "bar3",
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo3": "bar3",
+							},
+						},
 					}).
 					Return(nil)
 			},
-			expectResults: []v2.Result{{
-				ResponseType: v2.ActionAddMetadata,
+			expectResults: []Result{{
+				ResponseType: ActionAddMetadata,
 			}, {
 				ResponseType:     "ERROR",
-				ErrorCode:        "INTERNAL",
+				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 			}, {
-				ResponseType: v2.ActionAddMetadata,
+				ResponseType: ActionAddMetadata,
 			}},
 			expectError: true,
 		},
@@ -306,10 +353,10 @@ func TestBulk(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 
-			backend, mock := newTestingBackend(t, true)
-			testCase.expectations(mock)
+			systemController, ledgerController := newTestingSystemController(t, true)
+			testCase.expectations(ledgerController)
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/_bulk", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
@@ -325,7 +372,14 @@ func TestBulk(t *testing.T) {
 				require.Equal(t, http.StatusOK, rec.Code)
 			}
 
-			ret, _ := sharedapi.DecodeSingleResponse[[]v2.Result](t, rec.Body)
+			ret, _ := api.DecodeSingleResponse[[]Result](t, rec.Body)
+			ret = collectionutils.Map(ret, func(from Result) Result {
+				switch data := from.Data.(type) {
+				case map[string]any:
+					delete(data, "insertedAt")
+				}
+				return from
+			})
 			require.Equal(t, testCase.expectResults, ret)
 		})
 	}

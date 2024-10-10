@@ -5,13 +5,15 @@ import (
 	_ "embed"
 	"net/http"
 
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/controller/system"
+
 	"github.com/formancehq/go-libs/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
 
 	"github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
 
-	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/go-libs/api"
 )
 
 type ConfigInfo struct {
@@ -29,28 +31,28 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func getInfo(backend backend.Backend) func(w http.ResponseWriter, r *http.Request) {
+func getInfo(systemController system.Controller, version string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ledgerNames := make([]string, 0)
-		if err := bunpaginate.Iterate(r.Context(), systemstore.NewListLedgersQuery(100),
-			func(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[systemstore.Ledger], error) {
-				return backend.ListLedgers(ctx, q)
+		if err := bunpaginate.Iterate(r.Context(), ledgercontroller.NewListLedgersQuery(100),
+			func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+				return systemController.ListLedgers(ctx, q)
 			},
-			func(cursor *bunpaginate.Cursor[systemstore.Ledger]) error {
-				ledgerNames = append(ledgerNames, collectionutils.Map(cursor.Data, func(from systemstore.Ledger) string {
+			func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
+				ledgerNames = append(ledgerNames, collectionutils.Map(cursor.Data, func(from ledger.Ledger) string {
 					return from.Name
 				})...)
 				return nil
 			},
 		); err != nil {
-			sharedapi.InternalServerError(w, r, err)
+			api.InternalServerError(w, r, err)
 			return
 		}
 
-		sharedapi.Ok(w, ConfigInfo{
+		api.Ok(w, ConfigInfo{
 			Server:  "ledger",
-			Version: backend.GetVersion(),
+			Version: version,
 			Config: &LedgerConfig{
 				LedgerStorage: &LedgerStorage{
 					Driver:  "postgres",

@@ -8,18 +8,24 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
+// BalanceQuery is a map of account/asset
+type BalanceQuery map[string][]string
+
+// Balances is a map of account/asset/balance
+type Balances map[string]map[string]*big.Int
+
 type Store interface {
-	GetBalance(ctx context.Context, address, asset string) (*big.Int, error)
+	GetBalances(ctx context.Context, query BalanceQuery) (Balances, error)
 	GetAccount(ctx context.Context, address string) (*ledger.Account, error)
 }
 
 type emptyStore struct{}
 
-func (e *emptyStore) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {
-	return new(big.Int), nil
+func (e *emptyStore) GetBalances(context.Context, BalanceQuery) (Balances, error) {
+	return Balances{}, nil
 }
 
-func (e *emptyStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
+func (e *emptyStore) GetAccount(_ context.Context, address string) (*ledger.Account, error) {
 	return &ledger.Account{
 		Address:  address,
 		Metadata: metadata.Metadata{},
@@ -37,20 +43,31 @@ type AccountWithBalances struct {
 
 type StaticStore map[string]*AccountWithBalances
 
-func (s StaticStore) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {
-	account, ok := s[address]
-	if !ok {
-		return new(big.Int), nil
-	}
-	balance, ok := account.Balances[asset]
-	if !ok {
-		return new(big.Int), nil
+func (s StaticStore) GetBalances(_ context.Context, query BalanceQuery) (Balances, error) {
+	ret := Balances{}
+	for accountAddress, assets := range query {
+		for _, asset := range assets {
+			ret[accountAddress] = make(map[string]*big.Int)
+			account, ok := s[accountAddress]
+			if !ok {
+				ret[accountAddress] = map[string]*big.Int{
+					asset: new(big.Int),
+				}
+				continue
+			}
+			balance, ok := account.Balances[asset]
+			if !ok {
+				ret[accountAddress][asset] = new(big.Int)
+				continue
+			}
+			ret[accountAddress][asset] = balance
+		}
 	}
 
-	return balance, nil
+	return ret, nil
 }
 
-func (s StaticStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
+func (s StaticStore) GetAccount(_ context.Context, address string) (*ledger.Account, error) {
 	account, ok := s[address]
 	if !ok {
 		return &ledger.Account{
