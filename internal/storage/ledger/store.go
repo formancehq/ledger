@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"errors"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -20,10 +19,6 @@ import (
 type Store struct {
 	db     bun.IDB
 	ledger ledger.Ledger
-}
-
-func (s *Store) Name() string {
-	return s.ledger.Name
 }
 
 func (s *Store) GetDB() bun.IDB {
@@ -55,7 +50,6 @@ func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to check if bucket is up to date: %w", err)
 	}
 	if !bucketUpToDate {
-		logging.FromContext(ctx).Errorf("bucket %s is not up to date", s.ledger.Bucket)
 		return false, nil
 	}
 
@@ -63,7 +57,6 @@ func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
 		return getMigrator(s.ledger).IsUpToDate(ctx, s.db)
 	})
 	if err != nil && errors.Is(err, migrations.ErrMissingVersionTable) {
-		logging.FromContext(ctx).Errorf("ledger %s is not up to date", s.ledger.Name)
 		return false, nil
 	}
 
@@ -88,10 +81,6 @@ func (s *Store) validateAddressFilter(operator string, value any) error {
 func (s *Store) LockLedger(ctx context.Context) error {
 	_, err := s.db.NewRaw(`lock table ` + s.GetPrefixedRelationName("logs")).Exec(ctx)
 	return postgres.ResolveError(err)
-}
-
-func (s *Store) GetLedger() ledger.Ledger {
-	return s.ledger
 }
 
 func New(db bun.IDB, ledger ledger.Ledger) *Store {
