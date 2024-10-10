@@ -200,8 +200,12 @@ func (p CreatedTransaction) GetMemento() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
 	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
 	type transactionResume struct {
-		TransactionData
+		Postings   Postings          `json:"postings"`
+		Metadata   metadata.Metadata `json:"metadata"`
+		Timestamp  time.Time         `json:"timestamp"`
+		Reference  string            `json:"reference,omitempty"`
 		ID int `json:"id"`
+		Reverted bool `json:"reverted"`
 	}
 
 	return struct {
@@ -209,9 +213,13 @@ func (p CreatedTransaction) GetMemento() any {
 		AccountMetadata AccountMetadata `json:"accountMetadata"`
 	}{
 		Transaction: transactionResume{
-			TransactionData: p.Transaction.TransactionData,
-			ID:              p.Transaction.ID,
+			Postings:  p.Transaction.Postings,
+			Metadata:  p.Transaction.Metadata,
+			Timestamp: p.Transaction.Timestamp,
+			Reference: p.Transaction.Reference,
+			ID:        p.Transaction.ID,
 		},
+		AccountMetadata: p.AccountMetadata,
 	}
 }
 
@@ -321,12 +329,28 @@ func (r RevertedTransaction) Type() LogType {
 var _ LogPayload = (*RevertedTransaction)(nil)
 
 func (r RevertedTransaction) GetMemento() any {
+
+	type transactionResume struct {
+		Postings   Postings          `json:"postings"`
+		Metadata   metadata.Metadata `json:"metadata"`
+		Timestamp  time.Time         `json:"timestamp"`
+		Reference  string            `json:"reference,omitempty"`
+		ID int `json:"id"`
+		Reverted bool `json:"reverted"`
+	}
+
 	return struct {
 		RevertedTransactionID int         `json:"revertedTransactionID"`
-		RevertTransaction     Transaction `json:"transaction"`
+		RevertTransaction     transactionResume `json:"transaction"`
 	}{
 		RevertedTransactionID: r.RevertedTransaction.ID,
-		RevertTransaction:     r.RevertTransaction,
+		RevertTransaction:     transactionResume{
+			Postings:  r.RevertTransaction.Postings,
+			Metadata:  r.RevertTransaction.Metadata,
+			Timestamp: r.RevertTransaction.Timestamp,
+			Reference: r.RevertTransaction.Reference,
+			ID:        r.RevertTransaction.ID,
+		},
 	}
 }
 

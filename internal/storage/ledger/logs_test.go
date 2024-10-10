@@ -22,8 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// todo: add log hash test with ledger v2
-
 func TestInsertLog(t *testing.T) {
 	t.Parallel()
 
