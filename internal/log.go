@@ -142,8 +142,8 @@ func (l *Log) ComputeHash(previous *Log) {
 	}
 
 	payload := l.Data.(any)
-	if hv, ok := payload.(hashValuer); ok {
-		payload = hv.hashValue()
+	if hv, ok := payload.(Memento); ok {
+		payload = hv.GetMemento()
 	}
 
 	if err := enc.Encode(struct {
@@ -181,8 +181,8 @@ type LogPayload interface {
 	Type() LogType
 }
 
-type hashValuer interface {
-	hashValue() any
+type Memento interface {
+	GetMemento() any
 }
 
 type AccountMetadata map[string]metadata.Metadata
@@ -198,7 +198,7 @@ func (p CreatedTransaction) Type() LogType {
 
 var _ LogPayload = (*CreatedTransaction)(nil)
 
-func (p CreatedTransaction) hashValue() any {
+func (p CreatedTransaction) GetMemento() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
 	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
 	return struct {
@@ -210,7 +210,7 @@ func (p CreatedTransaction) hashValue() any {
 	}
 }
 
-var _ hashValuer = (*CreatedTransaction)(nil)
+var _ Memento = (*CreatedTransaction)(nil)
 
 type SavedMetadata struct {
 	TargetType string            `json:"targetType"`
@@ -315,7 +315,7 @@ func (r RevertedTransaction) Type() LogType {
 
 var _ LogPayload = (*RevertedTransaction)(nil)
 
-func (r RevertedTransaction) hashValue() any {
+func (r RevertedTransaction) GetMemento() any {
 	return struct {
 		RevertedTransactionID int         `json:"revertedTransactionID"`
 		RevertTransaction     Transaction `json:"transaction"`
@@ -325,7 +325,7 @@ func (r RevertedTransaction) hashValue() any {
 	}
 }
 
-var _ hashValuer = (*RevertedTransaction)(nil)
+var _ Memento = (*RevertedTransaction)(nil)
 
 func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
