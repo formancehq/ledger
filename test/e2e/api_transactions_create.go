@@ -49,22 +49,30 @@ var _ = Context("Ledger accounts list API tests", func() {
 		Expect(err).To(BeNil())
 	})
 
-	When("creating a transaction on a ledger", func() {
+	When("creating a transaction", func() {
 		var (
 			events    chan *nats.Msg
 			timestamp = time.Now().Round(time.Second).UTC()
 			rsp       *components.V2Transaction
+			req       operations.V2CreateTransactionRequest
 			err       error
 		)
 		BeforeEach(func() {
-
 			events = testServer.GetValue().Subscribe()
-
+			req = operations.V2CreateTransactionRequest{
+				V2PostTransaction: components.V2PostTransaction{
+					Timestamp: &timestamp,
+				},
+				Ledger: "default",
+			}
+		})
+		JustBeforeEach(func() {
 			// Create a transaction
-			rsp, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
+			rsp, err = CreateTransaction(ctx, testServer.GetValue(), req)
+		})
+		Context("with valid data", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
 						Postings: []components.V2Posting{
@@ -79,163 +87,194 @@ var _ = Context("Ledger accounts list API tests", func() {
 						Reference: pointer.For("foo"),
 					},
 					Ledger: "default",
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		It("should be available on api", func() {
-			response, err := GetTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2GetTransactionRequest{
-					Ledger: "default",
-					ID:     rsp.ID,
-					Expand: pointer.For("volumes"),
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
+				}
+			})
+			It("should be ok", func() {
+				response, err := GetTransaction(
+					ctx,
+					testServer.GetValue(),
+					operations.V2GetTransactionRequest{
+						Ledger: "default",
+						ID:     rsp.ID,
+						Expand: pointer.For("volumes"),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
 
-			Expect(*response).To(Equal(components.V2Transaction{
-				Timestamp:  rsp.Timestamp,
-				InsertedAt: rsp.InsertedAt,
-				Postings:   rsp.Postings,
-				Reference:  rsp.Reference,
-				Metadata:   rsp.Metadata,
-				ID:         rsp.ID,
-				PreCommitVolumes: map[string]map[string]components.V2Volume{
-					"world": {
-						"USD": {
-							Input:   big.NewInt(0),
-							Output:  big.NewInt(0),
-							Balance: big.NewInt(0),
+				Expect(*response).To(Equal(components.V2Transaction{
+					Timestamp:  rsp.Timestamp,
+					InsertedAt: rsp.InsertedAt,
+					Postings:   rsp.Postings,
+					Reference:  rsp.Reference,
+					Metadata:   rsp.Metadata,
+					ID:         rsp.ID,
+					PreCommitVolumes: map[string]map[string]components.V2Volume{
+						"world": {
+							"USD": {
+								Input:   big.NewInt(0),
+								Output:  big.NewInt(0),
+								Balance: big.NewInt(0),
+							},
+						},
+						"alice": {
+							"USD": {
+								Input:   big.NewInt(0),
+								Output:  big.NewInt(0),
+								Balance: big.NewInt(0),
+							},
 						},
 					},
-					"alice": {
-						"USD": {
-							Input:   big.NewInt(0),
-							Output:  big.NewInt(0),
-							Balance: big.NewInt(0),
+					PostCommitVolumes: map[string]map[string]components.V2Volume{
+						"world": {
+							"USD": {
+								Input:   big.NewInt(0),
+								Output:  big.NewInt(100),
+								Balance: big.NewInt(-100),
+							},
+						},
+						"alice": {
+							"USD": {
+								Input:   big.NewInt(100),
+								Output:  big.NewInt(0),
+								Balance: big.NewInt(100),
+							},
 						},
 					},
-				},
-				PostCommitVolumes: map[string]map[string]components.V2Volume{
-					"world": {
-						"USD": {
-							Input:   big.NewInt(0),
-							Output:  big.NewInt(100),
-							Balance: big.NewInt(-100),
-						},
+				}))
+
+				account, err := GetAccount(
+					ctx,
+					testServer.GetValue(),
+					operations.V2GetAccountRequest{
+						Address: "alice",
+						Ledger:  "default",
+						Expand:  pointer.For("volumes"),
 					},
-					"alice": {
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(*account).Should(Equal(components.V2Account{
+					Address:  "alice",
+					Metadata: metadata.Metadata{},
+					Volumes: map[string]components.V2Volume{
 						"USD": {
 							Input:   big.NewInt(100),
 							Output:  big.NewInt(0),
 							Balance: big.NewInt(100),
 						},
 					},
-				},
-			}))
-
-			account, err := GetAccount(
-				ctx,
-				testServer.GetValue(),
-				operations.V2GetAccountRequest{
-					Address: "alice",
-					Ledger:  "default",
-					Expand:  pointer.For("volumes"),
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			Expect(*account).Should(Equal(components.V2Account{
-				Address:  "alice",
-				Metadata: metadata.Metadata{},
-				Volumes: map[string]components.V2Volume{
-					"USD": {
-						Input:   big.NewInt(100),
-						Output:  big.NewInt(0),
-						Balance: big.NewInt(100),
-					},
-				},
-			}))
-		})
-		When("trying to commit a new transaction with the same reference", func() {
-			var (
-				err error
-			)
-			BeforeEach(func() {
-				_, err = CreateTransaction(
-					ctx,
-					testServer.GetValue(),
-					operations.V2CreateTransactionRequest{
-						V2PostTransaction: components.V2PostTransaction{
-							Metadata: map[string]string{},
-							Postings: []components.V2Posting{
-								{
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-									Source:      "world",
-									Destination: "alice",
-								},
-							},
-							Timestamp: &timestamp,
-							Reference: pointer.For("foo"),
-						},
-						Ledger: "default",
-					},
-				)
-				Expect(err).To(HaveOccurred())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumConflict)))
+				}))
+				By("should trigger a new event", func() {
+					Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+						Ledger:          "default",
+						Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(rsp)},
+						AccountMetadata: ledger.AccountMetadata{},
+					}))))
+				})
 			})
-			It("Should fail with "+string(components.V2ErrorsEnumConflict)+" error code", func() {})
+			When("using a reference", func() {
+				BeforeEach(func() {
+					req.V2PostTransaction.Reference = pointer.For("foo")
+				})
+				It("should be ok", func() {
+					Expect(err).To(BeNil())
+				})
+				When("trying to commit a new transaction with the same reference", func() {
+					JustBeforeEach(func() {
+						_, err = CreateTransaction(ctx, testServer.GetValue(), req)
+						Expect(err).To(HaveOccurred())
+						Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumConflict)))
+					})
+					It("Should fail with "+string(components.V2ErrorsEnumConflict)+" error code", func() {})
+				})
+			})
 		})
-		It("should trigger a new event", func() {
-			// Wait for created transaction event
-			Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
-				Ledger:          "default",
-				Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(rsp)},
-				AccountMetadata: ledger.AccountMetadata{},
-			}))))
+		When("with insufficient funds", func() {
+			BeforeEach(func() {
+				req.V2PostTransaction.Postings = []components.V2Posting{{
+					Amount:      big.NewInt(100),
+					Asset:       "USD",
+					Source:      "bob",
+					Destination: "alice",
+				}}
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInsufficientFund)))
+			})
 		})
-	})
-
-	When("creating a transaction on a ledger with insufficient funds", func() {
-		It("should fail", func() {
-			_, err := CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Postings: []components.V2Posting{
-							{
-								Amount:      big.NewInt(100),
-								Asset:       "USD",
-								Source:      "bob",
-								Destination: "alice",
-							},
-						},
-					},
-					Ledger: "default",
-				},
-			)
-			Expect(err).To(HaveOccurred())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInsufficientFund)))
+		When("with nil amount", func() {
+			BeforeEach(func() {
+				req.V2PostTransaction.Postings = []components.V2Posting{{
+					Asset:       "USD",
+					Source:      "bob",
+					Destination: "alice",
+				}}
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
 		})
-	})
-
-	When("creating a transaction on a ledger with an idempotency key and a specific ledger", func() {
-		var (
-			err        error
-			response   *components.V2Transaction
-			timestamp  = time.Now().Add(-1 * time.Minute).Round(time.Second).UTC()
-			timestamp2 = time.Now().Round(time.Second).UTC()
-		)
-		BeforeEach(func() {
-			response, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
+		When("with negative amount", func() {
+			BeforeEach(func() {
+				req.V2PostTransaction.Postings = []components.V2Posting{{
+					Amount:      big.NewInt(-100),
+					Asset:       "USD",
+					Source:      "bob",
+					Destination: "alice",
+				}}
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
+		When("with invalid source address", func() {
+			BeforeEach(func() {
+				req.V2PostTransaction.Postings = []components.V2Posting{{
+					Amount:      big.NewInt(-100),
+					Asset:       "USD",
+					Source:      "bob;test",
+					Destination: "alice",
+				}}
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
+		When("with invalid destination address", func() {
+			BeforeEach(func() {
+				req.V2PostTransaction.Postings = []components.V2Posting{{
+					Amount:      big.NewInt(-100),
+					Asset:       "USD",
+					Source:      "bob",
+					Destination: "alice;test",
+				}}
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
+		When("with invalid asset", func() {
+			BeforeEach(func() {
+				req.V2PostTransaction.Postings = []components.V2Posting{{
+					Amount:      big.NewInt(-100),
+					Asset:       "USD//2",
+					Source:      "bob",
+					Destination: "alice",
+				}}
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
+		When("using an idempotency key and a specific ledger", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
 					IdempotencyKey: pointer.For("foo"),
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -251,105 +290,25 @@ var _ = Context("Ledger accounts list API tests", func() {
 						Reference: pointer.For("foo"),
 					},
 					Ledger: "default",
-				},
-			)
-		})
-		It("should be ok", func() {
-			Expect(err).To(Succeed())
-			Expect(response.ID).To(Equal(big.NewInt(1)))
-		})
-		When("creating a ledger transaction with same ik and different ledger", func() {
-			BeforeEach(func() {
-				response, err = CreateTransaction(
-					ctx,
-					testServer.GetValue(),
-					operations.V2CreateTransactionRequest{
-						IdempotencyKey: pointer.For("foo"),
-						V2PostTransaction: components.V2PostTransaction{
-							Metadata: map[string]string{},
-							Postings: []components.V2Posting{
-								{
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-									Source:      "world",
-									Destination: "alice",
-								},
-							},
-							Timestamp: &timestamp2,
-							Reference: pointer.For("foo2"),
-						},
-						Ledger: "test",
-					},
-				)
-			})
-			It("should not have an error", func() {
-				Expect(err).To(Succeed())
-				Expect(response.ID).To(Equal(big.NewInt(1)))
-			})
-		})
-	})
-
-	When("creating a transaction on a ledger with an idempotency key", func() {
-		var (
-			err      error
-			response *components.V2Transaction
-			req      operations.V2CreateTransactionRequest
-		)
-		createTransaction := func() {
-			response, err = CreateTransaction(ctx, testServer.GetValue(), req)
-		}
-		BeforeEach(func() {
-			req = operations.V2CreateTransactionRequest{
-				IdempotencyKey: pointer.For("testing"),
-				V2PostTransaction: components.V2PostTransaction{
-					Metadata: map[string]string{},
-					Postings: []components.V2Posting{
-						{
-							Amount:      big.NewInt(100),
-							Asset:       "USD",
-							Source:      "world",
-							Destination: "alice",
-						},
-					},
-				},
-				Ledger: "default",
-			}
-		})
-		JustBeforeEach(createTransaction)
-		It("should be ok", func() {
-			Expect(err).To(Succeed())
-			Expect(response.ID).To(Equal(big.NewInt(1)))
-		})
-		When("replaying with the same IK", func() {
-			BeforeEach(createTransaction)
-			It("should respond with the same tx id", func() {
-				Expect(err).To(Succeed())
-				Expect(response.ID).To(Equal(big.NewInt(1)))
-			})
-		})
-		When("creating another tx with the same IK but different input", func() {
-			JustBeforeEach(func() {
-				req.V2PostTransaction.Metadata = metadata.Metadata{
-					"foo": "bar",
 				}
-				createTransaction()
 			})
-			It("should fail", func() {
-				Expect(err).NotTo(Succeed())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			It("should be ok", func() {
+				Expect(err).To(Succeed())
+				Expect(rsp.ID).To(Equal(big.NewInt(1)))
+			})
+			When("creating a ledger transaction with same ik and different ledger", func() {
+				JustBeforeEach(func() {
+					rsp, err = CreateTransaction(ctx, testServer.GetValue(), req)
+				})
+				It("should not have an error", func() {
+					Expect(err).To(Succeed())
+					Expect(rsp.ID).To(Equal(big.NewInt(1)))
+				})
 			})
 		})
-	})
-	// TODO(gfyrag): test negative amount with a variable
-	When("creating a transaction on a ledger with a negative amount in the script", func() {
-		var (
-			err error
-		)
-		BeforeEach(func() {
-			_, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
+		When("using a negative amount in a script", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
 					IdempotencyKey: pointer.For("testing"),
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -362,23 +321,16 @@ var _ = Context("Ledger accounts list API tests", func() {
 						},
 					},
 					Ledger: "default",
-				},
-			)
+				}
+			})
+			It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+				Expect(err).NotTo(Succeed())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+			})
 		})
-		It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
-			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
-		})
-	})
-	When("creating a transaction on a ledger with a negative amount in the script", func() {
-		var (
-			err error
-		)
-		BeforeEach(func() {
-			_, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
+		When("using a negative amount in the script with a variable", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
 					IdempotencyKey: pointer.For("testing"),
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -396,14 +348,106 @@ var _ = Context("Ledger accounts list API tests", func() {
 						},
 					},
 					Ledger: "default",
-				},
-			)
+				}
+			})
+			It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+				Expect(err).NotTo(Succeed())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+			})
 		})
-		It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
-			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+		Context("with error on script", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
+					IdempotencyKey: pointer.For("testing"),
+					V2PostTransaction: components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Script: &components.V2PostTransactionScript{
+							Plain: `XXX`,
+							Vars:  map[string]interface{}{},
+						},
+					},
+					Ledger: "default",
+				}
+			})
+			It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
+				Expect(err).NotTo(Succeed())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
+			})
+		})
+		Context("with no postings", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
+					IdempotencyKey: pointer.For("testing"),
+					V2PostTransaction: components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Script: &components.V2PostTransactionScript{
+							Plain: `vars {
+								monetary $amount
+							}
+							set_tx_meta("foo", "bar")
+							`,
+							Vars: map[string]interface{}{
+								"amount": "USD 100",
+							},
+						},
+					},
+					Ledger: "default",
+				}
+			})
+			It("should fail with "+string(components.V2ErrorsEnumNoPostings)+" code", func() {
+				Expect(err).NotTo(Succeed())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumNoPostings)))
+			})
+		})
+		When("with metadata override", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
+					IdempotencyKey: pointer.For("testing"),
+					V2PostTransaction: components.V2PostTransaction{
+						Metadata: map[string]string{
+							"foo": "baz",
+						},
+						Script: &components.V2PostTransactionScript{
+							Plain: `send [COIN 100] (
+								source = @world
+								destination = @bob
+							)
+							set_tx_meta("foo", "bar")`,
+							Vars: map[string]interface{}{},
+						},
+					},
+					Ledger: "default",
+				}
+			})
+			It("should fail with "+string(components.V2ErrorsEnumMetadataOverride)+" code", func() {
+				Expect(err).NotTo(Succeed())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumMetadataOverride)))
+			})
+		})
+		When("with dry run mode", func() {
+			BeforeEach(func() {
+				req = operations.V2CreateTransactionRequest{
+					IdempotencyKey: pointer.For("testing"),
+					V2PostTransaction: components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Script: &components.V2PostTransactionScript{
+							Plain: `send [COIN 100] (
+								source = @world
+								destination = @bob
+							)`,
+							Vars: map[string]interface{}{},
+						},
+					},
+					DryRun: pointer.For(true),
+					Ledger: "default",
+				}
+			})
+			It("should be ok", func() {
+				Expect(err).To(BeNil())
+			})
 		})
 	})
+
 	When("creating a transaction on the ledger v1 with old variable format", func() {
 		var (
 			err      error
@@ -439,154 +483,6 @@ var _ = Context("Ledger accounts list API tests", func() {
 		It("should be ok", func() {
 			Expect(err).To(Succeed())
 			Expect(response.TransactionsResponse.Data[0].Txid).To(Equal(big.NewInt(1)))
-		})
-	})
-	When("creating a transaction on a ledger with error on script", func() {
-		var (
-			err error
-		)
-		BeforeEach(func() {
-			_, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
-					IdempotencyKey: pointer.For("testing"),
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Script: &components.V2PostTransactionScript{
-							Plain: `XXX`,
-							Vars:  map[string]interface{}{},
-						},
-					},
-					Ledger: "default",
-				},
-			)
-		})
-		It("should fail with "+string(components.V2ErrorsEnumCompilationFailed)+" code", func() {
-			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumCompilationFailed)))
-		})
-	})
-	When("creating a transaction with no postings", func() {
-		var (
-			err error
-		)
-		BeforeEach(func() {
-			_, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
-					IdempotencyKey: pointer.For("testing"),
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Script: &components.V2PostTransactionScript{
-							Plain: `vars {
-								monetary $amount
-							}
-							set_tx_meta("foo", "bar")
-							`,
-							Vars: map[string]interface{}{
-								"amount": "USD 100",
-							},
-						},
-					},
-					Ledger: "default",
-				},
-			)
-		})
-		It("should fail with "+string(components.V2ErrorsEnumNoPostings)+" code", func() {
-			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumNoPostings)))
-		})
-	})
-	When("creating a transaction with metadata override", func() {
-		var (
-			err error
-		)
-		BeforeEach(func() {
-			_, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
-					IdempotencyKey: pointer.For("testing"),
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{
-							"foo": "baz",
-						},
-						Script: &components.V2PostTransactionScript{
-							Plain: `send [COIN 100] (
-								source = @world
-								destination = @bob
-							)
-							set_tx_meta("foo", "bar")`,
-							Vars: map[string]interface{}{},
-						},
-					},
-					Ledger: "default",
-				},
-			)
-		})
-		It("should fail with "+string(components.V2ErrorsEnumMetadataOverride)+" code", func() {
-			Expect(err).NotTo(Succeed())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumMetadataOverride)))
-		})
-	})
-	When("creating a tx with dry run mode", func() {
-		var (
-			err error
-			ret *components.V2Transaction
-		)
-		BeforeEach(func() {
-			ret, err = CreateTransaction(
-				ctx,
-				testServer.GetValue(),
-				operations.V2CreateTransactionRequest{
-					IdempotencyKey: pointer.For("testing"),
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Script: &components.V2PostTransactionScript{
-							Plain: `send [COIN 100] (
-								source = @world
-								destination = @bob
-							)`,
-							Vars: map[string]interface{}{},
-						},
-					},
-					DryRun: pointer.For(true),
-					Ledger: "default",
-				},
-			)
-		})
-		It("should be ok", func() {
-			Expect(err).To(BeNil())
-		})
-		When("creating a tx without dry run", func() {
-			var (
-				tx *components.V2Transaction
-			)
-			BeforeEach(func() {
-				tx, err = CreateTransaction(
-					ctx,
-					testServer.GetValue(),
-					operations.V2CreateTransactionRequest{
-						IdempotencyKey: pointer.For("testing"),
-						V2PostTransaction: components.V2PostTransaction{
-							Metadata: map[string]string{},
-							Script: &components.V2PostTransactionScript{
-								Plain: `send [COIN 100] (
-								source = @world
-								destination = @bob
-							)`,
-								Vars: map[string]interface{}{},
-							},
-						},
-						Ledger: "default",
-					},
-				)
-			})
-			It("Should return the same tx id as with dry run", func() {
-				Expect(tx.ID.Uint64()).To(Equal(ret.ID.Uint64() + 1))
-			})
 		})
 	})
 })

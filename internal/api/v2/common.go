@@ -181,7 +181,11 @@ type TransactionRequest struct {
 	Metadata  metadata.Metadata         `json:"metadata" swaggertype:"object"`
 }
 
-func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) *ledgercontroller.RunScript {
+func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {
+
+	if _, err := req.Postings.Validate(); err != nil {
+		return nil, err
+	}
 
 	if len(req.Postings) > 0 {
 		txData := ledger.TransactionData{
@@ -191,7 +195,7 @@ func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) *ledge
 			Metadata:  req.Metadata,
 		}
 
-		return pointer.For(common.TxToScriptData(txData, allowUnboundedOverdrafts))
+		return pointer.For(common.TxToScriptData(txData, allowUnboundedOverdrafts)), nil
 	}
 
 	return &ledgercontroller.RunScript{
@@ -199,5 +203,5 @@ func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) *ledge
 		Timestamp: req.Timestamp,
 		Reference: req.Reference,
 		Metadata:  req.Metadata,
-	}
+	}, nil
 }

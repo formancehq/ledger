@@ -23,21 +23,8 @@ func (v Volumes) Copy() Volumes {
 	}
 }
 
-func (v Volumes) WithInput(input *big.Int) Volumes {
-	v.Input = input
-	return v
-}
-
-func (v Volumes) WithOutput(output *big.Int) Volumes {
-	v.Output = output
-	return v
-}
-
 func NewEmptyVolumes() Volumes {
-	return Volumes{
-		Input:  new(big.Int),
-		Output: new(big.Int),
-	}
+	return NewVolumesInt64(0, 0)
 }
 
 func NewVolumesInt64(input, output int64) Volumes {
@@ -105,33 +92,15 @@ func (v VolumesByAssets) copy() VolumesByAssets {
 type PostCommitVolumes map[string]VolumesByAssets
 
 func (a PostCommitVolumes) AddInput(account, asset string, input *big.Int) {
-	if assetsVolumes, ok := a[account]; !ok {
-		a[account] = map[string]Volumes{
-			asset: {
-				Input:  input,
-				Output: &big.Int{},
-			},
-		}
-	} else {
-		volumes := assetsVolumes[asset].Copy()
-		volumes.Input.Add(volumes.Input, input)
-		assetsVolumes[asset] = volumes
-	}
+	volumes := a[account][asset].Copy()
+	volumes.Input.Add(volumes.Input, input)
+	a[account][asset] = volumes
 }
 
 func (a PostCommitVolumes) AddOutput(account, asset string, output *big.Int) {
-	if assetsVolumes, ok := a[account]; !ok {
-		a[account] = map[string]Volumes{
-			asset: {
-				Output: output,
-				Input:  &big.Int{},
-			},
-		}
-	} else {
-		volumes := assetsVolumes[asset].Copy()
-		volumes.Output.Add(volumes.Output, output)
-		assetsVolumes[asset] = volumes
-	}
+	volumes := a[account][asset].Copy()
+	volumes.Output.Add(volumes.Output, output)
+	a[account][asset] = volumes
 }
 
 func (a PostCommitVolumes) Copy() PostCommitVolumes {

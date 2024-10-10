@@ -14,9 +14,7 @@ import (
 )
 
 func runTx[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
-	var (
-		payload *OUTPUT
-	)
+	var payload *OUTPUT
 	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
 		payload, err = fn(ctx, tx, parameters.Input)
 		if err != nil {
