@@ -16,9 +16,9 @@ type Account struct {
 
 	Address          string            `json:"address" bun:"address"`
 	Metadata         metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb"`
-	FirstUsage       time.Time         `json:"-" bun:"first_usage"`
-	InsertionDate    time.Time         `json:"_" bun:"insertion_date"`
-	UpdatedAt        time.Time         `json:"-" bun:"updated_at"`
+	FirstUsage       time.Time         `json:"-" bun:"first_usage,nullzero"`
+	InsertionDate    time.Time         `json:"_" bun:"insertion_date,nullzero"`
+	UpdatedAt        time.Time         `json:"-" bun:"updated_at,nullzero"`
 	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"pcv,scanonly"`
 	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"pcev,scanonly"`
 }
