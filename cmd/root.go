@@ -38,8 +38,6 @@ func NewRootCommand() *cobra.Command {
 		return upgradeAll(cmd)
 	}))
 
-	root.AddCommand(NewDocCommand())
-
 	return root
 }
 

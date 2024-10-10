@@ -53,6 +53,7 @@ func (s *Server) Start() {
 	args := []string{
 		"serve",
 		"--" + cmd.BindFlag, ":0",
+		"--" + cmd.AutoUpgradeFlag,
 		"--" + bunconnect.PostgresURIFlag, s.configuration.PostgresConfiguration.DatabaseSourceName,
 		"--" + bunconnect.PostgresMaxOpenConnsFlag, fmt.Sprint(s.configuration.PostgresConfiguration.MaxOpenConns),
 		"--" + bunconnect.PostgresConnMaxIdleTimeFlag, fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),

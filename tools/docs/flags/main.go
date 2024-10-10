@@ -1,7 +1,9 @@
-package cmd
+package main
 
 import (
 	"fmt"
+	ledgercmd "github.com/formancehq/ledger/cmd"
+	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -10,9 +12,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// todo: export in a /tools folder
-func NewDocFlagsCommand() *cobra.Command {
-	cmd := &cobra.Command{
+func newDocFlagsCommand() *cobra.Command {
+	return &cobra.Command{
 		Use: "flags",
 		RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -20,7 +21,7 @@ func NewDocFlagsCommand() *cobra.Command {
 
 			allKeys := make([]string, 0)
 
-			serveCommand := NewServeCommand()
+			serveCommand := ledgercmd.NewServeCommand()
 			serveCommand.Flags().VisitAll(func(f *pflag.Flag) {
 				allKeys = append(allKeys, f.Name)
 			})
@@ -49,5 +50,10 @@ func NewDocFlagsCommand() *cobra.Command {
 			return w.Flush()
 		},
 	}
-	return cmd
+}
+
+func main() {
+	if err := newDocFlagsCommand().Execute(); err != nil {
+		os.Exit(1)
+	}
 }
