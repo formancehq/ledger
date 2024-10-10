@@ -22,11 +22,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// todo: add log hash test with ledger v2
+
 func TestInsertLog(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
+
+	t.Run("check hash against core", func(t *testing.T) {
+		// Insert a first tx (we don't have any previous hash to use at this moment)
+		log1 := ledger.NewLog(ledger.CreatedTransaction{
+			Transaction: ledger.NewTransaction(),
+			AccountMetadata: ledger.AccountMetadata{},
+		})
+		log1Copy := log1
+
+		err := store.InsertLog(ctx, &log1)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, log1.ID)
+		require.NotZero(t, log1.Hash)
+
+		// Ensure than the database hashing is the same as the go hashing
+		chainedLog1 := log1Copy.ChainLog(nil)
+		require.Equal(t, chainedLog1.Hash, log1.Hash)
+
+		// Insert a new log to test the hash when a previous hash exists
+		// We also addi an idempotency key to check for conflicts
+		log2 := ledger.NewLog(ledger.CreatedTransaction{
+			Transaction:     ledger.NewTransaction(),
+			AccountMetadata: ledger.AccountMetadata{},
+		})
+		log2Copy := log2
+		err = store.InsertLog(ctx, &log2)
+		require.NoError(t, err)
+		require.Equal(t, 2, log2.ID)
+		require.NotZero(t, log2.Hash)
+
+		// Ensure than the database hashing is the same as the go hashing
+		chainedLog2 := log2Copy.ChainLog(&log1)
+		require.Equal(t, chainedLog2.Hash, log2.Hash)
+	})
 
 	t.Run("duplicate IK", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)

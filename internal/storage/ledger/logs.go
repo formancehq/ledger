@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
@@ -52,27 +51,12 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
 		_, err := s.db.NewRaw(`select pg_advisory_xact_lock(?)`, s.ledger.ID).Exec(ctx)
 		if err != nil {
-			return err
-		}
-		lastLog := &Log{}
-		err = s.db.NewSelect().
-			Model(lastLog).
-			ModelTableExpr(s.GetPrefixedRelationName("logs")).
-			Order("seq desc").
-			Where("ledger = ?", s.ledger.Name).
-			Limit(1).
-			Scan(ctx)
-		if err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("retrieving last log: %w", err)
-			}
-			log.ComputeHash(nil)
-		} else {
-			log.ComputeHash(pointer.For(lastLog.toCore()))
+			return postgres.ResolveError(err)
 		}
 	}
 
 	_, err := tracing.TraceWithLatency(ctx, "InsertLog", tracing.NoResult(func(ctx context.Context) error {
+
 		payloadData, err := json.Marshal(log.Data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal log data: %w", err)
@@ -80,7 +64,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 
 		mementoObject := log.Data.(any)
 		if memento, ok := mementoObject.(ledger.Memento); ok {
-			mementoObject = memento
+			mementoObject = memento.GetMemento()
 		}
 
 		mementoData, err := json.Marshal(mementoObject)

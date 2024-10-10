@@ -41,6 +41,19 @@ when (
 execute procedure "{{.Bucket}}".update_effective_volumes();
 {{ end }}
 
+-- logs hash
+
+{{ if .HasFeature "HASH_LOGS" "SYNC" }}
+create trigger "set_log_hash_{{.ID}}"
+before insert
+on "{{.Bucket}}"."logs"
+for each row
+when (
+    new.ledger = '{{.Name}}'
+)
+execute procedure "{{.Bucket}}".set_log_hash();
+{{ end }}
+
 {{ if .HasFeature "ACCOUNT_METADATA_HISTORY" "SYNC" }}
 create trigger "update_account_metadata_history_{{.ID}}"
 after update
