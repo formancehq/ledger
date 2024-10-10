@@ -9,9 +9,9 @@ import (
 )
 
 // nolint:unused
-func (s *Store) dumpTables(ctx context.Context, tables ...string) {
+func (s *Store) DumpTables(ctx context.Context, tables ...string) {
 	for _, table := range tables {
-		s.dumpQuery(
+		s.DumpQuery(
 			ctx,
 			s.db.NewSelect().
 				ModelTableExpr(s.GetPrefixedRelationName(table)),
@@ -20,17 +20,17 @@ func (s *Store) dumpTables(ctx context.Context, tables ...string) {
 }
 
 // nolint:unused
-func (s *Store) dumpQuery(ctx context.Context, query *bun.SelectQuery) {
+func (s *Store) DumpQuery(ctx context.Context, query *bun.SelectQuery) {
 	fmt.Println(query)
 	rows, err := query.Rows(ctx)
 	if err != nil {
 		panic(err)
 	}
-	s.dumpRows(rows)
+	s.DumpRows(rows)
 }
 
 // nolint:unused
-func (s *Store) dumpRows(rows *sql.Rows) {
+func (s *Store) DumpRows(rows *sql.Rows) {
 	data, err := xsql.Pretty(rows)
 	if err != nil {
 		panic(err)
