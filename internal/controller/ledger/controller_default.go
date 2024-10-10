@@ -7,8 +7,6 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/formancehq/go-libs/time"
-
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -349,15 +347,10 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 }
 
 func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
-	// todo: let database generate date
-	now := time.Now()
 	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.SavedMetadata, error) {
 		if _, err := sqlTX.UpsertAccount(ctx, &ledger.Account{
 			Address:       input.Address,
 			Metadata:      input.Metadata,
-			FirstUsage:    now,
-			InsertionDate: now,
-			UpdatedAt:     now,
 		}); err != nil {
 			return nil, err
 		}

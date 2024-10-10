@@ -231,8 +231,15 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 }
 
 func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
-	if tx.InsertedAt.IsZero() {
-		tx.InsertedAt = time.Now()
+	postCommitVolumes, err := s.UpdateVolumes(ctx, tx.VolumeUpdates()...)
+	if err != nil {
+		return fmt.Errorf("failed to update balances: %w", err)
+	}
+	tx.PostCommitVolumes = postCommitVolumes.Copy()
+
+	err = s.InsertTransaction(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
 	for _, address := range tx.InvolvedAccounts() {
@@ -246,17 +253,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		if err != nil {
 			return fmt.Errorf("upserting account: %w", err)
 		}
-	}
-
-	postCommitVolumes, err := s.UpdateVolumes(ctx, tx.VolumeUpdates()...)
-	if err != nil {
-		return fmt.Errorf("failed to update balances: %w", err)
-	}
-	tx.PostCommitVolumes = postCommitVolumes.Copy()
-
-	err = s.InsertTransaction(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
