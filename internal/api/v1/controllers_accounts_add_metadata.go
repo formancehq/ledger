@@ -2,7 +2,6 @@ package v1
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/accounts"
 	"net/http"
@@ -39,12 +38,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-		default:
-			api.InternalServerError(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

@@ -1,8 +1,6 @@
 package v2
 
 import (
-	"errors"
-	"github.com/formancehq/go-libs/platform/postgres"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -31,12 +29,7 @@ func getLedgerInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	res.Storage.Migrations, err = ledger.GetMigrationsInfo(r.Context())
 	if err != nil {
-		switch {
-		case errors.Is(err, postgres.ErrTooManyClient{}):
-			api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-		default:
-			api.InternalServerError(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 
