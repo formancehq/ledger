@@ -32,13 +32,13 @@ func NewBucketUpgrade() *cobra.Command {
 				return err
 			}
 
-			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false)
-
 			if args[0] == "*" {
 				return upgradeAll(cmd)
-			} else {
-				return driver.UpgradeBucket(logging.ContextWithLogger(cmd.Context(), logger), args[0])
 			}
+
+			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false)
+
+			return driver.UpgradeBucket(logging.ContextWithLogger(cmd.Context(), logger), args[0])
 		},
 	}
 

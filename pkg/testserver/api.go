@@ -224,6 +224,7 @@ func Import(ctx context.Context, srv *Server, request operations.V2ImportLogsReq
 }
 
 func mapSDKError(err error) error {
+	// notes: *sdkerrors.V2ErrorResponse does not implements errors.Is
 	switch err := err.(type) {
 	case *sdkerrors.V2ErrorResponse:
 		return api.ErrorResponse{

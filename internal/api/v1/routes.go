@@ -58,7 +58,7 @@ func NewRouter(
 			router.Head("/transactions", countTransactions)
 
 			router.Post("/transactions", createTransaction)
-			router.Post("/transactions/batch", func(w http.ResponseWriter, r *http.Request) {
+			router.Post("/transactions/batch", func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "not supported", http.StatusBadRequest)
 			})
 

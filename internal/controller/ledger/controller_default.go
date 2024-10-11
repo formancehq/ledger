@@ -102,7 +102,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 		}
 
 		if len(logs.Data) > 0 {
-			return false, newErrImport(fmt.Errorf("ledger must be empty"))
+			return false, newErrImport(errors.New("ledger must be empty"))
 		}
 
 		for log := range stream {
@@ -115,7 +115,8 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 	})
 	if err != nil {
 		if errors.Is(err, postgres.ErrSerialization) {
-			return newErrImport(errors.New("concurrent transaction occured, cannot import the ledger"))
+			return newErrImport(errors.New("concurrent transaction occur" +
+				"red, cannot import the ledger"))
 		}
 	}
 
@@ -349,8 +350,8 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
 	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.SavedMetadata, error) {
 		if _, err := sqlTX.UpsertAccount(ctx, &ledger.Account{
-			Address:       input.Address,
-			Metadata:      input.Metadata,
+			Address:  input.Address,
+			Metadata: input.Metadata,
 		}); err != nil {
 			return nil, err
 		}

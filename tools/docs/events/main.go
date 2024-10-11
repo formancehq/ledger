@@ -16,7 +16,7 @@ func newDocEventsCommand() *cobra.Command {
 		writeDirFlag = "write-dir"
 	)
 	cmd := &cobra.Command{
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 
 			writeDir, err := cmd.Flags().GetString(writeDirFlag)
 			if err != nil {

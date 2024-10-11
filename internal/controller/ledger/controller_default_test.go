@@ -20,6 +20,7 @@ import (
 )
 
 func TestCreateTransaction(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -37,7 +38,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	store.EXPECT().
 		WithTX(gomock.Any(), nil, gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
+		DoAndReturn(func(_ context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
 			_, err := fn(sqlTX)
 			return err
 		})
@@ -57,7 +58,7 @@ func TestCreateTransaction(t *testing.T) {
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.NewLogType
 		})).
-		DoAndReturn(func(ctx context.Context, x any) any {
+		DoAndReturn(func(_ context.Context, x any) any {
 			return x
 		})
 
@@ -68,6 +69,7 @@ func TestCreateTransaction(t *testing.T) {
 }
 
 func TestRevertTransaction(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -79,7 +81,7 @@ func TestRevertTransaction(t *testing.T) {
 
 	store.EXPECT().
 		WithTX(gomock.Any(), nil, gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
+		DoAndReturn(func(_ context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
 			_, err := fn(sqlTX)
 			return err
 		})
@@ -115,6 +117,7 @@ func TestRevertTransaction(t *testing.T) {
 }
 
 func TestSaveTransactionMetadata(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -154,6 +157,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 }
 
 func TestDeleteTransactionMetadata(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -190,6 +194,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 }
 
 func TestListTransactions(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -209,6 +214,7 @@ func TestListTransactions(t *testing.T) {
 }
 
 func TestCountAccounts(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -225,6 +231,7 @@ func TestCountAccounts(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -244,6 +251,7 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -263,6 +271,7 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestCountTransactions(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -279,6 +288,7 @@ func TestCountTransactions(t *testing.T) {
 }
 
 func TestListAccounts(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -298,6 +308,7 @@ func TestListAccounts(t *testing.T) {
 }
 
 func TestGetAggregatedBalances(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -317,6 +328,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 }
 
 func TestListLogs(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -336,6 +348,7 @@ func TestListLogs(t *testing.T) {
 }
 
 func TestGetVolumesWithBalances(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -355,6 +368,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 }
 
 func TestGetMigrationsInfo(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -373,6 +387,7 @@ func TestGetMigrationsInfo(t *testing.T) {
 }
 
 func TestIsDatabaseUpToDate(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)

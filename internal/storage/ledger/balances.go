@@ -122,7 +122,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		TableExpr("(?) accounts", selectAccountsWithVolumes)
 
 	if builder != nil {
-		where, args, err := builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
+		where, args, err := builder.Build(query.ContextFn(func(key, _ string, value any) (string, []any, error) {
 			switch {
 			case key == "address":
 				return filterAccountAddress(value.(string), "accounts_address"), nil, nil

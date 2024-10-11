@@ -16,11 +16,7 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 		api.BadRequest(w, ErrValidation, err)
 		return
 	}
-	options.QueryBuilder, err = buildGetTransactionsQuery(r)
-	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
-		return
-	}
+	options.QueryBuilder = buildGetTransactionsQuery(r)
 
 	count, err := common.LedgerFromContext(r.Context()).
 		CountTransactions(r.Context(), ledgercontroller.NewListTransactionsQuery(*options))

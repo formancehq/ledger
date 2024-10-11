@@ -52,11 +52,11 @@ func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 		return s.db.NewSelect().
 			ModelTableExpr("(?) moves", sortedMoves).
 			ColumnExpr("accounts_address, asset")
-	} else {
-		return s.db.NewSelect().
-			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
-			ColumnExpr("input - output as balance")
 	}
+
+	return s.db.NewSelect().
+		ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+		ColumnExpr("input - output as balance")
 }
 
 func (s *Store) selectDistinctAccountMetadataHistories(date *time.Time) *bun.SelectQuery {
@@ -84,7 +84,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		if err := qb.Walk(func(operator, key string, value any) error {
 			switch {
 			// Balances requires pvc, force load in this case
-			case balanceRegex.Match([]byte(key)):
+			case balanceRegex.MatchString(key):
 				needVolumes = true
 			case key == "address":
 				return s.validateAddressFilter(operator, value)
@@ -92,7 +92,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				if operator != "$exists" {
 					return ledgercontroller.NewErrInvalidQuery("'metadata' key filter can only be used with $exists")
 				}
-			case metadataRegex.Match([]byte(key)):
+			case metadataRegex.MatchString(key):
 				if operator != "$match" {
 					return ledgercontroller.NewErrInvalidQuery("'metadata' key filter can only be used with $match")
 				}

@@ -8,7 +8,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// nolint:unused
+//nolint:unused
 func (s *Store) DumpTables(ctx context.Context, tables ...string) {
 	for _, table := range tables {
 		s.DumpQuery(
@@ -19,7 +19,7 @@ func (s *Store) DumpTables(ctx context.Context, tables ...string) {
 	}
 }
 
-// nolint:unused
+//nolint:unused
 func (s *Store) DumpQuery(ctx context.Context, query *bun.SelectQuery) {
 	fmt.Println(query)
 	rows, err := query.Rows(ctx)
@@ -29,7 +29,7 @@ func (s *Store) DumpQuery(ctx context.Context, query *bun.SelectQuery) {
 	s.DumpRows(rows)
 }
 
-// nolint:unused
+//nolint:unused
 func (s *Store) DumpRows(rows *sql.Rows) {
 	data, err := xsql.Pretty(rows)
 	if err != nil {

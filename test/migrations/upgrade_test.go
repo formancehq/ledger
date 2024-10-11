@@ -34,8 +34,6 @@ func TestMigrations(t *testing.T) {
 	if sourceDatabase == "" {
 		t.Skip()
 	}
-	// debug
-	//sourceDatabase = "postgresql://formance:formance@127.0.0.1:5432/qkjnwtkxwaof-oknl-ledger?sslmode=disable"
 
 	ctx := logging.TestingContext()
 	dockerPool := docker.NewPool(t, logging.Testing())
