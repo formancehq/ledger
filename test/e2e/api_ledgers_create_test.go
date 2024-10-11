@@ -56,6 +56,24 @@ var _ = Context("Ledger engine tests", func() {
 				Expect(err).To(BeNil())
 			})
 		})
+		Context("with invalid feature configuration", func() {
+			BeforeEach(func() {
+				createLedgerRequest.V2CreateLedgerRequest.Features = ledger.MinimalFeatureSet.
+					With(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "XXX")
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
+		Context("with invalid feature name", func() {
+			BeforeEach(func() {
+				createLedgerRequest.V2CreateLedgerRequest.Features = ledger.MinimalFeatureSet.
+					With("foo", "XXX")
+			})
+			It("should fail", func() {
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
 		Context("trying to create another ledger with the same name", func() {
 			JustBeforeEach(func() {
 				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
