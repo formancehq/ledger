@@ -112,6 +112,7 @@ lint:
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT test AS LOCAL test
+    SAVE ARTIFACT tools AS LOCAL tools
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
