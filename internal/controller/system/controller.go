@@ -74,7 +74,7 @@ func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, co
 		configuration.SetDefaults()
 		l, err := ledger.New(name, configuration)
 		if err != nil {
-			return err
+			return newErrInvalidLedgerConfiguration(err)
 		}
 
 		return ctrl.store.CreateLedger(ctx, l)

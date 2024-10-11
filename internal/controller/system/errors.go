@@ -2,9 +2,28 @@ package system
 
 import (
 	"errors"
+	"fmt"
 )
 
 var (
-	ErrNeedUpgradeBucket   = errors.New("need to upgrade bucket before add a new ledger on it")
 	ErrLedgerAlreadyExists = errors.New("ledger already exists")
 )
+
+type ErrInvalidLedgerConfiguration struct {
+	err error
+}
+
+func (e ErrInvalidLedgerConfiguration) Error() string {
+	return fmt.Sprintf("invalid ledger configuration: %s", e.err)
+}
+
+func (e ErrInvalidLedgerConfiguration) Is(err error) bool {
+	_, ok := err.(ErrInvalidLedgerConfiguration)
+	return ok
+}
+
+func newErrInvalidLedgerConfiguration(err error) ErrInvalidLedgerConfiguration {
+	return ErrInvalidLedgerConfiguration{
+		err: err,
+	}
+}

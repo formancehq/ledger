@@ -71,6 +71,13 @@ func TestLedgersCreate(t *testing.T) {
 			expectErrorCode:     ErrValidation,
 		},
 		{
+			name:                "invalid ledger configuration",
+			expectedBackendCall: true,
+			returnErr:           system.ErrInvalidLedgerConfiguration{},
+			expectStatusCode:    http.StatusBadRequest,
+			expectErrorCode:     ErrValidation,
+		},
+		{
 			name:                "unexpected error",
 			expectedBackendCall: true,
 			returnErr:           errors.New("unexpected error"),
