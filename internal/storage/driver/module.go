@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/metric"
 
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
@@ -20,8 +21,8 @@ type ModuleConfiguration struct {
 
 func NewFXModule(autoUpgrade bool) fx.Option {
 	return fx.Options(
-		fx.Provide(func(db *bun.DB) (*Driver, error) {
-			return New(db), nil
+		fx.Provide(func(db *bun.DB, meterProvider metric.MeterProvider) (*Driver, error) {
+			return New(db, WithMeter(meterProvider.Meter("store"))), nil
 		}),
 		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(systemcontroller.Store)))),
 		fx.Invoke(func(driver *Driver, lifecycle fx.Lifecycle, logger logging.Logger) error {

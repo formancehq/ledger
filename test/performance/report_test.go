@@ -14,9 +14,10 @@ type Result struct {
 
 	Metrics *tachymeter.Metrics `json:"metrics"`
 
-	Name              string `json:"name"`
-	Configuration     configuration `json:"configuration"`
-	TPS float64 `json:"tps"`
+	Name            string         `json:"name"`
+	Configuration   configuration  `json:"configuration"`
+	TPS             float64        `json:"tps"`
+	InternalMetrics map[string]any `json:"internalMetrics"`
 }
 
 type report struct {
@@ -27,18 +28,20 @@ type report struct {
 
 	Tachymeter *tachymeter.Tachymeter
 
-	Scenario      string
-	Configuration configuration
+	Scenario        string
+	Configuration   configuration
+	InternalMetrics map[string]any
 }
 
 func (r *report) GetResult() Result {
 	return Result{
-		Start:         r.Start,
-		End:           r.End,
-		Metrics:       r.Tachymeter.Calc(),
-		Name:          r.Scenario,
-		Configuration: r.Configuration,
-		TPS: r.TPS(),
+		Start:           r.Start,
+		End:             r.End,
+		Metrics:         r.Tachymeter.Calc(),
+		InternalMetrics: r.InternalMetrics,
+		Name:            r.Scenario,
+		Configuration:   r.Configuration,
+		TPS:             r.TPS(),
 	}
 }
 

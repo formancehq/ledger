@@ -3,3 +3,4 @@ go.work*
 *.jar
 node_modules
 dist
+vendor

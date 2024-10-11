@@ -61,16 +61,21 @@ func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQ
 }
 
 func (s *Store) InsertMoves(ctx context.Context, moves ...*ledger.Move) error {
-	_, err := tracing.TraceWithLatency(ctx, "InsertMoves", tracing.NoResult(func(ctx context.Context) error {
-		_, err := s.db.NewInsert().
-			Model(&moves).
-			Value("ledger", "?", s.ledger.Name).
-			ModelTableExpr(s.GetPrefixedRelationName("moves")).
-			Returning("post_commit_volumes, post_commit_effective_volumes").
-			Exec(ctx)
+	_, err := tracing.TraceWithMetric(
+		ctx,
+		"InsertMoves",
+		s.insertMovesHistogram,
+		tracing.NoResult(func(ctx context.Context) error {
+			_, err := s.db.NewInsert().
+				Model(&moves).
+				Value("ledger", "?", s.ledger.Name).
+				ModelTableExpr(s.GetPrefixedRelationName("moves")).
+				Returning("post_commit_volumes, post_commit_effective_volumes").
+				Exec(ctx)
 
-		return postgres.ResolveError(err)
-	}))
+			return postgres.ResolveError(err)
+		}),
+	)
 
 	return err
 }

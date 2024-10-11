@@ -2,6 +2,7 @@ package system
 
 import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/fx"
 	"time"
 )
@@ -24,6 +25,7 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 		fx.Provide(func(
 			store Store,
 			listener ledgercontroller.Listener,
+			meterProvider metric.MeterProvider,
 		) *DefaultController {
 			options := make([]Option, 0)
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
@@ -32,9 +34,15 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 					configuration.NSCacheConfiguration,
 				)))
 			}
-			options = append(options, WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration))
 
-			return NewDefaultController(store, listener, options...)
+			return NewDefaultController(
+				store,
+				listener,
+				append(options,
+					WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
+					WithMeter(meterProvider.Meter("core")),
+				)...,
+			)
 		}),
 	)
 }

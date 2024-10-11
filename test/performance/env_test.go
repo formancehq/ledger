@@ -4,6 +4,7 @@ package performance_test
 
 import (
 	"context"
+	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"testing"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -19,7 +20,8 @@ func (fn TransactionExecutorFn) ExecuteScript(ctx context.Context, script string
 }
 
 type Env interface {
-	Executor() TransactionExecutor
+	Client() *ledgerclient.Formance
+	URL() string
 	Stop(ctx context.Context) error
 }
 

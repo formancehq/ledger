@@ -21,8 +21,8 @@ import (
 type Log struct {
 	*ledger.Log `bun:",extend"`
 
-	Ledger string     `bun:"ledger,type:varchar"`
-	Data   RawMessage `bun:"data,type:jsonb"`
+	Ledger  string     `bun:"ledger,type:varchar"`
+	Data    RawMessage `bun:"data,type:jsonb"`
 	Memento RawMessage `bun:"memento,type:bytea"`
 }
 
@@ -55,98 +55,113 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 		}
 	}
 
-	_, err := tracing.TraceWithLatency(ctx, "InsertLog", tracing.NoResult(func(ctx context.Context) error {
+	_, err := tracing.TraceWithMetric(
+		ctx,
+		"InsertLog",
+		s.insertLogHistogram,
+		tracing.NoResult(func(ctx context.Context) error {
 
-		payloadData, err := json.Marshal(log.Data)
-		if err != nil {
-			return fmt.Errorf("failed to marshal log data: %w", err)
-		}
-
-		mementoObject := log.Data.(any)
-		if memento, ok := mementoObject.(ledger.Memento); ok {
-			mementoObject = memento.GetMemento()
-		}
-
-		mementoData, err := json.Marshal(mementoObject)
-		if err != nil {
-			return err
-		}
-
-		_, err = s.db.
-			NewInsert().
-			Model(&Log{
-				Log:     log,
-				Ledger:  s.ledger.Name,
-				Data:    payloadData,
-				Memento: mementoData,
-			}).
-			ModelTableExpr(s.GetPrefixedRelationName("logs")).
-			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID))).
-			Returning("*").
-			Exec(ctx)
-		if err != nil {
-			err := postgres.ResolveError(err)
-			switch {
-			case errors.Is(err, postgres.ErrConstraintsFailed{}):
-				if err.(postgres.ErrConstraintsFailed).GetConstraint() == "logs_idempotency_key" {
-					return ledgercontroller.NewErrIdempotencyKeyConflict(log.IdempotencyKey)
-				}
-			default:
-				return fmt.Errorf("inserting log: %w", err)
+			payloadData, err := json.Marshal(log.Data)
+			if err != nil {
+				return fmt.Errorf("failed to marshal log data: %w", err)
 			}
-		}
 
-		return nil
-	}))
+			mementoObject := log.Data.(any)
+			if memento, ok := mementoObject.(ledger.Memento); ok {
+				mementoObject = memento.GetMemento()
+			}
+
+			mementoData, err := json.Marshal(mementoObject)
+			if err != nil {
+				return err
+			}
+
+			_, err = s.db.
+				NewInsert().
+				Model(&Log{
+					Log:     log,
+					Ledger:  s.ledger.Name,
+					Data:    payloadData,
+					Memento: mementoData,
+				}).
+				ModelTableExpr(s.GetPrefixedRelationName("logs")).
+				Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID))).
+				Returning("*").
+				Exec(ctx)
+			if err != nil {
+				err := postgres.ResolveError(err)
+				switch {
+				case errors.Is(err, postgres.ErrConstraintsFailed{}):
+					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "logs_idempotency_key" {
+						return ledgercontroller.NewErrIdempotencyKeyConflict(log.IdempotencyKey)
+					}
+				default:
+					return fmt.Errorf("inserting log: %w", err)
+				}
+			}
+
+			return nil
+		}),
+	)
 
 	return err
 }
 
 func (s *Store) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	return tracing.TraceWithLatency(ctx, "ListLogs", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Log], error) {
-		selectQuery := s.db.NewSelect().
-			ModelTableExpr(s.GetPrefixedRelationName("logs")).
-			ColumnExpr("*").
-			Where("ledger = ?", s.ledger.Name)
+	return tracing.TraceWithMetric(
+		ctx,
+		"ListLogs",
+		s.listLogsHistogram,
+		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Log], error) {
+			selectQuery := s.db.NewSelect().
+				ModelTableExpr(s.GetPrefixedRelationName("logs")).
+				ColumnExpr("*").
+				Where("ledger = ?", s.ledger.Name)
 
-		if q.Options.QueryBuilder != nil {
-			subQuery, args, err := q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
-				switch {
-				case key == "date":
-					return fmt.Sprintf("%s %s ?", key, query.DefaultComparisonOperatorsMapping[operator]), []any{value}, nil
-				default:
-					return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
+			if q.Options.QueryBuilder != nil {
+				subQuery, args, err := q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
+					switch {
+					case key == "date":
+						return fmt.Sprintf("%s %s ?", key, query.DefaultComparisonOperatorsMapping[operator]), []any{value}, nil
+					default:
+						return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
+					}
+				}))
+				if err != nil {
+					return nil, err
 				}
-			}))
+				selectQuery = selectQuery.Where(subQuery, args...)
+			}
+
+			cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[any], Log](ctx, selectQuery, bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[any]](q))
 			if err != nil {
 				return nil, err
 			}
-			selectQuery = selectQuery.Where(subQuery, args...)
-		}
 
-		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[any], Log](ctx, selectQuery, bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[any]](q))
-		if err != nil {
-			return nil, err
-		}
-
-		return bunpaginate.MapCursor(cursor, Log.toCore), nil
-	})
+			return bunpaginate.MapCursor(cursor, Log.toCore), nil
+		},
+	)
 }
 
 func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*ledger.Log, error) {
-	return tracing.TraceWithLatency(ctx, "ReadLogWithIdempotencyKey", func(ctx context.Context) (*ledger.Log, error) {
-		ret := &Log{}
-		if err := s.db.NewSelect().
-			Model(ret).
-			ModelTableExpr(s.GetPrefixedRelationName("logs")).
-			Column("*").
-			Where("idempotency_key = ?", key).
-			Where("ledger = ?", s.ledger.Name).
-			Limit(1).
-			Scan(ctx); err != nil {
-			return nil, postgres.ResolveError(err)
-		}
+	return tracing.TraceWithMetric(
+		ctx,
+		"ReadLogWithIdempotencyKey",
+		s.readLogWithIdempotencyKeyHistogram,
+		func(ctx context.Context) (*ledger.Log, error) {
+			ret := &Log{}
+			if err := s.db.NewSelect().
+				Model(ret).
+				ModelTableExpr(s.GetPrefixedRelationName("logs")).
+				Column("*").
+				Where("idempotency_key = ?", key).
+				Where("ledger = ?", s.ledger.Name).
+				Limit(1).
+				Scan(ctx); err != nil {
+				return nil, postgres.ResolveError(err)
+			}
 
-		return pointer.For(ret.toCore()), nil
-	})
+			return pointer.For(ret.toCore()), nil
+		},
+	)
 }

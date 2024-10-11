@@ -210,127 +210,158 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 }
 
 func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*Cursor[ledger.Account], error) {
-	return tracing.TraceWithLatency(ctx, "ListAccounts", func(ctx context.Context) (*Cursor[ledger.Account], error) {
-		ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](
-			ctx,
-			s.selectAccounts(
-				q.Options.Options.PIT,
-				q.Options.Options.ExpandVolumes,
-				q.Options.Options.ExpandEffectiveVolumes,
-				q.Options.QueryBuilder,
-			),
-			OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]](q),
-		)
+	return tracing.TraceWithMetric(
+		ctx,
+		"ListAccounts",
+		s.listAccountsHistogram,
+		func(ctx context.Context) (*Cursor[ledger.Account], error) {
+			ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](
+				ctx,
+				s.selectAccounts(
+					q.Options.Options.PIT,
+					q.Options.Options.ExpandVolumes,
+					q.Options.Options.ExpandEffectiveVolumes,
+					q.Options.QueryBuilder,
+				),
+				OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]](q),
+			)
 
-		if err != nil {
-			return nil, err
-		}
+			if err != nil {
+				return nil, err
+			}
 
-		return ret, nil
-	})
+			return ret, nil
+		},
+	)
 }
 
 func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
-	return tracing.TraceWithLatency(ctx, "GetAccount", func(ctx context.Context) (*ledger.Account, error) {
-		ret := &ledger.Account{}
-		if err := s.selectAccounts(q.PIT, q.ExpandVolumes, q.ExpandEffectiveVolumes, nil).
-			Model(ret).
-			Where("accounts.address = ?", q.Addr).
-			Limit(1).
-			Scan(ctx); err != nil {
-			return nil, postgres.ResolveError(err)
-		}
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetAccount",
+		s.getAccountHistogram,
+		func(ctx context.Context) (*ledger.Account, error) {
+			ret := &ledger.Account{}
+			if err := s.selectAccounts(q.PIT, q.ExpandVolumes, q.ExpandEffectiveVolumes, nil).
+				Model(ret).
+				Where("accounts.address = ?", q.Addr).
+				Limit(1).
+				Scan(ctx); err != nil {
+				return nil, postgres.ResolveError(err)
+			}
 
-		return ret, nil
-	})
+			return ret, nil
+		},
+	)
 }
 
 func (s *Store) CountAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (int, error) {
-	return tracing.TraceWithLatency(ctx, "CountAccounts", func(ctx context.Context) (int, error) {
-		return s.db.NewSelect().
-			TableExpr("(?) data", s.selectAccounts(
-				q.Options.Options.PIT,
-				q.Options.Options.ExpandVolumes,
-				q.Options.Options.ExpandEffectiveVolumes,
-				q.Options.QueryBuilder,
-			)).
-			Count(ctx)
-	})
+	return tracing.TraceWithMetric(
+		ctx,
+		"CountAccounts",
+		s.countAccountsHistogram,
+		func(ctx context.Context) (int, error) {
+			return s.db.NewSelect().
+				TableExpr("(?) data", s.selectAccounts(
+					q.Options.Options.PIT,
+					q.Options.Options.ExpandVolumes,
+					q.Options.Options.ExpandEffectiveVolumes,
+					q.Options.QueryBuilder,
+				)).
+				Count(ctx)
+		},
+	)
 }
 
 func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
-	_, err := tracing.TraceWithLatency(ctx, "UpdateAccountsMetadata", tracing.NoResult(func(ctx context.Context) error {
-		type AccountWithLedger struct {
-			ledger.Account `bun:",extend"`
-			Ledger         string `bun:"ledger,type:varchar"`
-		}
+	_, err := tracing.TraceWithMetric(
+		ctx,
+		"UpdateAccountsMetadata",
+		s.updateAccountsMetadataHistogram,
+		tracing.NoResult(func(ctx context.Context) error {
+			type AccountWithLedger struct {
+				ledger.Account `bun:",extend"`
+				Ledger         string `bun:"ledger,type:varchar"`
+			}
 
-		accounts := make([]AccountWithLedger, 0)
-		for account, accountMetadata := range m {
-			accounts = append(accounts, AccountWithLedger{
-				Ledger: s.ledger.Name,
-				Account: ledger.Account{
-					Address:  account,
-					Metadata: accountMetadata,
-				},
-			})
-		}
+			accounts := make([]AccountWithLedger, 0)
+			for account, accountMetadata := range m {
+				accounts = append(accounts, AccountWithLedger{
+					Ledger: s.ledger.Name,
+					Account: ledger.Account{
+						Address:  account,
+						Metadata: accountMetadata,
+					},
+				})
+			}
 
-		_, err := s.db.NewInsert().
-			Model(&accounts).
-			ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-			On("CONFLICT (ledger, address) DO UPDATE").
-			Set("metadata = excluded.metadata || accounts.metadata").
-			Where("not accounts.metadata @> excluded.metadata").
-			Exec(ctx)
-		return postgres.ResolveError(err)
-	}))
+			_, err := s.db.NewInsert().
+				Model(&accounts).
+				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+				On("CONFLICT (ledger, address) DO UPDATE").
+				Set("metadata = excluded.metadata || accounts.metadata").
+				Where("not accounts.metadata @> excluded.metadata").
+				Exec(ctx)
+			return postgres.ResolveError(err)
+		}),
+	)
 	return err
 }
 
 func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) error {
-	_, err := tracing.TraceWithLatency(ctx, "DeleteAccountMetadata", tracing.NoResult(func(ctx context.Context) error {
-		_, err := s.db.NewUpdate().
-			ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-			Set("metadata = metadata - ?", key).
-			Where("address = ?", account).
-			Where("ledger = ?", s.ledger.Name).
-			Exec(ctx)
-		return postgres.ResolveError(err)
-	}))
+	_, err := tracing.TraceWithMetric(
+		ctx,
+		"DeleteAccountMetadata",
+		s.deleteAccountMetadataHistogram,
+		tracing.NoResult(func(ctx context.Context) error {
+			_, err := s.db.NewUpdate().
+				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+				Set("metadata = metadata - ?", key).
+				Where("address = ?", account).
+				Where("ledger = ?", s.ledger.Name).
+				Exec(ctx)
+			return postgres.ResolveError(err)
+		}),
+	)
 	return err
 }
 
 func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
-	return tracing.TraceWithLatency(ctx, "UpsertAccount", func(ctx context.Context) (bool, error) {
-		upserted := false
-		err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-			ret, err := tx.NewInsert().
-				Model(account).
-				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-				On("conflict (ledger, address) do update").
-				Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
-				Set("metadata = accounts.metadata || excluded.metadata").
-				Set("updated_at = ?", account.UpdatedAt).
-				Value("ledger", "?", s.ledger.Name).
-				Returning("*").
-				Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage).
-				Exec(ctx)
-			if err != nil {
-				return err
-			}
-			rowsModified, err := ret.RowsAffected()
-			if err != nil {
-				return err
-			}
-			upserted = rowsModified > 0
-			return nil
-		})
-		return upserted, postgres.ResolveError(err)
-	}, func(ctx context.Context, upserted bool) {
-		trace.SpanFromContext(ctx).SetAttributes(
-			attribute.String("address", account.Address),
-			attribute.Bool("upserted", upserted),
-		)
-	})
+	return tracing.TraceWithMetric(
+		ctx,
+		"UpsertAccount",
+		s.upsertAccountHistogram,
+		func(ctx context.Context) (bool, error) {
+			upserted := false
+			err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+				ret, err := tx.NewInsert().
+					Model(account).
+					ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+					On("conflict (ledger, address) do update").
+					Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
+					Set("metadata = accounts.metadata || excluded.metadata").
+					Set("updated_at = ?", account.UpdatedAt).
+					Value("ledger", "?", s.ledger.Name).
+					Returning("*").
+					Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage).
+					Exec(ctx)
+				if err != nil {
+					return err
+				}
+				rowsModified, err := ret.RowsAffected()
+				if err != nil {
+					return err
+				}
+				upserted = rowsModified > 0
+				return nil
+			})
+			return upserted, postgres.ResolveError(err)
+		},
+		func(ctx context.Context, upserted bool) {
+			trace.SpanFromContext(ctx).SetAttributes(
+				attribute.String("address", account.Address),
+				attribute.Bool("upserted", upserted),
+			)
+		},
+	)
 }
