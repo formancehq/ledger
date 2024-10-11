@@ -3,23 +3,32 @@
 package performance_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/testing/platform/otelcollector"
+	"github.com/formancehq/go-libs/testing/platform/promtesting"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
+	"text/template"
 
 	"github.com/formancehq/go-libs/testing/docker"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/testing/utils"
+	. "github.com/formancehq/go-libs/testing/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
 var (
-	dockerPool *docker.Pool
-	pgServer   *pgtesting.PostgresServer
+	dockerPool    *docker.Pool
+	pgServer      *Deferred[*pgtesting.PostgresServer]
+	prom          *Deferred[*promtesting.Server]
+	otelCollector *Deferred[*otelcollector.Server]
 
 	authClientID     string
 	authClientSecret string
@@ -33,7 +42,6 @@ var (
 
 	parallelism int64
 	reportFile  string
-	testCore    bool
 
 	envFactory EnvFactory
 )
@@ -46,13 +54,12 @@ func init() {
 	flag.StringVar(&authIssuerURL, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
 	flag.StringVar(&reportFile, "report.file", "", "Location to write report file")
 	flag.Int64Var(&parallelism, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
-	flag.BoolVar(&testCore, "core", false, "Test core only")
 }
 
 func TestMain(m *testing.M) {
 	flag.Parse()
 
-	utils.WithTestMain(func(t *utils.TestingTForMain) int {
+	WithTestMain(func(t *TestingTForMain) int {
 		selectedEnv := 0
 		if stackURL != "" {
 			selectedEnv++
@@ -60,11 +67,8 @@ func TestMain(m *testing.M) {
 		if ledgerURL != "" {
 			selectedEnv++
 		}
-		if testCore {
-			selectedEnv++
-		}
 		if selectedEnv > 1 {
-			t.Errorf("Cannot specify both --stack.url, --ledger.url or --test-core")
+			t.Errorf("Cannot specify both --stack.url and --ledger.url")
 			t.FailNow()
 		}
 
@@ -73,18 +77,53 @@ func TestMain(m *testing.M) {
 			envFactory = NewRemoteLedgerEnvFactory(getHttpClient(stackURL+"/api/auth"), stackURL+"/api/ledger")
 		case ledgerURL != "":
 			envFactory = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURL), ledgerURL)
-		case testCore:
-			envFactory = NewCoreEnvFactory(pgServer)
 		default:
 			// Configure the environment to run benchmarks locally.
 			// Start a docker connection and create a new postgres server.
 			dockerPool = docker.NewPool(t, logging.Testing())
-			pgServer = pgtesting.CreatePostgresServer(
-				t,
-				dockerPool,
-				pgtesting.WithPGCrypto(),
-			)
-			envFactory = NewTestServerEnvFactory(pgServer)
+
+			testID := uuid.NewString()[:8]
+			network := dockerPool.CreateNetwork(testID)
+
+			pgServer = NewDeferred[*pgtesting.PostgresServer]()
+			pgServer.LoadAsync(func() *pgtesting.PostgresServer {
+				return pgtesting.CreatePostgresServer(
+					t,
+					dockerPool,
+					pgtesting.WithPGCrypto(),
+				)
+			})
+
+			prom = NewDeferred[*promtesting.Server]()
+			prom.LoadAsync(func() *promtesting.Server {
+				return promtesting.CreateServer(dockerPool, promtesting.Configuration{
+					Hostname:    "prometheus",
+					NetworkID:   network.Network.ID,
+					RemoteWrite: true,
+				})
+			})
+
+			otelCollector = NewDeferred[*otelcollector.Server]()
+			otelCollector.LoadAsync(func() *otelcollector.Server {
+				Wait(prom)
+
+				buf := bytes.NewBuffer(nil)
+				err := collectorConfig.Execute(buf, map[string]any{
+					"PrometheusPushAPI": "http://prometheus:9090/api/v1/write",
+					"Debug":             testing.Verbose(),
+				})
+				require.NoError(t, err)
+
+				fmt.Println(buf.String())
+				return otelcollector.CreateServer(dockerPool, otelcollector.Config{
+					CollectorConfig: buf.String(),
+					NetworkID:       network.Network.ID,
+				})
+			})
+
+			Wait(pgServer, prom, otelCollector)
+
+			envFactory = NewTestServerEnvFactory(pgServer.GetValue(), otelCollector.GetValue())
 		}
 
 		return m.Run()
@@ -114,3 +153,35 @@ func getHttpClient(authUrl string) *http.Client {
 
 	return httpClient
 }
+
+var collectorConfig = template.Must(template.New("otel-collector-config").Parse(`
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+processors:
+  batch:
+
+exporters:
+  prometheusremotewrite:
+    endpoint: {{.PrometheusPushAPI}}
+    tls:
+      insecure: true
+
+{{if .Debug}}
+  debug:
+    verbosity: detailed
+{{end}}
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters:
+      - prometheusremotewrite
+{{- if .Debug}}
+      - debug
+{{end}}
+`))
