@@ -73,13 +73,20 @@ var _ = Context("Ledger stress tests", func() {
 						createdTx, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
 							Ledger: ledger,
 							V2PostTransaction: components.V2PostTransaction{
-								// todo: add another postings
-								Postings: []components.V2Posting{{
-									Source:      fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
-									Destination: fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
-									Asset:       "USD",
-									Amount:      big.NewInt(100),
-								}},
+								Postings: []components.V2Posting{
+									{
+										Source:      fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
+										Destination: fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
+										Asset:       "USD",
+										Amount:      big.NewInt(100),
+									},
+									{
+										Source:      fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
+										Destination: fmt.Sprintf("accounts:%d", rand.Intn(countAccounts)),
+										Asset:       "USD",
+										Amount:      big.NewInt(100),
+									},
+								},
 							},
 							Force: pointer.For(true),
 						})
