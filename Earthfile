@@ -115,10 +115,12 @@ lint:
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
-    BUILD +tidy
-    BUILD +lint
-    BUILD +openapi
-    BUILD +openapi-markdown
+    WAIT
+        BUILD +tidy
+        BUILD +lint
+        BUILD +openapi
+        BUILD +openapi-markdown
+    END
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events

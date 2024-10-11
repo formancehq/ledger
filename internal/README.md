@@ -67,8 +67,6 @@ import "github.com/formancehq/ledger/internal"
   - [func \(a PostCommitVolumes\) Merge\(volumes PostCommitVolumes\) PostCommitVolumes](<#PostCommitVolumes.Merge>)
 - [type Posting](<#Posting>)
   - [func NewPosting\(source string, destination string, asset string, amount \*big.Int\) Posting](<#NewPosting>)
-  - [func \(p Posting\) GetDestination\(\) string](<#Posting.GetDestination>)
-  - [func \(p Posting\) GetSource\(\) string](<#Posting.GetSource>)
 - [type Postings](<#Postings>)
   - [func \(p Postings\) Reverse\(\) Postings](<#Postings.Reverse>)
   - [func \(p Postings\) Validate\(\) \(int, error\)](<#Postings.Validate>)
@@ -105,8 +103,6 @@ import "github.com/formancehq/ledger/internal"
   - [func \(v Volumes\) Copy\(\) Volumes](<#Volumes.Copy>)
   - [func \(Volumes\) JSONSchemaExtend\(schema \*jsonschema.Schema\)](<#Volumes.JSONSchemaExtend>)
   - [func \(v Volumes\) MarshalJSON\(\) \(\[\]byte, error\)](<#Volumes.MarshalJSON>)
-  - [func \(v Volumes\) WithInput\(input \*big.Int\) Volumes](<#Volumes.WithInput>)
-  - [func \(v Volumes\) WithOutput\(output \*big.Int\) Volumes](<#Volumes.WithOutput>)
 - [type VolumesByAssets](<#VolumesByAssets>)
   - [func \(v VolumesByAssets\) Balances\(\) BalancesByAssets](<#VolumesByAssets.Balances>)
 - [type VolumesWithBalance](<#VolumesWithBalance>)
@@ -799,24 +795,6 @@ func NewPosting(source string, destination string, asset string, amount *big.Int
 
 
 
-<a name="Posting.GetDestination"></a>
-### func \(Posting\) GetDestination
-
-```go
-func (p Posting) GetDestination() string
-```
-
-
-
-<a name="Posting.GetSource"></a>
-### func \(Posting\) GetSource
-
-```go
-func (p Posting) GetSource() string
-```
-
-
-
 <a name="Postings"></a>
 ## type Postings
 
@@ -1167,24 +1145,6 @@ func (Volumes) JSONSchemaExtend(schema *jsonschema.Schema)
 
 ```go
 func (v Volumes) MarshalJSON() ([]byte, error)
-```
-
-
-
-<a name="Volumes.WithInput"></a>
-### func \(Volumes\) WithInput
-
-```go
-func (v Volumes) WithInput(input *big.Int) Volumes
-```
-
-
-
-<a name="Volumes.WithOutput"></a>
-### func \(Volumes\) WithOutput
-
-```go
-func (v Volumes) WithOutput(output *big.Int) Volumes
 ```
 
 
