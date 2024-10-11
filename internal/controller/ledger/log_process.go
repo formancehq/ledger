@@ -68,9 +68,7 @@ func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store St
 					return nil, err
 				}
 				if output == nil {
-					err = errors.New("incoherent error, received duplicate IK but log not found in database")
-					trace.SpanFromContext(ctx).RecordError(err)
-					return nil, err
+					panic("incoherent error, received duplicate IK but log not found in database")
 				}
 
 				return output, nil
