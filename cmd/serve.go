@@ -1,15 +1,9 @@
 package cmd
 
 import (
-	"context"
-	"errors"
+	"github.com/formancehq/go-libs/pprof"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"net/http"
 	"time"
-
-	"github.com/formancehq/ledger/internal/bus"
-	otelpyroscope "github.com/grafana/otel-profiling-go"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/aws/iam"
@@ -19,6 +13,7 @@ import (
 	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/formancehq/go-libs/publish"
 	"github.com/formancehq/ledger/internal/api"
+	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage"
@@ -57,26 +52,9 @@ func NewServeCommand() *cobra.Command {
 				fx.NopLogger,
 				otlptraces.FXModuleFromFlags(cmd),
 			}
-			// todo(libs): move in dedicated shared package
 			if enablePProf {
 				logging.FromContext(cmd.Context()).Info("Enabling pprof...")
-				options = append(options,
-					fx.Decorate(func(provider trace.TracerProvider) trace.TracerProvider {
-						return otelpyroscope.NewTracerProvider(provider)
-					}),
-					fx.Invoke(func(lc fx.Lifecycle) {
-						lc.Append(fx.Hook{
-							OnStart: func(ctx context.Context) error {
-								go func() {
-									if err := http.ListenAndServe(":3000", nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
-										panic(err)
-									}
-								}()
-								return nil
-							},
-						})
-					}),
-				)
+				options = append(options, pprof.NewFXModule())
 			}
 
 			options = append(options,
@@ -91,7 +69,7 @@ func NewServeCommand() *cobra.Command {
 					},
 					DatabaseRetryConfiguration: systemcontroller.DatabaseRetryConfiguration{
 						MaxRetry: 10,
-						Delay:    time.Millisecond*100,
+						Delay:    time.Millisecond * 100,
 					},
 				}),
 				bus.NewFxModule(),

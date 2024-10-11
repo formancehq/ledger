@@ -95,6 +95,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/go-libs v1.7.2-0.20241001151743-2bd31525c7d1 h1:/Zo3e6njdSqIwi4nI038P2fTvzcfRQ6WaPmFzSI7s8o=
 github.com/formancehq/go-libs v1.7.2-0.20241001151743-2bd31525c7d1/go.mod h1:oLMVltNsXmvqLA0Ox5NSwVSeH8gbnG2ZUo6Lchp23XU=
+github.com/formancehq/go-libs v1.7.2-0.20241011081325-92040b4fad01 h1:fRokKJe35GLMfva8ehQbLra3oQdUHdfi2mG72BaQlEk=
+github.com/formancehq/go-libs v1.7.2-0.20241011081325-92040b4fad01/go.mod h1:B/KB2mPjFqybLDZufMcZQKpXcHg8Va6JaoUWda1KGU4=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/go-chi/chi v4.1.2+incompatible h1:fGFk2Gmi/YKXk0OmGfBh0WgmN3XB8lVnEyNz34tQRec=
