@@ -9,12 +9,12 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-func buildAggregatedBalancesQuery(r *http.Request) (query.Builder, error) {
+func buildAggregatedBalancesQuery(r *http.Request) query.Builder {
 	if address := r.URL.Query().Get("address"); address != "" {
-		return query.Match("address", address), nil
+		return query.Match("address", address)
 	}
 
-	return nil, nil
+	return nil
 }
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
@@ -25,11 +25,7 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queryBuilder, err := buildAggregatedBalancesQuery(r)
-	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
-		return
-	}
+	queryBuilder := buildAggregatedBalancesQuery(r)
 
 	query := ledgercontroller.NewGetAggregatedBalancesQuery(*pitFilter, queryBuilder,
 		// notes(gfyrag): if pit is not specified, always use insertion date to be backward compatible

@@ -39,7 +39,7 @@ const (
 func NewServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "serve",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			serveConfiguration := discoverServeConfiguration(cmd)
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)

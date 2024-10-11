@@ -106,6 +106,7 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 lint:
+    #todo: check config from core
     FROM +tidy
     RUN golangci-lint run --fix --build-tags it --timeout 5m
     SAVE ARTIFACT cmd AS LOCAL cmd

@@ -76,7 +76,7 @@ type PayloadMatcher interface {
 
 type NoOpPayloadMatcher struct{}
 
-func (n NoOpPayloadMatcher) Match(actual interface{}) error {
+func (n NoOpPayloadMatcher) Match(interface{}) error {
 	return nil
 }
 
@@ -93,8 +93,8 @@ func (e StructPayloadMatcher) Match(payload interface{}) error {
 		return fmt.Errorf("unable to marshal schema: %s", err)
 	}
 
-	schemaJsonLoader := gojsonschema.NewStringLoader(string(data))
-	schema, err := gojsonschema.NewSchema(schemaJsonLoader)
+	schemaJSONLoader := gojsonschema.NewStringLoader(string(data))
+	schema, err := gojsonschema.NewSchema(schemaJSONLoader)
 	if err != nil {
 		return fmt.Errorf("unable to load json schema: %s", err)
 	}

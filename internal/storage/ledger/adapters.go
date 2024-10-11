@@ -34,10 +34,8 @@ func (d *DefaultStoreAdapter) WithTX(ctx context.Context, opts *sql.TxOptions, f
 		sqlTX: tx,
 	}); err != nil {
 		return err
-	} else {
-		if commit {
-			return tx.Commit()
-		}
+	} else if commit {
+		return tx.Commit()
 	}
 
 	return nil

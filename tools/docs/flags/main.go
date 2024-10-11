@@ -15,7 +15,7 @@ import (
 func newDocFlagsCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "flags",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 1, ' ', tabwriter.Debug)
 

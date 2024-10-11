@@ -9,6 +9,8 @@ import (
 )
 
 func newTestingSystemController(t *testing.T, expectedSchemaCheck bool) (*SystemController, *LedgerController) {
+	t.Helper()
+
 	ctrl := gomock.NewController(t)
 	mockLedger := NewLedgerController(ctrl)
 	backend := NewSystemController(ctrl)

@@ -13,7 +13,6 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"errors"
 	"github.com/formancehq/go-libs/metadata"
 )
 
@@ -50,8 +49,8 @@ func (lt *LogType) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (l LogType) String() string {
-	switch l {
+func (lt LogType) String() string {
+	switch lt {
 	case SetMetadataLogType:
 		return "SET_METADATA"
 	case NewLogType:
@@ -77,7 +76,7 @@ func LogTypeFromString(logType string) LogType {
 		return DeleteMetadataLogType
 	}
 
-	panic(errors.New("invalid log type"))
+	panic("invalid log type")
 }
 
 // Log represents atomic actions made on the ledger.
