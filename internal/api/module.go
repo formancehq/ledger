@@ -2,12 +2,8 @@ package api
 
 import (
 	_ "embed"
-	"net/http"
-
-	"github.com/formancehq/go-libs/httpserver"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
-
 	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/go-libs/auth"
@@ -18,7 +14,6 @@ import (
 type Config struct {
 	Version string
 	Debug   bool
-	Bind    string
 }
 
 func Module(cfg Config) fx.Option {
@@ -39,18 +34,5 @@ func Module(cfg Config) fx.Option {
 			)
 		}),
 		health.Module(),
-		fx.Invoke(func(lc fx.Lifecycle, h chi.Router, logger logging.Logger) {
-
-			wrappedRouter := chi.NewRouter()
-			wrappedRouter.Use(func(handler http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
-					handler.ServeHTTP(w, r)
-				})
-			})
-			wrappedRouter.Mount("/", h)
-
-			lc.Append(httpserver.NewHook(wrappedRouter, httpserver.WithAddress(cfg.Bind)))
-		}),
 	)
 }

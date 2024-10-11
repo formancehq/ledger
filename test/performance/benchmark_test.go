@@ -4,7 +4,12 @@ package performance_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	ledgerclient "github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/stack/ledger/client/models/operations"
+	"net/http"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -20,6 +25,7 @@ type TransactionProvider interface {
 	Get(iteration int) (string, map[string]string)
 }
 type TransactionProviderFn func(iteration int) (string, map[string]string)
+
 func (fn TransactionProviderFn) Get(iteration int) (string, map[string]string) {
 	return fn(iteration)
 }
@@ -70,7 +76,8 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 
 						script, vars := benchmark.Scenarios[scenario].Get(iteration)
 						now := time.Now()
-						_, err := env.Executor().ExecuteScript(ctx, script, vars)
+
+						_, err := benchmark.createTransaction(ctx, env.Client(), l, script, vars)
 						require.NoError(b, err)
 
 						report.registerTransactionLatency(time.Since(now))
@@ -78,6 +85,15 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				})
 				b.StopTimer()
 				report.End = time.Now()
+
+				// Fetch otel metrics
+				rsp, err := http.Get(env.URL() + "/_metrics")
+				require.NoError(b, err)
+				ret := make(map[string]any)
+				require.NoError(b, json.NewDecoder(rsp.Body).Decode(&ret))
+				report.InternalMetrics = ret
+
+				// Compute final results
 				result = report.GetResult()
 
 				b.ReportMetric(report.TPS(), "t/s")
@@ -96,6 +112,61 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 	}
 
 	return results
+}
+
+func (benchmark *Benchmark) createTransaction(
+	ctx context.Context,
+	client *ledgerclient.Formance,
+	l ledger.Ledger,
+	script string,
+	vars map[string]string,
+) (*ledger.Transaction, error) {
+	varsAsMapAny := make(map[string]any)
+	for k, v := range vars {
+		varsAsMapAny[k] = v
+	}
+	response, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+		Ledger: l.Name,
+		V2PostTransaction: components.V2PostTransaction{
+			Script: &components.V2PostTransactionScript{
+				Plain: script,
+				Vars:  varsAsMapAny,
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating transaction: %w", err)
+	}
+
+	return &ledger.Transaction{
+		TransactionData: ledger.TransactionData{
+			Postings: Map(response.V2CreateTransactionResponse.Data.Postings, func(from components.V2Posting) ledger.Posting {
+				return ledger.Posting{
+					Source:      from.Source,
+					Destination: from.Destination,
+					Amount:      from.Amount,
+					Asset:       from.Asset,
+				}
+			}),
+			Metadata: response.V2CreateTransactionResponse.Data.Metadata,
+			Timestamp: time.Time{
+				Time: response.V2CreateTransactionResponse.Data.Timestamp,
+			},
+			Reference: func() string {
+				if response.V2CreateTransactionResponse.Data.Reference == nil {
+					return ""
+				}
+				return *response.V2CreateTransactionResponse.Data.Reference
+			}(),
+		},
+		ID: int(response.V2CreateTransactionResponse.Data.ID.Int64()),
+		RevertedAt: func() *time.Time {
+			if response.V2CreateTransactionResponse.Data.RevertedAt == nil {
+				return nil
+			}
+			return &time.Time{Time: *response.V2CreateTransactionResponse.Data.RevertedAt}
+		}(),
+	}, nil
 }
 
 func New(b *testing.B, envFactory EnvFactory, scenarios map[string]TransactionProvider) *Benchmark {

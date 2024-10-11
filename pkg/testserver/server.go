@@ -98,7 +98,6 @@ func (s *Server) Start() {
 		if s.configuration.OTLPConfig.Metrics != nil {
 			args = append(
 				args,
-				"--"+otlpmetrics.OtelMetricsFlag,
 				"--"+otlpmetrics.OtelMetricsExporterFlag, s.configuration.OTLPConfig.Metrics.Exporter,
 			)
 			if s.configuration.OTLPConfig.Metrics.OTLPConfig != nil {
@@ -257,7 +256,13 @@ func (s *Server) Subscribe() chan *nats.Msg {
 	return ret
 }
 
+func (s *Server) URL() string {
+	return httpserver.URL(s.ctx)
+}
+
 func New(t T, configuration Configuration) *Server {
+	t.Helper()
+
 	srv := &Server{
 		t:             t,
 		configuration: configuration,

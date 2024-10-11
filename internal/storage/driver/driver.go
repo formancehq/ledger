@@ -7,6 +7,8 @@ import (
 	. "github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/platform/postgres"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
@@ -27,6 +29,7 @@ const (
 
 type Driver struct {
 	db *bun.DB
+	meter metric.Meter
 }
 
 func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledger.Ledger) (*ledgerstore.Store, error) {
@@ -49,7 +52,7 @@ func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledge
 		return nil, fmt.Errorf("committing sql transaction to create ledger and schemas: %w", err)
 	}
 
-	return ledgerstore.New(d.db, ledger), nil
+	return ledgerstore.New(d.db, ledger, ledgerstore.WithMeter(d.meter)), nil
 }
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
@@ -106,7 +109,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		return nil, nil, postgres.ResolveError(err)
 	}
 
-	return ledgerstore.New(d.db, *ret), ret, nil
+	return ledgerstore.New(d.db, *ret, ledgerstore.WithMeter(d.meter)), ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
@@ -215,8 +218,24 @@ func (d *Driver) UpgradeAllLedgers(ctx context.Context) error {
 	return nil
 }
 
-func New(db *bun.DB) *Driver {
-	return &Driver{
+func New(db *bun.DB, opts ...Option) *Driver {
+	ret := &Driver{
 		db: db,
 	}
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(ret)
+	}
+	return ret
+}
+
+type Option func(d *Driver)
+
+func WithMeter(m metric.Meter) Option {
+	return func(d *Driver) {
+		d.meter = m
+	}
+}
+
+var defaultOptions = []Option {
+	WithMeter(noop.Meter{}),
 }

@@ -300,7 +300,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 }
 
 func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return tracing.Trace(ctx, "ListTransactions", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
+	return tracing.TraceWithMetric(ctx, "ListTransactions", s.listTransactionsHistogram, func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
 		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Transaction](
 			ctx,
 			s.selectTransactions(
@@ -320,67 +320,83 @@ func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTra
 }
 
 func (s *Store) CountTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (int, error) {
-	return tracing.TraceWithLatency(ctx, "CountTransactions", func(ctx context.Context) (int, error) {
-		return s.db.NewSelect().
-			TableExpr("(?) data", s.selectTransactions(
-				q.Options.Options.PIT,
-				q.Options.Options.ExpandVolumes,
-				q.Options.Options.ExpandEffectiveVolumes,
-				q.Options.QueryBuilder,
-			)).
-			Count(ctx)
-	})
+	return tracing.TraceWithMetric(
+		ctx,
+		"CountTransactions",
+		s.countTransactionsHistogram,
+		func(ctx context.Context) (int, error) {
+			return s.db.NewSelect().
+				TableExpr("(?) data", s.selectTransactions(
+					q.Options.Options.PIT,
+					q.Options.Options.ExpandVolumes,
+					q.Options.Options.ExpandEffectiveVolumes,
+					q.Options.QueryBuilder,
+				)).
+				Count(ctx)
+		},
+	)
 }
 
 func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetTransactionQuery) (*ledger.Transaction, error) {
-	return tracing.TraceWithLatency(ctx, "GetTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetTransaction",
+		s.getTransactionHistogram,
+		func(ctx context.Context) (*ledger.Transaction, error) {
 
-		ret := &ledger.Transaction{}
-		if err := s.selectTransactions(
-			filter.PIT,
-			filter.ExpandVolumes,
-			filter.ExpandEffectiveVolumes,
-			nil,
-		).
-			Where("transactions.id = ?", filter.ID).
-			Limit(1).
-			Model(ret).
-			Scan(ctx); err != nil {
-			return nil, postgres.ResolveError(err)
-		}
+			ret := &ledger.Transaction{}
+			if err := s.selectTransactions(
+				filter.PIT,
+				filter.ExpandVolumes,
+				filter.ExpandEffectiveVolumes,
+				nil,
+			).
+				Where("transactions.id = ?", filter.ID).
+				Limit(1).
+				Model(ret).
+				Scan(ctx); err != nil {
+				return nil, postgres.ResolveError(err)
+			}
 
-		return ret, nil
-	})
+			return ret, nil
+		},
+	)
 }
 
 func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) error {
-	_, err := tracing.TraceWithLatency(ctx, "InsertTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
-		_, err := s.db.NewInsert().
-			Model(tx).
-			ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID))).
-			Value("ledger", "?", s.ledger.Name).
-			Returning("id, timestamp, inserted_at").
-			Exec(ctx)
-		if err != nil {
-			err = postgres.ResolveError(err)
-			switch {
-			case errors.Is(err, postgres.ErrConstraintsFailed{}):
-				if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
-					return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
+	_, err := tracing.TraceWithMetric(
+		ctx,
+		"InsertTransaction",
+		s.insertTransactionHistogram,
+		func(ctx context.Context) (*ledger.Transaction, error) {
+			_, err := s.db.NewInsert().
+				Model(tx).
+				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+				Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID))).
+				Value("ledger", "?", s.ledger.Name).
+				Returning("id, timestamp, inserted_at").
+				Exec(ctx)
+			if err != nil {
+				err = postgres.ResolveError(err)
+				switch {
+				case errors.Is(err, postgres.ErrConstraintsFailed{}):
+					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
+						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
+					}
+				default:
+					return nil, err
 				}
-			default:
-				return nil, err
 			}
-		}
 
-		return tx, nil
-	}, func(ctx context.Context, tx *ledger.Transaction) {
-		trace.SpanFromContext(ctx).SetAttributes(
-			attribute.Int("id", tx.ID),
-			attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
-		)
-	})
+			return tx, nil
+		},
+		func(ctx context.Context, tx *ledger.Transaction) {
+			trace.SpanFromContext(ctx).SetAttributes(
+				attribute.Int("id", tx.ID),
+				attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
+			)
+		},
+	)
 
 	return err
 }
@@ -420,22 +436,27 @@ func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.Upd
 }
 
 func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Transaction, modified bool, err error) {
-	_, err = tracing.TraceWithLatency(ctx, "RevertTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
-		tx, modified, err = s.updateTxWithRetrieve(
-			ctx,
-			id,
-			s.db.NewUpdate().
-				Model(&ledger.Transaction{}).
-				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-				Where("id = ?", id).
-				Where("reverted_at is null").
-				Where("ledger = ?", s.ledger.Name).
-				Set("reverted_at = (now() at time zone 'utc')").
-				Set("updated_at = (now() at time zone 'utc')").
-				Returning("*"),
-		)
-		return nil, err
-	})
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"RevertTransaction",
+		s.revertTransactionHistogram,
+		func(ctx context.Context) (*ledger.Transaction, error) {
+			tx, modified, err = s.updateTxWithRetrieve(
+				ctx,
+				id,
+				s.db.NewUpdate().
+					Model(&ledger.Transaction{}).
+					ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+					Where("id = ?", id).
+					Where("reverted_at is null").
+					Where("ledger = ?", s.ledger.Name).
+					Set("reverted_at = (now() at time zone 'utc')").
+					Set("updated_at = (now() at time zone 'utc')").
+					Returning("*"),
+			)
+			return nil, err
+		},
+	)
 	if err != nil {
 		return nil, false, err
 	}
@@ -443,22 +464,27 @@ func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Trans
 }
 
 func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata) (tx *ledger.Transaction, modified bool, err error) {
-	_, err = tracing.TraceWithLatency(ctx, "UpdateTransactionMetadata", func(ctx context.Context) (*ledger.Transaction, error) {
-		tx, modified, err = s.updateTxWithRetrieve(
-			ctx,
-			id,
-			s.db.NewUpdate().
-				Model(&ledger.Transaction{}).
-				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-				Where("id = ?", id).
-				Where("ledger = ?", s.ledger.Name).
-				Set("metadata = metadata || ?", m).
-				Set("updated_at = (now() at time zone 'utc')").
-				Where("not (metadata @> ?)", m).
-				Returning("*"),
-		)
-		return nil, err
-	})
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"UpdateTransactionMetadata",
+		s.updateTransactionMetadataHistogram,
+		func(ctx context.Context) (*ledger.Transaction, error) {
+			tx, modified, err = s.updateTxWithRetrieve(
+				ctx,
+				id,
+				s.db.NewUpdate().
+					Model(&ledger.Transaction{}).
+					ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+					Where("id = ?", id).
+					Where("ledger = ?", s.ledger.Name).
+					Set("metadata = metadata || ?", m).
+					Set("updated_at = (now() at time zone 'utc')").
+					Where("not (metadata @> ?)", m).
+					Returning("*"),
+			)
+			return nil, err
+		},
+	)
 	if err != nil {
 		return nil, false, err
 	}
@@ -466,22 +492,27 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadat
 }
 
 func (s *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string) (tx *ledger.Transaction, modified bool, err error) {
-	_, err = tracing.TraceWithLatency(ctx, "DeleteTransactionMetadata", func(ctx context.Context) (*ledger.Transaction, error) {
-		tx, modified, err = s.updateTxWithRetrieve(
-			ctx,
-			id,
-			s.db.NewUpdate().
-				Model(&ledger.Transaction{}).
-				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-				Set("metadata = metadata - ?", key).
-				Set("updated_at = (now() at time zone 'utc')").
-				Where("id = ?", id).
-				Where("ledger = ?", s.ledger.Name).
-				Where("metadata -> ? is not null", key).
-				Returning("*"),
-		)
-		return nil, err
-	})
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"DeleteTransactionMetadata",
+		s.deleteTransactionMetadataHistogram,
+		func(ctx context.Context) (*ledger.Transaction, error) {
+			tx, modified, err = s.updateTxWithRetrieve(
+				ctx,
+				id,
+				s.db.NewUpdate().
+					Model(&ledger.Transaction{}).
+					ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+					Set("metadata = metadata - ?", key).
+					Set("updated_at = (now() at time zone 'utc')").
+					Where("id = ?", id).
+					Where("ledger = ?", s.ledger.Name).
+					Where("metadata -> ? is not null", key).
+					Returning("*"),
+			)
+			return nil, err
+		},
+	)
 	if err != nil {
 		return nil, false, err
 	}

@@ -17,45 +17,50 @@ import (
 )
 
 func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
-	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (ledger.PostCommitVolumes, error) {
+	return tracing.TraceWithMetric(
+		ctx,
+		"UpdateBalances",
+		s.updateBalancesHistogram,
+		func(ctx context.Context) (ledger.PostCommitVolumes, error) {
 
-		type AccountsVolumesWithLedger struct {
-			ledger.AccountsVolumes `bun:",extend"`
-			Ledger                 string `bun:"ledger,type:varchar"`
-		}
-
-		accountsVolumesWithLedger := collectionutils.Map(accountVolumes, func(from ledger.AccountsVolumes) AccountsVolumesWithLedger {
-			return AccountsVolumesWithLedger{
-				AccountsVolumes: from,
-				Ledger:          s.ledger.Name,
+			type AccountsVolumesWithLedger struct {
+				ledger.AccountsVolumes `bun:",extend"`
+				Ledger                 string `bun:"ledger,type:varchar"`
 			}
-		})
 
-		_, err := s.db.NewInsert().
-			Model(&accountsVolumesWithLedger).
-			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
-			On("conflict (ledger, accounts_address, asset) do update").
-			Set("input = accounts_volumes.input + excluded.input").
-			Set("output = accounts_volumes.output + excluded.output").
-			Returning("input, output").
-			Exec(ctx)
-		if err != nil {
-			return nil, postgres.ResolveError(err)
-		}
+			accountsVolumesWithLedger := collectionutils.Map(accountVolumes, func(from ledger.AccountsVolumes) AccountsVolumesWithLedger {
+				return AccountsVolumesWithLedger{
+					AccountsVolumes: from,
+					Ledger:          s.ledger.Name,
+				}
+			})
 
-		ret := ledger.PostCommitVolumes{}
-		for _, volumes := range accountVolumes {
-			if _, ok := ret[volumes.Account]; !ok {
-				ret[volumes.Account] = map[string]ledger.Volumes{}
+			_, err := s.db.NewInsert().
+				Model(&accountsVolumesWithLedger).
+				ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+				On("conflict (ledger, accounts_address, asset) do update").
+				Set("input = accounts_volumes.input + excluded.input").
+				Set("output = accounts_volumes.output + excluded.output").
+				Returning("input, output").
+				Exec(ctx)
+			if err != nil {
+				return nil, postgres.ResolveError(err)
 			}
-			ret[volumes.Account][volumes.Asset] = ledger.Volumes{
-				Input:  volumes.Input,
-				Output: volumes.Output,
-			}
-		}
 
-		return ret, err
-	})
+			ret := ledger.PostCommitVolumes{}
+			for _, volumes := range accountVolumes {
+				if _, ok := ret[volumes.Account]; !ok {
+					ret[volumes.Account] = map[string]ledger.Volumes{}
+				}
+				ret[volumes.Account][volumes.Asset] = ledger.Volumes{
+					Input:  volumes.Input,
+					Output: volumes.Output,
+				}
+			}
+
+			return ret, err
+		},
+	)
 }
 
 func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
@@ -214,17 +219,22 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 }
 
 func (s *Store) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-	return tracing.TraceWithLatency(ctx, "GetVolumesWithBalances", func(ctx context.Context) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-		return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
-			ctx,
-			s.selectVolumes(
-				q.Options.Options.OOT,
-				q.Options.Options.PIT,
-				q.Options.Options.UseInsertionDate,
-				q.Options.Options.GroupLvl,
-				q.Options.QueryBuilder,
-			),
-			bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes]](q),
-		)
-	})
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetVolumesWithBalances",
+		s.getVolumesWithBalancesHistogram,
+		func(ctx context.Context) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+			return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
+				ctx,
+				s.selectVolumes(
+					q.Options.Options.OOT,
+					q.Options.Options.PIT,
+					q.Options.Options.UseInsertionDate,
+					q.Options.Options.GroupLvl,
+					q.Options.QueryBuilder,
+				),
+				bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes]](q),
+			)
+		},
+	)
 }
