@@ -101,8 +101,6 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(err).To(Succeed())
 
 			firstTransactionsInsertedAt = time.Now()
-			// todo: remove that
-			<-time.After(time.Second)
 
 			_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
 				RequestBody: []components.V2BulkElement{
