@@ -3,32 +3,22 @@
 package performance_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/testing/platform/otelcollector"
-	"github.com/formancehq/go-libs/testing/platform/promtesting"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-	"net/http"
-	"testing"
-	"text/template"
-
 	"github.com/formancehq/go-libs/testing/docker"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	. "github.com/formancehq/go-libs/testing/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+	"net/http"
+	"testing"
 )
 
 var (
-	dockerPool    *docker.Pool
-	pgServer      *Deferred[*pgtesting.PostgresServer]
-	prom          *Deferred[*promtesting.Server]
-	otelCollector *Deferred[*otelcollector.Server]
+	dockerPool *docker.Pool
+	pgServer   *Deferred[*pgtesting.PostgresServer]
 
 	authClientID     string
 	authClientSecret string
@@ -82,9 +72,6 @@ func TestMain(m *testing.M) {
 			// Start a docker connection and create a new postgres server.
 			dockerPool = docker.NewPool(t, logging.Testing())
 
-			testID := uuid.NewString()[:8]
-			network := dockerPool.CreateNetwork(testID)
-
 			pgServer = NewDeferred[*pgtesting.PostgresServer]()
 			pgServer.LoadAsync(func() *pgtesting.PostgresServer {
 				return pgtesting.CreatePostgresServer(
@@ -94,36 +81,9 @@ func TestMain(m *testing.M) {
 				)
 			})
 
-			prom = NewDeferred[*promtesting.Server]()
-			prom.LoadAsync(func() *promtesting.Server {
-				return promtesting.CreateServer(dockerPool, promtesting.Configuration{
-					Hostname:    "prometheus",
-					NetworkID:   network.Network.ID,
-					RemoteWrite: true,
-				})
-			})
+			Wait(pgServer)
 
-			otelCollector = NewDeferred[*otelcollector.Server]()
-			otelCollector.LoadAsync(func() *otelcollector.Server {
-				Wait(prom)
-
-				buf := bytes.NewBuffer(nil)
-				err := collectorConfig.Execute(buf, map[string]any{
-					"PrometheusPushAPI": "http://prometheus:9090/api/v1/write",
-					"Debug":             testing.Verbose(),
-				})
-				require.NoError(t, err)
-
-				fmt.Println(buf.String())
-				return otelcollector.CreateServer(dockerPool, otelcollector.Config{
-					CollectorConfig: buf.String(),
-					NetworkID:       network.Network.ID,
-				})
-			})
-
-			Wait(pgServer, prom, otelCollector)
-
-			envFactory = NewTestServerEnvFactory(pgServer.GetValue(), otelCollector.GetValue())
+			envFactory = NewTestServerEnvFactory(pgServer.GetValue())
 		}
 
 		return m.Run()
@@ -153,35 +113,3 @@ func getHttpClient(authUrl string) *http.Client {
 
 	return httpClient
 }
-
-var collectorConfig = template.Must(template.New("otel-collector-config").Parse(`
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-processors:
-  batch:
-
-exporters:
-  prometheusremotewrite:
-    endpoint: {{.PrometheusPushAPI}}
-    tls:
-      insecure: true
-
-{{if .Debug}}
-  debug:
-    verbosity: detailed
-{{end}}
-
-service:
-  pipelines:
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters:
-      - prometheusremotewrite
-{{- if .Debug}}
-      - debug
-{{end}}
-`))

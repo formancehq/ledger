@@ -26,7 +26,9 @@ services:
     volumes:
     - .:/src
     ports:
+    # HTTP API
     - 3068:3068
+    # pprof
     - 3000:3000
     working_dir: /src
     depends_on:
@@ -37,3 +39,5 @@ services:
       DEBUG: "true"
       ENABLE_PPROF: "true"
       GOWORK: off
+      OTEL_METRICS: "true"
+      OTEL_METRICS_EXPORTER: "memory"

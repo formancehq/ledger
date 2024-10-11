@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/httpserver"
 	"github.com/formancehq/go-libs/pprof"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"time"
 
 	"github.com/formancehq/go-libs/auth"
@@ -57,6 +60,8 @@ func NewServeCommand() *cobra.Command {
 				options = append(options, pprof.NewFXModule())
 			}
 
+			otelMetricsExporter, _ := cmd.Flags().GetString(otlpmetrics.OtelMetricsExporterFlag)
+
 			options = append(options,
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				otlpmetrics.FXModuleFromFlags(cmd),
@@ -77,9 +82,24 @@ func NewServeCommand() *cobra.Command {
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
-					Bind:    serveConfiguration.bind,
+				}),
+				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
+					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(serveConfiguration.bind)))
 				}),
 			)
+			if otelMetricsExporter == "memory" {
+				options = append(options, fx.Decorate(func(
+					h chi.Router,
+					meterProvider *metric.MeterProvider,
+					exporter *otlpmetrics.InMemoryExporter,
+				) chi.Router {
+					wrappedRouter := chi.NewRouter()
+					wrappedRouter.Handle("/_metrics", otlpmetrics.NewInMemoryExporterHandler(meterProvider, exporter))
+					wrappedRouter.Mount("/", h)
+
+					return wrappedRouter
+				}))
+			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},

@@ -4,12 +4,9 @@ package performance_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"testing"
 
-	"github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/components"
@@ -39,7 +36,7 @@ func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledge
 	})
 	require.NoError(b, err)
 
-	return NewRemoteLedgerEnv(client, ledger)
+	return NewRemoteLedgerEnv(client, ledgerURL, ledger)
 }
 
 var _ EnvFactory = (*RemoteLedgerEnvFactory)(nil)
@@ -52,69 +49,28 @@ func NewRemoteLedgerEnvFactory(httpClient *http.Client, ledgerURL string) *Remot
 }
 
 type RemoteLedgerEnv struct {
-	ledger ledger.Ledger
-	client *ledgerclient.Formance
+	ledger    ledger.Ledger
+	client    *ledgerclient.Formance
+	ledgerURL string
 }
 
-func (r *RemoteLedgerEnv) Executor() TransactionExecutor {
-	return TransactionExecutorFn(func(ctx context.Context, script string, vars map[string]string) (*ledger.Transaction, error) {
-		varsAsMapAny := make(map[string]any)
-		for k, v := range vars {
-			varsAsMapAny[k] = v
-		}
-		response, err := r.client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-			Ledger: r.ledger.Name,
-			V2PostTransaction: components.V2PostTransaction{
-				Script: &components.V2PostTransactionScript{
-					Plain: script,
-					Vars:  varsAsMapAny,
-				},
-			},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("creating transaction: %w", err)
-		}
+func (r *RemoteLedgerEnv) URL() string {
+	return r.ledgerURL
+}
 
-		return &ledger.Transaction{
-			TransactionData: ledger.TransactionData{
-				Postings: collectionutils.Map(response.V2CreateTransactionResponse.Data.Postings, func(from components.V2Posting) ledger.Posting {
-					return ledger.Posting{
-						Source:      from.Source,
-						Destination: from.Destination,
-						Amount:      from.Amount,
-						Asset:       from.Asset,
-					}
-				}),
-				Metadata: response.V2CreateTransactionResponse.Data.Metadata,
-				Timestamp: time.Time{
-					Time: response.V2CreateTransactionResponse.Data.Timestamp,
-				},
-				Reference: func() string {
-					if response.V2CreateTransactionResponse.Data.Reference == nil {
-						return ""
-					}
-					return *response.V2CreateTransactionResponse.Data.Reference
-				}(),
-			},
-			ID: int(response.V2CreateTransactionResponse.Data.ID.Int64()),
-			RevertedAt: func() *time.Time {
-				if response.V2CreateTransactionResponse.Data.RevertedAt == nil {
-					return nil
-				}
-				return &time.Time{Time: *response.V2CreateTransactionResponse.Data.RevertedAt}
-			}(),
-		}, nil
-	})
+func (r *RemoteLedgerEnv) Client() *ledgerclient.Formance {
+	return r.client
 }
 
 func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 	return nil
 }
 
-func NewRemoteLedgerEnv(client *ledgerclient.Formance, ledger ledger.Ledger) *RemoteLedgerEnv {
+func NewRemoteLedgerEnv(client *ledgerclient.Formance, metricsURL string, ledger ledger.Ledger) *RemoteLedgerEnv {
 	return &RemoteLedgerEnv{
-		client: client,
-		ledger: ledger,
+		client:    client,
+		ledger:    ledger,
+		ledgerURL: metricsURL,
 	}
 }
 

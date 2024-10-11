@@ -5,7 +5,7 @@ package performance_test
 import (
 	"context"
 	"github.com/formancehq/go-libs/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/testing/platform/otelcollector"
+	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"io"
 	"os"
 	"testing"
@@ -25,41 +25,23 @@ type TestServerEnv struct {
 	ledger     ledger.Ledger
 }
 
+func (e *TestServerEnv) Client() *ledgerclient.Formance {
+	return e.testServer.Client()
+}
+
+func (e *TestServerEnv) URL() string {
+	return e.testServer.URL()
+}
+
 func (e *TestServerEnv) Stop(ctx context.Context) error {
 	e.testServer.Stop(ctx)
 	return nil
 }
 
-func (e *TestServerEnv) Executor() TransactionExecutor {
-	return TransactionExecutorFn(func(ctx context.Context, plain string, vars map[string]string) (*ledger.Transaction, error) {
-		varsAsMapAny := make(map[string]any)
-		for k, v := range vars {
-			varsAsMapAny[k] = v
-		}
-		ret, err := e.testServer.Client().Ledger.V2.
-			CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-				Ledger: e.ledger.Name,
-				V2PostTransaction: components.V2PostTransaction{
-					Script: &components.V2PostTransactionScript{
-						Plain: plain,
-						Vars:  varsAsMapAny,
-					},
-				},
-			})
-		if err != nil {
-			return nil, err
-		}
-		return &ledger.Transaction{
-			ID: int(ret.V2CreateTransactionResponse.Data.ID.Int64()),
-		}, nil
-	})
-}
-
 var _ Env = (*TestServerEnv)(nil)
 
 type TestServerEnvFactory struct {
-	pgServer      *pgtesting.PostgresServer
-	otelCollector *otelcollector.Server
+	pgServer *pgtesting.PostgresServer
 }
 
 func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
@@ -82,12 +64,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 		Output:                output,
 		OTLPConfig: &testserver.OTLPConfig{
 			Metrics: &otlpmetrics.ModuleConfig{
-				Exporter: "otlp",
-				OTLPConfig: &otlpmetrics.OTLPConfig{
-					Mode:     "grpc",
-					Endpoint: "127.0.0.1:" + f.otelCollector.GRPCPort,
-					Insecure: true,
-				},
+				Exporter: "memory",
 			},
 		},
 	})
@@ -111,9 +88,8 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 
 var _ EnvFactory = (*TestServerEnvFactory)(nil)
 
-func NewTestServerEnvFactory(pgServer *pgtesting.PostgresServer, otelCollector *otelcollector.Server) *TestServerEnvFactory {
+func NewTestServerEnvFactory(pgServer *pgtesting.PostgresServer) *TestServerEnvFactory {
 	return &TestServerEnvFactory{
-		pgServer:      pgServer,
-		otelCollector: otelCollector,
+		pgServer: pgServer,
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -24,9 +23,7 @@ func runTx[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store
 		log.IdempotencyKey = parameters.IdempotencyKey
 		log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
 
-		_, err = tracing.TraceWithLatency(ctx, "InsertLog", func(ctx context.Context) (*struct{}, error) {
-			return nil, tx.InsertLog(ctx, &log)
-		})
+		err = tx.InsertLog(ctx, &log)
 		if err != nil {
 			return false, fmt.Errorf("failed to insert log: %w", err)
 		}

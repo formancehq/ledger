@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"math/big"
 	"reflect"
 
@@ -25,22 +27,49 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
+type DefaultControllerOption func(controller *DefaultController)
+
+var defaultOptions []DefaultControllerOption = []DefaultControllerOption{
+	WithMeter(noop.Meter{}),
+}
+
+func WithMeter(meter metric.Meter) DefaultControllerOption {
+	return func(controller *DefaultController) {
+		controller.meter = meter
+	}
+}
+
 type DefaultController struct {
 	store          Store
 	machineFactory MachineFactory
 	ledger         ledger.Ledger
+
+	meter                   metric.Meter
+	executeMachineHistogram metric.Int64Histogram
 }
 
 func NewDefaultController(
 	ledger ledger.Ledger,
 	store Store,
 	machineFactory MachineFactory,
+	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
 		store:          store,
 		ledger:         ledger,
 		machineFactory: machineFactory,
 	}
+
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(ret)
+	}
+
+	histogram, err := ret.meter.Int64Histogram("numscript.run")
+	if err != nil {
+		return nil
+	}
+
+	ret.executeMachineHistogram = histogram
 
 	return ret
 }
@@ -217,7 +246,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	}
 
 	output, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.CreatedTransaction, error) {
-		result, err := tracing.TraceWithLatency(ctx, "ExecuteMachine", func(ctx context.Context) (*MachineResult, error) {
+		result, err := tracing.TraceWithMetric(ctx, "ExecuteMachine", ctrl.executeMachineHistogram, func(ctx context.Context) (*MachineResult, error) {
 			return m.Execute(ctx, sqlTX, input.Vars)
 		})
 		if err != nil {

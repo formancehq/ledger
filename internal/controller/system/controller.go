@@ -2,6 +2,8 @@ package system
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"time"
 
 	"github.com/formancehq/ledger/internal/tracing"
@@ -30,6 +32,8 @@ type DefaultController struct {
 	compiler ledgercontroller.Compiler
 	registry *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
+
+	meter metric.Meter
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
@@ -43,6 +47,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			*l,
 			store,
 			ledgercontroller.NewDefaultMachineFactory(ctrl.compiler),
+			ledgercontroller.WithMeter(ctrl.meter),
 		)
 
 		// Add too many client error handling
@@ -131,6 +136,13 @@ func WithDatabaseRetryConfiguration(configuration DatabaseRetryConfiguration) Op
 	}
 }
 
+func WithMeter(m metric.Meter) Option {
+	return func(ctrl *DefaultController) {
+		ctrl.meter = m
+	}
+}
+
 var defaultOptions = []Option{
 	WithCompiler(ledgercontroller.NewDefaultCompiler()),
+	WithMeter(noop.Meter{}),
 }
