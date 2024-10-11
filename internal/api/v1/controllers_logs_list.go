@@ -11,7 +11,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-func buildGetLogsQuery(r *http.Request) (query.Builder, error) {
+func buildGetLogsQuery(r *http.Request) query.Builder {
 	clauses := make([]query.Builder, 0)
 	if after := r.URL.Query().Get("after"); after != "" {
 		clauses = append(clauses, query.Lt("id", after))
@@ -25,13 +25,13 @@ func buildGetLogsQuery(r *http.Request) (query.Builder, error) {
 	}
 
 	if len(clauses) == 0 {
-		return nil, nil
+		return nil
 	}
 	if len(clauses) == 1 {
-		return clauses[0], nil
+		return clauses[0]
 	}
 
-	return query.And(clauses...), nil
+	return query.And(clauses...)
 }
 
 func getLogs(w http.ResponseWriter, r *http.Request) {
@@ -52,21 +52,12 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 			bunpaginate.WithDefaultPageSize(DefaultPageSize),
 			bunpaginate.WithMaxPageSize(MaxPageSize))
 		if err != nil {
-			switch {
-			default:
-				api.InternalServerError(w, r, err)
-			}
-			return
-		}
-
-		qb, err := buildGetLogsQuery(r)
-		if err != nil {
-			api.BadRequest(w, ErrValidation, err)
+			common.HandleCommonErrors(w, r, err)
 			return
 		}
 
 		query = ledgercontroller.NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
-			QueryBuilder: qb,
+			QueryBuilder: buildGetLogsQuery(r),
 			PageSize:     pageSize,
 		})
 	}

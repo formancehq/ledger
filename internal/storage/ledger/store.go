@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
 )
 
@@ -69,10 +68,8 @@ func (s *Store) validateAddressFilter(operator string, value any) error {
 	}
 	if value, ok := value.(string); !ok {
 		return fmt.Errorf("invalid 'address' filter")
-	} else {
-		if isSegmentedAddress(value) && !s.ledger.HasFeature(ledger.FeatureIndexAddressSegments, "ON") {
-			return fmt.Errorf("feature %s must be 'ON' to use segments address", ledger.FeatureIndexAddressSegments)
-		}
+	} else if isSegmentedAddress(value) && !s.ledger.HasFeature(ledger.FeatureIndexAddressSegments, "ON") {
+		return fmt.Errorf("feature %s must be 'ON' to use segments address", ledger.FeatureIndexAddressSegments)
 	}
 
 	return nil

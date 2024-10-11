@@ -64,7 +64,7 @@ func mapExpandedTransactionToV1(tx ledger.Transaction) any {
 	}
 }
 
-func buildGetTransactionsQuery(r *http.Request) (query.Builder, error) {
+func buildGetTransactionsQuery(r *http.Request) query.Builder {
 	clauses := make([]query.Builder, 0)
 	if after := r.URL.Query().Get("after"); after != "" {
 		clauses = append(clauses, query.Lt("id", after))
@@ -96,11 +96,11 @@ func buildGetTransactionsQuery(r *http.Request) (query.Builder, error) {
 	}
 
 	if len(clauses) == 0 {
-		return nil, nil
+		return nil
 	}
 	if len(clauses) == 1 {
-		return clauses[0], nil
+		return clauses[0]
 	}
 
-	return query.And(clauses...), nil
+	return query.And(clauses...)
 }

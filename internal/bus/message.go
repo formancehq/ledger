@@ -31,13 +31,13 @@ type SavedMetadata struct {
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func newEventSavedMetadata(metadata SavedMetadata) publish.EventMessage {
+func newEventSavedMetadata(savedMetadata SavedMetadata) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeSavedMetadata,
-		Payload: metadata,
+		Payload: savedMetadata,
 	}
 }
 
@@ -47,13 +47,13 @@ type RevertedTransaction struct {
 	RevertTransaction   ledger.Transaction `json:"revertTransaction"`
 }
 
-func newEventRevertedTransaction(tx RevertedTransaction) publish.EventMessage {
+func newEventRevertedTransaction(revertedTransaction RevertedTransaction) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeRevertedTransaction,
-		Payload: tx,
+		Payload: revertedTransaction,
 	}
 }
 
@@ -64,12 +64,12 @@ type DeletedMetadata struct {
 	Key        string `json:"key"`
 }
 
-func newEventDeletedMetadata(tx DeletedMetadata) publish.EventMessage {
+func newEventDeletedMetadata(deletedMetadata DeletedMetadata) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeDeletedMetadata,
-		Payload: tx,
+		Payload: deletedMetadata,
 	}
 }

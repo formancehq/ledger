@@ -155,7 +155,6 @@ func TestHash(t *testing.T) {
 			expectedHashRetry: "Re0FjRP34EBKzJTp4emmnVC1OKwd9f4mxVzbnTrvPd4=",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

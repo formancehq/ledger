@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	_ "embed"
 	"text/template"
 
 	"github.com/formancehq/ledger/internal/tracing"

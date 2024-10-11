@@ -35,12 +35,7 @@ func buildAccountsFilterQuery(r *http.Request) (query.Builder, error) {
 			return nil, err
 		}
 
-		balanceOperator, err := getBalanceOperator(r)
-		if err != nil {
-			return nil, err
-		}
-
-		switch balanceOperator {
+		switch getBalanceOperator(r) {
 		case "e":
 			clauses = append(clauses, query.Match("balance", balanceValue))
 		case "ne":

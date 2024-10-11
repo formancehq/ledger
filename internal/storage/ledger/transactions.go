@@ -524,19 +524,19 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 			parts = append(parts, fmt.Sprintf("destinations_arrays @> '%s'", string(data)))
 		}
 		return strings.Join(parts, " or ")
-	} else {
-		data, err := json.Marshal([]string{address})
-		if err != nil {
-			panic(err)
-		}
-
-		parts := make([]string, 0)
-		if source {
-			parts = append(parts, fmt.Sprintf("sources @> '%s'", string(data)))
-		}
-		if destination {
-			parts = append(parts, fmt.Sprintf("destinations @> '%s'", string(data)))
-		}
-		return strings.Join(parts, " or ")
 	}
+
+	data, err := json.Marshal([]string{address})
+	if err != nil {
+		panic(err)
+	}
+
+	parts := make([]string, 0)
+	if source {
+		parts = append(parts, fmt.Sprintf("sources @> '%s'", string(data)))
+	}
+	if destination {
+		parts = append(parts, fmt.Sprintf("destinations @> '%s'", string(data)))
+	}
+	return strings.Join(parts, " or ")
 }

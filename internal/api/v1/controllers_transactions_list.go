@@ -18,10 +18,8 @@ func listTransactions(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		options.QueryBuilder, err = buildGetTransactionsQuery(r)
-		if err != nil {
-			return nil, err
-		}
+		options.QueryBuilder = buildGetTransactionsQuery(r)
+
 		return pointer.For(ledgercontroller.NewListTransactionsQuery(*options)), nil
 	})
 	if err != nil {

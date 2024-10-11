@@ -34,7 +34,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(serve)
 	root.AddCommand(buckets)
 	root.AddCommand(version)
-	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
+	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, _ *bun.DB) error {
+		// todo: use provided db ...
 		return upgradeAll(cmd)
 	}))
 
