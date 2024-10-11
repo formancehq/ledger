@@ -3,6 +3,8 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/otlp"
+	"github.com/formancehq/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/publish"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
@@ -29,11 +31,16 @@ type T interface {
 	Logf(format string, args ...any)
 }
 
+type OTLPConfig struct {
+	Metrics *otlpmetrics.ModuleConfig
+}
+
 type Configuration struct {
 	PostgresConfiguration bunconnect.ConnectionOptions
 	NatsURL               string
 	Output                io.Writer
 	Debug                 bool
+	OTLPConfig            *OTLPConfig
 }
 
 type Server struct {
@@ -86,6 +93,52 @@ func (s *Server) Start() {
 			"--"+publish.PublisherNatsURLFlag, s.configuration.NatsURL,
 			"--"+publish.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", s.id),
 		)
+	}
+	if s.configuration.OTLPConfig != nil {
+		if s.configuration.OTLPConfig.Metrics != nil {
+			args = append(
+				args,
+				"--"+otlpmetrics.OtelMetricsFlag,
+				"--"+otlpmetrics.OtelMetricsExporterFlag, s.configuration.OTLPConfig.Metrics.Exporter,
+			)
+			if s.configuration.OTLPConfig.Metrics.OTLPConfig != nil {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsExporterOTLPEndpointFlag, s.configuration.OTLPConfig.Metrics.OTLPConfig.Endpoint,
+					"--"+otlpmetrics.OtelMetricsExporterOTLPModeFlag, s.configuration.OTLPConfig.Metrics.OTLPConfig.Mode,
+				)
+				if s.configuration.OTLPConfig.Metrics.OTLPConfig.Insecure {
+					args = append(args, "--"+otlpmetrics.OtelMetricsExporterOTLPInsecureFlag)
+				}
+			}
+			if s.configuration.OTLPConfig.Metrics.RuntimeMetrics {
+				args = append(args, "--"+otlpmetrics.OtelMetricsRuntimeFlag)
+			}
+			if s.configuration.OTLPConfig.Metrics.MinimumReadMemStatsInterval != 0 {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag,
+					s.configuration.OTLPConfig.Metrics.MinimumReadMemStatsInterval.String(),
+				)
+			}
+			if s.configuration.OTLPConfig.Metrics.PushInterval != 0 {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsExporterPushIntervalFlag,
+					s.configuration.OTLPConfig.Metrics.PushInterval.String(),
+				)
+			}
+			if len(s.configuration.OTLPConfig.Metrics.ResourceAttributes) > 0 {
+				args = append(
+					args,
+					"--"+otlp.OtelResourceAttributesFlag,
+					strings.Join(s.configuration.OTLPConfig.Metrics.ResourceAttributes, ","),
+				)
+			}
+			if s.configuration.OTLPConfig.Metrics.ServiceName != "" {
+				args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.Metrics.ServiceName)
+			}
+		}
 	}
 
 	if s.configuration.Debug {
