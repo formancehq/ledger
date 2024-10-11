@@ -4,6 +4,8 @@ package performance_test
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/testing/platform/otelcollector"
 	"io"
 	"os"
 	"testing"
@@ -56,7 +58,8 @@ func (e *TestServerEnv) Executor() TransactionExecutor {
 var _ Env = (*TestServerEnv)(nil)
 
 type TestServerEnvFactory struct {
-	pgServer *pgtesting.PostgresServer
+	pgServer      *pgtesting.PostgresServer
+	otelCollector *otelcollector.Server
 }
 
 func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
@@ -77,6 +80,16 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 		PostgresConfiguration: connectionOptions,
 		Debug:                 testing.Verbose(),
 		Output:                output,
+		OTLPConfig: &testserver.OTLPConfig{
+			Metrics: &otlpmetrics.ModuleConfig{
+				Exporter: "otlp",
+				OTLPConfig: &otlpmetrics.OTLPConfig{
+					Mode:     "grpc",
+					Endpoint: "127.0.0.1:" + f.otelCollector.GRPCPort,
+					Insecure: true,
+				},
+			},
+		},
 	})
 
 	_, err := testServer.Client().Ledger.V2.
@@ -98,8 +111,9 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 
 var _ EnvFactory = (*TestServerEnvFactory)(nil)
 
-func NewTestServerEnvFactory(pgServer *pgtesting.PostgresServer) *TestServerEnvFactory {
+func NewTestServerEnvFactory(pgServer *pgtesting.PostgresServer, otelCollector *otelcollector.Server) *TestServerEnvFactory {
 	return &TestServerEnvFactory{
-		pgServer: pgServer,
+		pgServer:      pgServer,
+		otelCollector: otelCollector,
 	}
 }
