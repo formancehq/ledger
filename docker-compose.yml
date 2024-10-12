@@ -39,5 +39,4 @@ services:
       DEBUG: "true"
       ENABLE_PPROF: "true"
       GOWORK: off
-      OTEL_METRICS: "true"
       OTEL_METRICS_EXPORTER: "memory"
