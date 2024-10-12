@@ -40,7 +40,8 @@ const (
 
 func NewServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "serve",
+		Use:          "serve",
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			serveConfiguration := discoverServeConfiguration(cmd)
 
