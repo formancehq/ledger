@@ -9,15 +9,15 @@ import (
 )
 
 type Result struct {
-	Start time.Time `json:"start"`
-	End   time.Time `json:"end"`
+	Start time.Time
+	End   time.Time
 
-	Metrics *tachymeter.Metrics `json:"metrics"`
+	Metrics *tachymeter.Metrics
 
-	Name            string         `json:"name"`
-	Configuration   configuration  `json:"configuration"`
-	TPS             float64        `json:"tps"`
-	InternalMetrics map[string]any `json:"internalMetrics"`
+	Name            string
+	Configuration   configuration
+	TPS             float64
+	InternalMetrics map[string]any
 }
 
 type report struct {

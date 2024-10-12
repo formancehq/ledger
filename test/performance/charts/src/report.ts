@@ -29,17 +29,17 @@ interface Metrics {
 }
 
 interface Configuration {
-    name: string,
-    featureSet: Map<string, string>
+    Name: string,
+    FeatureSet: Map<string, string>
 }
 
 interface Report {
-    start: string,
-    end: string,
-    metrics: Metrics,
-    scenario: string,
-    configuration: Configuration,
-    tps: number
+    Start: string,
+    End: string,
+    Metrics: Metrics,
+    Scenario: string,
+    Configuration: Configuration,
+    TPS: number
 }
 
 interface BenchmarkResult {
