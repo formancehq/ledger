@@ -32,6 +32,7 @@ type T interface {
 }
 
 type OTLPConfig struct {
+	BaseConfig otlp.Config
 	Metrics *otlpmetrics.ModuleConfig
 }
 
@@ -134,9 +135,9 @@ func (s *Server) Start() {
 					strings.Join(s.configuration.OTLPConfig.Metrics.ResourceAttributes, ","),
 				)
 			}
-			if s.configuration.OTLPConfig.Metrics.ServiceName != "" {
-				args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.Metrics.ServiceName)
-			}
+		}
+		if s.configuration.OTLPConfig.BaseConfig.ServiceName != "" {
+			args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.BaseConfig.ServiceName)
 		}
 	}
 
