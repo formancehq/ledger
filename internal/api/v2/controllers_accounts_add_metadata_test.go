@@ -69,7 +69,7 @@ func TestAccountsAddMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/", api.Buffer(t, testCase.body))
 			// httptest.NewRequest check for invalid urls while we want to test invalid urls

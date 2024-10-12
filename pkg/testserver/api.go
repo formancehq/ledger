@@ -27,7 +27,7 @@ func GetLedger(ctx context.Context, srv *Server, request operations.V2GetLedgerR
 }
 
 func GetInfo(ctx context.Context, srv *Server) (*operations.V2GetInfoResponse, error) {
-	return srv.Client().Ledger.V2.GetInfo(ctx)
+	return srv.Client().Ledger.GetInfo(ctx)
 }
 
 func CreateTransaction(ctx context.Context, srv *Server, request operations.V2CreateTransactionRequest) (*components.V2Transaction, error) {

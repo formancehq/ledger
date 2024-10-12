@@ -18,7 +18,7 @@ func TestLedgersInfo(t *testing.T) {
 	t.Parallel()
 
 	systemController, ledgerController := newTestingSystemController(t, false)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 	migrationInfo := []migrations.Info{
 		{

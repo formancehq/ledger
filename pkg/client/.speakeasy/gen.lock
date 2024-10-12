@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 46b920c97720c2cf24009a8029141b0e
+  docChecksum: 0558cb1f36313c824f51744f6f8c355d
   docVersion: v1
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.4.10
-  configChecksum: 80adc8750c319f7d5486bd5211882798
+  releaseVersion: 0.4.13
+  configChecksum: a8fb416ba04bb07465d883f3e4ed1f7a
 features:
   go:
     additionalDependencies: 0.1.0
@@ -54,6 +54,7 @@ generatedFiles:
   - internal/utils/retries.go
   - internal/utils/security.go
   - internal/utils/utils.go
+  - /models/operations/v2getinfo.go
   - /models/operations/getinfo.go
   - /models/operations/getledgerinfo.go
   - /models/operations/countaccounts.go
@@ -74,7 +75,6 @@ generatedFiles:
   - /models/operations/getbalances.go
   - /models/operations/getbalancesaggregated.go
   - /models/operations/listlogs.go
-  - /models/operations/v2getinfo.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2getledger.go
   - /models/operations/v2createledger.go
@@ -100,11 +100,15 @@ generatedFiles:
   - /models/operations/v2listlogs.go
   - /models/operations/v2importlogs.go
   - /models/operations/v2exportlogs.go
+  - /models/sdkerrors/v2errorresponse.go
+  - /models/sdkerrors/errorresponse.go
+  - /models/components/v2errorsenum.go
+  - /models/components/v2configinforesponse.go
+  - /models/components/httpmetadata.go
   - /models/components/configinforesponse.go
   - /models/components/configinfo.go
   - /models/components/config.go
   - /models/components/ledgerstorage.go
-  - /models/components/httpmetadata.go
   - /models/components/errorsenum.go
   - /models/components/ledgerinforesponse.go
   - /models/components/ledgerinfo.go
@@ -133,8 +137,6 @@ generatedFiles:
   - /models/components/aggregatebalancesresponse.go
   - /models/components/logscursorresponse.go
   - /models/components/log.go
-  - /models/components/v2errorsenum.go
-  - /models/components/v2configinforesponse.go
   - /models/components/v2ledgerlistresponse.go
   - /models/components/v2ledger.go
   - /models/components/v2getledgerresponse.go
@@ -170,8 +172,7 @@ generatedFiles:
   - /models/components/v2logscursorresponse.go
   - /models/components/v2log.go
   - /models/components/security.go
-  - /models/sdkerrors/errorresponse.go
-  - /models/sdkerrors/v2errorresponse.go
+  - docs/models/operations/v2getinforesponse.md
   - docs/models/operations/getinforesponse.md
   - docs/models/operations/getledgerinforequest.md
   - docs/models/operations/getledgerinforesponse.md
@@ -212,7 +213,6 @@ generatedFiles:
   - docs/models/operations/getbalancesaggregatedresponse.md
   - docs/models/operations/listlogsrequest.md
   - docs/models/operations/listlogsresponse.md
-  - docs/models/operations/v2getinforesponse.md
   - docs/models/operations/v2listledgersrequest.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2getledgerrequest.md
@@ -264,11 +264,15 @@ generatedFiles:
   - docs/models/operations/v2importlogsresponse.md
   - docs/models/operations/v2exportlogsrequest.md
   - docs/models/operations/v2exportlogsresponse.md
+  - docs/models/sdkerrors/v2errorresponse.md
+  - docs/models/sdkerrors/errorresponse.md
+  - docs/models/components/v2errorsenum.md
+  - docs/models/components/v2configinforesponse.md
+  - docs/models/components/httpmetadata.md
   - docs/models/components/configinforesponse.md
   - docs/models/components/configinfo.md
   - docs/models/components/config.md
   - docs/models/components/ledgerstorage.md
-  - docs/models/components/httpmetadata.md
   - docs/models/components/errorsenum.md
   - docs/models/components/ledgerinforesponse.md
   - docs/models/components/storage.md
@@ -306,8 +310,6 @@ generatedFiles:
   - docs/models/components/logscursorresponse.md
   - docs/models/components/type.md
   - docs/models/components/log.md
-  - docs/models/components/v2errorsenum.md
-  - docs/models/components/v2configinforesponse.md
   - docs/models/components/v2ledgerlistresponsecursor.md
   - docs/models/components/v2ledgerlistresponse.md
   - docs/models/components/v2ledger.md
@@ -360,11 +362,9 @@ generatedFiles:
   - docs/models/components/v2logtype.md
   - docs/models/components/v2log.md
   - docs/models/components/security.md
-  - docs/models/sdkerrors/errorresponse.md
-  - docs/models/sdkerrors/v2errorresponse.md
   - docs/sdks/formance/README.md
-  - docs/sdks/ledger/README.md
   - docs/models/operations/option.md
+  - docs/sdks/ledger/README.md
   - docs/sdks/v1/README.md
   - docs/sdks/v2/README.md
   - USAGE.md

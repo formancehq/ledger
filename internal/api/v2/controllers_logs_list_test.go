@@ -127,7 +127,7 @@ func TestGetLogs(t *testing.T) {
 					Return(&expectedCursor, testCase.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/logs", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
