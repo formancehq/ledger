@@ -37,7 +37,6 @@ services:
     environment:
       GOWORK: off
       DEBUG: "true"
-      ENABLE_PPROF: "true"
       OTEL_SERVICE_NAME: ledger
       OTEL_METRICS_EXPORTER: "memory"
       OTEL_TRACES_EXPORTER: otlp
