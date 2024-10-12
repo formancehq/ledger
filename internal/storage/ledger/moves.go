@@ -64,6 +64,7 @@ func (s *Store) InsertMoves(ctx context.Context, moves ...*ledger.Move) error {
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"InsertMoves",
+		s.tracer,
 		s.insertMovesHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 			_, err := s.db.NewInsert().

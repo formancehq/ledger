@@ -8,7 +8,9 @@ import (
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
+	noopmetrics "go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
@@ -29,6 +31,7 @@ const (
 
 type Driver struct {
 	db *bun.DB
+	tracer trace.Tracer
 	meter metric.Meter
 }
 
@@ -40,11 +43,11 @@ func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledge
 	}
 
 	b := bucket.New(tx, ledger.Bucket)
-	if err := b.Migrate(ctx); err != nil {
+	if err := b.Migrate(ctx, d.tracer); err != nil {
 		return nil, fmt.Errorf("migrating bucket: %w", err)
 	}
 
-	if err := ledgerstore.Migrate(ctx, tx, ledger); err != nil {
+	if err := ledgerstore.Migrate(ctx, d.tracer, tx, ledger); err != nil {
 		return nil, fmt.Errorf("failed to migrate ledger store: %w", err)
 	}
 
@@ -52,7 +55,12 @@ func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledge
 		return nil, fmt.Errorf("committing sql transaction to create ledger and schemas: %w", err)
 	}
 
-	return ledgerstore.New(d.db, ledger, ledgerstore.WithMeter(d.meter)), nil
+	return ledgerstore.New(
+		d.db,
+		ledger,
+		ledgerstore.WithMeter(d.meter),
+		ledgerstore.WithTracer(d.tracer),
+	), nil
 }
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
@@ -109,7 +117,12 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		return nil, nil, postgres.ResolveError(err)
 	}
 
-	return ledgerstore.New(d.db, *ret, ledgerstore.WithMeter(d.meter)), ret, nil
+	return ledgerstore.New(
+		d.db,
+		*ret,
+		ledgerstore.WithMeter(d.meter),
+		ledgerstore.WithTracer(d.tracer),
+	), ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
@@ -166,7 +179,7 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	return bucket.New(d.db, name).Migrate(ctx)
+	return bucket.New(d.db, name).Migrate(ctx, d.tracer)
 }
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
@@ -190,7 +203,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 		b := bucket.New(d.db, bucketName)
 
 		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
-		if err := b.Migrate(ctx); err != nil {
+		if err := b.Migrate(ctx, d.tracer); err != nil {
 			return err
 		}
 	}
@@ -205,7 +218,7 @@ func (d *Driver) UpgradeAllLedgers(ctx context.Context) error {
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
 			for _, ledger := range cursor.Data {
-				if err := ledgerstore.Migrate(ctx, d.db, ledger); err != nil {
+				if err := ledgerstore.Migrate(ctx, d.tracer, d.db, ledger); err != nil {
 					return err
 				}
 			}
@@ -236,6 +249,13 @@ func WithMeter(m metric.Meter) Option {
 	}
 }
 
+func WithTracer(tracer trace.Tracer) Option {
+	return func(d *Driver) {
+		d.tracer = tracer
+	}
+}
+
 var defaultOptions = []Option {
-	WithMeter(noop.Meter{}),
+	WithMeter(noopmetrics.Meter{}),
+	WithTracer(nooptracer.Tracer{}),
 }

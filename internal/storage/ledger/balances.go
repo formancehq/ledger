@@ -191,6 +191,7 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetBalances",
+		s.tracer,
 		s.getBalancesHistogram,
 		func(ctx context.Context) (ledgercontroller.Balances, error) {
 			conditions := make([]string, 0)

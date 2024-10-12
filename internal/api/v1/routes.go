@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"go.opentelemetry.io/otel/trace"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -20,7 +22,14 @@ func NewRouter(
 	authenticator auth.Authenticator,
 	version string,
 	debug bool,
+	opts ...RouterOption,
 ) chi.Router {
+
+	routerOptions := &routerOptions{}
+	for _, opt := range append(defaultRouterOptions, opts...) {
+		opt(routerOptions)
+	}
+
 	router := chi.NewMux()
 
 	router.Get("/_info", getInfo(systemController, version))
@@ -39,7 +48,7 @@ func NewRouter(
 			router.Use(autoCreateMiddleware(systemController))
 			router.Use(common.LedgerMiddleware(systemController, func(r *http.Request) string {
 				return chi.URLParam(r, "ledger")
-			}, "/_info"))
+			}, routerOptions.tracer, "/_info"))
 
 			// LedgerController
 			router.Get("/_info", getLedgerInfo)
@@ -73,4 +82,20 @@ func NewRouter(
 	})
 
 	return router
+}
+
+type routerOptions struct {
+	tracer trace.Tracer
+}
+
+type RouterOption func(ro *routerOptions)
+
+func WithTracer(tracer trace.Tracer) RouterOption {
+	return func(ro *routerOptions) {
+		ro.tracer = tracer
+	}
+}
+
+var defaultRouterOptions = []RouterOption{
+	WithTracer(nooptracer.Tracer{}),
 }

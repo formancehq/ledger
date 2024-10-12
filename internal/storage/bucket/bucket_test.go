@@ -5,6 +5,7 @@ package bucket_test
 import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"go.opentelemetry.io/otel/trace/noop"
 	"testing"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
@@ -25,5 +26,5 @@ func TestBuckets(t *testing.T) {
 	require.NoError(t, driver.Migrate(ctx, db))
 
 	b := bucket.New(db, name)
-	require.NoError(t, b.Migrate(ctx))
+	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
 }

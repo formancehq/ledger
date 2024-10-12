@@ -300,29 +300,36 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 }
 
 func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return tracing.TraceWithMetric(ctx, "ListTransactions", s.listTransactionsHistogram, func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
-		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Transaction](
-			ctx,
-			s.selectTransactions(
-				q.Options.Options.PIT,
-				q.Options.Options.ExpandVolumes,
-				q.Options.Options.ExpandEffectiveVolumes,
-				q.Options.QueryBuilder,
-			),
-			bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]](q),
-		)
-		if err != nil {
-			return nil, err
-		}
+	return tracing.TraceWithMetric(
+		ctx,
+		"ListTransactions",
+		s.tracer,
+		s.listTransactionsHistogram,
+		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
+			cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Transaction](
+				ctx,
+				s.selectTransactions(
+					q.Options.Options.PIT,
+					q.Options.Options.ExpandVolumes,
+					q.Options.Options.ExpandEffectiveVolumes,
+					q.Options.QueryBuilder,
+				),
+				bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]](q),
+			)
+			if err != nil {
+				return nil, err
+			}
 
-		return cursor, nil
-	})
+			return cursor, nil
+		},
+	)
 }
 
 func (s *Store) CountTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (int, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"CountTransactions",
+		s.tracer,
 		s.countTransactionsHistogram,
 		func(ctx context.Context) (int, error) {
 			return s.db.NewSelect().
@@ -341,6 +348,7 @@ func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetT
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetTransaction",
+		s.tracer,
 		s.getTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
 
@@ -367,6 +375,7 @@ func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) e
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"InsertTransaction",
+		s.tracer,
 		s.insertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
 			_, err := s.db.NewInsert().
@@ -439,6 +448,7 @@ func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Trans
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"RevertTransaction",
+		s.tracer,
 		s.revertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
 			tx, modified, err = s.updateTxWithRetrieve(
@@ -467,6 +477,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadat
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"UpdateTransactionMetadata",
+		s.tracer,
 		s.updateTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
 			tx, modified, err = s.updateTxWithRetrieve(
@@ -495,6 +506,7 @@ func (s *Store) DeleteTransactionMetadata(ctx context.Context, id int, key strin
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteTransactionMetadata",
+		s.tracer,
 		s.deleteTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
 			tx, modified, err = s.updateTxWithRetrieve(
