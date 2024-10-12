@@ -2,16 +2,17 @@ package cmd
 
 import (
 	"github.com/formancehq/go-libs/httpserver"
-	"github.com/formancehq/go-libs/pprof"
+	"github.com/formancehq/go-libs/otlp"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"net/http"
+	"net/http/pprof"
 	"time"
 
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/aws/iam"
 	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/formancehq/go-libs/publish"
@@ -25,10 +26,6 @@ import (
 	"github.com/formancehq/go-libs/service"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
-
-	_ "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
-	//nolint:gosec
-	_ "net/http/pprof"
 )
 
 const (
@@ -51,20 +48,14 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			enablePProf, _ := cmd.Flags().GetBool(EnablePProfFlag)
-			options := []fx.Option{
-				fx.NopLogger,
-				otlptraces.FXModuleFromFlags(cmd),
-			}
-			if enablePProf {
-				logging.FromContext(cmd.Context()).Info("Enabling pprof...")
-				options = append(options, pprof.NewFXModule())
-			}
-
 			otelMetricsExporter, _ := cmd.Flags().GetString(otlpmetrics.OtelMetricsExporterFlag)
 
-			options = append(options,
-				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
+			options := []fx.Option{
+				fx.NopLogger,
+				otlp.FXModuleFromFlags(cmd),
+				otlptraces.FXModuleFromFlags(cmd),
 				otlpmetrics.FXModuleFromFlags(cmd),
+				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
@@ -86,15 +77,20 @@ func NewServeCommand() *cobra.Command {
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
 					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(serveConfiguration.bind)))
 				}),
-			)
-			if otelMetricsExporter == "memory" {
+			}
+			if otelMetricsExporter == "memory" || enablePProf {
 				options = append(options, fx.Decorate(func(
 					h chi.Router,
 					meterProvider *metric.MeterProvider,
 					exporter *otlpmetrics.InMemoryExporter,
 				) chi.Router {
 					wrappedRouter := chi.NewRouter()
-					wrappedRouter.Handle("/_metrics", otlpmetrics.NewInMemoryExporterHandler(meterProvider, exporter))
+					if otelMetricsExporter == "memory" {
+						wrappedRouter.Handle("/_metrics", otlpmetrics.NewInMemoryExporterHandler(meterProvider, exporter))
+					}
+					if enablePProf {
+						wrappedRouter.Handle("/debug/pprof/*", http.HandlerFunc(pprof.Index))
+					}
 					wrappedRouter.Mount("/", h)
 
 					return wrappedRouter

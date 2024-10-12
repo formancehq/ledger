@@ -39,7 +39,7 @@ var _ = Context("Ledger stress tests", func() {
 		countLedgers      = 6
 		countBuckets      = 3
 		countTransactions = 500
-		countAccounts     = 20
+		countAccounts     = 80
 	)
 
 	When(fmt.Sprintf("creating %d ledgers dispatched on %d buckets", countLedgers, countLedgers/10), func() {

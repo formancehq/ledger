@@ -10,6 +10,8 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"math/rand"
+	"time"
 )
 
 func runTx[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
@@ -57,6 +59,8 @@ func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store St
 			case errors.Is(err, postgres.ErrDeadlockDetected):
 				trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("deadlock", true))
 				logging.FromContext(ctx).Info("deadlock detected, retrying...")
+				// todo: keep ? / set configurable?
+				<-time.After(time.Duration(rand.Intn(100)) * time.Millisecond)
 				continue
 			// A log with the IK could have been inserted in the meantime, read again the database to retrieve it
 			case errors.Is(err, ErrIdempotencyKeyConflict{}):

@@ -23,7 +23,7 @@ func (fn DelayCalculatorFn) Next(iteration int) time.Duration {
 type ControllerWithTooManyClientHandling struct {
 	Controller
 	delayCalculator DelayCalculator
-	tracer trace.Tracer
+	tracer          trace.Tracer
 }
 
 func NewControllerWithTooManyClientHandling(
@@ -34,7 +34,7 @@ func NewControllerWithTooManyClientHandling(
 	return &ControllerWithTooManyClientHandling{
 		Controller:      underlying,
 		delayCalculator: delayCalculator,
-		tracer: tracer,
+		tracer:          tracer,
 	}
 }
 
