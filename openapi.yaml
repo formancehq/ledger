@@ -1179,10 +1179,10 @@ paths:
       security:
         - Authorization:
             - ledger:read
-  /v2/_info:
+  /_/info:
     get:
       tags:
-        - ledger.v2
+        - ledger
       summary: Show server information
       operationId: v2GetInfo
       x-speakeasy-name-override: GetInfo

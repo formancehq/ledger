@@ -53,7 +53,7 @@ import "github.com/formancehq/ledger/internal"
   - [func LogTypeFromString\(logType string\) LogType](<#LogTypeFromString>)
   - [func \(lt LogType\) MarshalJSON\(\) \(\[\]byte, error\)](<#LogType.MarshalJSON>)
   - [func \(lt \*LogType\) Scan\(src interface\{\}\) error](<#LogType.Scan>)
-  - [func \(l LogType\) String\(\) string](<#LogType.String>)
+  - [func \(lt LogType\) String\(\) string](<#LogType.String>)
   - [func \(lt \*LogType\) UnmarshalJSON\(data \[\]byte\) error](<#LogType.UnmarshalJSON>)
   - [func \(lt LogType\) Value\(\) \(driver.Value, error\)](<#LogType.Value>)
 - [type Memento](<#Memento>)
@@ -654,7 +654,7 @@ func (lt *LogType) Scan(src interface{}) error
 ### func \(LogType\) String
 
 ```go
-func (l LogType) String() string
+func (lt LogType) String() string
 ```
 
 

@@ -16,7 +16,7 @@ func TestStats(t *testing.T) {
 	t.Parallel()
 
 	systemController, ledgerController := newTestingSystemController(t, true)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 	expectedStats := ledgercontroller.Stats{
 		Transactions: 10,

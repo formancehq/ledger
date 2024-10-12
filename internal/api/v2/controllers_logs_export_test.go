@@ -61,7 +61,7 @@ func TestLogsExport(t *testing.T) {
 					return nil
 				})
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/logs/export", nil)
 			rec := httptest.NewRecorder()

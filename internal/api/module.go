@@ -21,14 +21,12 @@ func Module(cfg Config) fx.Option {
 	return fx.Options(
 		fx.Provide(func(
 			backend system.Controller,
-			healthController *health.HealthController,
 			authenticator auth.Authenticator,
 			logger logging.Logger,
 			tracer trace.TracerProvider,
 		) chi.Router {
 			return NewRouter(
 				backend,
-				healthController,
 				authenticator,
 				logger,
 				"develop",

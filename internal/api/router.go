@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/health"
 	"github.com/formancehq/ledger/internal/api/common"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
@@ -22,7 +21,6 @@ import (
 // todo: refine textual errors
 func NewRouter(
 	systemController system.Controller,
-	healthController *health.HealthController,
 	authenticator auth.Authenticator,
 	logger logging.Logger,
 	version string,
@@ -54,12 +52,10 @@ func NewRouter(
 		}).Handler,
 		common.LogID(),
 	)
-	mux.Get("/_healthcheck", healthController.Check)
 
 	v2Router := v2.NewRouter(
 		systemController,
 		authenticator,
-		version,
 		debug,
 		v2.WithTracer(routerOptions.tracer),
 	)

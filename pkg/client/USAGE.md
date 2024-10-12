@@ -18,11 +18,11 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }

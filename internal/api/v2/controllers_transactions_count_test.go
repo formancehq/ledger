@@ -173,7 +173,7 @@ func TestTransactionsCount(t *testing.T) {
 					Return(10, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(tc.body))
 			rec := httptest.NewRecorder()

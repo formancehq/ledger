@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	apilib "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/health"
 	"github.com/formancehq/go-libs/httpserver"
 	"github.com/formancehq/go-libs/otlp"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -74,27 +76,29 @@ func NewServeCommand() *cobra.Command {
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
 				}),
+				fx.Decorate(func(
+					params struct {
+						fx.In
+
+						Handler          chi.Router
+						HealthController *health.HealthController
+
+						MeterProvider *metric.MeterProvider         `optional:"true"`
+						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					},
+				) chi.Router {
+					return assembleFinalRouter(
+						otelMetricsExporter == "memory",
+						enablePProf,
+						params.MeterProvider,
+						params.Exporter,
+						params.HealthController,
+						params.Handler,
+					)
+				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
 					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(serveConfiguration.bind)))
 				}),
-			}
-			if otelMetricsExporter == "memory" || enablePProf {
-				options = append(options, fx.Decorate(func(
-					h chi.Router,
-					meterProvider *metric.MeterProvider,
-					exporter *otlpmetrics.InMemoryExporter,
-				) chi.Router {
-					wrappedRouter := chi.NewRouter()
-					if otelMetricsExporter == "memory" {
-						wrappedRouter.Handle("/_metrics", otlpmetrics.NewInMemoryExporterHandler(meterProvider, exporter))
-					}
-					if enablePProf {
-						wrappedRouter.Handle("/debug/pprof/*", http.HandlerFunc(pprof.Index))
-					}
-					wrappedRouter.Mount("/", h)
-
-					return wrappedRouter
-				}))
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
@@ -134,4 +138,42 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
 
 	return ret
+}
+
+func assembleFinalRouter(
+	exportMetrics, exportPProf bool,
+	meterProvider *metric.MeterProvider,
+	exporter *otlpmetrics.InMemoryExporter,
+	healthController *health.HealthController,
+	handler http.Handler,
+) *chi.Mux {
+	wrappedRouter := chi.NewRouter()
+	wrappedRouter.Route("/_/", func(r chi.Router) {
+		if exportMetrics {
+			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
+				meterProvider,
+				exporter,
+			))
+		}
+		if exportPProf {
+			r.Handle("/debug/pprof/*", http.StripPrefix(
+				"/_",
+				http.HandlerFunc(pprof.Index),
+			))
+		}
+		r.Handle("/healthcheck", http.HandlerFunc(healthController.Check))
+		r.Get("/info", func(w http.ResponseWriter, r *http.Request) {
+			apilib.RawOk(w, struct {
+				Server  string `json:"server"`
+				Version string `json:"version"`
+			}{
+				Server:  "ledger",
+				Version: Version,
+			})
+		})
+	})
+	wrappedRouter.Get("/_healthcheck", healthController.Check)
+	wrappedRouter.Mount("/", handler)
+
+	return wrappedRouter
 }

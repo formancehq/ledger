@@ -66,7 +66,7 @@ func TestTransactionsDeleteMetadata(t *testing.T) {
 					Return(tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodDelete, "/ledger0/transactions/1/metadata/foo", nil)
 			req = req.WithContext(ctx)
