@@ -1,14 +1,13 @@
 package common
 
 import (
+	"go.opentelemetry.io/otel/trace"
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/ledger/internal/controller/system"
-	"github.com/formancehq/ledger/internal/tracing"
-
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/ledger/internal/controller/system"
 
 	"errors"
 )
@@ -20,6 +19,7 @@ const (
 func LedgerMiddleware(
 	backend system.Controller,
 	resolver func(*http.Request) string,
+	tracer trace.Tracer,
 	excludePathFromSchemaCheck ...string,
 ) func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
@@ -30,7 +30,7 @@ func LedgerMiddleware(
 				return
 			}
 
-			ctx, span := tracing.Start(r.Context(), "OpenLedger")
+			ctx, span := tracer.Start(r.Context(), "OpenLedger")
 			defer span.End()
 
 			var err error

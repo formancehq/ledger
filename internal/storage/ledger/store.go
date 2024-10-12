@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
+	noopmetrics "go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -20,6 +22,7 @@ type Store struct {
 	db     bun.IDB
 	ledger ledger.Ledger
 
+	tracer trace.Tracer
 	meter                              metric.Meter
 	listAccountsHistogram              metric.Int64Histogram
 	checkBucketSchemaHistogram         metric.Int64Histogram
@@ -66,9 +69,15 @@ func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error
 }
 
 func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
-	bucketUpToDate, err := tracing.TraceWithMetric(ctx, "CheckBucketSchema", s.checkBucketSchemaHistogram, func(ctx context.Context) (bool, error) {
-		return bucket.New(s.db, s.ledger.Bucket).IsUpToDate(ctx)
-	})
+	bucketUpToDate, err := tracing.TraceWithMetric(
+		ctx,
+		"CheckBucketSchema",
+		s.tracer,
+		s.checkBucketSchemaHistogram,
+		func(ctx context.Context) (bool, error) {
+			return bucket.New(s.db, s.ledger.Bucket).IsUpToDate(ctx)
+		},
+	)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if bucket is up to date: %w", err)
 	}
@@ -76,9 +85,15 @@ func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	ret, err := tracing.TraceWithMetric(ctx, "CheckLedgerSchema", s.checkLedgerSchemaHistogram, func(ctx context.Context) (bool, error) {
-		return getMigrator(s.ledger).IsUpToDate(ctx, s.db)
-	})
+	ret, err := tracing.TraceWithMetric(
+		ctx,
+		"CheckLedgerSchema",
+		s.tracer,
+		s.checkLedgerSchemaHistogram,
+		func(ctx context.Context) (bool, error) {
+			return getMigrator(s.ledger).IsUpToDate(ctx, s.db)
+		},
+	)
 	if err != nil && errors.Is(err, migrations.ErrMissingVersionTable) {
 		return false, nil
 	}
@@ -214,6 +229,13 @@ func WithMeter(meter metric.Meter) Option {
 	}
 }
 
+func WithTracer(tracer trace.Tracer) Option {
+	return func(s *Store) {
+		s.tracer = tracer
+	}
+}
+
 var defaultOptions = []Option{
-	WithMeter(noop.Meter{}),
+	WithMeter(noopmetrics.Meter{}),
+	WithTracer(nooptracer.Tracer{}),
 }

@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
+	noopmetrics "go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"math/big"
 	"reflect"
 
@@ -27,23 +29,12 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-type DefaultControllerOption func(controller *DefaultController)
-
-var defaultOptions []DefaultControllerOption = []DefaultControllerOption{
-	WithMeter(noop.Meter{}),
-}
-
-func WithMeter(meter metric.Meter) DefaultControllerOption {
-	return func(controller *DefaultController) {
-		controller.meter = meter
-	}
-}
-
 type DefaultController struct {
 	store          Store
 	machineFactory MachineFactory
 	ledger         ledger.Ledger
 
+	tracer trace.Tracer
 	meter                   metric.Meter
 	executeMachineHistogram metric.Int64Histogram
 }
@@ -246,9 +237,15 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	}
 
 	output, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.CreatedTransaction, error) {
-		result, err := tracing.TraceWithMetric(ctx, "ExecuteMachine", ctrl.executeMachineHistogram, func(ctx context.Context) (*MachineResult, error) {
-			return m.Execute(ctx, sqlTX, input.Vars)
-		})
+		result, err := tracing.TraceWithMetric(
+			ctx,
+			"ExecuteMachine",
+			ctrl.tracer,
+			ctrl.executeMachineHistogram,
+			func(ctx context.Context) (*MachineResult, error) {
+				return m.Execute(ctx, sqlTX, input.Vars)
+			},
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute program: %w", err)
 		}
@@ -433,3 +430,21 @@ func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parame
 }
 
 var _ Controller = (*DefaultController)(nil)
+
+type DefaultControllerOption func(controller *DefaultController)
+
+var defaultOptions = []DefaultControllerOption{
+	WithMeter(noopmetrics.Meter{}),
+	WithTracer(nooptracer.Tracer{}),
+}
+
+func WithMeter(meter metric.Meter) DefaultControllerOption {
+	return func(controller *DefaultController) {
+		controller.meter = meter
+	}
+}
+func WithTracer(tracer trace.Tracer) DefaultControllerOption {
+	return func(controller *DefaultController) {
+		controller.tracer = tracer
+	}
+}

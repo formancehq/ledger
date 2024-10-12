@@ -213,6 +213,7 @@ func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccount
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
+		s.tracer,
 		s.listAccountsHistogram,
 		func(ctx context.Context) (*Cursor[ledger.Account], error) {
 			ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](
@@ -239,6 +240,7 @@ func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQue
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAccount",
+		s.tracer,
 		s.getAccountHistogram,
 		func(ctx context.Context) (*ledger.Account, error) {
 			ret := &ledger.Account{}
@@ -259,6 +261,7 @@ func (s *Store) CountAccounts(ctx context.Context, q ledgercontroller.ListAccoun
 	return tracing.TraceWithMetric(
 		ctx,
 		"CountAccounts",
+		s.tracer,
 		s.countAccountsHistogram,
 		func(ctx context.Context) (int, error) {
 			return s.db.NewSelect().
@@ -277,6 +280,7 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"UpdateAccountsMetadata",
+		s.tracer,
 		s.updateAccountsMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 			type AccountWithLedger struct {
@@ -312,6 +316,7 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"DeleteAccountMetadata",
+		s.tracer,
 		s.deleteAccountMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 			_, err := s.db.NewUpdate().
@@ -330,6 +335,7 @@ func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (boo
 	return tracing.TraceWithMetric(
 		ctx,
 		"UpsertAccount",
+		s.tracer,
 		s.upsertAccountHistogram,
 		func(ctx context.Context) (bool, error) {
 			upserted := false

@@ -7,13 +7,11 @@ import (
 	"net/http"
 
 	"errors"
+	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/tracing"
-
-	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/common"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func bulkHandler(w http.ResponseWriter, r *http.Request) {
@@ -60,10 +58,12 @@ type Result struct {
 	ResponseType     string `json:"responseType"` // Added for sdk generation (discriminator in oneOf)
 }
 
-func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, continueOnFailure bool) ([]Result, bool, error) {
-
-	ctx, span := tracing.Start(ctx, "Bulk")
-	defer span.End()
+func ProcessBulk(
+	ctx context.Context,
+	l ledgercontroller.Controller,
+	bulk Bulk,
+	continueOnFailure bool,
+) ([]Result, bool, error) {
 
 	ret := make([]Result, 0, len(bulk))
 

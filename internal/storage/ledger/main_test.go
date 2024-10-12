@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	systemstore "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
 	"testing"
 
@@ -85,8 +86,8 @@ func newLedgerStore(t T) *ledgerstore.Store {
 	l.Bucket = ledgerName
 
 	b := bucket.New(db, ledgerName)
-	require.NoError(t, b.Migrate(ctx))
-	require.NoError(t, ledgerstore.Migrate(ctx, db, l))
+	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
+	require.NoError(t, ledgerstore.Migrate(ctx, noop.Tracer{}, db, l))
 
 	return ledgerstore.New(db, l)
 }
