@@ -53,7 +53,7 @@ func TestLedgersDeleteMetadata(t *testing.T) {
 					Return(tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodDelete, "/"+name+"/metadata/foo", nil)
 			req = req.WithContext(ctx)

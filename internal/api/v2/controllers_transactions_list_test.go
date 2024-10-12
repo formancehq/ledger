@@ -200,7 +200,7 @@ func TestTransactionsList(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/transactions", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()

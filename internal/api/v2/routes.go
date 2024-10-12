@@ -22,7 +22,6 @@ import (
 func NewRouter(
 	systemController system.Controller,
 	authenticator auth.Authenticator,
-	version string,
 	debug bool,
 	opts ...RouterOption,
 ) chi.Router {
@@ -32,8 +31,6 @@ func NewRouter(
 	}
 
 	router := chi.NewMux()
-
-	router.Get("/_info", getInfo(version))
 
 	router.Group(func(router chi.Router) {
 		router.Use(middleware.RequestLogger(api.NewLogFormatter()))

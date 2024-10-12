@@ -41,7 +41,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 	When("starting the service", func() {
 		It("should be ok", func() {
-			info, err := testServer.GetValue().Client().Ledger.V2.GetInfo(ctx)
+			info, err := testServer.GetValue().Client().Ledger.GetInfo(ctx)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
 		})

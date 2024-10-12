@@ -414,7 +414,7 @@ func TestTransactionCreate(t *testing.T) {
 				}
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions", api.Buffer(t, testCase.payload))
 			rec := httptest.NewRecorder()

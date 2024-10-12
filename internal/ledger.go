@@ -43,6 +43,9 @@ func New(name string, configuration Configuration) (*Ledger, error) {
 	if !ledgerNameFormat.MatchString(name) {
 		return nil, newErrInvalidLedgerName(name, fmt.Errorf("name must match format '%s'", ledgerNameFormat.String()))
 	}
+	if slices.Contains(reservedLedgerName, name) {
+		return nil, newErrInvalidLedgerName(name, fmt.Errorf("name '%s' is reserved", name))
+	}
 	if !bucketNameFormat.MatchString(configuration.Bucket) {
 		return nil, newErrInvalidBucketName(configuration.Bucket, fmt.Errorf("name must match format '%s'", bucketNameFormat.String()))
 	}
@@ -120,6 +123,13 @@ var (
 
 	ledgerNameFormat = regexp.MustCompile("^[0-9a-zA-Z_-]{1,63}$")
 	bucketNameFormat = regexp.MustCompile("^[0-9a-zA-Z_-]{1,63}$")
+
+	reservedLedgerName = []string{
+		// Used for debug in urls...
+		"_",
+		"_info",
+		"_healthcheck",
+	}
 )
 
 func validateFeatureWithValue(feature, value string) error {

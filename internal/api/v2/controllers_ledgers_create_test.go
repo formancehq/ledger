@@ -91,7 +91,7 @@ func TestLedgersCreate(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, false)
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			name := uuid.NewString()
 

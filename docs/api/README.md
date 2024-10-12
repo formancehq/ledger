@@ -19,7 +19,7 @@ Base URLs:
 |Scope|Scope Description|
 |---|---|
 
-<h1 id="ledger-api-ledger-v2">ledger.v2</h1>
+<h1 id="ledger-api-ledger">ledger</h1>
 
 ## Show server information
 
@@ -28,13 +28,13 @@ Base URLs:
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/_info HTTP/1.1
+GET http://localhost:8080/_/info HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/_info`
+`GET /_/info`
 
 > Example responses
 
@@ -59,6 +59,8 @@ Accept: application/json
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:read )
 </aside>
+
+<h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
 ## List ledgers
 

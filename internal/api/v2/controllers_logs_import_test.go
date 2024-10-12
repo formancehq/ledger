@@ -72,7 +72,7 @@ func TestLogsImport(t *testing.T) {
 					}
 				})
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
 
 			buf := bytes.NewBuffer(nil)
 			require.NoError(t, json.NewEncoder(buf).Encode(log))
