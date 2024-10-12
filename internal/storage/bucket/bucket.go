@@ -3,6 +3,7 @@ package bucket
 import (
 	"context"
 	_ "embed"
+	"go.opentelemetry.io/otel/trace"
 
 	"errors"
 	"github.com/formancehq/go-libs/migrations"
@@ -14,8 +15,8 @@ type Bucket struct {
 	db   bun.IDB
 }
 
-func (b *Bucket) Migrate(ctx context.Context) error {
-	return Migrate(ctx, b.db, b.name)
+func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer) error {
+	return Migrate(ctx, tracer, b.db, b.name)
 }
 
 func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {

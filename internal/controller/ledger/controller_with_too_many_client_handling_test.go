@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/mock/gomock"
 	"testing"
 )
@@ -43,7 +44,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 			Next(1).
 			Return(10 * time.Millisecond)
 
-		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, delayCalculator)
+		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
 		_, err := ledgerController.CreateTransaction(ctx, parameters)
 		require.NoError(t, err)
 	})
@@ -71,7 +72,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 			Next(1).
 			Return(time.Duration(0))
 
-		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, delayCalculator)
+		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
 		_, err := ledgerController.CreateTransaction(ctx, parameters)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, postgres.ErrTooManyClient{}))

@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/json"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -89,7 +90,7 @@ func TestResolverMiddleware(t *testing.T) {
 
 			m := LedgerMiddleware(systemController, func(*http.Request) string {
 				return ledger
-			})
+			}, nooptracer.Tracer{})
 			h := m(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 			}))

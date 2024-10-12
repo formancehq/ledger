@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"go.opentelemetry.io/otel/trace"
 	"text/template"
-
-	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/uptrace/bun"
@@ -34,8 +33,8 @@ func GetMigrator(name string) *migrations.Migrator {
 	return migrator
 }
 
-func Migrate(ctx context.Context, db bun.IDB, name string) error {
-	ctx, span := tracing.Start(ctx, "Migrate bucket")
+func Migrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name string) error {
+	ctx, span := tracer.Start(ctx, "Migrate bucket")
 	defer span.End()
 
 	return GetMigrator(name).Up(ctx, db)

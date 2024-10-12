@@ -5,9 +5,8 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"go.opentelemetry.io/otel/trace"
 	"text/template"
-
-	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
@@ -36,8 +35,8 @@ func getMigrator(ledger ledger.Ledger) *migrations.Migrator {
 	return migrator
 }
 
-func Migrate(ctx context.Context, db bun.IDB, ledger ledger.Ledger) error {
-	ctx, span := tracing.Start(ctx, "Migrate ledger")
+func Migrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, ledger ledger.Ledger) error {
+	ctx, span := tracer.Start(ctx, "Migrate ledger")
 	defer span.End()
 
 	return getMigrator(ledger).Up(ctx, db)

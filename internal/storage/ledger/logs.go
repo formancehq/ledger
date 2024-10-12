@@ -58,6 +58,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"InsertLog",
+		s.tracer,
 		s.insertLogHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 
@@ -111,6 +112,7 @@ func (s *Store) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListLogs",
+		s.tracer,
 		s.listLogsHistogram,
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Log], error) {
 			selectQuery := s.db.NewSelect().
@@ -147,6 +149,7 @@ func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*led
 	return tracing.TraceWithMetric(
 		ctx,
 		"ReadLogWithIdempotencyKey",
+		s.tracer,
 		s.readLogWithIdempotencyKeyHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
 			ret := &Log{}

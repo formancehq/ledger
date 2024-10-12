@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/health"
@@ -23,6 +24,7 @@ func Module(cfg Config) fx.Option {
 			healthController *health.HealthController,
 			authenticator auth.Authenticator,
 			logger logging.Logger,
+			tracer trace.TracerProvider,
 		) chi.Router {
 			return NewRouter(
 				backend,
@@ -31,6 +33,7 @@ func Module(cfg Config) fx.Option {
 				logger,
 				"develop",
 				cfg.Debug,
+				WithTracer(tracer.Tracer("api")),
 			)
 		}),
 		health.Module(),

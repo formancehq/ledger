@@ -20,6 +20,7 @@ func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.Acco
 	return tracing.TraceWithMetric(
 		ctx,
 		"UpdateBalances",
+		s.tracer,
 		s.updateBalancesHistogram,
 		func(ctx context.Context) (ledger.PostCommitVolumes, error) {
 
@@ -222,6 +223,7 @@ func (s *Store) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.G
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",
+		s.tracer,
 		s.getVolumesWithBalancesHistogram,
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 			return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
