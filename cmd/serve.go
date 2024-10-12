@@ -35,7 +35,6 @@ const (
 	BallastSizeInBytesFlag     = "ballast-size"
 	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
 	AutoUpgradeFlag            = "auto-upgrade"
-	EnablePProfFlag            = "enable-pprof"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -50,7 +49,6 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 
-			enablePProf, _ := cmd.Flags().GetBool(EnablePProfFlag)
 			otelMetricsExporter, _ := cmd.Flags().GetString(otlpmetrics.OtelMetricsExporterFlag)
 
 			options := []fx.Option{
@@ -90,7 +88,7 @@ func NewServeCommand() *cobra.Command {
 				) chi.Router {
 					return assembleFinalRouter(
 						otelMetricsExporter == "memory",
-						enablePProf,
+						service.IsDebug(cmd),
 						params.MeterProvider,
 						params.Exporter,
 						params.HealthController,
@@ -109,7 +107,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
-	cmd.Flags().Bool(EnablePProfFlag, false, "Enable pprof")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
