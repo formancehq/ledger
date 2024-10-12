@@ -331,6 +331,8 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 	return err
 }
 
+// todo: since we update first balances of an accounts in the transaction process, we can avoid nested sql txs
+// while upserting account and upsert them all in one shot
 func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
 	return tracing.TraceWithMetric(
 		ctx,

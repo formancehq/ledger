@@ -87,7 +87,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				report.End = time.Now()
 
 				// Fetch otel metrics
-				rsp, err := http.Get(env.URL() + "/_metrics")
+				rsp, err := http.Get(env.URL() + "/_/metrics")
 				require.NoError(b, err)
 				ret := make(map[string]any)
 				require.NoError(b, json.NewDecoder(rsp.Body).Decode(&ret))

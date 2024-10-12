@@ -2,6 +2,8 @@ package ledger
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -15,6 +17,7 @@ type ControllerWithCache struct {
 func (c *ControllerWithCache) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 
 	if c.registry.IsUpToDate(c.ledger.Name) {
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("cache-hit", true))
 		return true, nil
 	}
 

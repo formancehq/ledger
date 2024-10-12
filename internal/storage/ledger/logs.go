@@ -47,20 +47,20 @@ func (j RawMessage) Value() (driver.Value, error) {
 
 func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 
-	// We lock logs table as we need than the last log does not change until the transaction commit
-	if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
-		_, err := s.db.NewRaw(`select pg_advisory_xact_lock(?)`, s.ledger.ID).Exec(ctx)
-		if err != nil {
-			return postgres.ResolveError(err)
-		}
-	}
-
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"InsertLog",
 		s.tracer,
 		s.insertLogHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
+
+			// We lock logs table as we need than the last log does not change until the transaction commit
+			if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
+				_, err := s.db.NewRaw(`select pg_advisory_xact_lock(?)`, s.ledger.ID).Exec(ctx)
+				if err != nil {
+					return postgres.ResolveError(err)
+				}
+			}
 
 			payloadData, err := json.Marshal(log.Data)
 			if err != nil {
