@@ -16,7 +16,7 @@ export const exportTPSGraph = async (configuration: {output: string}, result: Be
     const datasets = scripts.map(((script, index) => {
         return {
             label: script,
-            data: result[script].map(r => r.tps),
+            data: result[script].map(r => r.TPS),
             backgroundColor: NAMED_COLORS[index % scripts.length],
         }
     }));
@@ -25,7 +25,7 @@ export const exportTPSGraph = async (configuration: {output: string}, result: Be
         type: 'bar',
         data: {
             labels: reportsForAnyScript
-                .map(r => r.configuration.name),
+                .map(r => r.Configuration.Name),
             datasets: datasets
         },
         options: {
@@ -69,7 +69,7 @@ export const exportLatencyGraph = async (configuration: {output: string}, key: k
     const datasets = scripts.map(((script, index) => {
         return {
             label: script,
-            data: result[script].map(r => r.metrics.Time[key].substring(0, r.metrics.Time[key].length-2)),
+            data: result[script].map(r => r.Metrics.Time[key].substring(0, r.Metrics.Time[key].length-2)),
             backgroundColor: NAMED_COLORS[index % scripts.length],
         }
     }));
@@ -78,7 +78,7 @@ export const exportLatencyGraph = async (configuration: {output: string}, key: k
         type: 'bar',
         data: {
             labels: reportsForAnyScript
-                .map(r => r.configuration.name),
+                .map(r => r.Configuration.Name),
             datasets: datasets
         },
         options: {
