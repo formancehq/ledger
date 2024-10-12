@@ -1,6 +1,5 @@
 version: '3.8'
-volumes:
-  postgres:
+
 services:
   postgres:
     image: "postgres:16-alpine"
@@ -16,9 +15,11 @@ services:
       POSTGRES_USER: "ledger"
       POSTGRES_PASSWORD: "ledger"
       POSTGRES_DB: "ledger"
-      PGDATA: /data/postgres
-    volumes:
-    - postgres:/data/postgres
+
+  jaeger:
+    image: jaegertracing/opentelemetry-all-in-one
+    ports:
+      - "16686:16686/tcp"
 
   ledger:
     image: golang:1.22-alpine
@@ -26,17 +27,20 @@ services:
     volumes:
     - .:/src
     ports:
-    # HTTP API
     - 3068:3068
-    # pprof
-    - 3000:3000
     working_dir: /src
     depends_on:
       postgres:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     environment:
-      POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+      GOWORK: off
       DEBUG: "true"
       ENABLE_PPROF: "true"
-      GOWORK: off
+      OTEL_SERVICE_NAME: ledger
       OTEL_METRICS_EXPORTER: "memory"
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+      OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
+      POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"

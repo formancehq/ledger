@@ -33,11 +33,9 @@ services:
     environment:
       CGO_ENABLED: 0
       DEBUG: "true"
-      OTEL_TRACES: "true"
       OTEL_TRACES_EXPORTER: otlp
       OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otel:4317
       OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
-      OTEL_METRICS: "true"
       OTEL_METRICS_EXPORTER: otlp
       OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otel:4317
       OTEL_METRICS_EXPORTER_OTLP_INSECURE: "true"

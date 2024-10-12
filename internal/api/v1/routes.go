@@ -45,7 +45,7 @@ func NewRouter(
 					handler.ServeHTTP(w, r)
 				})
 			})
-			router.Use(autoCreateMiddleware(systemController))
+			router.Use(autoCreateMiddleware(systemController, routerOptions.tracer))
 			router.Use(common.LedgerMiddleware(systemController, func(r *http.Request) string {
 				return chi.URLParam(r, "ledger")
 			}, routerOptions.tracer, "/_info"))

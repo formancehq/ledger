@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"go.opentelemetry.io/otel/trace"
 	"net/http"
 
 	"errors"
@@ -14,18 +15,21 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func autoCreateMiddleware(backend system.Controller) func(handler http.Handler) http.Handler {
+func autoCreateMiddleware(backend system.Controller, tracer trace.Tracer) func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
+			ctx, span := tracer.Start(r.Context(), "AutomaticLedgerCreate")
+			defer span.End()
+
 			ledgerName := chi.URLParam(r, "ledger")
-			if _, err := backend.GetLedger(r.Context(), ledgerName); err != nil {
+			if _, err := backend.GetLedger(ctx, ledgerName); err != nil {
 				if !postgres.IsNotFoundError(err) {
 					api.InternalServerError(w, r, err)
 					return
 				}
 
-				if err := backend.CreateLedger(r.Context(), ledgerName, ledger.Configuration{
+				if err := backend.CreateLedger(ctx, ledgerName, ledger.Configuration{
 					Bucket: ledgerName,
 				}); err != nil {
 					switch {
@@ -37,6 +41,7 @@ func autoCreateMiddleware(backend system.Controller) func(handler http.Handler) 
 					return
 				}
 			}
+			span.End()
 
 			handler.ServeHTTP(w, r)
 		})

@@ -84,7 +84,7 @@ func handleRetry[INPUT, OUTPUT any](
 	fn func(ctx context.Context, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*OUTPUT, error) {
 
-	ctx, span := tracer.Start(ctx, "Retrier")
+	ctx, span := tracer.Start(ctx, "TooManyClientRetrier")
 	defer span.End()
 
 	count := 0
