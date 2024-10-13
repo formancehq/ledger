@@ -1,3 +1,12 @@
 doc:
 * technical endpoints
     ** some example around pprof?
+
+* graph metrics:
+    ** process.runtime.go.mem.heap_alloc (Bytes of allocated heap objects)
+    ** process.runtime.go.mem.heap_objects (Number of allocated heap objects)
+    ** process.runtime.go.gc.count (Number of completed garbage collection cycles)
+    ** process.runtime.go.gc.pause_total_ns (Cumulative nanoseconds in GC stop-the-world pauses since the program started)
+    ** system.network.io (Bytes transferred attributed by direction (Transmit, Receive))
+    ** system.memory.utilization (Memory utilization of this process attributed by memory state (Used, Available))
+    ** process.cpu.time (Accumulated CPU time spent by this process attributed by state (User, System, ...))
