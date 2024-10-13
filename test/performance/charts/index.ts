@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import 'chartjs-to-image';
-import {exportLatencyGraph, exportTPSGraph} from "./src/graphs";
+import {exportDatabaseStats, exportLatencyGraph, exportTPSGraph} from "./src/graphs";
 
 const main = async () => {
     let buffer = fs.readFileSync('../report/report.json', 'utf-8');
@@ -8,6 +8,8 @@ const main = async () => {
     await exportTPSGraph({
         output: 'tps.png',
     }, reports);
+
+    await exportDatabaseStats('database_connections.png', reports);
 
     const ps: (keyof MetricsTime)[] = ['P99', 'P95', 'P75', 'Avg']
     for (let p of ps) {
