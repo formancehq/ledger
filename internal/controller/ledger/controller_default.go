@@ -35,19 +35,28 @@ type DefaultController struct {
 	ledger         ledger.Ledger
 
 	tracer trace.Tracer
-	meter                   metric.Meter
+	meter  metric.Meter
+
 	executeMachineHistogram metric.Int64Histogram
+	deadLockCounter         metric.Int64Counter
+
+	createTransactionLp       *logProcessor[RunScript, ledger.CreatedTransaction]
+	revertTransactionLp       *logProcessor[RevertTransaction, ledger.RevertedTransaction]
+	saveTransactionMetadataLp *logProcessor[SaveTransactionMetadata, ledger.SavedMetadata]
+	saveAccountMetadataLp     *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
+	deleteTransactionMetadata *logProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]
+	deleteAccountMetadata     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
 }
 
 func NewDefaultController(
-	ledger ledger.Ledger,
+	l ledger.Ledger,
 	store Store,
 	machineFactory MachineFactory,
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
 		store:          store,
-		ledger:         ledger,
+		ledger:         l,
 		machineFactory: machineFactory,
 	}
 
@@ -55,12 +64,22 @@ func NewDefaultController(
 		opt(ret)
 	}
 
-	histogram, err := ret.meter.Int64Histogram("numscript.run")
+	var err error
+	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("numscript.run")
 	if err != nil {
-		return nil
+		panic(err)
+	}
+	ret.deadLockCounter, err = ret.meter.Int64Counter("deadlocks")
+	if err != nil {
+		panic(err)
 	}
 
-	ret.executeMachineHistogram = histogram
+	ret.createTransactionLp = newLogProcessor[RunScript, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
+	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter)
+	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter)
+	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
+	ret.deleteTransactionMetadata = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter)
+	ret.deleteAccountMetadata = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter)
 
 	return ret
 }
@@ -236,7 +255,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}
 
-	output, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.CreatedTransaction, error) {
+	output, err := ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RunScript) (*ledger.CreatedTransaction, error) {
 		result, err := tracing.TraceWithMetric(
 			ctx,
 			"ExecuteMachine",
@@ -294,7 +313,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 }
 
 func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
-	return forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RevertTransaction) (*ledger.RevertedTransaction, error) {
+	return ctrl.revertTransactionLp.forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input RevertTransaction) (*ledger.RevertedTransaction, error) {
 
 		var (
 			hasBeenReverted bool
@@ -359,7 +378,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 }
 
 func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveTransactionMetadata) (*ledger.SavedMetadata, error) {
+	_, err := ctrl.saveTransactionMetadataLp.forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveTransactionMetadata) (*ledger.SavedMetadata, error) {
 		if _, _, err := sqlTX.UpdateTransactionMetadata(ctx, input.TransactionID, input.Metadata); err != nil {
 			return nil, err
 		}
@@ -374,7 +393,7 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 }
 
 func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.SavedMetadata, error) {
+	_, err := ctrl.saveAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input SaveAccountMetadata) (*ledger.SavedMetadata, error) {
 		if _, err := sqlTX.UpsertAccount(ctx, &ledger.Account{
 			Address:  input.Address,
 			Metadata: input.Metadata,
@@ -393,7 +412,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 }
 
 func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteTransactionMetadata) (*ledger.DeletedMetadata, error) {
+	_, err := ctrl.deleteTransactionMetadata.forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteTransactionMetadata) (*ledger.DeletedMetadata, error) {
 		_, modified, err := sqlTX.DeleteTransactionMetadata(ctx, input.TransactionID, input.Key)
 		if err != nil {
 			return nil, err
@@ -414,7 +433,7 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 }
 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
-	_, err := forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteAccountMetadata) (*ledger.DeletedMetadata, error) {
+	_, err := ctrl.deleteAccountMetadata.forgeLog(ctx, ctrl.store, parameters, func(ctx context.Context, sqlTX TX, input DeleteAccountMetadata) (*ledger.DeletedMetadata, error) {
 		err := sqlTX.DeleteAccountMetadata(ctx, input.Address, input.Key)
 		if err != nil {
 			return nil, err
