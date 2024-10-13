@@ -379,7 +379,7 @@ func TestAccountsUpsert(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	account := ledger.Account{
-		Address:       "foo",
+		Address: "foo",
 	}
 
 	// Initial insert
