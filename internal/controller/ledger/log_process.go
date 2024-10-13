@@ -9,12 +9,23 @@ import (
 	"github.com/formancehq/go-libs/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"math/rand"
-	"time"
 )
 
-func runTx[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
+type logProcessor[INPUT any, OUTPUT ledger.LogPayload] struct {
+	deadLockCounter metric.Int64Counter
+	operation       string
+}
+
+func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter) *logProcessor[INPUT, OUTPUT] {
+	return &logProcessor[INPUT, OUTPUT]{
+		operation:       operation,
+		deadLockCounter: deadlockCounter,
+	}
+}
+
+func (lp *logProcessor[INPUT, OUTPUT]) runTx(ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
 	var payload *OUTPUT
 	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
 		payload, err = fn(ctx, tx, parameters.Input)
@@ -40,10 +51,14 @@ func runTx[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store
 	return payload, err
 }
 
-// todo: metrics, add deadlocks
-func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
+func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
+	ctx context.Context,
+	store Store,
+	parameters Parameters[INPUT],
+	fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error),
+) (*OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
-		output, err := fetchLogWithIK[INPUT, OUTPUT](ctx, store, parameters)
+		output, err := lp.fetchLogWithIK(ctx, store, parameters)
 		if err != nil {
 			return nil, err
 		}
@@ -53,18 +68,19 @@ func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store St
 	}
 
 	for {
-		output, err := runTx(ctx, store, parameters, fn)
+		output, err := lp.runTx(ctx, store, parameters, fn)
 		if err != nil {
 			switch {
 			case errors.Is(err, postgres.ErrDeadlockDetected):
 				trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("deadlock", true))
 				logging.FromContext(ctx).Info("deadlock detected, retrying...")
-				// todo: keep ? / set configurable?
-				<-time.After(time.Duration(rand.Intn(100)) * time.Millisecond)
+				lp.deadLockCounter.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("operation", lp.operation),
+				))
 				continue
 			// A log with the IK could have been inserted in the meantime, read again the database to retrieve it
 			case errors.Is(err, ErrIdempotencyKeyConflict{}):
-				output, err := fetchLogWithIK[INPUT, OUTPUT](ctx, store, parameters)
+				output, err := lp.fetchLogWithIK(ctx, store, parameters)
 				if err != nil {
 					return nil, err
 				}
@@ -82,7 +98,7 @@ func forgeLog[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store St
 	}
 }
 
-func fetchLogWithIK[INPUT any, OUTPUT ledger.LogPayload](ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error) {
+func (lp *logProcessor[INPUT, OUTPUT]) fetchLogWithIK(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error) {
 	log, err := store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 	if err != nil && !errors.Is(err, postgres.ErrNotFound) {
 		return nil, err

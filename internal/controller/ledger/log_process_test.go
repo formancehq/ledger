@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 	"testing"
 )
@@ -30,7 +31,8 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 			Data: ledger.CreatedTransaction{},
 		}, nil)
 
-	_, err := forgeLog[RunScript, ledger.CreatedTransaction](ctx, store, Parameters[RunScript]{
+	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
+	_, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
 		IdempotencyKey: "foo",
 	}, nil)
 	require.NoError(t, err)
@@ -53,6 +55,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		WithTX(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	_, err := forgeLog[RunScript, ledger.CreatedTransaction](ctx, store, Parameters[RunScript]{}, nil)
+	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
+	_, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, nil)
 	require.NoError(t, err)
 }
