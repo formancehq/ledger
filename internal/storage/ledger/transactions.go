@@ -244,11 +244,9 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 	for _, address := range tx.InvolvedAccounts() {
 		_, err := s.UpsertAccount(ctx, &ledger.Account{
-			Address:       address,
-			FirstUsage:    tx.Timestamp,
-			InsertionDate: tx.InsertedAt,
-			UpdatedAt:     tx.InsertedAt,
-			Metadata:      make(metadata.Metadata),
+			Address:    address,
+			FirstUsage: tx.Timestamp,
+			Metadata:   make(metadata.Metadata),
 		})
 		if err != nil {
 			return fmt.Errorf("upserting account: %w", err)
