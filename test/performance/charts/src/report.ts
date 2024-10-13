@@ -33,6 +33,44 @@ interface Configuration {
     FeatureSet: Map<string, string>
 }
 
+interface DataPoint {
+    Attributes: string[]
+    Bounds: number[]
+    BucketCounts: number[]
+    Count: number
+    Max: number
+    Min: number
+    StartTime: string
+    Sum: number
+    Time: string
+    Value: number
+}
+
+interface OtelMetric {
+    Data: {
+        DataPoints: DataPoint[]
+        Temporality: string
+    },
+    Description: string
+    Name: string
+    Unit: string
+}
+
+interface Scope {
+    Name: string
+    SchemaURL: string
+    Version: string
+}
+
+interface ScopeMetric {
+    Metrics: OtelMetric[]
+    Scope: Scope
+}
+
+interface InternalMetrics {
+    ScopeMetrics: ScopeMetric[]
+}
+
 interface Report {
     Start: string,
     End: string,
@@ -40,6 +78,7 @@ interface Report {
     Scenario: string,
     Configuration: Configuration,
     TPS: number
+    InternalMetrics: InternalMetrics
 }
 
 interface BenchmarkResult {
