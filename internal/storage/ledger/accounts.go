@@ -348,7 +348,7 @@ func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (boo
 					On("conflict (ledger, address) do update").
 					Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
 					Set("metadata = accounts.metadata || excluded.metadata").
-					Set("updated_at = ?", account.UpdatedAt).
+					Set("updated_at = excluded.updated_at").
 					Value("ledger", "?", s.ledger.Name).
 					Returning("*").
 					Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage).
