@@ -190,6 +190,30 @@ func TestAccountsList(t *testing.T) {
 		require.Equal(t, "account:1", accounts.Data[0].Address)
 		require.Equal(t, "bank", accounts.Data[1].Address)
 	})
+	t.Run("list using filter on balances[USD] and PIT", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.ListAccounts(ctx, ledgercontroller.NewListAccountsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
+			PITFilter: ledgercontroller.PITFilter{
+				PIT: &now,
+			},
+		}).
+			WithQueryBuilder(query.Lt("balance[USD]", 0)),
+		))
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 1) // world
+	})
+	t.Run("list using filter on balances and PIT", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.ListAccounts(ctx, ledgercontroller.NewListAccountsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
+			PITFilter: ledgercontroller.PITFilter{
+				PIT: &now,
+			},
+		}).
+			WithQueryBuilder(query.Lt("balance", 0)),
+		))
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 1) // world
+	})
 
 	t.Run("list using filter on exists metadata", func(t *testing.T) {
 		t.Parallel()

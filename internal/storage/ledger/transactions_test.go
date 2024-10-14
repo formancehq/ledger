@@ -711,6 +711,12 @@ func TestTransactionsList(t *testing.T) {
 				WithQueryBuilder(query.Not(query.Exists("metadata", "category"))),
 			expected: []ledger.Transaction{tx5, tx4},
 		},
+		{
+			name: "filter using timestamp",
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+				WithQueryBuilder(query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano))),
+			expected: []ledger.Transaction{tx5, tx4},
+		},
 	}
 
 	for _, tc := range testCases {

@@ -45,13 +45,12 @@ func convertOperatorToSQL(operator string) string {
 func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 
 	if date != nil && !date.IsZero() {
-		sortedMoves := s.SortMovesBySeq(date).
-			ColumnExpr("(post_commit_volumes->>'input')::numeric - (post_commit_volumes->>'output')::numeric as balance").
-			Limit(1)
+		sortedMoves := s.SelectDistinctMovesBySeq(date).
+			ColumnExpr("(post_commit_volumes->>'input')::numeric - (post_commit_volumes->>'output')::numeric as balance")
 
 		return s.db.NewSelect().
 			ModelTableExpr("(?) moves", sortedMoves).
-			ColumnExpr("accounts_address, asset")
+			ColumnExpr("accounts_address, asset, balance")
 	}
 
 	return s.db.NewSelect().
@@ -96,7 +95,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				if operator != "$match" {
 					return ledgercontroller.NewErrInvalidQuery("'metadata' key filter can only be used with $match")
 				}
-			case key == "first_usage":
+			case key == "first_usage" || key == "balance":
 			default:
 				return ledgercontroller.NewErrInvalidQuery("unknown key '%s' when building query", key)
 			}
