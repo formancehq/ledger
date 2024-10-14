@@ -93,6 +93,8 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 					ret := make(map[string]any)
 					require.NoError(b, json.NewDecoder(rsp.Body).Decode(&ret))
 					report.InternalMetrics = ret
+				} else {
+					b.Logf("Unable to fetch ledger metrics, got status code %d", rsp.StatusCode)
 				}
 
 				// Compute final results
