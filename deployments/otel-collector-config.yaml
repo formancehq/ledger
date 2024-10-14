@@ -18,7 +18,11 @@ exporters:
 #    metric_expiration: 180m
     resource_to_telemetry_conversion:
       enabled: true
-  logging:
+#  logging:
+  otlp/2:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
 
 processors:
   batch:
@@ -41,16 +45,14 @@ connectors:
       - name: http.method
 
 service:
-  telemetry:
-    logs:
-      level: "debug"
+#  telemetry:
+#    logs:
+#      level: "debug"
   extensions: [pprof, zpages, health_check]
   pipelines:
     traces:
       receivers: [otlp]
-#      processors: [batch]
-      exporters: [spanmetrics]
+      exporters: [spanmetrics, otlp/2]
     metrics:
       receivers: [otlp, spanmetrics]
-#      processors: [batch]
       exporters: [prometheus]
