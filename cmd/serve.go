@@ -49,8 +49,6 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 
-			otelMetricsExporter, _ := cmd.Flags().GetString(otlpmetrics.OtelMetricsExporterFlag)
-
 			options := []fx.Option{
 				fx.NopLogger,
 				otlp.FXModuleFromFlags(cmd),
@@ -87,7 +85,6 @@ func NewServeCommand() *cobra.Command {
 					},
 				) chi.Router {
 					return assembleFinalRouter(
-						otelMetricsExporter == "memory",
 						service.IsDebug(cmd),
 						params.MeterProvider,
 						params.Exporter,
@@ -139,7 +136,7 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 }
 
 func assembleFinalRouter(
-	exportMetrics, exportPProf bool,
+	exportPProf bool,
 	meterProvider *metric.MeterProvider,
 	exporter *otlpmetrics.InMemoryExporter,
 	healthController *health.HealthController,
@@ -147,7 +144,7 @@ func assembleFinalRouter(
 ) *chi.Mux {
 	wrappedRouter := chi.NewRouter()
 	wrappedRouter.Route("/_/", func(r chi.Router) {
-		if exportMetrics {
+		if exporter != nil {
 			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
 				meterProvider,
 				exporter,

@@ -64,7 +64,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 		Output:                output,
 		OTLPConfig: &testserver.OTLPConfig{
 			Metrics: &otlpmetrics.ModuleConfig{
-				Exporter:       "memory",
+				KeepInMemory:   true,
 				RuntimeMetrics: true,
 			},
 		},
