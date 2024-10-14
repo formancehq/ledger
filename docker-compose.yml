@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+
   postgres:
     image: "postgres:16-alpine"
     healthcheck:
@@ -15,6 +16,20 @@ services:
       POSTGRES_USER: "ledger"
       POSTGRES_PASSWORD: "ledger"
       POSTGRES_DB: "ledger"
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./deployments/prometheus.yaml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  otel:
+    image: "otel/opentelemetry-collector-contrib:0.81.0"
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./deployments/otel-collector-config.yaml:/etc/otel-collector-config.yaml
 
   jaeger:
     image: jaegertracing/opentelemetry-all-in-one
@@ -36,10 +51,14 @@ services:
         condition: service_started
     environment:
       GOWORK: off
-      DEBUG: "true"
+      DEBUG: "${DEBUG:-false}"
       OTEL_SERVICE_NAME: ledger
-      OTEL_METRICS_EXPORTER: "memory"
+      OTEL_METRICS_EXPORTER: "otlp"
+      OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otel:4317
+      OTEL_METRICS_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_METRICS_KEEP_IN_MEMORY: "true"
       OTEL_TRACES_EXPORTER: otlp
-      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: jaeger:4317
+      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otel:4317
       OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_TRACES_BATCH: "true"
       POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"

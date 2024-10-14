@@ -117,6 +117,10 @@ github.com/formancehq/go-libs v1.7.2-0.20241012201526-5cfbdd7cbd3a h1:hmw8sXFvgd
 github.com/formancehq/go-libs v1.7.2-0.20241012201526-5cfbdd7cbd3a/go.mod h1:B/KB2mPjFqybLDZufMcZQKpXcHg8Va6JaoUWda1KGU4=
 github.com/formancehq/go-libs v1.7.2-0.20241012213333-313b8d5bcb17 h1:XqPFlmZJQ8ImRpVnc+jqslo0IANuUqnu0+EuoRQ341o=
 github.com/formancehq/go-libs v1.7.2-0.20241012213333-313b8d5bcb17/go.mod h1:bvfMYwpyRQF6fBkBWty1HiCsKSyYe4RkaEYJEip9Lrw=
+github.com/formancehq/go-libs v1.7.2-0.20241014095913-315cdf91b020 h1:i8HwBih7/huczgl58ikbt/XNtQV+UrgSp9ntzdOOjGg=
+github.com/formancehq/go-libs v1.7.2-0.20241014095913-315cdf91b020/go.mod h1:bvfMYwpyRQF6fBkBWty1HiCsKSyYe4RkaEYJEip9Lrw=
+github.com/formancehq/go-libs v1.7.2-0.20241014102030-f397c44a5d47 h1:FxRRkcLvDj8mrnNQmItxZyrpctJ5KchwTnT9Q1uITrI=
+github.com/formancehq/go-libs v1.7.2-0.20241014102030-f397c44a5d47/go.mod h1:bvfMYwpyRQF6fBkBWty1HiCsKSyYe4RkaEYJEip9Lrw=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/go-chi/chi v4.1.2+incompatible h1:fGFk2Gmi/YKXk0OmGfBh0WgmN3XB8lVnEyNz34tQRec=

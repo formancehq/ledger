@@ -33,7 +33,7 @@ type T interface {
 
 type OTLPConfig struct {
 	BaseConfig otlp.Config
-	Metrics *otlpmetrics.ModuleConfig
+	Metrics    *otlpmetrics.ModuleConfig
 }
 
 type Configuration struct {
@@ -101,6 +101,12 @@ func (s *Server) Start() {
 				args,
 				"--"+otlpmetrics.OtelMetricsExporterFlag, s.configuration.OTLPConfig.Metrics.Exporter,
 			)
+			if s.configuration.OTLPConfig.Metrics.KeepInMemory {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsKeepInMemoryFlag,
+				)
+			}
 			if s.configuration.OTLPConfig.Metrics.OTLPConfig != nil {
 				args = append(
 					args,
