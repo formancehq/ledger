@@ -25,10 +25,15 @@ func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, dead
 	}
 }
 
-func (lp *logProcessor[INPUT, OUTPUT]) runTx(ctx context.Context, store Store, parameters Parameters[INPUT], fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error)) (*OUTPUT, error) {
+func (lp *logProcessor[INPUT, OUTPUT]) runTx(
+	ctx context.Context,
+	store Store,
+	parameters Parameters[INPUT],
+	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
+) (*OUTPUT, error) {
 	var payload *OUTPUT
 	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
-		payload, err = fn(ctx, tx, parameters.Input)
+		payload, err = fn(ctx, tx, parameters)
 		if err != nil {
 			return false, err
 		}
@@ -55,7 +60,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX TX, input INPUT) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
 		output, err := lp.fetchLogWithIK(ctx, store, parameters)
