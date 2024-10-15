@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
@@ -14,8 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	. "github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

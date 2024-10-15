@@ -4,21 +4,21 @@ package driver_test
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/google/uuid"
 	"testing"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/bun/bundebug"
-	"github.com/formancehq/go-libs/testing/docker"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
+	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
 )
 

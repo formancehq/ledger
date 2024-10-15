@@ -1,9 +1,9 @@
 package bus
 
 import (
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/publish"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/publish"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/events"
 )

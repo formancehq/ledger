@@ -3,9 +3,9 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )

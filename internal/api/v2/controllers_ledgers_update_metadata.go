@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"errors"
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/metadata"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
 )

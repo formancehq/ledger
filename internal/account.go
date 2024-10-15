@@ -1,8 +1,8 @@
 package ledger
 
 import (
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/time"
 	"github.com/uptrace/bun"
 	"math/big"
 )

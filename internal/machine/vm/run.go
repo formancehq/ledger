@@ -2,12 +2,12 @@ package vm
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 	"math/big"
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 )
 

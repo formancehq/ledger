@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -11,19 +12,18 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	. "github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 
 	"errors"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/google/uuid"
 
 	ledger "github.com/formancehq/ledger/internal"

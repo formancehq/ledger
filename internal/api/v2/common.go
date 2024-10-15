@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	"io"
@@ -10,15 +10,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/v2/api"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/query"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/query"
 )
 
 func getPITOOTFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {

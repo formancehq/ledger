@@ -4,13 +4,13 @@ package test_suite
 
 import (
 	"database/sql"
+	. "github.com/formancehq/go-libs/v2/testing/api"
 	"io"
 	"math/big"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/pointer"
-	. "github.com/formancehq/go-libs/testing/api"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"

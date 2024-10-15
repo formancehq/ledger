@@ -2,11 +2,11 @@ package ledger
 
 import (
 	"encoding/base64"
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -75,27 +75,27 @@ func TestHash(t *testing.T) {
 
 	for _, tc := range []testCase{
 		{
-			name:              "new transaction",
+			name: "new transaction",
 			log: NewLog(CreatedTransaction{
-				Transaction: NewTransaction(),
+				Transaction:     NewTransaction(),
 				AccountMetadata: make(AccountMetadata),
 			}),
 			expectedHash:      "RjKsuJOuPYeFljGJlXZ5nk4_21apQY_k8daJamyZTVI=",
 			expectedHashRetry: "klWyIDudjjWU-BNHjRcFzTYHpU2CWi8lEVdVYjizHKo=",
 		},
 		{
-			name:              "new transaction with reference",
+			name: "new transaction with reference",
 			log: NewLog(CreatedTransaction{
-				Transaction: NewTransaction().WithReference("foo"),
+				Transaction:     NewTransaction().WithReference("foo"),
 				AccountMetadata: make(AccountMetadata),
 			}),
 			expectedHash:      "SZ7XX-W_odawRCRvAmZkF0U_YnHDKY0Ku9zG_oaRgA4=",
 			expectedHashRetry: "KWxResFbWNf2xoH5u1gKggQkxbXSG7wdrzrKVVBk6BE=",
 		},
 		{
-			name:              "new transaction with nil account metadata",
+			name: "new transaction with nil account metadata",
 			log: NewLog(CreatedTransaction{
-				Transaction: NewTransaction(),
+				Transaction:     NewTransaction(),
 				AccountMetadata: nil,
 			}),
 			expectedHash:      "I4IOKCBxlOWAeTSwj52ZElJAWc88F1UkA63QtJceshw=",
@@ -130,7 +130,7 @@ func TestHash(t *testing.T) {
 			log: NewLog(DeletedMetadata{
 				TargetType: MetaTargetTypeAccount,
 				TargetID:   "world",
-				Key: "foo",
+				Key:        "foo",
 			}),
 			expectedHash:      "e5Hb2rvqnhr96jCfoek69Fw7iYgoKoCYtl-qstYBvIg=",
 			expectedHashRetry: "t0SizlUMhLc5RkF9849zQZ34JPSom29WRVnBXlDM-O8=",
@@ -140,13 +140,13 @@ func TestHash(t *testing.T) {
 			log: NewLog(DeletedMetadata{
 				TargetType: MetaTargetTypeTransaction,
 				TargetID:   big.NewInt(1),
-				Key: "foo",
+				Key:        "foo",
 			}),
 			expectedHash:      "3TAvOvastJtB_KxvccNFpuXp57MEv8kSR3NiUf7zosg=",
 			expectedHashRetry: "izQj6mfY65ePSC9utaiAftBnsPVwP8PaHPdoi7ruSN4=",
 		},
 		{
-			name:              "reverted transaction",
+			name: "reverted transaction",
 			log: NewLog(RevertedTransaction{
 				RevertedTransaction: Transaction{ID: 1},
 				RevertTransaction:   NewTransaction().WithTimestamp(refDate),
@@ -166,4 +166,3 @@ func TestHash(t *testing.T) {
 		})
 	}
 }
-

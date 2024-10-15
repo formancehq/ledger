@@ -2,11 +2,11 @@ package driver
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/uptrace/bun"
 )
 

@@ -7,10 +7,10 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/auth"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

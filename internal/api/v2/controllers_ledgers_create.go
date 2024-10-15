@@ -11,7 +11,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 
 	"errors"
-	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/v2/api"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -34,7 +34,7 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 		if err := systemController.CreateLedger(r.Context(), chi.URLParam(r, "ledger"), configuration); err != nil {
 			switch {
 			case errors.Is(err, system.ErrInvalidLedgerConfiguration{}) ||
-			 	errors.Is(err, system.ErrLedgerAlreadyExists) ||
+				errors.Is(err, system.ErrLedgerAlreadyExists) ||
 				errors.Is(err, ledger.ErrInvalidLedgerName{}) ||
 				errors.Is(err, ledger.ErrInvalidBucketName{}):
 				api.BadRequest(w, ErrValidation, err)

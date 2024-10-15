@@ -3,9 +3,9 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/logging"
-	. "github.com/formancehq/go-libs/testing/api"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/logging"
+	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"

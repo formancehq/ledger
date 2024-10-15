@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
 	"github.com/stretchr/testify/require"

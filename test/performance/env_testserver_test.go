@@ -4,15 +4,15 @@ package performance_test
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
 	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"io"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"

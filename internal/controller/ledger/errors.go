@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 
 	"github.com/formancehq/ledger/internal/machine"
 
@@ -12,6 +12,7 @@ import (
 )
 
 var ErrNotFound = postgres.ErrNotFound
+
 type ErrTooManyClient = postgres.ErrTooManyClient
 
 type ErrImport struct {

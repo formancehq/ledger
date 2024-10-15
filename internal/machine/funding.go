@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	collec "github.com/formancehq/go-libs/collectionutils"
+	collec "github.com/formancehq/go-libs/v2/collectionutils"
 )
 
 type FundingPart struct {

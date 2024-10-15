@@ -7,11 +7,11 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/ledger/internal/api/common"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"

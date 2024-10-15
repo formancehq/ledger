@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"text/template"
 
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/uptrace/bun"
 )
 

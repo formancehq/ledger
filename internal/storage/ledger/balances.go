@@ -6,12 +6,12 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
-	"github.com/formancehq/go-libs/query"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"

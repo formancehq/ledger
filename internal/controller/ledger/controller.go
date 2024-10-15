@@ -2,11 +2,11 @@ package ledger
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/machine/vm"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 )
 

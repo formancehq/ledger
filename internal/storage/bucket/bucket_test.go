@@ -8,9 +8,9 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"testing"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

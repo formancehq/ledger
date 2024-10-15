@@ -3,9 +3,9 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/logging"
-	. "github.com/formancehq/go-libs/testing/api"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/logging"
+	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -14,8 +14,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/pointer"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"

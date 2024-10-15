@@ -9,8 +9,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/bun/bunpaginate"
-	migrations "github.com/formancehq/go-libs/migrations"
+	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )

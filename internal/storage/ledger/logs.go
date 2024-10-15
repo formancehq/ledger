@@ -8,10 +8,10 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"errors"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/platform/postgres"
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/query"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )

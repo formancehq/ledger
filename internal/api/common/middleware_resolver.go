@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/ledger/internal/controller/system"
 
 	"errors"

@@ -4,8 +4,8 @@ package test_suite
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	. "github.com/onsi/ginkgo/v2"

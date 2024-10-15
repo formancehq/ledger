@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 )
 
 const (
@@ -199,17 +199,17 @@ func (p CreatedTransaction) GetMemento() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
 	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
 	type transactionResume struct {
-		Postings   Postings          `json:"postings"`
-		Metadata   metadata.Metadata `json:"metadata"`
-		Timestamp  time.Time         `json:"timestamp"`
-		Reference  string            `json:"reference,omitempty"`
-		ID int `json:"id"`
-		Reverted bool `json:"reverted"`
+		Postings  Postings          `json:"postings"`
+		Metadata  metadata.Metadata `json:"metadata"`
+		Timestamp time.Time         `json:"timestamp"`
+		Reference string            `json:"reference,omitempty"`
+		ID        int               `json:"id"`
+		Reverted  bool              `json:"reverted"`
 	}
 
 	return struct {
-		Transaction     transactionResume     `json:"transaction"`
-		AccountMetadata AccountMetadata `json:"accountMetadata"`
+		Transaction     transactionResume `json:"transaction"`
+		AccountMetadata AccountMetadata   `json:"accountMetadata"`
 	}{
 		Transaction: transactionResume{
 			Postings:  p.Transaction.Postings,
@@ -330,20 +330,20 @@ var _ LogPayload = (*RevertedTransaction)(nil)
 func (r RevertedTransaction) GetMemento() any {
 
 	type transactionResume struct {
-		Postings   Postings          `json:"postings"`
-		Metadata   metadata.Metadata `json:"metadata"`
-		Timestamp  time.Time         `json:"timestamp"`
-		Reference  string            `json:"reference,omitempty"`
-		ID int `json:"id"`
-		Reverted bool `json:"reverted"`
+		Postings  Postings          `json:"postings"`
+		Metadata  metadata.Metadata `json:"metadata"`
+		Timestamp time.Time         `json:"timestamp"`
+		Reference string            `json:"reference,omitempty"`
+		ID        int               `json:"id"`
+		Reverted  bool              `json:"reverted"`
 	}
 
 	return struct {
-		RevertedTransactionID int         `json:"revertedTransactionID"`
+		RevertedTransactionID int               `json:"revertedTransactionID"`
 		RevertTransaction     transactionResume `json:"transaction"`
 	}{
 		RevertedTransactionID: r.RevertedTransaction.ID,
-		RevertTransaction:     transactionResume{
+		RevertTransaction: transactionResume{
 			Postings:  r.RevertTransaction.Postings,
 			Metadata:  r.RevertTransaction.Metadata,
 			Timestamp: r.RevertTransaction.Timestamp,

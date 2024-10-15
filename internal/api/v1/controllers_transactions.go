@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/query"
+	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
 )
 

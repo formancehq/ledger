@@ -4,14 +4,14 @@ package test_suite
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/testing/docker"
-	. "github.com/formancehq/go-libs/testing/platform/pgtesting"
-	. "github.com/formancehq/go-libs/testing/utils"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/testing/docker"
+	. "github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	. "github.com/formancehq/go-libs/v2/testing/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

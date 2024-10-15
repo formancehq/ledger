@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	. "github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/platform/postgres"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -16,13 +16,13 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 )
 
 const (
@@ -30,9 +30,9 @@ const (
 )
 
 type Driver struct {
-	db *bun.DB
+	db     *bun.DB
 	tracer trace.Tracer
-	meter metric.Meter
+	meter  metric.Meter
 }
 
 func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, ledger ledger.Ledger) (*ledgerstore.Store, error) {
@@ -255,7 +255,7 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-var defaultOptions = []Option {
+var defaultOptions = []Option{
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
 }

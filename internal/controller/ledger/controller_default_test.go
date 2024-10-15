@@ -6,14 +6,14 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/migrations"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
