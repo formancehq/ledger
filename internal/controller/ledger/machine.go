@@ -15,23 +15,23 @@ import (
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
-type MachineResult struct {
+type NumscriptExecutionResult struct {
 	Postings        ledger.Postings   `json:"postings"`
 	Metadata        metadata.Metadata `json:"metadata"`
 	AccountMetadata map[string]metadata.Metadata
 }
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine.go -destination machine_generated_test.go -package ledger . Machine
-type Machine interface {
-	Execute(context.Context, TX, map[string]string) (*MachineResult, error)
+type NumscriptRuntime interface {
+	Execute(context.Context, TX, map[string]string) (*NumscriptExecutionResult, error)
 }
 
-type DefaultMachineAdapter struct {
+type MachineNumscriptRuntimeAdapter struct {
 	program program.Program
 	machine *vm.Machine
 }
 
-func (d *DefaultMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*MachineResult, error) {
+func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*NumscriptExecutionResult, error) {
 	store := newVmStoreAdapter(tx)
 
 	d.machine = vm.NewMachine(d.program)
@@ -65,7 +65,7 @@ func (d *DefaultMachineAdapter) Execute(ctx context.Context, tx TX, vars map[str
 		}
 	}
 
-	return &MachineResult{
+	return &NumscriptExecutionResult{
 		Postings: collectionutils.Map(d.machine.Postings, func(from vm.Posting) ledger.Posting {
 			return ledger.Posting{
 				Source:      from.Source,
@@ -79,10 +79,10 @@ func (d *DefaultMachineAdapter) Execute(ctx context.Context, tx TX, vars map[str
 	}, nil
 }
 
-func NewDefaultMachine(p program.Program) *DefaultMachineAdapter {
-	return &DefaultMachineAdapter{
+func NewMachineNumscriptRuntimeAdapter(p program.Program) *MachineNumscriptRuntimeAdapter {
+	return &MachineNumscriptRuntimeAdapter{
 		program: p,
 	}
 }
 
-var _ Machine = (*DefaultMachineAdapter)(nil)
+var _ NumscriptRuntime = (*MachineNumscriptRuntimeAdapter)(nil)

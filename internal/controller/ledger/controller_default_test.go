@@ -24,7 +24,7 @@ func TestCreateTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
-	machine := NewMockMachine(ctrl)
+	numscriptRuntime := NewMockNumscriptRuntime(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	sqlTX := NewMockTX(ctrl)
 
@@ -34,7 +34,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	parser.EXPECT().
 		Parse(runScript.Plain).
-		Return(machine, nil)
+		Return(numscriptRuntime, nil)
 
 	store.EXPECT().
 		WithTX(gomock.Any(), nil, gomock.Any()).
@@ -44,9 +44,9 @@ func TestCreateTransaction(t *testing.T) {
 		})
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
-	machine.EXPECT().
+	numscriptRuntime.EXPECT().
 		Execute(gomock.Any(), sqlTX, runScript.Vars).
-		Return(&MachineResult{
+		Return(&NumscriptExecutionResult{
 			Postings: ledger.Postings{posting},
 		}, nil)
 

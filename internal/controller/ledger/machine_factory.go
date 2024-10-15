@@ -5,19 +5,19 @@ package ledger
 type NumscriptParser interface {
 	// Parse can return following errors:
 	//  * ErrCompilationFailed
-	Parse(script string) (Machine, error)
+	Parse(script string) (NumscriptRuntime, error)
 }
 
 type DefaultNumscriptParser struct {
 	compiler Compiler
 }
 
-func (d *DefaultNumscriptParser) Parse(script string) (Machine, error) {
+func (d *DefaultNumscriptParser) Parse(script string) (NumscriptRuntime, error) {
 	ret, err := d.compiler.Compile(script)
 	if err != nil {
 		return nil, err
 	}
-	return NewDefaultMachine(*ret), nil
+	return NewMachineNumscriptRuntimeAdapter(*ret), nil
 }
 
 func NewDefaultMachineFactory(compiler Compiler) *DefaultNumscriptParser {

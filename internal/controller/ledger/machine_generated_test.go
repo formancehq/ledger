@@ -12,40 +12,40 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockMachine is a mock of Machine interface.
-type MockMachine struct {
+// MockNumscriptRuntime is a mock of NumscriptRuntime interface.
+type MockNumscriptRuntime struct {
 	ctrl     *gomock.Controller
-	recorder *MockMachineMockRecorder
+	recorder *MockNumscriptRuntimeMockRecorder
 }
 
-// MockMachineMockRecorder is the mock recorder for MockMachine.
-type MockMachineMockRecorder struct {
-	mock *MockMachine
+// MockNumscriptRuntimeMockRecorder is the mock recorder for MockNumscriptRuntime.
+type MockNumscriptRuntimeMockRecorder struct {
+	mock *MockNumscriptRuntime
 }
 
-// NewMockMachine creates a new mock instance.
-func NewMockMachine(ctrl *gomock.Controller) *MockMachine {
-	mock := &MockMachine{ctrl: ctrl}
-	mock.recorder = &MockMachineMockRecorder{mock}
+// NewMockNumscriptRuntime creates a new mock instance.
+func NewMockNumscriptRuntime(ctrl *gomock.Controller) *MockNumscriptRuntime {
+	mock := &MockNumscriptRuntime{ctrl: ctrl}
+	mock.recorder = &MockNumscriptRuntimeMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMachine) EXPECT() *MockMachineMockRecorder {
+func (m *MockNumscriptRuntime) EXPECT() *MockNumscriptRuntimeMockRecorder {
 	return m.recorder
 }
 
 // Execute mocks base method.
-func (m *MockMachine) Execute(arg0 context.Context, arg1 TX, arg2 map[string]string) (*MachineResult, error) {
+func (m *MockNumscriptRuntime) Execute(arg0 context.Context, arg1 TX, arg2 map[string]string) (*NumscriptExecutionResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Execute", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*MachineResult)
+	ret0, _ := ret[0].(*NumscriptExecutionResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Execute indicates an expected call of Execute.
-func (mr *MockMachineMockRecorder) Execute(arg0, arg1, arg2 any) *gomock.Call {
+func (mr *MockNumscriptRuntimeMockRecorder) Execute(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockMachine)(nil).Execute), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockNumscriptRuntime)(nil).Execute), arg0, arg1, arg2)
 }

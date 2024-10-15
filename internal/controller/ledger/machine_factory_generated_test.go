@@ -35,10 +35,10 @@ func (m *MockNumscriptParser) EXPECT() *MockNumscriptParserMockRecorder {
 }
 
 // Parse mocks base method.
-func (m *MockNumscriptParser) Parse(script string) (Machine, error) {
+func (m *MockNumscriptParser) Parse(script string) (NumscriptRuntime, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parse", script)
-	ret0, _ := ret[0].(Machine)
+	ret0, _ := ret[0].(NumscriptRuntime)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
