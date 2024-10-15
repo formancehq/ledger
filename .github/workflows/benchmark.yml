@@ -20,11 +20,11 @@ jobs:
       - run: echo "running actions as ${USER}"
       - run: >
           /tmp/ledger serve 
-            --postgres-uri=postgres://formance:formance@127.0.0.1/ledger 
-            --postgres-conn-max-idle-time=120s 
-            --postgres-max-open-conns=500 
-            --postgres-max-idle-conns=100 
-            --otel-metrics-keep-in-memory &
+          --postgres-uri=postgres://formance:formance@127.0.0.1/ledger 
+          --postgres-conn-max-idle-time=120s 
+          --postgres-max-open-conns=500 
+          --postgres-max-idle-conns=100 
+          --otel-metrics-keep-in-memory &
       - run: >
           earthly
           --allow-privileged
@@ -36,6 +36,7 @@ jobs:
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
           ./test/performance+generate-graphs
       - run: kill -9 $(ps aux | grep "ledger serve"| grep -v "grep" | awk '{print $2}')
+        if: always()
       - uses: actions/upload-artifact@v4
         with:
           name: graphs
