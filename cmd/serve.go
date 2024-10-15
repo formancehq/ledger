@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	apilib "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/health"
 	"github.com/formancehq/go-libs/httpserver"
@@ -50,8 +48,6 @@ func NewServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			spew.Dump(cmd.Flags().GetBool(otlpmetrics.OtelMetricsKeepInMemoryFlag))
 
 			options := []fx.Option{
 				fx.NopLogger,
@@ -146,11 +142,9 @@ func assembleFinalRouter(
 	healthController *health.HealthController,
 	handler http.Handler,
 ) *chi.Mux {
-	fmt.Println("exporter", exporter)
 	wrappedRouter := chi.NewRouter()
 	wrappedRouter.Route("/_/", func(r chi.Router) {
 		if exporter != nil {
-			fmt.Println("mount metrics")
 			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
 				meterProvider,
 				exporter,
