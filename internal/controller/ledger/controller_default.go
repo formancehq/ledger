@@ -261,7 +261,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, sqlTX TX, 
 		"ExecuteMachine",
 		ctrl.tracer,
 		ctrl.executeMachineHistogram,
-		func(ctx context.Context) (*MachineResult, error) {
+		func(ctx context.Context) (*NumscriptExecutionResult, error) {
 			return m.Execute(ctx, sqlTX, parameters.Input.Vars)
 		},
 	)
