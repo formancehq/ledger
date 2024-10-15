@@ -11,40 +11,40 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockMachineFactory is a mock of MachineFactory interface.
-type MockMachineFactory struct {
+// MockNumscriptParser is a mock of NumscriptParser interface.
+type MockNumscriptParser struct {
 	ctrl     *gomock.Controller
-	recorder *MockMachineFactoryMockRecorder
+	recorder *MockNumscriptParserMockRecorder
 }
 
-// MockMachineFactoryMockRecorder is the mock recorder for MockMachineFactory.
-type MockMachineFactoryMockRecorder struct {
-	mock *MockMachineFactory
+// MockNumscriptParserMockRecorder is the mock recorder for MockNumscriptParser.
+type MockNumscriptParserMockRecorder struct {
+	mock *MockNumscriptParser
 }
 
-// NewMockMachineFactory creates a new mock instance.
-func NewMockMachineFactory(ctrl *gomock.Controller) *MockMachineFactory {
-	mock := &MockMachineFactory{ctrl: ctrl}
-	mock.recorder = &MockMachineFactoryMockRecorder{mock}
+// NewMockNumscriptParser creates a new mock instance.
+func NewMockNumscriptParser(ctrl *gomock.Controller) *MockNumscriptParser {
+	mock := &MockNumscriptParser{ctrl: ctrl}
+	mock.recorder = &MockNumscriptParserMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMachineFactory) EXPECT() *MockMachineFactoryMockRecorder {
+func (m *MockNumscriptParser) EXPECT() *MockNumscriptParserMockRecorder {
 	return m.recorder
 }
 
-// Make mocks base method.
-func (m *MockMachineFactory) Make(script string) (Machine, error) {
+// Parse mocks base method.
+func (m *MockNumscriptParser) Parse(script string) (Machine, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Make", script)
+	ret := m.ctrl.Call(m, "Parse", script)
 	ret0, _ := ret[0].(Machine)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Make indicates an expected call of Make.
-func (mr *MockMachineFactoryMockRecorder) Make(script any) *gomock.Call {
+// Parse indicates an expected call of Parse.
+func (mr *MockNumscriptParserMockRecorder) Parse(script any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Make", reflect.TypeOf((*MockMachineFactory)(nil).Make), script)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockNumscriptParser)(nil).Parse), script)
 }
