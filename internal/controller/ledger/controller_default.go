@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
+	"reflect"
+
 	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"math/big"
-	"reflect"
 
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -30,9 +31,9 @@ import (
 )
 
 type DefaultController struct {
-	store          Store
-	machineFactory MachineFactory
-	ledger         ledger.Ledger
+	store  Store
+	parser NumscriptParser
+	ledger ledger.Ledger
 
 	tracer trace.Tracer
 	meter  metric.Meter
@@ -51,13 +52,13 @@ type DefaultController struct {
 func NewDefaultController(
 	l ledger.Ledger,
 	store Store,
-	machineFactory MachineFactory,
+	numscriptParser NumscriptParser,
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
-		store:          store,
-		ledger:         l,
-		machineFactory: machineFactory,
+		store:  store,
+		ledger: l,
+		parser: numscriptParser,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -250,7 +251,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, sqlTX TX, 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	m, err := ctrl.machineFactory.Make(parameters.Input.Plain)
+	m, err := ctrl.parser.Parse(parameters.Input.Plain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}

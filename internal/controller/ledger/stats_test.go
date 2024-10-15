@@ -14,7 +14,7 @@ func TestStats(t *testing.T) {
 	ctx := logging.TestingContext()
 	ctrl := gomock.NewController(t)
 	store := NewMockStore(ctrl)
-	machineFactory := NewMockMachineFactory(ctrl)
+	parser := NewMockNumscriptParser(ctrl)
 
 	store.EXPECT().
 		CountTransactions(gomock.Any(), NewListTransactionsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}))).
@@ -27,7 +27,7 @@ func TestStats(t *testing.T) {
 	ledgerController := NewDefaultController(
 		ledger.MustNewWithDefault("foo"),
 		store,
-		machineFactory,
+		parser,
 	)
 	stats, err := ledgerController.GetStats(ctx)
 	require.NoError(t, err)
