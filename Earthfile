@@ -74,7 +74,7 @@ tests:
         SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/accounts/..."
         SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/assets/..."
         SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
-        SET goFlags="$goFlags -coverprofile cover.out"
+        SET goFlags="$goFlags -coverprofile coverage.txt"
     END
 
     IF [ "$includeIntegrationTests" = "true" ]
@@ -88,9 +88,9 @@ tests:
     IF [ "$coverage" = "true" ]
         # as special case, exclude files suffixed by debug.go
         # toremovelater: exclude machine code as it will be updated soon
-        RUN cat cover.out | grep -v debug.go | grep -v "/machine/" > cover2.out
-        RUN mv cover2.out cover.out
-        SAVE ARTIFACT cover.out AS LOCAL cover.out
+        RUN cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
+        RUN mv coverage2.txt coverage.txt
+        SAVE ARTIFACT coverage.txt AS LOCAL coverage.txt
     END
 
 deploy:
