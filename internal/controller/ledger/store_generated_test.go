@@ -10,9 +10,9 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/bun/bunpaginate"
-	metadata "github.com/formancehq/go-libs/metadata"
-	migrations "github.com/formancehq/go-libs/migrations"
+	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	metadata "github.com/formancehq/go-libs/v2/metadata"
+	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"

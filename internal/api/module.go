@@ -2,13 +2,13 @@ package api
 
 import (
 	_ "embed"
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/health"
+	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v2/health"
 	"go.uber.org/fx"
 )
 

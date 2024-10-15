@@ -6,13 +6,13 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 
-	"github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/go-libs/query"
+	"github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/query"
 )
 
 func getPITFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
@@ -75,6 +75,6 @@ func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontrol
 	return ledgercontroller.Parameters[INPUT]{
 		DryRun:         dryRun,
 		IdempotencyKey: idempotencyKey,
-		Input: input,
+		Input:          input,
 	}
 }

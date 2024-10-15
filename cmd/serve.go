@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	apilib "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/health"
-	"github.com/formancehq/go-libs/httpserver"
-	"github.com/formancehq/go-libs/otlp"
+	apilib "github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/health"
+	"github.com/formancehq/go-libs/v2/httpserver"
+	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -12,20 +12,20 @@ import (
 	"net/http/pprof"
 	"time"
 
-	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/aws/iam"
-	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/otlp/otlptraces"
-	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v2/aws/iam"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v2/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v2/publish"
 	"github.com/formancehq/ledger/internal/api"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage"
 
-	"github.com/formancehq/go-libs/ballast"
-	"github.com/formancehq/go-libs/service"
+	"github.com/formancehq/go-libs/v2/ballast"
+	"github.com/formancehq/go-libs/v2/service"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )

@@ -10,14 +10,14 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/v2/api"
 	ledger "github.com/formancehq/ledger/internal"
 
-	"github.com/formancehq/go-libs/query"
+	"github.com/formancehq/go-libs/v2/query"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

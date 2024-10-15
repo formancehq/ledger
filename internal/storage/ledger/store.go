@@ -3,7 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"errors"
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/uptrace/bun"
@@ -22,7 +22,7 @@ type Store struct {
 	db     bun.IDB
 	ledger ledger.Ledger
 
-	tracer trace.Tracer
+	tracer                             trace.Tracer
 	meter                              metric.Meter
 	listAccountsHistogram              metric.Int64Histogram
 	checkBucketSchemaHistogram         metric.Int64Histogram

@@ -5,7 +5,7 @@ package performance_test
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
@@ -16,7 +16,7 @@ var scripts = map[string]TransactionProvider{
 	"world->bank":         TransactionProviderFn(worldToBank),
 	"world->any":          TransactionProviderFn(worldToAny),
 	"any(unbounded)->any": TransactionProviderFn(anyUnboundedToAny),
-	"any(bounded)->any": TransactionProviderFn(anyBoundedToAny),
+	"any(bounded)->any":   TransactionProviderFn(anyBoundedToAny),
 }
 
 func worldToBank(_ int) (string, map[string]string) {

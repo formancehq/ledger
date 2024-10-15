@@ -3,7 +3,7 @@
 package performance_test
 
 import (
-	. "github.com/formancehq/go-libs/collectionutils"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
 	"sort"
 )
@@ -35,7 +35,7 @@ func buildAllPossibleConfigurations() []configuration {
 }
 
 type configuration struct {
-	Name string
+	Name       string
 	FeatureSet ledger.FeatureSet
 }
 

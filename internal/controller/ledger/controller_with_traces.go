@@ -2,23 +2,23 @@ package ledger
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 )
 
 type ControllerWithTraces struct {
-	underlying     Controller
-	tracer trace.Tracer
+	underlying Controller
+	tracer     trace.Tracer
 }
 
 func NewControllerWithTraces(underlying Controller, tracer trace.Tracer) *ControllerWithTraces {
 	return &ControllerWithTraces{
 		underlying: underlying,
-		tracer: tracer,
+		tracer:     tracer,
 	}
 }
 

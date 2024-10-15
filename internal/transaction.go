@@ -2,14 +2,14 @@ package ledger
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/time"
 	"github.com/invopop/jsonschema"
 	"github.com/uptrace/bun"
 	"math/big"
 	"slices"
 	"sort"
 
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 )
 
 type Transactions struct {

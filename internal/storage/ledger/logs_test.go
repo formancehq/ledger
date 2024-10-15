@@ -12,12 +12,12 @@ import (
 	"errors"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/time"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/logging"
 
-	"github.com/formancehq/go-libs/query"
+	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,7 @@ func TestInsertLog(t *testing.T) {
 	t.Run("check hash against core", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
 		log1 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction: ledger.NewTransaction(),
+			Transaction:     ledger.NewTransaction(),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log1Copy := log1

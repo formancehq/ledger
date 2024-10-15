@@ -10,7 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/tracing"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
@@ -29,14 +29,14 @@ type Controller interface {
 }
 
 type DefaultController struct {
-	store    Store
-	listener ledgercontroller.Listener
-	compiler ledgercontroller.Compiler
-	registry *ledgercontroller.StateRegistry
+	store                      Store
+	listener                   ledgercontroller.Listener
+	compiler                   ledgercontroller.Compiler
+	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
 
 	tracer trace.Tracer
-	meter metric.Meter
+	meter  metric.Meter
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
@@ -59,7 +59,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			ctrl.tracer,
 			ledgercontroller.DelayCalculatorFn(func(i int) time.Duration {
 				if i < ctrl.databaseRetryConfiguration.MaxRetry {
-					return time.Duration(i+1)*ctrl.databaseRetryConfiguration.Delay
+					return time.Duration(i+1) * ctrl.databaseRetryConfiguration.Delay
 				}
 
 				return 0

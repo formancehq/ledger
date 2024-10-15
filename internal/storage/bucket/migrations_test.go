@@ -4,17 +4,17 @@ package bucket_test
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/testing/migrations"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/testing/migrations"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/bun/bundebug"
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )

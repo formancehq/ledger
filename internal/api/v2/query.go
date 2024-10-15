@@ -5,8 +5,8 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 )
 
 const (
@@ -20,6 +20,6 @@ func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledger.Parame
 	return ledger.Parameters[INPUT]{
 		DryRun:         api.QueryParamBool(r, "dryRun"),
 		IdempotencyKey: api.IdempotencyKeyFromRequest(r),
-		Input: input,
+		Input:          input,
 	}
 }

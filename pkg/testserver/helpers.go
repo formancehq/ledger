@@ -1,9 +1,9 @@
 package testserver
 
 import (
-	"github.com/formancehq/go-libs/collectionutils"
-	. "github.com/formancehq/go-libs/testing/utils"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v2/testing/utils"
+	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	. "github.com/onsi/ginkgo/v2"

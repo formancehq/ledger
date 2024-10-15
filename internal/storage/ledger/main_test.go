@@ -4,16 +4,16 @@ package ledger_test
 
 import (
 	"database/sql"
+	. "github.com/formancehq/go-libs/v2/testing/utils"
 	systemstore "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/bun/bundebug"
-	"github.com/formancehq/go-libs/testing/docker"
-	. "github.com/formancehq/go-libs/testing/utils"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
+	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/google/go-cmp/cmp"
@@ -22,8 +22,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

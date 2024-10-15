@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"errors"
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
