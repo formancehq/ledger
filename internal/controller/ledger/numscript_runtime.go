@@ -21,7 +21,7 @@ type NumscriptExecutionResult struct {
 	AccountMetadata map[string]metadata.Metadata
 }
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine.go -destination machine_generated_test.go -package ledger . Machine
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source numscript_runtime.go -destination numscript_runtime_generated_test.go -package ledger . NumscriptRuntime
 type NumscriptRuntime interface {
 	Execute(context.Context, TX, map[string]string) (*NumscriptExecutionResult, error)
 }
