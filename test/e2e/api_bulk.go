@@ -3,13 +3,14 @@
 package test_suite
 
 import (
+	"math/big"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
-	"math/big"
-	"time"
 
 	"github.com/formancehq/go-libs/v2/metadata"
 	. "github.com/onsi/ginkgo/v2"
@@ -25,11 +26,12 @@ var _ = Context("Ledger engine tests", func() {
 
 	testServer := NewTestServer(func() Configuration {
 		return Configuration{
-			PostgresConfiguration: db.GetValue().ConnectionOptions(),
-			Output:                GinkgoWriter,
-			Debug:                 debug,
-			NatsURL:               natsServer.GetValue().ClientURL(),
-			BulkMaxSize:           bulkMaxSize,
+			PostgresConfiguration:        db.GetValue().ConnectionOptions(),
+			Output:                       GinkgoWriter,
+			Debug:                        debug,
+			NatsURL:                      natsServer.GetValue().ClientURL(),
+			BulkMaxSize:                  bulkMaxSize,
+			ExperimentalNumscriptRewrite: false,
 		}
 	})
 	BeforeEach(func() {

@@ -132,6 +132,7 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 		store:    store,
 		listener: listener,
 		registry: ledgercontroller.NewStateRegistry(),
+		parser:   ledgercontroller.NewDefaultNumscriptParser(),
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -141,9 +142,9 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 
 type Option func(ctrl *DefaultController)
 
-func WithParser(parser ledgercontroller.NumscriptParser) Option {
+func WithUpdateParser(updateParser func(oldParser ledgercontroller.NumscriptParser) ledgercontroller.NumscriptParser) Option {
 	return func(ctrl *DefaultController) {
-		ctrl.parser = parser
+		ctrl.parser = updateParser(ctrl.parser)
 	}
 }
 
@@ -172,7 +173,6 @@ func WithEnableFeatures(v bool) Option {
 }
 
 var defaultOptions = []Option{
-	WithParser(ledgercontroller.NewDefaultNumscriptParser()),
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
 }

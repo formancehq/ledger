@@ -18,6 +18,7 @@ type ModuleConfiguration struct {
 	NSCacheConfiguration       ledgercontroller.CacheConfiguration
 	DatabaseRetryConfiguration DatabaseRetryConfiguration
 	EnableFeatures             bool
+	NumscriptInterpreter       bool
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
@@ -32,11 +33,24 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 			tracerProvider trace.TracerProvider,
 		) *DefaultController {
 			options := make([]Option, 0)
+
+			if configuration.NumscriptInterpreter {
+				options = append(options, WithUpdateParser(func(ledgercontroller.NumscriptParser) ledgercontroller.NumscriptParser {
+					return ledgercontroller.NewInterpreterNumscriptParser()
+				}))
+			}
+
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
-				options = append(options, WithParser(ledgercontroller.NewCachedNumscriptParser(
-					ledgercontroller.NewDefaultNumscriptParser(),
-					configuration.NSCacheConfiguration,
-				)))
+				options = append(options, WithUpdateParser(func(oldParser ledgercontroller.NumscriptParser) ledgercontroller.NumscriptParser {
+					if oldParser == nil {
+						oldParser = ledgercontroller.NewDefaultNumscriptParser()
+					}
+					return ledgercontroller.NewCachedNumscriptParser(
+						oldParser,
+						configuration.NSCacheConfiguration,
+					)
+
+				}))
 			}
 
 			return NewDefaultController(

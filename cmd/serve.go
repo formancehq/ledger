@@ -40,7 +40,7 @@ const (
 	AutoUpgradeFlag            = "auto-upgrade"
 	ExperimentalFeaturesFlag   = "experimental-features"
 	BulkMaxSizeFlag            = "bulk-max-size"
-	NumscriptInterpreterFlag   = "numscript-interpreter"
+	NumscriptInterpreterFlag   = "experimental-numscript-interpreter"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -59,6 +59,7 @@ func NewServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
 
 			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
 			if err != nil {
@@ -75,6 +76,7 @@ func NewServeCommand() *cobra.Command {
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
+					NumscriptInterpreter: numscriptInterpreter,
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
 						MaxCount: serveConfiguration.numscriptCacheMaxCount,
 					},

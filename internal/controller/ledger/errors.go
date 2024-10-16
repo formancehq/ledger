@@ -210,8 +210,7 @@ type ErrParsing struct {
 }
 
 func (e ErrParsing) Error() string {
-	// TODO write a decent description
-	return "Got parsing errors"
+	return numscript.ParseErrorsToString(e.Errors, e.Source)
 }
 
 func (e ErrParsing) Is(err error) bool {
