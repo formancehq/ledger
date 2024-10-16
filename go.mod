@@ -13,8 +13,7 @@ require (
 	github.com/alitto/pond v1.9.2
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
-	github.com/formancehq/go-libs v1.7.2
-	github.com/formancehq/go-libs/v2 v2.1.3-0.20241017104005-ad844342baae
+	github.com/formancehq/go-libs/v2 v2.1.3-0.20241015114549-ea3d600bc087
 	github.com/formancehq/numscript v0.0.9-0.20241009144012-1150c14a1417
 	github.com/formancehq/stack/ledger/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.1.0
@@ -112,10 +111,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.7.1 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.7.6 // indirect
