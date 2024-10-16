@@ -32,7 +32,7 @@ type Controller interface {
 type DefaultController struct {
 	store                      Store
 	listener                   ledgercontroller.Listener
-	compiler                   ledgercontroller.Compiler
+	parser                     ledgercontroller.NumscriptParser
 	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
 
@@ -50,7 +50,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			ledgercontroller.NewDefaultNumscriptParser(ctrl.compiler),
+			ledgercontroller.NewDefaultNumscriptParser(),
 			ledgercontroller.WithMeter(ctrl.meter),
 		)
 
@@ -132,9 +132,9 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 
 type Option func(ctrl *DefaultController)
 
-func WithCompiler(compiler ledgercontroller.Compiler) Option {
+func WithParser(parser ledgercontroller.NumscriptParser) Option {
 	return func(ctrl *DefaultController) {
-		ctrl.compiler = compiler
+		ctrl.parser = parser
 	}
 }
 
@@ -157,7 +157,7 @@ func WithTracer(t trace.Tracer) Option {
 }
 
 var defaultOptions = []Option{
-	WithCompiler(ledgercontroller.NewDefaultCompiler()),
+	WithParser(ledgercontroller.NewDefaultNumscriptParser()),
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
 }

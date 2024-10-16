@@ -1,20 +1,21 @@
 package system
 
 import (
+	"time"
+
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
-	"time"
 )
 
 type DatabaseRetryConfiguration struct {
 	MaxRetry int
-	Delay time.Duration
+	Delay    time.Duration
 }
 
 type ModuleConfiguration struct {
-	NSCacheConfiguration ledgercontroller.CacheConfiguration
+	NSCacheConfiguration       ledgercontroller.CacheConfiguration
 	DatabaseRetryConfiguration DatabaseRetryConfiguration
 }
 
@@ -31,8 +32,8 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 		) *DefaultController {
 			options := make([]Option, 0)
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
-				options = append(options, WithCompiler(ledgercontroller.NewCachedCompiler(
-					ledgercontroller.NewDefaultCompiler(),
+				options = append(options, WithParser(ledgercontroller.NewCachedNumscriptParser(
+					ledgercontroller.NewDefaultNumscriptParser(),
 					configuration.NSCacheConfiguration,
 				)))
 			}
