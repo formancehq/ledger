@@ -2,11 +2,12 @@ package system
 
 import (
 	"context"
+	"time"
+
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"time"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -49,7 +50,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			ledgercontroller.NewDefaultMachineFactory(ctrl.compiler),
+			ledgercontroller.NewDefaultNumscriptParser(ctrl.compiler),
 			ledgercontroller.WithMeter(ctrl.meter),
 		)
 

@@ -1,6 +1,6 @@
 package ledger
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine_factory.go -destination machine_factory_generated_test.go -package ledger . MachineFactory
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source numscript_parser.go -destination numscript_parser_generated_test.go -package ledger . NumscriptParser
 
 type NumscriptParser interface {
 	// Parse can return following errors:
@@ -20,7 +20,7 @@ func (d *DefaultNumscriptParser) Parse(script string) (NumscriptRuntime, error) 
 	return NewMachineNumscriptRuntimeAdapter(*ret), nil
 }
 
-func NewDefaultMachineFactory(compiler Compiler) *DefaultNumscriptParser {
+func NewDefaultNumscriptParser(compiler Compiler) *DefaultNumscriptParser {
 	return &DefaultNumscriptParser{
 		compiler: compiler,
 	}
