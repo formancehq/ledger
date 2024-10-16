@@ -10,9 +10,6 @@ import (
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 
-	"github.com/formancehq/go-libs/logging"
-	. "github.com/formancehq/go-libs/testing/api"
-	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver"
