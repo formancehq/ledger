@@ -88,7 +88,7 @@ func NewMachineNumscriptRuntimeAdapter(p program.Program) *MachineNumscriptRunti
 var _ NumscriptRuntime = (*MachineNumscriptRuntimeAdapter)(nil)
 
 // numscript rewrite implementation
-var _ Machine = (*DefaultInterpreterMachineAdapter)(nil)
+var _ NumscriptRuntime = (*DefaultInterpreterMachineAdapter)(nil)
 
 type DefaultInterpreterMachineAdapter struct {
 	parseResult numscript.ParseResult
@@ -100,7 +100,7 @@ func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult) *Def
 	}
 }
 
-func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*MachineResult, error) {
+func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*NumscriptExecutionResult, error) {
 	execResult, err := d.parseResult.Run(ctx, vars, newNumscriptRewriteAdapter(tx))
 	if err != nil {
 		return nil, ErrRuntime{
@@ -109,7 +109,7 @@ func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, tx TX, v
 		}
 	}
 
-	return &MachineResult{
+	return &NumscriptExecutionResult{
 		Postings: collectionutils.Map(execResult.Postings, func(posting numscript.Posting) ledger.Posting {
 			return ledger.Posting(posting)
 		}),
