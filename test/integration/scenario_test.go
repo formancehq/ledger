@@ -5,7 +5,7 @@ package test_suite
 import (
 	"github.com/formancehq/go-libs/logging"
 	. "github.com/formancehq/go-libs/testing/platform/pgtesting"
-	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -16,8 +16,8 @@ var _ = Context("Ledger integration tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := UseNewTestServer(func() Configuration {
-		return Configuration{
+	testServer := testserver.UseNewTestServer(func() testserver.Configuration {
+		return testserver.Configuration{
 			PostgresConfiguration: db.GetValue().ConnectionOptions(),
 			Output:                GinkgoWriter,
 			Debug:                 debug,

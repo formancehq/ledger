@@ -397,9 +397,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, volumes.Data, 1)
-
 	})
-
 }
 
 func TestAggGetVolumesWithBalances(t *testing.T) {
@@ -408,11 +406,8 @@ func TestAggGetVolumesWithBalances(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	// previousPIT := now.Add(-2 * time.Minute)
 	futurPIT := now.Add(2 * time.Minute)
-
 	previousOOT := now.Add(-2 * time.Minute)
-	// futurOOT := now.Add(2 * time.Minute)
 
 	require.NoError(t, store.InsertLogs(ctx,
 		ledger.ChainLogs(
@@ -470,6 +465,10 @@ func TestAggGetVolumesWithBalances(t *testing.T) {
 					WithIDUint64(7),
 				map[string]metadata.Metadata{},
 			).WithDate(now),
+
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "account:1:1", metadata.Metadata{
+				"foo": "bar",
+			}),
 		)...,
 	))
 
@@ -631,4 +630,21 @@ func TestAggGetVolumesWithBalances(t *testing.T) {
 		})
 	})
 
+	t.Run("filter using account matching, metadata, and group", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.GetVolumesWithBalances(ctx,
+			NewGetVolumesWithBalancesQuery(
+				NewPaginatedQueryOptions(
+					FiltersForVolumes{
+						GroupLvl: 1,
+					}).WithQueryBuilder(query.And(
+					query.Match("account", "account::"),
+					query.Match("metadata[foo]", "bar"),
+				))),
+		)
+
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+	})
 }
