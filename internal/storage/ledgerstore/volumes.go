@@ -99,34 +99,55 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 		dateFilterColumn = "insertion_date"
 	}
 
-	query = query.
+	selectAccounts := store.GetDB().NewSelect().
 		Column("account_address_array").
 		Column("account_address").
+		Column("accounts_seq").
 		Column("asset").
+		Column("ledger").
 		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-		ModelTableExpr("moves")
+		Table("moves").
+		Group("ledger", "accounts_seq", "account_address", "account_address_array", "asset").
+		Apply(filterPIT(filtersForVolumes.PIT, dateFilterColumn)).
+		Apply(filterOOT(filtersForVolumes.OOT, dateFilterColumn))
+
+	query = query.
+		TableExpr("(?) accountsWithVolumes", selectAccounts).
+		Column(
+			"account_address",
+			"account_address_array",
+			"accounts_seq",
+			"ledger",
+			"asset",
+			"input",
+			"output",
+			"balance",
+		)
 
 	if useMetadata {
-		query = query.ColumnExpr("accounts.metadata as metadata").
+		query = query.
+			ColumnExpr("accounts_metadata.metadata as metadata").
 			Join(`join lateral (	
-		select metadata
-		from accounts a 
-		where a.seq = moves.accounts_seq
-		) accounts on true`).Group("metadata")
+				select metadata
+				from accounts a 
+				where a.seq = accountsWithVolumes.accounts_seq
+				) accounts_metadata on true`,
+			)
 	}
 
 	query = query.
-		Where("ledger = ?", store.name).
-		Apply(filterPIT(filtersForVolumes.PIT, dateFilterColumn)).
-		Apply(filterOOT(filtersForVolumes.OOT, dateFilterColumn)).
-		GroupExpr("account_address, account_address_array, asset")
+		Where("ledger = ?", store.name)
 
 	globalQuery := query.NewSelect()
 	globalQuery = globalQuery.
 		With("query", query).
 		ModelTableExpr("query")
+
+	if where != "" {
+		globalQuery.Where(where, args...)
+	}
 
 	if filtersForVolumes.GroupLvl > 0 {
 		globalQuery = globalQuery.
@@ -138,14 +159,6 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 			GroupExpr("account, asset")
 	} else {
 		globalQuery = globalQuery.ColumnExpr("account_address as account, asset, input, output, balance")
-	}
-
-	if useMetadata {
-		globalQuery = globalQuery.Column("metadata")
-	}
-
-	if where != "" {
-		globalQuery.Where(where, args...)
 	}
 
 	return globalQuery
