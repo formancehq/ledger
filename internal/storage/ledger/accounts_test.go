@@ -360,6 +360,7 @@ func TestAccountsGet(t *testing.T) {
 		}, *account)
 	})
 
+	// todo: test sometimes failing, need to investigate
 	t.Run("find account using pit", func(t *testing.T) {
 		t.Parallel()
 
