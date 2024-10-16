@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger
 
-go 1.22.0
+go 1.22.1
 
 toolchain go1.22.7
 
@@ -14,6 +14,7 @@ require (
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
 	github.com/formancehq/go-libs/v2 v2.1.3-0.20241015114549-ea3d600bc087
+	github.com/formancehq/numscript v0.0.9-0.20241009144012-1150c14a1417
 	github.com/formancehq/stack/ledger/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
@@ -56,6 +57,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-kafka/v3 v3.0.5 // indirect
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.1 // indirect
 	github.com/ajg/form v1.5.1 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.32.2 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.27.43 // indirect
@@ -179,6 +181,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect

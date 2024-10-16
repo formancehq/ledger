@@ -50,7 +50,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			ledgercontroller.NewDefaultNumscriptParser(),
+			ledgercontroller.NewInterpreterNumscriptParser(),
 			ledgercontroller.WithMeter(ctrl.meter),
 		)
 
@@ -132,9 +132,9 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 
 type Option func(ctrl *DefaultController)
 
-func WithParser(parser ledgercontroller.NumscriptParser) Option {
+func WithUpdateParser(updateParser func(oldParser ledgercontroller.NumscriptParser) ledgercontroller.NumscriptParser) Option {
 	return func(ctrl *DefaultController) {
-		ctrl.parser = parser
+		ctrl.parser = updateParser(ctrl.parser)
 	}
 }
 
@@ -157,7 +157,6 @@ func WithTracer(t trace.Tracer) Option {
 }
 
 var defaultOptions = []Option{
-	WithParser(ledgercontroller.NewDefaultNumscriptParser()),
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
 }
