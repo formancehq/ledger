@@ -30,7 +30,7 @@ func (lt LogType) Value() (driver.Value, error) {
 }
 
 func (lt *LogType) Scan(src interface{}) error {
-	*lt = LogTypeFromString(string(src.([]byte)))
+	*lt = LogTypeFromString(src.(string))
 	return nil
 }
 
