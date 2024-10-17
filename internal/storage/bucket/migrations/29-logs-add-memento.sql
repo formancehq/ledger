@@ -1,8 +1,8 @@
-alter table "{{.Bucket}}".logs
+alter table logs
 add column memento bytea;
 
-update "{{.Bucket}}".logs
+update logs
 set memento = convert_to(data::varchar, 'LATIN1')::bytea;
 
-alter table "{{.Bucket}}".logs
+alter table logs
 alter column memento set not null;

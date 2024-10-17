@@ -1,4 +1,4 @@
-create function "{{.Bucket}}".set_log_hash()
+create function set_log_hash()
 	returns trigger
 	security definer
 	language plpgsql
@@ -9,7 +9,7 @@ declare
 	marshalledAsJSON varchar;
 begin
 	select hash into previousHash
-	from "{{.Bucket}}".logs
+	from logs
 	where ledger = new.ledger
 	order by seq desc
 	limit 1;
@@ -36,4 +36,4 @@ begin
 
 	return new;
 end;
-$$;
+$$ set search_path from current;

@@ -1,1 +1,1 @@
-alter table "{{.Bucket}}".moves set (fillfactor = 80);
+alter table moves set (fillfactor = 80);
