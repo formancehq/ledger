@@ -1,0 +1,1 @@
+create index logs_idempotency_key on "{{.Bucket}}".logs (idempotency_key);

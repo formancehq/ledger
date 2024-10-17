@@ -2,11 +2,14 @@ package driver
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/spf13/cobra"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v2/logging"
 	"go.uber.org/fx"
 )
 
@@ -14,28 +17,37 @@ type PostgresConfig struct {
 	ConnString string
 }
 
-func FXModuleFromFlags(cmd *cobra.Command) fx.Option {
+type ModuleConfiguration struct {
+}
 
-	options := make([]fx.Option, 0)
-	options = append(options, fx.Provide(func() (*bunconnect.ConnectionOptions, error) {
-		return bunconnect.ConnectionOptionsFromFlags(cmd)
-	}))
-	options = append(options, fx.Provide(func(connectionOptions *bunconnect.ConnectionOptions) (*Driver, error) {
-		return New(*connectionOptions), nil
-	}))
-
-	options = append(options, fx.Invoke(func(driver *Driver, lifecycle fx.Lifecycle, logger logging.Logger) error {
-		lifecycle.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				logger.Infof("Initializing database...")
-				return driver.Initialize(ctx)
-			},
-			OnStop: func(ctx context.Context) error {
-				logger.Infof("Closing driver...")
-				return driver.Close()
-			},
-		})
-		return nil
-	}))
-	return fx.Options(options...)
+func NewFXModule(autoUpgrade bool) fx.Option {
+	return fx.Options(
+		fx.Provide(func(
+			db *bun.DB,
+			tracerProvider trace.TracerProvider,
+			meterProvider metric.MeterProvider,
+		) (*Driver, error) {
+			return New(db,
+				WithMeter(meterProvider.Meter("store")),
+				WithTracer(tracerProvider.Tracer("store")),
+			), nil
+		}),
+		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(systemcontroller.Store)))),
+		fx.Invoke(func(driver *Driver, lifecycle fx.Lifecycle, logger logging.Logger) error {
+			lifecycle.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					logger.Infof("Initializing database...")
+					return driver.Initialize(ctx)
+				},
+			})
+			return nil
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, driver *Driver) {
+			if autoUpgrade {
+				lc.Append(fx.Hook{
+					OnStart: driver.UpgradeAllBuckets,
+				})
+			}
+		}),
+	)
 }

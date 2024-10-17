@@ -1,20 +1,18 @@
-package v2_test
+package v2
 
 import (
 	"testing"
 
 	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/ledger/internal/api/backend"
 )
 
-func newTestingBackend(t *testing.T, expectedSchemaCheck bool) (*backend.MockBackend, *backend.MockLedger) {
+func newTestingSystemController(t *testing.T, expectedSchemaCheck bool) (*SystemController, *LedgerController) {
 	ctrl := gomock.NewController(t)
-	mockLedger := backend.NewMockLedger(ctrl)
-	backend := backend.NewMockBackend(ctrl)
+	mockLedger := NewLedgerController(ctrl)
+	backend := NewSystemController(ctrl)
 	backend.
 		EXPECT().
-		GetLedgerEngine(gomock.Any(), gomock.Any()).
+		GetLedgerController(gomock.Any(), gomock.Any()).
 		MinTimes(0).
 		Return(mockLedger, nil)
 	t.Cleanup(func() {

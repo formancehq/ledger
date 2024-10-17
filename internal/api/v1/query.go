@@ -12,12 +12,12 @@ const (
 	QueryKeyBalanceOperator = "balanceOperator"
 )
 
-func getBalanceOperator(c *http.Request) (string, error) {
+func getBalanceOperator(c *http.Request) string {
 	balanceOperator := "eq"
 	balanceOperatorStr := c.URL.Query().Get(QueryKeyBalanceOperator)
 	if balanceOperatorStr != "" {
-		return balanceOperatorStr, nil
+		return balanceOperatorStr
 	}
 
-	return balanceOperator, nil
+	return balanceOperator
 }

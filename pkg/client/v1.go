@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"github.com/formancehq/stack/ledger/client/models/sdkerrors"
 	"io"
-	"math/big"
 	"net/http"
 	"net/url"
 )
@@ -208,16 +207,12 @@ func (s *V1) GetInfo(ctx context.Context, opts ...operations.Option) (*operation
 }
 
 // GetLedgerInfo - Get information about a ledger
-func (s *V1) GetLedgerInfo(ctx context.Context, ledger string, opts ...operations.Option) (*operations.GetLedgerInfoResponse, error) {
+func (s *V1) GetLedgerInfo(ctx context.Context, request operations.GetLedgerInfoRequest, opts ...operations.Option) (*operations.GetLedgerInfoResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "getLedgerInfo",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.GetLedgerInfoRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}
@@ -391,18 +386,12 @@ func (s *V1) GetLedgerInfo(ctx context.Context, ledger string, opts ...operation
 }
 
 // CountAccounts - Count the accounts from a ledger
-func (s *V1) CountAccounts(ctx context.Context, ledger string, address *string, metadata map[string]any, opts ...operations.Option) (*operations.CountAccountsResponse, error) {
+func (s *V1) CountAccounts(ctx context.Context, request operations.CountAccountsRequest, opts ...operations.Option) (*operations.CountAccountsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "countAccounts",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.CountAccountsRequest{
-		Ledger:   ledger,
-		Address:  address,
-		Metadata: metadata,
 	}
 
 	o := operations.Options{}
@@ -767,17 +756,12 @@ func (s *V1) ListAccounts(ctx context.Context, request operations.ListAccountsRe
 }
 
 // GetAccount - Get account by its address
-func (s *V1) GetAccount(ctx context.Context, ledger string, address string, opts ...operations.Option) (*operations.GetAccountResponse, error) {
+func (s *V1) GetAccount(ctx context.Context, request operations.GetAccountRequest, opts ...operations.Option) (*operations.GetAccountResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "getAccount",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.GetAccountRequest{
-		Ledger:  ledger,
-		Address: address,
 	}
 
 	o := operations.Options{}
@@ -951,18 +935,12 @@ func (s *V1) GetAccount(ctx context.Context, ledger string, address string, opts
 }
 
 // AddMetadataToAccount - Add metadata to an account
-func (s *V1) AddMetadataToAccount(ctx context.Context, ledger string, address string, requestBody map[string]any, opts ...operations.Option) (*operations.AddMetadataToAccountResponse, error) {
+func (s *V1) AddMetadataToAccount(ctx context.Context, request operations.AddMetadataToAccountRequest, opts ...operations.Option) (*operations.AddMetadataToAccountResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "addMetadataToAccount",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.AddMetadataToAccountRequest{
-		Ledger:      ledger,
-		Address:     address,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -1131,16 +1109,12 @@ func (s *V1) AddMetadataToAccount(ctx context.Context, ledger string, address st
 }
 
 // GetMapping - Get the mapping of a ledger
-func (s *V1) GetMapping(ctx context.Context, ledger string, opts ...operations.Option) (*operations.GetMappingResponse, error) {
+func (s *V1) GetMapping(ctx context.Context, request operations.GetMappingRequest, opts ...operations.Option) (*operations.GetMappingResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "getMapping",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.GetMappingRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}
@@ -1314,17 +1288,12 @@ func (s *V1) GetMapping(ctx context.Context, ledger string, opts ...operations.O
 }
 
 // UpdateMapping - Update the mapping of a ledger
-func (s *V1) UpdateMapping(ctx context.Context, ledger string, mapping *components.Mapping, opts ...operations.Option) (*operations.UpdateMappingResponse, error) {
+func (s *V1) UpdateMapping(ctx context.Context, request operations.UpdateMappingRequest, opts ...operations.Option) (*operations.UpdateMappingResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "updateMapping",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.UpdateMappingRequest{
-		Ledger:  ledger,
-		Mapping: mapping,
 	}
 
 	o := operations.Options{}
@@ -1507,18 +1476,12 @@ func (s *V1) UpdateMapping(ctx context.Context, ledger string, mapping *componen
 // This route is deprecated, and has been merged into `POST /{ledger}/transactions`.
 //
 // Deprecated method: This will be removed in a future release, please migrate away from it as soon as possible.
-func (s *V1) RunScript(ctx context.Context, ledger string, script components.Script, preview *bool, opts ...operations.Option) (*operations.RunScriptResponse, error) {
+func (s *V1) RunScript(ctx context.Context, request operations.RunScriptRequest, opts ...operations.Option) (*operations.RunScriptResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "runScript",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.RunScriptRequest{
-		Ledger:  ledger,
-		Preview: preview,
-		Script:  script,
 	}
 
 	o := operations.Options{}
@@ -1693,16 +1656,12 @@ func (s *V1) RunScript(ctx context.Context, ledger string, script components.Scr
 
 // ReadStats - Get statistics from a ledger
 // Get statistics from a ledger. (aggregate metrics on accounts and transactions)
-func (s *V1) ReadStats(ctx context.Context, ledger string, opts ...operations.Option) (*operations.ReadStatsResponse, error) {
+func (s *V1) ReadStats(ctx context.Context, request operations.ReadStatsRequest, opts ...operations.Option) (*operations.ReadStatsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "readStats",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.ReadStatsRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}
@@ -2234,18 +2193,12 @@ func (s *V1) ListTransactions(ctx context.Context, request operations.ListTransa
 }
 
 // CreateTransaction - Create a new transaction to a ledger
-func (s *V1) CreateTransaction(ctx context.Context, ledger string, postTransaction components.PostTransaction, preview *bool, opts ...operations.Option) (*operations.CreateTransactionResponse, error) {
+func (s *V1) CreateTransaction(ctx context.Context, request operations.CreateTransactionRequest, opts ...operations.Option) (*operations.CreateTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "createTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.CreateTransactionRequest{
-		Ledger:          ledger,
-		Preview:         preview,
-		PostTransaction: postTransaction,
 	}
 
 	o := operations.Options{}
@@ -2429,17 +2382,12 @@ func (s *V1) CreateTransaction(ctx context.Context, ledger string, postTransacti
 }
 
 // GetTransaction - Get transaction from a ledger by its ID
-func (s *V1) GetTransaction(ctx context.Context, ledger string, txid *big.Int, opts ...operations.Option) (*operations.GetTransactionResponse, error) {
+func (s *V1) GetTransaction(ctx context.Context, request operations.GetTransactionRequest, opts ...operations.Option) (*operations.GetTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "getTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.GetTransactionRequest{
-		Ledger: ledger,
-		Txid:   txid,
 	}
 
 	o := operations.Options{}
@@ -2613,18 +2561,12 @@ func (s *V1) GetTransaction(ctx context.Context, ledger string, txid *big.Int, o
 }
 
 // AddMetadataOnTransaction - Set the metadata of a transaction by its ID
-func (s *V1) AddMetadataOnTransaction(ctx context.Context, ledger string, txid *big.Int, requestBody map[string]any, opts ...operations.Option) (*operations.AddMetadataOnTransactionResponse, error) {
+func (s *V1) AddMetadataOnTransaction(ctx context.Context, request operations.AddMetadataOnTransactionRequest, opts ...operations.Option) (*operations.AddMetadataOnTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "addMetadataOnTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.AddMetadataOnTransactionRequest{
-		Ledger:      ledger,
-		Txid:        txid,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -2793,18 +2735,12 @@ func (s *V1) AddMetadataOnTransaction(ctx context.Context, ledger string, txid *
 }
 
 // RevertTransaction - Revert a ledger transaction by its ID
-func (s *V1) RevertTransaction(ctx context.Context, ledger string, txid *big.Int, disableChecks *bool, opts ...operations.Option) (*operations.RevertTransactionResponse, error) {
+func (s *V1) RevertTransaction(ctx context.Context, request operations.RevertTransactionRequest, opts ...operations.Option) (*operations.RevertTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "revertTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.RevertTransactionRequest{
-		Ledger:        ledger,
-		Txid:          txid,
-		DisableChecks: disableChecks,
 	}
 
 	o := operations.Options{}
@@ -2982,17 +2918,12 @@ func (s *V1) RevertTransaction(ctx context.Context, ledger string, txid *big.Int
 }
 
 // CreateTransactions - Create a new batch of transactions to a ledger
-func (s *V1) CreateTransactions(ctx context.Context, ledger string, transactions components.Transactions, opts ...operations.Option) (*operations.CreateTransactionsResponse, error) {
+func (s *V1) CreateTransactions(ctx context.Context, request operations.CreateTransactionsRequest, opts ...operations.Option) (*operations.CreateTransactionsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "CreateTransactions",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.CreateTransactionsRequest{
-		Ledger:       ledger,
-		Transactions: transactions,
 	}
 
 	o := operations.Options{}
@@ -3355,18 +3286,12 @@ func (s *V1) GetBalances(ctx context.Context, request operations.GetBalancesRequ
 }
 
 // GetBalancesAggregated - Get the aggregated balances from selected accounts
-func (s *V1) GetBalancesAggregated(ctx context.Context, ledger string, address *string, useInsertionDate *bool, opts ...operations.Option) (*operations.GetBalancesAggregatedResponse, error) {
+func (s *V1) GetBalancesAggregated(ctx context.Context, request operations.GetBalancesAggregatedRequest, opts ...operations.Option) (*operations.GetBalancesAggregatedResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "getBalancesAggregated",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.GetBalancesAggregatedRequest{
-		Ledger:           ledger,
-		Address:          address,
-		UseInsertionDate: useInsertionDate,
 	}
 
 	o := operations.Options{}

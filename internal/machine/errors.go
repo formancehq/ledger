@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var (
@@ -114,6 +114,10 @@ func NewErrInvalidVars(f string, args ...any) *ErrInvalidVars {
 
 type ErrMetadataOverride struct {
 	key string
+}
+
+func (e *ErrMetadataOverride) Key() string {
+	return e.key
 }
 
 func (e *ErrMetadataOverride) Error() string {

@@ -4,102 +4,142 @@ package driver_test
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/pointer"
+	ledger "github.com/formancehq/ledger/internal"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/google/uuid"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
+	"github.com/formancehq/go-libs/v2/testing/docker"
+	"github.com/uptrace/bun"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
-
-	"github.com/formancehq/go-libs/logging"
-	"github.com/google/uuid"
-
-	"github.com/formancehq/ledger/internal/storage/storagetesting"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfiguration(t *testing.T) {
+func TestUpgradeAllLedgers(t *testing.T) {
 	t.Parallel()
 
-	d := storagetesting.StorageDriver(t)
-	ctx := logging.TestingContext()
-
-	require.NoError(t, d.GetSystemStore().InsertConfiguration(ctx, "foo", "bar"))
-	bar, err := d.GetSystemStore().GetConfiguration(ctx, "foo")
-	require.NoError(t, err)
-	require.Equal(t, "bar", bar)
-}
-
-func TestConfigurationError(t *testing.T) {
-	t.Parallel()
-
-	d := storagetesting.StorageDriver(t)
-	ctx := logging.TestingContext()
-
-	_, err := d.GetSystemStore().GetConfiguration(ctx, "not_existing")
-	require.Error(t, err)
-	require.True(t, sqlutils.IsNotFoundError(err))
-}
-
-func TestErrorOnOutdatedBucket(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-	d := storagetesting.StorageDriver(t)
-
-	name := uuid.NewString()
-
-	b, err := d.OpenBucket(ctx, name)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = b.Close()
-	})
-
-	upToDate, err := b.IsUpToDate(ctx)
-	require.NoError(t, err)
-	require.False(t, upToDate)
-}
-
-func TestGetLedgerFromDefaultBucket(t *testing.T) {
-	t.Parallel()
-
-	d := storagetesting.StorageDriver(t)
-	ctx := logging.TestingContext()
-
-	name := uuid.NewString()
-	_, err := d.CreateLedgerStore(ctx, name, driver.LedgerConfiguration{})
-	require.NoError(t, err)
-}
-
-func TestGetLedgerFromAlternateBucket(t *testing.T) {
-	t.Parallel()
-
-	d := storagetesting.StorageDriver(t)
-	ctx := logging.TestingContext()
-
-	ledgerName := "ledger0"
-	bucketName := "bucket0"
-
-	_, err := d.CreateLedgerStore(ctx, ledgerName, driver.LedgerConfiguration{
-		Bucket: bucketName,
-	})
-	require.NoError(t, err)
-}
-
-func TestUpgradeAllBuckets(t *testing.T) {
-	t.Parallel()
-
-	d := storagetesting.StorageDriver(t)
+	d := newStorageDriver(t)
 	ctx := logging.TestingContext()
 
 	count := 30
 
 	for i := 0; i < count; i++ {
 		name := fmt.Sprintf("ledger%d", i)
-		_, err := d.CreateLedgerStore(ctx, name, driver.LedgerConfiguration{
-			Bucket: name,
-		})
+		_, err := d.CreateLedger(ctx, pointer.For(ledger.MustNewWithDefault(name)))
 		require.NoError(t, err)
 	}
 
 	require.NoError(t, d.UpgradeAllBuckets(ctx))
+	require.NoError(t, d.UpgradeAllLedgers(ctx))
+}
+
+func TestLedgersCreate(t *testing.T) {
+	ctx := logging.TestingContext()
+	driver := newStorageDriver(t)
+
+	l := ledger.MustNewWithDefault("foo")
+	_, err := driver.CreateLedger(ctx, &l)
+	require.NoError(t, err)
+	require.Equal(t, 1, l.ID)
+	require.NotEmpty(t, l.AddedAt)
+}
+
+func TestLedgersList(t *testing.T) {
+	ctx := logging.TestingContext()
+	driver := newStorageDriver(t)
+
+	ledgers := make([]ledger.Ledger, 0)
+	pageSize := uint64(2)
+	count := uint64(10)
+	for i := uint64(0); i < count; i++ {
+		m := metadata.Metadata{}
+		if i%2 == 0 {
+			m["foo"] = "bar"
+		}
+		l := ledger.MustNewWithDefault(fmt.Sprintf("ledger%d", i)).WithMetadata(m)
+		_, err := driver.CreateLedger(ctx, &l)
+		require.NoError(t, err)
+
+		ledgers = append(ledgers, l)
+	}
+
+	cursor, err := driver.ListLedgers(ctx, ledgercontroller.NewListLedgersQuery(pageSize))
+	require.NoError(t, err)
+	require.Len(t, cursor.Data, int(pageSize))
+	require.Equal(t, ledgers[:pageSize], cursor.Data)
+
+	for i := pageSize; i < count; i += pageSize {
+		query := ledgercontroller.ListLedgersQuery{}
+		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
+
+		cursor, err = driver.ListLedgers(ctx, query)
+		require.NoError(t, err)
+		require.Len(t, cursor.Data, 2)
+		require.Equal(t, ledgers[i:i+pageSize], cursor.Data)
+	}
+}
+
+func TestLedgerUpdateMetadata(t *testing.T) {
+	ctx := logging.TestingContext()
+	storageDriver := newStorageDriver(t)
+
+	l := ledger.MustNewWithDefault(uuid.NewString())
+	_, err := storageDriver.CreateLedger(ctx, &l)
+	require.NoError(t, err)
+
+	addedMetadata := metadata.Metadata{
+		"foo": "bar",
+	}
+	err = storageDriver.UpdateLedgerMetadata(ctx, l.Name, addedMetadata)
+	require.NoError(t, err)
+
+	ledgerFromDB, err := storageDriver.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, addedMetadata, ledgerFromDB.Metadata)
+}
+
+func TestLedgerDeleteMetadata(t *testing.T) {
+	ctx := logging.TestingContext()
+	driver := newStorageDriver(t)
+
+	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
+		"foo": "bar",
+	})
+
+	_, err := driver.CreateLedger(ctx, &l)
+	require.NoError(t, err)
+
+	err = driver.DeleteLedgerMetadata(ctx, l.Name, "foo")
+	require.NoError(t, err)
+
+	ledgerFromDB, err := driver.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
+}
+
+func newStorageDriver(t docker.T) *driver.Driver {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	pgDatabase := srv.NewDatabase(t)
+
+	hooks := make([]bun.QueryHook, 0)
+	if testing.Verbose() {
+		hooks = append(hooks, bundebug.NewQueryHook())
+	}
+	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
+	require.NoError(t, err)
+
+	d := driver.New(db)
+
+	require.NoError(t, d.Initialize(logging.TestingContext()))
+
+	return d
 }

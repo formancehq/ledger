@@ -69,11 +69,11 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -83,6 +83,10 @@ func main() {
 
 <!-- Start Available Resources and Operations [operations] -->
 ## Available Resources and Operations
+
+### [Ledger](docs/sdks/ledger/README.md)
+
+* [GetInfo](docs/sdks/ledger/README.md#getinfo) - Show server information
 
 ### [Ledger.V1](docs/sdks/v1/README.md)
 
@@ -109,7 +113,6 @@ func main() {
 
 ### [Ledger.V2](docs/sdks/v2/README.md)
 
-* [GetInfo](docs/sdks/v2/README.md#getinfo) - Show server information
 * [ListLedgers](docs/sdks/v2/README.md#listledgers) - List ledgers
 * [GetLedger](docs/sdks/v2/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/v2/README.md#createledger) - Create a ledger
@@ -164,7 +167,7 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx, operations.WithRetries(
+	res, err := s.Ledger.GetInfo(ctx, operations.WithRetries(
 		retry.Config{
 			Strategy: "backoff",
 			Backoff: &retry.BackoffStrategy{
@@ -178,7 +181,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -217,11 +220,11 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -234,10 +237,10 @@ func main() {
 
 Handling errors in this SDK should largely match your expectations.  All operations return a response object or an error, they will never return both.  When specified by the OpenAPI spec document, the SDK will return the appropriate subclass.
 
-| Error Object            | Status Code             | Content Type            |
-| ----------------------- | ----------------------- | ----------------------- |
-| sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
 
 ### Example
 
@@ -262,10 +265,10 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 
-		var e *sdkerrors.ErrorResponse
+		var e *sdkerrors.V2ErrorResponse
 		if errors.As(err, &e) {
 			// handle error
 			log.Fatal(e.Error())
@@ -315,11 +318,11 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -350,11 +353,11 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -429,11 +432,11 @@ func main() {
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V1.GetInfo(ctx)
+	res, err := s.Ledger.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.ConfigInfoResponse != nil {
+	if res.V2ConfigInfoResponse != nil {
 		// handle response
 	}
 }

@@ -1,0 +1,1 @@
+alter table "{{.Bucket}}".moves set (fillfactor = 80);

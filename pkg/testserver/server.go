@@ -3,17 +3,22 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/otlp"
+	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v2/publish"
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
+	"github.com/uptrace/bun"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/httpclient"
-	"github.com/formancehq/go-libs/httpserver"
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/service"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/httpclient"
+	"github.com/formancehq/go-libs/v2/httpserver"
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/cmd"
 	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"github.com/stretchr/testify/require"
@@ -21,16 +26,22 @@ import (
 
 type T interface {
 	require.TestingT
-	TempDir() string
 	Cleanup(func())
 	Helper()
 	Logf(format string, args ...any)
 }
 
+type OTLPConfig struct {
+	BaseConfig otlp.Config
+	Metrics    *otlpmetrics.ModuleConfig
+}
+
 type Configuration struct {
 	PostgresConfiguration bunconnect.ConnectionOptions
+	NatsURL               string
 	Output                io.Writer
 	Debug                 bool
+	OTLPConfig            *OTLPConfig
 }
 
 type Server struct {
@@ -40,21 +51,17 @@ type Server struct {
 	cancel        func()
 	ctx           context.Context
 	errorChan     chan error
+	id            string
 }
 
 func (s *Server) Start() {
 	s.t.Helper()
 
-	tmpDir := s.t.TempDir()
-	require.NoError(s.t, os.MkdirAll(tmpDir, 0700))
-	s.t.Cleanup(func() {
-		_ = os.RemoveAll(tmpDir)
-	})
-
 	rootCmd := cmd.NewRootCommand()
 	args := []string{
 		"serve",
 		"--" + cmd.BindFlag, ":0",
+		"--" + cmd.AutoUpgradeFlag,
 		"--" + bunconnect.PostgresURIFlag, s.configuration.PostgresConfiguration.DatabaseSourceName,
 		"--" + bunconnect.PostgresMaxOpenConnsFlag, fmt.Sprint(s.configuration.PostgresConfiguration.MaxOpenConns),
 		"--" + bunconnect.PostgresConnMaxIdleTimeFlag, fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
@@ -80,6 +87,66 @@ func (s *Server) Start() {
 			fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
 		)
 	}
+	if s.configuration.NatsURL != "" {
+		args = append(
+			args,
+			"--"+publish.PublisherNatsEnabledFlag,
+			"--"+publish.PublisherNatsURLFlag, s.configuration.NatsURL,
+			"--"+publish.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", s.id),
+		)
+	}
+	if s.configuration.OTLPConfig != nil {
+		if s.configuration.OTLPConfig.Metrics != nil {
+			args = append(
+				args,
+				"--"+otlpmetrics.OtelMetricsExporterFlag, s.configuration.OTLPConfig.Metrics.Exporter,
+			)
+			if s.configuration.OTLPConfig.Metrics.KeepInMemory {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsKeepInMemoryFlag,
+				)
+			}
+			if s.configuration.OTLPConfig.Metrics.OTLPConfig != nil {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsExporterOTLPEndpointFlag, s.configuration.OTLPConfig.Metrics.OTLPConfig.Endpoint,
+					"--"+otlpmetrics.OtelMetricsExporterOTLPModeFlag, s.configuration.OTLPConfig.Metrics.OTLPConfig.Mode,
+				)
+				if s.configuration.OTLPConfig.Metrics.OTLPConfig.Insecure {
+					args = append(args, "--"+otlpmetrics.OtelMetricsExporterOTLPInsecureFlag)
+				}
+			}
+			if s.configuration.OTLPConfig.Metrics.RuntimeMetrics {
+				args = append(args, "--"+otlpmetrics.OtelMetricsRuntimeFlag)
+			}
+			if s.configuration.OTLPConfig.Metrics.MinimumReadMemStatsInterval != 0 {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag,
+					s.configuration.OTLPConfig.Metrics.MinimumReadMemStatsInterval.String(),
+				)
+			}
+			if s.configuration.OTLPConfig.Metrics.PushInterval != 0 {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsExporterPushIntervalFlag,
+					s.configuration.OTLPConfig.Metrics.PushInterval.String(),
+				)
+			}
+			if len(s.configuration.OTLPConfig.Metrics.ResourceAttributes) > 0 {
+				args = append(
+					args,
+					"--"+otlp.OtelResourceAttributesFlag,
+					strings.Join(s.configuration.OTLPConfig.Metrics.ResourceAttributes, ","),
+				)
+			}
+		}
+		if s.configuration.OTLPConfig.BaseConfig.ServiceName != "" {
+			args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.BaseConfig.ServiceName)
+		}
+	}
+
 	if s.configuration.Debug {
 		args = append(args, "--"+service.DebugFlag)
 	}
@@ -114,15 +181,24 @@ func (s *Server) Start() {
 		}
 	}
 
+	var transport http.RoundTripper = &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+	}
+	if s.configuration.Debug {
+		transport = httpclient.NewDebugHTTPTransport(transport)
+	}
+
 	s.httpClient = ledgerclient.New(
 		ledgerclient.WithServerURL(httpserver.URL(s.ctx)),
 		ledgerclient.WithClient(&http.Client{
-			Transport: httpclient.NewDebugHTTPTransport(http.DefaultTransport),
+			Transport: transport,
 		}),
 	)
 }
 
-func (s *Server) Stop() {
+func (s *Server) Stop(ctx context.Context) {
 	s.t.Helper()
 
 	if s.cancel == nil {
@@ -134,7 +210,7 @@ func (s *Server) Stop() {
 	// Wait app to be marked as stopped
 	select {
 	case <-service.Stopped(s.ctx):
-	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
 		require.Fail(s.t, "service should have been stopped")
 	}
 
@@ -142,7 +218,7 @@ func (s *Server) Stop() {
 	select {
 	case err := <-s.errorChan:
 		require.NoError(s.t, err)
-	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
 		require.Fail(s.t, "service should have been stopped without error")
 	}
 }
@@ -151,23 +227,62 @@ func (s *Server) Client() *ledgerclient.Formance {
 	return s.httpClient
 }
 
-func (s *Server) Restart() {
+func (s *Server) Restart(ctx context.Context) {
 	s.t.Helper()
 
-	s.Stop()
+	s.Stop(ctx)
 	s.Start()
 }
 
+func (s *Server) Database() *bun.DB {
+	db, err := bunconnect.OpenSQLDB(s.ctx, s.configuration.PostgresConfiguration)
+	require.NoError(s.t, err)
+	s.t.Cleanup(func() {
+		require.NoError(s.t, db.Close())
+	})
+
+	return db
+}
+
+func (s *Server) Subscribe() chan *nats.Msg {
+	if s.configuration.NatsURL == "" {
+		require.Fail(s.t, "NATS URL must be set")
+	}
+
+	ret := make(chan *nats.Msg)
+	conn, err := nats.Connect(s.configuration.NatsURL)
+	require.NoError(s.t, err)
+
+	subscription, err := conn.Subscribe(s.id, func(msg *nats.Msg) {
+		ret <- msg
+	})
+	require.NoError(s.t, err)
+	s.t.Cleanup(func() {
+		require.NoError(s.t, subscription.Unsubscribe())
+	})
+	return ret
+}
+
+func (s *Server) URL() string {
+	return httpserver.URL(s.ctx)
+}
+
 func New(t T, configuration Configuration) *Server {
+	t.Helper()
+
 	srv := &Server{
 		t:             t,
 		configuration: configuration,
+		id:            uuid.NewString()[:8],
 	}
 	t.Logf("Start testing server")
 	srv.Start()
 	t.Cleanup(func() {
 		t.Logf("Stop testing server")
-		srv.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		srv.Stop(ctx)
 	})
 
 	return srv
