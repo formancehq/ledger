@@ -1,4 +1,4 @@
-create or replace function "{{.Bucket}}".insert_move(
+create or replace function insert_move(
     _transactions_seq bigint,
     _ledger varchar,
     _insertion_date timestamp without time zone,
@@ -13,28 +13,28 @@ create or replace function "{{.Bucket}}".insert_move(
 as
 $$
 declare
-    _post_commit_volumes           "{{.Bucket}}".volumes = (0, 0)::"{{.Bucket}}".volumes;
-    _effective_post_commit_volumes "{{.Bucket}}".volumes = (0, 0)::"{{.Bucket}}".volumes;
+    _post_commit_volumes           volumes = (0, 0)::volumes;
+    _effective_post_commit_volumes volumes = (0, 0)::volumes;
     _seq                           bigint;
     _account_seq                   bigint;
 begin
-    select seq from "{{.Bucket}}".accounts where ledger = _ledger and address = _account_address into _account_seq;
+    select seq from accounts where ledger = _ledger and address = _account_address into _account_seq;
 
     if _account_exists then
         select (post_commit_volumes).inputs, (post_commit_volumes).outputs
         into _post_commit_volumes
-        from "{{.Bucket}}".moves
+        from moves
         where accounts_seq = _account_seq
           and asset = _asset
         order by seq desc
         limit 1;
 
         if not found then
-            _post_commit_volumes = (0, 0)::"{{.Bucket}}".volumes;
-            _effective_post_commit_volumes = (0, 0)::"{{.Bucket}}".volumes;
+            _post_commit_volumes = (0, 0)::volumes;
+            _effective_post_commit_volumes = (0, 0)::volumes;
         else
             select (post_commit_effective_volumes).inputs, (post_commit_effective_volumes).outputs into _effective_post_commit_volumes
-            from "{{.Bucket}}".moves
+            from moves
             where accounts_seq = _account_seq
               and asset = _asset
               and effective_date <= _effective_date
@@ -42,7 +42,7 @@ begin
             limit 1;
 
             if not found then
-                _effective_post_commit_volumes = (0, 0)::"{{.Bucket}}".volumes;
+                _effective_post_commit_volumes = (0, 0)::volumes;
             end if;
         end if;
     end if;
@@ -55,7 +55,7 @@ begin
         _effective_post_commit_volumes.inputs = _effective_post_commit_volumes.inputs + _amount;
     end if;
 
-    insert into "{{.Bucket}}".moves (ledger,
+    insert into moves (ledger,
                        insertion_date,
                        effective_date,
                        accounts_seq,
@@ -82,7 +82,7 @@ begin
     returning seq into _seq;
 
     if _account_exists then
-        update "{{.Bucket}}".moves
+        update moves
         set post_commit_effective_volumes =
                 ((post_commit_effective_volumes).inputs + case when _is_source then 0 else _amount end,
                  (post_commit_effective_volumes).outputs + case when _is_source then _amount else 0 end
@@ -91,7 +91,7 @@ begin
           and asset = _asset
           and effective_date > _effective_date;
 
-        update "{{.Bucket}}".moves
+        update moves
         set post_commit_effective_volumes =
                 ((post_commit_effective_volumes).inputs + case when _is_source then 0 else _amount end,
                  (post_commit_effective_volumes).outputs + case when _is_source then _amount else 0 end
@@ -102,4 +102,4 @@ begin
           and seq < _seq;
     end if;
 end;
-$$;
+$$ set search_path from current;

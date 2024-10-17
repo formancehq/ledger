@@ -1,10 +1,10 @@
-create aggregate "{{.Bucket}}".aggregate_objects(jsonb) (
+create aggregate aggregate_objects(jsonb) (
     sfunc = jsonb_concat,
     stype = jsonb,
     initcond = '{}'
     );
 
-create function "{{.Bucket}}".first_agg(anyelement, anyelement)
+create function first_agg(anyelement, anyelement)
     returns anyelement
     language sql
     immutable
@@ -15,13 +15,13 @@ $$
 select $1
 $$;
 
-create aggregate "{{.Bucket}}".first (anyelement) (
-    sfunc = "{{.Bucket}}".first_agg,
+create aggregate first (anyelement) (
+    sfunc = first_agg,
     stype = anyelement,
     parallel = safe
     );
 
-create function "{{.Bucket}}".array_distinct(anyarray)
+create function array_distinct(anyarray)
     returns anyarray
     language sql
     immutable
@@ -32,27 +32,27 @@ from unnest($1) t(x);
 $$;
 
 /** Define types **/
-create type "{{.Bucket}}".account_with_volumes as
+create type account_with_volumes as
 (
     address  varchar,
     metadata jsonb,
     volumes  jsonb
 );
 
-create type "{{.Bucket}}".volumes as
+create type volumes as
 (
     inputs  numeric,
     outputs numeric
 );
 
-create type "{{.Bucket}}".volumes_with_asset as
+create type volumes_with_asset as
 (
     asset   varchar,
-    volumes "{{.Bucket}}".volumes
+    volumes volumes
 );
 
 /** Define tables **/
-create table "{{.Bucket}}".transactions
+create table transactions
 (
     seq                 bigserial primary key,
     ledger              varchar                     not null,
@@ -69,19 +69,19 @@ create table "{{.Bucket}}".transactions
     metadata            jsonb                       not null default '{}'::jsonb
 );
 
-create unique index transactions_ledger on "{{.Bucket}}".transactions (ledger, id);
-create index transactions_date on "{{.Bucket}}".transactions (timestamp);
-create index transactions_metadata_index on "{{.Bucket}}".transactions using gin (metadata jsonb_path_ops);
-create index transactions_sources on "{{.Bucket}}".transactions using gin (sources jsonb_path_ops);
-create index transactions_destinations on "{{.Bucket}}".transactions using gin (destinations jsonb_path_ops);
-create index transactions_sources_arrays on "{{.Bucket}}".transactions using gin (sources_arrays jsonb_path_ops);
-create index transactions_destinations_arrays on "{{.Bucket}}".transactions using gin (destinations_arrays jsonb_path_ops);
+create unique index transactions_ledger on transactions (ledger, id);
+create index transactions_date on transactions (timestamp);
+create index transactions_metadata_index on transactions using gin (metadata jsonb_path_ops);
+create index transactions_sources on transactions using gin (sources jsonb_path_ops);
+create index transactions_destinations on transactions using gin (destinations jsonb_path_ops);
+create index transactions_sources_arrays on transactions using gin (sources_arrays jsonb_path_ops);
+create index transactions_destinations_arrays on transactions using gin (destinations_arrays jsonb_path_ops);
 
-create table "{{.Bucket}}".transactions_metadata
+create table transactions_metadata
 (
     seq              bigserial,
     ledger           varchar   not null,
-    transactions_seq bigint references "{{.Bucket}}".transactions (seq),
+    transactions_seq bigint references transactions (seq),
     revision         numeric            default 0 not null,
     date             timestamp not null,
     metadata         jsonb     not null default '{}'::jsonb,
@@ -89,11 +89,11 @@ create table "{{.Bucket}}".transactions_metadata
     primary key (seq)
 );
 
-create index transactions_metadata_metadata on "{{.Bucket}}".transactions_metadata using gin (metadata jsonb_path_ops);
-create unique index transactions_metadata_ledger on "{{.Bucket}}".transactions_metadata (ledger, transactions_seq, revision);
-create index transactions_metadata_revisions on "{{.Bucket}}".transactions_metadata(transactions_seq asc, revision desc) include (metadata, date);
+create index transactions_metadata_metadata on transactions_metadata using gin (metadata jsonb_path_ops);
+create unique index transactions_metadata_ledger on transactions_metadata (ledger, transactions_seq, revision);
+create index transactions_metadata_revisions on transactions_metadata(transactions_seq asc, revision desc) include (metadata, date);
 
-create table "{{.Bucket}}".accounts
+create table accounts
 (
     seq            bigserial primary key,
     ledger         varchar   not null,
@@ -104,75 +104,75 @@ create table "{{.Bucket}}".accounts
     metadata       jsonb     not null default '{}'::jsonb
 );
 
-create unique index accounts_ledger on "{{.Bucket}}".accounts (ledger, address) include (seq);
-create index accounts_address_array on "{{.Bucket}}".accounts using gin (address_array jsonb_ops);
-create index accounts_address_array_length on "{{.Bucket}}".accounts (jsonb_array_length(address_array));
+create unique index accounts_ledger on accounts (ledger, address) include (seq);
+create index accounts_address_array on accounts using gin (address_array jsonb_ops);
+create index accounts_address_array_length on accounts (jsonb_array_length(address_array));
 
-create table "{{.Bucket}}".accounts_metadata
+create table accounts_metadata
 (
     seq          bigserial primary key,
     ledger       varchar not null,
-    accounts_seq bigint references "{{.Bucket}}".accounts (seq),
+    accounts_seq bigint references accounts (seq),
     metadata     jsonb   not null default '{}'::jsonb,
     revision     numeric          default 0,
     date         timestamp
 );
 
-create unique index accounts_metadata_ledger on "{{.Bucket}}".accounts_metadata (ledger, accounts_seq, revision);
-create index accounts_metadata_metadata on "{{.Bucket}}".accounts_metadata using gin (metadata jsonb_path_ops);
-create index accounts_metadata_revisions on "{{.Bucket}}".accounts_metadata(accounts_seq asc, revision desc) include (metadata, date);
+create unique index accounts_metadata_ledger on accounts_metadata (ledger, accounts_seq, revision);
+create index accounts_metadata_metadata on accounts_metadata using gin (metadata jsonb_path_ops);
+create index accounts_metadata_revisions on accounts_metadata(accounts_seq asc, revision desc) include (metadata, date);
 
-create table "{{.Bucket}}".moves
+create table moves
 (
     seq                           bigserial    not null primary key,
     ledger                        varchar   not null,
-    transactions_seq              bigint   not null references "{{.Bucket}}".transactions (seq),
-    accounts_seq                  bigint   not null references "{{.Bucket}}".accounts (seq),
+    transactions_seq              bigint   not null references transactions (seq),
+    accounts_seq                  bigint   not null references accounts (seq),
     account_address               varchar   not null,
     account_address_array         jsonb     not null,
     asset                         varchar   not null,
     amount                        numeric   not null,
     insertion_date                timestamp not null,
     effective_date                timestamp not null,
-    post_commit_volumes           "{{.Bucket}}".volumes   not null,
-    post_commit_effective_volumes "{{.Bucket}}".volumes default null,
+    post_commit_volumes           volumes   not null,
+    post_commit_effective_volumes volumes default null,
     is_source                     boolean   not null
 );
 
-create index moves_ledger on "{{.Bucket}}".moves (ledger);
-create index moves_range_dates on "{{.Bucket}}".moves (account_address, asset, effective_date);
-create index moves_account_address on "{{.Bucket}}".moves (account_address);
-create index moves_account_address_array on "{{.Bucket}}".moves using gin (account_address_array jsonb_ops);
-create index moves_account_address_array_length on "{{.Bucket}}".moves (jsonb_array_length(account_address_array));
-create index moves_date on "{{.Bucket}}".moves (effective_date);
-create index moves_asset on "{{.Bucket}}".moves (asset);
-create index moves_post_commit_volumes on "{{.Bucket}}".moves (accounts_seq, asset, seq);
-create index moves_effective_post_commit_volumes on "{{.Bucket}}".moves (accounts_seq, asset, effective_date desc);
+create index moves_ledger on moves (ledger);
+create index moves_range_dates on moves (account_address, asset, effective_date);
+create index moves_account_address on moves (account_address);
+create index moves_account_address_array on moves using gin (account_address_array jsonb_ops);
+create index moves_account_address_array_length on moves (jsonb_array_length(account_address_array));
+create index moves_date on moves (effective_date);
+create index moves_asset on moves (asset);
+create index moves_post_commit_volumes on moves (accounts_seq, asset, seq);
+create index moves_effective_post_commit_volumes on moves (accounts_seq, asset, effective_date desc);
 
-create type "{{.Bucket}}".log_type as enum
+create type log_type as enum
     ('NEW_TRANSACTION',
         'REVERTED_TRANSACTION',
         'SET_METADATA',
         'DELETE_METADATA'
         );
 
-create table "{{.Bucket}}".logs
+create table logs
 (
     seq             bigserial primary key,
     ledger          varchar   not null,
     id              numeric   not null,
-    type            "{{.Bucket}}".log_type  not null,
+    type            log_type  not null,
     hash            bytea     not null,
     date            timestamp not null,
     data            jsonb     not null,
     idempotency_key varchar(255)
 );
 
-create unique index logs_ledger on "{{.Bucket}}".logs (ledger, id);
+create unique index logs_ledger on logs (ledger, id);
 
 /** Define index **/
 
-create function "{{.Bucket}}".balance_from_volumes(v "{{.Bucket}}".volumes)
+create function balance_from_volumes(v volumes)
     returns numeric
     language sql
     immutable
@@ -184,49 +184,49 @@ $$;
 /** Define write functions **/
 
 -- given the input : "a:b:c", the function will produce : '{"0": "a", "1": "b", "2": "c", "3": null}'
-create function "{{.Bucket}}".explode_address(_address varchar)
+create function explode_address(_address varchar)
     returns jsonb
     language sql
     immutable
 as
 $$
-select "{{.Bucket}}".aggregate_objects(jsonb_build_object(data.number - 1, data.value))
+select aggregate_objects(jsonb_build_object(data.number - 1, data.value))
 from (select row_number() over () as number, v.value
       from (select unnest(string_to_array(_address, ':')) as value
             union all
             select null) v) data
 $$;
 
-create function "{{.Bucket}}".get_transaction(_ledger varchar, _id numeric, _before timestamp default null)
-    returns setof "{{.Bucket}}".transactions
+create function get_transaction(_ledger varchar, _id numeric, _before timestamp default null)
+    returns setof transactions
     language sql
     stable
 as
 $$
 select *
-from "{{.Bucket}}".transactions t
+from transactions t
 where (_before is null or t.timestamp <= _before)
   and t.id = _id
   and ledger = _ledger
 order by id desc
 limit 1;
-$$;
+$$ set search_path from current;
 
 -- a simple 'select distinct asset from moves' would be more simple
 -- but Postgres is extremely inefficient with distinct
 -- so the query implementation use a "hack" to emulate skip scan feature which Postgres lack natively
 -- see https://wiki.postgresql.org/wiki/Loose_indexscan for more information
-create function "{{.Bucket}}".get_all_assets(_ledger varchar)
+create function get_all_assets(_ledger varchar)
     returns setof varchar
     language sql
 as
 $$
 with recursive t as (select min(asset) as asset
-                     from "{{.Bucket}}".moves
+                     from moves
                      where ledger = _ledger
                      union all
                      select (select min(asset)
-                             from "{{.Bucket}}".moves
+                             from moves
                              where asset > t.asset
                                and ledger = _ledger)
                      from t
@@ -236,96 +236,96 @@ from t
 where asset is not null
 union all
 select null
-where exists(select 1 from "{{.Bucket}}".moves where asset is null and ledger = _ledger)
-$$;
+where exists(select 1 from moves where asset is null and ledger = _ledger)
+$$ set search_path from current;
 
-create function "{{.Bucket}}".get_latest_move_for_account_and_asset(_ledger varchar, _account_address varchar, _asset varchar,
+create function get_latest_move_for_account_and_asset(_ledger varchar, _account_address varchar, _asset varchar,
                                                       _before timestamp default null)
-    returns setof "{{.Bucket}}".moves
+    returns setof moves
     language sql
     stable
 as
 $$
 select *
-from "{{.Bucket}}".moves s
+from moves s
 where (_before is null or s.effective_date <= _before)
   and s.account_address = _account_address
   and s.asset = _asset
   and ledger = _ledger
 order by effective_date desc, seq desc
 limit 1;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".upsert_account(_ledger varchar, _address varchar, _metadata jsonb, _date timestamp)
+create function upsert_account(_ledger varchar, _address varchar, _metadata jsonb, _date timestamp)
     returns void
     language plpgsql
 as
 $$
 begin
-    insert into "{{.Bucket}}".accounts(ledger, address, address_array, insertion_date, metadata, updated_at)
+    insert into accounts(ledger, address, address_array, insertion_date, metadata, updated_at)
     values (_ledger, _address, to_json(string_to_array(_address, ':')), _date, coalesce(_metadata, '{}'::jsonb), _date)
     on conflict (ledger, address) do update
         set metadata   = accounts.metadata || coalesce(_metadata, '{}'::jsonb),
             updated_at = _date
     where not accounts.metadata @> coalesce(_metadata, '{}'::jsonb);
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".delete_account_metadata(_ledger varchar, _address varchar, _key varchar, _date timestamp)
+create function delete_account_metadata(_ledger varchar, _address varchar, _key varchar, _date timestamp)
     returns void
     language plpgsql
 as
 $$
 begin
-    update "{{.Bucket}}".accounts
+    update accounts
     set metadata   = metadata - _key,
         updated_at = _date
     where address = _address
       and ledger = _ledger;
 end
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".update_transaction_metadata(_ledger varchar, _id numeric, _metadata jsonb, _date timestamp)
+create function update_transaction_metadata(_ledger varchar, _id numeric, _metadata jsonb, _date timestamp)
     returns void
     language plpgsql
 as
 $$
 begin
-    update "{{.Bucket}}".transactions
+    update transactions
     set metadata = metadata || _metadata,
         updated_at = _date
     where id = _id
       and ledger = _ledger;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".delete_transaction_metadata(_ledger varchar, _id numeric, _key varchar, _date timestamp)
+create function delete_transaction_metadata(_ledger varchar, _id numeric, _key varchar, _date timestamp)
     returns void
     language plpgsql
 as
 $$
 begin
-    update "{{.Bucket}}".transactions
+    update transactions
     set metadata = metadata - _key,
         updated_at = _date
     where id = _id
       and ledger = _ledger;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".revert_transaction(_ledger varchar, _id numeric, _date timestamp)
+create function revert_transaction(_ledger varchar, _id numeric, _date timestamp)
     returns void
     language sql
 as
 $$
-update "{{.Bucket}}".transactions
+update transactions
 set reverted_at = _date
 where id = _id
   and ledger = _ledger;
-$$;
+$$ set search_path from current;
 
 
-create or replace function "{{.Bucket}}".insert_move(
+create or replace function insert_move(
     _transactions_seq bigint,
     _ledger varchar,
     _insertion_date timestamp without time zone,
@@ -340,28 +340,28 @@ create or replace function "{{.Bucket}}".insert_move(
 as
 $$
 declare
-    _post_commit_volumes           "{{.Bucket}}".volumes = (0, 0)::"{{.Bucket}}".volumes;
-    _effective_post_commit_volumes "{{.Bucket}}".volumes = (0, 0)::"{{.Bucket}}".volumes;
+    _post_commit_volumes           volumes = (0, 0)::volumes;
+    _effective_post_commit_volumes volumes = (0, 0)::volumes;
     _seq                           bigint;
     _account_seq                   bigint;
 begin
-    select seq from "{{.Bucket}}".accounts where ledger = _ledger and address = _account_address into _account_seq;
+    select seq from accounts where ledger = _ledger and address = _account_address into _account_seq;
 
     if _account_exists then
         select (post_commit_volumes).inputs, (post_commit_volumes).outputs
         into _post_commit_volumes
-        from "{{.Bucket}}".moves
+        from moves
         where accounts_seq = _account_seq
           and asset = _asset
         order by seq desc
         limit 1;
 
         if not found then
-            _post_commit_volumes = (0, 0)::"{{.Bucket}}".volumes;
-            _effective_post_commit_volumes = (0, 0)::"{{.Bucket}}".volumes;
+            _post_commit_volumes = (0, 0)::volumes;
+            _effective_post_commit_volumes = (0, 0)::volumes;
         else
             select (post_commit_effective_volumes).inputs, (post_commit_effective_volumes).outputs into _effective_post_commit_volumes
-            from "{{.Bucket}}".moves
+            from moves
             where accounts_seq = _account_seq
               and asset = _asset
               and effective_date <= _effective_date
@@ -378,7 +378,7 @@ begin
         _effective_post_commit_volumes.inputs = _effective_post_commit_volumes.inputs + _amount;
     end if;
 
-    insert into "{{.Bucket}}".moves (ledger,
+    insert into moves (ledger,
                        insertion_date,
                        effective_date,
                        accounts_seq,
@@ -405,7 +405,7 @@ begin
     returning seq into _seq;
 
     if _account_exists then
-        update "{{.Bucket}}".moves
+        update moves
         set post_commit_effective_volumes =
                 ((post_commit_effective_volumes).inputs + case when _is_source then 0 else _amount end,
                  (post_commit_effective_volumes).outputs + case when _is_source then _amount else 0 end
@@ -414,7 +414,7 @@ begin
           and asset = _asset
           and effective_date > _effective_date;
 
-        update "{{.Bucket}}".moves
+        update moves
         set post_commit_effective_volumes =
                 ((post_commit_effective_volumes).inputs + case when _is_source then 0 else _amount end,
                  (post_commit_effective_volumes).outputs + case when _is_source then _amount else 0 end
@@ -425,9 +425,9 @@ begin
           and seq > _seq;
     end if;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".insert_posting(_transaction_seq bigint, _ledger varchar, _insertion_date timestamp without time zone,
+create function insert_posting(_transaction_seq bigint, _ledger varchar, _insertion_date timestamp without time zone,
                                _effective_date timestamp without time zone, posting jsonb, _account_metadata jsonb)
     returns void
     language plpgsql
@@ -438,23 +438,23 @@ declare
     _destination_exists bool;
 begin
 
-    select true from "{{.Bucket}}".accounts where ledger = _ledger and address = posting ->> 'source' into _source_exists;
-    select true from "{{.Bucket}}".accounts where ledger = _ledger and address = posting ->> 'destination' into _destination_exists;
+    select true from accounts where ledger = _ledger and address = posting ->> 'source' into _source_exists;
+    select true from accounts where ledger = _ledger and address = posting ->> 'destination' into _destination_exists;
 
-    perform "{{.Bucket}}".upsert_account(_ledger, posting ->> 'source', _account_metadata -> (posting ->> 'source'), _insertion_date);
-    perform "{{.Bucket}}".upsert_account(_ledger, posting ->> 'destination', _account_metadata -> (posting ->> 'destination'),
+    perform upsert_account(_ledger, posting ->> 'source', _account_metadata -> (posting ->> 'source'), _insertion_date);
+    perform upsert_account(_ledger, posting ->> 'destination', _account_metadata -> (posting ->> 'destination'),
                            _insertion_date);
 
-    perform "{{.Bucket}}".insert_move(_transaction_seq, _ledger, _insertion_date, _effective_date,
+    perform insert_move(_transaction_seq, _ledger, _insertion_date, _effective_date,
                         posting ->> 'source', posting ->> 'asset', (posting ->> 'amount')::numeric, true,
                         _source_exists);
-    perform "{{.Bucket}}".insert_move(_transaction_seq, _ledger, _insertion_date, _effective_date,
+    perform insert_move(_transaction_seq, _ledger, _insertion_date, _effective_date,
                         posting ->> 'destination', posting ->> 'asset', (posting ->> 'amount')::numeric, false,
                         _destination_exists);
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".insert_transaction(_ledger varchar, data jsonb, _date timestamp without time zone,
+create function insert_transaction(_ledger varchar, data jsonb, _date timestamp without time zone,
                                    _account_metadata jsonb)
     returns void
     language plpgsql
@@ -464,7 +464,7 @@ declare
     posting jsonb;
     _seq    bigint;
 begin
-    insert into "{{.Bucket}}".transactions (ledger, id, timestamp, updated_at, reference, postings, sources,
+    insert into transactions (ledger, id, timestamp, updated_at, reference, postings, sources,
                               destinations, sources_arrays, destinations_arrays, metadata)
     values (_ledger,
             (data ->> 'id')::numeric,
@@ -476,21 +476,21 @@ begin
              from jsonb_array_elements(data -> 'postings') v),
             (select to_jsonb(array_agg(v ->> 'destination')) as value
              from jsonb_array_elements(data -> 'postings') v),
-            (select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'source'))) as value
+            (select to_jsonb(array_agg(explode_address(v ->> 'source'))) as value
              from jsonb_array_elements(data -> 'postings') v),
-            (select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'destination'))) as value
+            (select to_jsonb(array_agg(explode_address(v ->> 'destination'))) as value
              from jsonb_array_elements(data -> 'postings') v),
             coalesce(data -> 'metadata', '{}'::jsonb))
     returning seq into _seq;
 
     for posting in (select jsonb_array_elements(data -> 'postings'))
         loop
-            perform "{{.Bucket}}".insert_posting(_seq, _ledger, _date, (data ->> 'timestamp')::timestamp without time zone, posting,
+            perform insert_posting(_seq, _ledger, _date, (data ->> 'timestamp')::timestamp without time zone, posting,
                                    _account_metadata);
         end loop;
 
     if data -> 'metadata' is not null and data ->> 'metadata' <> '()' then
-        insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_seq, revision, date, metadata)
+        insert into transactions_metadata (ledger, transactions_seq, revision, date, metadata)
         values (_ledger,
                 _seq,
                 0,
@@ -498,9 +498,9 @@ begin
                 coalesce(data -> 'metadata', '{}'::jsonb));
     end if;
 end
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".handle_log() returns trigger
+create function handle_log() returns trigger
     security definer
     language plpgsql
 as
@@ -510,50 +510,50 @@ declare
     _value jsonb;
 begin
     if new.type = 'NEW_TRANSACTION' then
-        perform "{{.Bucket}}".insert_transaction(new.ledger, new.data -> 'transaction', new.date, new.data -> 'accountMetadata');
+        perform insert_transaction(new.ledger, new.data -> 'transaction', new.date, new.data -> 'accountMetadata');
         for _key, _value in (select * from jsonb_each_text(new.data -> 'accountMetadata'))
             loop
-                perform "{{.Bucket}}".upsert_account(new.ledger, _key, _value,
+                perform upsert_account(new.ledger, _key, _value,
                                        (new.data -> 'transaction' ->> 'timestamp')::timestamp);
             end loop;
     end if;
     if new.type = 'REVERTED_TRANSACTION' then
-        perform "{{.Bucket}}".insert_transaction(new.ledger, new.data -> 'transaction', new.date, '{}'::jsonb);
-        perform "{{.Bucket}}".revert_transaction(new.ledger, (new.data ->> 'revertedTransactionID')::numeric,
+        perform insert_transaction(new.ledger, new.data -> 'transaction', new.date, '{}'::jsonb);
+        perform revert_transaction(new.ledger, (new.data ->> 'revertedTransactionID')::numeric,
                                    (new.data -> 'transaction' ->> 'timestamp')::timestamp);
     end if;
     if new.type = 'SET_METADATA' then
         if new.data ->> 'targetType' = 'TRANSACTION' then
-            perform "{{.Bucket}}".update_transaction_metadata(new.ledger, (new.data ->> 'targetId')::numeric, new.data -> 'metadata',
+            perform update_transaction_metadata(new.ledger, (new.data ->> 'targetId')::numeric, new.data -> 'metadata',
                                                 new.date);
         else
-            perform "{{.Bucket}}".upsert_account(new.ledger, (new.data ->> 'targetId')::varchar, new.data -> 'metadata', new.date);
+            perform upsert_account(new.ledger, (new.data ->> 'targetId')::varchar, new.data -> 'metadata', new.date);
         end if;
     end if;
     if new.type = 'DELETE_METADATA' then
         if new.data ->> 'targetType' = 'TRANSACTION' then
-            perform "{{.Bucket}}".delete_transaction_metadata(new.ledger, (new.data ->> 'targetId')::numeric, new.data ->> 'key',
+            perform delete_transaction_metadata(new.ledger, (new.data ->> 'targetId')::numeric, new.data ->> 'key',
                                                 new.date);
         else
-            perform "{{.Bucket}}".delete_account_metadata(new.ledger, (new.data ->> 'targetId')::varchar, new.data ->> 'key',
+            perform delete_account_metadata(new.ledger, (new.data ->> 'targetId')::varchar, new.data ->> 'key',
                                             new.date);
         end if;
     end if;
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".update_account_metadata_history() returns trigger
+create function update_account_metadata_history() returns trigger
     security definer
     language plpgsql
 as
 $$
 begin
-    insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_seq, revision, date, metadata)
+    insert into accounts_metadata (ledger, accounts_seq, revision, date, metadata)
     values (new.ledger, new.seq, (
         select revision + 1
-		from "{{.Bucket}}".accounts_metadata
+		from accounts_metadata
 		where accounts_metadata.accounts_seq = new.seq
 		order by revision desc
 		limit 1
@@ -561,64 +561,64 @@ begin
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".insert_account_metadata_history() returns trigger
+create function insert_account_metadata_history() returns trigger
     security definer
     language plpgsql
 as
 $$
 begin
-    insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_seq, revision, date, metadata)
+    insert into accounts_metadata (ledger, accounts_seq, revision, date, metadata)
     values (new.ledger, new.seq, 1, new.insertion_date, new.metadata);
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".update_transaction_metadata_history() returns trigger
+create function update_transaction_metadata_history() returns trigger
     security definer
     language plpgsql
 as
 $$
 begin
-    insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_seq, revision, date, metadata)
+    insert into transactions_metadata (ledger, transactions_seq, revision, date, metadata)
     values (new.ledger, new.seq, (select revision + 1
-                                  from "{{.Bucket}}".transactions_metadata
+                                  from transactions_metadata
                                   where transactions_metadata.transactions_seq = new.seq
                                   order by revision desc
                                   limit 1), new.updated_at, new.metadata);
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".insert_transaction_metadata_history() returns trigger
+create function insert_transaction_metadata_history() returns trigger
     security definer
     language plpgsql
 as
 $$
 begin
-    insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_seq, revision, date, metadata)
+    insert into transactions_metadata (ledger, transactions_seq, revision, date, metadata)
     values (new.ledger, new.seq, 1, new.timestamp, new.metadata);
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".get_all_account_effective_volumes(_ledger varchar, _account varchar, _before timestamp default null)
-    returns setof "{{.Bucket}}".volumes_with_asset
+create or replace function get_all_account_effective_volumes(_ledger varchar, _account varchar, _before timestamp default null)
+    returns setof volumes_with_asset
     language sql
     stable
 as
 $$
 with all_assets as (select v.v as asset
-                    from "{{.Bucket}}".get_all_assets(_ledger) v),
+                    from get_all_assets(_ledger) v),
      moves as (select m.*
                from all_assets assets
                         join lateral (
                    select *
-                   from "{{.Bucket}}".moves s
+                   from moves s
                    where (_before is null or s.effective_date <= _before)
                      and s.account_address = _account
                      and s.asset = assets.asset
@@ -628,21 +628,21 @@ with all_assets as (select v.v as asset
                    ) m on true)
 select moves.asset, moves.post_commit_effective_volumes
 from moves
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".get_all_account_volumes(_ledger varchar, _account varchar, _before timestamp default null)
-    returns setof "{{.Bucket}}".volumes_with_asset
+create or replace function get_all_account_volumes(_ledger varchar, _account varchar, _before timestamp default null)
+    returns setof volumes_with_asset
     language sql
     stable
 as
 $$
 with all_assets as (select v.v as asset
-                    from "{{.Bucket}}".get_all_assets(_ledger) v),
+                    from get_all_assets(_ledger) v),
      moves as (select m.*
                from all_assets assets
                         join lateral (
                    select *
-                   from "{{.Bucket}}".moves s
+                   from moves s
                    where (_before is null or s.insertion_date <= _before)
                      and s.account_address = _account
                      and s.asset = assets.asset
@@ -652,29 +652,29 @@ with all_assets as (select v.v as asset
                    ) m on true)
 select moves.asset, moves.post_commit_volumes
 from moves
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".volumes_to_jsonb(v "{{.Bucket}}".volumes_with_asset)
+create function volumes_to_jsonb(v volumes_with_asset)
     returns jsonb
     language sql
     immutable
 as
 $$
 select ('{"' || v.asset || '": {"input": ' || (v.volumes).inputs || ', "output": ' || (v.volumes).outputs || '}}')::jsonb
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".get_account_aggregated_effective_volumes(_ledger varchar, _account_address varchar,
+create function get_account_aggregated_effective_volumes(_ledger varchar, _account_address varchar,
                                                          _before timestamp default null)
     returns jsonb
     language sql
     stable
 as
 $$
-select "{{.Bucket}}".aggregate_objects("{{.Bucket}}".volumes_to_jsonb(volumes_with_asset))
-from "{{.Bucket}}".get_all_account_effective_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
-$$;
+select aggregate_objects(volumes_to_jsonb(volumes_with_asset))
+from get_all_account_effective_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
+$$ set search_path from current;
 
-create function "{{.Bucket}}".get_account_aggregated_volumes(_ledger varchar, _account_address varchar,
+create function get_account_aggregated_volumes(_ledger varchar, _account_address varchar,
                                                _before timestamp default null)
     returns jsonb
     language sql
@@ -682,39 +682,39 @@ create function "{{.Bucket}}".get_account_aggregated_volumes(_ledger varchar, _a
     parallel safe
 as
 $$
-select "{{.Bucket}}".aggregate_objects("{{.Bucket}}".volumes_to_jsonb(volumes_with_asset))
-from "{{.Bucket}}".get_all_account_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
-$$;
+select aggregate_objects(volumes_to_jsonb(volumes_with_asset))
+from get_all_account_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
+$$ set search_path from current;
 
-create function "{{.Bucket}}".get_account_balance(_ledger varchar, _account varchar, _asset varchar, _before timestamp default null)
+create function get_account_balance(_ledger varchar, _account varchar, _asset varchar, _before timestamp default null)
     returns numeric
     language sql
     stable
 as
 $$
 select (post_commit_volumes).inputs - (post_commit_volumes).outputs
-from "{{.Bucket}}".moves s
+from moves s
 where (_before is null or s.effective_date <= _before)
   and s.account_address = _account
   and s.asset = _asset
   and s.ledger = _ledger
 order by seq desc
 limit 1
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".aggregate_ledger_volumes(
+create function aggregate_ledger_volumes(
     _ledger varchar,
     _before timestamp default null,
     _accounts varchar[] default null,
     _assets varchar[] default null
 )
-    returns setof "{{.Bucket}}".volumes_with_asset
+    returns setof volumes_with_asset
     language sql
     stable
 as
 $$
 with moves as (select distinct on (m.account_address, m.asset) m.*
-               from "{{.Bucket}}".moves m
+               from moves m
                where (_before is null or m.effective_date <= _before)
                  and (_accounts is null or account_address = any (_accounts))
                  and (_assets is null or asset = any (_assets))
@@ -724,62 +724,62 @@ select v.asset,
        (sum((v.post_commit_effective_volumes).inputs), sum((v.post_commit_effective_volumes).outputs))
 from moves v
 group by v.asset
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".get_aggregated_effective_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
+create function get_aggregated_effective_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
     stable
     language sql
 as
 $$
-select "{{.Bucket}}".aggregate_objects(jsonb_build_object(data.account_address, data.aggregated))
+select aggregate_objects(jsonb_build_object(data.account_address, data.aggregated))
 from (select distinct on (move.account_address, move.asset) move.account_address,
-                                                            "{{.Bucket}}".volumes_to_jsonb((move.asset, "{{.Bucket}}".first(move.post_commit_effective_volumes))) as aggregated
-      from "{{.Bucket}}".moves move
+                                                            volumes_to_jsonb((move.asset, first(move.post_commit_effective_volumes))) as aggregated
+      from moves move
       where move.transactions_seq = tx
         and ledger = _ledger
       group by move.account_address, move.asset) data
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".get_aggregated_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
+create function get_aggregated_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
     stable
     language sql
 as
 $$
-select "{{.Bucket}}".aggregate_objects(jsonb_build_object(data.account_address, data.aggregated))
+select aggregate_objects(jsonb_build_object(data.account_address, data.aggregated))
 from (select distinct on (move.account_address, move.asset) move.account_address,
-                                                            "{{.Bucket}}".volumes_to_jsonb((move.asset, "{{.Bucket}}".first(move.post_commit_volumes))) as aggregated
-      from "{{.Bucket}}".moves move
+                                                            volumes_to_jsonb((move.asset, first(move.post_commit_volumes))) as aggregated
+      from moves move
       where move.transactions_seq = tx
         and ledger = _ledger
       group by move.account_address, move.asset) data
-$$;
+$$ set search_path from current;
 
 create trigger "insert_log"
 after insert
-on "{{.Bucket}}"."logs"
+on "logs"
 for each row
-execute procedure "{{.Bucket}}".handle_log();
+execute procedure handle_log();
 
 create trigger "update_account"
 after update
-on "{{.Bucket}}"."accounts"
+on "accounts"
 for each row
-execute procedure "{{.Bucket}}".update_account_metadata_history();
+execute procedure update_account_metadata_history();
 
 create trigger "insert_account"
 after insert
-on "{{.Bucket}}"."accounts"
+on "accounts"
 for each row
-execute procedure "{{.Bucket}}".insert_account_metadata_history();
+execute procedure insert_account_metadata_history();
 
 create trigger "update_transaction"
 after update
-on "{{.Bucket}}"."transactions"
+on "transactions"
 for each row
-execute procedure "{{.Bucket}}".update_transaction_metadata_history();
+execute procedure update_transaction_metadata_history();
 
 create trigger "insert_transaction"
 after insert
-on "{{.Bucket}}"."transactions"
+on "transactions"
 for each row
-execute procedure "{{.Bucket}}".insert_transaction_metadata_history();
+execute procedure insert_transaction_metadata_history();

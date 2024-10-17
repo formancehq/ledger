@@ -1,4 +1,4 @@
-create function "{{.Bucket}}".set_effective_volumes()
+create function set_effective_volumes()
     returns trigger
     security definer
     language plpgsql
@@ -10,7 +10,7 @@ begin
             'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
             'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
         )
-        from "{{.Bucket}}".moves
+        from moves
         where accounts_address = new.accounts_address
             and asset = new.asset
             and ledger = new.ledger
@@ -24,16 +24,16 @@ begin
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create function "{{.Bucket}}".update_effective_volumes()
+create function update_effective_volumes()
     returns trigger
     security definer
     language plpgsql
 as
 $$
 begin
-    update "{{.Bucket}}".moves
+    update moves
     set post_commit_effective_volumes = json_build_object(
 		'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
 		'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
@@ -45,18 +45,18 @@ begin
 
     return new;
 end;
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".update_transaction_metadata_history() returns trigger
+create or replace function update_transaction_metadata_history() returns trigger
 	security definer
 	language plpgsql
 as
 $$
 begin
-	insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision, date, metadata)
+	insert into transactions_metadata (ledger, transactions_id, revision, date, metadata)
 	values (new.ledger, new.id, (
 		select revision + 1
-		from "{{.Bucket}}".transactions_metadata
+		from transactions_metadata
 		where transactions_metadata.transactions_id = new.id and transactions_metadata.ledger = new.ledger
 		order by revision desc
 		limit 1
@@ -64,31 +64,31 @@ begin
 
 	return new;
 end;
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".insert_transaction_metadata_history() returns trigger
+create or replace function insert_transaction_metadata_history() returns trigger
 	security definer
 	language plpgsql
 as
 $$
 begin
-	insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision, date, metadata)
+	insert into transactions_metadata (ledger, transactions_id, revision, date, metadata)
 	values (new.ledger, new.id, 1, new.timestamp, new.metadata);
 
 	return new;
 end;
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".update_account_metadata_history() returns trigger
+create or replace function update_account_metadata_history() returns trigger
 	security definer
 	language plpgsql
 as
 $$
 begin
-	insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision, date, metadata)
+	insert into accounts_metadata (ledger, accounts_address, revision, date, metadata)
 	values (new.ledger, new.address, (
 		select revision + 1
-		from "{{.Bucket}}".accounts_metadata
+		from accounts_metadata
 		where accounts_metadata.accounts_address = new.address
 		order by revision desc
 		limit 1
@@ -96,22 +96,22 @@ begin
 
 	return new;
 end;
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".insert_account_metadata_history() returns trigger
+create or replace function insert_account_metadata_history() returns trigger
 	security definer
 	language plpgsql
 as
 $$
 begin
-	insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision, date, metadata)
+	insert into accounts_metadata (ledger, accounts_address, revision, date, metadata)
 	values (new.ledger, new.address, 1, new.insertion_date, new.metadata);
 
 	return new;
 end;
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".explode_address(_address varchar)
+create or replace function explode_address(_address varchar)
 	returns jsonb
 	language sql
 	immutable
@@ -122,9 +122,9 @@ from (select row_number() over () as number, v.value
       from (select unnest(string_to_array(_address, ':')) as value
             union all
             select null) v) data
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".set_transaction_addresses() returns trigger
+create or replace function set_transaction_addresses() returns trigger
 	security definer
 	language plpgsql
 as
@@ -142,28 +142,28 @@ begin
 
 	return new;
 end
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".set_transaction_addresses_segments() returns trigger
+create or replace function set_transaction_addresses_segments() returns trigger
 	security definer
 	language plpgsql
 as
 $$
 begin
 	new.sources_arrays = (
-		select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'source'))) as value
+		select to_jsonb(array_agg(explode_address(v ->> 'source'))) as value
 		from jsonb_array_elements(new.postings::jsonb) v
 	);
 	new.destinations_arrays = (
-		select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'destination'))) as value
+		select to_jsonb(array_agg(explode_address(v ->> 'destination'))) as value
 		from jsonb_array_elements(new.postings::jsonb) v
 	);
 
 	return new;
 end
-$$;
+$$ set search_path from current;
 
-create or replace function "{{.Bucket}}".set_address_array_for_account() returns trigger
+create or replace function set_address_array_for_account() returns trigger
 	security definer
 	language plpgsql
 as
@@ -173,4 +173,4 @@ begin
 
 	return new;
 end
-$$;
+$$ set search_path from current;

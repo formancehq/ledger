@@ -1,1 +1,1 @@
-create index transactions_reference on "{{.Bucket}}".transactions (reference);
+create index transactions_reference on transactions (reference);

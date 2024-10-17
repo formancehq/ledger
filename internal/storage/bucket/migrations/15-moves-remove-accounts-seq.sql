@@ -1,2 +1,2 @@
-alter table "{{.Bucket}}".moves
+alter table moves
 drop column accounts_seq;

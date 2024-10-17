@@ -1,2 +1,2 @@
-drop index "{{.Bucket}}".transactions_reference;
-create unique index transactions_reference on "{{.Bucket}}".transactions (ledger, reference);
+drop index transactions_reference;
+create unique index transactions_reference on transactions (ledger, reference);
