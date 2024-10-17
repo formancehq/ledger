@@ -37,7 +37,6 @@ func TestUpgradeAllLedgers(t *testing.T) {
 	}
 
 	require.NoError(t, d.UpgradeAllBuckets(ctx))
-	require.NoError(t, d.UpgradeAllLedgers(ctx))
 }
 
 func TestLedgersCreate(t *testing.T) {

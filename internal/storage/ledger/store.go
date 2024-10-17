@@ -3,23 +3,22 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/ledger/internal/tracing"
-
 	"errors"
-	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/uptrace/bun"
 )
 
 type Store struct {
 	db     bun.IDB
+	bucket *bucket.Bucket
 	ledger ledger.Ledger
 
 	tracer                             trace.Tracer
@@ -62,45 +61,6 @@ func (s *Store) WithDB(db bun.IDB) *Store {
 	return &ret
 }
 
-// todo: merge with bucket migration info
-// todo: add test
-func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return getMigrator(s.ledger).GetMigrations(ctx, s.db)
-}
-
-func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
-	bucketUpToDate, err := tracing.TraceWithMetric(
-		ctx,
-		"CheckBucketSchema",
-		s.tracer,
-		s.checkBucketSchemaHistogram,
-		func(ctx context.Context) (bool, error) {
-			return bucket.New(s.db, s.ledger.Bucket).IsUpToDate(ctx)
-		},
-	)
-	if err != nil {
-		return false, fmt.Errorf("failed to check if bucket is up to date: %w", err)
-	}
-	if !bucketUpToDate {
-		return false, nil
-	}
-
-	ret, err := tracing.TraceWithMetric(
-		ctx,
-		"CheckLedgerSchema",
-		s.tracer,
-		s.checkLedgerSchemaHistogram,
-		func(ctx context.Context) (bool, error) {
-			return getMigrator(s.ledger).IsUpToDate(ctx, s.db)
-		},
-	)
-	if err != nil && errors.Is(err, migrations.ErrMissingVersionTable) {
-		return false, nil
-	}
-
-	return ret, err
-}
-
 func (s *Store) validateAddressFilter(operator string, value any) error {
 	if operator != "$match" {
 		return errors.New("'address' column can only be used with $match")
@@ -119,10 +79,11 @@ func (s *Store) LockLedger(ctx context.Context) error {
 	return postgres.ResolveError(err)
 }
 
-func New(db bun.IDB, ledger ledger.Ledger, opts ...Option) *Store {
+func New(db bun.IDB, bucket *bucket.Bucket, ledger ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
 		db:     db,
 		ledger: ledger,
+		bucket: bucket,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -219,6 +180,14 @@ func New(db bun.IDB, ledger ledger.Ledger, opts ...Option) *Store {
 	}
 
 	return ret
+}
+
+func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
+	return s.bucket.IsUpToDate(ctx)
+}
+
+func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
+	return s.bucket.GetMigrationsInfo(ctx)
 }
 
 type Option func(s *Store)
