@@ -12,11 +12,8 @@ import (
 var migrationsDir embed.FS
 
 func GetMigrator(name string) *migrations.Migrator {
-
 	migrator := migrations.NewMigrator(migrations.WithSchema(name, true))
-	migrator.RegisterMigrationsFromFileSystem(migrationsDir, "migrations", func(s string) string {
-		return s
-	})
+	migrator.RegisterMigrationsFromFileSystem(migrationsDir, "migrations")
 
 	return migrator
 }
