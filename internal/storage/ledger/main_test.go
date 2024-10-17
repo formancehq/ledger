@@ -87,9 +87,9 @@ func newLedgerStore(t T) *ledgerstore.Store {
 
 	b := bucket.New(db, ledgerName)
 	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
-	require.NoError(t, ledgerstore.Migrate(ctx, noop.Tracer{}, db, l))
+	require.NoError(t, b.AddLedger(ctx, l, db))
 
-	return ledgerstore.New(db, l)
+	return ledgerstore.New(db, b, l)
 }
 
 func bigIntComparer(v1 *big.Int, v2 *big.Int) bool {
