@@ -39,7 +39,7 @@ func TestMain(m *testing.M) {
 			ret := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()), pgtesting.WithExtension("pgcrypto"))
 
 			bunDB.LoadAsync(func() *bun.DB {
-				db, err := sql.Open("postgres", ret.GetDSN())
+				db, err := sql.Open("pgx", ret.GetDSN())
 				require.NoError(t, err)
 
 				bunDB := bun.NewDB(db, pgdialect.New())
