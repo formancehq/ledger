@@ -1,7 +1,11 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"time"
+
+	"errors"
 
 	"github.com/go-chi/chi/v5"
 
@@ -25,6 +29,21 @@ func NewRouter(
 	mux.Use(func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+			handler.ServeHTTP(w, r)
+		})
+	})
+	mux.Use(func(handler http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
+			defer func() {
+				cancel()
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					w.WriteHeader(http.StatusRequestTimeout)
+				}
+			}()
+
+			r = r.WithContext(ctx)
+
 			handler.ServeHTTP(w, r)
 		})
 	})

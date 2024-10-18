@@ -1,10 +1,11 @@
 package v2
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
-	"github.com/formancehq/go-libs/contextutil"
+	"errors"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
@@ -19,8 +20,10 @@ func bulkHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	ctx, _ := contextutil.Detached(r.Context())
-	ret, errorsInBulk, err := ProcessBulk(ctx, backend.LedgerFromContext(r.Context()), b, sharedapi.QueryParamBool(r, "continueOnFailure"))
+	ret, errorsInBulk, err := ProcessBulk(r.Context(), backend.LedgerFromContext(r.Context()), b, sharedapi.QueryParamBool(r, "continueOnFailure"))
+	if errors.Is(err, context.DeadlineExceeded) {
+		return
+	}
 	if err != nil || errorsInBulk {
 		w.WriteHeader(http.StatusBadRequest)
 	}

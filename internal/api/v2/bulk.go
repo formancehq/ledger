@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/go-libs/contextutil"
+
 	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
 
 	sharedapi "github.com/formancehq/go-libs/api"
@@ -64,6 +66,15 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 			DryRun:         false,
 			IdempotencyKey: element.IdempotencyKey,
 		}
+
+		select {
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		default:
+			// nothing to do, process next element
+		}
+
+		ctx, _ := contextutil.Detached(ctx)
 
 		switch element.Action {
 		case ActionCreateTransaction:
