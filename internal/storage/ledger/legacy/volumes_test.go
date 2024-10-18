@@ -1,6 +1,6 @@
 //go:build it
 
-package ledgerstore
+package legacy_test
 
 import (
 	"github.com/formancehq/go-libs/v2/pointer"

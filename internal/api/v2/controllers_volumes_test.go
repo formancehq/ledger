@@ -34,7 +34,6 @@ func TestGetVolumes(t *testing.T) {
 		expectedErrorCode string
 	}
 	before := time.Now()
-	zero := time.Time{}
 
 	testCases := []testCase{
 		{
@@ -42,7 +41,6 @@ func TestGetVolumes(t *testing.T) {
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
-					OOT: &zero,
 				},
 
 				UseInsertionDate: false,
@@ -55,7 +53,6 @@ func TestGetVolumes(t *testing.T) {
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
-					OOT: &zero,
 				},
 			}).
 				WithQueryBuilder(query.Match("metadata[roles]", "admin")).
@@ -67,7 +64,6 @@ func TestGetVolumes(t *testing.T) {
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
-					OOT: &zero,
 				},
 			}).
 				WithQueryBuilder(query.Match("account", "foo")).
@@ -88,7 +84,6 @@ func TestGetVolumes(t *testing.T) {
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
-					OOT: &zero,
 				},
 				GroupLvl: 3,
 			}).WithPageSize(DefaultPageSize),
@@ -99,7 +94,6 @@ func TestGetVolumes(t *testing.T) {
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
-					OOT: &zero,
 				},
 			}).WithPageSize(DefaultPageSize).WithQueryBuilder(query.Exists("metadata", "foo")),
 		},
@@ -109,7 +103,6 @@ func TestGetVolumes(t *testing.T) {
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
-					OOT: &zero,
 				},
 			}).WithQueryBuilder(query.Gte("balance[EUR]", float64(50))).
 				WithPageSize(DefaultPageSize),

@@ -47,6 +47,10 @@ type Store struct {
 	listTransactionsHistogram          metric.Int64Histogram
 }
 
+func (s *Store) GetLedger() ledger.Ledger {
+	return s.ledger
+}
+
 func (s *Store) GetDB() bun.IDB {
 	return s.db
 }

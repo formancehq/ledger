@@ -1,4 +1,4 @@
-package ledgerstore
+package legacy
 
 import (
 	"context"
@@ -44,7 +44,15 @@ func (store *Store) buildTransactionQuery(p ledgercontroller.PITFilterWithVolume
 			Join(fmt.Sprintf(`left join lateral (%s) as transactions_metadata on true`, selectMetadata.String())).
 			ColumnExpr(fmt.Sprintf("case when reverted_at is not null and reverted_at > '%s' then null else reverted_at end", p.PIT.Format(time.DateFormat)))
 	} else {
-		query = query.Column("transactions.metadata", "transactions.*")
+		query = query.Column(
+			"transactions.metadata",
+			"transactions.id",
+			"transactions.inserted_at",
+			"transactions.timestamp",
+			"transactions.postings",
+			"transactions.reverted_at",
+			"transactions.reference",
+		)
 	}
 
 	if p.ExpandEffectiveVolumes {

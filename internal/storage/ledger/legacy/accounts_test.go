@@ -1,10 +1,11 @@
 //go:build it
 
-package ledgerstore
+package legacy_test
 
 import (
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"math/big"
 	"testing"
 
@@ -249,7 +250,7 @@ func TestGetAccounts(t *testing.T) {
 			WithQueryBuilder(query.Lt("invalid", 0)),
 		))
 		require.Error(t, err)
-		require.True(t, IsErrInvalidQuery(err))
+		require.True(t, legacy.IsErrInvalidQuery(err))
 	})
 }
 
