@@ -46,7 +46,7 @@ func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 
 	if date != nil && !date.IsZero() {
 		sortedMoves := s.SelectDistinctMovesBySeq(date).
-			ColumnExpr("(post_commit_volumes->>'input')::numeric - (post_commit_volumes->>'output')::numeric as balance")
+			ColumnExpr("(post_commit_volumes).inputs - (post_commit_volumes).outputs as balance")
 
 		return s.db.NewSelect().
 			ModelTableExpr("(?) moves", sortedMoves).
@@ -204,6 +204,8 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			ret = ret.Where(where)
 		}
 	}
+
+	s.DumpQuery(context.Background(), ret)
 
 	return ret
 }

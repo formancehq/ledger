@@ -13,8 +13,8 @@ select distinct on (ledger, accounts_address, asset)
 	ledger,
 	accounts_address,
 	asset,
-	(moves.post_commit_volumes->>'input')::numeric as input,
-	(moves.post_commit_volumes->>'output')::numeric as output
+	(moves.post_commit_volumes).inputs as input,
+	(moves.post_commit_volumes).outputs as output
 from (
 	select distinct (ledger, accounts_address, asset)
 		ledger,
