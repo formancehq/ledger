@@ -8,4 +8,7 @@ const (
 	ErrNoPostings        = "NO_POSTINGS"
 	ErrCompilationFailed = "COMPILATION_FAILED"
 	ErrMetadataOverride  = "METADATA_OVERRIDE"
+
+	ErrInterpreterParse   = "INTERPRETER_PARSE"
+	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"
 )

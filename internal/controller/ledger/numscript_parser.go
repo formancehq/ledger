@@ -6,6 +6,7 @@ import (
 
 	"github.com/bluele/gcache"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
+	"github.com/formancehq/numscript"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source numscript_parser.go -destination numscript_parser_generated_test.go -package ledger . NumscriptParser
@@ -31,6 +32,26 @@ func NewDefaultNumscriptParser() *DefaultNumscriptParser {
 }
 
 var _ NumscriptParser = (*DefaultNumscriptParser)(nil)
+
+type InterpreterNumscriptParser struct{}
+
+func (n *InterpreterNumscriptParser) Parse(script string) (NumscriptRuntime, error) {
+	result := numscript.Parse(script)
+	errs := result.GetParsingErrors()
+	if len(errs) != 0 {
+		return nil, ErrParsing{
+			Source: script,
+			Errors: errs,
+		}
+	}
+	return NewDefaultInterpreterMachineAdapter(result), nil
+}
+
+func NewInterpreterNumscriptParser() *InterpreterNumscriptParser {
+	return &InterpreterNumscriptParser{}
+}
+
+var _ NumscriptParser = (*InterpreterNumscriptParser)(nil)
 
 type CacheConfiguration struct {
 	MaxCount uint

@@ -1,16 +1,20 @@
 package cmd
 
 import (
+	"net/http"
+	"net/http/pprof"
+	"time"
+
 	apilib "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/httpserver"
 	"github.com/formancehq/go-libs/v2/otlp"
+
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"net/http"
-	"net/http/pprof"
-	"time"
+
+	"github.com/formancehq/ledger/internal/bus"
 
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/aws/iam"
@@ -19,7 +23,7 @@ import (
 	"github.com/formancehq/go-libs/v2/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v2/publish"
 	"github.com/formancehq/ledger/internal/api"
-	"github.com/formancehq/ledger/internal/bus"
+
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage"
@@ -35,6 +39,7 @@ const (
 	BallastSizeInBytesFlag     = "ballast-size"
 	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
 	AutoUpgradeFlag            = "auto-upgrade"
+	NumscriptInterpreterFlag   = "numscript-interpreter"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -49,6 +54,8 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 
+			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
+
 			options := []fx.Option{
 				fx.NopLogger,
 				otlp.FXModuleFromFlags(cmd),
@@ -59,6 +66,7 @@ func NewServeCommand() *cobra.Command {
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
+					NumscriptInterpreter: numscriptInterpreter,
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
 						MaxCount: serveConfiguration.numscriptCacheMaxCount,
 					},
@@ -104,6 +112,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
+	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
