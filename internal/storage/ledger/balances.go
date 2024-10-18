@@ -187,6 +187,7 @@ func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.Ge
 	return aggregatedVolumes.Aggregated.Balances(), nil
 }
 
+// todo: need to handle previous version schema by looking moves
 func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
 	return tracing.TraceWithMetric(
 		ctx,
