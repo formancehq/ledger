@@ -60,6 +60,7 @@ func TestMovesInsert(t *testing.T) {
 			Asset:         "USD",
 			InsertionDate: t0,
 			EffectiveDate: t0,
+			TransactionID: tx.ID,
 		}
 		require.NoError(t, store.InsertMoves(ctx, &m1))
 		require.NotNil(t, m1.PostCommitEffectiveVolumes)
@@ -76,6 +77,7 @@ func TestMovesInsert(t *testing.T) {
 			Asset:         "USD",
 			InsertionDate: t3,
 			EffectiveDate: t3,
+			TransactionID: tx.ID,
 		}
 		require.NoError(t, store.InsertMoves(ctx, &m2))
 		require.NotNil(t, m2.PostCommitEffectiveVolumes)
@@ -92,6 +94,7 @@ func TestMovesInsert(t *testing.T) {
 			Asset:         "USD",
 			InsertionDate: t1,
 			EffectiveDate: t1,
+			TransactionID: tx.ID,
 		}
 		require.NoError(t, store.InsertMoves(ctx, &m3))
 		require.NotNil(t, m3.PostCommitEffectiveVolumes)
@@ -108,6 +111,7 @@ func TestMovesInsert(t *testing.T) {
 			Asset:         "USD",
 			InsertionDate: t2,
 			EffectiveDate: t2,
+			TransactionID: tx.ID,
 		}
 		require.NoError(t, store.InsertMoves(ctx, &m4))
 		require.NotNil(t, m4.PostCommitEffectiveVolumes)
@@ -124,6 +128,7 @@ func TestMovesInsert(t *testing.T) {
 			Asset:         "USD",
 			InsertionDate: t4,
 			EffectiveDate: t4,
+			TransactionID: tx.ID,
 		}
 		require.NoError(t, store.InsertMoves(ctx, &m5))
 		require.NotNil(t, m5.PostCommitEffectiveVolumes)

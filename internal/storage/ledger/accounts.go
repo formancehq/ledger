@@ -205,8 +205,6 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		}
 	}
 
-	s.DumpQuery(context.Background(), ret)
-
 	return ret
 }
 

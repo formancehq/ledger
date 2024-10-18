@@ -163,7 +163,7 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 	require.Equal(t, log, *lastLog)
 }
 
-func TestGetLogs(t *testing.T) {
+func TestLogsList(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 	now := time.Now()

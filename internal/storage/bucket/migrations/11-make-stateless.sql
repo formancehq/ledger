@@ -9,10 +9,170 @@ add column transactions_id bigint,
 alter column post_commit_volumes drop not null,
 alter column post_commit_effective_volumes drop not null,
 alter column insertion_date set default (now() at time zone 'utc'),
-alter column effective_date set default (now() at time zone 'utc');
+alter column effective_date set default (now() at time zone 'utc'),
+alter column account_address_array drop not null;
 
 alter table moves
 rename column account_address to accounts_address;
+
+alter table moves
+rename column account_address_array to accounts_address_array;
+
+-- since the column `account_address` has been renamed to `accounts_address`, we need to update the function
+create or replace function get_aggregated_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
+    stable
+    language sql
+as
+$$
+select aggregate_objects(jsonb_build_object(data.accounts_address, data.aggregated))
+from (
+    select distinct on (move.accounts_address, move.asset)
+        move.accounts_address,
+        volumes_to_jsonb((move.asset, first(move.post_commit_volumes))) as aggregated
+    from (select * from moves order by seq desc) move
+    where move.transactions_seq = tx and
+          ledger = _ledger
+      group by move.accounts_address, move.asset
+) data
+$$ set search_path from current;
+
+create or replace function get_aggregated_effective_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
+    stable
+    language sql
+as
+$$
+select aggregate_objects(jsonb_build_object(data.accounts_address, data.aggregated))
+from (
+    select distinct on (move.accounts_address, move.asset)
+        move.accounts_address,
+        volumes_to_jsonb((move.asset, first(move.post_commit_effective_volumes))) as aggregated
+    from (select * from moves order by seq desc) move
+    where move.transactions_seq = tx
+        and ledger = _ledger
+    group by move.accounts_address, move.asset
+) data
+$$ set search_path from current;
+
+create or replace function get_all_account_effective_volumes(_ledger varchar, _account varchar, _before timestamp default null)
+    returns setof volumes_with_asset
+    language sql
+    stable
+as
+$$
+with all_assets as (select v.v as asset
+                    from get_all_assets(_ledger) v),
+     moves as (select m.*
+               from all_assets assets
+                        join lateral (
+                   select *
+                   from moves s
+                   where (_before is null or s.effective_date <= _before)
+                     and s.accounts_address = _account
+                     and s.asset = assets.asset
+                     and s.ledger = _ledger
+                   order by effective_date desc, seq desc
+                   limit 1
+                   ) m on true)
+select moves.asset, moves.post_commit_effective_volumes
+from moves
+$$ set search_path from current;
+
+create or replace function get_all_account_volumes(_ledger varchar, _account varchar, _before timestamp default null)
+    returns setof volumes_with_asset
+    language sql
+    stable
+as
+$$
+with all_assets as (select v.v as asset
+                    from get_all_assets(_ledger) v),
+     moves as (select m.*
+               from all_assets assets
+                        join lateral (
+                   select *
+                   from moves s
+                   where (_before is null or s.insertion_date <= _before)
+                     and s.accounts_address = _account
+                     and s.asset = assets.asset
+                     and s.ledger = _ledger
+                   order by seq desc
+                   limit 1
+                   ) m on true)
+select moves.asset, moves.post_commit_volumes
+from moves
+$$ set search_path from current;
+
+-- notes(gfyrag): temporary trigger to be able to handle writes on the old schema (the code does not specify this anymore)
+create or replace function set_compat_on_move()
+	returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.transactions_seq = (
+		select seq
+		from transactions
+		where id = new.transactions_id and ledger = new.ledger
+	);
+	new.accounts_seq = (
+		select seq
+		from accounts
+		where address = new.accounts_address and ledger = new.ledger
+	);
+	new.accounts_address_array = to_json(string_to_array(new.accounts_address, ':'));
+
+	return new;
+end;
+$$ set search_path from current;
+
+create trigger set_compat_on_move
+before insert on moves
+for each row
+execute procedure set_compat_on_move();
+
+create or replace function set_compat_on_accounts_metadata()
+	returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.accounts_seq = (
+		select seq
+		from accounts
+		where address = new.accounts_address and ledger = new.ledger
+	);
+
+	return new;
+end;
+$$ set search_path from current;
+
+create trigger set_compat_on_accounts_metadata
+before insert on accounts_metadata
+for each row
+execute procedure set_compat_on_accounts_metadata();
+
+create or replace function set_compat_on_transactions_metadata()
+	returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.transactions_seq = (
+		select seq
+		from transactions
+		where id = new.transactions_id and ledger = new.ledger
+	);
+
+	return new;
+end;
+$$ set search_path from current;
+
+create trigger set_compat_on_transactions_metadata
+before insert on transactions_metadata
+for each row
+execute procedure set_compat_on_transactions_metadata();
 
 alter table transactions
 add column post_commit_volumes jsonb,
