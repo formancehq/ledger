@@ -8,6 +8,7 @@ create table accounts_volumes (
     primary key (ledger, accounts_address, asset)
 );
 
+--todo: handle conflicts while we are inserting and the ledger is actively writing to the database
 insert into accounts_volumes (ledger, accounts_address, asset, input, output)
 select distinct on (ledger, accounts_address, asset)
 	ledger,
