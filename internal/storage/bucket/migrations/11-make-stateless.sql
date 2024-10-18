@@ -182,6 +182,7 @@ alter column id type bigint;
 
 drop index transactions_reference;
 create unique index transactions_reference on transactions (ledger, reference);
+create index transactions_sequences on transactions (id, seq);
 
 alter table logs
 add column memento bytea,
@@ -205,6 +206,8 @@ create table accounts_volumes (
 
     primary key (ledger, accounts_address, asset)
 );
+
+create index accounts_sequences on accounts (address, seq);
 
 alter table transactions_metadata
 add column transactions_id bigint;
