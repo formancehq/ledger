@@ -132,25 +132,54 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 			Join(
 				`join (?) pcev on pcev.transactions_id = transactions.id`,
 				s.db.NewSelect().
-					Column("transactions_id").
-					ColumnExpr("aggregate_objects(pcev::jsonb) as post_commit_effective_volumes").
 					TableExpr(
 						"(?) data",
 						s.db.NewSelect().
-							DistinctOn("transactions_id, accounts_address, asset").
-							ModelTableExpr(s.GetPrefixedRelationName("moves")).
+							TableExpr(
+								"(?) moves",
+								s.db.NewSelect().
+									DistinctOn("transactions_id, accounts_address, asset").
+									ModelTableExpr(s.GetPrefixedRelationName("moves")).
+									Column("transactions_id", "accounts_address", "asset").
+									ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`),
+							).
 							Column("transactions_id").
 							ColumnExpr(`
 								json_build_object(
 									moves.accounts_address,
 									json_build_object(
 										moves.asset,
-										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc)
+										json_build_object(
+											'input', (moves.post_commit_effective_volumes).inputs,
+											'output', (moves.post_commit_effective_volumes).outputs
+										)
 									)
-								) as pcev
+								) as post_commit_effective_volumes
 							`),
 					).
+					Column("transactions_id").
+					ColumnExpr("aggregate_objects(post_commit_effective_volumes::jsonb) as post_commit_effective_volumes").
 					Group("transactions_id"),
+				//s.db.NewSelect().
+				//	Column("transactions_id").
+				//	ColumnExpr("aggregate_objects(pcev::jsonb) as post_commit_effective_volumes").
+				//	TableExpr(
+				//		"(?) data",
+				//		s.db.NewSelect().
+				//			DistinctOn("transactions_id, accounts_address, asset").
+				//			ModelTableExpr(s.GetPrefixedRelationName("moves")).
+				//			Column("transactions_id").
+				//			ColumnExpr(`
+				//				json_build_object(
+				//					moves.accounts_address,
+				//					json_build_object(
+				//						moves.asset,
+				//						first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc)
+				//					)
+				//				) as pcev
+				//			`),
+				//	).
+				//	Group("transactions_id"),
 			).
 			ColumnExpr("pcev.*")
 	}

@@ -6,9 +6,9 @@ as
 $$
 begin
     new.post_commit_effective_volumes = coalesce((
-        select json_build_object(
-            'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
-            'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
+        select (
+            (post_commit_effective_volumes).inputs + case when new.is_source then 0 else new.amount end,
+            (post_commit_effective_volumes).outputs + case when new.is_source then new.amount else 0 end
         )
         from moves
         where accounts_address = new.accounts_address
@@ -17,9 +17,9 @@ begin
             and (effective_date < new.effective_date or (effective_date = new.effective_date and seq < new.seq))
         order by effective_date desc, seq desc
         limit 1
-    ), json_build_object(
-        'input', case when new.is_source then 0 else new.amount end,
-        'output', case when new.is_source then new.amount else 0 end
+    ), (
+        case when new.is_source then 0 else new.amount end,
+        case when new.is_source then new.amount else 0 end
     ));
 
     return new;
@@ -34,9 +34,9 @@ as
 $$
 begin
     update moves
-    set post_commit_effective_volumes = json_build_object(
-		'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
-		'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
+    set post_commit_effective_volumes = (
+		(post_commit_effective_volumes).inputs + case when new.is_source then 0 else new.amount end,
+		(post_commit_effective_volumes).outputs + case when new.is_source then new.amount else 0 end
     )
     where accounts_address = new.accounts_address
         and asset = new.asset

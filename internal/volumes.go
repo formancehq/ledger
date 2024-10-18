@@ -1,14 +1,40 @@
 package ledger
 
 import (
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"github.com/invopop/jsonschema"
 	"math/big"
+	"strings"
 )
 
 type Volumes struct {
 	Input  *big.Int `json:"input"`
 	Output *big.Int `json:"output"`
+}
+
+func (v Volumes) Value() (driver.Value, error) {
+	return fmt.Sprintf("(%s, %s)", v.Input.String(), v.Output.String()), nil
+}
+
+func (v *Volumes) Scan(src interface{}) error {
+	// stored as (input, output)
+	parts := strings.Split(src.(string)[1:(len(src.(string))-1)], ",")
+
+	v.Input = new(big.Int)
+	_, ok := v.Input.SetString(parts[0], 10)
+	if !ok {
+		return fmt.Errorf("unable to parse input '%s' as big int", parts[0])
+	}
+
+	v.Output = new(big.Int)
+	_, ok = v.Output.SetString(parts[1], 10)
+	if !ok {
+		return fmt.Errorf("unable to parse output '%s' as big int", parts[1])
+	}
+
+	return nil
 }
 
 func (Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {

@@ -83,7 +83,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		selectAccountsWithVolumes = s.db.NewSelect().
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("json_build_object('input', input, 'output', output) as volumes").
+			ColumnExpr("(input, output)::"+s.GetPrefixedRelationName("volumes")+" as volumes").
 			Where("ledger = ?", s.ledger.Name)
 	}
 
@@ -154,7 +154,7 @@ func (s *Store) selectAccountWithAggregatedVolumes(date *time.Time, useInsertion
 		TableExpr("(?) values", selectAccountWithAssetAndVolumes).
 		Group("accounts_address").
 		Column("accounts_address").
-		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as " + alias)
+		ColumnExpr("aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + alias)
 }
 
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
@@ -164,7 +164,7 @@ func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool,
 		TableExpr("(?) values", selectAccountsWithVolumes).
 		Group("asset").
 		Column("asset").
-		ColumnExpr("json_build_object('input', sum((volumes->>'input')::numeric), 'output', sum((volumes->>'output')::numeric)) as volumes")
+		ColumnExpr("json_build_object('input', sum(((volumes).inputs)::numeric), 'output', sum(((volumes).outputs)::numeric)) as volumes")
 
 	return s.db.NewSelect().
 		TableExpr("(?) values", sumVolumesForAsset).
