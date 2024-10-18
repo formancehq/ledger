@@ -103,6 +103,8 @@ import "github.com/formancehq/ledger/internal"
   - [func \(v Volumes\) Copy\(\) Volumes](<#Volumes.Copy>)
   - [func \(Volumes\) JSONSchemaExtend\(schema \*jsonschema.Schema\)](<#Volumes.JSONSchemaExtend>)
   - [func \(v Volumes\) MarshalJSON\(\) \(\[\]byte, error\)](<#Volumes.MarshalJSON>)
+  - [func \(v \*Volumes\) Scan\(src interface\{\}\) error](<#Volumes.Scan>)
+  - [func \(v Volumes\) Value\(\) \(driver.Value, error\)](<#Volumes.Value>)
 - [type VolumesByAssets](<#VolumesByAssets>)
   - [func \(v VolumesByAssets\) Balances\(\) BalancesByAssets](<#VolumesByAssets.Balances>)
 - [type VolumesWithBalance](<#VolumesWithBalance>)
@@ -1145,6 +1147,24 @@ func (Volumes) JSONSchemaExtend(schema *jsonschema.Schema)
 
 ```go
 func (v Volumes) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="Volumes.Scan"></a>
+### func \(\*Volumes\) Scan
+
+```go
+func (v *Volumes) Scan(src interface{}) error
+```
+
+
+
+<a name="Volumes.Value"></a>
+### func \(Volumes\) Value
+
+```go
+func (v Volumes) Value() (driver.Value, error)
 ```
 
 

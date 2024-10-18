@@ -26,7 +26,7 @@ type Log struct {
 	Memento RawMessage `bun:"memento,type:bytea"`
 }
 
-func (log Log) toCore() ledger.Log {
+func (log Log) ToCore() ledger.Log {
 	payload, err := ledger.HydrateLog(log.Type, log.Data)
 	if err != nil {
 		panic(fmt.Errorf("hydrating log data: %w", err))
@@ -140,7 +140,7 @@ func (s *Store) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (
 				return nil, err
 			}
 
-			return bunpaginate.MapCursor(cursor, Log.toCore), nil
+			return bunpaginate.MapCursor(cursor, Log.ToCore), nil
 		},
 	)
 }
@@ -164,7 +164,7 @@ func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*led
 				return nil, postgres.ResolveError(err)
 			}
 
-			return pointer.For(ret.toCore()), nil
+			return pointer.For(ret.ToCore()), nil
 		},
 	)
 }

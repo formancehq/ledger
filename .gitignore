@@ -4,3 +4,4 @@ go.work*
 node_modules
 dist
 vendor
+worktrees
