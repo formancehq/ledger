@@ -1,22 +1,19 @@
 //go:build it
 
-package ledgerstore
+package legacy_test
 
 import (
-	"database/sql"
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	systemstore "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"go.opentelemetry.io/otel/trace/noop"
-	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-
-	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/uptrace/bun"
 
@@ -28,21 +25,12 @@ import (
 )
 
 var (
-	srv   *pgtesting.PostgresServer
-	bunDB *bun.DB
+	srv *pgtesting.PostgresServer
 )
 
 func TestMain(m *testing.M) {
 	utils.WithTestMain(func(t *utils.TestingTForMain) int {
 		srv = pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
-
-		db, err := sql.Open("pgx", srv.GetDSN())
-		if err != nil {
-			logging.Error(err)
-			os.Exit(1)
-		}
-
-		bunDB = bun.NewDB(db, pgdialect.New())
 
 		return m.Run()
 	})
@@ -55,7 +43,7 @@ type T interface {
 }
 
 type testStore struct {
-	*Store
+	*legacy.Store
 	newStore *ledgerstore.Store
 }
 
@@ -85,7 +73,7 @@ func newLedgerStore(t T) *testStore {
 	require.NoError(t, b.AddLedger(ctx, l, db))
 
 	return &testStore{
-		Store:    New(db, l.Name, l.Name),
+		Store:    legacy.New(db, l.Name, l.Name),
 		newStore: ledgerstore.New(db, b, l),
 	}
 }

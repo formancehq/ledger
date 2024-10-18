@@ -1,4 +1,4 @@
-package ledgerstore
+package legacy
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 )
 
 type Store struct {
-	db *bun.DB
+	db bun.IDB
 
 	bucket string
 	name   string
@@ -21,12 +21,18 @@ func (store *Store) Name() string {
 	return store.name
 }
 
-func (store *Store) GetDB() *bun.DB {
+func (store *Store) GetDB() bun.IDB {
 	return store.db
 }
 
+func (s *Store) WithDB(db bun.IDB) *Store {
+	ret := *s
+	ret.db = db
+	return &ret
+}
+
 func New(
-	db *bun.DB,
+	db bun.IDB,
 	bucket string,
 	name string,
 ) *Store {

@@ -51,7 +51,7 @@ var _ = Context("Ledger stress tests", func() {
 					Ledger: ledgerName,
 					V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
 						Bucket:   &bucketName,
-						Features: ledger.MinimalFeatureSet,
+						Features: ledger.MinimalFeatureSet.With(ledger.FeatureMovesHistory, "ON"),
 					},
 				})
 				Expect(err).ShouldNot(HaveOccurred())

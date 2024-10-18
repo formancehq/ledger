@@ -1,6 +1,6 @@
 //go:build it
 
-package ledgerstore
+package legacy_test
 
 import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"

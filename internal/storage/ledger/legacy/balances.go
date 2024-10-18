@@ -1,4 +1,4 @@
-package ledgerstore
+package legacy
 
 import (
 	"context"
@@ -81,17 +81,21 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q ledgercontrolle
 			moves := store.db.
 				NewSelect().
 				ModelTableExpr(store.GetPrefixedRelationName("moves")).
-				ColumnExpr("distinct on (moves.accounts_address, moves.asset) moves.*").
-				Order("accounts_address", "asset").
+				DistinctOn("moves.accounts_address, moves.asset").
 				Where("moves.ledger = ?", store.name).
 				Apply(filterPIT(q.PIT, pitColumn))
 
 			if q.UseInsertionDate {
-				moves = moves.Order("moves.insertion_date desc")
+				moves = moves.
+					ColumnExpr("accounts_address").
+					ColumnExpr("asset").
+					ColumnExpr("first_value(moves.post_commit_volumes) over (partition by moves.accounts_address, moves.asset order by seq desc) as post_commit_volumes")
 			} else {
-				moves = moves.Order("moves.effective_date desc")
+				moves = moves.
+					ColumnExpr("accounts_address").
+					ColumnExpr("asset").
+					ColumnExpr("first_value(moves.post_commit_effective_volumes) over (partition by moves.accounts_address, moves.asset order by effective_date desc, seq desc) as post_commit_effective_volumes")
 			}
-			moves = moves.Order("seq desc")
 
 			if needMetadata {
 				if q.PIT != nil {
@@ -119,7 +123,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q ledgercontrolle
 				volumesColumn = "post_commit_volumes"
 			}
 
-			return selectQuery.
+			finalQuery := selectQuery.
 				With("moves", moves).
 				With(
 					"data",
@@ -130,6 +134,8 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q ledgercontrolle
 				).
 				TableExpr("data").
 				ColumnExpr("aggregate_objects(data.aggregated) as aggregated")
+
+			return finalQuery
 		})
 	if err != nil && !errors.Is(err, postgres.ErrNotFound) {
 		return nil, err
