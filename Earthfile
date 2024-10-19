@@ -24,7 +24,7 @@ sources:
 generate:
     FROM core+builder-image
     RUN apk update && apk add openjdk11
-    RUN go install go.uber.org/mock/mockgen@latest
+    RUN go install go.uber.org/mock/mockgen@v0.4.0
     RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
     COPY (+sources/*) /src
     WORKDIR /src
