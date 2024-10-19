@@ -40,5 +40,5 @@ func readTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, mapExpandedTransactionToV1(*tx))
+	api.Ok(w, mapTransactionToV1(*tx))
 }

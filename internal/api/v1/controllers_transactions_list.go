@@ -33,5 +33,5 @@ func listTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.RenderCursor(w, *bunpaginate.MapCursor(cursor, mapExpandedTransactionToV1))
+	api.RenderCursor(w, *bunpaginate.MapCursor(cursor, mapTransactionToV1))
 }

@@ -53,17 +53,6 @@ func mapTransactionToV1(tx ledger.Transaction) any {
 	}
 }
 
-func mapExpandedTransactionToV1(tx ledger.Transaction) any {
-	return struct {
-		ledger.Transaction
-		TxID int `json:"txid"`
-		ID   int `json:"-"`
-	}{
-		Transaction: tx,
-		TxID:        tx.ID,
-	}
-}
-
 func buildGetTransactionsQuery(r *http.Request) query.Builder {
 	clauses := make([]query.Builder, 0)
 	if after := r.URL.Query().Get("after"); after != "" {
