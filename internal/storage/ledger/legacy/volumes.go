@@ -45,7 +45,6 @@ func (store *Store) volumesQueryContext(q ledgercontroller.GetVolumesWithBalance
 
 			switch {
 			case key == "account" || key == "address":
-				// TODO: Should allow comparison operator only if segments not used
 				if operator != "$match" {
 					return "", nil, newErrInvalidQuery("'%s' column can only be used with $match", key)
 				}

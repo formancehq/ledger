@@ -77,7 +77,6 @@ func (store *Store) accountQueryContext(qb query.Builder, q ledgercontroller.Lis
 		}
 		switch {
 		case key == "address":
-			// TODO: Should allow comparison operator only if segments not used
 			if operator != "$match" {
 				return "", nil, errors.New("'address' column can only be used with $match")
 			}
