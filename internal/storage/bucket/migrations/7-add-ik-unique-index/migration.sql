@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 update logs
 set idempotency_key = null
 where idempotency_key = '';

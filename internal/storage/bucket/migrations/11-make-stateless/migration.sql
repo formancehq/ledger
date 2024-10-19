@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 drop trigger insert_account  on accounts;
 drop trigger update_account  on accounts;
 drop trigger insert_transaction  on transactions;

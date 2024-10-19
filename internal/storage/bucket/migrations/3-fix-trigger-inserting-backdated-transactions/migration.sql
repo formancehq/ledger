@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 create or replace function insert_move(
     _transactions_seq bigint,
     _ledger varchar,
@@ -103,3 +105,4 @@ begin
     end if;
 end;
 $$ set search_path from current;
+

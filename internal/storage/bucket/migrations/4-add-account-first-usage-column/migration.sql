@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 alter table accounts
 add column first_usage timestamp without time zone;
 
@@ -223,3 +225,4 @@ set first_usage = (
     limit 1
 )
 where first_usage is null;
+
