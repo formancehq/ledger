@@ -9,18 +9,22 @@ import (
 )
 
 //go:embed migrations
-var migrationsDir embed.FS
+var MigrationsFS embed.FS
 
-func GetMigrator(name string) *migrations.Migrator {
-	migrator := migrations.NewMigrator(migrations.WithSchema(name, true))
-	migrator.RegisterMigrationsFromFileSystem(migrationsDir, "migrations")
+func GetMigrator(db *bun.DB, name string) *migrations.Migrator {
+	migrator := migrations.NewMigrator(db, migrations.WithSchema(name, true))
+	migrations, err := migrations.CollectMigrations(MigrationsFS, name)
+	if err != nil {
+		panic(err)
+	}
+	migrator.RegisterMigrations(migrations...)
 
 	return migrator
 }
 
-func Migrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name string) error {
+func migrate(ctx context.Context, tracer trace.Tracer, db *bun.DB, name string) error {
 	ctx, span := tracer.Start(ctx, "Migrate bucket")
 	defer span.End()
 
-	return GetMigrator(name).Up(ctx, db)
+	return GetMigrator(db, name).Up(ctx)
 }

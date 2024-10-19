@@ -3,6 +3,7 @@
 package bucket_test
 
 import (
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -22,6 +23,10 @@ func TestBuckets(t *testing.T) {
 	pgDatabase := srv.NewDatabase(t)
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
+
+	if testing.Verbose() {
+		db.AddQueryHook(bundebug.NewQueryHook())
+	}
 
 	require.NoError(t, driver.Migrate(ctx, db))
 

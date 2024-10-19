@@ -1,3 +1,5 @@
+set search_path = '{{.Schema}}';
+
 create aggregate aggregate_objects(jsonb) (
     sfunc = jsonb_concat,
     stype = jsonb,

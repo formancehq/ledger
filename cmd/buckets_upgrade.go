@@ -36,7 +36,7 @@ func NewBucketUpgrade() *cobra.Command {
 				return upgradeAll(cmd)
 			}
 
-			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false)
+			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 
 			return driver.UpgradeBucket(logging.ContextWithLogger(cmd.Context(), logger), args[0])
 		},
@@ -49,7 +49,7 @@ func NewBucketUpgrade() *cobra.Command {
 }
 
 func upgradeAll(cmd *cobra.Command) error {
-	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false)
+	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 	ctx := logging.ContextWithLogger(cmd.Context(), logger)
 
 	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)

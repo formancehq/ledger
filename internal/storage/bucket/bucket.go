@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
@@ -13,25 +12,30 @@ import (
 	"text/template"
 )
 
+// stateless version (+1 regarding directory name, as migrations start from 1 in the lib)
+const MinimalSchemaVersion = 12
+
 type Bucket struct {
 	name string
-	db   bun.IDB
+	db   *bun.DB
 }
 
 func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer) error {
-	return Migrate(ctx, tracer, b.db, b.name)
+	return migrate(ctx, tracer, b.db, b.name)
 }
 
 func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {
-	ret, err := GetMigrator(b.name).IsUpToDate(ctx, b.db)
-	if err != nil && errors.Is(err, migrations.ErrMissingVersionTable) {
-		return false, nil
+	migrator := GetMigrator(b.db, b.name)
+	lastVersion, err := migrator.GetLastVersion(ctx)
+	if err != nil {
+		return false, err
 	}
-	return ret, err
+
+	return lastVersion >= MinimalSchemaVersion, nil
 }
 
 func (b *Bucket) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return GetMigrator(b.name).GetMigrations(ctx, b.db)
+	return GetMigrator(b.db, b.name).GetMigrations(ctx)
 }
 
 func (b *Bucket) AddLedger(ctx context.Context, l ledger.Ledger, db bun.IDB) error {
@@ -50,7 +54,7 @@ func (b *Bucket) AddLedger(ctx context.Context, l ledger.Ledger, db bun.IDB) err
 	return nil
 }
 
-func New(db bun.IDB, name string) *Bucket {
+func New(db *bun.DB, name string) *Bucket {
 	return &Bucket{
 		db:   db,
 		name: name,
