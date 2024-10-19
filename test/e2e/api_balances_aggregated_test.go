@@ -38,7 +38,7 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			Expect(err).To(BeNil())
 
-			_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+			ret, err := CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
 				RequestBody: []components.V2BulkElement{
 					components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 						Data: &components.V2PostTransaction{
@@ -99,7 +99,7 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			Expect(err).To(Succeed())
 
-			firstTransactionsInsertedAt = time.Now()
+			firstTransactionsInsertedAt = ret[2].V2BulkElementResultCreateTransaction.Data.InsertedAt
 
 			_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
 				RequestBody: []components.V2BulkElement{

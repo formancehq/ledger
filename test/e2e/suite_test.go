@@ -10,8 +10,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace/noop"
 	"os"
 	"testing"
 
@@ -33,9 +31,9 @@ var (
 	pgServer   = NewDeferred[*PostgresServer]()
 	natsServer = NewDeferred[*natstesting.NatsServer]()
 	debug      = os.Getenv("DEBUG") == "true"
-	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false)
+	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false, false)
 
-	DBTemplate = "template1"
+	DBTemplate = "dbtemplate"
 )
 
 type ParallelExecutionContext struct {
@@ -57,18 +55,20 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		)
 		By("Postgres address: " + ret.GetDSN())
 
-		db, err := bunconnect.OpenSQLDB(context.Background(), bunconnect.ConnectionOptions{
-			DatabaseSourceName: ret.GetDatabaseDSN(DBTemplate),
-		})
-		require.NoError(GinkgoT(), err)
+		templateDatabase := ret.NewDatabase(GinkgoT(), WithName(DBTemplate))
 
-		err = driver.Migrate(context.Background(), db)
-		require.NoError(GinkgoT(), err)
+		bunDB, err := bunconnect.OpenSQLDB(context.Background(), templateDatabase.ConnectionOptions())
+		Expect(err).To(BeNil())
+
+		err = driver.Migrate(context.Background(), bunDB)
+		Expect(err).To(BeNil())
 
 		// Initialize the _default bucket on the default database
 		// This way, we will be able to clone this database to speed up the tests
-		err = bucket.Migrate(context.Background(), noop.Tracer{}, db, ledger.DefaultBucket)
-		require.NoError(GinkgoT(), err)
+		err = bucket.GetMigrator(bunDB, ledger.DefaultBucket).Up(context.Background())
+		Expect(err).To(BeNil())
+
+		Expect(bunDB.Close()).To(BeNil())
 
 		return ret
 	})

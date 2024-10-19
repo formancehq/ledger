@@ -36,7 +36,7 @@ func TestMigrations(t *testing.T) {
 		require.NoError(t, db.Close())
 	})
 
-	test := migrations.NewMigrationTest(t, driver.GetMigrator(), db)
+	test := migrations.NewMigrationTest(t, driver.GetMigrator(db), db)
 	test.Append(8, addIdOnLedgerTable)
 	test.Run()
 }

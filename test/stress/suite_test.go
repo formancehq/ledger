@@ -24,7 +24,7 @@ var (
 	dockerPool = NewDeferred[*docker.Pool]()
 	pgServer   = NewDeferred[*PostgresServer]()
 	debug      = os.Getenv("DEBUG") == "true"
-	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false)
+	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false, false)
 )
 
 type ParallelExecutionContext struct {

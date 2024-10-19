@@ -1,3 +1,5 @@
+set search_path = '{{.Schema}}';
+
 create or replace function get_aggregated_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
     stable
     language sql
