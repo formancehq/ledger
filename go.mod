@@ -49,6 +49,8 @@ require (
 	golang.org/x/sync v0.9.0
 )
 
+require gopkg.in/yaml.v3 v3.0.1 // indirect
+
 require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/jackc/pgxlisten v0.0.0-20241005155529-9d952acd6a6c // indirect
