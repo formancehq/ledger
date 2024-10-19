@@ -85,7 +85,6 @@ func (store *Store) transactionQueryContext(qb query.Builder, q ledgercontroller
 				return "", nil, newErrInvalidQuery("'reverted' can only be used with bool value")
 			}
 		case key == "account":
-			// TODO: Should allow comparison operator only if segments not used
 			if operator != "$match" {
 				return "", nil, newErrInvalidQuery("'account' column can only be used with $match")
 			}
@@ -96,7 +95,6 @@ func (store *Store) transactionQueryContext(qb query.Builder, q ledgercontroller
 				return "", nil, newErrInvalidQuery("unexpected type %T for column 'account'", address)
 			}
 		case key == "source":
-			// TODO: Should allow comparison operator only if segments not used
 			if operator != "$match" {
 				return "", nil, errors.New("'source' column can only be used with $match")
 			}
@@ -107,7 +105,6 @@ func (store *Store) transactionQueryContext(qb query.Builder, q ledgercontroller
 				return "", nil, newErrInvalidQuery("unexpected type %T for column 'source'", address)
 			}
 		case key == "destination":
-			// TODO: Should allow comparison operator only if segments not used
 			if operator != "$match" {
 				return "", nil, errors.New("'destination' column can only be used with $match")
 			}

@@ -158,7 +158,6 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(response).To(HaveLen(1))
 			Expect(response["USD/2"]).To(Equal(big.NewInt(100)))
 		})
-		// todo: test sometimes failing, need to investigate
 		It("should be ok when aggregating using pit on insertion date", func() {
 			response, err := GetBalancesAggregated(
 				ctx,

@@ -23,7 +23,6 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q ledgercontrolle
 		subQuery, args, err = q.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 			switch {
 			case key == "address":
-				// TODO: Should allow comparison operator only if segments not used
 				if operator != "$match" {
 					return "", nil, newErrInvalidQuery("'address' column can only be used with $match")
 				}
