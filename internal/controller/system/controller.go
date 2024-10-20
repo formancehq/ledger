@@ -173,6 +173,9 @@ func WithEnableFeatures(v bool) Option {
 }
 
 var defaultOptions = []Option{
+	WithUpdateParser(func(oldParser ledgercontroller.NumscriptParser) ledgercontroller.NumscriptParser {
+		return ledgercontroller.NewDefaultNumscriptParser()
+	}),
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
 }
