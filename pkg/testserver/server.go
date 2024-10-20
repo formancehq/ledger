@@ -42,6 +42,7 @@ type Configuration struct {
 	Output                io.Writer
 	Debug                 bool
 	OTLPConfig            *OTLPConfig
+	ExperimentalFeatures  bool
 }
 
 type Server struct {
@@ -65,6 +66,12 @@ func (s *Server) Start() {
 		"--" + bunconnect.PostgresURIFlag, s.configuration.PostgresConfiguration.DatabaseSourceName,
 		"--" + bunconnect.PostgresMaxOpenConnsFlag, fmt.Sprint(s.configuration.PostgresConfiguration.MaxOpenConns),
 		"--" + bunconnect.PostgresConnMaxIdleTimeFlag, fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
+	}
+	if s.configuration.ExperimentalFeatures {
+		args = append(
+			args,
+			"--"+cmd.ExperimentalFeaturesFlag,
+		)
 	}
 	if s.configuration.PostgresConfiguration.MaxIdleConns != 0 {
 		args = append(

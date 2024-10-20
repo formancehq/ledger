@@ -281,7 +281,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 type Configuration struct {
     Bucket   string            `json:"bucket" bun:"bucket,type:varchar(255)"`
     Metadata metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb"`
-    Features map[string]string `json:"features" bun:"features,type:jsonb"`
+    Features FeatureSet        `json:"features" bun:"features,type:jsonb"`
 }
 ```
 

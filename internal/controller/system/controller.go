@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -36,8 +37,9 @@ type DefaultController struct {
 	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
 
-	tracer trace.Tracer
-	meter  metric.Meter
+	tracer         trace.Tracer
+	meter          metric.Meter
+	enableFeatures bool
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
@@ -85,6 +87,13 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "CreateLedger", tracing.NoResult(func(ctx context.Context) error {
 		configuration.SetDefaults()
+
+		if !ctrl.enableFeatures {
+			if !reflect.DeepEqual(configuration.Features, ledger.DefaultFeatures) {
+				return ErrExperimentalFeaturesDisabled
+			}
+		}
+
 		l, err := ledger.New(name, configuration)
 		if err != nil {
 			return newErrInvalidLedgerConfiguration(err)
@@ -153,6 +162,12 @@ func WithMeter(m metric.Meter) Option {
 func WithTracer(t trace.Tracer) Option {
 	return func(ctrl *DefaultController) {
 		ctrl.tracer = t
+	}
+}
+
+func WithEnableFeatures(v bool) Option {
+	return func(ctrl *DefaultController) {
+		ctrl.enableFeatures = v
 	}
 }
 

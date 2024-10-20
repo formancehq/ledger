@@ -28,6 +28,7 @@ var _ = Context("Ledger engine tests", func() {
 			Output:                GinkgoWriter,
 			Debug:                 debug,
 			NatsURL:               natsServer.GetValue().ClientURL(),
+			ExperimentalFeatures:  true,
 		}
 	})
 	When("creating a new ledger", func() {

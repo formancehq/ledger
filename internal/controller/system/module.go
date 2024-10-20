@@ -17,6 +17,7 @@ type DatabaseRetryConfiguration struct {
 type ModuleConfiguration struct {
 	NSCacheConfiguration       ledgercontroller.CacheConfiguration
 	DatabaseRetryConfiguration DatabaseRetryConfiguration
+	EnableFeatures             bool
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
@@ -45,6 +46,7 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 					WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
 					WithMeter(meterProvider.Meter("core")),
 					WithTracer(tracerProvider.Tracer("core")),
+					WithEnableFeatures(configuration.EnableFeatures),
 				)...,
 			)
 		}),
