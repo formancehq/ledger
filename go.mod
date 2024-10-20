@@ -13,7 +13,7 @@ require (
 	github.com/alitto/pond v1.9.2
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
-	github.com/formancehq/go-libs/v2 v2.0.1-0.20241017153232-1a62cecf1a61
+	github.com/formancehq/go-libs/v2 v2.0.1-0.20241021110602-fbd3b37b93f8
 	github.com/formancehq/stack/ledger/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
