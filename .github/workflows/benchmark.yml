@@ -24,6 +24,7 @@ jobs:
           --postgres-conn-max-idle-time=120s 
           --postgres-max-open-conns=500 
           --postgres-max-idle-conns=100 
+          --experimental-features 
           --otel-metrics-keep-in-memory &
       - run: >
           earthly
