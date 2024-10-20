@@ -35,6 +35,7 @@ const (
 	BallastSizeInBytesFlag     = "ballast-size"
 	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
 	AutoUpgradeFlag            = "auto-upgrade"
+	ExperimentalFeaturesFlag   = "experimental-features"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -45,6 +46,11 @@ func NewServeCommand() *cobra.Command {
 			serveConfiguration := discoverServeConfiguration(cmd)
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+
+			experimentalFeatures, err := cmd.Flags().GetBool(ExperimentalFeaturesFlag)
 			if err != nil {
 				return err
 			}
@@ -66,6 +72,7 @@ func NewServeCommand() *cobra.Command {
 						MaxRetry: 10,
 						Delay:    time.Millisecond * 100,
 					},
+					EnableFeatures: experimentalFeatures,
 				}),
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
@@ -104,6 +111,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
+	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
