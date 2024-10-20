@@ -68,6 +68,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 				RuntimeMetrics: true,
 			},
 		},
+		ExperimentalFeatures: true,
 	})
 
 	_, err := testServer.Client().Ledger.V2.
