@@ -5,7 +5,6 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/ghodss/yaml"
 	"github.com/uptrace/bun"
@@ -19,7 +18,7 @@ import (
 )
 
 //go:embed migrations
-var migrationsDir embed.FS
+var MigrationsFS embed.FS
 
 func GetMigrator(name string) *migrations.Migrator {
 	migrator := migrations.NewMigrator(migrations.WithSchema(name, true))
@@ -32,19 +31,46 @@ func GetMigrator(name string) *migrations.Migrator {
 	return migrator
 }
 
-func Migrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name string) error {
+func migrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name string) error {
 	ctx, span := tracer.Start(ctx, "Migrate bucket")
 	defer span.End()
 
 	return GetMigrator(name).Up(ctx, db)
 }
 
-type Notes struct {
+type notes struct {
 	Name string `yaml:"name"`
 }
 
 func collectMigrations(name string) ([]migrations.Migration, error) {
-	entries, err := migrationsDir.ReadDir("migrations")
+	return WalkMigrations(func(entry fs.DirEntry) (*migrations.Migration, error) {
+		rawNotes, err := MigrationsFS.ReadFile(filepath.Join("migrations", entry.Name(), "notes.yaml"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read notes.yaml: %w", err)
+		}
+
+		notes := &notes{}
+		if err := yaml.Unmarshal(rawNotes, notes); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal notes.yaml: %w", err)
+		}
+
+		sqlFile, err := TemplateSQLFile(name, entry.Name(), "up.sql")
+		if err != nil {
+			return nil, fmt.Errorf("failed to template sql file: %w", err)
+		}
+
+		return &migrations.Migration{
+			Name: notes.Name,
+			Up: func(ctx context.Context, db bun.IDB) error {
+				_, err := db.ExecContext(ctx, sqlFile)
+				return err
+			},
+		}, nil
+	})
+}
+
+func WalkMigrations[T any](transformer func(entry fs.DirEntry) (*T, error)) ([]T, error) {
+	entries, err := MigrationsFS.ReadDir("migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -65,42 +91,33 @@ func collectMigrations(name string) ([]migrations.Migration, error) {
 		return int(fileAVersion - fileBVersion)
 	})
 
-	ret := make([]migrations.Migration, len(entries))
+	ret := make([]T, len(entries))
 	for i, entry := range entries {
-		rawNotes, err := migrationsDir.ReadFile(filepath.Join("migrations", entry.Name(), "notes.yaml"))
+		transformed, err := transformer(entry)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read notes.yaml: %w", err)
+			return nil, fmt.Errorf("failed to transform entry: %w", err)
 		}
-
-		notes := &Notes{}
-		if err := yaml.Unmarshal(rawNotes, notes); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal notes.yaml: %w", err)
-		}
-
-		rawSQL, err := migrationsDir.ReadFile(filepath.Join("migrations", entry.Name(), "migration.sql"))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read migration.sql: %w", err)
-		}
-
-		buf := bytes.NewBuffer(nil)
-		err = template.Must(template.New("migration").
-			Parse(string(rawSQL))).
-			Execute(buf, map[string]any{
-				"Bucket": name,
-			})
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute template: %w", err)
-		}
-
-		ret[i] = migrations.Migration{
-			Name: notes.Name,
-			Up: func(ctx context.Context, db bun.IDB) error {
-				logging.FromContext(ctx).Infof("Applying migration %s", notes.Name)
-				_, err := db.ExecContext(ctx, buf.String())
-				return err
-			},
-		}
+		ret[i] = *transformed
 	}
 
 	return ret, nil
+}
+
+func TemplateSQLFile(bucket, migrationDir, file string) (string, error) {
+	rawSQL, err := MigrationsFS.ReadFile(filepath.Join("migrations", migrationDir, file))
+	if err != nil {
+		return "", fmt.Errorf("failed to read file %s: %w", file, err)
+	}
+
+	buf := bytes.NewBuffer(nil)
+	err = template.Must(template.New("migration").
+		Parse(string(rawSQL))).
+		Execute(buf, map[string]any{
+			"Bucket": bucket,
+		})
+	if err != nil {
+		panic(err)
+	}
+
+	return buf.String(), nil
 }

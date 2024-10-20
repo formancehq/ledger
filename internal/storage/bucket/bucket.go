@@ -19,7 +19,7 @@ type Bucket struct {
 }
 
 func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer) error {
-	return Migrate(ctx, tracer, b.db, b.name)
+	return migrate(ctx, tracer, b.db, b.name)
 }
 
 func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {
