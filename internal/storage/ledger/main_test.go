@@ -47,6 +47,7 @@ func TestMain(m *testing.M) {
 				if testing.Verbose() {
 					bunDB.AddQueryHook(bundebug.NewQueryHook())
 				}
+				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, driver.Migrate(logging.TestingContext(), bunDB))
 
