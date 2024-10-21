@@ -1,0 +1,89 @@
+(cors) {
+	header {
+		Access-Control-Allow-Methods "GET,OPTIONS,PUT,POST,DELETE,HEAD,PATCH"
+		Access-Control-Allow-Headers content-type
+		Access-Control-Max-Age 100
+		Access-Control-Allow-Origin *
+	}
+}
+
+(handle_path_route_without_auth) {
+	# handle_path automatically strips the prefix from the request path
+	handle_path {args.0}* {
+		reverse_proxy {args.1}
+
+		import cors
+	}
+}
+
+(handle_route_without_auth) {
+	# handle_path automatically strips the prefix from the request path
+	handle {args.0} {
+		reverse_proxy {args.2}
+		uri strip_prefix {args.1}
+
+		import cors
+	}
+}
+
+(payments) {
+	@transferinitiationwritermatcher {
+		path {args.0}/transfer-initiations*
+		method POST DELETE
+	}
+
+	@transferinitiationreadermatcher {
+		path {args.0}/transfer-initiation*
+		method GET
+	}
+
+	@bankaccountswritermatcher {
+		path {args.0}/bank-accounts*
+		method POST
+	}
+
+	@bankaccountsreadermatcher {
+		path {args.0}/bank-accounts*
+		method GET
+	}
+
+	@connectorsmatcher {
+		path {args.0}/connectors*
+	}
+
+	@configmatcher {
+		path {args.0}/configs*
+	}
+
+	@accountsmatcher {
+		path {args.0}/accounts*
+	}
+
+	import handle_route_without_auth @transferinitiationreadermatcher {args.0} {args.1}
+	import handle_route_without_auth @bankaccountsreadermatcher {args.0} {args.1}
+	import handle_route_without_auth @accountsmatcher {args.0} {args.1}
+
+	import handle_route_without_auth @bankaccountswritermatcher {args.0} {args.2}
+	import handle_route_without_auth @transferinitiationwritermatcher {args.0} {args.2}
+	import handle_route_without_auth @connectorsmatcher {args.0} {args.2}
+	import handle_route_without_auth @configmatcher {args.0} {args.2}
+
+	# All other requests on the api
+	import handle_path_route_without_auth {args.0} {args.1}
+}
+
+{
+	# Local env dev config
+	debug
+}
+
+localhost:80 {
+
+	import handle_path_route_without_auth "/api/ledger" "ledger:3068"
+  import payments "/api/payments" "payments-api:8080" "payments-connectors:8080"
+
+	# handle all other requests
+	handle {
+		respond "Bad Gateway" 502
+	}
+}
