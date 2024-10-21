@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 create or replace function get_all_account_volumes(_ledger varchar, _account varchar, _before timestamp default null)
     returns setof volumes_with_asset
     language sql
@@ -21,3 +23,4 @@ with all_assets as (select v.v as asset
 select moves.asset, moves.post_commit_volumes
 from moves
 $$ set search_path from current;
+
