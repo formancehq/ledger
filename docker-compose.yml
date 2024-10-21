@@ -2,8 +2,17 @@ version: '3.8'
 volumes:
   postgres:
 services:
+  gateway:
+    image: "caddy:2.7.5-alpine"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./Caddyfile:/etc/caddy/Caddyfile"
   postgres:
     image: "postgres:16-alpine"
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ledger"]
       interval: 10s
@@ -21,8 +30,8 @@ services:
     - postgres:/data/postgres
 
   ledger:
-    image: golang:1.19-alpine
-    entrypoint: go run main.go serve
+    image: golang:1.23.2-alpine
+    entrypoint: go run main.go serve --postgres-uri "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
     volumes:
     - .:/src
     ports:
