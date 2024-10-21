@@ -7,7 +7,7 @@ do $$
 		_date timestamp without time zone = (
 			select tstamp
 			from _system.goose_db_version
-			where version_id = 11
+			where version_id = 12
 		);
 		_count integer = (
 			select count(*)
