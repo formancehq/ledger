@@ -5,13 +5,13 @@ package ledger_test
 import (
 	"database/sql"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
-	systemstore "github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
@@ -29,8 +29,9 @@ import (
 )
 
 var (
-	srv   = NewDeferred[*pgtesting.PostgresServer]()
-	bunDB = NewDeferred[*bun.DB]()
+	srv         = NewDeferred[*pgtesting.PostgresServer]()
+	bunDB       = NewDeferred[*bun.DB]()
+	ledgerCount = atomic.Int64{}
 )
 
 func TestMain(m *testing.M) {
@@ -42,10 +43,12 @@ func TestMain(m *testing.M) {
 				db, err := sql.Open("pgx", ret.GetDSN())
 				require.NoError(t, err)
 
-				bunDB := bun.NewDB(db, pgdialect.New())
+				bunDB := bun.NewDB(db, pgdialect.New(), bun.WithDiscardUnknownColumns())
 				if testing.Verbose() {
 					bunDB.AddQueryHook(bundebug.NewQueryHook())
 				}
+
+				require.NoError(t, driver.Migrate(logging.TestingContext(), bunDB))
 
 				return bunDB
 			})
@@ -70,26 +73,15 @@ func newLedgerStore(t T) *ledgerstore.Store {
 
 	Wait(srv, bunDB)
 
-	pgDatabase := srv.GetValue().NewDatabase(t)
-
-	hooks := make([]bun.QueryHook, 0)
-	if testing.Verbose() {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
-
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
-	require.NoError(t, err)
-
-	require.NoError(t, systemstore.Migrate(ctx, db))
-
 	l := ledger.MustNewWithDefault(ledgerName)
 	l.Bucket = ledgerName
+	l.ID = int(ledgerCount.Add(1))
 
-	b := bucket.New(db, ledgerName)
+	b := bucket.New(bunDB.GetValue(), ledgerName)
 	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
-	require.NoError(t, b.AddLedger(ctx, l, db))
+	require.NoError(t, b.AddLedger(ctx, l, bunDB.GetValue()))
 
-	return ledgerstore.New(db, b, l)
+	return ledgerstore.New(bunDB.GetValue(), b, l)
 }
 
 func bigIntComparer(v1 *big.Int, v2 *big.Int) bool {
