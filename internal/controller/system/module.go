@@ -40,7 +40,8 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 				}))
 			}
 
-			if configuration.NSCacheConfiguration.MaxCount != 0 {
+			// TEMP enable again
+			if false && configuration.NSCacheConfiguration.MaxCount != 0 {
 				options = append(options, WithUpdateParser(func(oldParser ledgercontroller.NumscriptParser) ledgercontroller.NumscriptParser {
 					if oldParser == nil {
 						oldParser = ledgercontroller.NewDefaultNumscriptParser()
