@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
@@ -12,6 +11,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"text/template"
 )
+
+// stateless version (+1 regarding directory name, as migrations start from 1 in the lib)
+const MinimalSchemaVersion = 12
 
 type Bucket struct {
 	name string
@@ -23,11 +25,13 @@ func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer) error {
 }
 
 func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {
-	ret, err := GetMigrator(b.name).IsUpToDate(ctx, b.db)
-	if err != nil && errors.Is(err, migrations.ErrMissingVersionTable) {
-		return false, nil
+	migrator := GetMigrator(b.name)
+	lastVersion, err := migrator.GetLastVersion(ctx, b.db)
+	if err != nil {
+		return false, err
 	}
-	return ret, err
+
+	return lastVersion >= MinimalSchemaVersion, nil
 }
 
 func (b *Bucket) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {

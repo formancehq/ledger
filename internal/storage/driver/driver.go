@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -185,22 +184,17 @@ func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 
-	buckets := collectionutils.Set[string]{}
-	err := bunpaginate.Iterate(ctx, ledgercontroller.NewListLedgersQuery(10),
-		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-			return d.ListLedgers(ctx, q)
-		},
-		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
-			for _, l := range cursor.Data {
-				buckets.Put(l.Bucket)
-			}
-			return nil
-		})
+	var buckets []string
+	err := d.db.NewSelect().
+		DistinctOn("bucket").
+		Model(&ledger.Ledger{}).
+		Column("bucket").
+		Scan(ctx, &buckets)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting buckets: %w", err)
 	}
 
-	for _, bucketName := range collectionutils.Keys(buckets) {
+	for _, bucketName := range buckets {
 		b := bucket.New(d.db, bucketName)
 
 		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)

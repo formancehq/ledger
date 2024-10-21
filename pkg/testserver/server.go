@@ -43,6 +43,7 @@ type Configuration struct {
 	Debug                 bool
 	OTLPConfig            *OTLPConfig
 	ExperimentalFeatures  bool
+	DisableAutoUpgrade bool
 }
 
 type Server struct {
@@ -62,10 +63,12 @@ func (s *Server) Start() {
 	args := []string{
 		"serve",
 		"--" + cmd.BindFlag, ":0",
-		"--" + cmd.AutoUpgradeFlag,
 		"--" + bunconnect.PostgresURIFlag, s.configuration.PostgresConfiguration.DatabaseSourceName,
 		"--" + bunconnect.PostgresMaxOpenConnsFlag, fmt.Sprint(s.configuration.PostgresConfiguration.MaxOpenConns),
 		"--" + bunconnect.PostgresConnMaxIdleTimeFlag, fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
+	}
+	if !s.configuration.DisableAutoUpgrade {
+		args = append(args, "--"+cmd.AutoUpgradeFlag)
 	}
 	if s.configuration.ExperimentalFeatures {
 		args = append(

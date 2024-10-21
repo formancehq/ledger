@@ -35,7 +35,7 @@ func TestMigrations(t *testing.T) {
 	migrator := bucket.GetMigrator(bucketName)
 
 	_, err = bucket.WalkMigrations(func(entry fs.DirEntry) (*struct{}, error) {
-		before, err := bucket.TemplateSQLFile(bucketName, entry.Name(), "tests_before.sql")
+		before, err := bucket.TemplateSQLFile(bucketName, entry.Name(), "up_tests_before.sql")
 		if !errors.Is(err, fs.ErrNotExist) {
 			require.NoError(t, err)
 		}
@@ -50,7 +50,7 @@ func TestMigrations(t *testing.T) {
 			}
 		}
 
-		after, err := bucket.TemplateSQLFile(bucketName, entry.Name(), "tests_after.sql")
+		after, err := bucket.TemplateSQLFile(bucketName, entry.Name(), "up_tests_after.sql")
 		if !errors.Is(err, fs.ErrNotExist) {
 			require.NoError(t, err)
 		}
@@ -62,21 +62,4 @@ func TestMigrations(t *testing.T) {
 		return pointer.For(struct{}{}), nil
 	})
 	require.NoError(t, err)
-
-	//moves := make([]map[string]any, 0)
-	//err = db.NewSelect().
-	//	ModelTableExpr(`"`+bucketName+`".moves`).
-	//	Scan(ctx, &moves)
-	//require.NoError(t, err)
-	//
-	//rows, err := db.NewSelect().
-	//	ModelTableExpr(`"`+bucketName+`".transactions`).
-	//	Column("seq", "id", "post_commit_volumes", "ledger").
-	//	Order("id desc").
-	//	Where("ledger = 'ledger0'").
-	//	Rows(ctx)
-	//require.NoError(t, err)
-	//
-	//data, _ := xsql.Pretty(rows)
-	//fmt.Println(data)
 }
