@@ -6,30 +6,42 @@ IMPORT github.com/formancehq/stack/releases:main AS releases
 
 FROM core+base-image
 
+CACHE --persist --sharing=shared /go
+CACHE --persist --sharing=shared /root/.cache/golangci-lint
+
 sources:
+    FROM core+builder-image
+    WORKDIR /src/pkg/client
+    COPY pkg/client/go.mod pkg/client/go.sum ./
+    RUN go mod download
     WORKDIR /src
-    COPY go.mod go.sum .
-    COPY --dir internal pkg cmd .
+    COPY go.mod go.sum ./
+    RUN go mod download
+    COPY --dir internal pkg cmd tools .
     COPY main.go .
     SAVE ARTIFACT /src
 
 generate:
     FROM core+builder-image
     RUN apk update && apk add openjdk11
-    DO --pass-args core+GO_INSTALL --package=go.uber.org/mock/mockgen@latest
+    RUN go install go.uber.org/mock/mockgen@v0.4.0
+    RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
     COPY (+sources/*) /src
     WORKDIR /src
-    DO --pass-args core+GO_GENERATE
+    RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT cmd AS LOCAL cmd
 
 compile:
-    FROM core+builder-image
-    COPY (+sources/*) /src
+    FROM +sources
     WORKDIR /src
     ARG VERSION=latest
-    DO --pass-args core+GO_COMPILE --VERSION=$VERSION
+    RUN go build
+    RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
+        -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
+        -X ${GIT_PATH}/cmd.Commit=${EARTHLY_BUILD_SHA}"
+    SAVE ARTIFACT main
 
 build-image:
     FROM core+final-image
@@ -41,15 +53,12 @@ build-image:
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
 tests:
-    FROM core+builder-image
+    FROM +tidy
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-
-    COPY (+sources/*) /src
-    WORKDIR /src
     COPY --dir --pass-args (+generate/*) .
-    COPY --dir test .
 
     ARG includeIntegrationTests="true"
+    ARG includeEnd2EndTests="true"
     ARG coverage=""
     ARG debug=false
 
@@ -60,30 +69,28 @@ tests:
     LET goFlags="-race"
     IF [ "$coverage" = "true" ]
         SET goFlags="$goFlags -covermode=atomic"
-        SET goFlags="$goFlags -coverpkg=github.com/formancehq/stack/components/ledger/internal/..."
-        SET goFlags="$goFlags,github.com/formancehq/stack/components/ledger/cmd/..."
-        SET goFlags="$goFlags -coverprofile cover.out"
+        SET goFlags="$goFlags -coverpkg=github.com/formancehq/ledger/internal/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/events/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/accounts/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/assets/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
+        SET goFlags="$goFlags -coverprofile coverage.txt"
     END
+
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
-        WITH DOCKER \
-            --pull=postgres:15-alpine \
-            --pull=clickhouse/clickhouse-server:head \
-            --pull=elasticsearch:8.14.3
-            RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-                --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
-                ginkgo -r -p $goFlags
+        WITH DOCKER --pull=postgres:15-alpine
+            RUN ginkgo -r -p $goFlags
         END
     ELSE
-        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-            --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
-            ginkgo -r -p $goFlags
+        RUN ginkgo -r -p $goFlags
     END
     IF [ "$coverage" = "true" ]
-        # exclude files suffixed with _generated.go, these are mocks used by tests
-        RUN cat cover.out | grep -v "_generated.go" > cover2.out
-        RUN mv cover2.out cover.out
-        SAVE ARTIFACT cover.out AS LOCAL cover.out
+        # as special case, exclude files suffixed by debug.go
+        # toremovelater: exclude machine code as it will be updated soon
+        RUN cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
+        RUN mv coverage2.txt coverage.txt
+        SAVE ARTIFACT coverage.txt AS LOCAL coverage.txt
     END
 
 deploy:
@@ -99,34 +106,30 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 lint:
-    FROM core+builder-image
-    COPY (+sources/*) /src
-    WORKDIR /src
-    COPY --pass-args +tidy/go.* .
-    COPY --dir test .
-    DO --pass-args core+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
+    #todo: get config from core
+    FROM +tidy
+    RUN golangci-lint run --fix --build-tags it --timeout 5m
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT test AS LOCAL test
+    SAVE ARTIFACT tools AS LOCAL tools
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
     WAIT
-      BUILD --pass-args +tidy
-    END
-    BUILD --pass-args +lint
-    WAIT
+        BUILD +tidy
+        BUILD +lint
         BUILD +openapi
+        BUILD +openapi-markdown
     END
+    BUILD +generate
     BUILD +generate-client
+    BUILD +export-docs-events
 
 bench:
-    FROM core+builder-image
-    DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
-    COPY (+sources/*) /src
-    WORKDIR /src
-    COPY --dir test .
+    FROM +tidy
+    RUN go install golang.org/x/perf/cmd/benchstat@latest
     WORKDIR /src/test/performance
     ARG benchTime=1s
     ARG count=1
@@ -141,9 +144,7 @@ bench:
         SET additionalArgs=-v
     END
     WITH DOCKER --pull postgres:15-alpine
-        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-            --mount type=cache,id=gobuild,target=/root/.cache/go-build \
-            go test -timeout $testTimeout -bench=$bench -run ^$ -tags it $additionalArgs \
+        RUN go test -timeout $testTimeout -bench=$bench -run ^$ -tags it $additionalArgs \
             -benchtime=$benchTime | tee -a /results.txt
     END
     RUN benchstat /results.txt
@@ -151,7 +152,7 @@ bench:
 
 benchstat:
     FROM core+builder-image
-    DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
+    RUN go install golang.org/x/perf/cmd/benchstat@latest
     ARG compareAgainstRevision=main
     COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
     COPY --pass-args +bench/results.txt /tmp/branch.txt
@@ -167,12 +168,18 @@ openapi:
     RUN yq -oy ./openapi.json > openapi.yaml
     SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
 
+openapi-markdown:
+    FROM node:20-alpine
+    RUN npm install -g widdershins
+    COPY openapi/v2.yaml openapi.yaml
+    RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
+    SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
+
 tidy:
-    FROM core+builder-image
-    COPY --pass-args (+sources/src) /src
+    FROM +sources
     WORKDIR /src
     COPY --dir test .
-    DO --pass-args core+GO_TIDY
+    RUN go mod tidy
 
 release:
     FROM core+builder-image
@@ -192,3 +199,18 @@ generate-client:
     COPY --dir pkg/client client
     RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./final.json -o ./client -l go
     SAVE ARTIFACT client AS LOCAL ./pkg/client
+
+export-database-schema:
+    FROM +sources
+    RUN go install github.com/roerohan/wait-for-it@latest
+    COPY --dir scripts scripts
+    WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
+        RUN ./scripts/export-database-schema.sh
+    END
+    SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
+    SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
+
+export-docs-events:
+    FROM +tidy
+    RUN go run tools/docs/events/main.go --write-dir docs/events
+    SAVE ARTIFACT docs/events AS LOCAL docs/events

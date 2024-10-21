@@ -1,9 +1,10 @@
 package ledger
 
 import (
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/time"
 	"github.com/uptrace/bun"
+	"math/big"
 )
 
 const (
@@ -11,43 +12,22 @@ const (
 )
 
 type Account struct {
-	bun.BaseModel `bun:"table:accounts,alias:accounts"`
+	bun.BaseModel `bun:"table:accounts"`
 
-	Address    string            `json:"address"`
-	Metadata   metadata.Metadata `json:"metadata"`
-	FirstUsage time.Time         `json:"-" bun:"first_usage,type:timestamp without timezone"`
+	Address          string            `json:"address" bun:"address"`
+	Metadata         metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb"`
+	FirstUsage       time.Time         `json:"-" bun:"first_usage,nullzero"`
+	InsertionDate    time.Time         `json:"_" bun:"insertion_date,nullzero"`
+	UpdatedAt        time.Time         `json:"-" bun:"updated_at,nullzero"`
+	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"volumes,scanonly"`
+	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"effective_volumes,scanonly"`
 }
 
-func (a Account) copy() Account {
-	a.Metadata = a.Metadata.Copy()
-	return a
-}
+type AccountsVolumes struct {
+	bun.BaseModel `bun:"accounts_volumes"`
 
-func NewAccount(address string) Account {
-	return Account{
-		Address:  address,
-		Metadata: metadata.Metadata{},
-	}
-}
-
-type ExpandedAccount struct {
-	Account          `bun:",extend"`
-	Volumes          VolumesByAssets `json:"volumes,omitempty" bun:"volumes,type:jsonb"`
-	EffectiveVolumes VolumesByAssets `json:"effectiveVolumes,omitempty" bun:"effective_volumes,type:jsonb"`
-}
-
-func NewExpandedAccount(address string) ExpandedAccount {
-	return ExpandedAccount{
-		Account: Account{
-			Address:  address,
-			Metadata: metadata.Metadata{},
-		},
-		Volumes: map[string]*Volumes{},
-	}
-}
-
-func (v ExpandedAccount) Copy() ExpandedAccount {
-	v.Account = v.Account.copy()
-	v.Volumes = v.Volumes.copy()
-	return v
+	Account string   `bun:"accounts_address,type:varchar"`
+	Asset   string   `bun:"asset,type:varchar"`
+	Input   *big.Int `bun:"input,type:numeric"`
+	Output  *big.Int `bun:"output,type:numeric"`
 }

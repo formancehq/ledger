@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/v2/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
 	"github.com/stretchr/testify/require"
@@ -430,12 +430,12 @@ func TestRun(t *testing.T) {
 			m := NewMachine(*program)
 			require.NoError(t, m.SetVarsFromJSON(tc.vars))
 
-			_, _, err = m.ResolveResources(context.Background(), tc.store)
+			err = m.ResolveResources(context.Background(), tc.store)
 			require.NoError(t, err)
 			require.NoError(t, m.ResolveBalances(context.Background(), tc.store))
 
-			result, err := Run(m, ledger.RunScript{
-				Script: ledger.Script{
+			result, err := Run(m, RunScript{
+				Script: Script{
 					Plain: tc.script,
 					Vars:  tc.vars,
 				},

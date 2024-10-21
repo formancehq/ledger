@@ -18,9 +18,27 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
+      - darwin
     goarch:
       - amd64
       - arm64
+  - binary: benchmarks
+    id: benchmarks
+    ldflags:
+      - -extldflags "-static"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    command: test
+    dir: test/performance
+    no_main_check: true
+    tags:
+      - it
 
 release:
   prerelease: auto
@@ -33,6 +51,7 @@ archives:
   - id: "{{.ProjectName}}"
     builds:
       - ledger
+      - benchmarks
     format: tar.gz
     name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
 
@@ -47,11 +66,22 @@ nfpms:
     formats:
       - deb
       - rpm
+  - id: benchmarks
+    package_name: ledger-benchmarks
+    file_name_template: "{{ .ProjectName }}_benchmarks_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
+      - benchmarks
+    homepage: https://formance.com
+    maintainer: Maxence Maireaux <maxence@formance.com>
+    formats:
+      - deb
+      - rpm
 
 publishers:
   - name: fury.io
     ids:
       - ledger
+      - benchmarks
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl --http1.1 -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
 
@@ -75,3 +105,20 @@ brews:
       system "#{bin}/ledger version"
     install: |
       bin.install "ledger"
+  - name: ledger-benchmarks
+    alternative_names:
+      - ledger-benchmarks@{{ .Major }}
+    repository:
+      owner: formancehq
+      name: homebrew-tap
+      pull_request:
+        enabled: true
+        base:
+          owner: formancehq
+          name: homebrew-tap
+          branch: main
+    directory: Formula
+    homepage: https://formance.com
+    skip_upload: 'false'
+    install: |
+      bin.install "ledger-benchmarks"

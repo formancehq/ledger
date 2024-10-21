@@ -1,34 +1,47 @@
 package v1
 
 import (
+	"go.opentelemetry.io/otel/trace"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"errors"
 
-	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/internal/controller/system"
+
+	"github.com/formancehq/go-libs/v2/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
+
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/go-chi/chi/v5"
 )
 
-func autoCreateMiddleware(backend backend.Backend) func(handler http.Handler) http.Handler {
+func autoCreateMiddleware(backend system.Controller, tracer trace.Tracer) func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
+			ctx, span := tracer.Start(r.Context(), "AutomaticLedgerCreate")
+			defer span.End()
+
 			ledgerName := chi.URLParam(r, "ledger")
-			if _, err := backend.GetLedger(r.Context(), ledgerName); err != nil {
-				if !sqlutils.IsNotFoundError(err) {
-					sharedapi.InternalServerError(w, r, err)
+			if _, err := backend.GetLedger(ctx, ledgerName); err != nil {
+				if !postgres.IsNotFoundError(err) {
+					api.InternalServerError(w, r, err)
 					return
 				}
 
-				if err := backend.CreateLedger(r.Context(), ledgerName, driver.LedgerConfiguration{
+				if err := backend.CreateLedger(ctx, ledgerName, ledger.Configuration{
 					Bucket: ledgerName,
 				}); err != nil {
-					sharedapi.InternalServerError(w, r, err)
+					switch {
+					case errors.Is(err, ledger.ErrInvalidLedgerName{}):
+						api.BadRequest(w, ErrValidation, err)
+					default:
+						api.InternalServerError(w, r, err)
+					}
 					return
 				}
 			}
+			span.End()
 
 			handler.ServeHTTP(w, r)
 		})

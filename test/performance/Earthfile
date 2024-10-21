@@ -1,0 +1,19 @@
+VERSION 0.8
+
+IMPORT github.com/formancehq/earthly:tags/v0.16.2 AS core
+
+run:
+    LOCALLY
+    ARG args=""
+    RUN go test -bench="Write" -run ^$ -tags it -report.file ./report/report.json -timeout 60m $args
+
+generate-graphs:
+    FROM core+base-image
+    RUN apk update && apk add nodejs npm
+    COPY charts /src
+    COPY ./report/report.json /report/report.json
+    WORKDIR /src
+    RUN npm install
+    RUN npm run build
+    RUN node index.js
+    SAVE ARTIFACT *.png AS LOCAL ./report/

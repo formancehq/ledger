@@ -1,51 +1,43 @@
 package v2
 
 import (
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/ledger/internal/controller/system"
+
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/service"
+	"github.com/formancehq/go-libs/v2/service"
 
-	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/health"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
+	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/go-chi/chi/v5"
 )
 
 func NewRouter(
-	b backend.Backend,
-	healthController *health.HealthController,
-	globalMetricsRegistry metrics.GlobalRegistry,
+	systemController system.Controller,
 	authenticator auth.Authenticator,
 	debug bool,
+	opts ...RouterOption,
 ) chi.Router {
+	routerOptions := routerOptions{}
+	for _, opt := range append(defaultRouterOptions, opts...) {
+		opt(&routerOptions)
+	}
+
 	router := chi.NewMux()
 
-	router.Use(
-		cors.New(cors.Options{
-			AllowOriginFunc: func(r *http.Request, origin string) bool {
-				return true
-			},
-			AllowCredentials: true,
-		}).Handler,
-		MetricsMiddleware(globalMetricsRegistry),
-		middleware.Recoverer,
-	)
-
-	router.Get("/_healthcheck", healthController.Check)
-	router.Get("/_info", getInfo(b))
-
 	router.Group(func(router chi.Router) {
+		router.Use(middleware.RequestLogger(api.NewLogFormatter()))
 		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
 
-		router.Get("/", listLedgers(b))
+		router.Get("/", listLedgers(systemController))
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,45 +47,63 @@ func NewRouter(
 					handler.ServeHTTP(w, r)
 				})
 			})
-			router.Post("/", createLedger(b))
-			router.Get("/", getLedger(b))
-			router.Put("/metadata", updateLedgerMetadata(b))
-			router.Delete("/metadata/{key}", deleteLedgerMetadata(b))
+			router.Post("/", createLedger(systemController))
+			router.Get("/", readLedger(systemController))
+			router.Put("/metadata", updateLedgerMetadata(systemController))
+			router.Delete("/metadata/{key}", deleteLedgerMetadata(systemController))
 
-			router.With(backend.LedgerMiddleware(b, []string{"/_info"})).Group(func(router chi.Router) {
+			router.With(common.LedgerMiddleware(systemController, func(r *http.Request) string {
+				return chi.URLParam(r, "ledger")
+			}, routerOptions.tracer, "/_info")).Group(func(router chi.Router) {
 				router.Post("/_bulk", bulkHandler)
 
 				// LedgerController
 				router.Get("/_info", getLedgerInfo)
-				router.Get("/stats", getStats)
-				router.Get("/logs", getLogs)
+				router.Get("/stats", readStats)
+				router.Get("/logs", listLogs)
 				router.Post("/logs/import", importLogs)
 				router.Post("/logs/export", exportLogs)
 
 				// AccountController
-				router.Get("/accounts", getAccounts)
+				router.Get("/accounts", listAccounts)
 				router.Head("/accounts", countAccounts)
-				router.Get("/accounts/{address}", getAccount)
-				router.Post("/accounts/{address}/metadata", postAccountMetadata)
+				router.Get("/accounts/{address}", readAccount)
+				router.Post("/accounts/{address}/metadata", addAccountMetadata)
 				router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
 
 				// TransactionController
-				router.Get("/transactions", getTransactions)
+				router.Get("/transactions", listTransactions)
 				router.Head("/transactions", countTransactions)
 
-				router.Post("/transactions", postTransaction)
+				router.Post("/transactions", createTransaction)
 
-				router.Get("/transactions/{id}", getTransaction)
+				router.Get("/transactions/{id}", readTransaction)
 				router.Post("/transactions/{id}/revert", revertTransaction)
-				router.Post("/transactions/{id}/metadata", postTransactionMetadata)
+				router.Post("/transactions/{id}/metadata", addTransactionMetadata)
 				router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
 
-				router.Get("/aggregate/balances", getBalancesAggregated)
+				router.Get("/aggregate/balances", readBalancesAggregated)
 
-				router.Get("/volumes", getVolumesWithBalances)
+				router.Get("/volumes", readVolumes)
 			})
 		})
 	})
 
 	return router
+}
+
+type routerOptions struct {
+	tracer trace.Tracer
+}
+
+type RouterOption func(ro *routerOptions)
+
+func WithTracer(tracer trace.Tracer) RouterOption {
+	return func(ro *routerOptions) {
+		ro.tracer = tracer
+	}
+}
+
+var defaultRouterOptions = []RouterOption{
+	WithTracer(nooptracer.Tracer{}),
 }
