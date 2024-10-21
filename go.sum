@@ -101,6 +101,8 @@ github.com/formancehq/go-libs/v2 v2.0.1-0.20241017153232-1a62cecf1a61 h1:GSIhsdo
 github.com/formancehq/go-libs/v2 v2.0.1-0.20241017153232-1a62cecf1a61/go.mod h1:LgxayMN6wgAQbkB3ioBDTHOVMKp1rC6Q55M1CvG44xY=
 github.com/formancehq/go-libs/v2 v2.0.1-0.20241021110602-fbd3b37b93f8 h1:q9mP1jT2q2/QxGdEg9mWOcsf/P7NNvC1vMmyDvj5EEY=
 github.com/formancehq/go-libs/v2 v2.0.1-0.20241021110602-fbd3b37b93f8/go.mod h1:KO+eOrTVQ5tR3TZUAHapoQ+d7y2+Ie5Tg0QwfZHAK4k=
+github.com/formancehq/go-libs/v2 v2.0.1-0.20241021183239-813f4dc647a1 h1:PnDpgyTBicMbSC/c7PTdYaNZCCHlnKyVXURo4VTJyCc=
+github.com/formancehq/go-libs/v2 v2.0.1-0.20241021183239-813f4dc647a1/go.mod h1:LgxayMN6wgAQbkB3ioBDTHOVMKp1rC6Q55M1CvG44xY=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/go-chi/chi v4.1.2+incompatible h1:fGFk2Gmi/YKXk0OmGfBh0WgmN3XB8lVnEyNz34tQRec=
