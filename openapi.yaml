@@ -3452,6 +3452,7 @@ components:
         - LEDGER_NOT_FOUND
         - IMPORT
         - TIMEOUT
+        - BULK_SIZE_EXCEEDED
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object

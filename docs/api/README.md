@@ -3188,6 +3188,7 @@ Authorization ( Scopes: ledger:write )
 |*anonymous*|LEDGER_NOT_FOUND|
 |*anonymous*|IMPORT|
 |*anonymous*|TIMEOUT|
+|*anonymous*|BULK_SIZE_EXCEEDED|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->

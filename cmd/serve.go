@@ -39,6 +39,7 @@ const (
 	APIResponsesTimeoutDelayFlag      = "api-responses-timeout-delay"
 	APIResponsesTimeoutStatusCodeFlag = "api-responses-timeout-status-code"
 	ExperimentalFeaturesFlag          = "experimental-features"
+	BulkMaxSizeFlag                   = "bulk-max-size"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -64,6 +65,11 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			apiResponseTimeoutStatusCode, err := cmd.Flags().GetInt(APIResponsesTimeoutStatusCodeFlag)
+			if err != nil {
+				return err
+			}
+
+			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
 			if err != nil {
 				return err
 			}
@@ -96,6 +102,7 @@ func NewServeCommand() *cobra.Command {
 						Timeout:    apiResponseTimeoutDelay,
 						StatusCode: apiResponseTimeoutStatusCode,
 					},
+					BulkMaxSize: bulkMaxSize,
 				}),
 				fx.Decorate(func(
 					params struct {
@@ -131,6 +138,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Duration(APIResponsesTimeoutDelayFlag, 0, "API response timeout delay")
 	cmd.Flags().Int(APIResponsesTimeoutStatusCodeFlag, http.StatusGatewayTimeout, "API response timeout status code")
+	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())

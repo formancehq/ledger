@@ -23,6 +23,7 @@ const (
 	V2ErrorsEnumLedgerNotFound    V2ErrorsEnum = "LEDGER_NOT_FOUND"
 	V2ErrorsEnumImport            V2ErrorsEnum = "IMPORT"
 	V2ErrorsEnumTimeout           V2ErrorsEnum = "TIMEOUT"
+	V2ErrorsEnumBulkSizeExceeded  V2ErrorsEnum = "BULK_SIZE_EXCEEDED"
 )
 
 func (e V2ErrorsEnum) ToPointer() *V2ErrorsEnum {
@@ -59,6 +60,8 @@ func (e *V2ErrorsEnum) UnmarshalJSON(data []byte) error {
 	case "IMPORT":
 		fallthrough
 	case "TIMEOUT":
+		fallthrough
+	case "BULK_SIZE_EXCEEDED":
 		*e = V2ErrorsEnum(v)
 		return nil
 	default:

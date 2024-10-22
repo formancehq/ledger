@@ -66,6 +66,7 @@ func NewRouter(
 		debug,
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithMiddlewares(commonMiddlewares...),
+		v2.WithBulkMaxSize(routerOptions.bulkMaxSize),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -86,6 +87,7 @@ func NewRouter(
 type routerOptions struct {
 	tracer               trace.Tracer
 	timeoutConfiguration common.TimeoutConfiguration
+	bulkMaxSize          int
 }
 
 type RouterOption func(ro *routerOptions)
@@ -102,6 +104,15 @@ func WithTimeout(timeoutConfiguration common.TimeoutConfiguration) RouterOption 
 	}
 }
 
+func WithBulkMaxSize(bulkMaxSize int) RouterOption {
+	return func(ro *routerOptions) {
+		ro.bulkMaxSize = bulkMaxSize
+	}
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
+	WithBulkMaxSize(DefaultBulkMaxSize),
 }
+
+const DefaultBulkMaxSize = 100

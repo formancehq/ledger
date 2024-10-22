@@ -44,6 +44,7 @@ type Configuration struct {
 	OTLPConfig            *OTLPConfig
 	ExperimentalFeatures  bool
 	APIResponseTimeout    time.Duration
+	BulkMaxSize           int
 }
 
 type Server struct {
@@ -79,6 +80,13 @@ func (s *Server) Start() {
 			args,
 			"--"+cmd.APIResponsesTimeoutDelayFlag,
 			s.configuration.APIResponseTimeout.String(),
+		)
+	}
+	if s.configuration.BulkMaxSize != 0 {
+		args = append(
+			args,
+			"--"+cmd.BulkMaxSizeFlag,
+			fmt.Sprint(s.configuration.BulkMaxSize),
 		)
 	}
 	if s.configuration.PostgresConfiguration.MaxIdleConns != 0 {
