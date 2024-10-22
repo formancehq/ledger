@@ -153,3 +153,16 @@ func (req *TransactionRequest) ToRunScript() *RunScript {
 		Metadata:  req.Metadata,
 	}
 }
+
+type RevertTransactionRequest struct {
+	ID              *big.Int          `json:"id"`
+	Force           bool              `json:"force"`
+	AtEffectiveDate bool              `json:"atEffectiveDate"`
+	Metadata        metadata.Metadata `json:"metadata" swaggertype:"object"`
+}
+
+func (req *RevertTransactionRequest) ToRunScript() *RunScript {
+	return &RunScript{
+		Metadata: req.Metadata,
+	}
+}

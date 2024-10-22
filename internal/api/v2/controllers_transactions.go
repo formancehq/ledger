@@ -186,9 +186,16 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	payload := ledger.RevertTransactionRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
+		return
+	}
+
 	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID,
 		sharedapi.QueryParamBool(r, "force"),
 		sharedapi.QueryParamBool(r, "atEffectiveDate"),
+		*payload.ToRunScript(),
 	)
 	if err != nil {
 		switch {
