@@ -77,7 +77,7 @@ func (s *Server) Start() {
 	if s.configuration.APIResponseTimeout != 0 {
 		args = append(
 			args,
-			"--"+cmd.APIResponseTimeoutDelayFlag,
+			"--"+cmd.APIResponsesTimeoutDelayFlag,
 			s.configuration.APIResponseTimeout.String(),
 		)
 	}

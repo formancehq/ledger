@@ -32,13 +32,13 @@ import (
 )
 
 const (
-	BindFlag                         = "bind"
-	BallastSizeInBytesFlag           = "ballast-size"
-	NumscriptCacheMaxCountFlag       = "numscript-cache-max-count"
-	AutoUpgradeFlag                  = "auto-upgrade"
-	APIResponseTimeoutDelayFlag      = "api-response-timeout-delay"
-	APIResponseTimeoutStatusCodeFlag = "api-response-timeout-status-code"
-	ExperimentalFeaturesFlag         = "experimental-features"
+	BindFlag                          = "bind"
+	BallastSizeInBytesFlag            = "ballast-size"
+	NumscriptCacheMaxCountFlag        = "numscript-cache-max-count"
+	AutoUpgradeFlag                   = "auto-upgrade"
+	APIResponsesTimeoutDelayFlag      = "api-responses-timeout-delay"
+	APIResponsesTimeoutStatusCodeFlag = "api-responses-timeout-status-code"
+	ExperimentalFeaturesFlag          = "experimental-features"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -58,12 +58,12 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 
-			apiResponseTimeoutDelay, err := cmd.Flags().GetDuration(APIResponseTimeoutDelayFlag)
+			apiResponseTimeoutDelay, err := cmd.Flags().GetDuration(APIResponsesTimeoutDelayFlag)
 			if err != nil {
 				return err
 			}
 
-			apiResponseTimeoutStatusCode, err := cmd.Flags().GetInt(APIResponseTimeoutStatusCodeFlag)
+			apiResponseTimeoutStatusCode, err := cmd.Flags().GetInt(APIResponsesTimeoutStatusCodeFlag)
 			if err != nil {
 				return err
 			}
@@ -129,8 +129,8 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
-	cmd.Flags().Duration(APIResponseTimeoutDelayFlag, 0, "API response timeout delay")
-	cmd.Flags().Int(APIResponseTimeoutStatusCodeFlag, http.StatusGatewayTimeout, "API response timeout status code")
+	cmd.Flags().Duration(APIResponsesTimeoutDelayFlag, 0, "API response timeout delay")
+	cmd.Flags().Int(APIResponsesTimeoutStatusCodeFlag, http.StatusGatewayTimeout, "API response timeout status code")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
