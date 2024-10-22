@@ -171,7 +171,7 @@ func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool,
 
 	return s.db.NewSelect().
 		TableExpr("(?) values", sumVolumesForAsset).
-		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated")
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated")
 }
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
