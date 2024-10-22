@@ -52,7 +52,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			ledgercontroller.NewDefaultNumscriptParser(),
+			ctrl.parser,
 			ledgercontroller.WithMeter(ctrl.meter),
 		)
 
