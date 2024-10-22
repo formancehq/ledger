@@ -43,7 +43,6 @@ type Configuration struct {
 	Debug                 bool
 	OTLPConfig            *OTLPConfig
 	ExperimentalFeatures  bool
-	APIResponseTimeout    time.Duration
 	BulkMaxSize           int
 }
 
@@ -73,13 +72,6 @@ func (s *Server) Start() {
 		args = append(
 			args,
 			"--"+cmd.ExperimentalFeaturesFlag,
-		)
-	}
-	if s.configuration.APIResponseTimeout != 0 {
-		args = append(
-			args,
-			"--"+cmd.APIResponsesTimeoutDelayFlag,
-			s.configuration.APIResponseTimeout.String(),
 		)
 	}
 	if s.configuration.BulkMaxSize != 0 {
