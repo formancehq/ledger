@@ -5,7 +5,6 @@ import (
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/httpserver"
 	"github.com/formancehq/go-libs/v2/otlp"
-	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -32,14 +31,12 @@ import (
 )
 
 const (
-	BindFlag                          = "bind"
-	BallastSizeInBytesFlag            = "ballast-size"
-	NumscriptCacheMaxCountFlag        = "numscript-cache-max-count"
-	AutoUpgradeFlag                   = "auto-upgrade"
-	APIResponsesTimeoutDelayFlag      = "api-responses-timeout-delay"
-	APIResponsesTimeoutStatusCodeFlag = "api-responses-timeout-status-code"
-	ExperimentalFeaturesFlag          = "experimental-features"
-	BulkMaxSizeFlag                   = "bulk-max-size"
+	BindFlag                   = "bind"
+	BallastSizeInBytesFlag     = "ballast-size"
+	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
+	AutoUpgradeFlag            = "auto-upgrade"
+	ExperimentalFeaturesFlag   = "experimental-features"
+	BulkMaxSizeFlag            = "bulk-max-size"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -55,16 +52,6 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			experimentalFeatures, err := cmd.Flags().GetBool(ExperimentalFeaturesFlag)
-			if err != nil {
-				return err
-			}
-
-			apiResponseTimeoutDelay, err := cmd.Flags().GetDuration(APIResponsesTimeoutDelayFlag)
-			if err != nil {
-				return err
-			}
-
-			apiResponseTimeoutStatusCode, err := cmd.Flags().GetInt(APIResponsesTimeoutStatusCodeFlag)
 			if err != nil {
 				return err
 			}
@@ -96,12 +83,8 @@ func NewServeCommand() *cobra.Command {
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
 				api.Module(api.Config{
-					Version: Version,
-					Debug:   service.IsDebug(cmd),
-					Timeout: common.TimeoutConfiguration{
-						Timeout:    apiResponseTimeoutDelay,
-						StatusCode: apiResponseTimeoutStatusCode,
-					},
+					Version:     Version,
+					Debug:       service.IsDebug(cmd),
 					BulkMaxSize: bulkMaxSize,
 				}),
 				fx.Decorate(func(
@@ -136,8 +119,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
-	cmd.Flags().Duration(APIResponsesTimeoutDelayFlag, 0, "API response timeout delay")
-	cmd.Flags().Int(APIResponsesTimeoutStatusCodeFlag, http.StatusGatewayTimeout, "API response timeout status code")
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 
 	service.AddFlags(cmd.Flags())

@@ -56,9 +56,6 @@ func NewRouter(
 	commonMiddlewares := []func(http.Handler) http.Handler{
 		middleware.RequestLogger(api.NewLogFormatter()),
 	}
-	if routerOptions.timeoutConfiguration.Timeout != 0 {
-		commonMiddlewares = append(commonMiddlewares, common.Timeout(routerOptions.timeoutConfiguration))
-	}
 
 	v2Router := v2.NewRouter(
 		systemController,
@@ -85,9 +82,8 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer               trace.Tracer
-	timeoutConfiguration common.TimeoutConfiguration
-	bulkMaxSize          int
+	tracer      trace.Tracer
+	bulkMaxSize int
 }
 
 type RouterOption func(ro *routerOptions)
@@ -95,12 +91,6 @@ type RouterOption func(ro *routerOptions)
 func WithTracer(tracer trace.Tracer) RouterOption {
 	return func(ro *routerOptions) {
 		ro.tracer = tracer
-	}
-}
-
-func WithTimeout(timeoutConfiguration common.TimeoutConfiguration) RouterOption {
-	return func(ro *routerOptions) {
-		ro.timeoutConfiguration = timeoutConfiguration
 	}
 }
 
