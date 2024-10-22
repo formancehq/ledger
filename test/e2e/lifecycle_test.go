@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -26,11 +27,11 @@ import (
 
 var _ = Context("Ledger application lifecycle tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
 	)
 
 	Context("Pending transaction should be fully processed before stopping or restarting the server", func() {
+		db := UseTemplatedDatabase()
 		testServer := NewTestServer(func() Configuration {
 			return Configuration{
 				PostgresConfiguration: db.GetValue().ConnectionOptions(),
@@ -172,6 +173,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 	Context("Ledger should respond correctly as well as the minimal schema version is respected", func() {
 		var (
 			ledgerName = "default"
+			db         = pgtesting.UsePostgresDatabase(pgServer)
 		)
 		BeforeEach(func() {
 			bunDB, err := bunconnect.OpenSQLDB(ctx, db.GetValue().ConnectionOptions())

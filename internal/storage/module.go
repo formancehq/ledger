@@ -29,17 +29,27 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 						go func() {
 							defer close(upgradeStopped)
 
-							if err := driver.UpgradeAllBuckets(upgradeContext); err != nil {
-								// Long migrations can be cancelled (app rescheduled for example)
-								// before fully terminated, handle this gracefully, don't panic,
-								// the next start will try again.
-								if errors.Is(err, context.DeadlineExceeded) ||
-									errors.Is(err, context.Canceled) {
+							for {
+								select {
+								case <-ctx.Done():
+									return
+								default:
+									logging.FromContext(ctx).Infof("Upgrading buckets...")
+									if err := driver.UpgradeAllBuckets(upgradeContext); err != nil {
+										// Long migrations can be cancelled (app rescheduled for example)
+										// before fully terminated, handle this gracefully, don't panic,
+										// the next start will try again.
+										if errors.Is(err, context.DeadlineExceeded) ||
+											errors.Is(err, context.Canceled) {
+											return
+										}
+										logging.FromContext(ctx).Errorf("Upgrading buckets: %s", err)
+										continue
+									}
 									return
 								}
-
-								panic(err)
 							}
+
 						}()
 						return nil
 					},
