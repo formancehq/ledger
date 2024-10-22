@@ -16,6 +16,13 @@ type responseWriter struct {
 	headerWritten      bool
 }
 
+func (r *responseWriter) Header() http.Header {
+	r.Lock()
+	defer r.Unlock()
+
+	return r.ResponseWriter.Header()
+}
+
 func (r *responseWriter) Write(bytes []byte) (int, error) {
 	r.Lock()
 	defer r.Unlock()
@@ -83,7 +90,7 @@ func Timeout(configuration TimeoutConfiguration) func(h http.Handler) http.Handl
 			}()
 			defer close(done)
 
-			h.ServeHTTP(w, r.WithContext(newRequestContext))
+			h.ServeHTTP(rw, r.WithContext(newRequestContext))
 		})
 	}
 }
