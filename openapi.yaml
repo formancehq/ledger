@@ -2961,6 +2961,7 @@ components:
         - COMPILATION_FAILED
         - METADATA_OVERRIDE
         - NOT_FOUND
+        - TIMEOUT
       example: INSUFFICIENT_FUND
     LedgerInfoResponse:
       properties:
@@ -3450,6 +3451,7 @@ components:
         - NO_POSTINGS
         - LEDGER_NOT_FOUND
         - IMPORT
+        - TIMEOUT
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object
