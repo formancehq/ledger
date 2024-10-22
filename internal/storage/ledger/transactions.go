@@ -158,7 +158,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 							`),
 					).
 					Column("transactions_id").
-					ColumnExpr("aggregate_objects(post_commit_effective_volumes::jsonb) as post_commit_effective_volumes").
+					ColumnExpr("public.aggregate_objects(post_commit_effective_volumes::jsonb) as post_commit_effective_volumes").
 					Group("transactions_id"),
 			).
 			ColumnExpr("pcev.*")
