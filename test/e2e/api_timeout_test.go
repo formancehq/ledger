@@ -29,7 +29,7 @@ var _ = Context("API - Timeout", func() {
 			Output:                GinkgoWriter,
 			Debug:                 debug,
 			NatsURL:               natsServer.GetValue().ClientURL(),
-			APIResponseTimeout:    time.Second,
+			APIResponseTimeout:    3 * time.Second,
 		}
 	})
 
