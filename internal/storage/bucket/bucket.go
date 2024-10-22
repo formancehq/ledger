@@ -9,6 +9,9 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+// migration 23 (+1 regarding directory name, as migrations start from 1 in the lib)
+const MinimalSchemaVersion = 24
+
 type Bucket interface {
 	Migrate(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error
 	AddLedger(ctx context.Context, ledger ledger.Ledger) error
