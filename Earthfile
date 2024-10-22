@@ -1,8 +1,7 @@
 VERSION 0.8
 PROJECT FormanceHQ/ledger
 
-IMPORT github.com/formancehq/earthly:tags/v0.16.2 AS core
-IMPORT github.com/formancehq/stack/releases:main AS releases
+IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
 
 FROM core+base-image
 
@@ -194,7 +193,7 @@ generate-client:
     COPY (core+sources-speakeasy/speakeasy) /bin/speakeasy
     COPY (+openapi/openapi.yaml) openapi.yaml
     RUN cat ./openapi.yaml |  yq e -o json > openapi.json
-    COPY (releases+sources/src/openapi-overlay.json) openapi-overlay.json
+    COPY (core+sources/out --LOCATION=openapi-overlay.json) openapi-overlay.json
     RUN jq -s '.[0] * .[1]' openapi.json openapi-overlay.json > final.json
     COPY --dir pkg/client client
     RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./final.json -o ./client -l go
