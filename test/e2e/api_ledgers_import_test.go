@@ -10,7 +10,6 @@ import (
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
@@ -22,7 +21,7 @@ import (
 
 var _ = Context("Ledger engine tests", func() {
 	var (
-		db  = pgtesting.UsePostgresDatabase(pgServer)
+		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
 	)
 
