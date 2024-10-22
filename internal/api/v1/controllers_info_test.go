@@ -3,6 +3,7 @@ package v1
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/time"
@@ -18,7 +19,7 @@ func TestGetLedgerInfo(t *testing.T) {
 	t.Parallel()
 
 	systemController, mock := newTestingSystemController(t, false)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 	migrationInfo := []migrations.Info{
 		{

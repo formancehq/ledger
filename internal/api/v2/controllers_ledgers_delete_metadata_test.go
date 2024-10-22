@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"errors"
@@ -53,7 +54,7 @@ func TestLedgersDeleteMetadata(t *testing.T) {
 					Return(tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodDelete, "/"+name+"/metadata/foo", nil)
 			req = req.WithContext(ctx)

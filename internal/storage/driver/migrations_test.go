@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/testing/migrations"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
@@ -25,7 +26,7 @@ func TestMigrations(t *testing.T) {
 	pgServer := srv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	if testing.Verbose() {
+	if os.Getenv("DEBUG") == "true" {
 		hooks = append(hooks, bundebug.NewQueryHook())
 	}
 

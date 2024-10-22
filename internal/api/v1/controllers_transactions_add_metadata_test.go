@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -60,7 +61,7 @@ func TestTransactionsAddMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/metadata", api.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -84,7 +85,7 @@ func TestBalancesAggregates(t *testing.T) {
 				GetAggregatedBalances(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances", nil)
 			rec := httptest.NewRecorder()

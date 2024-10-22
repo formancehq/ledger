@@ -11,6 +11,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/google/uuid"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
@@ -130,7 +131,7 @@ func newStorageDriver(t docker.T) *driver.Driver {
 	pgDatabase := srv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	if testing.Verbose() {
+	if os.Getenv("DEBUG") == "true" {
 		hooks = append(hooks, bundebug.NewQueryHook())
 	}
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)

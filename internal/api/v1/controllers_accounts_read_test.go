@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -76,7 +77,7 @@ func TestAccountsRead(t *testing.T) {
 					Return(&ledger.Account{}, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodGet, "/", bytes.NewBufferString(tc.body))
 			req.URL.Path = "/xxx/accounts/" + tc.account

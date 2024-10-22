@@ -3,6 +3,7 @@ package v2
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -25,7 +26,7 @@ func TestLedgersUpdateMetadata(t *testing.T) {
 		UpdateLedgerMetadata(gomock.Any(), name, metadata).
 		Return(nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 	req := httptest.NewRequest(http.MethodPut, "/"+name+"/metadata", api.Buffer(t, metadata))
 	req = req.WithContext(ctx)

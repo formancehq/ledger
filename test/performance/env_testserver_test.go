@@ -54,13 +54,13 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 	connectionOptions.ConnMaxIdleTime = time.Minute
 
 	var output io.Writer = os.Stdout
-	if !testing.Verbose() {
+	if os.Getenv("DEBUG") != "true" {
 		output = io.Discard
 	}
 
 	testServer := testserver.New(b, testserver.Configuration{
 		PostgresConfiguration: connectionOptions,
-		Debug:                 testing.Verbose(),
+		Debug:                 os.Getenv("DEBUG") == "true",
 		Output:                output,
 		OTLPConfig: &testserver.OTLPConfig{
 			Metrics: &otlpmetrics.ModuleConfig{
