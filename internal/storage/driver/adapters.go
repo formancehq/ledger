@@ -2,11 +2,10 @@ package driver
 
 import (
 	"context"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
-
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 type DefaultStorageDriverAdapter struct {
