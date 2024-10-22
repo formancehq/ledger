@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/httpserver"
 	"github.com/formancehq/go-libs/v2/otlp"
+	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -31,11 +32,13 @@ import (
 )
 
 const (
-	BindFlag                   = "bind"
-	BallastSizeInBytesFlag     = "ballast-size"
-	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
-	AutoUpgradeFlag            = "auto-upgrade"
-	ExperimentalFeaturesFlag   = "experimental-features"
+	BindFlag                         = "bind"
+	BallastSizeInBytesFlag           = "ballast-size"
+	NumscriptCacheMaxCountFlag       = "numscript-cache-max-count"
+	AutoUpgradeFlag                  = "auto-upgrade"
+	APIResponseTimeoutDelayFlag      = "api-response-timeout-delay"
+	APIResponseTimeoutStatusCodeFlag = "api-response-timeout-status-code"
+	ExperimentalFeaturesFlag         = "experimental-features"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -51,6 +54,16 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			experimentalFeatures, err := cmd.Flags().GetBool(ExperimentalFeaturesFlag)
+			if err != nil {
+				return err
+			}
+
+			apiResponseTimeoutDelay, err := cmd.Flags().GetDuration(APIResponseTimeoutDelayFlag)
+			if err != nil {
+				return err
+			}
+
+			apiResponseTimeoutStatusCode, err := cmd.Flags().GetInt(APIResponseTimeoutStatusCodeFlag)
 			if err != nil {
 				return err
 			}
@@ -79,6 +92,10 @@ func NewServeCommand() *cobra.Command {
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
+					Timeout: common.TimeoutConfiguration{
+						Timeout:    apiResponseTimeoutDelay,
+						StatusCode: apiResponseTimeoutStatusCode,
+					},
 				}),
 				fx.Decorate(func(
 					params struct {
@@ -112,6 +129,8 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
+	cmd.Flags().Duration(APIResponseTimeoutDelayFlag, 0, "API response timeout delay")
+	cmd.Flags().Int(APIResponseTimeoutStatusCodeFlag, http.StatusGatewayTimeout, "API response timeout status code")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())

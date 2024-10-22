@@ -1722,6 +1722,7 @@ components:
         - NO_POSTINGS
         - LEDGER_NOT_FOUND
         - IMPORT
+        - TIMEOUT
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object

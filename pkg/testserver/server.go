@@ -43,6 +43,7 @@ type Configuration struct {
 	Debug                 bool
 	OTLPConfig            *OTLPConfig
 	ExperimentalFeatures  bool
+	APIResponseTimeout    time.Duration
 }
 
 type Server struct {
@@ -71,6 +72,13 @@ func (s *Server) Start() {
 		args = append(
 			args,
 			"--"+cmd.ExperimentalFeaturesFlag,
+		)
+	}
+	if s.configuration.APIResponseTimeout != 0 {
+		args = append(
+			args,
+			"--"+cmd.APIResponseTimeoutDelayFlag,
+			s.configuration.APIResponseTimeout.String(),
 		)
 	}
 	if s.configuration.PostgresConfiguration.MaxIdleConns != 0 {

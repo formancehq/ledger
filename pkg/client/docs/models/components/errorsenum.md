@@ -13,3 +13,4 @@
 | `ErrorsEnumCompilationFailed` | COMPILATION_FAILED            |
 | `ErrorsEnumMetadataOverride`  | METADATA_OVERRIDE             |
 | `ErrorsEnumNotFound`          | NOT_FOUND                     |
+| `ErrorsEnumTimeout`           | TIMEOUT                       |

@@ -6,9 +6,6 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/go-chi/chi/v5/middleware"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -33,7 +30,7 @@ func NewRouter(
 	router := chi.NewMux()
 
 	router.Group(func(router chi.Router) {
-		router.Use(middleware.RequestLogger(api.NewLogFormatter()))
+		router.Use(routerOptions.middlewares...)
 		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
 
@@ -93,7 +90,8 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer trace.Tracer
+	tracer      trace.Tracer
+	middlewares []func(http.Handler) http.Handler
 }
 
 type RouterOption func(ro *routerOptions)
@@ -101,6 +99,12 @@ type RouterOption func(ro *routerOptions)
 func WithTracer(tracer trace.Tracer) RouterOption {
 	return func(ro *routerOptions) {
 		ro.tracer = tracer
+	}
+}
+
+func WithMiddlewares(middlewares ...func(http.Handler) http.Handler) RouterOption {
+	return func(ro *routerOptions) {
+		ro.middlewares = append(ro.middlewares, middlewares...)
 	}
 }
 
