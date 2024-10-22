@@ -154,7 +154,7 @@ func (s *Store) selectAccountWithAggregatedVolumes(date *time.Time, useInsertion
 		TableExpr("(?) values", selectAccountWithAssetAndVolumes).
 		Group("accounts_address").
 		Column("accounts_address").
-		ColumnExpr("aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + alias)
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + alias)
 }
 
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
@@ -168,7 +168,7 @@ func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool,
 
 	return s.db.NewSelect().
 		TableExpr("(?) values", sumVolumesForAsset).
-		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated")
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated")
 }
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
