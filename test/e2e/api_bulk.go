@@ -4,6 +4,7 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
+	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
@@ -18,8 +19,9 @@ import (
 
 var _ = Context("Ledger engine tests", func() {
 	var (
-		db  = pgtesting.UsePostgresDatabase(pgServer)
-		ctx = logging.TestingContext()
+		db          = pgtesting.UsePostgresDatabase(pgServer)
+		ctx         = logging.TestingContext()
+		bulkMaxSize = 5
 	)
 
 	testServer := NewTestServer(func() Configuration {
@@ -28,6 +30,7 @@ var _ = Context("Ledger engine tests", func() {
 			Output:                GinkgoWriter,
 			Debug:                 debug,
 			NatsURL:               natsServer.GetValue().ClientURL(),
+			BulkMaxSize:           bulkMaxSize,
 		}
 	})
 	BeforeEach(func() {
@@ -38,51 +41,57 @@ var _ = Context("Ledger engine tests", func() {
 	})
 	When("creating a bulk on a ledger", func() {
 		var (
-			now = time.Now().Round(time.Microsecond).UTC()
+			now   = time.Now().Round(time.Microsecond).UTC()
+			items []components.V2BulkElement
+			err   error
 		)
 		BeforeEach(func() {
-			_, err := CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
-				RequestBody: []components.V2BulkElement{
-					components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
-						Data: &components.V2PostTransaction{
-							Metadata: map[string]string{},
-							Postings: []components.V2Posting{{
-								Amount:      big.NewInt(100),
-								Asset:       "USD/2",
-								Destination: "bank",
-								Source:      "world",
-							}},
-							Timestamp: &now,
+			items = []components.V2BulkElement{
+				components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+					Data: &components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Postings: []components.V2Posting{{
+							Amount:      big.NewInt(100),
+							Asset:       "USD/2",
+							Destination: "bank",
+							Source:      "world",
+						}},
+						Timestamp: &now,
+					},
+				}),
+				components.CreateV2BulkElementAddMetadata(components.V2BulkElementAddMetadata{
+					Data: &components.Data{
+						Metadata: metadata.Metadata{
+							"foo":  "bar",
+							"role": "admin",
 						},
-					}),
-					components.CreateV2BulkElementAddMetadata(components.V2BulkElementAddMetadata{
-						Data: &components.Data{
-							Metadata: metadata.Metadata{
-								"foo":  "bar",
-								"role": "admin",
-							},
-							TargetID:   components.CreateV2TargetIDBigint(big.NewInt(1)),
-							TargetType: components.V2TargetTypeTransaction,
-						},
-					}),
-					components.CreateV2BulkElementDeleteMetadata(components.V2BulkElementDeleteMetadata{
-						Data: &components.V2BulkElementDeleteMetadataData{
-							Key:        "foo",
-							TargetID:   components.CreateV2TargetIDBigint(big.NewInt(1)),
-							TargetType: components.V2TargetTypeTransaction,
-						},
-					}),
-					components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
-						Data: &components.V2BulkElementRevertTransactionData{
-							ID: big.NewInt(1),
-						},
-					}),
-				},
-				Ledger: "default",
+						TargetID:   components.CreateV2TargetIDBigint(big.NewInt(1)),
+						TargetType: components.V2TargetTypeTransaction,
+					},
+				}),
+				components.CreateV2BulkElementDeleteMetadata(components.V2BulkElementDeleteMetadata{
+					Data: &components.V2BulkElementDeleteMetadataData{
+						Key:        "foo",
+						TargetID:   components.CreateV2TargetIDBigint(big.NewInt(1)),
+						TargetType: components.V2TargetTypeTransaction,
+					},
+				}),
+				components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
+					Data: &components.V2BulkElementRevertTransactionData{
+						ID: big.NewInt(1),
+					},
+				}),
+			}
+		})
+		JustBeforeEach(func() {
+			_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+				RequestBody: items,
+				Ledger:      "default",
 			})
-			Expect(err).To(Succeed())
 		})
 		It("should be ok", func() {
+			Expect(err).To(Succeed())
+
 			tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
 				ID:     big.NewInt(1),
 				Ledger: "default",
@@ -111,6 +120,28 @@ var _ = Context("Ledger engine tests", func() {
 				Timestamp:  now,
 				InsertedAt: tx.InsertedAt,
 			}))
+		})
+		Context("with exceeded batch size", func() {
+			BeforeEach(func() {
+				items = make([]components.V2BulkElement, 0)
+				for i := 0; i < bulkMaxSize+1; i++ {
+					items = append(items, components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+						Data: &components.V2PostTransaction{
+							Metadata: map[string]string{},
+							Postings: []components.V2Posting{{
+								Amount:      big.NewInt(100),
+								Asset:       "USD/2",
+								Destination: "bank",
+								Source:      "world",
+							}},
+							Timestamp: &now,
+						},
+					}))
+				}
+			})
+			It("should respond with an error", func() {
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumBulkSizeExceeded)))
+			})
 		})
 	})
 	When("creating a bulk with an error on a ledger", func() {

@@ -52,7 +52,7 @@ func NewRouter(
 			router.With(common.LedgerMiddleware(systemController, func(r *http.Request) string {
 				return chi.URLParam(r, "ledger")
 			}, routerOptions.tracer, "/_info")).Group(func(router chi.Router) {
-				router.Post("/_bulk", bulkHandler)
+				router.Post("/_bulk", bulkHandler(routerOptions.bulkMaxSize))
 
 				// LedgerController
 				router.Get("/_info", getLedgerInfo)
@@ -92,6 +92,7 @@ func NewRouter(
 type routerOptions struct {
 	tracer      trace.Tracer
 	middlewares []func(http.Handler) http.Handler
+	bulkMaxSize int
 }
 
 type RouterOption func(ro *routerOptions)
@@ -105,6 +106,12 @@ func WithTracer(tracer trace.Tracer) RouterOption {
 func WithMiddlewares(middlewares ...func(http.Handler) http.Handler) RouterOption {
 	return func(ro *routerOptions) {
 		ro.middlewares = append(ro.middlewares, middlewares...)
+	}
+}
+
+func WithBulkMaxSize(bulkMaxSize int) RouterOption {
+	return func(ro *routerOptions) {
+		ro.bulkMaxSize = bulkMaxSize
 	}
 }
 

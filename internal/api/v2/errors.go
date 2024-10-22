@@ -8,4 +8,5 @@ const (
 	ErrNoPostings        = "NO_POSTINGS"
 	ErrCompilationFailed = "COMPILATION_FAILED"
 	ErrMetadataOverride  = "METADATA_OVERRIDE"
+	ErrBulkSizeExceeded  = "BULK_SIZE_EXCEEDED"
 )

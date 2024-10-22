@@ -14,24 +14,31 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-func bulkHandler(w http.ResponseWriter, r *http.Request) {
-	b := Bulk{}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		api.BadRequest(w, ErrValidation, err)
-		return
-	}
+func bulkHandler(bulkMaxSize int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		b := Bulk{}
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			api.BadRequest(w, ErrValidation, err)
+			return
+		}
 
-	w.Header().Set("Content-Type", "application/json")
+		if bulkMaxSize != 0 && len(b) > bulkMaxSize {
+			api.WriteErrorResponse(w, http.StatusRequestEntityTooLarge, ErrBulkSizeExceeded, fmt.Errorf("bulk size exceeded, max size is %d", bulkMaxSize))
+			return
+		}
 
-	ret, errorsInBulk, err := ProcessBulk(r.Context(), common.LedgerFromContext(r.Context()), b, api.QueryParamBool(r, "continueOnFailure"))
-	if err != nil || errorsInBulk {
-		w.WriteHeader(http.StatusBadRequest)
-	}
+		w.Header().Set("Content-Type", "application/json")
 
-	if err := json.NewEncoder(w).Encode(api.BaseResponse[[]Result]{
-		Data: &ret,
-	}); err != nil {
-		panic(err)
+		ret, errorsInBulk, err := ProcessBulk(r.Context(), common.LedgerFromContext(r.Context()), b, api.QueryParamBool(r, "continueOnFailure"))
+		if err != nil || errorsInBulk {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+
+		if err := json.NewEncoder(w).Encode(api.BaseResponse[[]Result]{
+			Data: &ret,
+		}); err != nil {
+			panic(err)
+		}
 	}
 }
 

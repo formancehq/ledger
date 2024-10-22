@@ -13,9 +13,10 @@ import (
 )
 
 type Config struct {
-	Version string
-	Debug   bool
-	Timeout common.TimeoutConfiguration
+	Version     string
+	Debug       bool
+	Timeout     common.TimeoutConfiguration
+	BulkMaxSize int
 }
 
 func Module(cfg Config) fx.Option {
@@ -34,6 +35,7 @@ func Module(cfg Config) fx.Option {
 				cfg.Debug,
 				WithTracer(tracer.Tracer("api")),
 				WithTimeout(cfg.Timeout),
+				WithBulkMaxSize(cfg.BulkMaxSize),
 			)
 		}),
 		health.Module(),

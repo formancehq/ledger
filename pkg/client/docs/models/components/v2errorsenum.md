@@ -18,3 +18,4 @@
 | `V2ErrorsEnumLedgerNotFound`    | LEDGER_NOT_FOUND                |
 | `V2ErrorsEnumImport`            | IMPORT                          |
 | `V2ErrorsEnumTimeout`           | TIMEOUT                         |
+| `V2ErrorsEnumBulkSizeExceeded`  | BULK_SIZE_EXCEEDED              |
