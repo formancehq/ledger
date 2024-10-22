@@ -6,18 +6,18 @@
 
 Base URLs:
 
-- <a href="http://localhost:8080/">http://localhost:8080/</a>
+* <a href="http://localhost:8080/">http://localhost:8080/</a>
 
 # Authentication
 
-- oAuth2 authentication.
+- oAuth2 authentication. 
 
-  - Flow: clientCredentials
+    - Flow: clientCredentials
 
-  - Token URL = [/api/auth/oauth/token](/api/auth/oauth/token)
+    - Token URL = [/api/auth/oauth/token](/api/auth/oauth/token)
 
-| Scope | Scope Description |
-| ----- | ----------------- |
+|Scope|Scope Description|
+|---|---|
 
 <h1 id="ledger-api-ledger">ledger</h1>
 
@@ -49,11 +49,11 @@ Accept: application/json
 
 <h3 id="show-server-information-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                    |
-| ------- | ------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2ConfigInfo](#schemav2configinfo)       |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse) |
-| 5XX     | Unknown                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2ConfigInfo](#schemav2configinfo)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+|5XX|Unknown|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -79,10 +79,10 @@ Accept: application/json
 
 <h3 id="list-ledgers-parameters">Parameters</h3>
 
-| Name     | In    | Type           | Required | Description                                                            |
-| -------- | ----- | -------------- | -------- | ---------------------------------------------------------------------- |
-| pageSize | query | integer(int64) | false    | The maximum number of results to return per page.                      |
-| cursor   | query | string         | false    | Parameter used in pagination requests. Maximum page size is set to 15. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
+|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 
 #### Detailed descriptions
 
@@ -120,10 +120,10 @@ No other parameters can be set when this parameter is set.
 
 <h3 id="list-ledgers-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                              |
-| ------- | ------------------------------------------------------- | ----------- | --------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2LedgerListResponse](#schemav2ledgerlistresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)           |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2LedgerListResponse](#schemav2ledgerlistresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -147,9 +147,9 @@ Accept: application/json
 
 <h3 id="get-a-ledger-parameters">Parameters</h3>
 
-| Name   | In   | Type   | Required | Description         |
-| ------ | ---- | ------ | -------- | ------------------- |
-| ledger | path | string | true     | Name of the ledger. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
 
 > Example responses
 
@@ -170,10 +170,10 @@ Accept: application/json
 
 <h3 id="get-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                            |
-| ------- | ------------------------------------------------------- | ----------- | ------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2GetLedgerResponse](#schemav2getledgerresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)         |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2GetLedgerResponse](#schemav2getledgerresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -213,10 +213,10 @@ Accept: application/json
 
 <h3 id="create-a-ledger-parameters">Parameters</h3>
 
-| Name   | In   | Type                                                  | Required | Description         |
-| ------ | ---- | ----------------------------------------------------- | -------- | ------------------- |
-| body   | body | [V2CreateLedgerRequest](#schemav2createledgerrequest) | false    | none                |
-| ledger | path | string                                                | true     | Name of the ledger. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2CreateLedgerRequest](#schemav2createledgerrequest)|false|none|
+|ledger|path|string|true|Name of the ledger.|
 
 > Example responses
 
@@ -232,10 +232,10 @@ Accept: application/json
 
 <h3 id="create-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | OK          | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|OK|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -268,10 +268,10 @@ Accept: application/json
 
 <h3 id="update-ledger-metadata-parameters">Parameters</h3>
 
-| Name   | In   | Type                            | Required | Description         |
-| ------ | ---- | ------------------------------- | -------- | ------------------- |
-| body   | body | [V2Metadata](#schemav2metadata) | false    | none                |
-| ledger | path | string                          | true     | Name of the ledger. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2Metadata](#schemav2metadata)|false|none|
+|ledger|path|string|true|Name of the ledger.|
 
 > Example responses
 
@@ -287,11 +287,11 @@ Accept: application/json
 
 <h3 id="update-ledger-metadata-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | OK          | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
-| 5XX     | Unknown                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|OK|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+|5XX|Unknown|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -315,10 +315,10 @@ Accept: application/json
 
 <h3 id="delete-ledger-metadata-by-key-parameters">Parameters</h3>
 
-| Name   | In   | Type   | Required | Description         |
-| ------ | ---- | ------ | -------- | ------------------- |
-| ledger | path | string | true     | Name of the ledger. |
-| key    | path | string | true     | Key to remove.      |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|key|path|string|true|Key to remove.|
 
 > Example responses
 
@@ -334,10 +334,10 @@ Accept: application/json
 
 <h3 id="delete-ledger-metadata-by-key-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | OK          | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|OK|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -361,9 +361,9 @@ Accept: application/json
 
 <h3 id="get-information-about-a-ledger-parameters">Parameters</h3>
 
-| Name   | In   | Type   | Required | Description         |
-| ------ | ---- | ------ | -------- | ------------------- |
-| ledger | path | string | true     | Name of the ledger. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
 
 > Example responses
 
@@ -389,10 +389,10 @@ Accept: application/json
 
 <h3 id="get-information-about-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                              |
-| ------- | ------------------------------------------------------- | ----------- | --------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2LedgerInfoResponse](#schemav2ledgerinforesponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)           |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2LedgerInfoResponse](#schemav2ledgerinforesponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -449,10 +449,10 @@ Accept: application/json
 
 <h3 id="bulk-request-parameters">Parameters</h3>
 
-| Name   | In   | Type                    | Required | Description         |
-| ------ | ---- | ----------------------- | -------- | ------------------- |
-| ledger | path | string                  | true     | Name of the ledger. |
-| body   | body | [V2Bulk](#schemav2bulk) | false    | none                |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|body|body|[V2Bulk](#schemav2bulk)|false|none|
 
 > Example responses
 
@@ -553,11 +553,11 @@ Accept: application/json
 
 <h3 id="bulk-request-responses">Responses</h3>
 
-| Status  | Meaning                                                          | Description | Schema                                    |
-| ------- | ---------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | OK          | [V2BulkResponse](#schemav2bulkresponse)   |
-| 400     | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | OK          | [V2BulkResponse](#schemav2bulkresponse)   |
-| default | Default                                                          | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2BulkResponse](#schemav2bulkresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|OK|[V2BulkResponse](#schemav2bulkresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -588,11 +588,11 @@ Accept: application/json
 
 <h3 id="count-the-accounts-from-a-ledger-parameters">Parameters</h3>
 
-| Name   | In    | Type              | Required | Description         |
-| ------ | ----- | ----------------- | -------- | ------------------- |
-| ledger | path  | string            | true     | Name of the ledger. |
-| pit    | query | string(date-time) | false    | none                |
-| body   | body  | object            | false    | none                |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pit|query|string(date-time)|false|none|
+|body|body|object|false|none|
 
 > Example responses
 
@@ -608,16 +608,16 @@ Accept: application/json
 
 <h3 id="count-the-accounts-from-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | OK          | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|OK|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 ### Response Headers
 
-| Status | Header | Type    | Format | Description |
-| ------ | ------ | ------- | ------ | ----------- |
-| 204    | Count  | integer | bigint | none        |
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|204|Count|integer|bigint|none|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -650,14 +650,14 @@ List accounts from a ledger, sorted by address in descending order.
 
 <h3 id="list-accounts-from-a-ledger-parameters">Parameters</h3>
 
-| Name     | In    | Type              | Required | Description                                                            |
-| -------- | ----- | ----------------- | -------- | ---------------------------------------------------------------------- |
-| ledger   | path  | string            | true     | Name of the ledger.                                                    |
-| pageSize | query | integer(int64)    | false    | The maximum number of results to return per page.                      |
-| cursor   | query | string            | false    | Parameter used in pagination requests. Maximum page size is set to 15. |
-| expand   | query | string            | false    | none                                                                   |
-| pit      | query | string(date-time) | false    | none                                                                   |
-| body     | body  | object            | false    | none                                                                   |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
+|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|expand|query|string|false|none|
+|pit|query|string(date-time)|false|none|
+|body|body|object|false|none|
 
 #### Detailed descriptions
 
@@ -717,10 +717,10 @@ No other parameters can be set when this parameter is set.
 
 <h3 id="list-accounts-from-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                                      |
-| ------- | ------------------------------------------------------- | ----------- | ----------------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2AccountsCursorResponse](#schemav2accountscursorresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)                   |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2AccountsCursorResponse](#schemav2accountscursorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -744,17 +744,16 @@ Accept: application/json
 
 <h3 id="get-account-by-its-address-parameters">Parameters</h3>
 
-| Name    | In    | Type              | Required | Description                                                                            |
-| ------- | ----- | ----------------- | -------- | -------------------------------------------------------------------------------------- |
-| ledger  | path  | string            | true     | Name of the ledger.                                                                    |
-| address | path  | string            | true     | Exact address of the account. It must match the following regular expressions pattern: |
-| expand  | query | string            | false    | none                                                                                   |
-| pit     | query | string(date-time) | false    | none                                                                                   |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
+|expand|query|string|false|none|
+|pit|query|string(date-time)|false|none|
 
 #### Detailed descriptions
 
 **address**: Exact address of the account. It must match the following regular expressions pattern:
-
 ```
 ^\w+(:\w+)*$
 ```
@@ -800,10 +799,10 @@ Accept: application/json
 
 <h3 id="get-account-by-its-address-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                        |
-| ------- | ------------------------------------------------------- | ----------- | --------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2AccountResponse](#schemav2accountresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)     |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2AccountResponse](#schemav2accountresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -837,18 +836,17 @@ Idempotency-Key: string
 
 <h3 id="add-metadata-to-an-account-parameters">Parameters</h3>
 
-| Name            | In     | Type                            | Required | Description                                                                                                         |
-| --------------- | ------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| ledger          | path   | string                          | true     | Name of the ledger.                                                                                                 |
-| address         | path   | string                          | true     | Exact address of the account. It must match the following regular expressions pattern:                              |
-| dryRun          | query  | boolean                         | false    | Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker. |
-| Idempotency-Key | header | string                          | false    | Use an idempotency key                                                                                              |
-| body            | body   | [V2Metadata](#schemav2metadata) | true     | metadata                                                                                                            |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
+|dryRun|query|boolean|false|Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|Idempotency-Key|header|string|false|Use an idempotency key|
+|body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 #### Detailed descriptions
 
 **address**: Exact address of the account. It must match the following regular expressions pattern:
-
 ```
 ^\w+(:\w+)*$
 ```
@@ -867,10 +865,10 @@ Idempotency-Key: string
 
 <h3 id="add-metadata-to-an-account-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | No Content  | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <h3 id="add-metadata-to-an-account-responseschema">Response Schema</h3>
 
@@ -898,11 +896,11 @@ Delete metadata by key
 
 <h3 id="delete-metadata-by-key-parameters">Parameters</h3>
 
-| Name   | In   | Type            | Required | Description         |
-| ------ | ---- | --------------- | -------- | ------------------- |
-| ledger | path | string          | true     | Name of the ledger. |
-| id     | path | integer(bigint) | true     | Transaction ID.     |
-| key    | path | string          | true     | The key to remove.  |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|id|path|integer(bigint)|true|Transaction ID.|
+|key|path|string|true|The key to remove.|
 
 > Example responses
 
@@ -918,10 +916,10 @@ Delete metadata by key
 
 <h3 id="delete-metadata-by-key-responses">Responses</h3>
 
-| Status  | Meaning | Description | Schema                                    |
-| ------- | ------- | ----------- | ----------------------------------------- |
-| 2XX     | Unknown | Key deleted | None                                      |
-| default | Default | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|2XX|Unknown|Key deleted|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <h3 id="delete-metadata-by-key-responseschema">Response Schema</h3>
 
@@ -949,9 +947,9 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 
 <h3 id="get-statistics-from-a-ledger-parameters">Parameters</h3>
 
-| Name   | In   | Type   | Required | Description        |
-| ------ | ---- | ------ | -------- | ------------------ |
-| ledger | path | string | true     | name of the ledger |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|name of the ledger|
 
 > Example responses
 
@@ -968,10 +966,10 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 
 <h3 id="get-statistics-from-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                    |
-| ------- | ------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2StatsResponse](#schemav2statsresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2StatsResponse](#schemav2statsresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1002,11 +1000,11 @@ Accept: application/json
 
 <h3 id="count-the-transactions-from-a-ledger-parameters">Parameters</h3>
 
-| Name   | In    | Type              | Required | Description         |
-| ------ | ----- | ----------------- | -------- | ------------------- |
-| ledger | path  | string            | true     | Name of the ledger. |
-| pit    | query | string(date-time) | false    | none                |
-| body   | body  | object            | false    | none                |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pit|query|string(date-time)|false|none|
+|body|body|object|false|none|
 
 > Example responses
 
@@ -1022,16 +1020,16 @@ Accept: application/json
 
 <h3 id="count-the-transactions-from-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | OK          | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|OK|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 ### Response Headers
 
-| Status | Header | Type    | Format | Description |
-| ------ | ------ | ------- | ------ | ----------- |
-| 204    | Count  | integer | int64  | none        |
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|204|Count|integer|int64|none|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1064,16 +1062,16 @@ List transactions from a ledger, sorted by id in descending order.
 
 <h3 id="list-transactions-from-a-ledger-parameters">Parameters</h3>
 
-| Name     | In    | Type              | Required | Description                                                            |
-| -------- | ----- | ----------------- | -------- | ---------------------------------------------------------------------- |
-| ledger   | path  | string            | true     | Name of the ledger.                                                    |
-| pageSize | query | integer(int64)    | false    | The maximum number of results to return per page.                      |
-| cursor   | query | string            | false    | Parameter used in pagination requests. Maximum page size is set to 15. |
-| expand   | query | string            | false    | none                                                                   |
-| pit      | query | string(date-time) | false    | none                                                                   |
-| order    | query | string            | false    | none                                                                   |
-| reverse  | query | boolean           | false    | none                                                                   |
-| body     | body  | object            | false    | none                                                                   |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
+|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|expand|query|string|false|none|
+|pit|query|string(date-time)|false|none|
+|order|query|string|false|none|
+|reverse|query|boolean|false|none|
+|body|body|object|false|none|
 
 #### Detailed descriptions
 
@@ -1086,9 +1084,9 @@ No other parameters can be set when this parameter is set.
 
 #### Enumerated Values
 
-| Parameter | Value     |
-| --------- | --------- |
-| order     | effective |
+|Parameter|Value|
+|---|---|
+|order|effective|
 
 > Example responses
 
@@ -1192,10 +1190,10 @@ No other parameters can be set when this parameter is set.
 
 <h3 id="list-transactions-from-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                                              |
-| ------- | ------------------------------------------------------- | ----------- | ------------------------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2TransactionsCursorResponse](#schemav2transactionscursorresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)                           |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2TransactionsCursorResponse](#schemav2transactionscursorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1247,20 +1245,19 @@ Idempotency-Key: string
 
 <h3 id="create-a-new-transaction-to-a-ledger-parameters">Parameters</h3>
 
-| Name            | In     | Type                                          | Required | Description                                                                                                        |
-| --------------- | ------ | --------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| ledger          | path   | string                                        | true     | Name of the ledger.                                                                                                |
-| dryRun          | query  | boolean                                       | false    | Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker. |
-| Idempotency-Key | header | string                                        | false    | Use an idempotency key                                                                                             |
-| force           | query  | boolean                                       | false    | Disable balance checks when passing postings                                                                       |
-| body            | body   | [V2PostTransaction](#schemav2posttransaction) | true     | The request body must contain at least one of the following objects:                                               |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|Idempotency-Key|header|string|false|Use an idempotency key|
+|force|query|boolean|false|Disable balance checks when passing postings|
+|body|body|[V2PostTransaction](#schemav2posttransaction)|true|The request body must contain at least one of the following objects:|
 
 #### Detailed descriptions
 
 **body**: The request body must contain at least one of the following objects:
-
-- `postings`: suitable for simple transactions
-- `script`: enabling more complex transactions with Numscript
+  - `postings`: suitable for simple transactions
+  - `script`: enabling more complex transactions with Numscript
 
 > Example responses
 
@@ -1356,10 +1353,10 @@ Idempotency-Key: string
 
 <h3 id="create-a-new-transaction-to-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                                            |
-| ------- | ------------------------------------------------------- | ----------- | ----------------------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2CreateTransactionResponse](#schemav2createtransactionresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)                         |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2CreateTransactionResponse](#schemav2createtransactionresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1383,12 +1380,12 @@ Accept: application/json
 
 <h3 id="get-transaction-from-a-ledger-by-its-id-parameters">Parameters</h3>
 
-| Name   | In    | Type              | Required | Description         |
-| ------ | ----- | ----------------- | -------- | ------------------- |
-| ledger | path  | string            | true     | Name of the ledger. |
-| id     | path  | integer(bigint)   | true     | Transaction ID.     |
-| expand | query | string            | false    | none                |
-| pit    | query | string(date-time) | false    | none                |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|id|path|integer(bigint)|true|Transaction ID.|
+|expand|query|string|false|none|
+|pit|query|string(date-time)|false|none|
 
 > Example responses
 
@@ -1484,10 +1481,10 @@ Accept: application/json
 
 <h3 id="get-transaction-from-a-ledger-by-its-id-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                                      |
-| ------- | ------------------------------------------------------- | ----------- | ----------------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2GetTransactionResponse](#schemav2gettransactionresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)                   |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2GetTransactionResponse](#schemav2gettransactionresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1521,13 +1518,13 @@ Idempotency-Key: string
 
 <h3 id="set-the-metadata-of-a-transaction-by-its-id-parameters">Parameters</h3>
 
-| Name            | In     | Type                            | Required | Description                                                                                                        |
-| --------------- | ------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| ledger          | path   | string                          | true     | Name of the ledger.                                                                                                |
-| id              | path   | integer(bigint)                 | true     | Transaction ID.                                                                                                    |
-| dryRun          | query  | boolean                         | false    | Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker. |
-| Idempotency-Key | header | string                          | false    | Use an idempotency key                                                                                             |
-| body            | body   | [V2Metadata](#schemav2metadata) | false    | metadata                                                                                                           |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|id|path|integer(bigint)|true|Transaction ID.|
+|dryRun|query|boolean|false|Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|Idempotency-Key|header|string|false|Use an idempotency key|
+|body|body|[V2Metadata](#schemav2metadata)|false|metadata|
 
 > Example responses
 
@@ -1543,10 +1540,10 @@ Idempotency-Key: string
 
 <h3 id="set-the-metadata-of-a-transaction-by-its-id-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | No Content  | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <h3 id="set-the-metadata-of-a-transaction-by-its-id-responseschema">Response Schema</h3>
 
@@ -1572,13 +1569,13 @@ Accept: application/json
 
 <h3 id="revert-a-ledger-transaction-by-its-id-parameters">Parameters</h3>
 
-| Name            | In    | Type            | Required | Description                                                                                                        |
-| --------------- | ----- | --------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| ledger          | path  | string          | true     | Name of the ledger.                                                                                                |
-| id              | path  | integer(bigint) | true     | Transaction ID.                                                                                                    |
-| force           | query | boolean         | false    | Force revert                                                                                                       |
-| atEffectiveDate | query | boolean         | false    | Revert transaction at effective date of the original tx                                                            |
-| dryRun          | query | boolean         | false    | Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|id|path|integer(bigint)|true|Transaction ID.|
+|force|query|boolean|false|Force revert|
+|atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
+|dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 
 > Example responses
 
@@ -1674,10 +1671,10 @@ Accept: application/json
 
 <h3 id="revert-a-ledger-transaction-by-its-id-responses">Responses</h3>
 
-| Status  | Meaning                                                      | Description | Schema                                                            |
-| ------- | ------------------------------------------------------------ | ----------- | ----------------------------------------------------------------- |
-| 201     | [Created](https://tools.ietf.org/html/rfc7231#section-6.3.2) | OK          | [V2CreateTransactionResponse](#schemav2createtransactionresponse) |
-| default | Default                                                      | Error       | [V2ErrorResponse](#schemav2errorresponse)                         |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|OK|[V2CreateTransactionResponse](#schemav2createtransactionresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1708,12 +1705,12 @@ Accept: application/json
 
 <h3 id="get-the-aggregated-balances-from-selected-accounts-parameters">Parameters</h3>
 
-| Name             | In    | Type              | Required | Description                                  |
-| ---------------- | ----- | ----------------- | -------- | -------------------------------------------- |
-| ledger           | path  | string            | true     | Name of the ledger.                          |
-| pit              | query | string(date-time) | false    | none                                         |
-| useInsertionDate | query | boolean           | false    | Use insertion date instead of effective date |
-| body             | body  | object            | false    | none                                         |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pit|query|string(date-time)|false|none|
+|useInsertionDate|query|boolean|false|Use insertion date instead of effective date|
+|body|body|object|false|none|
 
 > Example responses
 
@@ -1730,10 +1727,10 @@ Accept: application/json
 
 <h3 id="get-the-aggregated-balances-from-selected-accounts-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                                            |
-| ------- | ------------------------------------------------------- | ----------- | ----------------------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2AggregateBalancesResponse](#schemav2aggregatebalancesresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)                         |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2AggregateBalancesResponse](#schemav2aggregatebalancesresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1764,16 +1761,16 @@ Accept: application/json
 
 <h3 id="get-list-of-volumes-with-balances-for-(account/asset)-parameters">Parameters</h3>
 
-| Name          | In    | Type              | Required | Description                                                            |
-| ------------- | ----- | ----------------- | -------- | ---------------------------------------------------------------------- |
-| pageSize      | query | integer(int64)    | false    | The maximum number of results to return per page.                      |
-| cursor        | query | string            | false    | Parameter used in pagination requests. Maximum page size is set to 15. |
-| ledger        | path  | string            | true     | Name of the ledger.                                                    |
-| endTime       | query | string(date-time) | false    | none                                                                   |
-| startTime     | query | string(date-time) | false    | none                                                                   |
-| insertionDate | query | boolean           | false    | Use insertion date instead of effective date                           |
-| groupBy       | query | integer(int64)    | false    | Group volumes and balance by the level of the segment of the address   |
-| body          | body  | object            | false    | none                                                                   |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
+|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|ledger|path|string|true|Name of the ledger.|
+|endTime|query|string(date-time)|false|none|
+|startTime|query|string(date-time)|false|none|
+|insertionDate|query|boolean|false|Use insertion date instead of effective date|
+|groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
+|body|body|object|false|none|
 
 #### Detailed descriptions
 
@@ -1810,10 +1807,10 @@ No other parameters can be set when this parameter is set.
 
 <h3 id="get-list-of-volumes-with-balances-for-(account/asset)-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                                                          |
-| ------- | ------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2VolumesWithBalanceCursorResponse](#schemav2volumeswithbalancecursorresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)                                       |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2VolumesWithBalanceCursorResponse](#schemav2volumeswithbalancecursorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1846,13 +1843,13 @@ List the logs from a ledger, sorted by ID in descending order.
 
 <h3 id="list-the-logs-from-a-ledger-parameters">Parameters</h3>
 
-| Name     | In    | Type              | Required | Description                                                            |
-| -------- | ----- | ----------------- | -------- | ---------------------------------------------------------------------- |
-| ledger   | path  | string            | true     | Name of the ledger.                                                    |
-| pageSize | query | integer(int64)    | false    | The maximum number of results to return per page.                      |
-| cursor   | query | string            | false    | Parameter used in pagination requests. Maximum page size is set to 15. |
-| pit      | query | string(date-time) | false    | none                                                                   |
-| body     | body  | object            | false    | none                                                                   |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
+|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|pit|query|string(date-time)|false|none|
+|body|body|object|false|none|
 
 #### Detailed descriptions
 
@@ -1889,10 +1886,10 @@ No other parameters can be set when this parameter is set.
 
 <h3 id="list-the-logs-from-a-ledger-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema                                              |
-| ------- | ------------------------------------------------------- | ----------- | --------------------------------------------------- |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [V2LogsCursorResponse](#schemav2logscursorresponse) |
-| default | Default                                                 | Error       | [V2ErrorResponse](#schemav2errorresponse)           |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2LogsCursorResponse](#schemav2logscursorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1919,14 +1916,15 @@ Accept: application/json
 
 ```yaml
 string
+
 ```
 
 <h3 id="v2importlogs-parameters">Parameters</h3>
 
-| Name   | In   | Type   | Required | Description         |
-| ------ | ---- | ------ | -------- | ------------------- |
-| ledger | path | string | true     | Name of the ledger. |
-| body   | body | string | false    | none                |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|body|body|string|false|none|
 
 > Example responses
 
@@ -1942,10 +1940,10 @@ string
 
 <h3 id="v2importlogs-responses">Responses</h3>
 
-| Status  | Meaning                                                         | Description | Schema                                    |
-| ------- | --------------------------------------------------------------- | ----------- | ----------------------------------------- |
-| 204     | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | Import OK   | None                                      |
-| default | Default                                                         | Error       | [V2ErrorResponse](#schemav2errorresponse) |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Import OK|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1969,9 +1967,9 @@ Accept: application/octet-stream
 
 <h3 id="export-logs-parameters">Parameters</h3>
 
-| Name   | In   | Type   | Required | Description         |
-| ------ | ---- | ------ | -------- | ------------------- |
-| ledger | path | string | true     | Name of the ledger. |
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
 
 > Example responses
 
@@ -1979,10 +1977,10 @@ Accept: application/octet-stream
 
 <h3 id="export-logs-responses">Responses</h3>
 
-| Status  | Meaning                                                 | Description | Schema |
-| ------- | ------------------------------------------------------- | ----------- | ------ |
-| 200     | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Import OK   | None   |
-| default | Default                                                 | Error       | string |
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Import OK|None|
+|default|Default|Error|string|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -2039,18 +2037,19 @@ Authorization ( Scopes: ledger:write )
     ]
   }
 }
+
 ```
 
 ### Properties
 
-| Name       | Type                            | Required | Restrictions | Description |
-| ---------- | ------------------------------- | -------- | ------------ | ----------- |
-| cursor     | object                          | true     | none         | none        |
-| » pageSize | integer(int64)                  | true     | none         | none        |
-| » hasMore  | boolean                         | true     | none         | none        |
-| » previous | string                          | false    | none         | none        |
-| » next     | string                          | false    | none         | none        |
-| » data     | [[V2Account](#schemav2account)] | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Account](#schemav2account)]|true|none|none|
 
 <h2 id="tocS_V2TransactionsCursorResponse">V2TransactionsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -2153,18 +2152,19 @@ Authorization ( Scopes: ledger:write )
     ]
   }
 }
+
 ```
 
 ### Properties
 
-| Name       | Type                                    | Required | Restrictions | Description |
-| ---------- | --------------------------------------- | -------- | ------------ | ----------- |
-| cursor     | object                                  | true     | none         | none        |
-| » pageSize | integer(int64)                          | true     | none         | none        |
-| » hasMore  | boolean                                 | true     | none         | none        |
-| » previous | string                                  | false    | none         | none        |
-| » next     | string                                  | false    | none         | none        |
-| » data     | [[V2Transaction](#schemav2transaction)] | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Transaction](#schemav2transaction)]|true|none|none|
 
 <h2 id="tocS_V2LogsCursorResponse">V2LogsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -2191,18 +2191,19 @@ Authorization ( Scopes: ledger:write )
     ]
   }
 }
+
 ```
 
 ### Properties
 
-| Name       | Type                    | Required | Restrictions | Description |
-| ---------- | ----------------------- | -------- | ------------ | ----------- |
-| cursor     | object                  | true     | none         | none        |
-| » pageSize | integer(int64)          | true     | none         | none        |
-| » hasMore  | boolean                 | true     | none         | none        |
-| » previous | string                  | false    | none         | none        |
-| » next     | string                  | false    | none         | none        |
-| » data     | [[V2Log](#schemav2log)] | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Log](#schemav2log)]|true|none|none|
 
 <h2 id="tocS_V2AccountResponse">V2AccountResponse</h2>
 <!-- backwards compatibility -->
@@ -2244,13 +2245,14 @@ Authorization ( Scopes: ledger:write )
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                          | Required | Restrictions | Description |
-| ---- | ----------------------------- | -------- | ------------ | ----------- |
-| data | [V2Account](#schemav2account) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Account](#schemav2account)|true|none|none|
 
 <h2 id="tocS_V2AggregateBalancesResponse">V2AggregateBalancesResponse</h2>
 <!-- backwards compatibility -->
@@ -2266,13 +2268,14 @@ Authorization ( Scopes: ledger:write )
     "EUR": 12
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                                        | Required | Restrictions | Description |
-| ---- | ------------------------------------------- | -------- | ------------ | ----------- |
-| data | [V2AssetsBalances](#schemav2assetsbalances) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2AssetsBalances](#schemav2assetsbalances)|true|none|none|
 
 <h2 id="tocS_V2VolumesWithBalanceCursorResponse">V2VolumesWithBalanceCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -2299,18 +2302,19 @@ Authorization ( Scopes: ledger:write )
     ]
   }
 }
+
 ```
 
 ### Properties
 
-| Name       | Type                                                  | Required | Restrictions | Description |
-| ---------- | ----------------------------------------------------- | -------- | ------------ | ----------- |
-| cursor     | object                                                | true     | none         | none        |
-| » pageSize | integer(int64)                                        | true     | none         | none        |
-| » hasMore  | boolean                                               | true     | none         | none        |
-| » previous | string                                                | false    | none         | none        |
-| » next     | string                                                | false    | none         | none        |
-| » data     | [[V2VolumesWithBalance](#schemav2volumeswithbalance)] | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2VolumesWithBalance](#schemav2volumeswithbalance)]|true|none|none|
 
 <h2 id="tocS_V2VolumesWithBalance">V2VolumesWithBalance</h2>
 <!-- backwards compatibility -->
@@ -2327,17 +2331,18 @@ Authorization ( Scopes: ledger:write )
   "output": 0,
   "balance": 0
 }
+
 ```
 
 ### Properties
 
-| Name    | Type            | Required | Restrictions | Description |
-| ------- | --------------- | -------- | ------------ | ----------- |
-| account | string          | true     | none         | none        |
-| asset   | string          | true     | none         | none        |
-| input   | integer(bigint) | true     | none         | none        |
-| output  | integer(bigint) | true     | none         | none        |
-| balance | integer(bigint) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|account|string|true|none|none|
+|asset|string|true|none|none|
+|input|integer(bigint)|true|none|none|
+|output|integer(bigint)|true|none|none|
+|balance|integer(bigint)|true|none|none|
 
 <h2 id="tocS_V2Metadata">V2Metadata</h2>
 <!-- backwards compatibility -->
@@ -2350,13 +2355,14 @@ Authorization ( Scopes: ledger:write )
 {
   "admin": "true"
 }
+
 ```
 
 ### Properties
 
-| Name                     | Type   | Required | Restrictions | Description |
-| ------------------------ | ------ | -------- | ------------ | ----------- |
-| **additionalProperties** | string | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_V2ConfigInfo">V2ConfigInfo</h2>
 <!-- backwards compatibility -->
@@ -2370,14 +2376,15 @@ Authorization ( Scopes: ledger:write )
   "server": "string",
   "version": "string"
 }
+
 ```
 
 ### Properties
 
-| Name    | Type   | Required | Restrictions | Description |
-| ------- | ------ | -------- | ------------ | ----------- |
-| server  | string | true     | none         | none        |
-| version | string | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|server|string|true|none|none|
+|version|string|true|none|none|
 
 <h2 id="tocS_V2Account">V2Account</h2>
 <!-- backwards compatibility -->
@@ -2417,17 +2424,18 @@ Authorization ( Scopes: ledger:write )
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name                       | Type                          | Required | Restrictions | Description |
-| -------------------------- | ----------------------------- | -------- | ------------ | ----------- |
-| address                    | string                        | true     | none         | none        |
-| metadata                   | object                        | true     | none         | none        |
-| » **additionalProperties** | string                        | false    | none         | none        |
-| volumes                    | [V2Volumes](#schemav2volumes) | false    | none         | none        |
-| effectiveVolumes           | [V2Volumes](#schemav2volumes) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|address|string|true|none|none|
+|metadata|object|true|none|none|
+|» **additionalProperties**|string|false|none|none|
+|volumes|[V2Volumes](#schemav2volumes)|false|none|none|
+|effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|none|
 
 <h2 id="tocS_V2AssetsBalances">V2AssetsBalances</h2>
 <!-- backwards compatibility -->
@@ -2441,13 +2449,14 @@ Authorization ( Scopes: ledger:write )
   "USD": 100,
   "EUR": 12
 }
+
 ```
 
 ### Properties
 
-| Name                     | Type            | Required | Restrictions | Description |
-| ------------------------ | --------------- | -------- | ------------ | ----------- |
-| **additionalProperties** | integer(bigint) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|integer(bigint)|false|none|none|
 
 <h2 id="tocS_V2Posting">V2Posting</h2>
 <!-- backwards compatibility -->
@@ -2463,16 +2472,17 @@ Authorization ( Scopes: ledger:write )
   "destination": "users:002",
   "source": "users:001"
 }
+
 ```
 
 ### Properties
 
-| Name        | Type            | Required | Restrictions | Description |
-| ----------- | --------------- | -------- | ------------ | ----------- |
-| amount      | integer(bigint) | true     | none         | none        |
-| asset       | string          | true     | none         | none        |
-| destination | string          | true     | none         | none        |
-| source      | string          | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|amount|integer(bigint)|true|none|none|
+|asset|string|true|none|none|
+|destination|string|true|none|none|
+|source|string|true|none|none|
 
 <h2 id="tocS_V2Transaction">V2Transaction</h2>
 <!-- backwards compatibility -->
@@ -2565,24 +2575,25 @@ Authorization ( Scopes: ledger:write )
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name                       | Type                                              | Required | Restrictions | Description |
-| -------------------------- | ------------------------------------------------- | -------- | ------------ | ----------- |
-| insertedAt                 | string(date-time)                                 | true     | none         | none        |
-| timestamp                  | string(date-time)                                 | true     | none         | none        |
-| postings                   | [[V2Posting](#schemav2posting)]                   | true     | none         | none        |
-| reference                  | string                                            | false    | none         | none        |
-| metadata                   | [V2Metadata](#schemav2metadata)                   | true     | none         | none        |
-| id                         | integer(bigint)                                   | true     | none         | none        |
-| reverted                   | boolean                                           | true     | none         | none        |
-| revertedAt                 | string(date-time)                                 | false    | none         | none        |
-| preCommitVolumes           | [V2AggregatedVolumes](#schemav2aggregatedvolumes) | false    | none         | none        |
-| postCommitVolumes          | [V2AggregatedVolumes](#schemav2aggregatedvolumes) | false    | none         | none        |
-| preCommitEffectiveVolumes  | [V2AggregatedVolumes](#schemav2aggregatedvolumes) | false    | none         | none        |
-| postCommitEffectiveVolumes | [V2AggregatedVolumes](#schemav2aggregatedvolumes) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|insertedAt|string(date-time)|true|none|none|
+|timestamp|string(date-time)|true|none|none|
+|postings|[[V2Posting](#schemav2posting)]|true|none|none|
+|reference|string|false|none|none|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+|id|integer(bigint)|true|none|none|
+|reverted|boolean|true|none|none|
+|revertedAt|string(date-time)|false|none|none|
+|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 
 <h2 id="tocS_V2PostTransaction">V2PostTransaction</h2>
 <!-- backwards compatibility -->
@@ -2613,19 +2624,20 @@ Authorization ( Scopes: ledger:write )
     "admin": "true"
   }
 }
+
 ```
 
 ### Properties
 
-| Name      | Type                            | Required | Restrictions | Description |
-| --------- | ------------------------------- | -------- | ------------ | ----------- |
-| timestamp | string(date-time)               | false    | none         | none        |
-| postings  | [[V2Posting](#schemav2posting)] | false    | none         | none        |
-| script    | object                          | false    | none         | none        |
-| » plain   | string                          | true     | none         | none        |
-| » vars    | object                          | false    | none         | none        |
-| reference | string                          | false    | none         | none        |
-| metadata  | [V2Metadata](#schemav2metadata) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|timestamp|string(date-time)|false|none|none|
+|postings|[[V2Posting](#schemav2posting)]|false|none|none|
+|script|object|false|none|none|
+|» plain|string|true|none|none|
+|» vars|object|false|none|none|
+|reference|string|false|none|none|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -2639,14 +2651,15 @@ Authorization ( Scopes: ledger:write )
   "accounts": 0,
   "transactions": 0
 }
+
 ```
 
 ### Properties
 
-| Name         | Type            | Required | Restrictions | Description |
-| ------------ | --------------- | -------- | ------------ | ----------- |
-| accounts     | integer(int64)  | true     | none         | none        |
-| transactions | integer(bigint) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|accounts|integer(int64)|true|none|none|
+|transactions|integer(bigint)|true|none|none|
 
 <h2 id="tocS_V2Log">V2Log</h2>
 <!-- backwards compatibility -->
@@ -2663,25 +2676,26 @@ Authorization ( Scopes: ledger:write )
   "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
   "date": "2019-08-24T14:15:22Z"
 }
+
 ```
 
 ### Properties
 
-| Name | Type              | Required | Restrictions | Description |
-| ---- | ----------------- | -------- | ------------ | ----------- |
-| id   | integer(bigint)   | true     | none         | none        |
-| type | string            | true     | none         | none        |
-| data | object            | true     | none         | none        |
-| hash | string            | true     | none         | none        |
-| date | string(date-time) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|integer(bigint)|true|none|none|
+|type|string|true|none|none|
+|data|object|true|none|none|
+|hash|string|true|none|none|
+|date|string(date-time)|true|none|none|
 
 #### Enumerated Values
 
-| Property | Value                |
-| -------- | -------------------- |
-| type     | NEW_TRANSACTION      |
-| type     | SET_METADATA         |
-| type     | REVERTED_TRANSACTION |
+|Property|Value|
+|---|---|
+|type|NEW_TRANSACTION|
+|type|SET_METADATA|
+|type|REVERTED_TRANSACTION|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -2776,13 +2790,14 @@ Authorization ( Scopes: ledger:write )
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                                  | Required | Restrictions | Description |
-| ---- | ------------------------------------- | -------- | ------------ | ----------- |
-| data | [V2Transaction](#schemav2transaction) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Transaction](#schemav2transaction)|true|none|none|
 
 <h2 id="tocS_V2RevertTransactionResponse">V2RevertTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -2877,11 +2892,12 @@ Authorization ( Scopes: ledger:write )
     }
   }
 }
+
 ```
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_V2GetTransactionResponse">V2GetTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -2976,13 +2992,14 @@ _None_
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                                  | Required | Restrictions | Description |
-| ---- | ------------------------------------- | -------- | ------------ | ----------- |
-| data | [V2Transaction](#schemav2transaction) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Transaction](#schemav2transaction)|true|none|none|
 
 <h2 id="tocS_V2StatsResponse">V2StatsResponse</h2>
 <!-- backwards compatibility -->
@@ -2998,13 +3015,14 @@ _None_
     "transactions": 0
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                      | Required | Restrictions | Description |
-| ---- | ------------------------- | -------- | ------------ | ----------- |
-| data | [V2Stats](#schemav2stats) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Stats](#schemav2stats)|true|none|none|
 
 <h2 id="tocS_V2ConfigInfoResponse">V2ConfigInfoResponse</h2>
 <!-- backwards compatibility -->
@@ -3018,11 +3036,12 @@ _None_
   "server": "string",
   "version": "string"
 }
+
 ```
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_V2Volume">V2Volume</h2>
 <!-- backwards compatibility -->
@@ -3037,15 +3056,16 @@ _None_
   "output": 20,
   "balance": 80
 }
+
 ```
 
 ### Properties
 
-| Name    | Type            | Required | Restrictions | Description |
-| ------- | --------------- | -------- | ------------ | ----------- |
-| input   | integer(bigint) | true     | none         | none        |
-| output  | integer(bigint) | true     | none         | none        |
-| balance | integer(bigint) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|input|integer(bigint)|true|none|none|
+|output|integer(bigint)|true|none|none|
+|balance|integer(bigint)|false|none|none|
 
 <h2 id="tocS_V2Volumes">V2Volumes</h2>
 <!-- backwards compatibility -->
@@ -3067,13 +3087,14 @@ _None_
     "balance": 90
   }
 }
+
 ```
 
 ### Properties
 
-| Name                     | Type                        | Required | Restrictions | Description |
-| ------------------------ | --------------------------- | -------- | ------------ | ----------- |
-| **additionalProperties** | [V2Volume](#schemav2volume) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2Volume](#schemav2volume)|false|none|none|
 
 <h2 id="tocS_V2AggregatedVolumes">V2AggregatedVolumes</h2>
 <!-- backwards compatibility -->
@@ -3099,13 +3120,14 @@ _None_
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name                     | Type                          | Required | Restrictions | Description |
-| ------------------------ | ----------------------------- | -------- | ------------ | ----------- |
-| **additionalProperties** | [V2Volumes](#schemav2volumes) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2Volumes](#schemav2volumes)|false|none|none|
 
 <h2 id="tocS_V2ErrorResponse">V2ErrorResponse</h2>
 <!-- backwards compatibility -->
@@ -3120,15 +3142,16 @@ _None_
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
   "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
+
 ```
 
 ### Properties
 
-| Name         | Type                                | Required | Restrictions | Description |
-| ------------ | ----------------------------------- | -------- | ------------ | ----------- |
-| errorCode    | [V2ErrorsEnum](#schemav2errorsenum) | true     | none         | none        |
-| errorMessage | string                              | true     | none         | none        |
-| details      | string                              | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|true|none|none|
+|errorMessage|string|true|none|none|
+|details|string|false|none|none|
 
 <h2 id="tocS_V2ErrorsEnum">V2ErrorsEnum</h2>
 <!-- backwards compatibility -->
@@ -3139,34 +3162,35 @@ _None_
 
 ```json
 "VALIDATION"
+
 ```
 
 ### Properties
 
-| Name        | Type   | Required | Restrictions | Description |
-| ----------- | ------ | -------- | ------------ | ----------- |
-| _anonymous_ | string | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
 
 #### Enumerated Values
 
-| Property    | Value               |
-| ----------- | ------------------- |
-| _anonymous_ | INTERNAL            |
-| _anonymous_ | INSUFFICIENT_FUND   |
-| _anonymous_ | VALIDATION          |
-| _anonymous_ | CONFLICT            |
-| _anonymous_ | COMPILATION_FAILED  |
-| _anonymous_ | METADATA_OVERRIDE   |
-| _anonymous_ | NOT_FOUND           |
-| _anonymous_ | REVERT_OCCURRING    |
-| _anonymous_ | ALREADY_REVERT      |
-| _anonymous_ | NO_POSTINGS         |
-| _anonymous_ | LEDGER_NOT_FOUND    |
-| _anonymous_ | IMPORT              |
-| _anonymous_ | TIMEOUT             |
-| _anonymous_ | BULK_SIZE_EXCEEDED  |
-| _anonymous_ | INTERPRETER_PARSE   |
-| _anonymous_ | INTERPRETER_RUNTIME |
+|Property|Value|
+|---|---|
+|*anonymous*|INTERNAL|
+|*anonymous*|INSUFFICIENT_FUND|
+|*anonymous*|VALIDATION|
+|*anonymous*|CONFLICT|
+|*anonymous*|COMPILATION_FAILED|
+|*anonymous*|METADATA_OVERRIDE|
+|*anonymous*|NOT_FOUND|
+|*anonymous*|REVERT_OCCURRING|
+|*anonymous*|ALREADY_REVERT|
+|*anonymous*|NO_POSTINGS|
+|*anonymous*|LEDGER_NOT_FOUND|
+|*anonymous*|IMPORT|
+|*anonymous*|TIMEOUT|
+|*anonymous*|BULK_SIZE_EXCEEDED|
+|*anonymous*|INTERPRETER_PARSE|
+|*anonymous*|INTERPRETER_RUNTIME|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->
@@ -3191,13 +3215,14 @@ _None_
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                                | Required | Restrictions | Description |
-| ---- | ----------------------------------- | -------- | ------------ | ----------- |
-| data | [V2LedgerInfo](#schemav2ledgerinfo) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2LedgerInfo](#schemav2ledgerinfo)|false|none|none|
 
 <h2 id="tocS_V2LedgerInfo">V2LedgerInfo</h2>
 <!-- backwards compatibility -->
@@ -3220,15 +3245,16 @@ _None_
     ]
   }
 }
+
 ```
 
 ### Properties
 
-| Name         | Type                                        | Required | Restrictions | Description |
-| ------------ | ------------------------------------------- | -------- | ------------ | ----------- |
-| name         | string                                      | false    | none         | none        |
-| storage      | object                                      | false    | none         | none        |
-| » migrations | [[V2MigrationInfo](#schemav2migrationinfo)] | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|false|none|none|
+|storage|object|false|none|none|
+|» migrations|[[V2MigrationInfo](#schemav2migrationinfo)]|false|none|none|
 
 <h2 id="tocS_V2MigrationInfo">V2MigrationInfo</h2>
 <!-- backwards compatibility -->
@@ -3244,23 +3270,24 @@ _None_
   "date": "2019-08-24T14:15:22Z",
   "state": "TO DO"
 }
+
 ```
 
 ### Properties
 
-| Name    | Type              | Required | Restrictions | Description |
-| ------- | ----------------- | -------- | ------------ | ----------- |
-| version | integer(int64)    | false    | none         | none        |
-| name    | string            | false    | none         | none        |
-| date    | string(date-time) | false    | none         | none        |
-| state   | string            | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|version|integer(int64)|false|none|none|
+|name|string|false|none|none|
+|date|string(date-time)|false|none|none|
+|state|string|false|none|none|
 
 #### Enumerated Values
 
-| Property | Value |
-| -------- | ----- |
-| state    | TO DO |
-| state    | DONE  |
+|Property|Value|
+|---|---|
+|state|TO DO|
+|state|DONE|
 
 <h2 id="tocS_V2Bulk">V2Bulk</h2>
 <!-- backwards compatibility -->
@@ -3297,13 +3324,14 @@ _None_
     }
   }
 ]
+
 ```
 
 ### Properties
 
-| Name        | Type                                    | Required | Restrictions | Description |
-| ----------- | --------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [[V2BulkElement](#schemav2bulkelement)] | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[[V2BulkElement](#schemav2bulkelement)]|false|none|none|
 
 <h2 id="tocS_V2BaseBulkElement">V2BaseBulkElement</h2>
 <!-- backwards compatibility -->
@@ -3317,14 +3345,15 @@ _None_
   "action": "string",
   "ik": "string"
 }
+
 ```
 
 ### Properties
 
-| Name   | Type   | Required | Restrictions | Description |
-| ------ | ------ | -------- | ------------ | ----------- |
-| action | string | true     | none         | none        |
-| ik     | string | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|action|string|true|none|none|
+|ik|string|false|none|none|
 
 <h2 id="tocS_V2BulkElement">V2BulkElement</h2>
 <!-- backwards compatibility -->
@@ -3359,33 +3388,34 @@ _None_
     }
   }
 }
+
 ```
 
 ### Properties
 
 oneOf
 
-| Name        | Type                                                                    | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementCreateTransaction](#schemav2bulkelementcreatetransaction) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementCreateTransaction](#schemav2bulkelementcreatetransaction)|false|none|none|
 
 xor
 
-| Name        | Type                                                        | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementAddMetadata](#schemav2bulkelementaddmetadata) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementAddMetadata](#schemav2bulkelementaddmetadata)|false|none|none|
 
 xor
 
-| Name        | Type                                                                    | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementRevertTransaction](#schemav2bulkelementreverttransaction) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementRevertTransaction](#schemav2bulkelementreverttransaction)|false|none|none|
 
 xor
 
-| Name        | Type                                                              | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementDeleteMetadata](#schemav2bulkelementdeletemetadata) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementDeleteMetadata](#schemav2bulkelementdeletemetadata)|false|none|none|
 
 <h2 id="tocS_V2BulkElementCreateTransaction">V2BulkElementCreateTransaction</h2>
 <!-- backwards compatibility -->
@@ -3420,22 +3450,23 @@ xor
     }
   }
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                          | Required | Restrictions | Description |
-| ----------- | --------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElement](#schemav2basebulkelement) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElement](#schemav2basebulkelement)|false|none|none|
 
 and
 
-| Name        | Type                                          | Required | Restrictions | Description |
-| ----------- | --------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | object                                        | false    | none         | none        |
-| » data      | [V2PostTransaction](#schemav2posttransaction) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» data|[V2PostTransaction](#schemav2posttransaction)|false|none|none|
 
 <h2 id="tocS_V2TargetId">V2TargetId</h2>
 <!-- backwards compatibility -->
@@ -3446,21 +3477,22 @@ and
 
 ```json
 "string"
+
 ```
 
 ### Properties
 
 oneOf
 
-| Name        | Type   | Required | Restrictions | Description |
-| ----------- | ------ | -------- | ------------ | ----------- |
-| _anonymous_ | string | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
 
 xor
 
-| Name        | Type            | Required | Restrictions | Description |
-| ----------- | --------------- | -------- | ------------ | ----------- |
-| _anonymous_ | integer(bigint) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|integer(bigint)|false|none|none|
 
 <h2 id="tocS_V2TargetType">V2TargetType</h2>
 <!-- backwards compatibility -->
@@ -3471,20 +3503,21 @@ xor
 
 ```json
 "TRANSACTION"
+
 ```
 
 ### Properties
 
-| Name        | Type   | Required | Restrictions | Description |
-| ----------- | ------ | -------- | ------------ | ----------- |
-| _anonymous_ | string | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|none|
 
 #### Enumerated Values
 
-| Property    | Value       |
-| ----------- | ----------- |
-| _anonymous_ | TRANSACTION |
-| _anonymous_ | ACCOUNT     |
+|Property|Value|
+|---|---|
+|*anonymous*|TRANSACTION|
+|*anonymous*|ACCOUNT|
 
 <h2 id="tocS_V2BulkElementAddMetadata">V2BulkElementAddMetadata</h2>
 <!-- backwards compatibility -->
@@ -3506,26 +3539,27 @@ xor
     }
   }
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                          | Required | Restrictions | Description |
-| ----------- | --------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElement](#schemav2basebulkelement) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElement](#schemav2basebulkelement)|false|none|none|
 
 and
 
-| Name                         | Type                                | Required | Restrictions | Description |
-| ---------------------------- | ----------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_                  | object                              | false    | none         | none        |
-| » data                       | object                              | false    | none         | none        |
-| »» targetId                  | [V2TargetId](#schemav2targetid)     | true     | none         | none        |
-| »» targetType                | [V2TargetType](#schemav2targettype) | true     | none         | none        |
-| »» metadata                  | object                              | true     | none         | none        |
-| »»» **additionalProperties** | string                              | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» data|object|false|none|none|
+|»» targetId|[V2TargetId](#schemav2targetid)|true|none|none|
+|»» targetType|[V2TargetType](#schemav2targettype)|true|none|none|
+|»» metadata|object|true|none|none|
+|»»» **additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_V2BulkElementRevertTransaction">V2BulkElementRevertTransaction</h2>
 <!-- backwards compatibility -->
@@ -3544,25 +3578,26 @@ and
     "atEffectiveDate": true
   }
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                          | Required | Restrictions | Description |
-| ----------- | --------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElement](#schemav2basebulkelement) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElement](#schemav2basebulkelement)|false|none|none|
 
 and
 
-| Name               | Type            | Required | Restrictions | Description |
-| ------------------ | --------------- | -------- | ------------ | ----------- |
-| _anonymous_        | object          | false    | none         | none        |
-| » data             | object          | false    | none         | none        |
-| »» id              | integer(bigint) | true     | none         | none        |
-| »» force           | boolean         | false    | none         | none        |
-| »» atEffectiveDate | boolean         | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» data|object|false|none|none|
+|»» id|integer(bigint)|true|none|none|
+|»» force|boolean|false|none|none|
+|»» atEffectiveDate|boolean|false|none|none|
 
 <h2 id="tocS_V2BulkElementDeleteMetadata">V2BulkElementDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -3581,25 +3616,26 @@ and
     "key": "string"
   }
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                          | Required | Restrictions | Description |
-| ----------- | --------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElement](#schemav2basebulkelement) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElement](#schemav2basebulkelement)|false|none|none|
 
 and
 
-| Name          | Type                                | Required | Restrictions | Description |
-| ------------- | ----------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_   | object                              | false    | none         | none        |
-| » data        | object                              | false    | none         | none        |
-| »» targetId   | [V2TargetId](#schemav2targetid)     | true     | none         | none        |
-| »» targetType | [V2TargetType](#schemav2targettype) | true     | none         | none        |
-| »» key        | string                              | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» data|object|false|none|none|
+|»» targetId|[V2TargetId](#schemav2targetid)|true|none|none|
+|»» targetType|[V2TargetType](#schemav2targettype)|true|none|none|
+|»» key|string|true|none|none|
 
 <h2 id="tocS_V2BulkResponse">V2BulkResponse</h2>
 <!-- backwards compatibility -->
@@ -3699,13 +3735,14 @@ and
     }
   ]
 }
+
 ```
 
 ### Properties
 
-| Name | Type                                                | Required | Restrictions | Description |
-| ---- | --------------------------------------------------- | -------- | ------------ | ----------- |
-| data | [[V2BulkElementResult](#schemav2bulkelementresult)] | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|true|none|none|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->
@@ -3801,39 +3838,40 @@ and
     }
   }
 }
+
 ```
 
 ### Properties
 
 oneOf
 
-| Name        | Type                                                                                | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementResultCreateTransaction](#schemav2bulkelementresultcreatetransaction) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementResultCreateTransaction](#schemav2bulkelementresultcreatetransaction)|false|none|none|
 
 xor
 
-| Name        | Type                                                                    | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementResultAddMetadata](#schemav2bulkelementresultaddmetadata) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementResultAddMetadata](#schemav2bulkelementresultaddmetadata)|false|none|none|
 
 xor
 
-| Name        | Type                                                                                | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementResultRevertTransaction](#schemav2bulkelementresultreverttransaction) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementResultRevertTransaction](#schemav2bulkelementresultreverttransaction)|false|none|none|
 
 xor
 
-| Name        | Type                                                                          | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementResultDeleteMetadata](#schemav2bulkelementresultdeletemetadata) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementResultDeleteMetadata](#schemav2bulkelementresultdeletemetadata)|false|none|none|
 
 xor
 
-| Name        | Type                                                        | Required | Restrictions | Description |
-| ----------- | ----------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BulkElementResultError](#schemav2bulkelementresulterror) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BulkElementResultError](#schemav2bulkelementresulterror)|false|none|none|
 
 <h2 id="tocS_V2BaseBulkElementResult">V2BaseBulkElementResult</h2>
 <!-- backwards compatibility -->
@@ -3846,13 +3884,14 @@ xor
 {
   "responseType": "string"
 }
+
 ```
 
 ### Properties
 
-| Name         | Type   | Required | Restrictions | Description |
-| ------------ | ------ | -------- | ------------ | ----------- |
-| responseType | string | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|responseType|string|true|none|none|
 
 <h2 id="tocS_V2BulkElementResultCreateTransaction">V2BulkElementResultCreateTransaction</h2>
 <!-- backwards compatibility -->
@@ -3948,22 +3987,23 @@ xor
     }
   }
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                                      | Required | Restrictions | Description |
-| ----------- | --------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElementResult](#schemav2basebulkelementresult) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElementResult](#schemav2basebulkelementresult)|false|none|none|
 
 and
 
-| Name        | Type                                  | Required | Restrictions | Description |
-| ----------- | ------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | object                                | false    | none         | none        |
-| » data      | [V2Transaction](#schemav2transaction) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» data|[V2Transaction](#schemav2transaction)|true|none|none|
 
 <h2 id="tocS_V2BulkElementResultAddMetadata">V2BulkElementResultAddMetadata</h2>
 <!-- backwards compatibility -->
@@ -3976,11 +4016,12 @@ and
 {
   "responseType": "string"
 }
+
 ```
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_V2BulkElementResultRevertTransaction">V2BulkElementResultRevertTransaction</h2>
 <!-- backwards compatibility -->
@@ -4076,22 +4117,23 @@ _None_
     }
   }
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                                      | Required | Restrictions | Description |
-| ----------- | --------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElementResult](#schemav2basebulkelementresult) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElementResult](#schemav2basebulkelementresult)|false|none|none|
 
 and
 
-| Name        | Type                                  | Required | Restrictions | Description |
-| ----------- | ------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | object                                | false    | none         | none        |
-| » data      | [V2Transaction](#schemav2transaction) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» data|[V2Transaction](#schemav2transaction)|true|none|none|
 
 <h2 id="tocS_V2BulkElementResultDeleteMetadata">V2BulkElementResultDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -4104,11 +4146,12 @@ and
 {
   "responseType": "string"
 }
+
 ```
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_V2BulkElementResultError">V2BulkElementResultError</h2>
 <!-- backwards compatibility -->
@@ -4124,24 +4167,25 @@ _None_
   "errorDescription": "string",
   "errorDetails": "string"
 }
+
 ```
 
 ### Properties
 
 allOf
 
-| Name        | Type                                                      | Required | Restrictions | Description |
-| ----------- | --------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [V2BaseBulkElementResult](#schemav2basebulkelementresult) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2BaseBulkElementResult](#schemav2basebulkelementresult)|false|none|none|
 
 and
 
-| Name               | Type   | Required | Restrictions | Description |
-| ------------------ | ------ | -------- | ------------ | ----------- |
-| _anonymous_        | object | false    | none         | none        |
-| » errorCode        | string | true     | none         | none        |
-| » errorDescription | string | true     | none         | none        |
-| » errorDetails     | string | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» errorCode|string|true|none|none|
+|» errorDescription|string|true|none|none|
+|» errorDetails|string|false|none|none|
 
 <h2 id="tocS_V2CreateLedgerRequest">V2CreateLedgerRequest</h2>
 <!-- backwards compatibility -->
@@ -4161,16 +4205,17 @@ and
     "property2": "string"
   }
 }
+
 ```
 
 ### Properties
 
-| Name                       | Type                            | Required | Restrictions | Description |
-| -------------------------- | ------------------------------- | -------- | ------------ | ----------- |
-| bucket                     | string                          | false    | none         | none        |
-| metadata                   | [V2Metadata](#schemav2metadata) | false    | none         | none        |
-| features                   | object                          | false    | none         | none        |
-| » **additionalProperties** | string                          | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|bucket|string|false|none|none|
+|metadata|[V2Metadata](#schemav2metadata)|false|none|none|
+|features|object|false|none|none|
+|» **additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_V2Ledger">V2Ledger</h2>
 <!-- backwards compatibility -->
@@ -4188,16 +4233,17 @@ and
     "admin": "true"
   }
 }
+
 ```
 
 ### Properties
 
-| Name     | Type                            | Required | Restrictions | Description |
-| -------- | ------------------------------- | -------- | ------------ | ----------- |
-| name     | string                          | true     | none         | none        |
-| addedAt  | string(date-time)               | true     | none         | none        |
-| bucket   | string                          | true     | none         | none        |
-| metadata | [V2Metadata](#schemav2metadata) | false    | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|none|
+|addedAt|string(date-time)|true|none|none|
+|bucket|string|true|none|none|
+|metadata|[V2Metadata](#schemav2metadata)|false|none|none|
 
 <h2 id="tocS_V2LedgerListResponse">V2LedgerListResponse</h2>
 <!-- backwards compatibility -->
@@ -4225,18 +4271,19 @@ and
     ]
   }
 }
+
 ```
 
 ### Properties
 
-| Name       | Type                          | Required | Restrictions | Description |
-| ---------- | ----------------------------- | -------- | ------------ | ----------- |
-| cursor     | object                        | true     | none         | none        |
-| » pageSize | integer(int64)                | true     | none         | none        |
-| » hasMore  | boolean                       | true     | none         | none        |
-| » previous | string                        | false    | none         | none        |
-| » next     | string                        | false    | none         | none        |
-| » data     | [[V2Ledger](#schemav2ledger)] | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Ledger](#schemav2ledger)]|true|none|none|
 
 <h2 id="tocS_V2UpdateLedgerMetadataRequest">V2UpdateLedgerMetadataRequest</h2>
 <!-- backwards compatibility -->
@@ -4249,11 +4296,12 @@ and
 {
   "admin": "true"
 }
+
 ```
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_V2GetLedgerResponse">V2GetLedgerResponse</h2>
 <!-- backwards compatibility -->
@@ -4273,10 +4321,12 @@ _None_
     }
   }
 }
+
 ```
 
 ### Properties
 
-| Name | Type                        | Required | Restrictions | Description |
-| ---- | --------------------------- | -------- | ------------ | ----------- |
-| data | [V2Ledger](#schemav2ledger) | true     | none         | none        |
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Ledger](#schemav2ledger)|true|none|none|
+

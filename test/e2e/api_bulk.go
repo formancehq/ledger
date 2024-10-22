@@ -113,12 +113,6 @@ var _ = Context("Ledger engine tests", func() {
 						Ledger: "default",
 					})
 					Expect(err).To(Succeed())
-
-					tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
-						ID:     big.NewInt(1),
-						Ledger: "default",
-					})
-					Expect(err).To(Succeed())
 					reversedTx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
 						ID:     big.NewInt(2),
 						Ledger: "default",
@@ -142,27 +136,27 @@ var _ = Context("Ledger engine tests", func() {
 						InsertedAt: tx.InsertedAt,
 					}))
 				})
-			})
-			Context("with exceeded batch size", func() {
-				BeforeEach(func() {
-					items = make([]components.V2BulkElement, 0)
-					for i := 0; i < bulkMaxSize+1; i++ {
-						items = append(items, components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
-							Data: &components.V2PostTransaction{
-								Metadata: map[string]string{},
-								Postings: []components.V2Posting{{
-									Amount:      big.NewInt(100),
-									Asset:       "USD/2",
-									Destination: "bank",
-									Source:      "world",
-								}},
-								Timestamp: &now,
-							},
-						}))
-					}
-				})
-				It("should respond with an error", func() {
-					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumBulkSizeExceeded)))
+				Context("with exceeded batch size", func() {
+					BeforeEach(func() {
+						items = make([]components.V2BulkElement, 0)
+						for i := 0; i < bulkMaxSize+1; i++ {
+							items = append(items, components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+								Data: &components.V2PostTransaction{
+									Metadata: map[string]string{},
+									Postings: []components.V2Posting{{
+										Amount:      big.NewInt(100),
+										Asset:       "USD/2",
+										Destination: "bank",
+										Source:      "world",
+									}},
+									Timestamp: &now,
+								},
+							}))
+						}
+					})
+					It("should respond with an error", func() {
+						Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumBulkSizeExceeded)))
+					})
 				})
 			})
 			When("creating a bulk with an error on a ledger", func() {
