@@ -3,7 +3,6 @@ package driver
 import (
 	"context"
 	"errors"
-	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/platform/postgres"

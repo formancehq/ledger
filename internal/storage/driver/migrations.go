@@ -2,9 +2,9 @@ package driver
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"database/sql"
 	"github.com/formancehq/go-libs/v2/time"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -212,7 +212,7 @@ func Migrate(ctx context.Context, db bun.IDB) error {
 }
 
 func detectDowngrades(migrator *migrations.Migrator, ctx context.Context, db bun.IDB) error {
-	lastVersion, err := migrator.GetDBVersion(ctx, db)
+	lastVersion, err := migrator.GetLastVersion(ctx, db)
 	if err != nil {
 		if !errors.Is(err, migrations.ErrMissingVersionTable) {
 			return fmt.Errorf("failed to get last version: %w", err)
@@ -224,8 +224,8 @@ func detectDowngrades(migrator *migrations.Migrator, ctx context.Context, db bun
 			return fmt.Errorf("failed to get all migrations: %w", err)
 		}
 
-		if len(allMigrations) < int(lastVersion) {
-			return newErrRollbackDetected(int(lastVersion), len(allMigrations))
+		if len(allMigrations) < lastVersion {
+			return newErrRollbackDetected(lastVersion, len(allMigrations))
 		}
 	}
 
