@@ -28,13 +28,12 @@ type NumscriptRuntime interface {
 
 type MachineNumscriptRuntimeAdapter struct {
 	program program.Program
-	machine *vm.Machine
 }
 
 func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*NumscriptExecutionResult, error) {
 	store := newVmStoreAdapter(tx)
 
-	d.machine = vm.NewMachine(d.program)
+	machineInstance := vm.NewMachine(d.program)
 
 	// notes(gfyrag): machines modify the map, copy it to keep our original parameters unchanged
 	varsCopy := make(map[string]string)
@@ -42,19 +41,19 @@ func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, var
 		varsCopy[k] = v
 	}
 
-	if err := d.machine.SetVarsFromJSON(varsCopy); err != nil {
+	if err := machineInstance.SetVarsFromJSON(varsCopy); err != nil {
 		return nil, fmt.Errorf("failed to set vars from JSON: %w", err)
 	}
-	err := d.machine.ResolveResources(ctx, store)
+	err := machineInstance.ResolveResources(ctx, store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve resources: %w", err)
 	}
 
-	if err := d.machine.ResolveBalances(ctx, store); err != nil {
+	if err := machineInstance.ResolveBalances(ctx, store); err != nil {
 		return nil, fmt.Errorf("failed to resolve balances: %w", err)
 	}
 
-	if err := d.machine.Execute(); err != nil {
+	if err := machineInstance.Execute(); err != nil {
 		switch {
 		case errors.Is(err, &machine.ErrMetadataOverride{}):
 			errMetadataOverride := &machine.ErrMetadataOverride{}
@@ -66,7 +65,7 @@ func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, var
 	}
 
 	return &NumscriptExecutionResult{
-		Postings: collectionutils.Map(d.machine.Postings, func(from vm.Posting) ledger.Posting {
+		Postings: collectionutils.Map(machineInstance.Postings, func(from vm.Posting) ledger.Posting {
 			return ledger.Posting{
 				Source:      from.Source,
 				Destination: from.Destination,
@@ -74,8 +73,8 @@ func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, var
 				Asset:       from.Asset,
 			}
 		}),
-		Metadata:        d.machine.GetTxMetaJSON(),
-		AccountMetadata: d.machine.GetAccountsMetaJSON(),
+		Metadata:        machineInstance.GetTxMetaJSON(),
+		AccountMetadata: machineInstance.GetAccountsMetaJSON(),
 	}, nil
 }
 
