@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -32,7 +33,7 @@ func TestTransactionsRead(t *testing.T) {
 		GetTransaction(gomock.Any(), query).
 		Return(&tx, nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0?pit="+now.Format(time.RFC3339Nano), nil)
 	rec := httptest.NewRecorder()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -91,7 +92,7 @@ func TestLedgersCreate(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, false)
-			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 			name := uuid.NewString()
 

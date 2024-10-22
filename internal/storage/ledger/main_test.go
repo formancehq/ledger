@@ -9,6 +9,7 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
@@ -43,7 +44,7 @@ func TestMain(m *testing.M) {
 				require.NoError(t, err)
 
 				bunDB := bun.NewDB(db, pgdialect.New())
-				if testing.Verbose() {
+				if os.Getenv("DEBUG") == "true" {
 					bunDB.AddQueryHook(bundebug.NewQueryHook())
 				}
 
@@ -73,7 +74,7 @@ func newLedgerStore(t T) *ledgerstore.Store {
 	pgDatabase := srv.GetValue().NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	if testing.Verbose() {
+	if os.Getenv("DEBUG") == "true" {
 		hooks = append(hooks, bundebug.NewQueryHook())
 	}
 

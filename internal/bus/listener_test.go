@@ -2,6 +2,7 @@ package bus
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestMonitor(t *testing.T) {
 		gochannel.Config{
 			BlockPublishUntilSubscriberAck: true,
 		},
-		watermill.NewStdLogger(testing.Verbose(), testing.Verbose()),
+		watermill.NewStdLogger(os.Getenv("DEBUG") == "true", os.Getenv("DEBUG") == "true"),
 	)
 	messages, err := pubSub.Subscribe(context.Background(), "testing")
 	require.NoError(t, err)

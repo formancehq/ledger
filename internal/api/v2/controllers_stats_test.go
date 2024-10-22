@@ -3,6 +3,7 @@ package v2
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -16,7 +17,7 @@ func TestStats(t *testing.T) {
 	t.Parallel()
 
 	systemController, ledgerController := newTestingSystemController(t, true)
-	router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 	expectedStats := ledgercontroller.Stats{
 		Transactions: 10,

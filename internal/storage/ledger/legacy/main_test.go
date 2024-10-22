@@ -11,6 +11,7 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"go.opentelemetry.io/otel/trace/noop"
+	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
@@ -56,7 +57,7 @@ func newLedgerStore(t T) *testStore {
 	pgDatabase := srv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	if testing.Verbose() {
+	if os.Getenv("DEBUG") == "true" {
 		hooks = append(hooks, bundebug.NewQueryHook())
 	}
 

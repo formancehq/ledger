@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"errors"
@@ -61,7 +62,7 @@ func TestLogsExport(t *testing.T) {
 					return nil
 				})
 
-			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/logs/export", nil)
 			rec := httptest.NewRecorder()

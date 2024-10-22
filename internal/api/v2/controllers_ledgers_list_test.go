@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"errors"
@@ -93,7 +94,7 @@ func TestListLedgers(t *testing.T) {
 					}, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req = req.WithContext(ctx)

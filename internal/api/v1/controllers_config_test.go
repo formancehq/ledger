@@ -3,6 +3,7 @@ package v1
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -20,7 +21,7 @@ func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, false)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 	systemController.
 		EXPECT().
