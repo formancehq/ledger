@@ -16,29 +16,27 @@ type DefaultStoreAdapter struct {
 	*Store
 }
 
-func (d *DefaultStoreAdapter) WithTX(ctx context.Context, opts *sql.TxOptions, f func(ledgercontroller.TX) (bool, error)) error {
-	if opts == nil {
-		opts = &sql.TxOptions{}
-	}
+func (d *DefaultStoreAdapter) IsUpToDate(ctx context.Context) (bool, error) {
+	return d.HasMinimalVersion(ctx)
+}
 
-	tx, err := d.GetDB().BeginTx(ctx, opts)
+func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) (ledgercontroller.Store, error) {
+	store, err := d.Store.BeginTX(ctx, opts)
 	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if commit, err := f(&TX{
-		Store: New(tx, d.bucket, d.ledger),
-		sqlTX: tx,
-	}); err != nil {
-		return err
-	} else if commit {
-		return tx.Commit()
+		return nil, err
 	}
 
-	return nil
+	return &DefaultStoreAdapter{
+		Store: store,
+	}, nil
+}
+
+func (d *DefaultStoreAdapter) Commit() error {
+	return d.Store.Commit()
+}
+
+func (d *DefaultStoreAdapter) Rollback() error {
+	return d.Store.Rollback()
 }
 
 func NewDefaultStoreAdapter(store *Store) *DefaultStoreAdapter {
