@@ -280,7 +280,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```go
 type Configuration struct {
     Bucket   string            `json:"bucket" bun:"bucket,type:varchar(255)"`
-    Metadata metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb"`
+    Metadata metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,nullzero"`
     Features FeatureSet        `json:"features" bun:"features,type:jsonb"`
 }
 ```

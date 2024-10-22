@@ -202,6 +202,18 @@ func GetMigrator() *migrations.Migrator {
 				})
 			},
 		},
+		migrations.Migration{
+			Name: "set default metadata on ledgers",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, `
+						alter table _system.ledgers
+						alter column metadata set default '{}'::jsonb;
+					`)
+					return err
+				})
+			},
+		},
 	)
 
 	return migrator
