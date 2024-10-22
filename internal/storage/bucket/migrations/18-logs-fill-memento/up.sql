@@ -1,9 +1,9 @@
-set search_path = '{{.Bucket}}';
-
 do $$
 	declare
 		_batch_size integer := 30;
 	begin
+		set search_path = '{{.Bucket}}';
+
 		loop
 			with _outdated_logs as (
 				select seq
@@ -17,9 +17,12 @@ do $$
 			where logs.seq in (_outdated_logs.seq);
 
 			exit when not found;
+
+			commit ;
 		end loop;
+
+		alter table logs
+		alter column memento set not null;
 	end
 $$;
 
-alter table logs
-alter column memento set not null;

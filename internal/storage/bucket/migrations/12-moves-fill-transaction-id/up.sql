@@ -1,9 +1,9 @@
-set search_path = '{{.Bucket}}';
-
 do $$
 	declare
 		_batch_size integer := 30;
 	begin
+		set search_path = '{{ .Bucket }}';
+		
 		loop
 			with _outdated_moves as (
 				select *
@@ -21,9 +21,13 @@ do $$
 			where moves.seq in (_outdated_moves.seq);
 
 			exit when not found;
-		end loop;
-	end
-$$;
 
-alter table moves
-alter column transactions_id set not null;
+			raise info 'commit batch';
+			commit ;
+		end loop;
+
+		alter table moves
+		alter column transactions_id set not null;
+	end
+$$
+language plpgsql;

@@ -1,9 +1,9 @@
-set search_path = '{{.Bucket}}';
-
 do $$
 	declare
 		_batch_size integer := 30;
 	begin
+		set search_path = '{{ .Bucket }}';
+
 		loop
 			with _outdated_transactions as (
 				select id
@@ -37,8 +37,8 @@ do $$
 
 			exit when not found;
 		end loop;
+		
+		alter table transactions
+		alter column post_commit_volumes set not null;
 	end
 $$;
-
-alter table transactions
-alter column post_commit_volumes set not null ;

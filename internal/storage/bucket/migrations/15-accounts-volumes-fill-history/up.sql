@@ -1,9 +1,9 @@
-set search_path = '{{.Bucket}}';
-
 do $$
 	declare
 		_missing record;
 	begin
+		set search_path = '{{ .Bucket }}';
+
 		loop
 			select distinct on (ledger, accounts_address, asset)
 				ledger,
@@ -35,6 +35,8 @@ do $$
 			(_missing.post_commit_volumes).outputs
 			)
 			on conflict do nothing; -- can be inserted by a concurrent transaction
+
+			commit;
 		end loop;
 	end
 $$;

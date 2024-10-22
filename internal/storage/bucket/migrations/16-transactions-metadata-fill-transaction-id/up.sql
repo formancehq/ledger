@@ -1,9 +1,10 @@
-set search_path = '{{.Bucket}}';
 
 do $$
 	declare
 		_batch_size integer := 30;
 	begin
+		set search_path = '{{.Bucket}}';
+
 		loop
 			with _outdated_transactions_metadata as (
 				select seq
@@ -21,9 +22,12 @@ do $$
 			where transactions_metadata.seq in (_outdated_transactions_metadata.seq);
 
 			exit when not found;
+
+			commit ;
 		end loop;
+
+		alter table transactions_metadata
+		alter column transactions_id set not null ;
 	end
 $$;
 
-alter table transactions_metadata
-alter column transactions_id set not null ;

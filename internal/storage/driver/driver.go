@@ -34,37 +34,6 @@ type Driver struct {
 	meter  metric.Meter
 }
 
-func (d *Driver) createLedgerStore(ctx context.Context, db bun.IDB, l *ledger.Ledger) (*ledgerstore.Store, error) {
-
-	b := bucket.New(d.db, l.Bucket)
-	if err := b.Migrate(ctx, d.tracer); err != nil {
-		return nil, fmt.Errorf("migrating bucket: %w", err)
-	}
-
-	_, err := db.NewInsert().
-		Model(l).
-		Returning("id, added_at").
-		Exec(ctx)
-	if err != nil {
-		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return nil, systemcontroller.ErrLedgerAlreadyExists
-		}
-		return nil, postgres.ResolveError(err)
-	}
-
-	if err := b.AddLedger(ctx, *l, d.db); err != nil {
-		return nil, fmt.Errorf("adding ledger to bucket: %w", err)
-	}
-
-	return ledgerstore.New(
-		d.db,
-		b,
-		*l,
-		ledgerstore.WithMeter(d.meter),
-		ledgerstore.WithTracer(d.tracer),
-	), nil
-}
-
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
 
 	if l.Metadata == nil {

@@ -1,9 +1,10 @@
-set search_path = '{{.Bucket}}';
 
 do $$
 	declare
 		_batch_size integer := 30;
 	begin
+		set search_path = '{{.Bucket}}';
+
 		loop
 			with _outdated_accounts_metadata as (
 				select seq
@@ -21,9 +22,12 @@ do $$
 			where accounts_metadata.seq in (_outdated_accounts_metadata.seq);
 
 			exit when not found;
+
+			commit ;
 		end loop;
+
+		alter table accounts_metadata
+		alter column accounts_address set not null ;
 	end
 $$;
 
-alter table accounts_metadata
-alter column accounts_address set not null ;
