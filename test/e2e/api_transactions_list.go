@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
@@ -23,7 +22,7 @@ import (
 
 var _ = Context("Ledger transactions list API tests", func() {
 	var (
-		db  = pgtesting.UsePostgresDatabase(pgServer)
+		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
 	)
 

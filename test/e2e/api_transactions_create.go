@@ -5,7 +5,6 @@ package test_suite
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -24,7 +23,7 @@ import (
 
 var _ = Context("Ledger accounts list API tests", func() {
 	var (
-		db  = pgtesting.UsePostgresDatabase(pgServer)
+		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
 	)
 

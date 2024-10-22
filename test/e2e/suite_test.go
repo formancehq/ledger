@@ -3,8 +3,15 @@
 package test_suite
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 	"os"
 	"testing"
 
@@ -27,6 +34,8 @@ var (
 	natsServer = NewDeferred[*natstesting.NatsServer]()
 	debug      = os.Getenv("DEBUG") == "true"
 	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false)
+
+	DBTemplate = "template1"
 )
 
 type ParallelExecutionContext struct {
@@ -47,6 +56,20 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			WithPGCrypto(),
 		)
 		By("Postgres address: " + ret.GetDSN())
+
+		db, err := bunconnect.OpenSQLDB(context.Background(), bunconnect.ConnectionOptions{
+			DatabaseSourceName: ret.GetDatabaseDSN(DBTemplate),
+		})
+		require.NoError(GinkgoT(), err)
+
+		err = driver.Migrate(context.Background(), db)
+		require.NoError(GinkgoT(), err)
+
+		// Initialize the _default bucket on the default database
+		// This way, we will be able to clone this database to speed up the tests
+		err = bucket.Migrate(context.Background(), noop.Tracer{}, db, ledger.DefaultBucket)
+		require.NoError(GinkgoT(), err)
+
 		return ret
 	})
 	natsServer.LoadAsync(func() *natstesting.NatsServer {
@@ -81,3 +104,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	pgServer.SetValue(pec.PostgresServer)
 	natsServer.SetValue(pec.NatsServer)
 })
+
+func UseTemplatedDatabase() *Deferred[*Database] {
+	return UsePostgresDatabase(pgServer, CreateWithTemplate(DBTemplate))
+}
