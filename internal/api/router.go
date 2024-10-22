@@ -1,11 +1,11 @@
 package api
 
 import (
+	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
-
-	"github.com/formancehq/ledger/internal/controller/system"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/go-chi/chi/v5/middleware"
@@ -53,11 +53,19 @@ func NewRouter(
 		common.LogID(),
 	)
 
+	commonMiddlewares := []func(http.Handler) http.Handler{
+		middleware.RequestLogger(api.NewLogFormatter()),
+	}
+	if routerOptions.timeoutConfiguration.Timeout != 0 {
+		commonMiddlewares = append(commonMiddlewares, common.Timeout(routerOptions.timeoutConfiguration))
+	}
+
 	v2Router := v2.NewRouter(
 		systemController,
 		authenticator,
 		debug,
 		v2.WithTracer(routerOptions.tracer),
+		v2.WithMiddlewares(commonMiddlewares...),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -69,13 +77,15 @@ func NewRouter(
 		version,
 		debug,
 		v1.WithTracer(routerOptions.tracer),
+		v1.WithMiddlewares(commonMiddlewares...),
 	))
 
 	return mux
 }
 
 type routerOptions struct {
-	tracer trace.Tracer
+	tracer               trace.Tracer
+	timeoutConfiguration common.TimeoutConfiguration
 }
 
 type RouterOption func(ro *routerOptions)
@@ -83,6 +93,12 @@ type RouterOption func(ro *routerOptions)
 func WithTracer(tracer trace.Tracer) RouterOption {
 	return func(ro *routerOptions) {
 		ro.tracer = tracer
+	}
+}
+
+func WithTimeout(timeoutConfiguration common.TimeoutConfiguration) RouterOption {
+	return func(ro *routerOptions) {
+		ro.timeoutConfiguration = timeoutConfiguration
 	}
 }
 

@@ -22,6 +22,7 @@ const (
 	V2ErrorsEnumNoPostings        V2ErrorsEnum = "NO_POSTINGS"
 	V2ErrorsEnumLedgerNotFound    V2ErrorsEnum = "LEDGER_NOT_FOUND"
 	V2ErrorsEnumImport            V2ErrorsEnum = "IMPORT"
+	V2ErrorsEnumTimeout           V2ErrorsEnum = "TIMEOUT"
 )
 
 func (e V2ErrorsEnum) ToPointer() *V2ErrorsEnum {
@@ -56,6 +57,8 @@ func (e *V2ErrorsEnum) UnmarshalJSON(data []byte) error {
 	case "LEDGER_NOT_FOUND":
 		fallthrough
 	case "IMPORT":
+		fallthrough
+	case "TIMEOUT":
 		*e = V2ErrorsEnum(v)
 		return nil
 	default:

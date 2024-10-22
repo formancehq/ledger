@@ -17,3 +17,4 @@
 | `V2ErrorsEnumNoPostings`        | NO_POSTINGS                     |
 | `V2ErrorsEnumLedgerNotFound`    | LEDGER_NOT_FOUND                |
 | `V2ErrorsEnumImport`            | IMPORT                          |
+| `V2ErrorsEnumTimeout`           | TIMEOUT                         |
