@@ -166,7 +166,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) project(
 
 	return store.db.NewSelect().
 		TableExpr("(?) values", sumVolumesForAsset).
-		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
 }
 
 var _ repositoryHandler[ledgercontroller.GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}

@@ -39,10 +39,6 @@ type Driver struct {
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
 
-	if l.Metadata == nil {
-		l.Metadata = metadata.Metadata{}
-	}
-
 	b := d.bucketFactory.Create(l.Bucket)
 	isInitialized, err := b.IsInitialized(ctx)
 	if err != nil {
