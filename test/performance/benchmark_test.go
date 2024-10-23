@@ -110,7 +110,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				env := envFactory.Create(ctx, b, l)
 				b.Logf("ledger: %s/%s", l.Bucket, l.Name)
 
-				b.SetParallelism(int(parallelism))
+				b.SetParallelism(int(parallelismFlag))
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
 
