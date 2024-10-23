@@ -30,9 +30,25 @@ func (fn TransactionProviderFn) Get(iteration int) (string, map[string]string) {
 	return fn(iteration)
 }
 
+type TransactionProviderFactory interface {
+	Create() TransactionProvider
+}
+
+type TransactionProviderFactoryFn func() TransactionProvider
+
+func (fn TransactionProviderFactoryFn) Create() TransactionProvider {
+	return fn()
+}
+
+type TransparentTransactionProviderFactory TransactionProviderFn
+
+func (f TransparentTransactionProviderFactory) Create() TransactionProvider {
+	return TransactionProviderFn(f)
+}
+
 type Benchmark struct {
 	EnvFactory EnvFactory
-	Scenarios  map[string]TransactionProvider
+	Scenarios  map[string]TransactionProviderFactory
 
 	reports map[string]map[string]*report
 	b       *testing.B
@@ -71,10 +87,13 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				b.SetParallelism(int(parallelism))
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
+
+					transactionProvider := benchmark.Scenarios[scenario].Create()
+
 					for pb.Next() {
 						iteration := int(cpt.Add(1))
 
-						script, vars := benchmark.Scenarios[scenario].Get(iteration)
+						script, vars := transactionProvider.Get(iteration)
 						now := time.Now()
 
 						_, err := benchmark.createTransaction(ctx, env.Client(), l, script, vars)
@@ -173,7 +192,7 @@ func (benchmark *Benchmark) createTransaction(
 	}, nil
 }
 
-func New(b *testing.B, envFactory EnvFactory, scenarios map[string]TransactionProvider) *Benchmark {
+func New(b *testing.B, envFactory EnvFactory, scenarios map[string]TransactionProviderFactory) *Benchmark {
 	return &Benchmark{
 		b:          b,
 		EnvFactory: envFactory,

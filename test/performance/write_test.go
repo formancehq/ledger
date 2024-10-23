@@ -12,11 +12,11 @@ import (
 	"testing"
 )
 
-var scripts = map[string]TransactionProvider{
-	"world->bank":         TransactionProviderFn(worldToBank),
-	"world->any":          TransactionProviderFn(worldToAny),
-	"any(unbounded)->any": TransactionProviderFn(anyUnboundedToAny),
-	"any(bounded)->any":   TransactionProviderFn(anyBoundedToAny),
+var scripts = map[string]TransactionProviderFactory{
+	"world->bank":         TransparentTransactionProviderFactory(worldToBank),
+	"world->any":          TransparentTransactionProviderFactory(worldToAny),
+	"any(unbounded)->any": TransparentTransactionProviderFactory(anyUnboundedToAny),
+	"any(bounded)->any":   TransparentTransactionProviderFactory(anyBoundedToAny),
 }
 
 func worldToBank(_ int) (string, map[string]string) {
