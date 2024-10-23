@@ -51,27 +51,6 @@ func init() {
 //go:embed scripts
 var scriptsDir embed.FS
 
-// Init default scripts
-func init() {
-	entries, err := scriptsDir.ReadDir("scripts")
-	if err != nil {
-		panic(err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		script, err := scriptsDir.ReadFile(filepath.Join("scripts", entry.Name()))
-		if err != nil {
-			panic(err)
-		}
-
-		scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSTransactionProviderFactory(string(script))
-	}
-}
-
 func getHttpClient(authUrl string) *http.Client {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -110,7 +89,22 @@ func BenchmarkWrite(b *testing.B) {
 		envFactory = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURLFlag), ledgerURLFlag)
 	}
 
-	testing.Verbose()
+	// Load default scripts
+	if len(scripts) == 0 {
+		entries, err := scriptsDir.ReadDir("scripts")
+		require.NoError(b, err)
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			script, err := scriptsDir.ReadFile(filepath.Join("scripts", entry.Name()))
+			require.NoError(b, err)
+
+			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSTransactionProviderFactory(string(script))
+		}
+	}
 
 	if envFactory == nil {
 		b.Errorf("no env selected, you need to specify either --stack.url or --ledger.url\n")
