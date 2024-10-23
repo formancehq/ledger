@@ -5,11 +5,14 @@ IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
 
 FROM core+base-image
 
-CACHE --persist --sharing=shared /go
-CACHE --persist --sharing=shared /root/.cache/golangci-lint
+CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
+CACHE --sharing=shared --id golangci-cache /root/.cache/golangci-lint
+CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
 sources:
     FROM core+builder-image
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
     WORKDIR /src/pkg/client
     COPY pkg/client/go.mod pkg/client/go.sum ./
     RUN go mod download
@@ -22,6 +25,8 @@ sources:
 
 generate:
     FROM core+builder-image
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
     RUN apk update && apk add openjdk11
     RUN go install go.uber.org/mock/mockgen@v0.4.0
     RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
@@ -34,9 +39,10 @@ generate:
 
 compile:
     FROM +sources
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
     WORKDIR /src
     ARG VERSION=latest
-    RUN go build
     RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
         -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
         -X ${GIT_PATH}/cmd.Commit=${EARTHLY_BUILD_SHA}"
@@ -53,6 +59,8 @@ build-image:
 
 tests:
     FROM +tidy
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
     COPY --dir --pass-args (+generate/*) .
 
@@ -107,7 +115,12 @@ deploy-staging:
 lint:
     #todo: get config from core
     FROM +tidy
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
+    CACHE --id golangci-cache /root/.cache/golangci-lint
+
     RUN golangci-lint run --fix --build-tags it --timeout 5m
+
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
@@ -176,6 +189,8 @@ openapi-markdown:
 
 tidy:
     FROM +sources
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
     WORKDIR /src
     COPY --dir test .
     RUN go mod tidy
@@ -211,5 +226,9 @@ export-database-schema:
 
 export-docs-events:
     FROM +tidy
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
+
     RUN go run tools/docs/events/main.go --write-dir docs/events
+
     SAVE ARTIFACT docs/events AS LOCAL docs/events
