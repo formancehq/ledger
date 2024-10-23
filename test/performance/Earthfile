@@ -5,7 +5,7 @@ IMPORT github.com/formancehq/earthly:tags/v0.16.2 AS core
 run:
     LOCALLY
     ARG args=""
-    RUN go test -bench="Write" -run ^$ -tags it -report.file ./report/report.json -timeout 60m $args
+    RUN go test -bench="Write" -run ^$ -tags it,local -report.file ./report/report.json -timeout 60m $args
 
 generate-graphs:
     FROM core+base-image

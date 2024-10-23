@@ -5,10 +5,7 @@ The benchmarks also test the minimal set of features and the full set of feature
 
 Refer to [features](../../CONTRIBUTING.md/#features) for more information about features.
 
-Three types of script are actually tested:
-* world->bank : A transaction from `@world` to `@bank`
-* world->any : A transaction from `@world` to `@dst:<iteration>`
-* any(unbounded)->any : A transaction from `@src:<iteration>` to `@dst:<iteration>`
+Scripts can be found in directory [scripts](./scripts).
 
 ## Run locally
 
