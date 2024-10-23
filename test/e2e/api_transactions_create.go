@@ -23,10 +23,6 @@ import (
 )
 
 var _ = Context("Ledger accounts list API tests", func() {
-	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
-	)
 	for _, data := range []struct {
 		description      string
 		numscriptRewrite bool
@@ -36,10 +32,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 	} {
 		Context(data.description, func() {
 			var (
-				db  = pgtesting.UsePostgresDatabase(pgServer)
+				db  = UseTemplatedDatabase()
 				ctx = logging.TestingContext()
 			)
-
 			testServer := NewTestServer(func() Configuration {
 				return Configuration{
 					PostgresConfiguration:        db.GetValue().ConnectionOptions(),

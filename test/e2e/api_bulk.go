@@ -18,11 +18,6 @@ import (
 )
 
 var _ = Context("Ledger engine tests", func() {
-	var (
-		db          = UseTemplatedDatabase()
-		ctx         = logging.TestingContext()
-		bulkMaxSize = 5
-	)
 
 	for _, data := range []struct {
 		description      string
@@ -34,7 +29,7 @@ var _ = Context("Ledger engine tests", func() {
 
 		Context(data.description, func() {
 			var (
-				db          = pgtesting.UsePostgresDatabase(pgServer)
+				db          = UseTemplatedDatabase()
 				ctx         = logging.TestingContext()
 				bulkMaxSize = 5
 			)
