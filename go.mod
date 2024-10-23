@@ -13,6 +13,7 @@ require (
 	github.com/alitto/pond v1.9.2
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
+	github.com/dop251/goja v0.0.0-20241009100908-5f46f2705ca3
 	github.com/formancehq/go-libs/v2 v2.0.1-0.20241023163904-e440de7907c7
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.1.0
@@ -77,6 +78,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/containerd/continuity v0.4.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
 	github.com/docker/cli v27.3.1+incompatible // indirect
 	github.com/docker/docker v27.3.1+incompatible // indirect
@@ -94,6 +96,7 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect

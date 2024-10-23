@@ -3,71 +3,40 @@
 package performance_test
 
 import (
+	"embed"
 	"encoding/json"
-	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-var scripts = map[string]TransactionProviderFactory{
-	"world->bank":         TransparentTransactionProviderFactory(worldToBank),
-	"world->any":          TransparentTransactionProviderFactory(worldToAny),
-	"any(unbounded)->any": TransparentTransactionProviderFactory(anyUnboundedToAny),
-	"any(bounded)->any":   TransparentTransactionProviderFactory(anyBoundedToAny),
-}
+var scripts = map[string]TransactionProviderFactory{}
 
-func worldToBank(_ int) (string, map[string]string) {
-	return `
-send [USD/2 100] (
-	source = @world
-	destination = @bank
-)`, nil
-}
+//go:embed scripts
+var scriptsDir embed.FS
 
-func worldToAny(id int) (string, map[string]string) {
-	return `
-vars {
-	account $destination
-}
-send [USD/2 100] (
-	source = @world
-	destination = $destination
-)`, map[string]string{
-			"destination": fmt.Sprintf("dst:%d", id),
+// Init default scripts
+func init() {
+	entries, err := scriptsDir.ReadDir("scripts")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
-}
 
-func anyUnboundedToAny(id int) (string, map[string]string) {
-	return `
-vars {
-	account $source
-	account $destination
-}
-send [USD/2 100] (
-	source = $source allowing unbounded overdraft
-	destination = $destination
-)`, map[string]string{
-			"source":      fmt.Sprintf("src:%d", id),
-			"destination": fmt.Sprintf("dst:%d", id),
+		script, err := scriptsDir.ReadFile(filepath.Join("scripts", entry.Name()))
+		if err != nil {
+			panic(err)
 		}
-}
 
-func anyBoundedToAny(id int) (string, map[string]string) {
-	return fmt.Sprintf(`
-vars {
-	account $source
-	account $destination
-}
-send [USD/2 100] (
-	source = $source allowing overdraft up to [USD/2 %d]
-	destination = $destination
-)`, (id+1)*100), map[string]string{
-			"source":      fmt.Sprintf("src:%d", id),
-			"destination": fmt.Sprintf("dst:%d", id),
-		}
+		scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSTransactionProviderFactory(string(script))
+	}
 }
 
 func BenchmarkWrite(b *testing.B) {

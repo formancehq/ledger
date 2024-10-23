@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/dop251/goja"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/uuid"
@@ -31,19 +32,44 @@ func (fn TransactionProviderFn) Get(iteration int) (string, map[string]string) {
 }
 
 type TransactionProviderFactory interface {
-	Create() TransactionProvider
+	Create() (TransactionProvider, error)
 }
 
-type TransactionProviderFactoryFn func() TransactionProvider
+type TransactionProviderFactoryFn func() (TransactionProvider, error)
 
-func (fn TransactionProviderFactoryFn) Create() TransactionProvider {
+func (fn TransactionProviderFactoryFn) Create() (TransactionProvider, error) {
 	return fn()
 }
 
-type TransparentTransactionProviderFactory TransactionProviderFn
+func NewJSTransactionProviderFactory(script string) TransactionProviderFactoryFn {
+	return func() (TransactionProvider, error) {
+		runtime := goja.New()
+		_, err := runtime.RunString(script)
+		if err != nil {
+			return nil, err
+		}
+		runtime.SetFieldNameMapper(goja.TagFieldNameMapper("json", true))
+		err = runtime.Set("uuid", uuid.NewString)
+		if err != nil {
+			return nil, err
+		}
 
-func (f TransparentTransactionProviderFactory) Create() TransactionProvider {
-	return TransactionProviderFn(f)
+		type Result struct {
+			Script    string            `json:"script"`
+			Variables map[string]string `json:"variables"`
+		}
+
+		var next func(int) Result
+		err = runtime.ExportTo(runtime.Get("next"), &next)
+		if err != nil {
+			panic(err)
+		}
+
+		return TransactionProviderFn(func(iteration int) (string, map[string]string) {
+			ret := next(iteration)
+			return ret.Script, ret.Variables
+		}), nil
+	}
 }
 
 type Benchmark struct {
@@ -88,7 +114,8 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				b.ResetTimer()
 				b.RunParallel(func(pb *testing.PB) {
 
-					transactionProvider := benchmark.Scenarios[scenario].Create()
+					transactionProvider, err := benchmark.Scenarios[scenario].Create()
+					require.NoError(b, err)
 
 					for pb.Next() {
 						iteration := int(cpt.Add(1))
