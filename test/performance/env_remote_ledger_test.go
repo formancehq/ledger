@@ -36,7 +36,7 @@ func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledge
 	})
 	require.NoError(b, err)
 
-	return NewRemoteLedgerEnv(client, ledgerURL, ledger)
+	return NewRemoteLedgerEnv(client, ledgerURLFlag, ledger)
 }
 
 var _ EnvFactory = (*RemoteLedgerEnvFactory)(nil)
