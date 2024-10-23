@@ -87,10 +87,10 @@ tests:
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
         WITH DOCKER --pull=postgres:15-alpine
-            RUN ginkgo -r -p $goFlags
+            RUN go test $goFlags ./...
         END
     ELSE
-        RUN ginkgo -r -p $goFlags
+        RUN go test $goFlags ./...
     END
     IF [ "$coverage" = "true" ]
         # as special case, exclude files suffixed by debug.go
