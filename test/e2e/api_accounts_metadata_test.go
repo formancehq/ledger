@@ -29,7 +29,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 	})
 	var events chan *nats.Msg
 	BeforeEach(func() {
-		events = testServer.GetValue().Subscribe()
+		events = Subscribe(GinkgoT(), testServer.GetValue())
 	})
 
 	BeforeEach(func() {

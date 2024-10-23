@@ -2,6 +2,7 @@ package testserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,9 +49,13 @@ type Configuration struct {
 	ExperimentalNumscriptRewrite bool
 }
 
+type Logger interface {
+	Logf(fmt string, args ...any)
+}
+
 type Server struct {
 	configuration Configuration
-	t             T
+	logger        Logger
 	httpClient    *ledgerclient.Formance
 	cancel        func()
 	ctx           context.Context
@@ -58,9 +63,7 @@ type Server struct {
 	id            string
 }
 
-func (s *Server) Start() {
-	s.t.Helper()
-
+func (s *Server) Start() error {
 	rootCmd := cmd.NewRootCommand()
 	args := []string{
 		"serve",
@@ -174,7 +177,7 @@ func (s *Server) Start() {
 		args = append(args, "--"+service.DebugFlag)
 	}
 
-	s.t.Logf("Starting application with flags: %s", strings.Join(args, " "))
+	s.logger.Logf("Starting application with flags: %s", strings.Join(args, " "))
 	rootCmd.SetArgs(args)
 	rootCmd.SilenceErrors = true
 	output := s.configuration.Output
@@ -184,25 +187,27 @@ func (s *Server) Start() {
 	rootCmd.SetOut(output)
 	rootCmd.SetErr(output)
 
-	s.ctx = logging.TestingContext()
-	s.ctx, s.cancel = context.WithCancel(s.ctx)
-	s.ctx = service.ContextWithLifecycle(s.ctx)
-	s.ctx = httpserver.ContextWithServerInfo(s.ctx)
+	ctx := logging.TestingContext()
+	ctx = service.ContextWithLifecycle(ctx)
+	ctx = httpserver.ContextWithServerInfo(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 
-	s.errorChan = make(chan error, 1)
 	go func() {
-		s.errorChan <- rootCmd.ExecuteContext(s.ctx)
+		s.errorChan <- rootCmd.ExecuteContext(ctx)
 	}()
 
 	select {
-	case <-service.Ready(s.ctx):
+	case <-service.Ready(ctx):
 	case err := <-s.errorChan:
+		cancel()
 		if err != nil {
-			require.NoError(s.t, err)
-		} else {
-			require.Fail(s.t, "unexpected service stop")
+			return err
 		}
+
+		return errors.New("unexpected service stop")
 	}
+
+	s.ctx, s.cancel = ctx, cancel
 
 	var transport http.RoundTripper = &http.Transport{
 		MaxIdleConns:        100,
@@ -219,13 +224,13 @@ func (s *Server) Start() {
 			Transport: transport,
 		}),
 	)
+
+	return nil
 }
 
-func (s *Server) Stop(ctx context.Context) {
-	s.t.Helper()
-
+func (s *Server) Stop(ctx context.Context) error {
 	if s.cancel == nil {
-		return
+		return nil
 	}
 	s.cancel()
 	s.cancel = nil
@@ -234,15 +239,15 @@ func (s *Server) Stop(ctx context.Context) {
 	select {
 	case <-service.Stopped(s.ctx):
 	case <-ctx.Done():
-		require.Fail(s.t, "service should have been stopped")
+		return errors.New("service should have been stopped")
 	}
 
 	// Ensure the app has been properly shutdown
 	select {
 	case err := <-s.errorChan:
-		require.NoError(s.t, err)
+		return err
 	case <-ctx.Done():
-		require.Fail(s.t, "service should have been stopped without error")
+		return errors.New("service should have been stopped without error")
 	}
 }
 
@@ -250,40 +255,45 @@ func (s *Server) Client() *ledgerclient.Formance {
 	return s.httpClient
 }
 
-func (s *Server) Restart(ctx context.Context) {
-	s.t.Helper()
+func (s *Server) Restart(ctx context.Context) error {
+	if err := s.Stop(ctx); err != nil {
+		return err
+	}
+	if err := s.Start(); err != nil {
+		return err
+	}
 
-	s.Stop(ctx)
-	s.Start()
+	return nil
 }
 
-func (s *Server) Database() *bun.DB {
+func (s *Server) Database() (*bun.DB, error) {
 	db, err := bunconnect.OpenSQLDB(s.ctx, s.configuration.PostgresConfiguration)
-	require.NoError(s.t, err)
-	s.t.Cleanup(func() {
-		require.NoError(s.t, db.Close())
-	})
+	if err != nil {
+		return nil, err
+	}
 
-	return db
+	return db, nil
 }
 
-func (s *Server) Subscribe() chan *nats.Msg {
+func (s *Server) Subscribe() (*nats.Subscription, chan *nats.Msg, error) {
 	if s.configuration.NatsURL == "" {
-		require.Fail(s.t, "NATS URL must be set")
+		return nil, nil, errors.New("NATS URL must be set")
 	}
 
 	ret := make(chan *nats.Msg)
 	conn, err := nats.Connect(s.configuration.NatsURL)
-	require.NoError(s.t, err)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	subscription, err := conn.Subscribe(s.id, func(msg *nats.Msg) {
 		ret <- msg
 	})
-	require.NoError(s.t, err)
-	s.t.Cleanup(func() {
-		require.NoError(s.t, subscription.Unsubscribe())
-	})
-	return ret
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return subscription, ret, nil
 }
 
 func (s *Server) URL() string {
@@ -294,18 +304,19 @@ func New(t T, configuration Configuration) *Server {
 	t.Helper()
 
 	srv := &Server{
-		t:             t,
+		logger:        t,
 		configuration: configuration,
 		id:            uuid.NewString()[:8],
+		errorChan:     make(chan error, 1),
 	}
 	t.Logf("Start testing server")
-	srv.Start()
+	require.NoError(t, srv.Start())
 	t.Cleanup(func() {
 		t.Logf("Stop testing server")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		srv.Stop(ctx)
+		require.NoError(t, srv.Stop(ctx))
 	})
 
 	return srv

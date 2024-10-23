@@ -178,7 +178,7 @@ var _ = Context("Ledger engine tests", func() {
 						// we take a lock on the ledgers table to force the process to wait
 						// while we will make a concurrent request
 						JustBeforeEach(func() {
-							db = testServer.GetValue().Database()
+							db = ConnectToDatabase(GinkgoT(), testServer.GetValue())
 							sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 							Expect(err).To(BeNil())
 

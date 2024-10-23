@@ -8,10 +8,12 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
+	ledger "github.com/formancehq/ledger/internal"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,7 +37,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 	})
 	var events chan *nats.Msg
 	BeforeEach(func() {
-		events = testServer.GetValue().Subscribe()
+		events = Subscribe(GinkgoT(), testServer.GetValue())
 	})
 
 	When("starting the service", func() {
@@ -47,7 +49,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 	})
 	When("restarting the service", func() {
 		BeforeEach(func(ctx context.Context) {
-			testServer.GetValue().Restart(ctx)
+			Expect(testServer.GetValue().Restart(ctx)).To(BeNil())
 		})
 		It("should be ok", func() {})
 	})
@@ -66,7 +68,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			// lock logs table to block transactions creation requests
 			// the first tx will block on the log insertion
 			// the next transaction will block earlier on advisory lock acquirement for accounts
-			db := testServer.GetValue().Database()
+			db := ConnectToDatabase(GinkgoT(), testServer.GetValue())
 			sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 			Expect(err).To(BeNil())
 			DeferCleanup(func() {
@@ -126,7 +128,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 						ctx, cancel := context.WithTimeout(ctx, serverRestartTimeout)
 						DeferCleanup(cancel)
 
-						testServer.GetValue().Restart(ctx)
+						Expect(testServer.GetValue().Restart(ctx)).To(BeNil())
 					})
 				}()
 
@@ -158,6 +160,54 @@ var _ = Context("Ledger application lifecycle tests", func() {
 						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions)))
 					}
 				})
+			})
+		})
+	})
+})
+
+var _ = Context("Ledger downgrade tests", func() {
+	var (
+		db  = UseTemplatedDatabase()
+		ctx = logging.TestingContext()
+	)
+
+	testServer := NewTestServer(func() Configuration {
+		return Configuration{
+			PostgresConfiguration: db.GetValue().ConnectionOptions(),
+			Output:                GinkgoWriter,
+			Debug:                 debug,
+			NatsURL:               natsServer.GetValue().ClientURL(),
+		}
+	})
+
+	When("inserting new migrations into the database", func() {
+		BeforeEach(func() {
+			ledgerName := uuid.NewString()[:8]
+
+			err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(BeNil())
+
+			info, err := GetLedgerInfo(ctx, testServer.GetValue(), operations.V2GetLedgerInfoRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(BeNil())
+
+			// Insert a fake migration into the database to simulate a downgrade
+			_, err = ConnectToDatabase(GinkgoT(), testServer.GetValue()).
+				NewInsert().
+				ModelTableExpr(ledger.DefaultBucket + ".goose_db_version").
+				Model(&map[string]any{
+					"version_id": len(info.V2LedgerInfoResponse.Data.Storage.Migrations) + 1,
+					"is_applied": true,
+				}).
+				Exec(ctx)
+			Expect(err).To(BeNil())
+		})
+		Context("then when restarting the service", func() {
+			It("Should fail", func() {
+				Expect(testServer.GetValue().Restart(ctx)).NotTo(BeNil())
 			})
 		})
 	})

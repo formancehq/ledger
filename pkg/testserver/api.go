@@ -30,6 +30,10 @@ func GetInfo(ctx context.Context, srv *Server) (*operations.V2GetInfoResponse, e
 	return srv.Client().Ledger.GetInfo(ctx)
 }
 
+func GetLedgerInfo(ctx context.Context, srv *Server, request operations.V2GetLedgerInfoRequest) (*operations.V2GetLedgerInfoResponse, error) {
+	return srv.Client().Ledger.V2.GetLedgerInfo(ctx, request)
+}
+
 func CreateTransaction(ctx context.Context, srv *Server, request operations.V2CreateTransactionRequest) (*components.V2Transaction, error) {
 	response, err := srv.Client().Ledger.V2.CreateTransaction(ctx, request)
 

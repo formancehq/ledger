@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/metadata"
@@ -128,10 +129,49 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 
 func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
-	err := Migrate(ctx, d.db)
+	err := d.detectRollbacks(ctx)
+	if err != nil {
+		return fmt.Errorf("detecting rollbacks: %w", err)
+	}
+
+	err = Migrate(ctx, d.db)
 	if err != nil {
 		return fmt.Errorf("migrating system store: %w", err)
 	}
+
+	return nil
+}
+
+func (d *Driver) detectRollbacks(ctx context.Context) error {
+
+	logging.FromContext(ctx).Debugf("Checking for downgrades on system schema")
+	if err := detectDowngrades(GetMigrator(), ctx, d.db); err != nil {
+		return fmt.Errorf("detecting rollbacks of system schema: %w", err)
+	}
+
+	type row struct {
+		Bucket string `bun:"bucket"`
+	}
+	rows := make([]row, 0)
+	if err := d.db.NewSelect().
+		DistinctOn("bucket").
+		ModelTableExpr("_system.ledgers").
+		Column("bucket").
+		Scan(ctx, &rows); err != nil {
+		err = postgres.ResolveError(err)
+		if errors.Is(err, postgres.ErrMissingTable) {
+			return nil
+		}
+		return err
+	}
+
+	for _, r := range rows {
+		logging.FromContext(ctx).Debugf("Checking for downgrades on bucket '%s'", r.Bucket)
+		if err := detectDowngrades(bucket.GetMigrator(r.Bucket), ctx, d.db); err != nil {
+			return fmt.Errorf("detecting rollbacks on bucket '%s': %w", r.Bucket, err)
+		}
+	}
+
 	return nil
 }
 

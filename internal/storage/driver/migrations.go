@@ -2,6 +2,8 @@ package driver
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/formancehq/go-libs/v2/time"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -180,6 +182,27 @@ func GetMigrator() *migrations.Migrator {
 
 func Migrate(ctx context.Context, db bun.IDB) error {
 	return GetMigrator().Up(ctx, db)
+}
+
+func detectDowngrades(migrator *migrations.Migrator, ctx context.Context, db bun.IDB) error {
+	lastVersion, err := migrator.GetDBVersion(ctx, db)
+	if err != nil {
+		if !errors.Is(err, migrations.ErrMissingVersionTable) {
+			return fmt.Errorf("failed to get last version: %w", err)
+		}
+	}
+	if err == nil && lastVersion != -1 {
+		allMigrations, err := migrator.GetMigrations(ctx, db)
+		if err != nil {
+			return fmt.Errorf("failed to get all migrations: %w", err)
+		}
+
+		if len(allMigrations) < int(lastVersion) {
+			return newErrRollbackDetected(int(lastVersion), len(allMigrations))
+		}
+	}
+
+	return nil
 }
 
 const aggregateObjects = `
