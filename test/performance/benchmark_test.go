@@ -112,6 +112,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 
 				b.SetParallelism(int(parallelismFlag))
 				b.ResetTimer()
+
 				b.RunParallel(func(pb *testing.PB) {
 
 					transactionProvider, err := benchmark.Scenarios[scenario].Create()
@@ -121,6 +122,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 						iteration := int(cpt.Add(1))
 
 						script, vars := transactionProvider.Get(iteration)
+
 						now := time.Now()
 
 						_, err := benchmark.createTransaction(ctx, env.Client(), l, script, vars)
