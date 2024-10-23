@@ -22,6 +22,7 @@ import (
 var (
 	authClientIDFlag     string
 	authClientSecretFlag string
+	scriptFlag           string
 
 	// targeting a stack
 	stackURLFlag string
@@ -46,6 +47,7 @@ func init() {
 	flag.StringVar(&authIssuerURLFlag, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
 	flag.StringVar(&reportFileFlag, "report.file", "", "Location to write report file")
 	flag.Int64Var(&parallelismFlag, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
+	flag.StringVar(&scriptFlag, "script", "", "Script to run")
 }
 
 //go:embed scripts
@@ -90,7 +92,7 @@ func BenchmarkWrite(b *testing.B) {
 	}
 
 	// Load default scripts
-	if len(scripts) == 0 {
+	if scriptFlag == "" {
 		entries, err := scriptsDir.ReadDir("scripts")
 		require.NoError(b, err)
 
@@ -104,6 +106,11 @@ func BenchmarkWrite(b *testing.B) {
 
 			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSTransactionProviderFactory(string(script))
 		}
+	} else {
+		file, err := os.ReadFile(scriptFlag)
+		require.NoError(b, err, "reading file "+scriptFlag)
+
+		scripts["provided"] = NewJSTransactionProviderFactory(string(file))
 	}
 
 	if envFactory == nil {
