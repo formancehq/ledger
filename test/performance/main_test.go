@@ -6,9 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/docker"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -17,9 +14,6 @@ import (
 )
 
 var (
-	dockerPool *docker.Pool
-	pgServer   *Deferred[*pgtesting.PostgresServer]
-
 	authClientID     string
 	authClientSecret string
 
@@ -50,14 +44,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 
 	WithTestMain(func(t *TestingTForMain) int {
-		selectedEnv := 0
-		if stackURL != "" {
-			selectedEnv++
-		}
-		if ledgerURL != "" {
-			selectedEnv++
-		}
-		if selectedEnv > 1 {
+		if stackURL != "" && ledgerURL != "" {
 			t.Errorf("Cannot specify both --stack.url and --ledger.url")
 			t.FailNow()
 		}
@@ -67,23 +54,13 @@ func TestMain(m *testing.M) {
 			envFactory = NewRemoteLedgerEnvFactory(getHttpClient(stackURL+"/api/auth"), stackURL+"/api/ledger")
 		case ledgerURL != "":
 			envFactory = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURL), ledgerURL)
-		default:
-			// Configure the environment to run benchmarks locally.
-			// Start a docker connection and create a new postgres server.
-			dockerPool = docker.NewPool(t, logging.Testing())
+		}
 
-			pgServer = NewDeferred[*pgtesting.PostgresServer]()
-			pgServer.LoadAsync(func() *pgtesting.PostgresServer {
-				return pgtesting.CreatePostgresServer(
-					t,
-					dockerPool,
-					pgtesting.WithPGCrypto(),
-				)
-			})
+		testing.Verbose()
 
-			Wait(pgServer)
-
-			envFactory = NewTestServerEnvFactory(pgServer.GetValue())
+		if envFactory == nil {
+			t.Errorf("no env selected, you need to specify either --stack.url or --ledger.url\n")
+			t.FailNow()
 		}
 
 		return m.Run()

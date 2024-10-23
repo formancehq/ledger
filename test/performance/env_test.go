@@ -10,15 +10,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-type TransactionExecutor interface {
-	ExecuteScript(context.Context, string, map[string]string) (*ledger.Transaction, error)
-}
-type TransactionExecutorFn func(context.Context, string, map[string]string) (*ledger.Transaction, error)
-
-func (fn TransactionExecutorFn) ExecuteScript(ctx context.Context, script string, vars map[string]string) (*ledger.Transaction, error) {
-	return fn(ctx, script, vars)
-}
-
 type Env interface {
 	Client() *ledgerclient.Formance
 	URL() string

@@ -1,13 +1,16 @@
-//go:build it
+//go:build it && local
 
 package performance_test
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"io"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/pointer"
@@ -40,12 +43,22 @@ func (e *TestServerEnv) Stop(ctx context.Context) error {
 var _ Env = (*TestServerEnv)(nil)
 
 type TestServerEnvFactory struct {
-	pgServer *pgtesting.PostgresServer
+	dockerPool *docker.Pool
+
+	once sync.Once
 }
 
 func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
 
-	db := f.pgServer.NewDatabase(b)
+	f.once.Do(func() {
+		// Configure the environment to run benchmarks locally.
+		// Start a docker connection
+		f.dockerPool = docker.NewPool(b, logging.Testing())
+	})
+
+	pgServer := pgtesting.CreatePostgresServer(b, f.dockerPool, pgtesting.WithPGCrypto())
+
+	db := pgServer.NewDatabase(b)
 	b.Logf("database: %s", db.Name())
 	connectionOptions := db.ConnectionOptions()
 	connectionOptions.MaxOpenConns = 100
@@ -89,8 +102,10 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 
 var _ EnvFactory = (*TestServerEnvFactory)(nil)
 
-func NewTestServerEnvFactory(pgServer *pgtesting.PostgresServer) *TestServerEnvFactory {
-	return &TestServerEnvFactory{
-		pgServer: pgServer,
-	}
+func NewTestServerEnvFactory() *TestServerEnvFactory {
+	return &TestServerEnvFactory{}
+}
+
+func init() {
+	envFactory = NewTestServerEnvFactory()
 }
