@@ -18,6 +18,7 @@ type ModuleConfiguration struct {
 	NSCacheConfiguration       ledgercontroller.CacheConfiguration
 	DatabaseRetryConfiguration DatabaseRetryConfiguration
 	EnableFeatures             bool
+	NumscriptInterpreter       bool
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
@@ -31,23 +32,25 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
 		) *DefaultController {
-			options := make([]Option, 0)
+			var parser ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
+			if configuration.NumscriptInterpreter {
+				parser = ledgercontroller.NewInterpreterNumscriptParser()
+			}
+
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
-				options = append(options, WithParser(ledgercontroller.NewCachedNumscriptParser(
-					ledgercontroller.NewDefaultNumscriptParser(),
-					configuration.NSCacheConfiguration,
-				)))
+				parser = ledgercontroller.NewCachedNumscriptParser(parser, ledgercontroller.CacheConfiguration{
+					MaxCount: configuration.NSCacheConfiguration.MaxCount,
+				})
 			}
 
 			return NewDefaultController(
 				store,
 				listener,
-				append(options,
-					WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
-					WithMeter(meterProvider.Meter("core")),
-					WithTracer(tracerProvider.Tracer("core")),
-					WithEnableFeatures(configuration.EnableFeatures),
-				)...,
+				WithParser(parser),
+				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
+				WithMeter(meterProvider.Meter("core")),
+				WithTracer(tracerProvider.Tracer("core")),
+				WithEnableFeatures(configuration.EnableFeatures),
 			)
 		}),
 	)

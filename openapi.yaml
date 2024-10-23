@@ -3453,6 +3453,8 @@ components:
         - IMPORT
         - TIMEOUT
         - BULK_SIZE_EXCEEDED
+        - INTERPRETER_PARSE
+        - INTERPRETER_RUNTIME
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object

@@ -3,16 +3,17 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v2/publish"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/uptrace/bun"
-	"io"
-	"net/http"
-	"strings"
-	"time"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/httpclient"
@@ -37,13 +38,14 @@ type OTLPConfig struct {
 }
 
 type Configuration struct {
-	PostgresConfiguration bunconnect.ConnectionOptions
-	NatsURL               string
-	Output                io.Writer
-	Debug                 bool
-	OTLPConfig            *OTLPConfig
-	ExperimentalFeatures  bool
-	BulkMaxSize           int
+	PostgresConfiguration        bunconnect.ConnectionOptions
+	NatsURL                      string
+	Output                       io.Writer
+	Debug                        bool
+	OTLPConfig                   *OTLPConfig
+	ExperimentalFeatures         bool
+	BulkMaxSize                  int
+	ExperimentalNumscriptRewrite bool
 }
 
 type Server struct {
@@ -79,6 +81,12 @@ func (s *Server) Start() {
 			args,
 			"--"+cmd.BulkMaxSizeFlag,
 			fmt.Sprint(s.configuration.BulkMaxSize),
+		)
+	}
+	if s.configuration.ExperimentalNumscriptRewrite {
+		args = append(
+			args,
+			"--"+cmd.NumscriptInterpreterFlag,
 		)
 	}
 	if s.configuration.PostgresConfiguration.MaxIdleConns != 0 {
