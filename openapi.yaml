@@ -3478,9 +3478,7 @@ components:
       type: object
       properties:
         version:
-          type: integer
-          format: int64
-          minimum: 0
+          type: string
           example: 11
         name:
           type: string

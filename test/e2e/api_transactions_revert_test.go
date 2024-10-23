@@ -47,7 +47,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 			err       error
 		)
 		BeforeEach(func() {
-			events = testServer.GetValue().Subscribe()
+			events = Subscribe(GinkgoT(), testServer.GetValue())
 			tx, err = CreateTransaction(
 				ctx,
 				testServer.GetValue(),

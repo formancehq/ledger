@@ -6,7 +6,10 @@ import (
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 )
 
 func NewTestServer(configurationProvider func() Configuration) *Deferred[*Server] {
@@ -62,4 +65,24 @@ func ConvertSDKPostingToCorePosting(p components.V2Posting) ledger.Posting {
 		Asset:       p.Asset,
 		Amount:      p.Amount,
 	}
+}
+
+func Subscribe(t T, testServer *Server) chan *nats.Msg {
+	subscription, ch, err := testServer.Subscribe()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, subscription.Unsubscribe())
+	})
+
+	return ch
+}
+
+func ConnectToDatabase(t T, testServer *Server) *bun.DB {
+	db, err := testServer.Database()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	return db
 }

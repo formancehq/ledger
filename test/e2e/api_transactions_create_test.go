@@ -66,7 +66,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 					err       error
 				)
 				BeforeEach(func() {
-					events = testServer.GetValue().Subscribe()
+					events = Subscribe(GinkgoT(), testServer.GetValue())
 					req = operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Timestamp: &timestamp,

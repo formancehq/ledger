@@ -3277,7 +3277,7 @@ Authorization ( Scopes: ledger:write )
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|version|integer(int64)|false|none|none|
+|version|string|false|none|none|
 |name|string|false|none|none|
 |date|string(date-time)|false|none|none|
 |state|string|false|none|none|

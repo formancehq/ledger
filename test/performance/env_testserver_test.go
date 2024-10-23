@@ -34,8 +34,7 @@ func (e *TestServerEnv) URL() string {
 }
 
 func (e *TestServerEnv) Stop(ctx context.Context) error {
-	e.testServer.Stop(ctx)
-	return nil
+	return e.testServer.Stop(ctx)
 }
 
 var _ Env = (*TestServerEnv)(nil)
