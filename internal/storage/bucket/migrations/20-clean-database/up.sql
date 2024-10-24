@@ -1,4 +1,4 @@
-set search_path = '{{.Bucket}}';
+set search_path = '{{.Schema}}';
 
 -- Clean all useless function/aggregates/indexes inherited from stateful version.
 drop aggregate aggregate_objects(jsonb);

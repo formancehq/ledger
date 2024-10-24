@@ -226,62 +226,25 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 				}
 			}
 
-			// Try to insert volumes using last move (to keep compat with previous version) or 0 values.
-			// This way, if the account has a 0 balance at this point, it will be locked as any other accounts.
-			// If the complete sql transaction fails, the account volumes will not be inserted.
-			selectMoves := s.db.NewSelect().
-				ModelTableExpr(s.GetPrefixedRelationName("moves")).
-				DistinctOn("accounts_address, asset").
-				Column("accounts_address", "asset").
-				ColumnExpr("first_value(post_commit_volumes) over (partition by accounts_address, asset order by seq desc) as post_commit_volumes").
-				ColumnExpr("first_value(ledger) over (partition by accounts_address, asset order by seq desc) as ledger").
-				Where("("+strings.Join(conditions, ") OR (")+")", args...)
-
-			zeroValuesAndMoves := s.db.NewSelect().
-				TableExpr("(?) data", selectMoves).
-				Column("ledger", "accounts_address", "asset").
-				ColumnExpr("(post_commit_volumes).inputs as input").
-				ColumnExpr("(post_commit_volumes).outputs as output").
-				UnionAll(
-					s.db.NewSelect().
-						TableExpr(
-							"(?) data",
-							s.db.NewSelect().NewValues(&accountsVolumes),
-						).
-						Column("*"),
-				)
-
-			zeroValueOrMoves := s.db.NewSelect().
-				TableExpr("(?) data", zeroValuesAndMoves).
-				Column("ledger", "accounts_address", "asset", "input", "output").
-				DistinctOn("ledger, accounts_address, asset")
-
-			insertDefaultValue := s.db.NewInsert().
-				TableExpr(s.GetPrefixedRelationName("accounts_volumes")).
-				TableExpr("(" + zeroValueOrMoves.String() + ") data").
-				On("conflict (ledger, accounts_address, asset) do nothing").
-				Returning("ledger, accounts_address, asset, input, output")
-
-			selectExistingValues := s.db.NewSelect().
+			err := s.db.NewSelect().
+				With(
+					"ins",
+					// Try to insert volumes with 0 values.
+					// This way, if the account has a 0 balance at this point, it will be locked as any other accounts.
+					// It the complete sql transaction fail, the account volumes will not be inserted.
+					s.db.NewInsert().
+						Model(&accountsVolumes).
+						ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+						On("conflict do nothing"),
+				).
+				Model(&accountsVolumes).
 				ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
-				Column("ledger", "accounts_address", "asset", "input", "output").
+				Column("accounts_address", "asset", "input", "output").
 				Where("("+strings.Join(conditions, ") OR (")+")", args...).
 				For("update").
 				// notes(gfyrag): Keep order, it ensures consistent locking order and limit deadlocks
-				Order("accounts_address", "asset")
-
-			finalQuery := s.db.NewSelect().
-				With("inserted", insertDefaultValue).
-				With("existing", selectExistingValues).
-				ModelTableExpr(
-					"(?) accounts_volumes",
-					s.db.NewSelect().
-						ModelTableExpr("inserted").
-						UnionAll(s.db.NewSelect().ModelTableExpr("existing")),
-				).
-				Model(&accountsVolumes)
-
-			err := finalQuery.Scan(ctx)
+				Order("accounts_address", "asset").
+				Scan(ctx)
 			if err != nil {
 				return nil, postgres.ResolveError(err)
 			}

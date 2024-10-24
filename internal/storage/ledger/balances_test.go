@@ -44,6 +44,32 @@ func TestBalancesGet(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	t.Run("get balances of not existing account should create an empty row", func(t *testing.T) {
+		t.Parallel()
+
+		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
+			"orders:1234": []string{"USD"},
+		})
+		require.NoError(t, err)
+		require.Len(t, balances, 1)
+		require.NotNil(t, balances["orders:1234"])
+		require.Len(t, balances["orders:1234"], 1)
+		require.Equal(t, big.NewInt(0), balances["orders:1234"]["USD"])
+
+		volumes := make([]*ledger.AccountsVolumes, 0)
+
+		err = store.GetDB().NewSelect().
+			Model(&volumes).
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("accounts_address = ?", "orders:1234").
+			Scan(ctx)
+		require.NoError(t, err)
+		require.Len(t, volumes, 1)
+		require.Equal(t, "USD", volumes[0].Asset)
+		require.Equal(t, big.NewInt(0), volumes[0].Input)
+		require.Equal(t, big.NewInt(0), volumes[0].Output)
+	})
+
 	t.Run("check concurrent access on same balance", func(t *testing.T) {
 		t.Parallel()
 
