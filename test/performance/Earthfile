@@ -37,14 +37,15 @@ compare:
     CACHE --id go-mod-cache /go/pkg/mod
     CACHE --id go-cache /root/.cache/go-build
     RUN go install golang.org/x/perf/cmd/benchstat@latest
-    WORKDIR /src/test/performance
-    ARG args=""
+    ARG args="-bench=."
     ARG rev=main
 
-    COPY +run/benchmark-output.txt /report/benchmark-output-local.txt
-    COPY github.com/formancehq/ledger:${rev}+run/benchmark-output.txt /report/benchmark-output-remote.txt
+    COPY (+run/benchmark-output.txt --args=$args) /report/benchmark-output-local.txt
+    COPY --allow-privileged (github.com/formancehq/ledger/test/performance:${rev}+run/benchmark-output.txt --args=$args) /report/benchmark-output-remote.txt
 
-    RUN benchstat /report/benchmark-output-local.txt /report/benchmark-output-remote.txt
+    RUN benchstat /report/benchmark-output-local.txt /report/benchmark-output-remote.txt > benchmark-comparison.txt
+
+    SAVE ARTIFACT benchmark-comparison.txt AS LOCAL benchmark-comparison.txt
 
 generate-graphs:
     FROM core+base-image
