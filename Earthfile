@@ -9,6 +9,9 @@ CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
 CACHE --sharing=shared --id golangci-cache /root/.cache/golangci-lint
 CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
+postgres:
+    FROM postgres:15-alpine
+
 sources:
     FROM core+builder-image
     CACHE --id go-mod-cache /go/pkg/mod
@@ -86,7 +89,7 @@ tests:
 
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
-        WITH DOCKER --pull=postgres:15-alpine
+        WITH DOCKER --load=postgres:15-alpine=+postgres
             RUN go test $goFlags ./...
         END
     ELSE
@@ -139,37 +142,6 @@ pre-commit:
     BUILD +generate-client
     BUILD +export-docs-events
 
-bench:
-    FROM +tidy
-    RUN go install golang.org/x/perf/cmd/benchstat@latest
-    WORKDIR /src/test/performance
-    ARG benchTime=1s
-    ARG count=1
-    ARG GOPROXY
-    ARG testTimeout=10m
-    ARG bench=.
-    ARG verbose=0
-    ARG GOMAXPROCS=2
-    ARG GOMEMLIMIT=1024MiB
-    LET additionalArgs=""
-    IF [ "$verbose" = "1" ]
-        SET additionalArgs=-v
-    END
-    WITH DOCKER --pull postgres:15-alpine
-        RUN go test -timeout $testTimeout -bench=$bench -run ^$ -tags it $additionalArgs \
-            -benchtime=$benchTime | tee -a /results.txt
-    END
-    RUN benchstat /results.txt
-    SAVE ARTIFACT /results.txt
-
-benchstat:
-    FROM core+builder-image
-    RUN go install golang.org/x/perf/cmd/benchstat@latest
-    ARG compareAgainstRevision=main
-    COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
-    COPY --pass-args +bench/results.txt /tmp/branch.txt
-    RUN --no-cache benchstat /tmp/main.txt /tmp/branch.txt
-
 openapi:
     FROM node:20-alpine
     RUN apk update && apk add yq
@@ -218,7 +190,7 @@ export-database-schema:
     FROM +sources
     RUN go install github.com/roerohan/wait-for-it@latest
     COPY --dir scripts scripts
-    WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
+    WITH DOCKER --load=postgres:15-alpine=+postgres --pull schemaspy/schemaspy:6.2.4
         RUN ./scripts/export-database-schema.sh
     END
     SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams

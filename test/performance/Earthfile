@@ -4,8 +4,47 @@ IMPORT github.com/formancehq/earthly:tags/v0.16.2 AS core
 
 run:
     LOCALLY
+    ARG locally=no
+    ARG args="-bench=."
+
+    IF [ $locally == "yes" ]
+        RUN rm -f ./report/benchmark-output.txt
+        RUN go test -run ^$ -tags it,local -report.file ./report/report.json -timeout 60m $args . | tee -a ./report/benchmark-output.txt
+    ELSE
+        FROM ../..+tidy
+
+        ARG GOMAXPROCS=2
+        ARG GOMEMLIMIT=1024MiB
+
+        CACHE --id go-mod-cache /go/pkg/mod
+        CACHE --id go-cache /root/.cache/go-build
+        COPY *.go test/performance
+        COPY --dir scripts test/performance/
+
+        WORKDIR test/performance
+        RUN mkdir -p report
+
+        WITH DOCKER --load=postgres:15-alpine=../../+postgres
+            RUN go test -run ^$ -tags it,local -report.file ./report/report.json -timeout 60m $args . | tee -a ./report/benchmark-output.txt
+        END
+
+        SAVE ARTIFACT ./report/report.json
+        SAVE ARTIFACT ./report/benchmark-output.txt
+    END
+
+compare:
+    FROM core+builder-image
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
+    RUN go install golang.org/x/perf/cmd/benchstat@latest
+    WORKDIR /src/test/performance
     ARG args=""
-    RUN go test -bench="Write" -run ^$ -tags it,local -report.file ./report/report.json -timeout 60m $args
+    ARG rev=main
+
+    COPY +run/benchmark-output.txt /report/benchmark-output-local.txt
+    COPY github.com/formancehq/ledger:${rev}+run/benchmark-output.txt /report/benchmark-output-remote.txt
+
+    RUN benchstat /report/benchmark-output-local.txt /report/benchmark-output-remote.txt
 
 generate-graphs:
     FROM core+base-image
