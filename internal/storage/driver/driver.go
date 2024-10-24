@@ -35,10 +35,6 @@ type Driver struct {
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
 
-	if l.Metadata == nil {
-		l.Metadata = metadata.Metadata{}
-	}
-
 	b := bucket.New(d.db, l.Bucket)
 	if err := b.Migrate(ctx, d.tracer); err != nil {
 		return nil, fmt.Errorf("migrating bucket: %w", err)

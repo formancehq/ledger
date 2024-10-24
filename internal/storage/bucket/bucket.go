@@ -12,8 +12,8 @@ import (
 	"text/template"
 )
 
-// stateless version (+1 regarding directory name, as migrations start from 1 in the lib)
-const MinimalSchemaVersion = 12
+// migration 18 (+1 regarding directory name, as migrations start from 1 in the lib)
+const MinimalSchemaVersion = 19
 
 type Bucket struct {
 	name string
