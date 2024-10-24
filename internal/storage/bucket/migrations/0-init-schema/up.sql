@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 create aggregate aggregate_objects(jsonb) (
     sfunc = jsonb_concat,
     stype = jsonb,

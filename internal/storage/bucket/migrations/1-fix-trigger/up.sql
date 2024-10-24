@@ -1,3 +1,5 @@
+set search_path = '{{.Bucket}}';
+
 create or replace function insert_posting(_transaction_seq bigint, _ledger varchar, _insertion_date timestamp without time zone,
                                _effective_date timestamp without time zone, posting jsonb, _account_metadata jsonb)
     returns void
