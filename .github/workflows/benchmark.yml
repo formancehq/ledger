@@ -30,7 +30,7 @@ jobs:
           earthly
           --allow-privileged
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+run --args="-benchtime 10s --ledger.url=http://localhost:3068 --parallelism=5"
+          ./test/performance+run --args="-benchtime 10s --ledger.url=http://localhost:3068 --parallelism=5" --locally=yes
       - run: >
           earthly
           --allow-privileged
