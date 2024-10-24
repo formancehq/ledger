@@ -25,7 +25,7 @@ run:
         RUN mkdir -p report
 
         WITH DOCKER --load=postgres:15-alpine=../../+postgres
-            RUN go test -run ^$ -tags it,local -report.file ./report/report.json -timeout 60m $args . | tee -a ./report/benchmark-output.txt
+            RUN go test -run ^$ -tags it,local -report.file ./report/report.json -timeout 60m $args . | tee ./report/benchmark-output.txt
         END
 
         SAVE ARTIFACT ./report/report.json
