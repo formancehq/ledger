@@ -41,7 +41,7 @@ It has been generated successfully based on your OpenAPI spec. However, it is no
 ## SDK Installation
 
 ```bash
-go get github.com/formancehq/stack/ledger/client
+go get github.com/formancehq/ledger/pkg/client
 ```
 <!-- End SDK Installation [installation] -->
 
@@ -55,8 +55,8 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"log"
 )
 
@@ -151,9 +151,9 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client/retry"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/retry"
 	"log"
 	"models/operations"
 )
@@ -194,9 +194,9 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client/retry"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/retry"
 	"log"
 )
 
@@ -250,9 +250,9 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client/models/sdkerrors"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"log"
 )
 
@@ -303,8 +303,8 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"log"
 )
 
@@ -338,8 +338,8 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"log"
 )
 
@@ -418,8 +418,8 @@ package main
 
 import (
 	"context"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"log"
 )
 

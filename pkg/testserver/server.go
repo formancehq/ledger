@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v2/publish"
 	"github.com/google/uuid"
-	"github.com/nats-io/nats.go"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
@@ -22,7 +22,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/cmd"
-	ledgerclient "github.com/formancehq/stack/ledger/client"
+	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/stretchr/testify/require"
 )
 

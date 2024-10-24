@@ -39,9 +39,9 @@ List ledgers
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -95,9 +95,9 @@ Get a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -150,9 +150,9 @@ Create a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -210,9 +210,9 @@ Update ledger metadata
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -268,9 +268,9 @@ Delete ledger metadata by key
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -324,9 +324,9 @@ Get information about a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -379,9 +379,9 @@ Bulk request
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
 	"context"
 	"log"
@@ -469,9 +469,9 @@ Count the accounts from a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -524,9 +524,9 @@ List accounts from a ledger, sorted by address in descending order.
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -581,9 +581,9 @@ Get account by its address
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -637,9 +637,9 @@ Add metadata to an account
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -697,9 +697,9 @@ Delete metadata by key
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -755,9 +755,9 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -810,9 +810,9 @@ Count the transactions from a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -865,9 +865,9 @@ List transactions from a ledger, sorted by id in descending order.
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -922,9 +922,9 @@ Create a new transaction to a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
 	"context"
 	"log"
@@ -1007,9 +1007,9 @@ Get transaction from a ledger by its ID
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
 	"context"
 	"log"
@@ -1064,9 +1064,9 @@ Set the metadata of a transaction by its ID
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
 	"context"
 	"log"
@@ -1125,9 +1125,9 @@ Delete metadata by key
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
 	"context"
 	"log"
@@ -1183,9 +1183,9 @@ Revert a ledger transaction by its ID
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
 	"context"
 	"log"
@@ -1241,9 +1241,9 @@ Get the aggregated balances from selected accounts
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -1296,9 +1296,9 @@ Get list of volumes with balances for (account/asset)
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -1354,9 +1354,9 @@ List the logs from a ledger, sorted by ID in descending order.
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -1409,9 +1409,9 @@ func main() {
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )
@@ -1464,9 +1464,9 @@ Export logs
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"context"
 	"log"
 )

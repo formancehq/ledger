@@ -4,7 +4,7 @@ package performance_test
 
 import (
 	"context"
-	ledgerclient "github.com/formancehq/stack/ledger/client"
+	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"testing"
 
 	ledger "github.com/formancehq/ledger/internal"

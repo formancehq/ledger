@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/publish"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/google/go-cmp/cmp"
 	"github.com/invopop/jsonschema"
 	"github.com/nats-io/nats.go"

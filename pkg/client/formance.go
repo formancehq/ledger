@@ -5,10 +5,10 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/stack/ledger/client/internal/hooks"
-	"github.com/formancehq/stack/ledger/client/internal/utils"
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client/retry"
+	"github.com/formancehq/ledger/pkg/client/internal/hooks"
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/retry"
 	"net/http"
 	"time"
 )
@@ -143,9 +143,9 @@ func New(opts ...SDKOption) *Formance {
 		sdkConfiguration: sdkConfiguration{
 			Language:          "go",
 			OpenAPIDocVersion: "v1",
-			SDKVersion:        "0.4.17",
+			SDKVersion:        "0.4.18",
 			GenVersion:        "2.384.1",
-			UserAgent:         "speakeasy-sdk/go 0.4.17 2.384.1 v1 github.com/formancehq/stack/ledger/client",
+			UserAgent:         "speakeasy-sdk/go 0.4.18 2.384.1 v1 github.com/formancehq/ledger/pkg/client",
 			Hooks:             hooks.New(),
 		},
 	}

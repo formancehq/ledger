@@ -5,7 +5,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/stack/ledger/client/internal/utils"
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"math/big"
 	"time"
 )

@@ -5,7 +5,7 @@ package performance_test
 import (
 	"context"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
-	ledgerclient "github.com/formancehq/stack/ledger/client"
+	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"io"
 	"os"
 	"testing"
@@ -14,9 +14,9 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/testserver"
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client/models/operations"
 	"github.com/stretchr/testify/require"
 )
 
