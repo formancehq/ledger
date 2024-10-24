@@ -43,7 +43,7 @@ compare:
     COPY (+run/benchmark-output.txt --args=$args) /report/benchmark-output-local.txt
     COPY --allow-privileged (github.com/formancehq/ledger/test/performance:${rev}+run/benchmark-output.txt --args=$args) /report/benchmark-output-remote.txt
 
-    RUN benchstat /report/benchmark-output-local.txt /report/benchmark-output-remote.txt > benchmark-comparison.txt
+    RUN benchstat /report/benchmark-output-remote.txt /report/benchmark-output-local.txt > benchmark-comparison.txt
 
     SAVE ARTIFACT benchmark-comparison.txt AS LOCAL benchmark-comparison.txt
 
