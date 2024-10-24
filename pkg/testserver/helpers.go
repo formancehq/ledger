@@ -5,7 +5,7 @@ import (
 	. "github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/stretchr/testify/require"

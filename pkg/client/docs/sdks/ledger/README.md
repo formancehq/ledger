@@ -15,8 +15,8 @@ Show server information
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
 	"context"
 	"log"
 )

@@ -1,5 +1,5 @@
 
-module github.com/formancehq/stack/ledger/client
+module github.com/formancehq/ledger/pkg/client
 
 go 1.20
 

@@ -4,8 +4,8 @@ package operations
 
 import (
 	"errors"
-	"github.com/formancehq/stack/ledger/client/internal/utils"
-	"github.com/formancehq/stack/ledger/client/retry"
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+	"github.com/formancehq/ledger/pkg/client/retry"
 	"time"
 )
 

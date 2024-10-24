@@ -3,7 +3,7 @@
 package operations
 
 import (
-	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
 type V2DeleteAccountMetadataRequest struct {

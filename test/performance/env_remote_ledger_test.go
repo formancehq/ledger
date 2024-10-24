@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	ledger "github.com/formancehq/ledger/internal"
-	ledgerclient "github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/ledger/client/models/components"
-	"github.com/formancehq/stack/ledger/client/models/operations"
+	ledgerclient "github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/stretchr/testify/require"
 )
 

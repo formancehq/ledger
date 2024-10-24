@@ -13,7 +13,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/formancehq/stack/ledger/client/types"
+	"github.com/formancehq/ledger/pkg/client/types"
 
 	"github.com/ericlagergren/decimal"
 )

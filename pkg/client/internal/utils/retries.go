@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/formancehq/stack/ledger/client/retry"
+	"github.com/formancehq/ledger/pkg/client/retry"
 	"net/http"
 	"net/url"
 	"strconv"
