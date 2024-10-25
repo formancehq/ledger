@@ -9,6 +9,7 @@ const (
 	ErrCompilationFailed = "COMPILATION_FAILED"
 	ErrMetadataOverride  = "METADATA_OVERRIDE"
 	ErrBulkSizeExceeded  = "BULK_SIZE_EXCEEDED"
+	ErrLedgerAlreadyExists = "LEDGER_ALREADY_EXISTS"
 
 	ErrInterpreterParse   = "INTERPRETER_PARSE"
 	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"

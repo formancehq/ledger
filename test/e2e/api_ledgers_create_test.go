@@ -80,7 +80,7 @@ var _ = Context("Ledger engine tests", func() {
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).NotTo(BeNil())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumLedgerAlreadyExists)))
 			})
 			It("should fail", func() {})
 		})

@@ -156,16 +156,12 @@ func (benchmark *Benchmark) createTransaction(
 	script string,
 	vars map[string]string,
 ) (*ledger.Transaction, error) {
-	varsAsMapAny := make(map[string]any)
-	for k, v := range vars {
-		varsAsMapAny[k] = v
-	}
 	response, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 		Ledger: l.Name,
 		V2PostTransaction: components.V2PostTransaction{
 			Script: &components.V2PostTransactionScript{
 				Plain: script,
-				Vars:  varsAsMapAny,
+				Vars:  vars,
 			},
 		},
 	})

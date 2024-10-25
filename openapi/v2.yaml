@@ -1565,7 +1565,8 @@ components:
             vars:
               type: object
               properties: {}
-              additionalProperties: true
+              additionalProperties:
+                type: string
               example:
                 user: users:042
           required:
@@ -1725,6 +1726,7 @@ components:
         - BULK_SIZE_EXCEEDED
         - INTERPRETER_PARSE
         - INTERPRETER_RUNTIME
+        - LEDGER_ALREADY_EXISTS
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object
