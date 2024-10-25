@@ -10,12 +10,12 @@ import (
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/generate"
 	"net/http"
 	"sort"
 	"sync/atomic"
 	"testing"
 
-	"github.com/dop251/goja"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/uuid"
@@ -43,30 +43,13 @@ func (fn TransactionProviderFactoryFn) Create() (TransactionProvider, error) {
 
 func NewJSTransactionProviderFactory(script string) TransactionProviderFactoryFn {
 	return func() (TransactionProvider, error) {
-		runtime := goja.New()
-		_, err := runtime.RunString(script)
+		generator, err := generate.NewGenerator(script)
 		if err != nil {
 			return nil, err
-		}
-		runtime.SetFieldNameMapper(goja.TagFieldNameMapper("json", true))
-		err = runtime.Set("uuid", uuid.NewString)
-		if err != nil {
-			return nil, err
-		}
-
-		type Result struct {
-			Script    string            `json:"script"`
-			Variables map[string]string `json:"variables"`
-		}
-
-		var next func(int) Result
-		err = runtime.ExportTo(runtime.Get("next"), &next)
-		if err != nil {
-			panic(err)
 		}
 
 		return TransactionProviderFn(func(iteration int) (string, map[string]string) {
-			ret := next(iteration)
+			ret := generator.Next(iteration)
 			return ret.Script, ret.Variables
 		}), nil
 	}
