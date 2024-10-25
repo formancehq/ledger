@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
@@ -9,6 +11,9 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/pkg/generate"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
+	"net/http"
 	"os"
 	"sync"
 
@@ -25,6 +30,10 @@ var (
 	parallelFlag           = "parallel"
 	ledgerFlag             = "ledger"
 	untilTransactionIDFlag = "until-transaction-id"
+	clientIDFlag           = "client-id"
+	clientSecretFlag       = "client-secret"
+	authUrlFlag            = "auth-url"
+	insecureSkipVerifyFlag = "insecure-skip-verify"
 )
 
 func run(cmd *cobra.Command, args []string) error {
@@ -51,14 +60,58 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get untilTransactionID: %w", err)
 	}
 
-	client := ledgerclient.New(ledgerclient.WithServerURL(ledgerUrl))
+	insecureSkipVerify, err := cmd.Flags().GetBool(insecureSkipVerifyFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get insecureSkipVerify: %w", err)
+	}
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        vus,
+			MaxConnsPerHost:     vus,
+			MaxIdleConnsPerHost: vus,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: insecureSkipVerify,
+			},
+		},
+	}
+
+	clientID, err := cmd.Flags().GetString(clientIDFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get client id: %w", err)
+	}
+	if clientID != "" {
+		clientSecret, err := cmd.Flags().GetString(clientSecretFlag)
+		if err != nil {
+			return fmt.Errorf("failed to get client secret: %w", err)
+		}
+
+		authUrl, err := cmd.Flags().GetString(authUrlFlag)
+		if err != nil {
+			return fmt.Errorf("failed to get auth url: %w", err)
+		}
+
+		httpClient = (&clientcredentials.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			TokenURL:     authUrl + "/oauth/token",
+			Scopes:       []string{"ledger:read", "ledger:write"},
+		}).
+			Client(context.WithValue(cmd.Context(), oauth2.HTTPClient, httpClient))
+	}
+
+	client := ledgerclient.New(
+		ledgerclient.WithServerURL(ledgerUrl),
+		ledgerclient.WithClient(httpClient),
+	)
 
 	_, err = client.Ledger.V2.CreateLedger(cmd.Context(), operations.V2CreateLedgerRequest{
 		Ledger: ledger,
 	})
 	if err != nil {
 		sdkError := &sdkerrors.V2ErrorResponse{}
-		if !errors.As(err, &sdkError) || sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists {
+		if !errors.As(err, &sdkError) || (sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
+			sdkError.ErrorCode != components.V2ErrorsEnumValidation) {
 			return fmt.Errorf("failed to create ledger: %w", err)
 		}
 	}
@@ -112,6 +165,10 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.Flags().String(clientIDFlag, "", "Client ID")
+	rootCmd.Flags().String(clientSecretFlag, "", "Client Secret")
+	rootCmd.Flags().String(authUrlFlag, "", "Auth URL")
+	rootCmd.Flags().Bool(insecureSkipVerifyFlag, false, "Skip TLS verification")
 	rootCmd.Flags().IntP(parallelFlag, "p", 1, "Number of parallel users")
 	rootCmd.Flags().StringP(ledgerFlag, "l", "default", "Ledger to feed")
 	rootCmd.Flags().Int64P(untilTransactionIDFlag, "u", 0, "Stop after this transaction ID")

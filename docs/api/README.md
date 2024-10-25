@@ -14,7 +14,7 @@ Base URLs:
 
     - Flow: clientCredentials
 
-    - Token URL = [/api/auth/oauth/token](/api/auth/oauth/token)
+    - Token URL = [/oauth/token](/oauth/token)
 
 |Scope|Scope Description|
 |---|---|

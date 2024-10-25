@@ -1300,8 +1300,8 @@ components:
       type: oauth2
       flows:
         clientCredentials:
-          tokenUrl: '/api/auth/oauth/token'
-          refreshUrl: '/api/auth/oauth/token'
+          tokenUrl: '/oauth/token'
+          refreshUrl: '/oauth/token'
           scopes: { }
 
   schemas:
