@@ -9,7 +9,7 @@ import (
 type Security struct {
 	ClientID     string `security:"scheme,type=oauth2,subtype=client_credentials,name=clientID"`
 	ClientSecret string `security:"scheme,type=oauth2,subtype=client_credentials,name=clientSecret"`
-	tokenURL     string `const:"/api/auth/oauth/token"`
+	tokenURL     string `const:"/oauth/token"`
 }
 
 func (s Security) MarshalJSON() ([]byte, error) {
@@ -38,5 +38,5 @@ func (o *Security) GetClientSecret() string {
 }
 
 func (o *Security) GetTokenURL() string {
-	return "/api/auth/oauth/token"
+	return "/oauth/token"
 }
