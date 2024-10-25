@@ -8,8 +8,8 @@ import (
 )
 
 type V2PostTransactionScript struct {
-	Plain string         `json:"plain"`
-	Vars  map[string]any `json:"vars,omitempty"`
+	Plain string            `json:"plain"`
+	Vars  map[string]string `json:"vars,omitempty"`
 }
 
 func (o *V2PostTransactionScript) GetPlain() string {
@@ -19,7 +19,7 @@ func (o *V2PostTransactionScript) GetPlain() string {
 	return o.Plain
 }
 
-func (o *V2PostTransactionScript) GetVars() map[string]any {
+func (o *V2PostTransactionScript) GetVars() map[string]string {
 	if o == nil {
 		return nil
 	}

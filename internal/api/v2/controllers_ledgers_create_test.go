@@ -55,7 +55,7 @@ func TestLedgersCreate(t *testing.T) {
 			expectedBackendCall: true,
 			returnErr:           system.ErrLedgerAlreadyExists,
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     ErrLedgerAlreadyExists,
 		},
 		{
 			name:                "invalid ledger name",

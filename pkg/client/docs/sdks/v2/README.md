@@ -418,7 +418,7 @@ func main() {
                         	destination = $user
                         )
                         ",
-                            Vars: map[string]any{
+                            Vars: map[string]string{
                                 "user": "users:042",
                             },
                         },
@@ -959,7 +959,7 @@ func main() {
             	destination = $user
             )
             ",
-                Vars: map[string]any{
+                Vars: map[string]string{
                     "user": "users:042",
                 },
             },

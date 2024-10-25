@@ -2636,6 +2636,7 @@ Authorization ( Scopes: ledger:write )
 |script|object|false|none|none|
 |» plain|string|true|none|none|
 |» vars|object|false|none|none|
+|»» **additionalProperties**|string|false|none|none|
 |reference|string|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 
@@ -3191,6 +3192,7 @@ Authorization ( Scopes: ledger:write )
 |*anonymous*|BULK_SIZE_EXCEEDED|
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
+|*anonymous*|LEDGER_ALREADY_EXISTS|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->

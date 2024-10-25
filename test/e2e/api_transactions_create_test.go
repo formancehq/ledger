@@ -332,7 +332,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 								source = @world
 								destination = @bob
 							)`,
-									Vars: map[string]interface{}{},
+									Vars: map[string]string{},
 								},
 							},
 							Ledger: "default",
@@ -365,7 +365,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 								source = @world
 								destination = @bob
 							)`,
-									Vars: map[string]interface{}{
+									Vars: map[string]string{
 										"amount": "USD -100",
 									},
 								},
@@ -393,7 +393,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
 									Plain: `XXX`,
-									Vars:  map[string]interface{}{},
+									Vars:  map[string]string{},
 								},
 							},
 							Ledger: "default",
@@ -422,7 +422,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 							}
 							set_tx_meta("foo", "bar")
 							`,
-									Vars: map[string]interface{}{
+									Vars: map[string]string{
 										"amount": "USD 100",
 									},
 								},
@@ -449,7 +449,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 								destination = @bob
 							)
 							set_tx_meta("foo", "bar")`,
-									Vars: map[string]interface{}{},
+									Vars: map[string]string{},
 								},
 							},
 							Ledger: "default",
@@ -471,7 +471,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 								source = @world
 								destination = @bob
 							)`,
-									Vars: map[string]interface{}{},
+									Vars: map[string]string{},
 								},
 							},
 							DryRun: pointer.For(true),
