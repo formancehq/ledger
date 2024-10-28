@@ -34,8 +34,8 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
-	github.com/uptrace/bun v1.2.3
-	github.com/uptrace/bun/dialect/pgdialect v1.2.3
+	github.com/uptrace/bun v1.2.5
+	github.com/uptrace/bun/dialect/pgdialect v1.2.5
 	github.com/uptrace/bun/extra/bundebug v1.2.3
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/xo/dburl v0.23.2
@@ -47,10 +47,12 @@ require (
 	go.uber.org/mock v0.4.0
 	golang.org/x/oauth2 v0.23.0
 	golang.org/x/sync v0.8.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/hashicorp/go-hclog v1.6.3 // indirect
+require (
+	github.com/hashicorp/go-hclog v1.6.3 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
 
 require (
 	dario.cat/mergo v1.0.1 // indirect
