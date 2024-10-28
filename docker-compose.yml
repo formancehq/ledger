@@ -1,5 +1,8 @@
 version: '3.8'
 
+volumes:
+  postgres: {}
+
 services:
 
   postgres:
@@ -10,12 +13,15 @@ services:
       timeout: 5s
       retries: 5
     command:
-    - -c
-    - max_connections=200
+      - -c
+      - max_connections=200
     environment:
       POSTGRES_USER: "ledger"
       POSTGRES_PASSWORD: "ledger"
       POSTGRES_DB: "ledger"
+      PGDATA: /data/postgres
+    volumes:
+      - ${POSTGRES_DATA:-postgres}:/data/postgres
 
   prometheus:
     image: prom/prometheus:latest
@@ -40,9 +46,9 @@ services:
     image: golang:1.22-alpine
     entrypoint: go run main.go serve
     volumes:
-    - .:/src
+      - .:/src
     ports:
-    - 3068:3068
+      - 3068:3068
     working_dir: /src
     depends_on:
       postgres:
