@@ -2,7 +2,7 @@ do $$
 	declare
 		_batch_size integer := 30;
 		_date timestamp without time zone;
-		_count integer;
+		_count integer := 0;
 	begin
 		set search_path = '{{.Schema}}';
 
@@ -17,7 +17,8 @@ do $$
 
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || _count);
 
-		for i in 0.._count by _batch_size loop
+		for i in 1.._count by _batch_size loop
+			-- todo: disable triggers!
 			update transactions
 			set inserted_at = (
 				select date
@@ -29,7 +30,6 @@ do $$
 			commit;
 
 			perform pg_notify('migrations-{{ .Schema }}', 'continue: 1');
-
 		end loop;
 	end
 $$;
