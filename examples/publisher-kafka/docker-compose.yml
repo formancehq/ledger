@@ -20,6 +20,10 @@ services:
     extends:
       file: ../../docker-compose.yml
       service: postgres
+  jaeger:
+    extends:
+      file: ../../docker-compose.yml
+      service: jaeger
   ledger:
     extends:
       file: ../../docker-compose.yml
@@ -27,8 +31,6 @@ services:
     depends_on:
       - postgres
       - kafka
-    image: golang:1.19-alpine
-    entrypoint: go run main.go serve
     volumes:
       - ../..:/src
     working_dir: /src
