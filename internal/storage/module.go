@@ -10,7 +10,7 @@ import (
 
 func NewFXModule(autoUpgrade bool) fx.Option {
 	ret := []fx.Option{
-		driver.NewFXModule(autoUpgrade),
+		driver.NewFXModule(),
 	}
 	if autoUpgrade {
 		ret = append(ret,

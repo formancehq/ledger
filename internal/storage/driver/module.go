@@ -20,7 +20,7 @@ type PostgresConfig struct {
 type ModuleConfiguration struct {
 }
 
-func NewFXModule(autoUpgrade bool) fx.Option {
+func NewFXModule() fx.Option {
 	return fx.Options(
 		fx.Provide(func(
 			db *bun.DB,
@@ -41,13 +41,6 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 				},
 			})
 			return nil
-		}),
-		fx.Invoke(func(lc fx.Lifecycle, driver *Driver) {
-			if autoUpgrade {
-				lc.Append(fx.Hook{
-					OnStart: driver.UpgradeAllBuckets,
-				})
-			}
 		}),
 	)
 }
