@@ -202,6 +202,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 		if err := b.Migrate(ctx, d.tracer); err != nil {
 			return err
 		}
+		logging.FromContext(ctx).Infof("Bucket '%s' up to date", bucketName)
 	}
 
 	return nil
