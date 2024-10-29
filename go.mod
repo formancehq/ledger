@@ -34,9 +34,9 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
-	github.com/uptrace/bun v1.2.3
+	github.com/uptrace/bun v1.2.5
 	github.com/uptrace/bun/dialect/pgdialect v1.2.3
-	github.com/uptrace/bun/extra/bundebug v1.2.3
+	github.com/uptrace/bun/extra/bundebug v1.2.5
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/xo/dburl v0.23.2
 	go.opentelemetry.io/otel v1.31.0
@@ -47,10 +47,12 @@ require (
 	go.uber.org/mock v0.4.0
 	golang.org/x/oauth2 v0.23.0
 	golang.org/x/sync v0.8.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/hashicorp/go-hclog v1.6.3 // indirect
+require (
+	github.com/hashicorp/go-hclog v1.6.3 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
 
 require (
 	dario.cat/mergo v1.0.1 // indirect
@@ -95,7 +97,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/ebitengine/purego v0.8.0 // indirect
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
-	github.com/fatih/color v1.17.0 // indirect
+	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/formancehq/numscript v0.0.9-0.20241009144012-1150c14a1417
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
