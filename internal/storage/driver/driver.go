@@ -96,6 +96,14 @@ func (d *Driver) Initialize(ctx context.Context) error {
 
 	err = Migrate(ctx, d.db)
 	if err != nil {
+		constraintsFailed := postgres.ErrConstraintsFailed{}
+		if errors.As(err, &constraintsFailed) &&
+			constraintsFailed.GetConstraint() == "pg_namespace_nspname_index" {
+			// notes(gfyrag): Creating schema concurrently can result in a constraint violation of pg_namespace_nspname_index table.
+			// If we have this error, it's because a concurrent instance of the service is actually creating the schema
+			// I guess we can ignore the error.
+			return nil
+		}
 		return fmt.Errorf("migrating system store: %w", err)
 	}
 
