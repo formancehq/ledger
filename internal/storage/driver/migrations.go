@@ -15,7 +15,7 @@ import (
 
 func GetMigrator(db *bun.DB) *migrations.Migrator {
 
-	// configuration table has been removed, we keep the model to keep migrations consistent but the table is now removed
+	// configuration table has been removed, we keep the model to keep migrations consistent but the table is not used anymore.
 	type configuration struct {
 		bun.BaseModel `bun:"_system.configuration,alias:configuration"`
 
@@ -24,7 +24,7 @@ func GetMigrator(db *bun.DB) *migrations.Migrator {
 		AddedAt time.Time `bun:"addedAt,type:timestamp"`
 	}
 
-	migrator := migrations.NewMigrator(db, migrations.WithSchema(SchemaSystem, true))
+	migrator := migrations.NewMigrator(db, migrations.WithSchema(SchemaSystem))
 	migrator.RegisterMigrations(
 		migrations.Migration{
 			Name: "Init schema",

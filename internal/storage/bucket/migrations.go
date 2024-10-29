@@ -12,7 +12,7 @@ import (
 var MigrationsFS embed.FS
 
 func GetMigrator(db *bun.DB, name string) *migrations.Migrator {
-	migrator := migrations.NewMigrator(db, migrations.WithSchema(name, true))
+	migrator := migrations.NewMigrator(db, migrations.WithSchema(name))
 	migrations, err := migrations.CollectMigrations(MigrationsFS, name)
 	if err != nil {
 		panic(err)
