@@ -15,6 +15,8 @@ services:
     command:
       - -c
       - max_connections=200
+      - -c
+      - log_min_messages=info
     environment:
       POSTGRES_USER: "ledger"
       POSTGRES_PASSWORD: "ledger"
@@ -47,6 +49,7 @@ services:
     entrypoint: go run main.go serve
     volumes:
       - .:/src
+      - ${GOPATH}:/go
     ports:
       - 3068:3068
     working_dir: /src
@@ -54,6 +57,8 @@ services:
       postgres:
         condition: service_healthy
       jaeger:
+        condition: service_started
+      otel:
         condition: service_started
     environment:
       GOWORK: off
@@ -68,3 +73,4 @@ services:
       OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
       OTEL_TRACES_BATCH: "true"
       POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+      AUTO_UPGRADE: "true"
