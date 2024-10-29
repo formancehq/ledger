@@ -1,9 +1,10 @@
 do $$
 	declare
-		_batch_size integer := 30;
+		_batch_size integer := 100;
 		_date timestamp without time zone;
 		_count integer := 0;
 	begin
+		--todo: take explicit advisory lock to avoid concurrent migrations when the service is killed
 		set search_path = '{{.Schema}}';
 
 		-- select the date where the "11-make-stateless" migration has been applied
@@ -11,25 +12,42 @@ do $$
 		from _system.goose_db_version
 		where version_id = 12;
 
-		select count(*) into _count
+		create temporary table logs_transactions as
+		select id, ledger, date, (data->'transaction'->>'id')::bigint as transaction_id
 		from logs
 		where date <= _date;
 
+		create index on logs_transactions (ledger, transaction_id) include (id, date);
+
+		select count(*) into _count
+		from logs_transactions;
+
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || _count);
 
-		for i in 1.._count by _batch_size loop
-			-- todo: disable triggers!
-			update transactions
-			set inserted_at = (
-				select date
-				from logs
-				where transactions.id = (data->'transaction'->>'id')::bigint and transactions.ledger = ledger
+		for i in 0.._count by _batch_size loop
+			-- disable triggers
+			set session_replication_role = replica;
+
+			with _rows as (
+				select *
+				from logs_transactions
+				order by ledger, transaction_id
+				offset i
+				limit _batch_size
 			)
-			where id >= i and id < i + _batch_size;
+			update transactions
+			set inserted_at = _rows.date
+			from _rows
+			where transactions.ledger = _rows.ledger and transactions.id = _rows.transaction_id;
+
+			-- enable triggers
+			set session_replication_role = default;
 
 			commit;
 
-			perform pg_notify('migrations-{{ .Schema }}', 'continue: 1');
+			perform pg_notify('migrations-{{ .Schema }}', 'continue: ' || _batch_size);
 		end loop;
+
+		drop table logs_transactions;
 	end
 $$;

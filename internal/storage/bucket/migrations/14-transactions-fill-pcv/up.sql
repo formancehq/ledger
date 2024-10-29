@@ -1,6 +1,6 @@
 do $$
 	declare
-		_batch_size integer := 30;
+		_batch_size integer := 100;
 		_count integer;
 	begin
 		set search_path = '{{.Schema}}';
@@ -13,6 +13,9 @@ do $$
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || _count);
 
 		loop
+			-- disable triggers
+			set session_replication_role = replica;
+
 			with _outdated_transactions as (
 				select id
 				from transactions
@@ -43,10 +46,14 @@ do $$
 			from _outdated_transactions
 			where transactions.id in (_outdated_transactions.id);
 
+			-- enable triggers
+			set session_replication_role = default;
+
 			exit when not found;
 
-			perform pg_notify('migrations-{{ .Schema }}', 'continue: ' || _batch_size);
+			commit;
 
+			perform pg_notify('migrations-{{ .Schema }}', 'continue: ' || _batch_size);
 		end loop;
 		
 		alter table transactions

@@ -1,9 +1,11 @@
 do $$
 	declare
-		_batch_size integer := 30;
+		_batch_size integer := 100;
 		_max integer;
 	begin
 		set search_path = '{{.Schema}}';
+
+		create index moves_transactions_id on moves(transactions_id);
 
 		select count(seq)
 		from moves
