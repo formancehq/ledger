@@ -24,7 +24,7 @@ func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer) error {
 	return migrate(ctx, tracer, b.db, b.name)
 }
 
-func (b *Bucket) IsUpToDate(ctx context.Context) (bool, error) {
+func (b *Bucket) HasMinimalVersion(ctx context.Context) (bool, error) {
 	migrator := GetMigrator(b.db, b.name)
 	lastVersion, err := migrator.GetLastVersion(ctx)
 	if err != nil {

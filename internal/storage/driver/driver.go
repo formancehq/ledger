@@ -216,6 +216,10 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 	return nil
 }
 
+func (d *Driver) GetDB() *bun.DB {
+	return d.db
+}
+
 func New(db *bun.DB, opts ...Option) *Driver {
 	ret := &Driver{
 		db: db,

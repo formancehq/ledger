@@ -116,7 +116,7 @@ func (d *DefaultStoreAdapter) GetVolumesWithBalances(ctx context.Context, q ledg
 }
 
 func (d *DefaultStoreAdapter) IsUpToDate(ctx context.Context) (bool, error) {
-	return d.newStore.IsUpToDate(ctx)
+	return d.newStore.HasMinimalVersion(ctx)
 }
 
 func (d *DefaultStoreAdapter) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {

@@ -513,3 +513,35 @@ $do$
 		end loop;
 	END
 $do$;
+
+-- following index will enforce uniqueness of transaction reference until the appropriate index is full built (see next migration)
+create or replace function enforce_reference_uniqueness() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	-- Temporary magic number
+	-- The migration 13 will remove the trigger
+	perform pg_advisory_xact_lock(9999999);
+
+	if exists(
+		select 1
+		from transactions
+		where reference = new.reference
+			and ledger = new.ledger
+			and id != new.id
+	) then
+		raise exception 'duplicate reference';
+	end if;
+
+	return new;
+end
+$$ set search_path from current;
+
+create constraint trigger enforce_reference_uniqueness
+after insert on transactions
+deferrable initially deferred
+for each row
+when ( new.reference is not null )
+execute procedure enforce_reference_uniqueness();

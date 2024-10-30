@@ -7,6 +7,9 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/google/uuid"
 	"math/big"
 	"slices"
 	"testing"
@@ -602,6 +605,84 @@ func TestTransactionsInsert(t *testing.T) {
 		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
+	})
+	// todo(next-minor): remove this test
+	t.Run("check reference conflict with minimal store version", func(t *testing.T) {
+		t.Parallel()
+
+		driver := newDriver(t)
+		ledgerName := uuid.NewString()[:8]
+
+		l := ledger.MustNewWithDefault(ledgerName)
+		l.Bucket = ledgerName
+
+		migrator := bucket.GetMigrator(driver.GetDB(), ledgerName)
+		for i := 0; i < bucket.MinimalSchemaVersion; i++ {
+			require.NoError(t, migrator.UpByOne(ctx))
+		}
+
+		b := bucket.New(driver.GetDB(), ledgerName)
+		err := b.AddLedger(ctx, l, driver.GetDB())
+		require.NoError(t, err)
+
+		store := ledgerstore.New(driver.GetDB(), b, l)
+
+		const nbTry = 100
+
+		for i := 0; i < nbTry; i++ {
+			errChan := make(chan error, 2)
+
+			// Create a simple tx
+			tx1 := ledger.Transaction{
+				TransactionData: ledger.TransactionData{
+					Timestamp: now,
+					Reference: fmt.Sprintf("foo:%d", i),
+					Postings: []ledger.Posting{
+						ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+					},
+				},
+			}
+			go func() {
+				errChan <- store.InsertTransaction(ctx, &tx1)
+			}()
+
+			// Create another tx with the same reference
+			tx2 := ledger.Transaction{
+				TransactionData: ledger.TransactionData{
+					Timestamp: now,
+					Reference: fmt.Sprintf("foo:%d", i),
+					Postings: []ledger.Posting{
+						ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+					},
+				},
+			}
+			go func() {
+				errChan <- store.InsertTransaction(ctx, &tx2)
+			}()
+
+			select {
+			case err1 := <-errChan:
+				if err1 != nil {
+					require.True(t, errors.Is(err1, ledgercontroller.ErrTransactionReferenceConflict{}))
+					select {
+					case err2 := <-errChan:
+						require.NoError(t, err2)
+					case <-time.After(time.Second):
+						require.Fail(t, "should have received an error")
+					}
+				} else {
+					select {
+					case err2 := <-errChan:
+						require.Error(t, err2)
+						require.True(t, errors.Is(err2, ledgercontroller.ErrTransactionReferenceConflict{}))
+					case <-time.After(time.Second):
+						require.Fail(t, "should have received an error")
+					}
+				}
+			case <-time.After(time.Second):
+				require.Fail(t, "should have received an error")
+			}
+		}
 	})
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()

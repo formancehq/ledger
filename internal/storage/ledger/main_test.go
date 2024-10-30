@@ -8,16 +8,13 @@ import (
 	. "github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
 	"os"
-	"sync/atomic"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -33,7 +30,6 @@ import (
 var (
 	srv         = NewDeferred[*pgtesting.PostgresServer]()
 	bunDB       = NewDeferred[*bun.DB]()
-	ledgerCount = atomic.Int64{}
 )
 
 func TestMain(m *testing.M) {
@@ -68,10 +64,9 @@ type T interface {
 	Cleanup(func())
 }
 
-func newLedgerStore(t T) *ledgerstore.Store {
+func newDriver(t T) *driver.Driver {
 	t.Helper()
 
-	ledgerName := uuid.NewString()[:8]
 	ctx := logging.TestingContext()
 
 	Wait(srv, bunDB)
@@ -88,15 +83,23 @@ func newLedgerStore(t T) *ledgerstore.Store {
 
 	require.NoError(t, driver.Migrate(ctx, db))
 
+	return driver.New(bunDB.GetValue())
+}
+
+func newLedgerStore(t T) *ledgerstore.Store {
+	t.Helper()
+
+	driver := newDriver(t)
+	ledgerName := uuid.NewString()[:8]
+	ctx := logging.TestingContext()
+
 	l := ledger.MustNewWithDefault(ledgerName)
 	l.Bucket = ledgerName
-	l.ID = int(ledgerCount.Add(1))
 
-	b := bucket.New(bunDB.GetValue(), ledgerName)
-	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
-	require.NoError(t, b.AddLedger(ctx, l, bunDB.GetValue()))
+	store, err := driver.CreateLedger(ctx, &l)
+	require.NoError(t, err)
 
-	return ledgerstore.New(bunDB.GetValue(), b, l)
+	return store
 }
 
 func bigIntComparer(v1 *big.Int, v2 *big.Int) bool {
