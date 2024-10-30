@@ -158,7 +158,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 							`),
 					).
 					Column("transactions_id").
-					ColumnExpr("aggregate_objects(post_commit_effective_volumes::jsonb) as post_commit_effective_volumes").
+					ColumnExpr("public.aggregate_objects(post_commit_effective_volumes::jsonb) as post_commit_effective_volumes").
 					Group("transactions_id"),
 			).
 			ColumnExpr("pcev.*")
@@ -240,24 +240,6 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 }
 
 func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
-
-	// todo(next-minor): remove that on ledger 2.3 when the corresponding index will be completely built (see migration 12)
-	//if tx.Reference != "" {
-	//	// Magic number, as long as no other process try to take the same exact lock for another reason, it will be ok.
-	//	// This code will be removed in the next minor by the way.
-	//	_, err := s.db.ExecContext(ctx, `select pg_advisory_xact_lock(99999999999)`)
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	exists, err := s.db.NewSelect().
-	//		ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-	//		Where("reference = ?", tx.Reference).
-	//		Exists(ctx)
-	//	if exists {
-	//		return ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
-	//	}
-	//}
 
 	postCommitVolumes, err := s.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {

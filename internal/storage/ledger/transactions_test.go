@@ -433,7 +433,7 @@ func TestTransactionsCommit(t *testing.T) {
 				errChan <- nil
 			})
 		}
-		wp.StopAndWaitFor(2 * time.Second)
+		wp.StopAndWait()
 		close(errChan)
 
 		for err := range errChan {
