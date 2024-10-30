@@ -186,8 +186,8 @@ func New(db bun.IDB, bucket *bucket.Bucket, ledger ledger.Ledger, opts ...Option
 	return ret
 }
 
-func (s *Store) IsUpToDate(ctx context.Context) (bool, error) {
-	return s.bucket.IsUpToDate(ctx)
+func (s *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
+	return s.bucket.HasMinimalVersion(ctx)
 }
 
 func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
