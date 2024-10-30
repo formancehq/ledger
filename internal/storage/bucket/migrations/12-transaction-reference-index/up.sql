@@ -1,0 +1,1 @@
+create unique index concurrently transactions_reference2 on "{{.Schema}}".transactions (ledger, reference);

@@ -205,8 +205,6 @@ add column inserted_at timestamp without time zone default (transaction_date() a
 alter column timestamp set default (transaction_date() at time zone 'utc'),
 alter column id type bigint;
 
-drop index transactions_reference;
-create unique index transactions_reference on transactions (ledger, reference);
 create index transactions_sequences on transactions (id, seq);
 
 alter table logs
@@ -482,10 +480,6 @@ $do$
 			vsql = 'select setval(''"log_id_' || ledger.id || '"'', coalesce((select max(id) + 1 from logs where ledger = ''' || ledger.name || '''), 1)::bigint, false)';
 			execute vsql;
 
-			-- enable post commit effective volumes synchronously
-			vsql = 'create index "pcev_' || ledger.id || '" on moves (accounts_address, asset, effective_date desc) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
 			vsql = 'create trigger "set_effective_volumes_' || ledger.id || '" before insert on moves for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_effective_volumes()';
 			execute vsql;
 
@@ -508,28 +502,10 @@ $do$
 			vsql = 'create trigger "insert_transaction_metadata_history_' || ledger.id || '" after insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure insert_transaction_metadata_history()';
 			execute vsql;
 
-			vsql = 'create index "transactions_sources_' || ledger.id || '" on transactions using gin (sources jsonb_path_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
-			vsql = 'create index "transactions_destinations_' || ledger.id || '" on transactions using gin (destinations jsonb_path_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
 			vsql = 'create trigger "transaction_set_addresses_' || ledger.id || '" before insert on transactions for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_transaction_addresses()';
 			execute vsql;
 
-			vsql = 'create index "accounts_address_array_' || ledger.id || '" on accounts using gin (address_array jsonb_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
-			vsql = 'create index "accounts_address_array_length_' || ledger.id || '" on accounts (jsonb_array_length(address_array)) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
 			vsql = 'create trigger "accounts_set_address_array_' || ledger.id || '" before insert on accounts for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_address_array_for_account()';
-			execute vsql;
-
-			vsql = 'create index "transactions_sources_arrays_' || ledger.id || '" on transactions using gin (sources_arrays jsonb_path_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
-			vsql = 'create index "transactions_destinations_arrays_' || ledger.id || '" on transactions using gin (destinations_arrays jsonb_path_ops) where ledger = ''' || ledger.name || '''';
 			execute vsql;
 
 			vsql = 'create trigger "transaction_set_addresses_segments_' || ledger.id || '"	before insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_transaction_addresses_segments()';
