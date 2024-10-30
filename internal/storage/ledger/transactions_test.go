@@ -6,7 +6,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/alitto/pond"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -386,6 +388,86 @@ func TestTransactionsCommit(t *testing.T) {
 			require.True(t, errors.Is(err, postgres.ErrDeadlockDetected))
 		case <-libtime.After(2 * time.Second):
 			require.Fail(t, "transaction should have finished")
+		}
+	})
+
+	t.Run("post commit volumes ordering on concurrent transactions", func(t *testing.T) {
+		t.Parallel()
+
+		const countTx = 100
+		store := newLedgerStore(t)
+
+		errChan := make(chan error, countTx)
+		wp := pond.New(20, 20)
+		for i := 0; i < countTx; i++ {
+			wp.Submit(func() {
+
+				sqlTX, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
+				if err != nil {
+					errChan <- err
+					return
+				}
+				defer func() {
+					_ = sqlTX.Rollback()
+				}()
+				store := store.WithDB(sqlTX)
+
+				tx := ledger.NewTransaction().WithPostings(
+					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+				)
+				err = store.CommitTransaction(ctx, &tx)
+				if err != nil {
+					errChan <- err
+					return
+				}
+
+				err = sqlTX.Commit()
+				if err != nil {
+					errChan <- err
+					return
+				}
+
+				errChan <- nil
+			})
+		}
+		wp.StopAndWaitFor(2 * time.Second)
+		close(errChan)
+
+		for err := range errChan {
+			require.NoError(t, err)
+		}
+
+		cursor, err := store.ListTransactions(ctx, ledgercontroller.NewListTransactionsQuery(
+			ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
+				ExpandVolumes: true,
+			}).
+				WithPageSize(countTx)),
+		)
+		require.NoError(t, err)
+		require.Len(t, cursor.Data, countTx)
+
+		txs := cursor.Data
+		slices.Reverse(txs)
+
+		for i := range countTx {
+			require.Equal(t, i+1, txs[i].ID)
+			require.Equalf(t, ledger.PostCommitVolumes{
+				"world": {
+					"USD": {
+						Input:  big.NewInt(0),
+						Output: big.NewInt(int64((i + 1) * 100)),
+					},
+				},
+				"bank": {
+					"USD": {
+						Input:  big.NewInt(int64((i + 1) * 100)),
+						Output: big.NewInt(0),
+					},
+				},
+			}, txs[i].PostCommitVolumes, "checking tx %d", i)
+			if i > 0 {
+				require.Truef(t, txs[i].InsertedAt.After(txs[i-1].InsertedAt), "checking tx %d", i)
+			}
 		}
 	})
 }

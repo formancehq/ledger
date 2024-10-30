@@ -1,5 +1,28 @@
 set search_path = '{{.Schema}}';
 
+create or replace function transaction_date() returns timestamp as $$
+    declare
+        ret timestamp without time zone;
+    begin
+        create temporary table if not exists transaction_date on commit drop as
+        select statement_timestamp();
+
+        select *
+        from transaction_date
+        limit 1
+        into ret;
+
+        if not found then
+            ret = statement_timestamp();
+
+            insert into transaction_date
+            select ret;
+        end if;
+
+        return ret;
+    end
+$$ language plpgsql;
+
 drop trigger insert_account  on accounts;
 drop trigger update_account  on accounts;
 drop trigger insert_transaction  on transactions;
@@ -10,8 +33,8 @@ alter table moves
 add column transactions_id bigint,
 alter column post_commit_volumes drop not null,
 alter column post_commit_effective_volumes drop not null,
-alter column insertion_date set default (now() at time zone 'utc'),
-alter column effective_date set default (now() at time zone 'utc'),
+alter column insertion_date set default (transaction_date() at time zone 'utc'),
+alter column effective_date set default (transaction_date() at time zone 'utc'),
 alter column account_address_array drop not null;
 
 alter table moves
@@ -178,8 +201,8 @@ execute procedure set_compat_on_transactions_metadata();
 
 alter table transactions
 add column post_commit_volumes jsonb,
-add column inserted_at timestamp without time zone default (now() at time zone 'utc'),
-alter column timestamp set default (now() at time zone 'utc'),
+add column inserted_at timestamp without time zone default (transaction_date() at time zone 'utc'),
+alter column timestamp set default (transaction_date() at time zone 'utc'),
 alter column id type bigint;
 
 drop index transactions_reference;
@@ -190,13 +213,13 @@ alter table logs
 add column memento bytea,
 add column idempotency_hash bytea,
 alter column hash drop not null,
-alter column date set default (now() at time zone 'utc');
+alter column date set default (transaction_date() at time zone 'utc');
 
 alter table accounts
 alter column address_array drop not null,
-alter column first_usage set default (now() at time zone 'utc'),
-alter column insertion_date set default (now() at time zone 'utc'),
-alter column updated_at set default (now() at time zone 'utc')
+alter column first_usage set default (transaction_date() at time zone 'utc'),
+alter column insertion_date set default (transaction_date() at time zone 'utc'),
+alter column updated_at set default (transaction_date() at time zone 'utc')
 ;
 
 create table accounts_volumes (
