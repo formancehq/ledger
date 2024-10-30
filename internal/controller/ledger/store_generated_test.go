@@ -364,7 +364,7 @@ func (mr *MockStoreMockRecorder) GetVolumesWithBalances(ctx, q any) *gomock.Call
 // IsUpToDate mocks base method.
 func (m *MockStore) IsUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasMinimalVersion", ctx)
+	ret := m.ctrl.Call(m, "IsUpToDate", ctx)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -373,7 +373,7 @@ func (m *MockStore) IsUpToDate(ctx context.Context) (bool, error) {
 // IsUpToDate indicates an expected call of IsUpToDate.
 func (mr *MockStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasMinimalVersion", reflect.TypeOf((*MockStore)(nil).IsUpToDate), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUpToDate", reflect.TypeOf((*MockStore)(nil).IsUpToDate), ctx)
 }
 
 // ListAccounts mocks base method.

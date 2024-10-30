@@ -19,7 +19,7 @@ create or replace function transaction_date() returns timestamp as $$
             select ret;
         end if;
 
-        return ret;
+        return ret at time zone 'utc';
     end
 $$ language plpgsql;
 
@@ -33,8 +33,8 @@ alter table moves
 add column transactions_id bigint,
 alter column post_commit_volumes drop not null,
 alter column post_commit_effective_volumes drop not null,
-alter column insertion_date set default (transaction_date() at time zone 'utc'),
-alter column effective_date set default (transaction_date() at time zone 'utc'),
+alter column insertion_date set default transaction_date(),
+alter column effective_date set default transaction_date(),
 alter column account_address_array drop not null;
 
 alter table moves
@@ -60,7 +60,6 @@ from (
       group by move.accounts_address, move.asset
 ) data
 $$ set search_path from current;
-
 create or replace function get_aggregated_effective_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
     stable
     language sql
@@ -201,23 +200,25 @@ execute procedure set_compat_on_transactions_metadata();
 
 alter table transactions
 add column post_commit_volumes jsonb,
-add column inserted_at timestamp without time zone default (transaction_date() at time zone 'utc'),
-alter column timestamp set default (transaction_date() at time zone 'utc'),
-alter column id type bigint;
-
-create index transactions_sequences on transactions (id, seq);
+-- todo: set in subsequent migration `default transaction_date()`,
+-- otherwise the function is called for every existing lines
+add column inserted_at timestamp without time zone,
+alter column timestamp set default transaction_date()
+-- todo: we should change the type of this column, but actually it cause a full lock of the table
+-- alter column id type bigint
+;
 
 alter table logs
 add column memento bytea,
 add column idempotency_hash bytea,
 alter column hash drop not null,
-alter column date set default (transaction_date() at time zone 'utc');
+alter column date set default transaction_date();
 
 alter table accounts
 alter column address_array drop not null,
-alter column first_usage set default (transaction_date() at time zone 'utc'),
-alter column insertion_date set default (transaction_date() at time zone 'utc'),
-alter column updated_at set default (transaction_date() at time zone 'utc')
+alter column first_usage set default transaction_date(),
+alter column insertion_date set default transaction_date(),
+alter column updated_at set default transaction_date()
 ;
 
 create table accounts_volumes (
@@ -229,8 +230,6 @@ create table accounts_volumes (
 
     primary key (ledger, accounts_address, asset)
 );
-
-create index accounts_sequences on accounts (address, seq);
 
 alter table transactions_metadata
 add column transactions_id bigint;
@@ -364,6 +363,25 @@ from (select row_number() over () as number, v.value
             select null) v) data
 $$ set search_path from current;
 
+-- todo(next-minor): remove that on future version when the table will have this default value (need to fill nulls before)
+create or replace function set_transaction_inserted_at() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.inserted_at = transaction_date();
+
+	return new;
+end
+$$ set search_path from current;
+
+create trigger set_transaction_inserted_at
+before insert on transactions
+for each row
+when ( new.inserted_at is null )
+execute procedure set_transaction_inserted_at();
+
 create or replace function set_transaction_addresses() returns trigger
 	security definer
 	language plpgsql
@@ -469,7 +487,6 @@ $do$
 			execute vsql;
 
 			vsql = 'select setval(''"transaction_id_' || ledger.id || '"'', coalesce((select max(id) + 1 from transactions where ledger = ''' || ledger.name || '''), 1)::bigint, false)';
-			raise info '%', vsql;
 			execute vsql;
 
 			-- create a sequence for logs by ledger instead of a sequence of the table as we want to have contiguous ids
@@ -521,9 +538,7 @@ create or replace function enforce_reference_uniqueness() returns trigger
 as
 $$
 begin
-	-- Temporary magic number
-	-- The migration 13 will remove the trigger
-	perform pg_advisory_xact_lock(9999999);
+	perform pg_advisory_xact_lock(hashtext('reference-check' || current_schema));
 
 	if exists(
 		select 1
@@ -545,3 +560,5 @@ deferrable initially deferred
 for each row
 when ( new.reference is not null )
 execute procedure enforce_reference_uniqueness();
+
+
