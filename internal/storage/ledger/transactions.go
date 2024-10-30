@@ -299,6 +299,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		}
 
 		if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+			// todo: tx is inserted earlier!
 			tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
 		}
 	}
