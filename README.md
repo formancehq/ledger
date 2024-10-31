@@ -8,7 +8,7 @@ Formance Ledger (fka numary) is a programmable financial ledger that provides a 
 - Payment gateways using non-standard assets, e.g. learning credits
 - Local currencies and complementary finance
 
-Formance Ledger works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/formancehq/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.formance.com/docs/installation-1).
+Formance Ledger works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/formancehq/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.formance.com/ledger/operations/installation).
 
 ## Documentation
 
