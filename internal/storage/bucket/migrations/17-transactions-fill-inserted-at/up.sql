@@ -49,5 +49,11 @@ do $$
 		end loop;
 
 		drop table logs_transactions;
+
+		alter table transactions
+		alter column inserted_at set default transaction_date();
+
+		drop trigger set_transaction_inserted_at on transactions;
+		drop function set_transaction_inserted_at;
 	end
 $$;
