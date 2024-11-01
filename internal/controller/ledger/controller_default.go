@@ -293,7 +293,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 }
 
 func (ctrl *DefaultController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
-	return ctrl.store.IsUpToDate(ctx)
+	return ctrl.store.HasMinimalVersion(ctx)
 }
 
 func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {

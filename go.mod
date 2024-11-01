@@ -29,7 +29,6 @@ require (
 	github.com/onsi/gomega v1.35.1
 	github.com/ory/dockertest/v3 v3.11.0
 	github.com/pborman/uuid v1.2.1
-	github.com/pkg/errors v0.9.1
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -54,6 +53,7 @@ require gopkg.in/yaml.v3 v3.0.1 // indirect
 require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/jackc/pgxlisten v0.0.0-20241106001234-1d6f6656415c // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 )
 
 require (
