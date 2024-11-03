@@ -1,0 +1,7 @@
+name: ledger
+description: Ledger deployment
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: kubernetes-go
