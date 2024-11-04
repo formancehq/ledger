@@ -44,7 +44,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 				"clientType": "gold",
 			}
 		)
-		BeforeEach(func() {
+		JustBeforeEach(func() {
 			err := AddMetadataToAccount(
 				ctx,
 				testServer.GetValue(),
@@ -74,6 +74,59 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 		It("should trigger a new event", func() {
 			Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata)))
+		})
+		Context("with empty metadata", func() {
+			BeforeEach(func() {
+				metadata = nil
+			})
+			It("should be OK", func() {
+				response, err := GetAccount(
+					ctx,
+					testServer.GetValue(),
+					operations.V2GetAccountRequest{
+						Address: "foo",
+						Ledger:  "default",
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(*response).Should(Equal(components.V2Account{
+					Address:  "foo",
+					Metadata: map[string]string{},
+				}))
+			})
+			Context("then adding with empty metadata", func() {
+				It("should be OK", func() {
+
+					// The first call created the row in the database,
+					// the second call should not change the metadata, and checks than updates works.
+					err := AddMetadataToAccount(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataToAccountRequest{
+							RequestBody: metadata,
+							Address:     "foo",
+							Ledger:      "default",
+						},
+					)
+					Expect(err).ToNot(HaveOccurred())
+
+					response, err := GetAccount(
+						ctx,
+						testServer.GetValue(),
+						operations.V2GetAccountRequest{
+							Address: "foo",
+							Ledger:  "default",
+						},
+					)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(*response).Should(Equal(components.V2Account{
+						Address:  "foo",
+						Metadata: map[string]string{},
+					}))
+				})
+			})
 		})
 	})
 })
