@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/v2/logging"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -99,6 +100,7 @@ func NewServeCommand() *cobra.Command {
 
 						Handler          chi.Router
 						HealthController *health.HealthController
+						Logger logging.Logger
 
 						MeterProvider *metric.MeterProvider         `optional:"true"`
 						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
@@ -109,6 +111,7 @@ func NewServeCommand() *cobra.Command {
 						params.MeterProvider,
 						params.Exporter,
 						params.HealthController,
+						params.Logger,
 						params.Handler,
 					)
 				}),
@@ -163,9 +166,18 @@ func assembleFinalRouter(
 	meterProvider *metric.MeterProvider,
 	exporter *otlpmetrics.InMemoryExporter,
 	healthController *health.HealthController,
+	logger logging.Logger,
 	handler http.Handler,
 ) *chi.Mux {
 	wrappedRouter := chi.NewRouter()
+	wrappedRouter.Use(func(handler http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
+
+			handler.ServeHTTP(w, r)
+		})
+	})
 	wrappedRouter.Route("/_/", func(r chi.Router) {
 		if exporter != nil {
 			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
