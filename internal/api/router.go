@@ -7,7 +7,6 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
@@ -22,7 +21,6 @@ import (
 func NewRouter(
 	systemController system.Controller,
 	authenticator auth.Authenticator,
-	logger logging.Logger,
 	version string,
 	debug bool,
 	opts ...RouterOption,
@@ -36,14 +34,6 @@ func NewRouter(
 	mux := chi.NewRouter()
 	mux.Use(
 		middleware.Recoverer,
-		func(handler http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
-
-				handler.ServeHTTP(w, r)
-			})
-		},
 		cors.New(cors.Options{
 			AllowOriginFunc: func(r *http.Request, origin string) bool {
 				return true
