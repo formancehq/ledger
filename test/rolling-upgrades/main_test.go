@@ -137,7 +137,8 @@ func TestK8SRollingUpgrades(t *testing.T) {
 	ret, err := upAndPrintOutputs(ctx, checkStack)
 	require.NoError(t, err, "upping check stack")
 
-	require.False(t, ret.Outputs["phase"].Value.(string) == "Failed")
+	testFailure = ret.Outputs["phase"].Value.(string) == "Failed"
+	require.False(t, testFailure)
 }
 
 func cleanup(ctx context.Context, stack auto.Stack) {
