@@ -1,4 +1,4 @@
-VERSION 0.8
+VERSION --wildcard-builds 0.8
 PROJECT FormanceHQ/ledger
 
 IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
@@ -22,7 +22,7 @@ sources:
     WORKDIR /src
     COPY go.mod go.sum ./
     RUN go mod download
-    COPY --dir internal pkg cmd tools .
+    COPY --dir internal pkg cmd .
     COPY main.go .
     SAVE ARTIFACT /src
 
@@ -68,7 +68,6 @@ tests:
     COPY --dir --pass-args (+generate/*) .
 
     ARG includeIntegrationTests="true"
-    ARG includeEnd2EndTests="true"
     ARG coverage=""
     ARG debug=false
 
@@ -128,7 +127,6 @@ lint:
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT test AS LOCAL test
-    SAVE ARTIFACT tools AS LOCAL tools
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
@@ -141,6 +139,10 @@ pre-commit:
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
+
+    # todo: currently not working with earthly
+    #BUILD ./test/rolling-upgrades+pre-commit
+    #BUILD ./tools/*+pre-commit
 
 openapi:
     FROM node:20-alpine
@@ -167,6 +169,9 @@ tidy:
     COPY --dir test .
     RUN go mod tidy
 
+    SAVE ARTIFACT go.mod AS LOCAL go.mod
+    SAVE ARTIFACT go.sum AS LOCAL go.sum
+
 release:
     FROM core+builder-image
     ARG mode=local
@@ -189,9 +194,23 @@ generate-client:
 export-database-schema:
     FROM +sources
     RUN go install github.com/roerohan/wait-for-it@latest
-    COPY --dir scripts scripts
     WITH DOCKER --load=postgres:15-alpine=+postgres --pull schemaspy/schemaspy:6.2.4
-        RUN ./scripts/export-database-schema.sh
+        RUN bash -c '
+            echo "Creating PG server...";
+            postgresContainerID=$(docker run -d --rm -e POSTGRES_USER=root -e POSTGRES_PASSWORD=root -e POSTGRES_DB=formance --net=host postgres:15-alpine);
+            wait-for-it -w 127.0.0.1:5432;
+
+            echo "Creating bucket...";
+            go run main.go buckets upgrade _default --postgres-uri "postgres://root:root@127.0.0.1:5432/formance?sslmode=disable";
+
+            echo "Exporting schemas...";
+            docker run --rm -u root \
+              -v ./docs/database:/output \
+              --net=host \
+              schemaspy/schemaspy:6.2.4 -u root -db formance -t pgsql11 -host 127.0.0.1 -port 5432 -p root -schemas _system,_default;
+
+            docker kill "$postgresContainerID";
+        '
     END
     SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
     SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
@@ -201,6 +220,6 @@ export-docs-events:
     CACHE --id go-mod-cache /go/pkg/mod
     CACHE --id go-cache /root/.cache/go-build
 
-    RUN go run tools/docs/events/main.go --write-dir docs/events
+    RUN go run . docs events --write-dir docs/events
 
     SAVE ARTIFACT docs/events AS LOCAL docs/events

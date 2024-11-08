@@ -27,7 +27,7 @@ services:
     image: prom/prometheus:latest
     restart: always
     volumes:
-      - ./deployments/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - ./deployments/docker-compose/prometheus.yaml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
 
@@ -35,7 +35,7 @@ services:
     image: "otel/opentelemetry-collector-contrib:0.81.0"
     command: [ "--config=/etc/otel-collector-config.yaml" ]
     volumes:
-      - ./deployments/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./deployments/docker-compose/otel-collector-config.yaml:/etc/otel-collector-config.yaml
 
   jaeger:
     image: jaegertracing/opentelemetry-all-in-one

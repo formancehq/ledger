@@ -382,10 +382,12 @@ That's because, if we would do that, we would have frequent serialization errors
 
 Tests are split in different scopes :
 * Unit tests: as any go app, you will find unit test along the source code in _test.go files over the app.
-* [e2e](./test/e2e) : End to end test. Those tests are mainly api tests, and app lifecycle tests. It checks than the ledger endpoint works as expected.
-* [migrations](./test/migrations) : Migrations tests. Tests inside this package allow to import an existing database to apply current code migrations on it.
-* [performance](./test/performance) : Performance tests. Tests inside this package test performance of the ledger.
-* [stress](./test/stress) : Stress tests. Tests inside this package ensure than ledger state stay consistent under high concurrency.
+* Integration tests: tests that involve the ledger and external services, like the database.
+  * [e2e](./test/e2e) : End to end test. Those tests are mainly api tests, and app lifecycle tests. It checks than the ledger endpoint works as expected.
+  * [migrations](./test/migrations) : Migrations tests. Tests inside this package allow to import an existing database to apply current code migrations on it.
+  * [performance](./test/performance) : Performance tests. Tests inside this package test performance of the ledger.
+  * [stress](./test/stress) : Stress tests. Tests inside this package ensure than ledger state stay consistent under high concurrency.
+  * [rolling-upgrades](./test/rolling-upgrades) : Rolling upgrade test under K8S 
 
 ## API changes
 

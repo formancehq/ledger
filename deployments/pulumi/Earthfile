@@ -1,0 +1,11 @@
+VERSION 0.8
+PROJECT FormanceHQ/ledger
+
+IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
+
+FROM core+base-image
+
+sources:
+    WORKDIR /src
+    COPY *.go go.* Pulumi.yaml .
+    SAVE ARTIFACT /src

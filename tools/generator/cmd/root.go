@@ -11,21 +11,21 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/pkg/generate"
+	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+	"golang.org/x/sync/errgroup"
 	"net/http"
 	"os"
-	"sync"
-
-	"github.com/spf13/cobra"
 )
 
 var (
 	rootCmd = &cobra.Command{
-		Use:   "generator <ledger-url> <script-location>",
-		Short: "Generate data for a ledger. WARNING: This is an experimental tool.",
-		RunE:  run,
-		Args:  cobra.ExactArgs(2),
+		Use:          "generator <ledger-url> <script-location>",
+		Short:        "Generate data for a ledger. WARNING: This is an experimental tool.",
+		RunE:         run,
+		Args:         cobra.ExactArgs(2),
+		SilenceUsage: true,
 	}
 	parallelFlag           = "parallel"
 	ledgerFlag             = "ledger"
@@ -105,6 +105,7 @@ func run(cmd *cobra.Command, args []string) error {
 		ledgerclient.WithClient(httpClient),
 	)
 
+	logging.FromContext(cmd.Context()).Infof("Creating ledger '%s' if not exists", ledger)
 	_, err = client.Ledger.V2.CreateLedger(cmd.Context(), operations.V2CreateLedgerRequest{
 		Ledger: ledger,
 	})
@@ -116,21 +117,29 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(vus)
+	parallelContext, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
 
-	for i := 0; i < vus; i++ {
+	errGroup, ctx := errgroup.WithContext(parallelContext)
+
+	logging.FromContext(cmd.Context()).Infof("Starting to generate data with %d vus", vus)
+
+	for vu := 0; vu < vus; vu++ {
 		generator, err := generate.NewGenerator(string(fileContent))
 		if err != nil {
 			return fmt.Errorf("failed to create generator: %w", err)
 		}
-		go func() {
-			defer wg.Done()
+
+		errGroup.Go(func() error {
+			defer cancel()
+
+			iteration := 0
 
 			for {
-				next := generator.Next(i)
+				logging.FromContext(ctx).Infof("Run iteration %d/%d", vu, iteration)
+				next := generator.Next(vu)
 				tx, err := client.Ledger.V2.CreateTransaction(
-					cmd.Context(),
+					ctx,
 					operations.V2CreateTransactionRequest{
 						Ledger: ledger,
 						V2PostTransaction: components.V2PostTransaction{
@@ -142,19 +151,20 @@ func run(cmd *cobra.Command, args []string) error {
 					},
 				)
 				if err != nil {
-					logging.FromContext(cmd.Context()).Errorf("Vu stopped with error: %s", err)
-					return
+					if errors.Is(err, context.Canceled) {
+						return nil
+					}
+					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
 				}
 				if untilTransactionID != 0 && tx.V2CreateTransactionResponse.Data.ID.Int64() >= untilTransactionID {
-					return
+					return nil
 				}
+				iteration++
 			}
-		}()
+		})
 	}
 
-	wg.Wait()
-
-	return nil
+	return errGroup.Wait()
 }
 
 func Execute() {

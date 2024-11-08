@@ -38,6 +38,7 @@ func NewRootCommand() *cobra.Command {
 		// todo: use provided db ...
 		return upgradeAll(cmd)
 	}))
+	root.AddCommand(NewDocsCommand())
 
 	return root
 }
