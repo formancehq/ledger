@@ -10,18 +10,20 @@ CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
 image-test:
     ARG REPOSITORY=ghcr.io
-    ARG tag=latest
+    ARG TAG=latest
     FROM --pass-args ../../tools/generator+build-image
 
-    DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger-rolling-upgrade-test --REPOSITORY=${REPOSITORY} --TAG=$tag
+    DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --tag=$TAG
 
 image-main:
     ARG REPOSITORY=ghcr.io
-    BUILD --pass-args github.com/formancehq/ledger:main+build-image --tag=main
+    ARG TAG
+    BUILD --pass-args github.com/formancehq/ledger:main+build-image --tag=$TAG
 
 image-current:
     ARG REPOSITORY=ghcr.io
-    BUILD --pass-args ../..+build-image --tag=current
+    ARG TAG
+    BUILD --pass-args ../..+build-image --tag=$TAG
 
 sources:
     FROM core+builder-image
@@ -61,9 +63,9 @@ run:
     ARG CLUSTER_NAME=test
     WAIT
         BUILD --pass-args +cluster-create
-        BUILD +image-test
-        BUILD +image-main
-        BUILD +image-current
+        BUILD +image-test --TAG=$CLUSTER_NAME-rolling-upgrade-test
+        BUILD +image-main --TAG=$CLUSTER_NAME-main
+        BUILD +image-current --TAG=$CLUSTER_NAME-current
     END
 
     FROM --pass-args +cluster-create
@@ -91,9 +93,9 @@ run:
 
         echo "Running test..."
         go test \
-            --test-image ghcr.io/formancehq/ledger-rolling-upgrade-test:latest \
-            --latest-version main \
-            --actual-version current \
+            --test-image ghcr.io/formancehq/ledger:$CLUSTER_NAME-rolling-upgrade-test \
+            --latest-version $CLUSTER_NAME-main \
+            --actual-version $CLUSTER_NAME-current \
             --project ledger \
             --stack-prefix-name $CLUSTER_NAME- \
             --no-cleanup=$NO_CLEANUP \
