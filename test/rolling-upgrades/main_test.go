@@ -146,8 +146,14 @@ func cleanup(ctx context.Context, stack auto.Stack) {
 		return
 	}
 
+	fmt.Printf("Destroying stack '%s'...\r\n", stack.Name())
 	if _, err := stack.Destroy(ctx); err != nil {
 		logging.FromContext(ctx).Errorf("destroying stack: %v", err)
+	}
+
+	fmt.Printf("Removing stack '%s'...\r\n", stack.Name())
+	if err := stack.Workspace().RemoveStack(ctx, stack.Name()); err != nil {
+		logging.FromContext(ctx).Errorf("removing stack: %v", err)
 	}
 }
 
