@@ -100,7 +100,7 @@ func NewServeCommand() *cobra.Command {
 
 						Handler          chi.Router
 						HealthController *health.HealthController
-						Logger logging.Logger
+						Logger           logging.Logger
 
 						MeterProvider *metric.MeterProvider         `optional:"true"`
 						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`

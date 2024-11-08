@@ -192,7 +192,7 @@ func deployTest(ctx *pulumi.Context) error {
 							pulumi.String(ledgerURL),
 							pulumi.String("/examples/example1.js"),
 							pulumi.String("-p"),
-							pulumi.String("100"),
+							pulumi.String("30"),
 						},
 						Image:           pulumi.String(image),
 						ImagePullPolicy: pulumi.String("Always"),
@@ -233,6 +233,14 @@ func deployPostgres(ctx *pulumi.Context) error {
 				"password": pulumi.String("ledger"),
 				"username": pulumi.String("ledger"),
 				"database": pulumi.String("ledger"),
+			},
+			"primary": pulumi.Map{
+				"resources": pulumi.Map{
+					"requests": pulumi.Map{
+						"memory": pulumi.String("256Mi"),
+						"cpu":    pulumi.String("250m"),
+					},
+				},
 			},
 		}),
 		CreateNamespace: pulumi.BoolPtr(true),
