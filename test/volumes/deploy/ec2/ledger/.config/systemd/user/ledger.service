@@ -1,0 +1,34 @@
+[Unit]
+Description=Ledger Service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+ExecStartPre=-/usr/bin/docker rm ledger
+ExecStartPre=-/usr/bin/docker network create ledger
+ExecStartPre=/usr/bin/docker pull ghcr.io/formancehq/ledger:{{ .LedgerVersion }}
+ExecStart=/usr/bin/docker run --rm \
+    --name ledger \
+    --network ledger \
+    --pull {{ if eq .LedgerVersion "latest" }}always{{ else }}missing{{ end }} \
+    -p 8080:8080 \
+    ghcr.io/formancehq/ledger:{{ .LedgerVersion }} serve \
+        {{- if .Debug }}
+        --debug \
+        {{- end }}
+        --postgres-uri {{ .PostgresURI }} \
+        --postgres-max-open-conns 100 \
+        --postgres-max-idle-conns 100 \
+        --postgres-conn-max-idle-time 1m \
+        --otel-traces-batch \
+        --otel-traces-exporter otlp \
+        --otel-traces-exporter-otlp-mode grpc \
+        --otel-traces-exporter-otlp-endpoint otel-collector:4317 \
+        --otel-traces-exporter-otlp-insecure \
+        --otel-metrics-keep-in-memory \
+        --bind :8080 \
+        --experimental-features \
+        --auto-upgrade
+
+[Install]
+WantedBy=default.target

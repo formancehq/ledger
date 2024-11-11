@@ -1,0 +1,16 @@
+[Unit]
+Description=Otel collector Service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+ExecStartPre=-/usr/bin/docker rm otel-collector
+ExecStartPre=-/usr/bin/docker network create ledger
+ExecStart=/usr/bin/docker run --rm \
+    --network ledger \
+    --name otel-collector \
+    -v /home/admin/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml \
+    otel/opentelemetry-collector-contrib:0.114.0
+
+[Install]
+WantedBy=default.target

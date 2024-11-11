@@ -50,6 +50,7 @@ func NewServeCommand() *cobra.Command {
 		Use:          "serve",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+
 			serveConfiguration := discoverServeConfiguration(cmd)
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)

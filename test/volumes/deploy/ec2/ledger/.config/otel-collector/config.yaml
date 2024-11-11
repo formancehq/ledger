@@ -1,0 +1,44 @@
+---
+exporters:
+  debug: {}
+  otlp/signoz:
+    endpoint: ingest.eu.signoz.cloud:443
+    headers:
+      signoz-access-token: v1yHwAYVI6Gp2EyMQURWqmB1hALFwdGrcyyX
+processors:
+  attributes/formance:
+    actions:
+    - action: upsert
+      key: formance_cluster
+      value: test-volumes
+    - action: upsert
+      key: formance_env
+      value: test-volumes
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+  resource/formance:
+    attributes:
+    - action: upsert
+      key: deployment.environment
+      value: test-volumes
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+service:
+  pipelines:
+    traces:
+      exporters:
+      - otlp/signoz
+      processors:
+      - attributes/formance
+      - resource/formance
+      - batch
+      receivers:
+      - otlp
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
+      level: detailed

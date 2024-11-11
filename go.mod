@@ -13,6 +13,7 @@ require (
 	github.com/alitto/pond v1.9.2
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
+	github.com/bombsimon/logrusr/v4 v4.1.0
 	github.com/dop251/goja v0.0.0-20241009100908-5f46f2705ca3
 	github.com/formancehq/go-libs/v2 v2.0.1-0.20241121194732-b79c48b683f2
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
@@ -104,7 +105,7 @@ require (
 	github.com/formancehq/numscript v0.0.9
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/go-chi/render v1.0.3 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-logr/logr v1.4.2
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
