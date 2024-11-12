@@ -1,0 +1,40 @@
+VERSION 0.7
+
+FROM --platform=linux/amd64 golang:1.22.2
+
+CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
+CACHE --sharing=shared --id go-cache /root/.cache/go-build
+
+compile:
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
+
+    RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@latest
+
+    COPY ../../..+lint/pkg /src/pkg
+    COPY ../../..+lint/internal /src/internal
+    COPY ../../..+lint/cmd /src/cmd
+    COPY ../../..+lint/*.go /src/
+    COPY ../../..+tidy/go.mod /src/
+    COPY ../../..+tidy/go.sum /src/
+
+    WORKDIR /src/test/antithesis/workload
+    COPY *.go go.* .
+    COPY --dir cmd .
+
+    RUN mkdir -p /workload_instrumented
+    RUN /go/bin/antithesis-go-instrumentor -assert_only . 
+    RUN go build -o main
+
+    SAVE ARTIFACT main
+
+build:
+    FROM --platform=linux/amd64 ubuntu:latest
+    ARG TAG=latest
+    COPY (+compile/main) /bin/workload
+    RUN chmod 777 /bin/workload
+    ENTRYPOINT ["/bin/workload"]
+
+    ARG --required ANTITHESIS_REPOSITORY
+
+    SAVE IMAGE --push --no-manifest-list ${ANTITHESIS_REPOSITORY}/workload:${TAG}

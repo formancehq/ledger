@@ -1,0 +1,47 @@
+VERSION 0.8
+
+IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
+
+FROM core+base-image
+
+CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
+CACHE --sharing=shared --id go-cache /root/.cache/go-build
+
+compile:
+    FROM --platform=linux/amd64 golang:1.22.2
+    CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
+    CACHE --sharing=shared --id go-cache /root/.cache/go-build
+
+    COPY ../../..+sources/src /src
+    RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@latest
+    WORKDIR /src
+
+    RUN go mod download
+    RUN mkdir -p /ledger_instrumented
+    RUN /go/bin/antithesis-go-instrumentor . /ledger_instrumented
+
+    WORKDIR /ledger_instrumented/customer
+    RUN go mod download
+    RUN go build -race -o ledger
+
+    SAVE ARTIFACT /ledger_instrumented/customer/ledger
+    SAVE ARTIFACT /ledger_instrumented/symbols
+
+build:
+    FROM --platform=linux/amd64 ubuntu:latest
+    RUN apt-get update -y && apt-get install -y postgresql-client curl
+    ARG TAG=latest
+
+    COPY (+compile/ledger) /bin/ledger
+    COPY (+compile/symbols) /symbols
+    COPY entrypoint.sh /bin/entrypoint.sh
+
+    RUN chmod 777 /bin/ledger
+    RUN chmod 777 /bin/entrypoint.sh
+
+    ENTRYPOINT ["/bin/entrypoint.sh"]
+    EXPOSE 8080
+
+    ARG --required ANTITHESIS_REPOSITORY
+
+    SAVE IMAGE --push --no-manifest-list "${ANTITHESIS_REPOSITORY}/ledger:${TAG}"

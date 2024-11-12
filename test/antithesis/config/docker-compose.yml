@@ -1,0 +1,87 @@
+---
+networks:
+  formance:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.29.0/24
+
+services:
+  postgres:
+    image: "postgres:15-alpine"
+    hostname: postgres
+    container_name: postgres
+    command:
+      - -c
+      - max_connections=100
+    environment:
+      POSTGRES_USER: "ledger"
+      POSTGRES_PASSWORD: "ledger"
+      POSTGRES_DB: "ledger"
+      PGDATA: /data/postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ledger" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      formance:
+        ipv4_address: 10.0.29.16
+
+  ledger1:
+    image: "us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger:latest"
+    hostname: ledger1
+    container_name: ledger1
+    environment:
+      POSTGRES_URI: "postgresql://ledger:ledger@10.0.29.16:5432/ledger?sslmode=disable"
+      BIND: ":8080"
+    networks:
+      formance:
+        ipv4_address: 10.0.29.17
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ledger2:
+    image: "us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger:latest"
+    hostname: ledger2
+    container_name: ledger2
+    environment:
+      POSTGRES_URI: "postgresql://ledger:ledger@10.0.29.16:5432/ledger?sslmode=disable"
+      BIND: ":8080"
+    networks:
+      formance:
+        ipv4_address: 10.0.29.18
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  workload:
+    image: "us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload:latest"
+    hostname: workload
+    container_name: workload
+    networks:
+      formance:
+        ipv4_address: 10.0.29.19
+    depends_on:
+      - gateway
+
+  gateway:
+    image: "ghcr.io/formancehq/gateway:v2.0.0-rc.20"
+    hostname: gateway
+    container_name: gateway
+    volumes:
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile
+    ports:
+      - "8080:8080"
+    networks:
+      formance:
+        ipv4_address: 10.0.29.20
+    depends_on:
+      - ledger1
+      - ledger2
+    healthcheck:
+      test: curl --fail http://localhost:8080 || exit 1
+      interval: 2s
+      retries: 5
+      start_period: 1s

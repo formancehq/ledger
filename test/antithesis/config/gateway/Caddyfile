@@ -1,0 +1,9 @@
+{
+	# Local env dev config
+	auto_https off
+	debug
+}
+
+:8080 {
+    reverse_proxy ledger1:8080 ledger2:8080
+}

@@ -1,0 +1,12 @@
+VERSION 0.8
+
+IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
+
+build:
+    FROM --platform=linux/amd64 scratch
+    ARG TAG=latest
+    ARG --required ANTITHESIS_REPOSITORY
+    COPY docker-compose.yml /docker-compose.yml
+    COPY --dir gateway /gateway
+
+    SAVE IMAGE --push --no-manifest-list ${ANTITHESIS_REPOSITORY}/antithesis-config-dev:$TAG
