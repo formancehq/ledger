@@ -68,7 +68,7 @@ func TestBulk(t *testing.T) {
 							Timestamp: now,
 						}, false),
 					}).
-					Return(&ledger.CreatedTransaction{
+					Return(&ledger.Log{}, &ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{
 							TransactionData: ledger.TransactionData{
 								Postings:  postings,
@@ -118,7 +118,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
 				ResponseType: ActionAddMetadata,
@@ -146,7 +146,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
 				ResponseType: ActionAddMetadata,
@@ -167,7 +167,7 @@ func TestBulk(t *testing.T) {
 							TransactionID: 1,
 						},
 					}).
-					Return(&ledger.RevertedTransaction{}, nil)
+					Return(&ledger.Log{}, &ledger.RevertedTransaction{}, nil)
 			},
 			expectResults: []Result{{
 				Data: map[string]any{
@@ -198,7 +198,7 @@ func TestBulk(t *testing.T) {
 							Key:           "foo",
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
 				ResponseType: ActionDeleteMetadata,
@@ -248,7 +248,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -258,7 +258,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(errors.New("unexpected error"))
+					Return(nil, errors.New("unexpected error"))
 			},
 			expectResults: []Result{{
 				ResponseType: ActionAddMetadata,
@@ -316,7 +316,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -326,7 +326,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(errors.New("unexpected error"))
+					Return(nil, errors.New("unexpected error"))
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -336,7 +336,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
 				ResponseType: ActionAddMetadata,

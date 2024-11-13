@@ -7,9 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/collectionutils"
-	ledgerclient "github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/generate"
 	"net/http"
 	"sort"
@@ -22,42 +19,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type TransactionProvider interface {
-	Get(iteration int) (string, map[string]string)
+type ActionProvider interface {
+	Get(iteration int) (*generate.Action, error)
 }
-type TransactionProviderFn func(iteration int) (string, map[string]string)
+type ActionProviderFn func(iteration int) (*generate.Action, error)
 
-func (fn TransactionProviderFn) Get(iteration int) (string, map[string]string) {
+func (fn ActionProviderFn) Get(iteration int) (*generate.Action, error) {
 	return fn(iteration)
 }
 
-type TransactionProviderFactory interface {
-	Create() (TransactionProvider, error)
+type ActionProviderFactory interface {
+	Create() (ActionProvider, error)
 }
 
-type TransactionProviderFactoryFn func() (TransactionProvider, error)
+type ActionProviderFactoryFn func() (ActionProvider, error)
 
-func (fn TransactionProviderFactoryFn) Create() (TransactionProvider, error) {
+func (fn ActionProviderFactoryFn) Create() (ActionProvider, error) {
 	return fn()
 }
 
-func NewJSTransactionProviderFactory(script string) TransactionProviderFactoryFn {
-	return func() (TransactionProvider, error) {
+func NewJSActionProviderFactory(script string) ActionProviderFactoryFn {
+	return func() (ActionProvider, error) {
 		generator, err := generate.NewGenerator(script)
 		if err != nil {
 			return nil, err
 		}
 
-		return TransactionProviderFn(func(iteration int) (string, map[string]string) {
-			ret := generator.Next(iteration)
-			return ret.Script, ret.Variables
+		return ActionProviderFn(func(iteration int) (*generate.Action, error) {
+			return generator.Next(iteration)
 		}), nil
 	}
 }
 
 type Benchmark struct {
 	EnvFactory EnvFactory
-	Scenarios  map[string]TransactionProviderFactory
+	Scenarios  map[string]ActionProviderFactory
 
 	reports map[string]map[string]*report
 	b       *testing.B
@@ -98,17 +94,18 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 
 				b.RunParallel(func(pb *testing.PB) {
 
-					transactionProvider, err := benchmark.Scenarios[scenario].Create()
+					actionProvider, err := benchmark.Scenarios[scenario].Create()
 					require.NoError(b, err)
 
 					for pb.Next() {
 						iteration := int(cpt.Add(1))
 
-						script, vars := transactionProvider.Get(iteration)
+						action, err := actionProvider.Get(iteration)
+						require.NoError(b, err)
 
 						now := time.Now()
 
-						_, err := benchmark.createTransaction(ctx, env.Client(), l, script, vars)
+						_, err = action.Apply(ctx, env.Client().Ledger.V2, l.Name)
 						require.NoError(b, err)
 
 						report.registerTransactionLatency(time.Since(now))
@@ -149,58 +146,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 	return results
 }
 
-func (benchmark *Benchmark) createTransaction(
-	ctx context.Context,
-	client *ledgerclient.Formance,
-	l ledger.Ledger,
-	script string,
-	vars map[string]string,
-) (*ledger.Transaction, error) {
-	response, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-		Ledger: l.Name,
-		V2PostTransaction: components.V2PostTransaction{
-			Script: &components.V2PostTransactionScript{
-				Plain: script,
-				Vars:  vars,
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating transaction: %w", err)
-	}
-
-	return &ledger.Transaction{
-		TransactionData: ledger.TransactionData{
-			Postings: Map(response.V2CreateTransactionResponse.Data.Postings, func(from components.V2Posting) ledger.Posting {
-				return ledger.Posting{
-					Source:      from.Source,
-					Destination: from.Destination,
-					Amount:      from.Amount,
-					Asset:       from.Asset,
-				}
-			}),
-			Metadata: response.V2CreateTransactionResponse.Data.Metadata,
-			Timestamp: time.Time{
-				Time: response.V2CreateTransactionResponse.Data.Timestamp,
-			},
-			Reference: func() string {
-				if response.V2CreateTransactionResponse.Data.Reference == nil {
-					return ""
-				}
-				return *response.V2CreateTransactionResponse.Data.Reference
-			}(),
-		},
-		ID: int(response.V2CreateTransactionResponse.Data.ID.Int64()),
-		RevertedAt: func() *time.Time {
-			if response.V2CreateTransactionResponse.Data.RevertedAt == nil {
-				return nil
-			}
-			return &time.Time{Time: *response.V2CreateTransactionResponse.Data.RevertedAt}
-		}(),
-	}, nil
-}
-
-func New(b *testing.B, envFactory EnvFactory, scenarios map[string]TransactionProviderFactory) *Benchmark {
+func New(b *testing.B, envFactory EnvFactory, scenarios map[string]ActionProviderFactory) *Benchmark {
 	return &Benchmark{
 		b:          b,
 		EnvFactory: envFactory,

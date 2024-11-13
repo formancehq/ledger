@@ -1,9 +1,12 @@
 function next() {
     return {
-        script: `send [USD/2 100] (
-            source = @world
-            destination = @bank
-        )`,
-        variables: {}
+        action: 'CREATE_TRANSACTION',
+        data: {
+            plain: `send [USD/2 100] (
+                source = @world
+                destination = @bank
+            )`,
+            vars: {}
+        }
     }
 }

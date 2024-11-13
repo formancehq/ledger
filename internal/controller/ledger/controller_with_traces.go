@@ -98,40 +98,46 @@ func (ctrl *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q 
 	})
 }
 
-func (ctrl *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
-	return tracing.Trace(ctx, ctrl.tracer, "CreateTransaction", func(ctx context.Context) (*ledger.CreatedTransaction, error) {
-		return ctrl.underlying.CreateTransaction(ctx, parameters)
-	})
+func (ctrl *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+	ctx, span := ctrl.tracer.Start(ctx, "CreateTransaction")
+	defer span.End()
+
+	return ctrl.underlying.CreateTransaction(ctx, parameters)
 }
 
-func (ctrl *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
-	return tracing.Trace(ctx, ctrl.tracer, "RevertTransaction", func(ctx context.Context) (*ledger.RevertedTransaction, error) {
-		return ctrl.underlying.RevertTransaction(ctx, parameters)
-	})
+func (ctrl *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+	ctx, span := ctrl.tracer.Start(ctx, "RevertTransaction")
+	defer span.End()
+
+	return ctrl.underlying.RevertTransaction(ctx, parameters)
 }
 
-func (ctrl *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "SaveTransactionMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.underlying.SaveTransactionMetadata(ctx, parameters)
-	})))
+func (ctrl *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+	ctx, span := ctrl.tracer.Start(ctx, "SaveTransactionMetadata")
+	defer span.End()
+
+	return ctrl.underlying.SaveTransactionMetadata(ctx, parameters)
 }
 
-func (ctrl *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "SaveAccountMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.underlying.SaveAccountMetadata(ctx, parameters)
-	})))
+func (ctrl *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+	ctx, span := ctrl.tracer.Start(ctx, "SaveAccountMetadata")
+	defer span.End()
+
+	return ctrl.underlying.SaveAccountMetadata(ctx, parameters)
 }
 
-func (ctrl *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "DeleteTransactionMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.underlying.DeleteTransactionMetadata(ctx, parameters)
-	})))
+func (ctrl *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+	ctx, span := ctrl.tracer.Start(ctx, "DeleteTransactionMetadata")
+	defer span.End()
+
+	return ctrl.underlying.DeleteTransactionMetadata(ctx, parameters)
 }
 
-func (ctrl *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "DeleteAccountMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.underlying.DeleteAccountMetadata(ctx, parameters)
-	})))
+func (ctrl *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+	ctx, span := ctrl.tracer.Start(ctx, "DeleteAccountMetadata")
+	defer span.End()
+
+	return ctrl.underlying.DeleteAccountMetadata(ctx, parameters)
 }
 
 func (ctrl *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {

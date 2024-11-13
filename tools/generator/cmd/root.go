@@ -29,7 +29,7 @@ var (
 	}
 	parallelFlag           = "parallel"
 	ledgerFlag             = "ledger"
-	untilTransactionIDFlag = "until-transaction-id"
+	untilLogIDFlag         = "until-log-id"
 	clientIDFlag           = "client-id"
 	clientSecretFlag       = "client-secret"
 	authUrlFlag            = "auth-url"
@@ -55,9 +55,9 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get ledger: %w", err)
 	}
 
-	untilTransactionID, err := cmd.Flags().GetInt64(untilTransactionIDFlag)
+	untilLogID, err := cmd.Flags().GetInt64(untilLogIDFlag)
 	if err != nil {
-		return fmt.Errorf("failed to get untilTransactionID: %w", err)
+		return fmt.Errorf("failed to get untilLogID: %w", err)
 	}
 
 	insecureSkipVerify, err := cmd.Flags().GetBool(insecureSkipVerifyFlag)
@@ -137,26 +137,19 @@ func run(cmd *cobra.Command, args []string) error {
 
 			for {
 				logging.FromContext(ctx).Infof("Run iteration %d/%d", vu, iteration)
-				next := generator.Next(vu)
-				tx, err := client.Ledger.V2.CreateTransaction(
-					ctx,
-					operations.V2CreateTransactionRequest{
-						Ledger: ledger,
-						V2PostTransaction: components.V2PostTransaction{
-							Script: &components.V2PostTransactionScript{
-								Plain: next.Script,
-								Vars:  next.Variables,
-							},
-						},
-					},
-				)
+				action, err := generator.Next(vu)
+				if err != nil {
+					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
+				}
+
+				ret, err := action.Apply(ctx, client.Ledger.V2, ledger)
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
 						return nil
 					}
 					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
 				}
-				if untilTransactionID != 0 && tx.V2CreateTransactionResponse.Data.ID.Int64() >= untilTransactionID {
+				if untilLogID != 0 && ret.GetLogID() >= untilLogID {
 					return nil
 				}
 				iteration++
@@ -181,6 +174,6 @@ func init() {
 	rootCmd.Flags().Bool(insecureSkipVerifyFlag, false, "Skip TLS verification")
 	rootCmd.Flags().IntP(parallelFlag, "p", 1, "Number of parallel users")
 	rootCmd.Flags().StringP(ledgerFlag, "l", "default", "Ledger to feed")
-	rootCmd.Flags().Int64P(untilTransactionIDFlag, "u", 0, "Stop after this transaction ID")
+	rootCmd.Flags().Int64P(untilLogIDFlag, "u", 0, "Stop after this transaction ID")
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

@@ -30,14 +30,17 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	store Store,
 	parameters Parameters[INPUT],
 	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
-) (*OUTPUT, error) {
-	var payload *OUTPUT
+) (*ledger.Log, *OUTPUT, error) {
+	var (
+		output *OUTPUT
+		log    ledger.Log
+	)
 	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
-		payload, err = fn(ctx, tx, parameters)
+		output, err = fn(ctx, tx, parameters)
 		if err != nil {
 			return false, err
 		}
-		log := ledger.NewLog(*payload)
+		log = ledger.NewLog(*output)
 		log.IdempotencyKey = parameters.IdempotencyKey
 		log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
 
@@ -53,7 +56,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 
 		return true, nil
 	})
-	return payload, err
+	return &log, output, err
 }
 
 func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
@@ -61,19 +64,19 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	store Store,
 	parameters Parameters[INPUT],
 	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
-) (*OUTPUT, error) {
+) (*ledger.Log, *OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
-		output, err := lp.fetchLogWithIK(ctx, store, parameters)
+		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if output != nil {
-			return output, nil
+			return log, output, nil
 		}
 	}
 
 	for {
-		output, err := lp.runTx(ctx, store, parameters, fn)
+		log, output, err := lp.runTx(ctx, store, parameters, fn)
 		if err != nil {
 			switch {
 			case errors.Is(err, postgres.ErrDeadlockDetected):
@@ -85,39 +88,39 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 				continue
 			// A log with the IK could have been inserted in the meantime, read again the database to retrieve it
 			case errors.Is(err, ErrIdempotencyKeyConflict{}):
-				output, err := lp.fetchLogWithIK(ctx, store, parameters)
+				log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if output == nil {
 					panic("incoherent error, received duplicate IK but log not found in database")
 				}
 
-				return output, nil
+				return log, output, nil
 			default:
-				return nil, fmt.Errorf("unexpected error while forging log: %w", err)
+				return nil, nil, fmt.Errorf("unexpected error while forging log: %w", err)
 			}
 		}
 
-		return output, nil
+		return log, output, nil
 	}
 }
 
-func (lp *logProcessor[INPUT, OUTPUT]) fetchLogWithIK(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error) {
+func (lp *logProcessor[INPUT, OUTPUT]) fetchLogWithIK(ctx context.Context, store Store, parameters Parameters[INPUT]) (*ledger.Log, *OUTPUT, error) {
 	log, err := store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 	if err != nil && !errors.Is(err, postgres.ErrNotFound) {
-		return nil, err
+		return nil, nil, err
 	}
 	if err == nil {
 		// notes(gfyrag): idempotency hash should never be empty in this case, but data from previous
 		// ledger version does not have this field and it cannot be recomputed
 		if log.IdempotencyHash != "" {
 			if computedHash := ledger.ComputeIdempotencyHash(parameters.Input); log.IdempotencyHash != computedHash {
-				return nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
+				return nil, nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
 			}
 		}
 
-		return pointer.For(log.Data.(OUTPUT)), nil
+		return log, pointer.For(log.Data.(OUTPUT)), nil
 	}
-	return nil, nil
+	return nil, nil, nil
 }

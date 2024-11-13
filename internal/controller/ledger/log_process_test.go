@@ -32,7 +32,7 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 		}, nil)
 
 	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
-	_, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
+	_, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
 		IdempotencyKey: "foo",
 	}, nil)
 	require.NoError(t, err)
@@ -56,6 +56,6 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		Return(nil)
 
 	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
-	_, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, nil)
+	_, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, nil)
 	require.NoError(t, err)
 }
