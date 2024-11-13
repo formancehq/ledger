@@ -21,7 +21,7 @@ services:
     - postgres:/data/postgres
 
   ledger:
-    image: golang:1.19-alpine
+    image: golang:1.22-alpine
     entrypoint: go run main.go serve
     volumes:
     - .:/src
