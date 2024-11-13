@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"net/http"
 	"os"
+	"strings"
 )
 
 var (
@@ -29,12 +30,37 @@ var (
 	}
 	parallelFlag           = "parallel"
 	ledgerFlag             = "ledger"
+	ledgerMetadataFlag     = "ledger-metadata"
+	ledgerBucketFlag       = "ledger-bucket"
+	ledgerFeatureFlag      = "ledger-feature"
 	untilLogIDFlag         = "until-log-id"
 	clientIDFlag           = "client-id"
 	clientSecretFlag       = "client-secret"
 	authUrlFlag            = "auth-url"
 	insecureSkipVerifyFlag = "insecure-skip-verify"
 )
+
+func init() {
+	rootCmd.Flags().String(clientIDFlag, "", "Client ID")
+	rootCmd.Flags().String(clientSecretFlag, "", "Client Secret")
+	rootCmd.Flags().String(authUrlFlag, "", "Auth URL")
+	rootCmd.Flags().Bool(insecureSkipVerifyFlag, false, "Skip TLS verification")
+	rootCmd.Flags().IntP(parallelFlag, "p", 1, "Number of parallel users")
+	rootCmd.Flags().StringP(ledgerFlag, "l", "default", "Ledger to feed")
+	rootCmd.Flags().Int64P(untilLogIDFlag, "u", 0, "Stop after this transaction ID")
+	rootCmd.Flags().String(ledgerBucketFlag, "", "Ledger bucket")
+	rootCmd.Flags().StringSlice(ledgerMetadataFlag, []string{}, "Ledger metadata")
+	rootCmd.Flags().StringSlice(ledgerFeatureFlag, []string{}, "Ledger features")
+
+	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func Execute() {
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(1)
+	}
+}
 
 func run(cmd *cobra.Command, args []string) error {
 	ledgerUrl := args[0]
@@ -50,9 +76,24 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get vu: %w", err)
 	}
 
-	ledger, err := cmd.Flags().GetString(ledgerFlag)
+	targetedLedger, err := cmd.Flags().GetString(ledgerFlag)
 	if err != nil {
 		return fmt.Errorf("failed to get ledger: %w", err)
+	}
+
+	ledgerBucket, err := cmd.Flags().GetString(ledgerBucketFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get ledger bucket: %w", err)
+	}
+
+	ledgerMetadata, err := extractSliceSliceFlag(cmd, ledgerMetadataFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get ledger metadata: %w", err)
+	}
+
+	ledgerFeatures, err := extractSliceSliceFlag(cmd, ledgerFeatureFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get ledger features: %w", err)
 	}
 
 	untilLogID, err := cmd.Flags().GetInt64(untilLogIDFlag)
@@ -105,9 +146,14 @@ func run(cmd *cobra.Command, args []string) error {
 		ledgerclient.WithClient(httpClient),
 	)
 
-	logging.FromContext(cmd.Context()).Infof("Creating ledger '%s' if not exists", ledger)
+	logging.FromContext(cmd.Context()).Infof("Creating ledger '%s' if not exists", targetedLedger)
 	_, err = client.Ledger.V2.CreateLedger(cmd.Context(), operations.V2CreateLedgerRequest{
-		Ledger: ledger,
+		Ledger: targetedLedger,
+		V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+			Bucket:   &ledgerBucket,
+			Metadata: ledgerMetadata,
+			Features: ledgerFeatures,
+		},
 	})
 	if err != nil {
 		sdkError := &sdkerrors.V2ErrorResponse{}
@@ -142,7 +188,7 @@ func run(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
 				}
 
-				ret, err := action.Apply(ctx, client.Ledger.V2, ledger)
+				ret, err := action.Apply(ctx, client.Ledger.V2, targetedLedger)
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
 						return nil
@@ -160,20 +206,23 @@ func run(cmd *cobra.Command, args []string) error {
 	return errGroup.Wait()
 }
 
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
-}
+func extractSliceSliceFlag(cmd *cobra.Command, flagName string) (map[string]string, error) {
 
-func init() {
-	rootCmd.Flags().String(clientIDFlag, "", "Client ID")
-	rootCmd.Flags().String(clientSecretFlag, "", "Client Secret")
-	rootCmd.Flags().String(authUrlFlag, "", "Auth URL")
-	rootCmd.Flags().Bool(insecureSkipVerifyFlag, false, "Skip TLS verification")
-	rootCmd.Flags().IntP(parallelFlag, "p", 1, "Number of parallel users")
-	rootCmd.Flags().StringP(ledgerFlag, "l", "default", "Ledger to feed")
-	rootCmd.Flags().Int64P(untilLogIDFlag, "u", 0, "Stop after this transaction ID")
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	inputs, err := cmd.Flags().GetStringSlice(flagName)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make(map[string]string)
+
+	for _, input := range inputs {
+		parts := strings.SplitN(input, "=", 2)
+		if len(parts) != 2 {
+			return ret, fmt.Errorf("invalid metadata: %s", input)
+		}
+
+		ret[parts[0]] = parts[1]
+	}
+
+	return ret, nil
 }

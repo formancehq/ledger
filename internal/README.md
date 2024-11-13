@@ -33,6 +33,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(e ErrInvalidLedgerName\) Error\(\) string](<#ErrInvalidLedgerName.Error>)
   - [func \(e ErrInvalidLedgerName\) Is\(err error\) bool](<#ErrInvalidLedgerName.Is>)
 - [type FeatureSet](<#FeatureSet>)
+  - [func \(f FeatureSet\) SortedKeys\(\) \[\]string](<#FeatureSet.SortedKeys>)
   - [func \(f FeatureSet\) String\(\) string](<#FeatureSet.String>)
   - [func \(f FeatureSet\) With\(feature, value string\) FeatureSet](<#FeatureSet.With>)
 - [type Ledger](<#Ledger>)
@@ -439,6 +440,15 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 ```go
 type FeatureSet map[string]string
 ```
+
+<a name="FeatureSet.SortedKeys"></a>
+### func \(FeatureSet\) SortedKeys
+
+```go
+func (f FeatureSet) SortedKeys() []string
+```
+
+
 
 <a name="FeatureSet.String"></a>
 ### func \(FeatureSet\) String
