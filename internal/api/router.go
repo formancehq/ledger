@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/controller/system"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
@@ -45,6 +46,17 @@ func NewRouter(
 
 	commonMiddlewares := []func(http.Handler) http.Handler{
 		middleware.RequestLogger(api.NewLogFormatter()),
+	}
+
+	if debug {
+		commonMiddlewares = append(commonMiddlewares, func(handler http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				trace.SpanFromContext(r.Context()).
+					SetAttributes(attribute.String("raw-query", r.URL.RawQuery))
+
+				handler.ServeHTTP(w, r)
+			})
+		})
 	}
 
 	v2Router := v2.NewRouter(
