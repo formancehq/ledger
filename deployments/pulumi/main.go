@@ -40,6 +40,7 @@ func deployLedger(ctx *pulumi.Context) error {
 	imagePullPolicy, _ := conf.Try("image.pullPolicy")
 
 	replicaCount, _ := conf.TryInt("replicaCount")
+	experimentalFeatures, _ := conf.TryBool("experimentalFeatures")
 
 	rel, err := helm.NewRelease(ctx, "ledger", &helm.ReleaseArgs{
 		Chart:           pulumi.String("../helm"),
@@ -57,6 +58,7 @@ func deployLedger(ctx *pulumi.Context) error {
 			},
 			"debug":        pulumi.Bool(debug),
 			"replicaCount": pulumi.Int(replicaCount),
+			"experimentalFeatures": pulumi.Bool(experimentalFeatures),
 		}),
 	})
 	if err != nil {

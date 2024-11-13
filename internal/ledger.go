@@ -156,15 +156,20 @@ func (f FeatureSet) With(feature, value string) FeatureSet {
 	return ret
 }
 
+func (f FeatureSet) SortedKeys() []string {
+	ret := Keys(f)
+	slices.Sort(ret)
+
+	return ret
+}
+
 func (f FeatureSet) String() string {
 	if len(f) == 0 {
 		return ""
 	}
-	keys := Keys(f)
-	slices.Sort(keys)
 
 	ret := ""
-	for _, key := range keys {
+	for _, key := range f.SortedKeys() {
 		ret = ret + "," + shortenFeature(key) + "=" + f[key]
 	}
 

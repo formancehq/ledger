@@ -27,7 +27,8 @@ image-current:
 
 sources:
     FROM core+builder-image
-    WORKDIR /src
+    COPY ../..+sources/src /src
+    WORKDIR /src/test/rolling-upgrades
     COPY go.* *.go .
 
     SAVE ARTIFACT /src
@@ -75,9 +76,11 @@ run:
     CACHE --id go-mod-cache /go/pkg/mod
     CACHE --id go-cache /root/.cache/go-build
 
-    WORKDIR /src/test/rolling-upgrades
+    COPY +sources/src /src
     COPY ../../deployments/pulumi+sources/src /src/deployments/pulumi
     COPY ../../deployments/helm+sources/src /src/deployments/helm
+
+    WORKDIR /src/test/rolling-upgrades
     COPY go.* *.go .
 
     ARG NO_CLEANUP=false

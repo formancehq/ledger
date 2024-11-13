@@ -43,6 +43,8 @@ spec:
               value: ":{{ .Values.service.port }}"
             - name: DEBUG
               value: "{{ .Values.debug }}"
+            - name: EXPERIMENTAL_FEATURES
+              value: "{{ .Values.experimentalFeatures }}"
             {{- if not (eq .Values.gracePeriod "") }}
             # https://freecontent.manning.com/handling-client-requests-properly-with-kubernetes/
             - name: GRACE_PERIOD

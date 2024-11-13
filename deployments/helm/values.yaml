@@ -103,3 +103,5 @@ postgres:
 debug: false
 
 gracePeriod: "5s"
+
+experimentalFeatures: false

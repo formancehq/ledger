@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
+	ledger "github.com/formancehq/ledger/internal"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -64,9 +65,10 @@ func TestK8SRollingUpgrades(t *testing.T) {
 			"postgres.uri": auto.ConfigValue{
 				Value: "postgres://ledger:ledger@" + pgStackOutputs["service-name"].Value.(string) + ".svc.cluster.local:5432/ledger?sslmode=disable",
 			},
-			"debug":            auto.ConfigValue{Value: "true"},
-			"image.pullPolicy": auto.ConfigValue{Value: "Always"},
-			"replicaCount":     auto.ConfigValue{Value: "1"},
+			"debug":                auto.ConfigValue{Value: "true"},
+			"image.pullPolicy":     auto.ConfigValue{Value: "Always"},
+			"replicaCount":         auto.ConfigValue{Value: "1"},
+			"experimentalFeatures": auto.ConfigValue{Value: "true"},
 		},
 	)
 	require.NoError(t, err, "setting config on ledger stack")
@@ -101,6 +103,7 @@ func TestK8SRollingUpgrades(t *testing.T) {
 	require.NoError(t, err, "upping test stack")
 
 	// Let a moment ensure the test image is actually sending requests
+	// We could maybe find a dynamic way to do that
 	<-time.After(5 * time.Second)
 
 	err = ledgerStack.SetConfig(ctx, "version", auto.ConfigValue{
@@ -119,7 +122,12 @@ func TestK8SRollingUpgrades(t *testing.T) {
 		*stackPrefixName+"check",
 		*projectName,
 		func(ctx *pulumi.Context) error {
-			pod, err := corev1.GetPod(ctx, testStackOutputs["name"].Value.(string), pulumi.ID(testStackOutputs["id"].Value.(string)), nil)
+			pod, err := corev1.GetPod(
+				ctx,
+				testStackOutputs["name"].Value.(string),
+				pulumi.ID(testStackOutputs["id"].Value.(string)),
+				nil,
+			)
 			if err != nil {
 				return err
 			}
@@ -182,6 +190,20 @@ func deployTest(ctx *pulumi.Context) error {
 	image := conf.Require("image")
 	ledgerURL := conf.Require("ledger-url")
 
+	generatorArgs := pulumi.StringArray{
+		pulumi.String(ledgerURL),
+		pulumi.String("/examples/example1.js"),
+		pulumi.String("-p"),
+		pulumi.String("30"),
+	}
+
+	for _, key := range ledger.MinimalFeatureSet.SortedKeys() {
+		generatorArgs = append(generatorArgs,
+			pulumi.String("--ledger-feature"),
+			pulumi.String(key+"="+ledger.MinimalFeatureSet[key]),
+		)
+	}
+
 	rel, err := corev1.NewPod(
 		ctx,
 		"test",
@@ -193,13 +215,8 @@ func deployTest(ctx *pulumi.Context) error {
 				RestartPolicy: pulumi.String("Never"),
 				Containers: corev1.ContainerArray{
 					corev1.ContainerArgs{
-						Name: pulumi.String("test"),
-						Args: pulumi.StringArray{
-							pulumi.String(ledgerURL),
-							pulumi.String("/examples/example1.js"),
-							pulumi.String("-p"),
-							pulumi.String("30"),
-						},
+						Name:            pulumi.String("test"),
+						Args:            generatorArgs,
 						Image:           pulumi.String(image),
 						ImagePullPolicy: pulumi.String("Always"),
 					},
