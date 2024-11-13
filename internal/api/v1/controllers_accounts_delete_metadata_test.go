@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -70,7 +71,7 @@ func TestAccountsDeleteMetadata(t *testing.T) {
 							},
 						},
 					).
-					Return(tc.returnErr)
+					Return(&ledger.Log{}, tc.returnErr)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")

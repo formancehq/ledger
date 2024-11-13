@@ -33,7 +33,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
+	_, err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
 		Address:  address,
 		Metadata: m,
 	}))

@@ -3658,8 +3658,11 @@ components:
       properties:
         responseType:
           type: string
+        logID:
+          type: integer
       required:
         - responseType
+        - logID
     V2BulkElementResultCreateTransaction:
       allOf:
         - $ref: '#/components/schemas/V2BaseBulkElementResult'

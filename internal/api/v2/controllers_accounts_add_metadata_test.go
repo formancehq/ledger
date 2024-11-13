@@ -1,6 +1,7 @@
 package v2
 
 import (
+	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -67,7 +68,7 @@ func TestAccountsAddMetadata(t *testing.T) {
 							Metadata: testCase.body.(metadata.Metadata),
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")

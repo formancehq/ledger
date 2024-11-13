@@ -62,7 +62,7 @@ func TestCreateTransaction(t *testing.T) {
 			return x
 		})
 
-	_, err := l.CreateTransaction(context.Background(), Parameters[RunScript]{
+	_, _, err := l.CreateTransaction(context.Background(), Parameters[RunScript]{
 		Input: runScript,
 	})
 	require.NoError(t, err)
@@ -108,7 +108,7 @@ func TestRevertTransaction(t *testing.T) {
 		})).
 		Return(nil)
 
-	_, err := l.RevertTransaction(ctx, Parameters[RevertTransaction]{
+	_, _, err := l.RevertTransaction(ctx, Parameters[RevertTransaction]{
 		Input: RevertTransaction{
 			TransactionID: 1,
 		},
@@ -147,7 +147,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		})).
 		Return(nil)
 
-	err := l.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
+	_, err := l.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
 		Input: SaveTransactionMetadata{
 			Metadata:      m,
 			TransactionID: 1,
@@ -184,7 +184,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		})).
 		Return(nil)
 
-	err := l.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
+	_, err := l.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
 		Input: DeleteTransactionMetadata{
 			TransactionID: 1,
 			Key:           "foo",

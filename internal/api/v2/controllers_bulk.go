@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/time"
 	"net/http"
 
 	"errors"
@@ -49,9 +51,9 @@ const (
 	ActionDeleteMetadata    = "DELETE_METADATA"
 )
 
-type Bulk []Element
+type Bulk []BulkElement
 
-type Element struct {
+type BulkElement struct {
 	Action         string          `json:"action"`
 	IdempotencyKey string          `json:"ik"`
 	Data           json.RawMessage `json:"data"`
@@ -63,6 +65,58 @@ type Result struct {
 	ErrorDetails     string `json:"errorDetails,omitempty"`
 	Data             any    `json:"data,omitempty"`
 	ResponseType     string `json:"responseType"` // Added for sdk generation (discriminator in oneOf)
+	LogID            int    `json:"logID"`
+}
+
+type AddMetadataRequest struct {
+	TargetType string            `json:"targetType"`
+	TargetID   json.RawMessage   `json:"targetId"`
+	Metadata   metadata.Metadata `json:"metadata"`
+}
+
+type RevertTransactionRequest struct {
+	ID              int  `json:"id"`
+	Force           bool `json:"force"`
+	AtEffectiveDate bool `json:"atEffectiveDate"`
+}
+
+type DeleteMetadataRequest struct {
+	TargetType string          `json:"targetType"`
+	TargetID   json.RawMessage `json:"targetId"`
+	Key        string          `json:"key"`
+}
+
+type TransactionRequest struct {
+	Postings  ledger.Postings           `json:"postings"`
+	Script    ledgercontroller.ScriptV1 `json:"script"`
+	Timestamp time.Time                 `json:"timestamp"`
+	Reference string                    `json:"reference"`
+	Metadata  metadata.Metadata         `json:"metadata" swaggertype:"object"`
+}
+
+func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {
+
+	if _, err := req.Postings.Validate(); err != nil {
+		return nil, err
+	}
+
+	if len(req.Postings) > 0 {
+		txData := ledger.TransactionData{
+			Postings:  req.Postings,
+			Timestamp: req.Timestamp,
+			Reference: req.Reference,
+			Metadata:  req.Metadata,
+		}
+
+		return pointer.For(common.TxToScriptData(txData, allowUnboundedOverdrafts)), nil
+	}
+
+	return &ledgercontroller.RunScript{
+		Script:    req.Script.ToCore(),
+		Timestamp: req.Timestamp,
+		Reference: req.Reference,
+		Metadata:  req.Metadata,
+	}, nil
 }
 
 func ProcessBulk(
@@ -96,7 +150,7 @@ func ProcessBulk(
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			createTransactionResult, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
+			log, createTransactionResult, err := l.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
 				DryRun:         false,
 				IdempotencyKey: element.IdempotencyKey,
 				Input:          *rs,
@@ -131,27 +185,26 @@ func ProcessBulk(
 				ret = append(ret, Result{
 					Data:         createTransactionResult.Transaction,
 					ResponseType: element.Action,
+					LogID:        log.ID,
 				})
 			}
 		case ActionAddMetadata:
-			type addMetadataRequest struct {
-				TargetType string            `json:"targetType"`
-				TargetID   json.RawMessage   `json:"targetId"`
-				Metadata   metadata.Metadata `json:"metadata"`
-			}
-			req := &addMetadataRequest{}
+			req := &AddMetadataRequest{}
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			var err error
+			var (
+				log *ledger.Log
+				err error
+			)
 			switch req.TargetType {
 			case ledger.MetaTargetTypeAccount:
 				address := ""
 				if err := json.Unmarshal(req.TargetID, &address); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+				log, err = l.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 					DryRun:         false,
 					IdempotencyKey: element.IdempotencyKey,
 					Input: ledgercontroller.SaveAccountMetadata{
@@ -164,7 +217,7 @@ func ProcessBulk(
 				if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
+				log, err = l.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
 					DryRun:         false,
 					IdempotencyKey: element.IdempotencyKey,
 					Input: ledgercontroller.SaveTransactionMetadata{
@@ -172,6 +225,8 @@ func ProcessBulk(
 						Metadata:      req.Metadata,
 					},
 				})
+			default:
+				return nil, errorsInBulk, fmt.Errorf("invalid target type: %s", req.TargetType)
 			}
 			if err != nil {
 				var code string
@@ -188,20 +243,16 @@ func ProcessBulk(
 			} else {
 				ret = append(ret, Result{
 					ResponseType: element.Action,
+					LogID:        log.ID,
 				})
 			}
 		case ActionRevertTransaction:
-			type revertTransactionRequest struct {
-				ID              int  `json:"id"`
-				Force           bool `json:"force"`
-				AtEffectiveDate bool `json:"atEffectiveDate"`
-			}
-			req := &revertTransactionRequest{}
+			req := &RevertTransactionRequest{}
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			revertTransactionResult, err := l.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
+			log, revertTransactionResult, err := l.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 				DryRun:         false,
 				IdempotencyKey: element.IdempotencyKey,
 				Input: ledgercontroller.RevertTransaction{
@@ -226,27 +277,27 @@ func ProcessBulk(
 				ret = append(ret, Result{
 					Data:         revertTransactionResult.RevertTransaction,
 					ResponseType: element.Action,
+					LogID:        log.ID,
 				})
 			}
 		case ActionDeleteMetadata:
-			type deleteMetadataRequest struct {
-				TargetType string          `json:"targetType"`
-				TargetID   json.RawMessage `json:"targetId"`
-				Key        string          `json:"key"`
-			}
-			req := &deleteMetadataRequest{}
+			req := &DeleteMetadataRequest{}
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			var err error
+			var (
+				log *ledger.Log
+				err error
+			)
 			switch req.TargetType {
 			case ledger.MetaTargetTypeAccount:
 				address := ""
 				if err := json.Unmarshal(req.TargetID, &address); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
+
+				log, err = l.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
 					DryRun:         false,
 					IdempotencyKey: element.IdempotencyKey,
 					Input: ledgercontroller.DeleteAccountMetadata{
@@ -259,7 +310,8 @@ func ProcessBulk(
 				if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 					return nil, errorsInBulk, err
 				}
-				err = l.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
+
+				log, err = l.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
 					DryRun:         false,
 					IdempotencyKey: element.IdempotencyKey,
 					Input: ledgercontroller.DeleteTransactionMetadata{
@@ -267,6 +319,8 @@ func ProcessBulk(
 						Key:           req.Key,
 					},
 				})
+			default:
+				return nil, errorsInBulk, fmt.Errorf("unsupported target type: %s", req.TargetType)
 			}
 			if err != nil {
 				var code string
@@ -283,6 +337,7 @@ func ProcessBulk(
 			} else {
 				ret = append(ret, Result{
 					ResponseType: element.Action,
+					LogID:        log.ID,
 				})
 			}
 		}

@@ -27,12 +27,12 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).
-			Return(nil, postgres.ErrTooManyClient{}).
+			Return(nil, nil, postgres.ErrTooManyClient{}).
 			Times(2)
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).
-			Return(&ledger.CreatedTransaction{
+			Return(&ledger.Log{}, &ledger.CreatedTransaction{
 				Transaction: ledger.NewTransaction(),
 			}, nil)
 
@@ -45,7 +45,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 			Return(10 * time.Millisecond)
 
 		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
-		_, err := ledgerController.CreateTransaction(ctx, parameters)
+		_, _, err := ledgerController.CreateTransaction(ctx, parameters)
 		require.NoError(t, err)
 	})
 
@@ -61,7 +61,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).
-			Return(nil, postgres.ErrTooManyClient{}).
+			Return(nil, nil, postgres.ErrTooManyClient{}).
 			Times(2)
 
 		delayCalculator.EXPECT().
@@ -73,7 +73,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 			Return(time.Duration(0))
 
 		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
-		_, err := ledgerController.CreateTransaction(ctx, parameters)
+		_, _, err := ledgerController.CreateTransaction(ctx, parameters)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, postgres.ErrTooManyClient{}))
 	})

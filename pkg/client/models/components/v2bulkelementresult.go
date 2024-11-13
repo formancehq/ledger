@@ -11,6 +11,7 @@ import (
 
 type V2BulkElementResultError struct {
 	ResponseType     string  `json:"responseType"`
+	LogID            int64   `json:"logID"`
 	ErrorCode        string  `json:"errorCode"`
 	ErrorDescription string  `json:"errorDescription"`
 	ErrorDetails     *string `json:"errorDetails,omitempty"`
@@ -21,6 +22,13 @@ func (o *V2BulkElementResultError) GetResponseType() string {
 		return ""
 	}
 	return o.ResponseType
+}
+
+func (o *V2BulkElementResultError) GetLogID() int64 {
+	if o == nil {
+		return 0
+	}
+	return o.LogID
 }
 
 func (o *V2BulkElementResultError) GetErrorCode() string {
@@ -46,6 +54,7 @@ func (o *V2BulkElementResultError) GetErrorDetails() *string {
 
 type V2BulkElementResultDeleteMetadata struct {
 	ResponseType string `json:"responseType"`
+	LogID        int64  `json:"logID"`
 }
 
 func (o *V2BulkElementResultDeleteMetadata) GetResponseType() string {
@@ -55,8 +64,16 @@ func (o *V2BulkElementResultDeleteMetadata) GetResponseType() string {
 	return o.ResponseType
 }
 
+func (o *V2BulkElementResultDeleteMetadata) GetLogID() int64 {
+	if o == nil {
+		return 0
+	}
+	return o.LogID
+}
+
 type V2BulkElementResultRevertTransaction struct {
 	ResponseType string        `json:"responseType"`
+	LogID        int64         `json:"logID"`
 	Data         V2Transaction `json:"data"`
 }
 
@@ -65,6 +82,13 @@ func (o *V2BulkElementResultRevertTransaction) GetResponseType() string {
 		return ""
 	}
 	return o.ResponseType
+}
+
+func (o *V2BulkElementResultRevertTransaction) GetLogID() int64 {
+	if o == nil {
+		return 0
+	}
+	return o.LogID
 }
 
 func (o *V2BulkElementResultRevertTransaction) GetData() V2Transaction {
@@ -76,6 +100,7 @@ func (o *V2BulkElementResultRevertTransaction) GetData() V2Transaction {
 
 type V2BulkElementResultAddMetadata struct {
 	ResponseType string `json:"responseType"`
+	LogID        int64  `json:"logID"`
 }
 
 func (o *V2BulkElementResultAddMetadata) GetResponseType() string {
@@ -85,8 +110,16 @@ func (o *V2BulkElementResultAddMetadata) GetResponseType() string {
 	return o.ResponseType
 }
 
+func (o *V2BulkElementResultAddMetadata) GetLogID() int64 {
+	if o == nil {
+		return 0
+	}
+	return o.LogID
+}
+
 type V2BulkElementResultCreateTransaction struct {
 	ResponseType string        `json:"responseType"`
+	LogID        int64         `json:"logID"`
 	Data         V2Transaction `json:"data"`
 }
 
@@ -95,6 +128,13 @@ func (o *V2BulkElementResultCreateTransaction) GetResponseType() string {
 		return ""
 	}
 	return o.ResponseType
+}
+
+func (o *V2BulkElementResultCreateTransaction) GetLogID() int64 {
+	if o == nil {
+		return 0
+	}
+	return o.LogID
 }
 
 func (o *V2BulkElementResultCreateTransaction) GetData() V2Transaction {

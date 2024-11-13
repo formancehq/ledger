@@ -1,9 +1,6 @@
 package v2
 
 import (
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/common"
 	"io"
 	"net/http"
 	"slices"
@@ -179,37 +176,4 @@ func getPaginatedQueryOptionsOfFiltersForVolumes(r *http.Request) (*ledgercontro
 	return pointer.For(ledgercontroller.NewPaginatedQueryOptions(*filtersForVolumes).
 		WithPageSize(pageSize).
 		WithQueryBuilder(qb)), nil
-}
-
-type TransactionRequest struct {
-	Postings  ledger.Postings           `json:"postings"`
-	Script    ledgercontroller.ScriptV1 `json:"script"`
-	Timestamp time.Time                 `json:"timestamp"`
-	Reference string                    `json:"reference"`
-	Metadata  metadata.Metadata         `json:"metadata" swaggertype:"object"`
-}
-
-func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {
-
-	if _, err := req.Postings.Validate(); err != nil {
-		return nil, err
-	}
-
-	if len(req.Postings) > 0 {
-		txData := ledger.TransactionData{
-			Postings:  req.Postings,
-			Timestamp: req.Timestamp,
-			Reference: req.Reference,
-			Metadata:  req.Metadata,
-		}
-
-		return pointer.For(common.TxToScriptData(txData, allowUnboundedOverdrafts)), nil
-	}
-
-	return &ledgercontroller.RunScript{
-		Script:    req.Script.ToCore(),
-		Timestamp: req.Timestamp,
-		Reference: req.Reference,
-		Metadata:  req.Metadata,
-	}, nil
 }

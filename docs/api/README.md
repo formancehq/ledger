@@ -463,6 +463,7 @@ Accept: application/json
   "data": [
     {
       "responseType": "string",
+      "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
@@ -3655,6 +3656,7 @@ and
   "data": [
     {
       "responseType": "string",
+      "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
@@ -3760,6 +3762,7 @@ and
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
@@ -3888,7 +3891,8 @@ xor
 
 ```json
 {
-  "responseType": "string"
+  "responseType": "string",
+  "logID": 0
 }
 
 ```
@@ -3898,6 +3902,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |responseType|string|true|none|none|
+|logID|integer|true|none|none|
 
 <h2 id="tocS_V2BulkElementResultCreateTransaction">V2BulkElementResultCreateTransaction</h2>
 <!-- backwards compatibility -->
@@ -3909,6 +3914,7 @@ xor
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
@@ -4020,7 +4026,8 @@ and
 
 ```json
 {
-  "responseType": "string"
+  "responseType": "string",
+  "logID": 0
 }
 
 ```
@@ -4039,6 +4046,7 @@ and
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
@@ -4150,7 +4158,8 @@ and
 
 ```json
 {
-  "responseType": "string"
+  "responseType": "string",
+  "logID": 0
 }
 
 ```
@@ -4169,6 +4178,7 @@ and
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "errorCode": "string",
   "errorDescription": "string",
   "errorDetails": "string"

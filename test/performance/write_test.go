@@ -36,7 +36,7 @@ var (
 
 	envFactory EnvFactory
 
-	scripts = map[string]TransactionProviderFactory{}
+	scripts = map[string]ActionProviderFactory{}
 )
 
 func init() {
@@ -104,13 +104,13 @@ func BenchmarkWrite(b *testing.B) {
 			script, err := scriptsDir.ReadFile(filepath.Join("scripts", entry.Name()))
 			require.NoError(b, err)
 
-			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSTransactionProviderFactory(string(script))
+			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSActionProviderFactory(string(script))
 		}
 	} else {
 		file, err := os.ReadFile(scriptFlag)
 		require.NoError(b, err, "reading file "+scriptFlag)
 
-		scripts["provided"] = NewJSTransactionProviderFactory(string(file))
+		scripts["provided"] = NewJSActionProviderFactory(string(file))
 	}
 
 	if envFactory == nil {

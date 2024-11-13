@@ -76,7 +76,7 @@ func TestTransactionsRevert(t *testing.T) {
 						Force: tc.expectForce,
 					},
 				}).
-				Return(pointer.For(ledger.RevertedTransaction{
+				Return(&ledger.Log{}, pointer.For(ledger.RevertedTransaction{
 					RevertTransaction: tc.returnTx,
 				}), tc.returnErr)
 

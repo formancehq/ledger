@@ -19,22 +19,22 @@ func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listen
 		listener:   listener,
 	}
 }
-func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
-	ret, err := ctrl.Controller.CreateTransaction(ctx, parameters)
+func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+	log, ret, err := ctrl.Controller.CreateTransaction(ctx, parameters)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !parameters.DryRun {
 		ctrl.listener.CommittedTransactions(ctx, ctrl.ledger.Name, ret.Transaction, ret.AccountMetadata)
 	}
 
-	return ret, nil
+	return log, ret, nil
 }
 
-func (ctrl *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
-	ret, err := ctrl.Controller.RevertTransaction(ctx, parameters)
+func (ctrl *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+	log, ret, err := ctrl.Controller.RevertTransaction(ctx, parameters)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !parameters.DryRun {
 		ctrl.listener.RevertedTransaction(
@@ -45,13 +45,13 @@ func (ctrl *ControllerWithEvents) RevertTransaction(ctx context.Context, paramet
 		)
 	}
 
-	return ret, nil
+	return log, ret, nil
 }
 
-func (ctrl *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
-	err := ctrl.Controller.SaveTransactionMetadata(ctx, parameters)
+func (ctrl *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+	log, err := ctrl.Controller.SaveTransactionMetadata(ctx, parameters)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !parameters.DryRun {
 		ctrl.listener.SavedMetadata(
@@ -63,13 +63,13 @@ func (ctrl *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, p
 		)
 	}
 
-	return nil
+	return log, nil
 }
 
-func (ctrl *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
-	err := ctrl.Controller.SaveAccountMetadata(ctx, parameters)
+func (ctrl *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+	log, err := ctrl.Controller.SaveAccountMetadata(ctx, parameters)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !parameters.DryRun {
 		ctrl.listener.SavedMetadata(
@@ -81,13 +81,13 @@ func (ctrl *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, param
 		)
 	}
 
-	return nil
+	return log, nil
 }
 
-func (ctrl *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
-	err := ctrl.Controller.DeleteTransactionMetadata(ctx, parameters)
+func (ctrl *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+	log, err := ctrl.Controller.DeleteTransactionMetadata(ctx, parameters)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !parameters.DryRun {
 		ctrl.listener.DeletedMetadata(
@@ -99,13 +99,13 @@ func (ctrl *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context,
 		)
 	}
 
-	return nil
+	return log, nil
 }
 
-func (ctrl *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
-	err := ctrl.Controller.DeleteAccountMetadata(ctx, parameters)
+func (ctrl *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+	log, err := ctrl.Controller.DeleteAccountMetadata(ctx, parameters)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !parameters.DryRun {
 		ctrl.listener.DeletedMetadata(
@@ -117,7 +117,7 @@ func (ctrl *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, par
 		)
 	}
 
-	return nil
+	return log, nil
 }
 
 var _ Controller = (*ControllerWithEvents)(nil)
