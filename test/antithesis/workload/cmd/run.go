@@ -23,6 +23,7 @@ func run(cmd *cobra.Command, _ []string) {
 	)
 
 	waitServicesReady(cmd.Context(), client)
+	<-time.After(10 * time.Second)
 	runWorkload(cmd.Context(), client)
 }
 
@@ -36,13 +37,14 @@ func createLedger(ctx context.Context, client *client.Formance) error {
 	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: "default",
 	})
-	fmt.Println("Ledger created!")
 
 	if assert.Always(err == nil, "ledger should have been created", Details{
 		"error": fmt.Sprintf("%+v\n", err),
 	}); err != nil {
 		return err
 	}
+
+	fmt.Println("Ledger created!")
 
 	return nil
 }

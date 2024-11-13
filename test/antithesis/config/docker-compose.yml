@@ -80,8 +80,3 @@ services:
     depends_on:
       - ledger1
       - ledger2
-    healthcheck:
-      test: curl --fail http://localhost:8080 || exit 1
-      interval: 2s
-      retries: 5
-      start_period: 1s
