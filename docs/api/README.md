@@ -592,6 +592,7 @@ Accept: application/json
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
+|query|query|string|false|Query string to filter accounts. The query string must be a valid JSON object.|
 |body|body|object|false|none|
 
 > Example responses
@@ -657,6 +658,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
+|query|query|string|false|Query string to filter accounts. The query string must be a valid JSON object.|
 |body|body|object|false|none|
 
 #### Detailed descriptions
@@ -1004,6 +1006,7 @@ Accept: application/json
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
+|query|query|string|false|Query string to filter transactions. The query string must be a valid JSON object.|
 |body|body|object|false|none|
 
 > Example responses
@@ -1065,6 +1068,7 @@ List transactions from a ledger, sorted by id in descending order.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
+|query|query|string|false|Query string to filter transactions. The query string must be a valid JSON object.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
