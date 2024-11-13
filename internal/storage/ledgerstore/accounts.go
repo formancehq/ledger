@@ -132,6 +132,8 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 			}
 
 			return fmt.Sprintf("%s -> ? IS NOT NULL", key), []any{value}, nil
+		case key == "first_usage":
+			return fmt.Sprintf("%s %s ?", key, query.DefaultComparisonOperatorsMapping[operator]), []any{value}, nil
 		default:
 			return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
 		}

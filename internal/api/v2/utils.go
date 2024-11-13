@@ -47,18 +47,18 @@ func getPITOOTFilter(r *http.Request) (*ledgerstore.PITFilter, error) {
 func getPITFilter(r *http.Request) (*ledgerstore.PITFilter, error) {
 	pitString := r.URL.Query().Get("pit")
 
-	pit := time.Now()
+	var pit *time.Time
 
 	if pitString != "" {
-		var err error
-		pit, err = time.ParseTime(pitString)
+		parsedPit, err := time.ParseTime(pitString)
 		if err != nil {
 			return nil, err
 		}
+		pit = &parsedPit
 	}
 
 	return &ledgerstore.PITFilter{
-		PIT: &pit,
+		PIT: pit,
 	}, nil
 }
 

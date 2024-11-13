@@ -119,7 +119,7 @@ pre-commit:
     WAIT
         BUILD +openapi
     END
-    BUILD +generate-client
+    #BUILD +generate-client
 
 bench:
     FROM core+builder-image
