@@ -5,11 +5,8 @@ IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
 FROM core+base-image
 
 run:
-    COPY ../..+sources/src /src
-    LET TAG=$(tar cf - /src | sha1sum | awk '{print $1}')
-
     WAIT
-        BUILD +requirements-build --TAG=$TAG
+        BUILD +requirements-build
     END
 
     FROM curlimages/curl
@@ -22,25 +19,17 @@ run:
           \"params\": {
             \"custom.duration\": \"0.1\",
             \"antithesis.report.recipients\": \"${ANTITHESIS_SLACK_REPORT_RECIPIENT}\",
-            \"antithesis.config_image\": \"antithesis-config-dev:$TAG\",
-            \"antithesis.images\": \"ledger:$TAG;workload:$TAG\"
+            \"antithesis.config_image\": \"antithesis-config:latest\",
+            \"antithesis.images\": \"ledger:latest;workload:latest\"
           }
         }"
 
-run-local:
-    LOCALLY
-
-    WAIT
-        BUILD +requirements-build
-    END
-
-    RUN --no-cache docker compose -f config/docker-compose.yml up workload
-    RUN --no-cache docker compose -f config/docker-compose.yml down -v
-
 requirements-build:
-    ARG TAG=latest
     ARG --required ANTITHESIS_REPOSITORY
 
     BUILD --pass-args ./config+build
     BUILD --pass-args ./image+build
     BUILD --pass-args ./workload+build
+
+pre-commit:
+    BUILD ./workload+pre-commit

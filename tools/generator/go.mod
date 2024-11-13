@@ -9,7 +9,7 @@ replace github.com/formancehq/ledger => ../..
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v2 v2.0.1-0.20241114125605-4a3e447246a9
+	github.com/formancehq/go-libs/v2 v2.0.1-0.20241119202934-d93d89fd8778
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.8.1

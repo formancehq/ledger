@@ -35,6 +35,9 @@ services:
     environment:
       POSTGRES_URI: "postgresql://ledger:ledger@10.0.29.16:5432/ledger?sslmode=disable"
       BIND: ":8080"
+      POSTGRES_CONN_MAX_IDLE_TIME: "1m0s"
+      POSTGRES_MAX_IDLE_CONNS: "20"
+      POSTGRES_MAX_OPEN_CONNS: "20"
     networks:
       formance:
         ipv4_address: 10.0.29.17
@@ -48,6 +51,9 @@ services:
     container_name: ledger2
     environment:
       POSTGRES_URI: "postgresql://ledger:ledger@10.0.29.16:5432/ledger?sslmode=disable"
+      POSTGRES_CONN_MAX_IDLE_TIME: "1m0s"
+      POSTGRES_MAX_IDLE_CONNS: "20"
+      POSTGRES_MAX_OPEN_CONNS: "20"
       BIND: ":8080"
     networks:
       formance:

@@ -21,7 +21,6 @@ compile:
     RUN /go/bin/antithesis-go-instrumentor . /ledger_instrumented
 
     WORKDIR /ledger_instrumented/customer
-    RUN go mod download
     RUN go build -race -o ledger
 
     SAVE ARTIFACT /ledger_instrumented/customer/ledger
@@ -30,13 +29,11 @@ compile:
 build:
     FROM --platform=linux/amd64 ubuntu:latest
     RUN apt-get update -y && apt-get install -y postgresql-client curl
-    ARG TAG=latest
 
     COPY (+compile/ledger) /bin/ledger
     COPY (+compile/symbols) /symbols
     COPY entrypoint.sh /bin/entrypoint.sh
 
-    RUN chmod 777 /bin/ledger
     RUN chmod 777 /bin/entrypoint.sh
 
     ENTRYPOINT ["/bin/entrypoint.sh"]
@@ -44,4 +41,4 @@ build:
 
     ARG --required ANTITHESIS_REPOSITORY
 
-    SAVE IMAGE --push --no-manifest-list "${ANTITHESIS_REPOSITORY}/ledger:${TAG}"
+    SAVE IMAGE --push --no-manifest-list "${ANTITHESIS_REPOSITORY}/ledger:latest"
