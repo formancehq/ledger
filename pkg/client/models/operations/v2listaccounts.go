@@ -19,9 +19,11 @@ type V2ListAccountsRequest struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor      *string        `queryParam:"style=form,explode=true,name=cursor"`
-	Expand      *string        `queryParam:"style=form,explode=true,name=expand"`
-	Pit         *time.Time     `queryParam:"style=form,explode=true,name=pit"`
+	Cursor *string    `queryParam:"style=form,explode=true,name=cursor"`
+	Expand *string    `queryParam:"style=form,explode=true,name=expand"`
+	Pit    *time.Time `queryParam:"style=form,explode=true,name=pit"`
+	// Query string to filter accounts. The query string must be a valid JSON object.
+	Query       *string        `queryParam:"style=form,explode=true,name=query"`
 	RequestBody map[string]any `request:"mediaType=application/json"`
 }
 
@@ -69,6 +71,13 @@ func (o *V2ListAccountsRequest) GetPit() *time.Time {
 		return nil
 	}
 	return o.Pit
+}
+
+func (o *V2ListAccountsRequest) GetQuery() *string {
+	if o == nil {
+		return nil
+	}
+	return o.Query
 }
 
 func (o *V2ListAccountsRequest) GetRequestBody() map[string]any {

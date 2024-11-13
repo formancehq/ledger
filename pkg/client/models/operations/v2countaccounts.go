@@ -10,8 +10,10 @@ import (
 
 type V2CountAccountsRequest struct {
 	// Name of the ledger.
-	Ledger      string         `pathParam:"style=simple,explode=false,name=ledger"`
-	Pit         *time.Time     `queryParam:"style=form,explode=true,name=pit"`
+	Ledger string     `pathParam:"style=simple,explode=false,name=ledger"`
+	Pit    *time.Time `queryParam:"style=form,explode=true,name=pit"`
+	// Query string to filter accounts. The query string must be a valid JSON object.
+	Query       *string        `queryParam:"style=form,explode=true,name=query"`
 	RequestBody map[string]any `request:"mediaType=application/json"`
 }
 
@@ -38,6 +40,13 @@ func (o *V2CountAccountsRequest) GetPit() *time.Time {
 		return nil
 	}
 	return o.Pit
+}
+
+func (o *V2CountAccountsRequest) GetQuery() *string {
+	if o == nil {
+		return nil
+	}
+	return o.Query
 }
 
 func (o *V2CountAccountsRequest) GetRequestBody() map[string]any {

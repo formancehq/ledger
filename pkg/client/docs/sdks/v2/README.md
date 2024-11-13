@@ -485,6 +485,7 @@ func main() {
     )
     request := operations.V2CountAccountsRequest{
         Ledger: "ledger001",
+        Query: client.String("{\"$match\":{\"address\":\"users:001\"}}"),
     }
     ctx := context.Background()
     res, err := s.Ledger.V2.CountAccounts(ctx, request)
@@ -542,6 +543,7 @@ func main() {
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Query: client.String("{\"$match\":{\"address\":\"users:001\"}}"),
     }
     ctx := context.Background()
     res, err := s.Ledger.V2.ListAccounts(ctx, request)
@@ -826,6 +828,7 @@ func main() {
     )
     request := operations.V2CountTransactionsRequest{
         Ledger: "ledger001",
+        Query: client.String("{\"$match\":{\"account\":\"users:001\"}}"),
     }
     ctx := context.Background()
     res, err := s.Ledger.V2.CountTransactions(ctx, request)
@@ -881,6 +884,7 @@ func main() {
     )
     request := operations.V2ListTransactionsRequest{
         Ledger: "ledger001",
+        Query: client.String("{\"$match\":{\"account\":\"users:001\"}}"),
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
     }
