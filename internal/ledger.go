@@ -176,6 +176,16 @@ func (f FeatureSet) String() string {
 	return ret[1:]
 }
 
+func (f FeatureSet) Match(features FeatureSet) bool {
+	for key, value := range features {
+		if f[key] != value {
+			return false
+		}
+	}
+
+	return true
+}
+
 func shortenFeature(feature string) string {
 	return strings.Join(Map(strings.Split(feature, "_"), func(from string) string {
 		return from[:1]

@@ -12,8 +12,9 @@ import (
 //go:embed migrations
 var MigrationsFS embed.FS
 
-func GetMigrator(db *bun.DB, name string) *migrations.Migrator {
-	migrator := migrations.NewMigrator(db, migrations.WithSchema(name))
+func GetMigrator(db *bun.DB, name string, options ...migrations.Option) *migrations.Migrator {
+	options = append(options, migrations.WithSchema(name))
+	migrator := migrations.NewMigrator(db, options...)
 	migrations, err := migrations.CollectMigrations(MigrationsFS, name)
 	if err != nil {
 		panic(err)
@@ -23,11 +24,11 @@ func GetMigrator(db *bun.DB, name string) *migrations.Migrator {
 	return migrator
 }
 
-func migrate(ctx context.Context, tracer trace.Tracer, db *bun.DB, name string, minimalVersionReached chan struct{}) error {
+func migrate(ctx context.Context, tracer trace.Tracer, db *bun.DB, name string, minimalVersionReached chan struct{}, options ...migrations.Option) error {
 	ctx, span := tracer.Start(ctx, "Migrate bucket")
 	defer span.End()
 
-	migrator := GetMigrator(db, name)
+	migrator := GetMigrator(db, name, options...)
 	version, err := migrator.GetLastVersion(ctx)
 	if err != nil {
 		if !errors.Is(err, migrations.ErrMissingVersionTable) {

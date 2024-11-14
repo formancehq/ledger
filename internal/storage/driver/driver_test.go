@@ -3,21 +3,24 @@
 package driver_test
 
 import (
+	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/google/uuid"
-	"os"
-	"testing"
-
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/go-libs/v2/bun/bundebug"
-	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/uptrace/bun"
+	"golang.org/x/sync/errgroup"
+	"os"
+	"slices"
+	"testing"
+	"time"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
@@ -41,17 +44,54 @@ func TestUpgradeAllLedgers(t *testing.T) {
 }
 
 func TestLedgersCreate(t *testing.T) {
-	ctx := logging.TestingContext()
-	driver := newStorageDriver(t)
+	t.Parallel()
 
-	l := ledger.MustNewWithDefault("foo")
-	_, err := driver.CreateLedger(ctx, &l)
-	require.NoError(t, err)
-	require.Equal(t, 1, l.ID)
-	require.NotEmpty(t, l.AddedAt)
+	ctx := logging.TestingContext()
+	driver := newStorageDriver(t, driver.WithMigratorLockRetryInterval(100*time.Millisecond))
+
+	const count = 30
+	grp, ctx := errgroup.WithContext(ctx)
+	createdLedgersChan := make(chan ledger.Ledger, count)
+
+	for i := range count {
+		grp.Go(func() error {
+			l := ledger.MustNewWithDefault(fmt.Sprintf("ledger%d", i))
+
+			ctx, cancel := context.WithDeadline(ctx, time.Now().Add(40*time.Second))
+			defer cancel()
+
+			_, err := driver.CreateLedger(ctx, &l)
+			if err != nil {
+				return err
+			}
+			createdLedgersChan <- l
+
+			return nil
+		})
+	}
+
+	require.NoError(t, grp.Wait())
+
+	close(createdLedgersChan)
+
+	createdLedgers := make([]ledger.Ledger, 0)
+	for createdLedger := range createdLedgersChan {
+		createdLedgers = append(createdLedgers, createdLedger)
+	}
+
+	slices.SortStableFunc(createdLedgers, func(a, b ledger.Ledger) int {
+		return a.ID - b.ID
+	})
+
+	for i, createdLedger := range createdLedgers {
+		require.Equal(t, i+1, createdLedger.ID)
+		require.NotEmpty(t, createdLedger.AddedAt)
+	}
 }
 
 func TestLedgersList(t *testing.T) {
+	t.Parallel()
+
 	ctx := logging.TestingContext()
 	driver := newStorageDriver(t)
 
@@ -87,6 +127,8 @@ func TestLedgersList(t *testing.T) {
 }
 
 func TestLedgerUpdateMetadata(t *testing.T) {
+	t.Parallel()
+
 	ctx := logging.TestingContext()
 	storageDriver := newStorageDriver(t)
 
@@ -106,6 +148,8 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 }
 
 func TestLedgerDeleteMetadata(t *testing.T) {
+	t.Parallel()
+
 	ctx := logging.TestingContext()
 	driver := newStorageDriver(t)
 
@@ -124,7 +168,7 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
 }
 
-func newStorageDriver(t docker.T) *driver.Driver {
+func newStorageDriver(t docker.T, driverOptions ...driver.Option) *driver.Driver {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -137,7 +181,7 @@ func newStorageDriver(t docker.T) *driver.Driver {
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 
-	d := driver.New(db)
+	d := driver.New(db, driverOptions...)
 
 	require.NoError(t, d.Initialize(logging.TestingContext()))
 

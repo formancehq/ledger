@@ -141,6 +141,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 									DistinctOn("transactions_id, accounts_address, asset").
 									ModelTableExpr(s.GetPrefixedRelationName("moves")).
 									Column("transactions_id", "accounts_address", "asset").
+									Where("ledger = ?", s.ledger.Name).
 									ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`),
 							).
 							Column("transactions_id").

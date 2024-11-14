@@ -711,7 +711,8 @@ func TestTransactionsInsert(t *testing.T) {
 		err = store.GetDB().
 			NewSelect().
 			Model(&m).
-			ModelTableExpr(store.GetPrefixedRelationName("transactions") + " as model").
+			ModelTableExpr(store.GetPrefixedRelationName("transactions")+" as model").
+			Where("ledger = ?", store.GetLedger().Name).
 			Scan(ctx)
 		require.NoError(t, err)
 		require.Equal(t, Model{

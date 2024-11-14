@@ -50,11 +50,13 @@ func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 
 		return s.db.NewSelect().
 			ModelTableExpr("(?) moves", sortedMoves).
+			Where("ledger = ?", s.ledger.Name).
 			ColumnExpr("accounts_address, asset, balance")
 	}
 
 	return s.db.NewSelect().
 		ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+		Where("ledger = ?", s.ledger.Name).
 		ColumnExpr("input - output as balance")
 }
 

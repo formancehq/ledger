@@ -67,14 +67,13 @@ func newLedgerStore(t T) *testStore {
 	require.NoError(t, systemstore.Migrate(ctx, db))
 
 	l := ledger.MustNewWithDefault(ledgerName)
-	l.Bucket = ledgerName
 
-	b := bucket.New(db, ledgerName)
+	b := bucket.New(db, ledger.DefaultBucket)
 	require.NoError(t, b.Migrate(ctx, noop.Tracer{}, make(chan struct{})))
 	require.NoError(t, b.AddLedger(ctx, l, db))
 
 	return &testStore{
-		Store:    legacy.New(db, l.Name, l.Name),
+		Store:    legacy.New(db, ledger.DefaultBucket, l.Name),
 		newStore: ledgerstore.New(db, b, l),
 	}
 }
