@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/metric"
@@ -12,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
+	"time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
@@ -29,9 +31,10 @@ const (
 )
 
 type Driver struct {
-	db     *bun.DB
-	tracer trace.Tracer
-	meter  metric.Meter
+	db                        *bun.DB
+	tracer                    trace.Tracer
+	meter                     metric.Meter
+	migratorLockRetryInterval time.Duration
 }
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
@@ -41,7 +44,12 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	}
 
 	b := bucket.New(d.db, l.Bucket)
-	if err := b.Migrate(ctx, d.tracer, make(chan struct{})); err != nil {
+	if err := b.Migrate(
+		ctx,
+		d.tracer,
+		make(chan struct{}),
+		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
+	); err != nil {
 		return nil, fmt.Errorf("migrating bucket: %w", err)
 	}
 
@@ -95,7 +103,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		return fmt.Errorf("detecting rollbacks: %w", err)
 	}
 
-	err = Migrate(ctx, d.db)
+	err = Migrate(ctx, d.db, migrations.WithLockRetryInterval(d.migratorLockRetryInterval))
 	if err != nil {
 		constraintsFailed := postgres.ErrConstraintsFailed{}
 		if errors.As(err, &constraintsFailed) &&
@@ -189,10 +197,12 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	if err := bucket.New(d.db, name).Migrate(ctx, d.tracer, make(chan struct{})); err != nil {
-		return fmt.Errorf("migrating bucket '%s': %w", name, err)
-	}
-	return nil
+	return bucket.New(d.db, name).Migrate(
+		ctx,
+		d.tracer,
+		make(chan struct{}),
+		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
+	)
 }
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached chan struct{}) error {
@@ -226,7 +236,12 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 			}()
 
 			logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
-			if err := b.Migrate(ctx, d.tracer, minimalVersionReached); err != nil {
+			if err := b.Migrate(
+				ctx,
+				d.tracer,
+				minimalVersionReached,
+				migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
+			); err != nil {
 				return err
 			}
 			logging.FromContext(ctx).Infof("Bucket '%s' up to date", bucketName)
@@ -273,6 +288,12 @@ func WithMeter(m metric.Meter) Option {
 func WithTracer(tracer trace.Tracer) Option {
 	return func(d *Driver) {
 		d.tracer = tracer
+	}
+}
+
+func WithMigratorLockRetryInterval(interval time.Duration) Option {
+	return func(d *Driver) {
+		d.migratorLockRetryInterval = interval
 	}
 }
 

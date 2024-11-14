@@ -28,8 +28,8 @@ import (
 )
 
 var (
-	srv         = NewDeferred[*pgtesting.PostgresServer]()
-	bunDB       = NewDeferred[*bun.DB]()
+	srv   = NewDeferred[*pgtesting.PostgresServer]()
+	bunDB = NewDeferred[*bun.DB]()
 )
 
 func TestMain(m *testing.M) {
@@ -94,7 +94,6 @@ func newLedgerStore(t T) *ledgerstore.Store {
 	ctx := logging.TestingContext()
 
 	l := ledger.MustNewWithDefault(ledgerName)
-	l.Bucket = ledgerName
 
 	store, err := driver.CreateLedger(ctx, &l)
 	require.NoError(t, err)

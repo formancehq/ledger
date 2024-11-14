@@ -19,7 +19,7 @@ sources:
     COPY ../..+tidy/go.sum /src/
 
     WORKDIR /src/tools/generator
-    COPY --dir cmd .
+    COPY --dir cmd examples .
     COPY go.* *.go .
 
     SAVE ARTIFACT /src

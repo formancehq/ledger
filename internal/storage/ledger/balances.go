@@ -102,7 +102,9 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 			selectAccountsWithVolumes = selectAccountsWithVolumes.
 				Join(
 					`join (?) accounts on accounts.address = accounts_volumes.accounts_address`,
-					s.db.NewSelect().ModelTableExpr(s.GetPrefixedRelationName("accounts")),
+					s.db.NewSelect().
+						ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+						Where("ledger = ?", s.ledger.Name),
 				)
 		}
 	}
@@ -112,7 +114,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 			TableExpr(
 				"(?) accounts",
 				selectAccountsWithVolumes.
-					Join("join "+s.GetPrefixedRelationName("accounts")+" accounts on accounts.address = accounts_volumes.accounts_address"),
+					Join("join "+s.GetPrefixedRelationName("accounts")+" accounts on accounts.address = accounts_volumes.accounts_address and ledger = ?", s.ledger.Name),
 			).
 			ColumnExpr("address, asset, volumes, metadata").
 			ColumnExpr("accounts.address_array as accounts_address_array")
@@ -198,8 +200,8 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			args := make([]any, 0)
 			for account, assets := range query {
 				for _, asset := range assets {
-					conditions = append(conditions, "accounts_address = ? and asset = ?")
-					args = append(args, account, asset)
+					conditions = append(conditions, "ledger = ? and accounts_address = ? and asset = ?")
+					args = append(args, s.ledger.Name, account, asset)
 				}
 			}
 

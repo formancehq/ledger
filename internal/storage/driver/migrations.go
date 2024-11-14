@@ -13,7 +13,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func GetMigrator(db *bun.DB) *migrations.Migrator {
+func GetMigrator(db *bun.DB, options ...migrations.Option) *migrations.Migrator {
 
 	// configuration table has been removed, we keep the model to keep migrations consistent but the table is not used anymore.
 	type configuration struct {
@@ -24,7 +24,9 @@ func GetMigrator(db *bun.DB) *migrations.Migrator {
 		AddedAt time.Time `bun:"addedAt,type:timestamp"`
 	}
 
-	migrator := migrations.NewMigrator(db, migrations.WithSchema(SchemaSystem))
+	options = append(options, migrations.WithSchema(SchemaSystem))
+
+	migrator := migrations.NewMigrator(db, options...)
 	migrator.RegisterMigrations(
 		migrations.Migration{
 			Name: "Init schema",
@@ -207,8 +209,8 @@ func GetMigrator(db *bun.DB) *migrations.Migrator {
 	return migrator
 }
 
-func Migrate(ctx context.Context, db *bun.DB) error {
-	return GetMigrator(db).Up(ctx)
+func Migrate(ctx context.Context, db *bun.DB, options ...migrations.Option) error {
+	return GetMigrator(db, options...).Up(ctx)
 }
 
 func detectDowngrades(migrator *migrations.Migrator, ctx context.Context) error {

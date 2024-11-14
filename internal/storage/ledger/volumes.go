@@ -113,6 +113,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
 		ModelTableExpr(s.GetPrefixedRelationName("moves")).
+		Where("ledger = ?", s.ledger.Name).
 		GroupExpr("accounts_address, asset")
 
 	dateFilterColumn := "effective_date"

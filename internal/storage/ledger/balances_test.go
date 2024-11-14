@@ -106,6 +106,7 @@ func TestBalancesGet(t *testing.T) {
 
 		count, err := store.GetDB().NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("ledger = ?", store.GetLedger().Name).
 			Count(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
@@ -124,6 +125,7 @@ func TestBalancesGet(t *testing.T) {
 
 		count, err = store.GetDB().NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("ledger = ?", store.GetLedger().Name).
 			Count(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
@@ -171,7 +173,7 @@ func TestBalancesGet(t *testing.T) {
 		volumes := &ledger.AccountsVolumes{}
 		err = store.GetDB().NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("accounts_address = ?", "bank").
+			Where("accounts_address = ? and ledger = ?", "bank", store.GetLedger().Name).
 			Scan(ctx, volumes)
 		require.NoError(t, err)
 
