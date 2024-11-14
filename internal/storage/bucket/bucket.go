@@ -20,8 +20,8 @@ type Bucket struct {
 	db   *bun.DB
 }
 
-func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer) error {
-	return migrate(ctx, tracer, b.db, b.name)
+func (b *Bucket) Migrate(ctx context.Context, tracer trace.Tracer, minimalVersionReached chan struct{}) error {
+	return migrate(ctx, tracer, b.db, b.name, minimalVersionReached)
 }
 
 func (b *Bucket) HasMinimalVersion(ctx context.Context) (bool, error) {

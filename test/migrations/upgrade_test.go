@@ -53,7 +53,7 @@ func TestMigrations(t *testing.T) {
 	// Migrate database
 	driver := driver.New(db)
 	require.NoError(t, driver.Initialize(ctx))
-	require.NoError(t, driver.UpgradeAllBuckets(ctx))
+	require.NoError(t, driver.UpgradeAllBuckets(ctx, make(chan struct{})))
 }
 
 func copyDatabase(t *testing.T, dockerPool *docker.Pool, source, destination string) {

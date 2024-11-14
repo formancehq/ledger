@@ -14,31 +14,22 @@ func NewBucketUpgrade() *cobra.Command {
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
-			if err != nil {
-				return err
-			}
+			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
+			cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
 
-			db, err := bunconnect.OpenSQLDB(cmd.Context(), *connectionOptions)
+			driver, err := getDriver(cmd)
 			if err != nil {
 				return err
 			}
 			defer func() {
-				_ = db.Close()
+				_ = driver.GetDB().Close()
 			}()
 
-			driver := driver.New(db)
-			if err := driver.Initialize(cmd.Context()); err != nil {
-				return err
-			}
-
 			if args[0] == "*" {
-				return upgradeAll(cmd)
+				return driver.UpgradeAllBuckets(cmd.Context(), make(chan struct{}))
 			}
 
-			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
-
-			return driver.UpgradeBucket(logging.ContextWithLogger(cmd.Context(), logger), args[0])
+			return driver.UpgradeBucket(cmd.Context(), args[0])
 		},
 	}
 
@@ -48,27 +39,22 @@ func NewBucketUpgrade() *cobra.Command {
 	return cmd
 }
 
-func upgradeAll(cmd *cobra.Command) error {
-	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
-	ctx := logging.ContextWithLogger(cmd.Context(), logger)
+func getDriver(cmd *cobra.Command) (*driver.Driver, error) {
 
 	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	db, err := bunconnect.OpenSQLDB(cmd.Context(), *connectionOptions)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() {
-		_ = db.Close()
-	}()
 
 	driver := driver.New(db)
-	if err := driver.Initialize(ctx); err != nil {
-		return err
+	if err := driver.Initialize(cmd.Context()); err != nil {
+		return nil, err
 	}
 
-	return driver.UpgradeAllBuckets(ctx)
+	return driver, nil
 }

@@ -36,7 +36,15 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(version)
 	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, _ *bun.DB) error {
 		// todo: use provided db ...
-		return upgradeAll(cmd)
+		driver, err := getDriver(cmd)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = driver.GetDB().Close()
+		}()
+
+		return driver.UpgradeAllBuckets(cmd.Context(), make(chan struct{}))
 	}))
 	root.AddCommand(NewDocsCommand())
 
