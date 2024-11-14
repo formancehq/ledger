@@ -36,7 +36,9 @@ func TestGenerator(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	generator, err := NewGenerator(script)
+	generator, err := NewGenerator(script, WithGlobals(map[string]interface{}{
+		"globalMetadata": "test",
+	}))
 	require.NoError(t, err)
 
 	const ledgerName = "default"
@@ -57,7 +59,8 @@ func TestGenerator(t *testing.T) {
 	require.True(t, txs.Data[1].Reverted)
 	require.False(t, txs.Data[0].Reverted)
 	require.Equal(t, map[string]string{
-		"foo": "bar",
+		"foo":            "bar",
+		"globalMetadata": "test",
 	}, txs.Data[1].Metadata)
 }
 
@@ -73,6 +76,8 @@ send [USD/2 100] (
 	source = @world
 	destination = @bank
 )
+
+set_tx_meta("globalMetadata", "${globalMetadata}")
 ` + "`" + `
 			}
 		}
