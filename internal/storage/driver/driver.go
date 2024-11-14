@@ -11,6 +11,7 @@ import (
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
+	"golang.org/x/sync/errgroup"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
@@ -40,7 +41,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	}
 
 	b := bucket.New(d.db, l.Bucket)
-	if err := b.Migrate(ctx, d.tracer); err != nil {
+	if err := b.Migrate(ctx, d.tracer, make(chan struct{})); err != nil {
 		return nil, fmt.Errorf("migrating bucket: %w", err)
 	}
 
@@ -188,10 +189,13 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	return bucket.New(d.db, name).Migrate(ctx, d.tracer)
+	if err := bucket.New(d.db, name).Migrate(ctx, d.tracer, make(chan struct{})); err != nil {
+		return fmt.Errorf("migrating bucket '%s': %w", name, err)
+	}
+	return nil
 }
 
-func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
+func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached chan struct{}) error {
 
 	var buckets []string
 	err := d.db.NewSelect().
@@ -203,17 +207,45 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 		return fmt.Errorf("getting buckets: %w", err)
 	}
 
-	for _, bucketName := range buckets {
-		b := bucket.New(d.db, bucketName)
+	sem := make(chan struct{}, len(buckets))
 
-		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
-		if err := b.Migrate(ctx, d.tracer); err != nil {
-			return err
-		}
-		logging.FromContext(ctx).Infof("Bucket '%s' up to date", bucketName)
+	grp, ctx := errgroup.WithContext(ctx)
+	for _, bucketName := range buckets {
+		grp.Go(func() error {
+			b := bucket.New(d.db, bucketName)
+
+			minimalVersionReached := make(chan struct{})
+
+			go func() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-minimalVersionReached:
+					sem <- struct{}{}
+				}
+			}()
+
+			logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
+			if err := b.Migrate(ctx, d.tracer, minimalVersionReached); err != nil {
+				return err
+			}
+			logging.FromContext(ctx).Infof("Bucket '%s' up to date", bucketName)
+
+			return nil
+		})
 	}
 
-	return nil
+	for i := 0; i < len(buckets); i++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-sem:
+		}
+	}
+
+	close(minimalVersionReached)
+
+	return grp.Wait()
 }
 
 func (d *Driver) GetDB() *bun.DB {

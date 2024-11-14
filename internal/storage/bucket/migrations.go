@@ -3,6 +3,7 @@ package bucket
 import (
 	"context"
 	"embed"
+	"errors"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
@@ -22,9 +23,39 @@ func GetMigrator(db *bun.DB, name string) *migrations.Migrator {
 	return migrator
 }
 
-func migrate(ctx context.Context, tracer trace.Tracer, db *bun.DB, name string) error {
+func migrate(ctx context.Context, tracer trace.Tracer, db *bun.DB, name string, minimalVersionReached chan struct{}) error {
 	ctx, span := tracer.Start(ctx, "Migrate bucket")
 	defer span.End()
 
-	return GetMigrator(db, name).Up(ctx)
+	migrator := GetMigrator(db, name)
+	version, err := migrator.GetLastVersion(ctx)
+	if err != nil {
+		if !errors.Is(err, migrations.ErrMissingVersionTable) {
+			return err
+		}
+	}
+
+	if version >= MinimalSchemaVersion {
+		close(minimalVersionReached)
+	}
+
+	for {
+		err := migrator.UpByOne(ctx)
+		if err != nil {
+			if errors.Is(err, migrations.ErrAlreadyUpToDate) {
+				return nil
+			}
+			return err
+		}
+		version++
+
+		if version >= MinimalSchemaVersion {
+			select {
+			case <-minimalVersionReached:
+			// already closed
+			default:
+				close(minimalVersionReached)
+			}
+		}
+	}
 }

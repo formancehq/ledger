@@ -31,5 +31,5 @@ func TestBuckets(t *testing.T) {
 	require.NoError(t, driver.Migrate(ctx, db))
 
 	b := bucket.New(db, name)
-	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
+	require.NoError(t, b.Migrate(ctx, noop.Tracer{}, make(chan struct{})))
 }
