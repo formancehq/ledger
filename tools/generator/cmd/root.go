@@ -171,7 +171,9 @@ func run(cmd *cobra.Command, args []string) error {
 	logging.FromContext(cmd.Context()).Infof("Starting to generate data with %d vus", vus)
 
 	for vu := 0; vu < vus; vu++ {
-		generator, err := generate.NewGenerator(string(fileContent))
+		generator, err := generate.NewGenerator(string(fileContent), generate.WithGlobals(map[string]any{
+			"vu": vu,
+		}))
 		if err != nil {
 			return fmt.Errorf("failed to create generator: %w", err)
 		}

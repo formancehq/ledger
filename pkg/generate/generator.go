@@ -44,7 +44,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) (*Result
 
 	var bulkElement components.V2BulkElement
 	switch r.Action {
-	case v2.ActionCreateTransaction, "": // Handling "" as CREATE_TRANSACTION for backward compatibility
+	case v2.ActionCreateTransaction:
 		transactionRequest := &ledgercontroller.RunScript{}
 		err := json.Unmarshal(r.Data, transactionRequest)
 		if err != nil {
@@ -161,6 +161,15 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) (*Result
 	if err != nil {
 		return nil, fmt.Errorf("creating transaction: %w", err)
 	}
+	if errorResponse := response.V2BulkResponse.Data[0].V2BulkElementResultError; errorResponse != nil {
+		if errorResponse.ErrorCode != "" {
+			errorDescription := errorResponse.ErrorDescription
+			if errorDescription == "" {
+				errorDescription = "<no description>"
+			}
+			return nil, fmt.Errorf("[%s] %s", errorResponse.ErrorCode, errorDescription)
+		}
+	}
 
 	return &Result{response.V2BulkResponse.Data[0]}, nil
 }
@@ -173,12 +182,25 @@ func (g *Generator) Next(iteration int) (*Action, error) {
 	return g.next(iteration)
 }
 
-func NewGenerator(script string) (*Generator, error) {
+func NewGenerator(script string, opts ...Option) (*Generator, error) {
+
+	cfg := &config{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	runtime := goja.New()
 
 	_, err := runtime.RunString(script)
 	if err != nil {
 		return nil, err
+	}
+
+	for k, v := range cfg.globals {
+		err := runtime.Set(k, v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set global variable %s: %w", k, err)
+		}
 	}
 
 	runtime.SetFieldNameMapper(goja.TagFieldNameMapper("json", true))
@@ -200,9 +222,9 @@ func NewGenerator(script string) (*Generator, error) {
 
 			var (
 				action string
-				ik string
-				data map[string]any
-				ok bool
+				ik     string
+				data   map[string]any
+				ok     bool
 			)
 			rawAction := ret["action"]
 			if rawAction == nil {
@@ -245,4 +267,16 @@ func NewGenerator(script string) (*Generator, error) {
 			}, nil
 		},
 	}, nil
+}
+
+type config struct {
+	globals map[string]any
+}
+
+type Option func(*config)
+
+func WithGlobals(globals map[string]any) Option {
+	return func(c *config) {
+		c.globals = globals
+	}
 }
