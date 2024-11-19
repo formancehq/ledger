@@ -4,6 +4,7 @@ package test_suite
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"math/rand"
 	"sync"
@@ -13,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -52,7 +52,7 @@ var _ = Context("Ledger stress tests", func() {
 					Ledger: ledgerName,
 					V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
 						Bucket:   &bucketName,
-						Features: ledger.MinimalFeatureSet.With(ledger.FeatureMovesHistory, "ON"),
+						Features: features.MinimalFeatureSet.With(features.FeatureMovesHistory, "ON"),
 					},
 				})
 				Expect(err).ShouldNot(HaveOccurred())

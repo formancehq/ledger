@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"strings"
 
@@ -56,23 +57,23 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		}
 	}
 
-	if needAddressSegment && !s.ledger.HasFeature(ledger.FeatureIndexAddressSegments, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureIndexAddressSegments))
+	if needAddressSegment && !s.ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureIndexAddressSegments))
 	}
 
 	var selectAccountsWithVolumes *bun.SelectQuery
 	if date != nil && !date.IsZero() {
 		if useInsertionDate {
-			if !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
+			if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+				return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesBySeq(date)).
 				Column("asset", "accounts_address").
 				ColumnExpr("post_commit_volumes as volumes")
 		} else {
-			if !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes))
+			if !s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+				return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes))
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesByEffectiveDate(date)).
@@ -92,7 +93,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		TableExpr("(?) accounts_volumes", selectAccountsWithVolumes)
 
 	if needMetadata {
-		if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
+		if s.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 			selectAccountsWithVolumes = selectAccountsWithVolumes.
 				Join(
 					`left join (?) accounts_metadata on accounts_metadata.accounts_address = accounts_volumes.accounts_address`,

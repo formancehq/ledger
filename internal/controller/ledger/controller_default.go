@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"reflect"
 
@@ -210,7 +211,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 		return fmt.Errorf("failed to insert log: %w", err)
 	}
 
-	if ctrl.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
+	if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
 		if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
 			return newErrInvalidHash(log.ID, logCopy.Hash, log.Hash)
 		}

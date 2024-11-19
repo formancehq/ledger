@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 5e24fc96851e508606f6b6668ed3ffb3
+  docChecksum: 743c41071ff98ac5e7d00e58f65650e3
   docVersion: v1
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.4.30
-  configChecksum: b752be0bf02f575b11e046541aa57005
+  releaseVersion: 0.4.31
+  configChecksum: 006527a5b70ea037906b0ff29a01a2ef
 features:
   go:
     additionalDependencies: 0.1.0
@@ -55,6 +55,7 @@ generatedFiles:
   - internal/utils/security.go
   - internal/utils/utils.go
   - /models/operations/v2getinfo.go
+  - /models/operations/getmetrics.go
   - /models/operations/getinfo.go
   - /models/operations/getledgerinfo.go
   - /models/operations/countaccounts.go
@@ -173,6 +174,7 @@ generatedFiles:
   - /models/components/v2log.go
   - /models/components/security.go
   - docs/models/operations/v2getinforesponse.md
+  - docs/models/operations/getmetricsresponse.md
   - docs/models/operations/getinforesponse.md
   - docs/models/operations/getledgerinforequest.md
   - docs/models/operations/getledgerinforesponse.md

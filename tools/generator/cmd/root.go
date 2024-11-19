@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
-	"golang.org/x/sync/errgroup"
 	"net/http"
 	"os"
 	"strings"
@@ -163,49 +162,11 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	parallelContext, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
-
-	errGroup, ctx := errgroup.WithContext(parallelContext)
-
 	logging.FromContext(cmd.Context()).Infof("Starting to generate data with %d vus", vus)
 
-	for vu := 0; vu < vus; vu++ {
-		generator, err := generate.NewGenerator(string(fileContent), generate.WithGlobals(map[string]any{
-			"vu": vu,
-		}))
-		if err != nil {
-			return fmt.Errorf("failed to create generator: %w", err)
-		}
-
-		errGroup.Go(func() error {
-			defer cancel()
-
-			iteration := 0
-
-			for {
-				logging.FromContext(ctx).Infof("Run iteration %d/%d", vu, iteration)
-				action, err := generator.Next(vu)
-				if err != nil {
-					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
-				}
-
-				ret, err := action.Apply(ctx, client.Ledger.V2, targetedLedger)
-				if err != nil {
-					if errors.Is(err, context.Canceled) {
-						return nil
-					}
-					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
-				}
-				if untilLogID != 0 && ret.GetLogID() >= untilLogID {
-					return nil
-				}
-				iteration++
-			}
-		})
-	}
-
-	return errGroup.Wait()
+	return generate.
+		NewGeneratorSet(vus, string(fileContent), targetedLedger, client, uint64(untilLogID)).
+		Run(cmd.Context())
 }
 
 func extractSliceSliceFlag(cmd *cobra.Command, flagName string) (map[string]string, error) {

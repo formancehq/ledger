@@ -45,7 +45,7 @@ type Configuration struct {
 	Debug                        bool
 	OTLPConfig                   *OTLPConfig
 	ExperimentalFeatures         bool
-	DisableAutoUpgrade bool
+	DisableAutoUpgrade           bool
 	BulkMaxSize                  int
 	ExperimentalNumscriptRewrite bool
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"regexp"
 	"slices"
@@ -51,8 +52,8 @@ func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun
 func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffectiveVolumes bool, q query.Builder) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
-	if expandEffectiveVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes))
+	if expandEffectiveVolumes && !s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes))
 	}
 
 	if q != nil {
@@ -116,7 +117,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 		ret = ret.Where("timestamp <= ?", date)
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
+	if s.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 		ret = ret.
 			Join(
 				`left join (?) transactions_metadata on transactions_metadata.transactions_id = transactions.id`,
@@ -127,7 +128,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 		ret = ret.ColumnExpr("metadata")
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
+	if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.
 			Join(
 				`join (?) pcev on pcev.transactions_id = transactions.id`,
@@ -264,7 +265,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		}
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
+	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 		moves := ledger.Moves{}
 		postings := tx.Postings
 		slices.Reverse(postings)
@@ -300,7 +301,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			return fmt.Errorf("failed to insert moves: %w", err)
 		}
 
-		if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+		if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 			// todo: tx is inserted earlier!
 			tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
 		}

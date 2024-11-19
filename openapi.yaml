@@ -1208,6 +1208,30 @@ paths:
       security:
         - Authorization:
             - ledger:read
+  /_/metrics:
+    get:
+      tags:
+        - ledger
+      summary: Read in memory metrics
+      operationId: getMetrics
+      x-speakeasy-name-override: GetMetrics
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2:
     get:
       summary: List ledgers

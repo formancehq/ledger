@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/features"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -197,10 +197,10 @@ func deployTest(ctx *pulumi.Context) error {
 		pulumi.String("30"),
 	}
 
-	for _, key := range ledger.MinimalFeatureSet.SortedKeys() {
+	for _, key := range features.MinimalFeatureSet.SortedKeys() {
 		generatorArgs = append(generatorArgs,
 			pulumi.String("--ledger-feature"),
-			pulumi.String(key+"="+ledger.MinimalFeatureSet[key]),
+			pulumi.String(key+"="+features.MinimalFeatureSet[key]),
 		)
 	}
 

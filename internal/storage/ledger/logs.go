@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/pkg/features"
 
 	"errors"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -55,7 +56,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 		tracing.NoResult(func(ctx context.Context) error {
 
 			// We lock logs table as we need than the last log does not change until the transaction commit
-			if s.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
+			if s.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
 				_, err := s.db.NewRaw(`select pg_advisory_xact_lock(?)`, s.ledger.ID).Exec(ctx)
 				if err != nil {
 					return postgres.ResolveError(err)

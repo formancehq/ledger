@@ -191,16 +191,16 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 
 	runtime := goja.New()
 
-	_, err := runtime.RunString(script)
-	if err != nil {
-		return nil, err
-	}
-
 	for k, v := range cfg.globals {
 		err := runtime.Set(k, v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set global variable %s: %w", k, err)
 		}
+	}
+
+	_, err := runtime.RunString(script)
+	if err != nil {
+		return nil, err
 	}
 
 	runtime.SetFieldNameMapper(goja.TagFieldNameMapper("json", true))
