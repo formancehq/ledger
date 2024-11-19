@@ -58,7 +58,7 @@ cluster-create:
     RUN curl -L -o vcluster "https://github.com/loft-sh/vcluster/releases/download/v0.20.4/vcluster-linux-${TARGETARCH}"
     RUN install -c -m 0755 vcluster /usr/local/bin && rm -f vcluster
     ARG CLUSTER_NAME=test
-    RUN --no-cache vcluster create $CLUSTER_NAME --connect=false --upgrade
+    RUN vcluster create $CLUSTER_NAME --connect=false
 
 run:
     ARG CLUSTER_NAME=test
@@ -86,24 +86,30 @@ run:
     ARG NO_CLEANUP=false
     ARG NO_CLEANUP_ON_FAILURE=false
 
-    RUN --secret PULUMI_ACCESS_TOKEN --secret GITHUB_TOKEN sh -c '
-        echo "Connecting to VCluster..."
-        vcluster connect ${CLUSTER_NAME} --namespace vcluster-${CLUSTER_NAME} &
-        export KUBECONFIG=/root/.kube/config;
+    WITH DOCKER
+        RUN --secret PULUMI_ACCESS_TOKEN --secret GITHUB_TOKEN sh -c '
+            set -e;
 
-        echo "Waiting for VCluster to be ready..."
-        until kubectl get nodes; do sleep 1s; done;
+            echo "Connecting to VCluster..."
+            vcluster connect ${CLUSTER_NAME} --namespace vcluster-${CLUSTER_NAME};
 
-        echo "Running test..."
-        go test \
-            --test-image ghcr.io/formancehq/ledger:$CLUSTER_NAME-rolling-upgrade-test \
-            --latest-version $CLUSTER_NAME-main \
-            --actual-version $CLUSTER_NAME-current \
-            --project ledger \
-            --stack-prefix-name $CLUSTER_NAME- \
-            --no-cleanup=$NO_CLEANUP \
-            --no-cleanup-on-failure=$NO_CLEANUP_ON_FAILURE;
-    '
+            echo "Connected on context '$(kubectl config current-context)'";
+
+            echo "Waiting for VCluster to be ready..."
+            until kubectl get nodes; do sleep 1s; done;
+
+            echo "Running test..."
+            go test \
+                --test-image ghcr.io/formancehq/ledger:$CLUSTER_NAME-rolling-upgrade-test \
+                --latest-version $CLUSTER_NAME-main \
+                --actual-version $CLUSTER_NAME-current \
+                --project ledger \
+                --stack-prefix-name $CLUSTER_NAME- \
+                --no-cleanup=$NO_CLEANUP \
+                --no-cleanup-on-failure=$NO_CLEANUP_ON_FAILURE;
+        '
+    END
+
     IF [ $NO_CLEANUP = "false" ]
         RUN vcluster delete $CLUSTER_NAME --delete-namespace
     END

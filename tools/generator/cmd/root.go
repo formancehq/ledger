@@ -62,6 +62,7 @@ func Execute() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
+
 	ledgerUrl := args[0]
 	scriptLocation := args[1]
 

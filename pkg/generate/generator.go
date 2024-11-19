@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dop251/goja"
+	"github.com/formancehq/go-libs/v2/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -45,7 +45,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) (*Result
 	var bulkElement components.V2BulkElement
 	switch r.Action {
 	case v2.ActionCreateTransaction:
-		transactionRequest := &ledgercontroller.RunScript{}
+		transactionRequest := &v2.TransactionRequest{}
 		err := json.Unmarshal(r.Data, transactionRequest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal transaction request: %w", err)
@@ -61,8 +61,18 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) (*Result
 				}(),
 				Script: &components.V2PostTransactionScript{
 					Plain: transactionRequest.Script.Plain,
-					Vars:  transactionRequest.Script.Vars,
+					Vars: collectionutils.ConvertMap(transactionRequest.Script.Vars, func(from any) string {
+						return fmt.Sprint(from)
+					}),
 				},
+				Postings: collectionutils.Map(transactionRequest.Postings, func(p ledger.Posting) components.V2Posting {
+					return components.V2Posting{
+						Amount:      p.Amount,
+						Asset:       p.Asset,
+						Destination: p.Destination,
+						Source:      p.Source,
+					}
+				}),
 				Reference: func() *string {
 					if transactionRequest.Reference == "" {
 						return nil
@@ -161,6 +171,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) (*Result
 	if err != nil {
 		return nil, fmt.Errorf("creating transaction: %w", err)
 	}
+
 	if errorResponse := response.V2BulkResponse.Data[0].V2BulkElementResultError; errorResponse != nil {
 		if errorResponse.ErrorCode != "" {
 			errorDescription := errorResponse.ErrorDescription
