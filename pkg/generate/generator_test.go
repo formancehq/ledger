@@ -71,14 +71,23 @@ function next(iteration) {
 		return {
 			action: 'CREATE_TRANSACTION',
 			data: {
-				plain: ` + "`" + `
+				script: {
+					vars: {
+						dst: "bank"
+					},
+					plain: ` + "`" + `
+vars {
+	account $dst
+}
+
 send [USD/2 100] (
 	source = @world
-	destination = @bank
+	destination = $dst
 )
 
 set_tx_meta("globalMetadata", "${globalMetadata}")
 ` + "`" + `
+				}
 			}
 		}
 	case 1:

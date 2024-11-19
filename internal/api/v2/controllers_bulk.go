@@ -32,7 +32,11 @@ func bulkHandler(bulkMaxSize int) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		ret, errorsInBulk, err := ProcessBulk(r.Context(), common.LedgerFromContext(r.Context()), b, api.QueryParamBool(r, "continueOnFailure"))
-		if err != nil || errorsInBulk {
+		if err != nil {
+			api.InternalServerError(w, r, err)
+			return
+		}
+		if errorsInBulk {
 			w.WriteHeader(http.StatusBadRequest)
 		}
 
@@ -124,6 +128,31 @@ func ProcessBulk(
 	bulk Bulk,
 	continueOnFailure bool,
 ) ([]Result, bool, error) {
+
+	for i, element := range bulk {
+		switch element.Action {
+		case ActionCreateTransaction:
+			req := &TransactionRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, false, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		case ActionAddMetadata:
+			req := &AddMetadataRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, false, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		case ActionRevertTransaction:
+			req := &RevertTransactionRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, false, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		case ActionDeleteMetadata:
+			req := &DeleteMetadataRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, false, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		}
+	}
 
 	ret := make([]Result, 0, len(bulk))
 

@@ -19,10 +19,12 @@ function next(iteration) {
     return {
         action: 'CREATE_TRANSACTION',
         data: {
-            plain,
-            vars: {
-                order: `orders:${uuid()}`,
-                seller: `sellers:${iteration % 5}`
+            script: {
+                plain,
+                vars: {
+                    order: `orders:${uuid()}`,
+                    seller: `sellers:${iteration % 5}`
+                }
             }
         }
     }
