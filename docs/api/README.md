@@ -60,6 +60,52 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
+## Read in memory metrics
+
+<a id="opIdgetMetrics"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/_/metrics HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /_/metrics`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "property1": null,
+  "property2": null
+}
+```
+
+<h3 id="read-in-memory-metrics-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="read-in-memory-metrics-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» **additionalProperties**|any|false|none|none|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
 <h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
 ## List ledgers

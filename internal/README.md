@@ -32,11 +32,6 @@ import "github.com/formancehq/ledger/internal"
 - [type ErrInvalidLedgerName](<#ErrInvalidLedgerName>)
   - [func \(e ErrInvalidLedgerName\) Error\(\) string](<#ErrInvalidLedgerName.Error>)
   - [func \(e ErrInvalidLedgerName\) Is\(err error\) bool](<#ErrInvalidLedgerName.Is>)
-- [type FeatureSet](<#FeatureSet>)
-  - [func \(f FeatureSet\) Match\(features FeatureSet\) bool](<#FeatureSet.Match>)
-  - [func \(f FeatureSet\) SortedKeys\(\) \[\]string](<#FeatureSet.SortedKeys>)
-  - [func \(f FeatureSet\) String\(\) string](<#FeatureSet.String>)
-  - [func \(f FeatureSet\) With\(feature, value string\) FeatureSet](<#FeatureSet.With>)
 - [type Ledger](<#Ledger>)
   - [func MustNewWithDefault\(name string\) Ledger](<#MustNewWithDefault>)
   - [func New\(name string, configuration Configuration\) \(\*Ledger, error\)](<#New>)
@@ -116,40 +111,20 @@ import "github.com/formancehq/ledger/internal"
 
 ## Constants
 
-<a name="FeatureMovesHistory"></a>
-
-```go
-const (
-    // FeatureMovesHistory is used to define if the ledger has to save funds movements history.
-    // Value is either ON or OFF
-    FeatureMovesHistory = "MOVES_HISTORY"
-    // FeatureMovesHistoryPostCommitEffectiveVolumes is used to define if the pvce property of funds movements history
-    // has to be updated with back dated transaction.
-    // Value is either SYNC or DISABLED.
-    // todo: depends on FeatureMovesHistory (dependency should be checked)
-    FeatureMovesHistoryPostCommitEffectiveVolumes = "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES"
-    // FeatureHashLogs is used to defined it the logs has to be hashed.
-    FeatureHashLogs = "HASH_LOGS"
-    // FeatureAccountMetadataHistory is used to defined it the account metadata must be historized.
-    FeatureAccountMetadataHistory = "ACCOUNT_METADATA_HISTORY"
-    // FeatureTransactionMetadataHistory is used to defined it the transaction metadata must be historized.
-    FeatureTransactionMetadataHistory = "TRANSACTION_METADATA_HISTORY"
-    // FeatureIndexAddressSegments is used to defined it we want to index segments of accounts address.
-    // Without this feature, the ledger will not allow filtering on partial account address.
-    FeatureIndexAddressSegments = "INDEX_ADDRESS_SEGMENTS"
-    // FeatureIndexTransactionAccounts is used to defined it we want to index accounts used in a transaction.
-    FeatureIndexTransactionAccounts = "INDEX_TRANSACTION_ACCOUNTS"
-
-    DefaultBucket = "_default"
-)
-```
-
 <a name="MetaTargetTypeAccount"></a>
 
 ```go
 const (
     MetaTargetTypeAccount     = "ACCOUNT"
     MetaTargetTypeTransaction = "TRANSACTION"
+)
+```
+
+<a name="DefaultBucket"></a>
+
+```go
+const (
+    DefaultBucket = "_default"
 )
 ```
 
@@ -162,40 +137,6 @@ const (
 ```
 
 ## Variables
-
-<a name="DefaultFeatures"></a>
-
-```go
-var (
-    DefaultFeatures = FeatureSet{
-        FeatureMovesHistory:                           "ON",
-        FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
-        FeatureHashLogs:                               "SYNC",
-        FeatureAccountMetadataHistory:                 "SYNC",
-        FeatureTransactionMetadataHistory:             "SYNC",
-        FeatureIndexAddressSegments:                   "ON",
-        FeatureIndexTransactionAccounts:               "ON",
-    }
-    MinimalFeatureSet = FeatureSet{
-        FeatureMovesHistory:                           "OFF",
-        FeatureMovesHistoryPostCommitEffectiveVolumes: "DISABLED",
-        FeatureHashLogs:                               "DISABLED",
-        FeatureAccountMetadataHistory:                 "DISABLED",
-        FeatureTransactionMetadataHistory:             "DISABLED",
-        FeatureIndexAddressSegments:                   "OFF",
-        FeatureIndexTransactionAccounts:               "OFF",
-    }
-    FeatureConfigurations = map[string][]string{
-        FeatureMovesHistory:                           {"ON", "OFF"},
-        FeatureMovesHistoryPostCommitEffectiveVolumes: {"SYNC", "DISABLED"},
-        FeatureHashLogs:                               {"SYNC", "DISABLED"},
-        FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
-        FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
-        FeatureIndexAddressSegments:                   {"ON", "OFF"},
-        FeatureIndexTransactionAccounts:               {"ON", "OFF"},
-    }
-)
-```
 
 <a name="Zero"></a>
 
@@ -281,9 +222,9 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 
 ```go
 type Configuration struct {
-    Bucket   string            `json:"bucket" bun:"bucket,type:varchar(255)"`
-    Metadata metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb"`
-    Features FeatureSet        `json:"features" bun:"features,type:jsonb"`
+    Bucket   string              `json:"bucket" bun:"bucket,type:varchar(255)"`
+    Metadata metadata.Metadata   `json:"metadata" bun:"metadata,type:jsonb"`
+    Features features.FeatureSet `json:"features" bun:"features,type:jsonb"`
 }
 ```
 
@@ -429,51 +370,6 @@ func (e ErrInvalidLedgerName) Error() string
 
 ```go
 func (e ErrInvalidLedgerName) Is(err error) bool
-```
-
-
-
-<a name="FeatureSet"></a>
-## type FeatureSet
-
-
-
-```go
-type FeatureSet map[string]string
-```
-
-<a name="FeatureSet.Match"></a>
-### func \(FeatureSet\) Match
-
-```go
-func (f FeatureSet) Match(features FeatureSet) bool
-```
-
-
-
-<a name="FeatureSet.SortedKeys"></a>
-### func \(FeatureSet\) SortedKeys
-
-```go
-func (f FeatureSet) SortedKeys() []string
-```
-
-
-
-<a name="FeatureSet.String"></a>
-### func \(FeatureSet\) String
-
-```go
-func (f FeatureSet) String() string
-```
-
-
-
-<a name="FeatureSet.With"></a>
-### func \(FeatureSet\) With
-
-```go
-func (f FeatureSet) With(feature, value string) FeatureSet
 ```
 
 

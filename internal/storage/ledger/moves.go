@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/pkg/features"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/time"
@@ -14,8 +15,8 @@ import (
 func (s *Store) SortMovesBySeq(date *time.Time) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
-	if !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
+	if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
 	}
 
 	ret = ret.

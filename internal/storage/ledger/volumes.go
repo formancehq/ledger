@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/ledger/pkg/features"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -67,8 +68,8 @@ func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.Acco
 func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
 	ret := s.db.NewSelect()
 
-	if !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
+	if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
 	}
 
 	var (

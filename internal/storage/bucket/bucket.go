@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 	"text/template"
@@ -66,8 +67,8 @@ func New(db *bun.DB, name string) *Bucket {
 }
 
 type ledgerSetup struct {
-	requireFeatures ledger.FeatureSet
-	script string
+	requireFeatures features.FeatureSet
+	script          string
 }
 
 var ledgerSetups = []ledgerSetup{
@@ -96,14 +97,14 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
 		},
 		script: `create index "pcev_{{.ID}}" on "{{.Bucket}}".moves (accounts_address, asset, effective_date desc) where ledger = '{{.Name}}';`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
 		},
 		script: `
 		create trigger "set_effective_volumes_{{.ID}}"
@@ -117,8 +118,8 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
 		},
 		script: `
 		create trigger "update_effective_volumes_{{.ID}}"
@@ -132,8 +133,8 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureHashLogs: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureHashLogs: "SYNC",
 		},
 		script: `
 		create trigger "set_log_hash_{{.ID}}"
@@ -147,8 +148,8 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureAccountMetadataHistory: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureAccountMetadataHistory: "SYNC",
 		},
 		script: `
 		create trigger "update_account_metadata_history_{{.ID}}"
@@ -162,8 +163,8 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureAccountMetadataHistory: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureAccountMetadataHistory: "SYNC",
 		},
 		script: `
 		create trigger "insert_account_metadata_history_{{.ID}}"
@@ -177,8 +178,8 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureTransactionMetadataHistory: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureTransactionMetadataHistory: "SYNC",
 		},
 		script: `
 		create trigger "update_transaction_metadata_history_{{.ID}}"
@@ -192,8 +193,8 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureTransactionMetadataHistory: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureTransactionMetadataHistory: "SYNC",
 		},
 		script: `
 		create trigger "insert_transaction_metadata_history_{{.ID}}"
@@ -207,24 +208,24 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexTransactionAccounts: "SYNC",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexTransactionAccounts: "SYNC",
 		},
 		script: `
 		create index "transactions_sources_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources jsonb_path_ops) where ledger = '{{.Name}}';
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexTransactionAccounts: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexTransactionAccounts: "ON",
 		},
 		script: `
 		create index "transactions_destinations_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations jsonb_path_ops) where ledger = '{{.Name}}';
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexTransactionAccounts: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexTransactionAccounts: "ON",
 		},
 		script: `
 		create trigger "transaction_set_addresses_{{.ID}}"
@@ -238,24 +239,24 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexAddressSegments: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments: "ON",
 		},
 		script: `
 		create index "accounts_address_array_{{.ID}}" on "{{.Bucket}}".accounts using gin (address_array jsonb_ops) where ledger = '{{.Name}}';
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexAddressSegments: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments: "ON",
 		},
 		script: `
 		create index "accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".accounts (jsonb_array_length(address_array)) where ledger = '{{.Name}}';
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexAddressSegments: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments: "ON",
 		},
 		script: `
 		create trigger "accounts_set_address_array_{{.ID}}"
@@ -269,27 +270,27 @@ var ledgerSetups = []ledgerSetup{
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexAddressSegments: "ON",
-			ledger.FeatureIndexTransactionAccounts: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments:     "ON",
+			features.FeatureIndexTransactionAccounts: "ON",
 		},
 		script: `
 		create index "transactions_sources_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources_arrays jsonb_path_ops) where ledger = '{{.Name}}';
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexAddressSegments: "ON",
-			ledger.FeatureIndexTransactionAccounts: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments:     "ON",
+			features.FeatureIndexTransactionAccounts: "ON",
 		},
 		script: `
 		create index "transactions_destinations_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations_arrays jsonb_path_ops) where ledger = '{{.Name}}';
 		`,
 	},
 	{
-		requireFeatures: ledger.FeatureSet{
-			ledger.FeatureIndexAddressSegments: "ON",
-			ledger.FeatureIndexTransactionAccounts: "ON",
+		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments:     "ON",
+			features.FeatureIndexTransactionAccounts: "ON",
 		},
 		script: `
 		create trigger "transaction_set_addresses_segments_{{.ID}}"

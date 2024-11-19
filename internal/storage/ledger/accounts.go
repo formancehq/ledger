@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/ledger/pkg/features"
 	"regexp"
 
 	"github.com/formancehq/ledger/internal/tracing"
@@ -119,7 +120,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		ret = ret.Where("accounts.first_usage <= ?", date)
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
+	if s.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 		ret = ret.
 			Join(
 				`left join (?) accounts_metadata on accounts_metadata.accounts_address = accounts.address`,
@@ -130,14 +131,14 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		ret = ret.ColumnExpr("accounts.metadata")
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needVolumes {
+	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") && needVolumes {
 		ret = ret.Join(
 			`left join (?) volumes on volumes.accounts_address = accounts.address`,
 			s.selectAccountWithAggregatedVolumes(date, true, "volumes"),
 		).Column("volumes.*")
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
+	if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.Join(
 			`left join (?) effective_volumes on effective_volumes.accounts_address = accounts.address`,
 			s.selectAccountWithAggregatedVolumes(date, false, "effective_volumes"),
@@ -176,7 +177,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 					String(), nil, nil
 
 			case key == "metadata":
-				if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
+				if s.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 					key = "accounts_metadata.metadata"
 				}
 
@@ -184,7 +185,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 			case metadataRegex.Match([]byte(key)):
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
-				if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
+				if s.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 					key = "accounts_metadata.metadata"
 				} else {
 					key = "metadata"

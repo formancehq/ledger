@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"github.com/formancehq/ledger/pkg/features"
 	"reflect"
 	"time"
 
@@ -89,7 +90,7 @@ func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, co
 		configuration.SetDefaults()
 
 		if !ctrl.enableFeatures {
-			if !reflect.DeepEqual(configuration.Features, ledger.DefaultFeatures) {
+			if !reflect.DeepEqual(configuration.Features, features.DefaultFeatures) {
 				return ErrExperimentalFeaturesDisabled
 			}
 		}

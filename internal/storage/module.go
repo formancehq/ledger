@@ -16,9 +16,9 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 		ret = append(ret,
 			fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
 				var (
-					upgradeContext context.Context
-					cancelContext  func()
-					upgradeStopped = make(chan struct{})
+					upgradeContext        context.Context
+					cancelContext         func()
+					upgradeStopped        = make(chan struct{})
 					minimalVersionReached = make(chan struct{})
 				)
 				lc.Append(fx.Hook{

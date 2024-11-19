@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	ErrLedgerAlreadyExists = errors.New("ledger already exists")
+	ErrLedgerAlreadyExists          = errors.New("ledger already exists")
 	ErrExperimentalFeaturesDisabled = errors.New("experimental features are disabled")
 )
 

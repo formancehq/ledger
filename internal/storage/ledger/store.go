@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -71,8 +72,8 @@ func (s *Store) validateAddressFilter(operator string, value any) error {
 	}
 	if value, ok := value.(string); !ok {
 		return fmt.Errorf("invalid 'address' filter")
-	} else if isSegmentedAddress(value) && !s.ledger.HasFeature(ledger.FeatureIndexAddressSegments, "ON") {
-		return fmt.Errorf("feature %s must be 'ON' to use segments address", ledger.FeatureIndexAddressSegments)
+	} else if isSegmentedAddress(value) && !s.ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
+		return fmt.Errorf("feature %s must be 'ON' to use segments address", features.FeatureIndexAddressSegments)
 	}
 
 	return nil

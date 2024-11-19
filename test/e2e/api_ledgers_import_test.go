@@ -5,12 +5,12 @@ package test_suite
 import (
 	"database/sql"
 	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/ledger/pkg/features"
 	"io"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -43,7 +43,7 @@ var _ = Context("Ledger engine tests", func() {
 			createLedgerRequest = operations.V2CreateLedgerRequest{
 				Ledger: "foo",
 				V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-					Features: ledger.MinimalFeatureSet,
+					Features: features.MinimalFeatureSet,
 				},
 			}
 		})
@@ -121,7 +121,7 @@ var _ = Context("Ledger engine tests", func() {
 						err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 							Ledger: ledgerCopyName,
 							V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-								Features: ledger.MinimalFeatureSet,
+								Features: features.MinimalFeatureSet,
 							},
 						})
 						Expect(err).To(BeNil())

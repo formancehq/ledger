@@ -4,11 +4,9 @@ package performance_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/pkg/generate"
-	"net/http"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -115,14 +113,11 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				report.End = time.Now()
 
 				// Fetch otel metrics
-				rsp, err := http.Get(env.URL() + "/_/metrics")
-				require.NoError(b, err)
-				if rsp.StatusCode == http.StatusOK {
-					ret := make(map[string]any)
-					require.NoError(b, json.NewDecoder(rsp.Body).Decode(&ret))
-					report.InternalMetrics = ret
+				metrics, err := env.Client().Ledger.GetMetrics(ctx)
+				if err != nil {
+					b.Logf("Unable to fetch ledger metrics: %s", err)
 				} else {
-					b.Logf("Unable to fetch ledger metrics, got status code %d", rsp.StatusCode)
+					report.InternalMetrics = metrics.Object
 				}
 
 				// Compute final results
