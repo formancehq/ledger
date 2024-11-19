@@ -33,7 +33,8 @@ generate:
     RUN apk update && apk add openjdk11
     RUN go install go.uber.org/mock/mockgen@v0.4.0
     RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
-    COPY (+sources/*) /src
+    COPY --dir (+lint/*) /src/
+    COPY (+tidy/*) /src/
     WORKDIR /src
     RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal
@@ -130,19 +131,16 @@ lint:
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
-    WAIT
-        BUILD +tidy
-        BUILD +lint
-        BUILD +openapi
-        BUILD +openapi-markdown
-    END
+    BUILD +tidy
+    BUILD +lint
+    BUILD +openapi
+    BUILD +openapi-markdown
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
 
-    # todo: currently not working with earthly
-    #BUILD ./test/rolling-upgrades+pre-commit
-    #BUILD ./tools/*+pre-commit
+    BUILD ./test/*+pre-commit
+    BUILD ./tools/*+pre-commit
 
 openapi:
     FROM node:20-alpine
