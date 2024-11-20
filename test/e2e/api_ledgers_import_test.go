@@ -53,7 +53,23 @@ var _ = Context("Ledger engine tests", func() {
 		Context("with a set of all possible actions", func() {
 			JustBeforeEach(func() {
 				Expect(err).To(BeNil())
-				tx, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+
+				firstTX, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+					Ledger: createLedgerRequest.Ledger,
+					V2PostTransaction: components.V2PostTransaction{
+						Script: &components.V2PostTransactionScript{
+							Plain: `send [COIN 100] (
+								source = @world
+								destination = @bob
+							)
+							set_account_meta(@world, "foo", "bar")
+							`,
+						},
+					},
+				})
+				Expect(err).To(BeNil())
+
+				thirdTx, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
@@ -70,9 +86,17 @@ var _ = Context("Ledger engine tests", func() {
 
 				Expect(AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     tx.ID,
+					ID:     firstTX.ID,
 					RequestBody: map[string]string{
 						"foo": "bar",
+					},
+				})).To(BeNil())
+
+				Expect(AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
+					Ledger: createLedgerRequest.Ledger,
+					ID:     thirdTx.ID,
+					RequestBody: map[string]string{
+						"foo": "baz",
 					},
 				})).To(BeNil())
 
@@ -86,7 +110,7 @@ var _ = Context("Ledger engine tests", func() {
 
 				Expect(DeleteTransactionMetadata(ctx, testServer.GetValue(), operations.V2DeleteTransactionMetadataRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     tx.ID,
+					ID:     firstTX.ID,
 					Key:    "foo",
 				})).To(BeNil())
 
@@ -98,7 +122,7 @@ var _ = Context("Ledger engine tests", func() {
 
 				_, err = RevertTransaction(ctx, testServer.GetValue(), operations.V2RevertTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     tx.ID,
+					ID:     firstTX.ID,
 				})
 				Expect(err).To(BeNil())
 			})

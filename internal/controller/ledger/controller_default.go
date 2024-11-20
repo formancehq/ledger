@@ -324,7 +324,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, sqlTX TX, 
 		return nil, newErrAlreadyReverted(parameters.Input.TransactionID)
 	}
 
-	bq := originalTransaction.InvolvedAccountAndAssets()
+	bq := originalTransaction.InvolvedDestinations()
 
 	balances, err := sqlTX.GetBalances(ctx, bq)
 	if err != nil {
@@ -345,15 +345,11 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, sqlTX TX, 
 				balances[posting.Source][posting.Asset],
 				big.NewInt(0).Neg(posting.Amount),
 			)
-			balances[posting.Destination][posting.Destination] = balances[posting.Destination][posting.Asset].Add(
-				balances[posting.Destination][posting.Asset],
-				big.NewInt(0).Set(posting.Amount),
-			)
 		}
 
 		for account, forAccount := range balances {
 			for asset, finalBalance := range forAccount {
-				if finalBalance.Cmp(new(big.Int)) < 0 {
+				if finalBalance.Cmp(new(big.Int)) < 0 && account != "world" {
 					// todo(waiting): break dependency on machine package
 					// notes(gfyrag): wait for the new interpreter
 					return nil, machine.NewErrInsufficientFund("insufficient fund for %s/%s", account, asset)
