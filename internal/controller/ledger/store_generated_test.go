@@ -13,6 +13,7 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	metadata "github.com/formancehq/go-libs/v2/metadata"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
+	time "github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
@@ -159,9 +160,9 @@ func (mr *MockTXMockRecorder) LockLedger(ctx any) *gomock.Call {
 }
 
 // RevertTransaction mocks base method.
-func (m *MockTX) RevertTransaction(ctx context.Context, id int) (*ledger.Transaction, bool, error) {
+func (m *MockTX) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id)
+	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id, at)
 	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
@@ -169,9 +170,9 @@ func (m *MockTX) RevertTransaction(ctx context.Context, id int) (*ledger.Transac
 }
 
 // RevertTransaction indicates an expected call of RevertTransaction.
-func (mr *MockTXMockRecorder) RevertTransaction(ctx, id any) *gomock.Call {
+func (mr *MockTXMockRecorder) RevertTransaction(ctx, id, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockTX)(nil).RevertTransaction), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockTX)(nil).RevertTransaction), ctx, id, at)
 }
 
 // UpdateAccountsMetadata mocks base method.

@@ -1660,6 +1660,7 @@ components:
             - NEW_TRANSACTION
             - SET_METADATA
             - REVERTED_TRANSACTION
+            - DELETE_METADATA
         data:
           type: object
           properties: {}

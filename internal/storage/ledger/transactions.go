@@ -389,13 +389,17 @@ func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) e
 		s.tracer,
 		s.insertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			_, err := s.db.NewInsert().
+			query := s.db.NewInsert().
 				Model(tx).
 				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-				Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID))).
 				Value("ledger", "?", s.ledger.Name).
-				Returning("id, timestamp, inserted_at").
-				Exec(ctx)
+				Returning("id, timestamp, inserted_at")
+
+			if tx.ID == 0 {
+				query = query.Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID)))
+			}
+
+			_, err := query.Exec(ctx)
 			if err != nil {
 				err = postgres.ResolveError(err)
 				switch {
@@ -460,26 +464,31 @@ func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.Upd
 	return &me.Transaction, me.Modified, nil
 }
 
-func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Transaction, modified bool, err error) {
+func (s *Store) RevertTransaction(ctx context.Context, id int, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"RevertTransaction",
 		s.tracer,
 		s.revertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			tx, modified, err = s.updateTxWithRetrieve(
-				ctx,
-				id,
-				s.db.NewUpdate().
-					Model(&ledger.Transaction{}).
-					ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-					Where("id = ?", id).
-					Where("reverted_at is null").
-					Where("ledger = ?", s.ledger.Name).
+			query := s.db.NewUpdate().
+				Model(&ledger.Transaction{}).
+				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+				Where("id = ?", id).
+				Where("reverted_at is null").
+				Where("ledger = ?", s.ledger.Name).
+				Returning("*")
+			if at.IsZero() {
+				query = query.
 					Set("reverted_at = (now() at time zone 'utc')").
-					Set("updated_at = (now() at time zone 'utc')").
-					Returning("*"),
-			)
+					Set("updated_at = (now() at time zone 'utc')")
+			} else {
+				query = query.
+					Set("reverted_at = ?", at).
+					Set("updated_at = ?", at)
+			}
+
+			tx, modified, err = s.updateTxWithRetrieve(ctx, id, query)
 			return nil, err
 		},
 	)

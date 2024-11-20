@@ -33,8 +33,8 @@ generate:
     RUN apk update && apk add openjdk11
     RUN go install go.uber.org/mock/mockgen@v0.4.0
     RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
-    COPY --dir (+lint/*) /src/
     COPY (+tidy/*) /src/
+    COPY --dir (+sources/src/*) /src/
     WORKDIR /src
     RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal

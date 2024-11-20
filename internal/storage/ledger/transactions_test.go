@@ -544,7 +544,7 @@ func TestTransactionsRevert(t *testing.T) {
 	require.NoError(t, err)
 
 	// Revert the tx
-	revertedTx, reverted, err := store.RevertTransaction(ctx, tx1.ID)
+	revertedTx, reverted, err := store.RevertTransaction(ctx, tx1.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
@@ -556,12 +556,12 @@ func TestTransactionsRevert(t *testing.T) {
 	require.Equal(t, tx1, *revertedTx)
 
 	// Try to revert again
-	_, reverted, err = store.RevertTransaction(ctx, tx1.ID)
+	_, reverted, err = store.RevertTransaction(ctx, tx1.ID, time.Time{})
 	require.NoError(t, err)
 	require.False(t, reverted)
 
 	// Revert a not existing transaction
-	revertedTx, reverted, err = store.RevertTransaction(ctx, 2)
+	revertedTx, reverted, err = store.RevertTransaction(ctx, 2, time.Time{})
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
 	require.False(t, reverted)
 	require.Nil(t, revertedTx)
@@ -765,7 +765,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx3BeforeRevert)
 	require.NoError(t, err)
 
-	_, hasBeenReverted, err := store.RevertTransaction(ctx, tx3BeforeRevert.ID)
+	_, hasBeenReverted, err := store.RevertTransaction(ctx, tx3BeforeRevert.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
