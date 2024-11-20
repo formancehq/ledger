@@ -498,6 +498,8 @@ Accept: application/json
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
+|continueOnFailure|query|boolean|false|Continue on failure|
+|atomic|query|boolean|false|Make bulk atomic|
 |body|body|[V2Bulk](#schemav2bulk)|false|none|
 
 > Example responses

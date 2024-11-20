@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/machine/vm"
 
@@ -13,6 +14,10 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
 
 type Controller interface {
+	BeginTX(ctx context.Context, options *sql.TxOptions) error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+
 	// IsDatabaseUpToDate check if the ledger store is up to date, including the bucket and the ledger specifics
 	// It returns true if up to date
 	IsDatabaseUpToDate(ctx context.Context) (bool, error)

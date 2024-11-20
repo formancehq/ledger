@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -18,9 +19,10 @@ import (
 )
 
 type Store struct {
-	db     bun.IDB
-	bucket bucket.Bucket
-	ledger ledger.Ledger
+	dbStack []bun.IDB
+	db      bun.IDB
+	bucket  bucket.Bucket
+	ledger  ledger.Ledger
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -48,6 +50,41 @@ type Store struct {
 	listTransactionsHistogram          metric.Int64Histogram
 }
 
+func (s *Store) BeginTX(ctx context.Context, options *sql.TxOptions) error {
+	tx, err := s.db.BeginTx(ctx, options)
+	if err != nil {
+		return postgres.ResolveError(err)
+	}
+	s.dbStack = append(s.dbStack, s.db)
+	s.db = tx
+
+	return nil
+}
+
+func (s *Store) Commit() error {
+	switch db := s.db.(type) {
+	case bun.Tx:
+		err := db.Commit()
+		s.db = s.dbStack[len(s.dbStack)-1]
+		s.dbStack = s.dbStack[:len(s.dbStack)-1]
+		return err
+	default:
+		return errors.New("not in a transaction")
+	}
+}
+
+func (s *Store) Rollback() error {
+	switch db := s.db.(type) {
+	case bun.Tx:
+		err := db.Rollback()
+		s.db = s.dbStack[len(s.dbStack)-1]
+		s.dbStack = s.dbStack[:len(s.dbStack)-1]
+		return err
+	default:
+		return errors.New("not in a transaction")
+	}
+}
+
 func (s *Store) GetLedger() ledger.Ledger {
 	return s.ledger
 }
@@ -58,12 +95,6 @@ func (s *Store) GetDB() bun.IDB {
 
 func (s *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, s.ledger.Bucket, v)
-}
-
-func (s *Store) WithDB(db bun.IDB) *Store {
-	ret := *s
-	ret.db = db
-	return &ret
 }
 
 func (s *Store) validateAddressFilter(operator string, value any) error {
@@ -99,86 +130,107 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 	if err != nil {
 		panic(err)
 	}
+
 	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.checkBucketSchema")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.checkLedgerSchema")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.getAccountHistogram, err = ret.meter.Int64Histogram("store.getAccount")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.countAccountsHistogram, err = ret.meter.Int64Histogram("store.countAccounts")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.updateAccountsMetadata")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.deleteAccountMetadata")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.upsertAccountHistogram, err = ret.meter.Int64Histogram("store.upsertAccount")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.getBalances")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insertLog")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.listLogsHistogram, err = ret.meter.Int64Histogram("store.listLogs")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.readLogWithIdempotencyKey")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insertMoves")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.countTransactionsHistogram, err = ret.meter.Int64Histogram("store.countTransactions")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.getTransactionHistogram, err = ret.meter.Int64Histogram("store.getTransaction")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insertTransaction")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revertTransaction")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.updateTransactionMetadata")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.deleteTransactionMetadata")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.updateBalances")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.getVolumesWithBalances")
 	if err != nil {
 		panic(err)
 	}
+
 	ret.listTransactionsHistogram, err = ret.meter.Int64Histogram("store.listTransactions")
 	if err != nil {
 		panic(err)
@@ -193,6 +245,13 @@ func (s *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
 
 func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
 	return s.bucket.GetMigrationsInfo(ctx)
+}
+
+func (s *Store) WithDB(db bun.IDB) *Store {
+	ret := *s
+	ret.db = db
+
+	return &ret
 }
 
 type Option func(s *Store)

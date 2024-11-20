@@ -26,7 +26,6 @@ func TestCreateTransaction(t *testing.T) {
 	store := NewMockStore(ctrl)
 	numscriptRuntime := NewMockNumscriptRuntime(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
-	sqlTX := NewMockTX(ctrl)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
 
@@ -37,24 +36,29 @@ func TestCreateTransaction(t *testing.T) {
 		Return(numscriptRuntime, nil)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), nil, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
-			_, err := fn(sqlTX)
-			return err
-		})
+		BeginTX(gomock.Any(), nil).
+		Return(nil)
+
+	store.EXPECT().
+		Commit().
+		Return(nil)
+
+	store.EXPECT().
+		Rollback().
+		Return(sql.ErrTxDone)
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
 	numscriptRuntime.EXPECT().
-		Execute(gomock.Any(), sqlTX, runScript.Vars).
+		Execute(gomock.Any(), store, runScript.Vars).
 		Return(&NumscriptExecutionResult{
 			Postings: ledger.Postings{posting},
 		}, nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		CommitTransaction(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.NewLogType
 		})).
@@ -74,35 +78,39 @@ func TestRevertTransaction(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
-	sqlTX := NewMockTX(ctrl)
 	ctx := logging.TestingContext()
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), nil, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
-			_, err := fn(sqlTX)
-			return err
-		})
+		BeginTX(gomock.Any(), nil).
+		Return(nil)
+
+	store.EXPECT().
+		Commit().
+		Return(nil)
+
+	store.EXPECT().
+		Rollback().
+		Return(sql.ErrTxDone)
 
 	txToRevert := ledger.Transaction{}
-	sqlTX.EXPECT().
+	store.EXPECT().
 		RevertTransaction(gomock.Any(), 1, time.Time{}).
 		DoAndReturn(func(_ context.Context, _ int, _ time.Time) (*ledger.Transaction, bool, error) {
 			txToRevert.RevertedAt = pointer.For(time.Now())
 			return &txToRevert, true, nil
 		})
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		GetBalances(gomock.Any(), gomock.Any()).
 		Return(map[string]map[string]*big.Int{}, nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		CommitTransaction(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.RevertedTransactionLogType
 		})).
@@ -122,26 +130,30 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
-	sqlTX := NewMockTX(ctrl)
 	ctx := logging.TestingContext()
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), nil, gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
-			_, err := fn(sqlTX)
-			return err
-		})
+		BeginTX(gomock.Any(), nil).
+		Return(nil)
+
+	store.EXPECT().
+		Commit().
+		Return(nil)
+
+	store.EXPECT().
+		Rollback().
+		Return(sql.ErrTxDone)
 
 	m := metadata.Metadata{
 		"foo": "bar",
 	}
-	sqlTX.EXPECT().
+	store.EXPECT().
 		UpdateTransactionMetadata(gomock.Any(), 1, m).
 		Return(&ledger.Transaction{}, true, nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.SetMetadataLogType
 		})).
@@ -162,23 +174,27 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
-	sqlTX := NewMockTX(ctrl)
 	ctx := logging.TestingContext()
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), nil, gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
-			_, err := fn(sqlTX)
-			return err
-		})
+		BeginTX(gomock.Any(), nil).
+		Return(nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
+		Commit().
+		Return(nil)
+
+	store.EXPECT().
+		Rollback().
+		Return(sql.ErrTxDone)
+
+	store.EXPECT().
 		DeleteTransactionMetadata(gomock.Any(), 1, "foo").
 		Return(&ledger.Transaction{}, true, nil)
 
-	sqlTX.EXPECT().
+	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.DeleteMetadataLogType
 		})).

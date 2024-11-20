@@ -31,7 +31,13 @@ func bulkHandler(bulkMaxSize int) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 
-		ret, errorsInBulk, err := ProcessBulk(r.Context(), common.LedgerFromContext(r.Context()), b, api.QueryParamBool(r, "continueOnFailure"))
+		ret, errorsInBulk, err := ProcessBulk(
+			r.Context(),
+			common.LedgerFromContext(r.Context()),
+			b,
+			api.QueryParamBool(r, "continueOnFailure"),
+			api.QueryParamBool(r, "atomic"),
+		)
 		if err != nil {
 			api.InternalServerError(w, r, err)
 			return
@@ -122,12 +128,7 @@ func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledg
 	}, nil
 }
 
-func ProcessBulk(
-	ctx context.Context,
-	l ledgercontroller.Controller,
-	bulk Bulk,
-	continueOnFailure bool,
-) ([]Result, bool, error) {
+func ProcessBulk(ctx context.Context, l ledgercontroller.Controller, bulk Bulk, continueOnFailure bool, atomic bool) ([]Result, bool, error) {
 
 	for i, element := range bulk {
 		switch element.Action {
@@ -164,6 +165,15 @@ func ProcessBulk(
 			ResponseType:     "ERROR",
 		})
 		errorsInBulk = true
+	}
+
+	if atomic {
+		if err := l.BeginTX(ctx, nil); err != nil {
+			return nil, errorsInBulk, fmt.Errorf("error starting transaction: %s", err)
+		}
+		defer func() {
+			_ = l.Rollback(ctx)
+		}()
 	}
 
 	for i, element := range bulk {
@@ -370,5 +380,12 @@ func ProcessBulk(
 			}
 		}
 	}
+
+	if atomic {
+		if err := l.Commit(ctx); err != nil {
+			return nil, errorsInBulk, fmt.Errorf("error committing transaction: %s", err)
+		}
+	}
+
 	return ret, errorsInBulk, nil
 }
