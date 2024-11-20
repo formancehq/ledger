@@ -75,8 +75,8 @@ import "github.com/formancehq/ledger/internal"
   - [func \(s \*SavedMetadata\) UnmarshalJSON\(data \[\]byte\) error](<#SavedMetadata.UnmarshalJSON>)
 - [type Transaction](<#Transaction>)
   - [func NewTransaction\(\) Transaction](<#NewTransaction>)
-  - [func \(tx Transaction\) InvolvedAccountAndAssets\(\) map\[string\]\[\]string](<#Transaction.InvolvedAccountAndAssets>)
   - [func \(tx Transaction\) InvolvedAccounts\(\) \[\]string](<#Transaction.InvolvedAccounts>)
+  - [func \(tx Transaction\) InvolvedDestinations\(\) map\[string\]\[\]string](<#Transaction.InvolvedDestinations>)
   - [func \(tx Transaction\) IsReverted\(\) bool](<#Transaction.IsReverted>)
   - [func \(Transaction\) JSONSchemaExtend\(schema \*jsonschema.Schema\)](<#Transaction.JSONSchemaExtend>)
   - [func \(tx Transaction\) MarshalJSON\(\) \(\[\]byte, error\)](<#Transaction.MarshalJSON>)
@@ -831,20 +831,20 @@ func NewTransaction() Transaction
 
 
 
-<a name="Transaction.InvolvedAccountAndAssets"></a>
-### func \(Transaction\) InvolvedAccountAndAssets
-
-```go
-func (tx Transaction) InvolvedAccountAndAssets() map[string][]string
-```
-
-
-
 <a name="Transaction.InvolvedAccounts"></a>
 ### func \(Transaction\) InvolvedAccounts
 
 ```go
 func (tx Transaction) InvolvedAccounts() []string
+```
+
+
+
+<a name="Transaction.InvolvedDestinations"></a>
+### func \(Transaction\) InvolvedDestinations
+
+```go
+func (tx Transaction) InvolvedDestinations() map[string][]string
 ```
 
 

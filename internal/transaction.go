@@ -89,10 +89,9 @@ func (tx Transaction) WithInsertedAt(date time.Time) Transaction {
 	return tx
 }
 
-func (tx Transaction) InvolvedAccountAndAssets() map[string][]string {
+func (tx Transaction) InvolvedDestinations() map[string][]string {
 	ret := make(map[string][]string)
 	for _, posting := range tx.Postings {
-		ret[posting.Source] = append(ret[posting.Source], posting.Asset)
 		ret[posting.Destination] = append(ret[posting.Destination], posting.Asset)
 	}
 
