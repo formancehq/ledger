@@ -2748,6 +2748,7 @@ Authorization ( Scopes: ledger:write )
 |type|NEW_TRANSACTION|
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
+|type|DELETE_METADATA|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->

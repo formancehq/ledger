@@ -78,7 +78,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 				return err
 			}
 
-			_, err = s.db.
+			query := s.db.
 				NewInsert().
 				Model(&Log{
 					Log:     log,
@@ -87,9 +87,13 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 					Memento: mementoData,
 				}).
 				ModelTableExpr(s.GetPrefixedRelationName("logs")).
-				Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID))).
-				Returning("*").
-				Exec(ctx)
+				Returning("*")
+
+			if log.ID == 0 {
+				query = query.Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID)))
+			}
+
+			_, err = query.Exec(ctx)
 			if err != nil {
 				err := postgres.ResolveError(err)
 				switch {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"reflect"
@@ -176,9 +177,16 @@ func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledg
 			}
 		}
 	case ledger.RevertedTransaction:
-		_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransaction.ID)
+		_, _, err := sqlTx.RevertTransaction(
+			ctx,
+			payload.RevertedTransaction.ID,
+			*payload.RevertedTransaction.RevertedAt,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to revert transaction: %w", err)
+		}
+		if err := sqlTx.CommitTransaction(ctx, &payload.RevertTransaction); err != nil {
+			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
 	case ledger.SavedMetadata:
 		switch payload.TargetType {
@@ -316,7 +324,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, sqlTX TX, 
 		hasBeenReverted bool
 		err             error
 	)
-	originalTransaction, hasBeenReverted, err := sqlTX.RevertTransaction(ctx, parameters.Input.TransactionID)
+	originalTransaction, hasBeenReverted, err := sqlTX.RevertTransaction(ctx, parameters.Input.TransactionID, time.Time{})
 	if err != nil {
 		return nil, err
 	}

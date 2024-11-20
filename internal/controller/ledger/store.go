@@ -38,7 +38,7 @@ type TX interface {
 	//  * the reverted transaction
 	//  * a boolean indicating if the transaction has been reverted. false indicates an already reverted transaction (unless error != nil)
 	//  * an error
-	RevertTransaction(ctx context.Context, id int) (*ledger.Transaction, bool, error)
+	RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error)
 	UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error)
 	DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error)
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error

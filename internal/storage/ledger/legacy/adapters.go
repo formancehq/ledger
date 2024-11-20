@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -30,8 +31,8 @@ func (tx TX) CommitTransaction(ctx context.Context, transaction *ledger.Transact
 	return tx.newStore.CommitTransaction(ctx, transaction)
 }
 
-func (tx TX) RevertTransaction(ctx context.Context, id int) (*ledger.Transaction, bool, error) {
-	return tx.newStore.RevertTransaction(ctx, id)
+func (tx TX) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {
+	return tx.newStore.RevertTransaction(ctx, id, at)
 }
 
 func (tx TX) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error) {

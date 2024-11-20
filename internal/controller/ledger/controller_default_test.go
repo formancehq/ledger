@@ -88,8 +88,8 @@ func TestRevertTransaction(t *testing.T) {
 
 	txToRevert := ledger.Transaction{}
 	sqlTX.EXPECT().
-		RevertTransaction(gomock.Any(), 1).
-		DoAndReturn(func(_ context.Context, _ int) (*ledger.Transaction, bool, error) {
+		RevertTransaction(gomock.Any(), 1, time.Time{}).
+		DoAndReturn(func(_ context.Context, _ int, _ time.Time) (*ledger.Transaction, bool, error) {
 			txToRevert.RevertedAt = pointer.For(time.Now())
 			return &txToRevert, true, nil
 		})

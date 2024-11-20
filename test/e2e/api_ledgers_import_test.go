@@ -4,19 +4,18 @@ package test_suite
 
 import (
 	"database/sql"
-	. "github.com/formancehq/go-libs/v2/testing/api"
-	"github.com/formancehq/ledger/pkg/features"
-	"io"
-	"math/big"
-
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
+	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
+	"io"
+	"math/big"
 )
 
 var _ = Context("Ledger engine tests", func() {
@@ -56,6 +55,23 @@ var _ = Context("Ledger engine tests", func() {
 
 				firstTX, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
+					V2PostTransaction: components.V2PostTransaction{
+						Script: &components.V2PostTransactionScript{
+							Plain: `send [COIN 100] (
+								source = @world
+								destination = @bob
+							)
+							set_account_meta(@world, "foo", "bar")
+							`,
+						},
+					},
+				})
+				Expect(err).To(BeNil())
+
+				// add a tx with a dry run to trigger a hole in ids
+				_, err = CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+					Ledger: createLedgerRequest.Ledger,
+					DryRun: pointer.For(true),
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
 							Plain: `send [COIN 100] (
@@ -166,6 +182,42 @@ var _ = Context("Ledger engine tests", func() {
 					When("importing data", func() {
 						It("should be ok", func() {
 							Expect(importLogs()).To(Succeed())
+
+							logsFromOriginalLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+								Ledger: createLedgerRequest.Ledger,
+							})
+							Expect(err).To(Succeed())
+
+							logsFromNewLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+								Ledger: ledgerCopyName,
+							})
+							Expect(err).To(Succeed())
+
+							Expect(logsFromOriginalLedger.Data).To(Equal(logsFromNewLedger.Data))
+
+							transactionsFromOriginalLedger, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+								Ledger: createLedgerRequest.Ledger,
+							})
+							Expect(err).To(Succeed())
+
+							transactionsFromNewLedger, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+								Ledger: ledgerCopyName,
+							})
+							Expect(err).To(Succeed())
+
+							Expect(transactionsFromOriginalLedger.Data).To(Equal(transactionsFromNewLedger.Data))
+
+							accountsFromOriginalLedger, err := ListAccounts(ctx, testServer.GetValue(), operations.V2ListAccountsRequest{
+								Ledger: createLedgerRequest.Ledger,
+							})
+							Expect(err).To(Succeed())
+
+							accountsFromNewLedger, err := ListAccounts(ctx, testServer.GetValue(), operations.V2ListAccountsRequest{
+								Ledger: ledgerCopyName,
+							})
+							Expect(err).To(Succeed())
+
+							Expect(accountsFromOriginalLedger.Data).To(Equal(accountsFromNewLedger.Data))
 						})
 					})
 					Context("with state to 'in-use'", func() {

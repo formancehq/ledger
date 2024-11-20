@@ -58,7 +58,7 @@ cluster-create:
     RUN curl -L -o vcluster "https://github.com/loft-sh/vcluster/releases/download/v0.20.4/vcluster-linux-${TARGETARCH}"
     RUN install -c -m 0755 vcluster /usr/local/bin && rm -f vcluster
     ARG CLUSTER_NAME=test
-    RUN vcluster create $CLUSTER_NAME --connect=false
+    RUN vcluster create $CLUSTER_NAME --connect=false --upgrade
 
 run:
     ARG CLUSTER_NAME=test

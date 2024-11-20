@@ -142,7 +142,7 @@ func TestGetTransactions(t *testing.T) {
 	err = store.newStore.CommitTransaction(ctx, &tx3BeforeRevert)
 	require.NoError(t, err)
 
-	_, hasBeenReverted, err := store.newStore.RevertTransaction(ctx, tx3BeforeRevert.ID)
+	_, hasBeenReverted, err := store.newStore.RevertTransaction(ctx, tx3BeforeRevert.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
