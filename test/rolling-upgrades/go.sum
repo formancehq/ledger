@@ -56,8 +56,8 @@ github.com/fatih/color v1.9.0/go.mod h1:eQcE1qtQxscV5RaZvpXrrb8Drkc3/DdQ+uUYCNjL
 github.com/fatih/color v1.13.0/go.mod h1:kLAiJbzzSOZDVNGyDpeOxJ47H46qBXwg5ILebYFFOfk=
 github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
 github.com/fatih/color v1.18.0/go.mod h1:4FelSpRwEGDpQ12mAdzqdOukCy4u8WUtOY6lkT/6HfU=
-github.com/formancehq/go-libs/v2 v2.0.1-0.20241114125605-4a3e447246a9 h1:l6jieaR+sn4Ff+puBDMbTYmT2HTYC7Yt7GTxBAwC3eU=
-github.com/formancehq/go-libs/v2 v2.0.1-0.20241114125605-4a3e447246a9/go.mod h1:m0uKkey9OC/AeyWMwjMfZqhLzoWrPFBk8vuYdSSYj4Y=
+github.com/formancehq/go-libs/v2 v2.0.1-0.20241121113152-18a3fc7aa771 h1:iv1nF1Q+zEkMtc5HhSxNdCRQGAT0s+oCpW5SzyXbnT0=
+github.com/formancehq/go-libs/v2 v2.0.1-0.20241121113152-18a3fc7aa771/go.mod h1:6vkHEfWEkDSPOv/G2o1Exxra3ouuYxRiCkznwKxTMHU=
 github.com/fsnotify/fsnotify v1.6.0 h1:n+5WquG0fcWoWp6xPWfHdbskMCQaFnG6PfBrh1Ky4HY=
 github.com/fsnotify/fsnotify v1.6.0/go.mod h1:sl3t1tCWJFWoRz9R8WJCbQihKKwmorjAbSClcnxKAGw=
 github.com/gliderlabs/ssh v0.3.7 h1:iV3Bqi942d9huXnzEF2Mt+CY9gLu8DNM4Obd+8bODRE=
