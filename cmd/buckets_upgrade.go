@@ -6,8 +6,10 @@ import (
 	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
 )
 
 func NewBucketUpgrade() *cobra.Command {
@@ -19,12 +21,12 @@ func NewBucketUpgrade() *cobra.Command {
 			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 			cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
 
-			driver, err := getDriver(cmd)
+			driver, db, err := getDriver(cmd)
 			if err != nil {
 				return err
 			}
 			defer func() {
-				_ = driver.GetDB().Close()
+				_ = db.Close()
 			}()
 
 			if args[0] == "*" {
@@ -41,26 +43,26 @@ func NewBucketUpgrade() *cobra.Command {
 	return cmd
 }
 
-func getDriver(cmd *cobra.Command) (*driver.Driver, error) {
+func getDriver(cmd *cobra.Command) (*driver.Driver, *bun.DB, error) {
 
 	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	db, err := bunconnect.OpenSQLDB(cmd.Context(), *connectionOptions)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	driver := driver.New(
-		db,
+		ledger.NewFactory(db),
 		systemstore.New(db),
 		bucket.NewDefaultFactory(db),
 	)
 	if err := driver.Initialize(cmd.Context()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return driver, nil
+	return driver, db, nil
 }

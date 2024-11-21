@@ -15,6 +15,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
@@ -184,7 +185,7 @@ func newStorageDriver(t docker.T, driverOptions ...driver.Option) *driver.Driver
 	require.NoError(t, err)
 
 	d := driver.New(
-		db,
+		ledgerstore.NewFactory(db),
 		systemstore.New(db),
 		bucket.NewDefaultFactory(db),
 		driverOptions...,

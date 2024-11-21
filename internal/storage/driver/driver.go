@@ -19,16 +19,14 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/logging"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v2/logging"
 )
 
 type Driver struct {
-	db                        *bun.DB
+	ledgerStoreFactory        ledgerstore.Factory
 	systemStore               systemstore.Store
 	bucketFactory             bucket.Factory
 	tracer                    trace.Tracer
@@ -62,13 +60,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, fmt.Errorf("adding ledger to bucket: %w", err)
 	}
 
-	return ledgerstore.New(
-		d.db,
-		b,
-		*l,
-		ledgerstore.WithMeter(d.meter),
-		ledgerstore.WithTracer(d.tracer),
-	), nil
+	return d.ledgerStoreFactory.Create(b, *l), nil
 }
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
@@ -77,13 +69,9 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		return nil, nil, err
 	}
 
-	return ledgerstore.New(
-		d.db,
-		d.bucketFactory.Create(ret.Bucket),
-		*ret,
-		ledgerstore.WithMeter(d.meter),
-		ledgerstore.WithTracer(d.tracer),
-	), ret, nil
+	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
+
+	return store, ret, err
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
@@ -93,7 +81,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		return fmt.Errorf("detecting rollbacks: %w", err)
 	}
 
-	err = systemstore.Migrate(ctx, d.db, migrations.WithLockRetryInterval(d.migratorLockRetryInterval))
+	err = d.systemStore.Migrate(ctx, migrations.WithLockRetryInterval(d.migratorLockRetryInterval))
 	if err != nil {
 		constraintsFailed := postgres.ErrConstraintsFailed{}
 		if errors.As(err, &constraintsFailed) &&
@@ -112,7 +100,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 func (d *Driver) detectRollbacks(ctx context.Context) error {
 
 	logging.FromContext(ctx).Debugf("Checking for downgrades on system schema")
-	if err := detectDowngrades(systemstore.GetMigrator(d.db), ctx); err != nil {
+	if err := detectDowngrades(d.systemStore.GetMigrator(), ctx); err != nil {
 		return fmt.Errorf("detecting rollbacks of system schema: %w", err)
 	}
 
@@ -126,7 +114,7 @@ func (d *Driver) detectRollbacks(ctx context.Context) error {
 
 	for _, b := range buckets {
 		logging.FromContext(ctx).Debugf("Checking for downgrades on bucket '%s'", b)
-		if err := detectDowngrades(bucket.GetMigrator(d.db, b), ctx); err != nil {
+		if err := detectDowngrades(d.bucketFactory.GetMigrator(b), ctx); err != nil {
 			return fmt.Errorf("detecting rollbacks on bucket '%s': %w", b, err)
 		}
 	}
@@ -210,15 +198,16 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 	return grp.Wait()
 }
 
-func (d *Driver) GetDB() *bun.DB {
-	return d.db
-}
-
-func New(db *bun.DB, systemStore systemstore.Store, bucketFactory bucket.Factory, opts ...Option) *Driver {
+func New(
+	ledgerStoreFactory ledgerstore.Factory,
+	systemStore systemstore.Store,
+	bucketFactory bucket.Factory,
+	opts ...Option,
+) *Driver {
 	ret := &Driver{
-		db:            db,
-		bucketFactory: bucketFactory,
-		systemStore:   systemStore,
+		ledgerStoreFactory: ledgerStoreFactory,
+		bucketFactory:      bucketFactory,
+		systemStore:        systemStore,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -23,6 +24,9 @@ type Store interface {
 	ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+
+	Migrate(ctx context.Context, options ...migrations.Option) error
+	GetMigrator(options ...migrations.Option) *migrations.Migrator
 }
 
 const (
@@ -111,6 +115,14 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 	}
 
 	return ret, nil
+}
+
+func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option) error {
+	return d.GetMigrator(options...).Up(ctx)
+}
+
+func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
+	return GetMigrator(d.db, options...)
 }
 
 func (d *DefaultStore) GetDB() *bun.DB {

@@ -622,7 +622,11 @@ func TestTransactionsInsert(t *testing.T) {
 		bunDB, err := bunconnect.OpenSQLDB(ctx, db.ConnectionOptions())
 		require.NoError(t, err)
 
-		driver := driver.New(bunDB, systemstore.New(bunDB), bucket.NewDefaultFactory(bunDB))
+		driver := driver.New(
+			ledgerstore.NewFactory(bunDB),
+			systemstore.New(bunDB),
+			bucket.NewDefaultFactory(bunDB),
+		)
 		require.NoError(t, driver.Initialize(ctx))
 
 		ledgerName := uuid.NewString()[:8]
@@ -630,16 +634,16 @@ func TestTransactionsInsert(t *testing.T) {
 		l := ledger.MustNewWithDefault(ledgerName)
 		l.Bucket = ledgerName
 
-		migrator := bucket.GetMigrator(driver.GetDB(), ledgerName)
+		migrator := bucket.GetMigrator(bunDB, ledgerName)
 		for i := 0; i < bucket.MinimalSchemaVersion; i++ {
 			require.NoError(t, migrator.UpByOne(ctx))
 		}
 
-		b := bucket.NewDefault(driver.GetDB(), noop.Tracer{}, ledgerName)
+		b := bucket.NewDefault(bunDB, noop.Tracer{}, ledgerName)
 		err = b.AddLedger(ctx, l)
 		require.NoError(t, err)
 
-		store := ledgerstore.New(driver.GetDB(), b, l)
+		store := ledgerstore.New(bunDB, b, l)
 
 		const nbTry = 100
 

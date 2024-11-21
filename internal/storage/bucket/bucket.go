@@ -18,6 +18,7 @@ type Bucket interface {
 
 type Factory interface {
 	Create(name string) Bucket
+	GetMigrator(b string) *migrations.Migrator
 }
 
 type DefaultFactory struct {
@@ -27,6 +28,10 @@ type DefaultFactory struct {
 
 func (f *DefaultFactory) Create(name string) Bucket {
 	return NewDefault(f.db, f.tracer, name)
+}
+
+func (f *DefaultFactory) GetMigrator(b string) *migrations.Migrator {
+	return GetMigrator(f.db, b)
 }
 
 func NewDefaultFactory(db *bun.DB, options ...DefaultFactoryOption) *DefaultFactory {

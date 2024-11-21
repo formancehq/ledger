@@ -50,7 +50,11 @@ func TestMain(m *testing.M) {
 				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
-				defaultDriver.SetValue(driver.New(bunDB, systemstore.New(bunDB), bucket.NewDefaultFactory(bunDB)))
+				defaultDriver.SetValue(driver.New(
+					ledgerstore.NewFactory(bunDB),
+					systemstore.New(bunDB),
+					bucket.NewDefaultFactory(bunDB),
+				))
 
 				return bunDB
 			})
