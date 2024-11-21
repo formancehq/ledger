@@ -23,7 +23,7 @@ func TestMigrations(t *testing.T) {
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
 
-	require.NoError(t, driver.Migrate(ctx, db))
+	require.NoError(t, system.Migrate(ctx, db))
 	if testing.Verbose() {
 		db.AddQueryHook(bundebug.NewQueryHook())
 	}

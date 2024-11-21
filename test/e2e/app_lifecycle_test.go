@@ -179,7 +179,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			bunDB, err := bunconnect.OpenSQLDB(ctx, db.GetValue().ConnectionOptions())
 			Expect(err).To(BeNil())
 
-			Expect(driver.Migrate(ctx, bunDB)).To(BeNil())
+			Expect(system.Migrate(ctx, bunDB)).To(BeNil())
 
 			_, err = bunDB.NewInsert().
 				Model(pointer.For(ledger.MustNewWithDefault(ledgerName))).

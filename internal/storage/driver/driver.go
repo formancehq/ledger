@@ -158,6 +158,9 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 	grp, ctx := errgroup.WithContext(ctx)
 	for _, bucketName := range buckets {
 		grp.Go(func() error {
+			logger := logging.FromContext(ctx).WithFields(map[string]any{
+				"bucket": bucketName,
+			})
 			b := d.bucketFactory.Create(bucketName)
 
 			minimalVersionReached := make(chan struct{})
@@ -167,19 +170,21 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 				case <-ctx.Done():
 					return
 				case <-minimalVersionReached:
+					logger.Infof("Reached minimal workable version")
 					sem <- struct{}{}
 				}
 			}()
 
-			logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
+			logger.Infof("Upgrading...")
 			if err := b.Migrate(
 				ctx,
 				minimalVersionReached,
 				migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 			); err != nil {
+				logger.Errorf("Error upgrading: %s", err)
 				return err
 			}
-			logging.FromContext(ctx).Infof("Bucket '%s' up to date", bucketName)
+			logging.Infof("Up to date")
 
 			return nil
 		})
@@ -193,7 +198,13 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 		}
 	}
 
-	close(minimalVersionReached)
+	logging.FromContext(ctx).Infof("All buckets have reached minimal workable version")
+	select {
+	case <-minimalVersionReached:
+		// already closed
+	default:
+		close(minimalVersionReached)
+	}
 
 	return grp.Wait()
 }

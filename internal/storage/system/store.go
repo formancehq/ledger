@@ -1,19 +1,16 @@
-package driver
+package system
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
-
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
 
@@ -34,9 +31,7 @@ const (
 )
 
 type DefaultStore struct {
-	db     *bun.DB
-	tracer trace.Tracer
-	meter  metric.Meter
+	db *bun.DB
 }
 
 func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error) {

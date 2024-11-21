@@ -28,7 +28,7 @@ func TestBuckets(t *testing.T) {
 		db.AddQueryHook(bundebug.NewQueryHook())
 	}
 
-	require.NoError(t, driver.Migrate(ctx, db))
+	require.NoError(t, system.Migrate(ctx, db))
 
 	b := bucket.NewDefault(db, noop.Tracer{}, name)
 	require.NoError(t, b.Migrate(ctx, make(chan struct{})))

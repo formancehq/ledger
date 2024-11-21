@@ -1,6 +1,6 @@
 //go:build it
 
-package driver_test
+package system
 
 import (
 	"testing"

@@ -1,12 +1,11 @@
 //go:build it
 
-package driver_test
+package system
 
 import (
 	"context"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/testing/migrations"
-	"github.com/formancehq/ledger/internal/storage/system"
 	"os"
 	"testing"
 
@@ -36,7 +35,7 @@ func TestMigrations(t *testing.T) {
 		require.NoError(t, db.Close())
 	})
 
-	test := migrations.NewMigrationTest(t, driver.GetMigrator(db), db)
+	test := migrations.NewMigrationTest(t, GetMigrator(db), db)
 	test.Append(8, addIdOnLedgerTable)
 	test.Run()
 }
