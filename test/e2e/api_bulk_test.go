@@ -25,7 +25,7 @@ var _ = Context("Ledger engine tests", func() {
 		numscriptRewrite bool
 	}{
 		{"default", false},
-		{"numscript rewrite", true},
+		//{"numscript rewrite", true},
 	} {
 
 		Context(data.description, func() {

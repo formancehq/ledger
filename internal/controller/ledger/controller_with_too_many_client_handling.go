@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
@@ -38,83 +39,96 @@ func NewControllerWithTooManyClientHandling(
 	}
 }
 
-func (ctrl *ControllerWithTooManyClientHandling) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithTooManyClientHandling) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	var (
 		log                *ledger.Log
 		createdTransaction *ledger.CreatedTransaction
 		err                error
 	)
-	err = handleRetry(ctx, ctrl.tracer, ctrl.delayCalculator, func(ctx context.Context) error {
-		log, createdTransaction, err = ctrl.Controller.CreateTransaction(ctx, parameters)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, createdTransaction, err = c.Controller.CreateTransaction(ctx, parameters)
 		return err
 	})
 	return log, createdTransaction, err
 }
 
-func (ctrl *ControllerWithTooManyClientHandling) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (c *ControllerWithTooManyClientHandling) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
 	var (
 		log                 *ledger.Log
 		revertedTransaction *ledger.RevertedTransaction
 		err                 error
 	)
-	err = handleRetry(ctx, ctrl.tracer, ctrl.delayCalculator, func(ctx context.Context) error {
-		log, revertedTransaction, err = ctrl.Controller.RevertTransaction(ctx, parameters)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, revertedTransaction, err = c.Controller.RevertTransaction(ctx, parameters)
 		return err
 
 	})
 	return log, revertedTransaction, err
 }
 
-func (ctrl *ControllerWithTooManyClientHandling) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+func (c *ControllerWithTooManyClientHandling) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
 	var (
 		log *ledger.Log
 		err error
 	)
-	err = handleRetry(ctx, ctrl.tracer, ctrl.delayCalculator, func(ctx context.Context) error {
-		log, err = ctrl.Controller.SaveTransactionMetadata(ctx, parameters)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, err = c.Controller.SaveTransactionMetadata(ctx, parameters)
 		return err
 	})
 
 	return log, err
 }
 
-func (ctrl *ControllerWithTooManyClientHandling) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+func (c *ControllerWithTooManyClientHandling) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
 	var (
 		log *ledger.Log
 		err error
 	)
-	err = handleRetry(ctx, ctrl.tracer, ctrl.delayCalculator, func(ctx context.Context) error {
-		log, err = ctrl.Controller.SaveAccountMetadata(ctx, parameters)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, err = c.Controller.SaveAccountMetadata(ctx, parameters)
 		return err
 	})
 
 	return log, err
 }
 
-func (ctrl *ControllerWithTooManyClientHandling) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (c *ControllerWithTooManyClientHandling) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
 	var (
 		log *ledger.Log
 		err error
 	)
-	err = handleRetry(ctx, ctrl.tracer, ctrl.delayCalculator, func(ctx context.Context) error {
-		log, err = ctrl.Controller.DeleteTransactionMetadata(ctx, parameters)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, err = c.Controller.DeleteTransactionMetadata(ctx, parameters)
 		return err
 	})
 
 	return log, err
 }
 
-func (ctrl *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+func (c *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
 	var (
 		log *ledger.Log
 		err error
 	)
-	err = handleRetry(ctx, ctrl.tracer, ctrl.delayCalculator, func(ctx context.Context) error {
-		log, err = ctrl.Controller.DeleteAccountMetadata(ctx, parameters)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, err = c.Controller.DeleteAccountMetadata(ctx, parameters)
 		return err
 	})
 
 	return log, err
+}
+
+func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
+	ctrl, err := c.Controller.BeginTX(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ControllerWithTooManyClientHandling{
+		Controller:      ctrl,
+		delayCalculator: c.delayCalculator,
+		tracer:          c.tracer,
+	}, nil
 }
 
 var _ Controller = (*ControllerWithTooManyClientHandling)(nil)

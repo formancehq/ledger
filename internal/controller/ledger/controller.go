@@ -14,7 +14,7 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
 
 type Controller interface {
-	BeginTX(ctx context.Context, options *sql.TxOptions) error
+	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error)
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
 

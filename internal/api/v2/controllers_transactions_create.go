@@ -16,7 +16,7 @@ import (
 func createTransaction(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	payload := TransactionRequest{}
+	payload := ledgercontroller.TransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		api.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
 		return

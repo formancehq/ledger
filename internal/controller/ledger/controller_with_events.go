@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -118,6 +119,19 @@ func (ctrl *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, par
 	}
 
 	return log, nil
+}
+
+func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
+	ctrl, err := c.Controller.BeginTX(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ControllerWithEvents{
+		ledger:     c.ledger,
+		Controller: ctrl,
+		listener: c.listener,
+	}, nil
 }
 
 var _ Controller = (*ControllerWithEvents)(nil)

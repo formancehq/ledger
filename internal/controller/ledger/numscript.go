@@ -1,9 +1,8 @@
-package common
+package ledger
 
 import (
 	"fmt"
 	"github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"sort"
 	"strings"
 
@@ -15,7 +14,7 @@ type variable struct {
 	value string
 }
 
-func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool) ledgercontroller.RunScript {
+func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool) RunScript {
 	sb := strings.Builder{}
 	monetaryToVars := map[string]variable{}
 	accountsToVars := map[string]variable{}
@@ -113,8 +112,8 @@ func TxToScriptData(txData ledger.TransactionData, allowUnboundedOverdrafts bool
 		txData.Metadata = metadata.Metadata{}
 	}
 
-	return ledgercontroller.RunScript{
-		Script: ledgercontroller.Script{
+	return RunScript{
+		Script: Script{
 			Plain: sb.String(),
 			Vars:  vars,
 		},

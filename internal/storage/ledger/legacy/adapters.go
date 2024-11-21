@@ -110,15 +110,18 @@ func (d *DefaultStoreAdapter) GetMigrationsInfo(ctx context.Context) ([]migratio
 	return d.newStore.GetMigrationsInfo(ctx)
 }
 
-func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) error {
-	err := d.newStore.BeginTX(ctx, opts)
+func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) (ledgercontroller.Store, error) {
+	store, err := d.newStore.BeginTX(ctx, opts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	d.legacyStore = d.legacyStore.WithDB(d.newStore.GetDB())
+	d.legacyStore = d.legacyStore.WithDB(store.GetDB())
 
-	return nil
+	return &DefaultStoreAdapter{
+		newStore:    store,
+		legacyStore: d.legacyStore,
+	}, nil
 }
 
 func (d *DefaultStoreAdapter) Commit() error {

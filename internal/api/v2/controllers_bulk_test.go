@@ -3,7 +3,6 @@ package v2
 import (
 	"bytes"
 	"fmt"
-	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +62,7 @@ func TestBulk(t *testing.T) {
 				}}
 				mockLedger.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
-						Input: common.TxToScriptData(ledger.TransactionData{
+						Input: ledgercontroller.TxToScriptData(ledger.TransactionData{
 							Postings:  postings,
 							Timestamp: now,
 						}, false),
@@ -93,7 +92,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"id":        float64(0),
 				},
-				ResponseType: ActionCreateTransaction,
+				ResponseType: ledgercontroller.ActionCreateTransaction,
 			}},
 		},
 		{
@@ -121,7 +120,7 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}},
 		},
 		{
@@ -149,7 +148,7 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}},
 		},
 		{
@@ -177,7 +176,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",
 				},
-				ResponseType: ActionRevertTransaction,
+				ResponseType: ledgercontroller.ActionRevertTransaction,
 			}},
 		},
 		{
@@ -201,7 +200,7 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ActionDeleteMetadata,
+				ResponseType: ledgercontroller.ActionDeleteMetadata,
 			}},
 		},
 		{
@@ -261,7 +260,7 @@ func TestBulk(t *testing.T) {
 					Return(nil, errors.New("unexpected error"))
 			},
 			expectResults: []Result{{
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}, {
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
@@ -339,13 +338,13 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}, {
 				ResponseType:     "ERROR",
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 			}, {
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}},
 			expectError: true,
 		},
@@ -379,7 +378,7 @@ func TestBulk(t *testing.T) {
 			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					BeginTX(gomock.Any(), nil).
-					Return(nil)
+					Return(mockLedger, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -406,15 +405,11 @@ func TestBulk(t *testing.T) {
 				mockLedger.EXPECT().
 					Commit(gomock.Any()).
 					Return(nil)
-
-				mockLedger.EXPECT().
-					Rollback(gomock.Any()).
-					Return(nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}, {
-				ResponseType: ActionAddMetadata,
+				ResponseType: ledgercontroller.ActionAddMetadata,
 			}},
 		},
 	}
