@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/testing/migrations"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"os"
 	"testing"
 

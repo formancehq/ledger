@@ -4,7 +4,9 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/service"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +53,11 @@ func getDriver(cmd *cobra.Command) (*driver.Driver, error) {
 		return nil, err
 	}
 
-	driver := driver.New(db)
+	driver := driver.New(
+		db,
+		systemstore.New(db),
+		bucket.NewDefaultFactory(db),
+	)
 	if err := driver.Initialize(cmd.Context()); err != nil {
 		return nil, err
 	}

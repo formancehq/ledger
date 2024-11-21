@@ -19,10 +19,11 @@ const MinimalSchemaVersion = 12
 type DefaultBucket struct {
 	name string
 	db   *bun.DB
+	tracer trace.Tracer
 }
 
-func (b *DefaultBucket) Migrate(ctx context.Context, tracer trace.Tracer, minimalVersionReached chan struct{}, options ...migrations.Option) error {
-	return migrate(ctx, tracer, b.db, b.name, minimalVersionReached, options...)
+func (b *DefaultBucket) Migrate(ctx context.Context, minimalVersionReached chan struct{}, options ...migrations.Option) error {
+	return migrate(ctx, b.tracer, b.db, b.name, minimalVersionReached, options...)
 }
 
 func (b *DefaultBucket) HasMinimalVersion(ctx context.Context) (bool, error) {
@@ -39,7 +40,7 @@ func (b *DefaultBucket) GetMigrationsInfo(ctx context.Context) ([]migrations.Inf
 	return GetMigrator(b.db, b.name).GetMigrations(ctx)
 }
 
-func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger, db bun.IDB) error {
+func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 
 	for _, setup := range ledgerSetups {
 		if l.Features.Match(setup.requireFeatures) {
@@ -49,7 +50,7 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger, db bun.I
 				return fmt.Errorf("executing template: %w", err)
 			}
 
-			_, err := db.ExecContext(ctx, buf.String())
+			_, err := b.db.ExecContext(ctx, buf.String())
 			if err != nil {
 				return fmt.Errorf("executing sql: %w", err)
 			}
@@ -59,10 +60,11 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger, db bun.I
 	return nil
 }
 
-func NewDefault(db *bun.DB, name string) *DefaultBucket {
+func NewDefault(db *bun.DB, tracer trace.Tracer, name string) *DefaultBucket {
 	return &DefaultBucket{
 		db:   db,
 		name: name,
+		tracer: tracer,
 	}
 }
 

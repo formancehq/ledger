@@ -18,7 +18,6 @@ func TestMain(m *testing.M) {
 	utils.WithTestMain(func(t *utils.TestingTForMain) int {
 		srv = pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
 
-
 		return m.Run()
 	})
 }

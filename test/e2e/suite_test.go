@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"os"
 	"testing"
 

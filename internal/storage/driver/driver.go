@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -26,12 +27,9 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 )
 
-const (
-	SchemaSystem = "_system"
-)
-
 type Driver struct {
 	db                        *bun.DB
+	systemStore               systemstore.Store
 	bucketFactory             bucket.Factory
 	tracer                    trace.Tracer
 	meter                     metric.Meter
@@ -44,28 +42,23 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		l.Metadata = metadata.Metadata{}
 	}
 
-	b := d.bucketFactory.Create(d.db, l.Bucket)
+	b := d.bucketFactory.Create(l.Bucket)
 	if err := b.Migrate(
 		ctx,
-		d.tracer,
 		make(chan struct{}),
 		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 	); err != nil {
 		return nil, fmt.Errorf("migrating bucket: %w", err)
 	}
 
-	_, err := d.db.NewInsert().
-		Model(l).
-		Returning("id, added_at").
-		Exec(ctx)
-	if err != nil {
+	if err := d.systemStore.CreateLedger(ctx, l); err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
 			return nil, systemcontroller.ErrLedgerAlreadyExists
 		}
 		return nil, postgres.ResolveError(err)
 	}
 
-	if err := b.AddLedger(ctx, *l, d.db); err != nil {
+	if err := b.AddLedger(ctx, *l); err != nil {
 		return nil, fmt.Errorf("adding ledger to bucket: %w", err)
 	}
 
@@ -79,18 +72,14 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 }
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
-	ret := &ledger.Ledger{}
-	if err := d.db.NewSelect().
-		Model(ret).
-		Column("*").
-		Where("name = ?", name).
-		Scan(ctx); err != nil {
-		return nil, nil, postgres.ResolveError(err)
+	ret, err := d.systemStore.GetLedger(ctx, name)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return ledgerstore.New(
 		d.db,
-		d.bucketFactory.Create(d.db, ret.Bucket),
+		d.bucketFactory.Create(ret.Bucket),
 		*ret,
 		ledgerstore.WithMeter(d.meter),
 		ledgerstore.WithTracer(d.tracer),
@@ -104,7 +93,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		return fmt.Errorf("detecting rollbacks: %w", err)
 	}
 
-	err = Migrate(ctx, d.db, migrations.WithLockRetryInterval(d.migratorLockRetryInterval))
+	err = systemstore.Migrate(ctx, d.db, migrations.WithLockRetryInterval(d.migratorLockRetryInterval))
 	if err != nil {
 		constraintsFailed := postgres.ErrConstraintsFailed{}
 		if errors.As(err, &constraintsFailed) &&
@@ -123,30 +112,22 @@ func (d *Driver) Initialize(ctx context.Context) error {
 func (d *Driver) detectRollbacks(ctx context.Context) error {
 
 	logging.FromContext(ctx).Debugf("Checking for downgrades on system schema")
-	if err := detectDowngrades(GetMigrator(d.db), ctx); err != nil {
+	if err := detectDowngrades(systemstore.GetMigrator(d.db), ctx); err != nil {
 		return fmt.Errorf("detecting rollbacks of system schema: %w", err)
 	}
 
-	type row struct {
-		Bucket string `bun:"bucket"`
-	}
-	rows := make([]row, 0)
-	if err := d.db.NewSelect().
-		DistinctOn("bucket").
-		ModelTableExpr("_system.ledgers").
-		Column("bucket").
-		Scan(ctx, &rows); err != nil {
-		err = postgres.ResolveError(err)
-		if errors.Is(err, postgres.ErrMissingTable) {
-			return nil
+	buckets, err := d.systemStore.GetDistinctBuckets(ctx)
+	if err != nil {
+		if !errors.Is(err, postgres.ErrMissingTable) {
+			return fmt.Errorf("getting distinct buckets: %w", err)
 		}
-		return err
+		return nil
 	}
 
-	for _, r := range rows {
-		logging.FromContext(ctx).Debugf("Checking for downgrades on bucket '%s'", r.Bucket)
-		if err := detectDowngrades(bucket.GetMigrator(d.db, r.Bucket), ctx); err != nil {
-			return fmt.Errorf("detecting rollbacks on bucket '%s': %w", r.Bucket, err)
+	for _, b := range buckets {
+		logging.FromContext(ctx).Debugf("Checking for downgrades on bucket '%s'", b)
+		if err := detectDowngrades(bucket.GetMigrator(d.db, b), ctx); err != nil {
+			return fmt.Errorf("detecting rollbacks on bucket '%s': %w", b, err)
 		}
 	}
 
@@ -154,53 +135,24 @@ func (d *Driver) detectRollbacks(ctx context.Context) error {
 }
 
 func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
-	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
-		Set("metadata = metadata || ?", m).
-		Where("name = ?", name).
-		Exec(ctx)
-	return err
+	return d.systemStore.UpdateLedgerMetadata(ctx, name, m)
 }
 
 func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
-	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
-		Set("metadata = metadata - ?", key).
-		Where("name = ?", name).
-		Exec(ctx)
-	return err
+	return d.systemStore.DeleteLedgerMetadata(ctx, name, key)
 }
 
 func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	query := d.db.NewSelect().
-		Model(&ledger.Ledger{}).
-		Column("*").
-		Order("added_at asc")
-
-	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
-		ctx,
-		query,
-		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
-	)
+	return d.systemStore.ListLedgers(ctx, q)
 }
 
 func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
-	ret := &ledger.Ledger{}
-	if err := d.db.NewSelect().
-		Model(ret).
-		Column("*").
-		Where("name = ?", name).
-		Scan(ctx); err != nil {
-		return nil, postgres.ResolveError(err)
-	}
-
-	return ret, nil
+	return d.systemStore.GetLedger(ctx, name)
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	return d.bucketFactory.Create(d.db, name).Migrate(
+	return d.bucketFactory.Create(name).Migrate(
 		ctx,
-		d.tracer,
 		make(chan struct{}),
 		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 	)
@@ -208,14 +160,9 @@ func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached chan struct{}) error {
 
-	var buckets []string
-	err := d.db.NewSelect().
-		DistinctOn("bucket").
-		Model(&ledger.Ledger{}).
-		Column("bucket").
-		Scan(ctx, &buckets)
+	buckets, err := d.systemStore.GetDistinctBuckets(ctx)
 	if err != nil {
-		return fmt.Errorf("getting buckets: %w", err)
+		return fmt.Errorf("getting distinct buckets: %w", err)
 	}
 
 	sem := make(chan struct{}, len(buckets))
@@ -223,7 +170,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 	grp, ctx := errgroup.WithContext(ctx)
 	for _, bucketName := range buckets {
 		grp.Go(func() error {
-			b := d.bucketFactory.Create(d.db, bucketName)
+			b := d.bucketFactory.Create(bucketName)
 
 			minimalVersionReached := make(chan struct{})
 
@@ -239,7 +186,6 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 			logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucketName)
 			if err := b.Migrate(
 				ctx,
-				d.tracer,
 				minimalVersionReached,
 				migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 			); err != nil {
@@ -268,9 +214,11 @@ func (d *Driver) GetDB() *bun.DB {
 	return d.db
 }
 
-func New(db *bun.DB, opts ...Option) *Driver {
+func New(db *bun.DB, systemStore systemstore.Store, bucketFactory bucket.Factory, opts ...Option) *Driver {
 	ret := &Driver{
 		db:            db,
+		bucketFactory: bucketFactory,
+		systemStore:   systemStore,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -298,14 +246,7 @@ func WithMigratorLockRetryInterval(interval time.Duration) Option {
 	}
 }
 
-func WithBucketFactory(factory bucket.Factory) Option {
-	return func(d *Driver) {
-		d.bucketFactory = factory
-	}
-}
-
 var defaultOptions = []Option{
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
-	WithBucketFactory(bucket.NewDefaultFactory()),
 }

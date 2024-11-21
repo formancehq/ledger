@@ -7,7 +7,9 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/ory/dockertest/v3"
 	dockerlib "github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/require"
@@ -51,7 +53,7 @@ func TestMigrations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Migrate database
-	driver := driver.New(db)
+	driver := driver.New(db, systemstore.New(db), bucket.NewDefaultFactory(db))
 	require.NoError(t, driver.Initialize(ctx))
 	require.NoError(t, driver.UpgradeAllBuckets(ctx, make(chan struct{})))
 }

@@ -13,7 +13,9 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
@@ -181,7 +183,12 @@ func newStorageDriver(t docker.T, driverOptions ...driver.Option) *driver.Driver
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 
-	d := driver.New(db, driverOptions...)
+	d := driver.New(
+		db,
+		systemstore.New(db),
+		bucket.NewDefaultFactory(db),
+		driverOptions...,
+	)
 
 	require.NoError(t, d.Initialize(logging.TestingContext()))
 
