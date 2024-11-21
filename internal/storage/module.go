@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"go.uber.org/fx"
@@ -23,14 +22,13 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 				)
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						upgradeContext, cancelContext = context.WithCancel(logging.ContextWithLogger(
-							context.Background(),
-							logging.FromContext(ctx),
-						))
+						upgradeContext, cancelContext = context.WithCancel(context.WithoutCancel(ctx))
 						go func() {
 							defer close(upgradeStopped)
 
-							migrate(upgradeContext, driver, minimalVersionReached)
+							if err := driver.UpgradeAllBuckets(upgradeContext, minimalVersionReached); err != nil {
+								logging.FromContext(ctx).Errorf("failed to upgrade all buckets: %v", err)
+							}
 						}()
 
 						select {
@@ -54,27 +52,4 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 		)
 	}
 	return fx.Options(ret...)
-}
-
-func migrate(ctx context.Context, driver *driver.Driver, minimalVersionReached chan struct{}) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			logging.FromContext(ctx).Infof("Upgrading buckets...")
-			if err := driver.UpgradeAllBuckets(ctx, minimalVersionReached); err != nil {
-				// Long migrations can be cancelled (app rescheduled for example)
-				// before fully terminated, handle this gracefully, don't panic,
-				// the next start will try again.
-				if errors.Is(err, context.DeadlineExceeded) ||
-					errors.Is(err, context.Canceled) {
-					return
-				}
-				logging.FromContext(ctx).Errorf("Upgrading buckets: %s", err)
-				continue
-			}
-			return
-		}
-	}
 }

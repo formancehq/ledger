@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -13,7 +14,6 @@ import (
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"golang.org/x/sync/errgroup"
 	"time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -155,38 +155,58 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 
 	sem := make(chan struct{}, len(buckets))
 
-	grp, ctx := errgroup.WithContext(ctx)
+	wp := pond.New(10, len(buckets), pond.Context(ctx))
+
 	for _, bucketName := range buckets {
-		grp.Go(func() error {
+		wp.Submit(func() {
 			logger := logging.FromContext(ctx).WithFields(map[string]any{
 				"bucket": bucketName,
 			})
 			b := d.bucketFactory.Create(bucketName)
 
-			minimalVersionReached := make(chan struct{})
+			// copy semaphore to be able to nil it
+			sem := sem
 
-			go func() {
-				select {
-				case <-ctx.Done():
-					return
-				case <-minimalVersionReached:
-					logger.Infof("Reached minimal workable version")
-					sem <- struct{}{}
+		l:
+			for {
+				minimalVersionReached := make(chan struct{})
+				errChan := make(chan error, 1)
+				go func() {
+					logger.Infof("Upgrading...")
+					errChan <- b.Migrate(
+						ctx,
+						minimalVersionReached,
+						migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
+					)
+				}()
+
+				for {
+					logger.Infof("Waiting termination")
+					select {
+					case <-ctx.Done():
+						return
+					case err := <-errChan:
+						if err != nil {
+							logger.Errorf("Error upgrading: %s", err)
+							continue l
+						}
+						if sem != nil {
+							logger.Infof("Reached minimal workable version")
+							sem <- struct{}{}
+						}
+
+						logger.Info("Upgrade terminated")
+						return
+					case <-minimalVersionReached:
+						minimalVersionReached = nil
+						if sem != nil {
+							logger.Infof("Reached minimal workable version")
+							sem <- struct{}{}
+							sem = nil
+						}
+					}
 				}
-			}()
-
-			logger.Infof("Upgrading...")
-			if err := b.Migrate(
-				ctx,
-				minimalVersionReached,
-				migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
-			); err != nil {
-				logger.Errorf("Error upgrading: %s", err)
-				return err
 			}
-			logging.Infof("Up to date")
-
-			return nil
 		})
 	}
 
@@ -199,14 +219,11 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 	}
 
 	logging.FromContext(ctx).Infof("All buckets have reached minimal workable version")
-	select {
-	case <-minimalVersionReached:
-		// already closed
-	default:
-		close(minimalVersionReached)
-	}
+	close(minimalVersionReached)
 
-	return grp.Wait()
+	wp.StopAndWait()
+
+	return nil
 }
 
 func New(

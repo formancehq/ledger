@@ -14,9 +14,11 @@ import (
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"testing"
+	"time"
 )
 
 func TestUpgradeAllLedgers(t *testing.T) {
@@ -41,7 +43,7 @@ func TestUpgradeAllLedgers(t *testing.T) {
 		bucket := driver.NewMockBucket(ctrl)
 
 		systemStore.EXPECT().
-			GetDistinctBuckets(ctx).
+			GetDistinctBuckets(gomock.Any()).
 			Return([]string{ledger.DefaultBucket}, nil)
 
 		bucketFactory.EXPECT().
@@ -55,6 +57,9 @@ func TestUpgradeAllLedgers(t *testing.T) {
 				close(minimalVersionReached)
 				return nil
 			})
+
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		t.Cleanup(cancel)
 
 		require.NoError(t, d.UpgradeAllBuckets(ctx, make(chan struct{})))
 	})
@@ -96,8 +101,11 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			}
 
 			systemStore.EXPECT().
-				GetDistinctBuckets(ctx).
+				GetDistinctBuckets(gomock.Any()).
 				Return(bucketList, nil)
+
+			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			t.Cleanup(cancel)
 
 			require.NoError(t, d.UpgradeAllBuckets(ctx, make(chan struct{})))
 		})
@@ -105,16 +113,16 @@ func TestUpgradeAllLedgers(t *testing.T) {
 		t.Run("and error", func(t *testing.T) {
 			t.Parallel()
 
+			//ctx := context.Background()
+
+			ctx := logging.ContextWithLogger(ctx, logging.NewLogrus(logrus.New()))
+
 			ctrl := gomock.NewController(t)
 			ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 			bucketFactory := driver.NewBucketFactory(ctrl)
 			systemStore := driver.NewSystemStore(ctrl)
 
-			d := driver.New(
-				ledgerStoreFactory,
-				systemStore,
-				bucketFactory,
-			)
+			d := driver.New(ledgerStoreFactory, systemStore, bucketFactory)
 
 			bucket1 := driver.NewMockBucket(ctrl)
 			bucket2 := driver.NewMockBucket(ctrl)
@@ -141,11 +149,11 @@ func TestUpgradeAllLedgers(t *testing.T) {
 				DoAndReturn(func(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
 					close(minimalVersionReached)
 					close(bucket1MigrationStarted)
-					<-ctx.Done()
 
-					return ctx.Err()
+					return nil
 				})
 
+			firstCall := true
 			bucket2.EXPECT().
 				Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
 				AnyTimes().
@@ -154,21 +162,26 @@ func TestUpgradeAllLedgers(t *testing.T) {
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-bucket1MigrationStarted:
-						return errors.New("unknown error")
+						if firstCall {
+							firstCall = false
+							return errors.New("unknown error")
+						}
+						close(minimalVersionReached)
+						return nil
 					}
 				})
 
 			systemStore.EXPECT().
-				GetDistinctBuckets(ctx).
+				GetDistinctBuckets(gomock.Any()).
 				AnyTimes().
 				Return(bucketList, nil)
 
-			err := d.UpgradeAllBuckets(ctx, allBucketsMinimalVersionReached)
-			require.Error(t, err)
+			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			t.Cleanup(cancel)
 
 			bucket1MigrationStarted = make(chan struct{})
-			err = d.UpgradeAllBuckets(ctx, allBucketsMinimalVersionReached)
-			require.Error(t, err)
+			err := d.UpgradeAllBuckets(ctx, allBucketsMinimalVersionReached)
+			require.NoError(t, err)
 		})
 	})
 }

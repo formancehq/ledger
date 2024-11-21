@@ -9,7 +9,7 @@ replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 replace github.com/formancehq/ledger => ../..
 
 require (
-	github.com/formancehq/go-libs/v2 v2.0.1-0.20241121113152-18a3fc7aa771
+	github.com/formancehq/go-libs/v2 v2.0.1-0.20241121194732-b79c48b683f2
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.12.0
 	github.com/pulumi/pulumi/sdk/v3 v3.117.0
