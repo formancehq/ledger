@@ -32,6 +32,7 @@ const (
 
 type Driver struct {
 	db                        *bun.DB
+	bucketFactory             bucket.Factory
 	tracer                    trace.Tracer
 	meter                     metric.Meter
 	migratorLockRetryInterval time.Duration
@@ -43,7 +44,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		l.Metadata = metadata.Metadata{}
 	}
 
-	b := bucket.New(d.db, l.Bucket)
+	b := d.bucketFactory.Create(d.db, l.Bucket)
 	if err := b.Migrate(
 		ctx,
 		d.tracer,
@@ -89,7 +90,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 
 	return ledgerstore.New(
 		d.db,
-		bucket.New(d.db, ret.Bucket),
+		d.bucketFactory.Create(d.db, ret.Bucket),
 		*ret,
 		ledgerstore.WithMeter(d.meter),
 		ledgerstore.WithTracer(d.tracer),
@@ -197,7 +198,7 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	return bucket.New(d.db, name).Migrate(
+	return d.bucketFactory.Create(d.db, name).Migrate(
 		ctx,
 		d.tracer,
 		make(chan struct{}),
@@ -222,7 +223,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 	grp, ctx := errgroup.WithContext(ctx)
 	for _, bucketName := range buckets {
 		grp.Go(func() error {
-			b := bucket.New(d.db, bucketName)
+			b := d.bucketFactory.Create(d.db, bucketName)
 
 			minimalVersionReached := make(chan struct{})
 
@@ -269,7 +270,7 @@ func (d *Driver) GetDB() *bun.DB {
 
 func New(db *bun.DB, opts ...Option) *Driver {
 	ret := &Driver{
-		db: db,
+		db:            db,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -297,7 +298,14 @@ func WithMigratorLockRetryInterval(interval time.Duration) Option {
 	}
 }
 
+func WithBucketFactory(factory bucket.Factory) Option {
+	return func(d *Driver) {
+		d.bucketFactory = factory
+	}
+}
+
 var defaultOptions = []Option{
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
+	WithBucketFactory(bucket.NewDefaultFactory()),
 }

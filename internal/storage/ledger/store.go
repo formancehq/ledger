@@ -19,7 +19,7 @@ import (
 
 type Store struct {
 	db     bun.IDB
-	bucket *bucket.Bucket
+	bucket bucket.Bucket
 	ledger ledger.Ledger
 
 	tracer                             trace.Tracer
@@ -84,7 +84,7 @@ func (s *Store) LockLedger(ctx context.Context) error {
 	return postgres.ResolveError(err)
 }
 
-func New(db bun.IDB, bucket *bucket.Bucket, ledger ledger.Ledger, opts ...Option) *Store {
+func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
 		db:     db,
 		ledger: ledger,

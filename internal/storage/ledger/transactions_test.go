@@ -621,7 +621,7 @@ func TestTransactionsInsert(t *testing.T) {
 			require.NoError(t, migrator.UpByOne(ctx))
 		}
 
-		b := bucket.New(driver.GetDB(), ledgerName)
+		b := bucket.NewDefault(driver.GetDB(), ledgerName)
 		err := b.AddLedger(ctx, l, driver.GetDB())
 		require.NoError(t, err)
 
