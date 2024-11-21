@@ -10,7 +10,6 @@ management:
 features:
   go:
     additionalDependencies: 0.1.0
-    constsAndDefaults: 0.1.4
     core: 3.5.2
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.1
