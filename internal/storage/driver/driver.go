@@ -26,12 +26,15 @@ import (
 )
 
 type Driver struct {
-	ledgerStoreFactory        ledgerstore.Factory
-	systemStore               systemstore.Store
-	bucketFactory             bucket.Factory
-	tracer                    trace.Tracer
-	meter                     metric.Meter
+	ledgerStoreFactory ledgerstore.Factory
+	systemStore        systemstore.Store
+	bucketFactory      bucket.Factory
+	tracer             trace.Tracer
+	meter              metric.Meter
+
+	migrationRetryPeriod      time.Duration
 	migratorLockRetryInterval time.Duration
+	parallelBucketMigrations  int
 }
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
@@ -155,7 +158,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 
 	sem := make(chan struct{}, len(buckets))
 
-	wp := pond.New(10, len(buckets), pond.Context(ctx))
+	wp := pond.New(d.parallelBucketMigrations, len(buckets), pond.Context(ctx))
 
 	for _, bucketName := range buckets {
 		wp.Submit(func() {
@@ -174,7 +177,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 				go func() {
 					logger.Infof("Upgrading...")
 					errChan <- b.Migrate(
-						ctx,
+						logging.ContextWithLogger(ctx, logger),
 						minimalVersionReached,
 						migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 					)
@@ -188,7 +191,12 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 					case err := <-errChan:
 						if err != nil {
 							logger.Errorf("Error upgrading: %s", err)
-							continue l
+							select {
+							case <-time.After(d.migrationRetryPeriod):
+								continue l
+							case <-ctx.Done():
+								return
+							}
 						}
 						if sem != nil {
 							logger.Infof("Reached minimal workable version")
@@ -263,7 +271,21 @@ func WithMigratorLockRetryInterval(interval time.Duration) Option {
 	}
 }
 
+func WithParallelBucketMigration(p int) Option {
+	return func(d *Driver) {
+		d.parallelBucketMigrations = p
+	}
+}
+
+func WithMigrationRetryPeriod(p time.Duration) Option {
+	return func(d *Driver) {
+		d.migrationRetryPeriod = p
+	}
+}
+
 var defaultOptions = []Option{
 	WithMeter(noopmetrics.Meter{}),
 	WithTracer(nooptracer.Tracer{}),
+	WithParallelBucketMigration(10),
+	WithMigrationRetryPeriod(5 * time.Second),
 }

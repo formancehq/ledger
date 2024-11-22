@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"testing"
@@ -113,16 +112,14 @@ func TestUpgradeAllLedgers(t *testing.T) {
 		t.Run("and error", func(t *testing.T) {
 			t.Parallel()
 
-			//ctx := context.Background()
-
-			ctx := logging.ContextWithLogger(ctx, logging.NewLogrus(logrus.New()))
-
 			ctrl := gomock.NewController(t)
 			ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 			bucketFactory := driver.NewBucketFactory(ctrl)
 			systemStore := driver.NewSystemStore(ctrl)
 
-			d := driver.New(ledgerStoreFactory, systemStore, bucketFactory)
+			d := driver.New(ledgerStoreFactory, systemStore, bucketFactory,
+				driver.WithMigrationRetryPeriod(10*time.Millisecond),
+			)
 
 			bucket1 := driver.NewMockBucket(ctrl)
 			bucket2 := driver.NewMockBucket(ctrl)
