@@ -100,30 +100,6 @@ type Bulker struct {
 }
 
 func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOnFailure bool) (BulkResult, error) {
-	for i, element := range bulk {
-		switch element.Action {
-		case ActionCreateTransaction:
-			req := &TransactionRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		case ActionAddMetadata:
-			req := &AddMetadataRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		case ActionRevertTransaction:
-			req := &RevertTransactionRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		case ActionDeleteMetadata:
-			req := &DeleteMetadataRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		}
-	}
 
 	results := make([]BulkElementResult, 0, len(bulk))
 
@@ -151,10 +127,36 @@ func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOn
 }
 
 func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic bool) (BulkResult, error) {
+
+	for i, element := range bulk {
+		switch element.Action {
+		case ActionCreateTransaction:
+			req := &TransactionRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		case ActionAddMetadata:
+			req := &AddMetadataRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		case ActionRevertTransaction:
+			req := &RevertTransactionRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		case ActionDeleteMetadata:
+			req := &DeleteMetadataRequest{}
+			if err := json.Unmarshal(element.Data, req); err != nil {
+				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
+			}
+		}
+	}
+
 	ctrl := b.ctrl
 	if atomic {
 		var err error
-		ctrl, err = b.ctrl.BeginTX(ctx, nil)
+		ctrl, err = ctrl.BeginTX(ctx, nil)
 		if err != nil {
 			return nil, fmt.Errorf("error starting transaction: %s", err)
 		}
