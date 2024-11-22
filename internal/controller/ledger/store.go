@@ -29,7 +29,7 @@ type Balances = vm.Balances
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . Store
 type Store interface {
-	BeginTX(ctx context.Context, options *sql.TxOptions) error
+	BeginTX(ctx context.Context, options *sql.TxOptions) (Store, error)
 	Commit() error
 	Rollback() error
 

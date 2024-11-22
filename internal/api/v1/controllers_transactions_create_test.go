@@ -2,7 +2,6 @@ package v1
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -154,7 +153,7 @@ func TestTransactionsCreate(t *testing.T) {
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
 			},
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -169,7 +168,7 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedPreview: true,
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},

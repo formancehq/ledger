@@ -24,7 +24,7 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		Rollback().
@@ -55,7 +55,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	// First call returns a deadlock
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		Rollback().
@@ -64,7 +64,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	// Second call is ok
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).
@@ -72,10 +72,6 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 
 	store.EXPECT().
 		Commit().
-		Return(nil)
-
-	store.EXPECT().
-		Rollback().
 		Return(nil)
 
 	firstCall := true

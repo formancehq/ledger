@@ -40,11 +40,12 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // BeginTX mocks base method.
-func (m *MockController) BeginTX(ctx context.Context, options *sql.TxOptions) error {
+func (m *MockController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BeginTX", ctx, options)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(Controller)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // BeginTX indicates an expected call of BeginTX.

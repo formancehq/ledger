@@ -19,10 +19,9 @@ import (
 )
 
 type Store struct {
-	dbStack []bun.IDB
-	db      bun.IDB
-	bucket  bucket.Bucket
-	ledger  ledger.Ledger
+	db     bun.IDB
+	bucket bucket.Bucket
+	ledger ledger.Ledger
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -50,38 +49,32 @@ type Store struct {
 	listTransactionsHistogram          metric.Int64Histogram
 }
 
-func (s *Store) BeginTX(ctx context.Context, options *sql.TxOptions) error {
+func (s *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
 	tx, err := s.db.BeginTx(ctx, options)
 	if err != nil {
-		return postgres.ResolveError(err)
+		return nil, postgres.ResolveError(err)
 	}
-	s.dbStack = append(s.dbStack, s.db)
-	s.db = tx
+	cp := *s
+	cp.db = tx
 
-	return nil
+	return &cp, nil
 }
 
 func (s *Store) Commit() error {
 	switch db := s.db.(type) {
 	case bun.Tx:
-		err := db.Commit()
-		s.db = s.dbStack[len(s.dbStack)-1]
-		s.dbStack = s.dbStack[:len(s.dbStack)-1]
-		return err
+		return db.Commit()
 	default:
-		return errors.New("not in a transaction")
+		return errors.New("cannot commit transaction: not in a transaction")
 	}
 }
 
 func (s *Store) Rollback() error {
 	switch db := s.db.(type) {
 	case bun.Tx:
-		err := db.Rollback()
-		s.db = s.dbStack[len(s.dbStack)-1]
-		s.dbStack = s.dbStack[:len(s.dbStack)-1]
-		return err
+		return db.Rollback()
 	default:
-		return errors.New("not in a transaction")
+		return errors.New("cannot rollback transaction: not in a transaction")
 	}
 }
 

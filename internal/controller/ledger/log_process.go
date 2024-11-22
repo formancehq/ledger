@@ -31,22 +31,45 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	parameters Parameters[INPUT],
 	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
-	var (
-		output *OUTPUT
-		log    ledger.Log
-	)
-	if err := store.BeginTX(ctx, nil); err != nil {
+	store, err := store.BeginTX(ctx, nil)
+	if err != nil {
 		return nil, nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer func() {
-		_ = store.Rollback()
-	}()
+
+	log, output, err := lp.runLog(ctx, store, parameters, fn)
+	if err != nil {
+		if rollbackErr := store.Rollback(); rollbackErr != nil {
+			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
+		}
+		return nil, nil, err
+	}
+
+	if parameters.DryRun {
+		if rollbackErr := store.Rollback(); rollbackErr != nil {
+			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
+		}
+		return log, output, nil
+	}
+
+	if err := store.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return log, output, nil
+}
+
+func (lp *logProcessor[INPUT, OUTPUT]) runLog(
+	ctx context.Context,
+	store Store,
+	parameters Parameters[INPUT],
+	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+) (*ledger.Log, *OUTPUT, error) {
 
 	output, err := fn(ctx, store, parameters)
 	if err != nil {
 		return nil, nil, err
 	}
-	log = ledger.NewLog(*output)
+	log := ledger.NewLog(*output)
 	log.IdempotencyKey = parameters.IdempotencyKey
 	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
 
@@ -55,14 +78,6 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 		return nil, nil, fmt.Errorf("failed to insert log: %w", err)
 	}
 	logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
-
-	if parameters.DryRun {
-		return &log, output, nil
-	}
-
-	if err := store.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
 
 	return &log, output, err
 }

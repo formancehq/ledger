@@ -83,7 +83,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, common.TxToScriptData(txData, false)))
+		_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.TxToScriptData(txData, false)))
 		if err != nil {
 			switch {
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):

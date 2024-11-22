@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"database/sql"
 	"math/big"
 	"testing"
 
@@ -37,15 +36,11 @@ func TestCreateTransaction(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		Commit().
 		Return(nil)
-
-	store.EXPECT().
-		Rollback().
-		Return(sql.ErrTxDone)
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
 	numscriptRuntime.EXPECT().
@@ -84,15 +79,11 @@ func TestRevertTransaction(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		Commit().
 		Return(nil)
-
-	store.EXPECT().
-		Rollback().
-		Return(sql.ErrTxDone)
 
 	txToRevert := ledger.Transaction{}
 	store.EXPECT().
@@ -136,15 +127,11 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		Commit().
 		Return(nil)
-
-	store.EXPECT().
-		Rollback().
-		Return(sql.ErrTxDone)
 
 	m := metadata.Metadata{
 		"foo": "bar",
@@ -180,15 +167,11 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(nil)
+		Return(store, nil)
 
 	store.EXPECT().
 		Commit().
 		Return(nil)
-
-	store.EXPECT().
-		Rollback().
-		Return(sql.ErrTxDone)
 
 	store.EXPECT().
 		DeleteTransactionMetadata(gomock.Any(), 1, "foo").
