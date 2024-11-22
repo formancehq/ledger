@@ -36,7 +36,7 @@ func (m *MockNumscriptRuntime) EXPECT() *MockNumscriptRuntimeMockRecorder {
 }
 
 // Execute mocks base method.
-func (m *MockNumscriptRuntime) Execute(arg0 context.Context, arg1 TX, arg2 map[string]string) (*NumscriptExecutionResult, error) {
+func (m *MockNumscriptRuntime) Execute(arg0 context.Context, arg1 Store, arg2 map[string]string) (*NumscriptExecutionResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Execute", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*NumscriptExecutionResult)

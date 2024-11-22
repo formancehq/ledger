@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
@@ -20,6 +21,24 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer) *Contro
 		underlying: underlying,
 		tracer:     tracer,
 	}
+}
+
+func (ctrl *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptions) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "BeginTX", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.underlying.BeginTX(ctx, options)
+	})))
+}
+
+func (ctrl *ControllerWithTraces) Commit(ctx context.Context) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "BeginTX", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.underlying.Commit(ctx)
+	})))
+}
+
+func (ctrl *ControllerWithTraces) Rollback(ctx context.Context) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "BeginTX", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.underlying.Rollback(ctx)
+	})))
 }
 
 func (ctrl *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {

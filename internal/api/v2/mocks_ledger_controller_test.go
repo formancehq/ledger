@@ -7,6 +7,7 @@ package v2
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -37,6 +38,34 @@ func NewLedgerController(ctrl *gomock.Controller) *LedgerController {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *LedgerController) EXPECT() *LedgerControllerMockRecorder {
 	return m.recorder
+}
+
+// BeginTX mocks base method.
+func (m *LedgerController) BeginTX(ctx context.Context, options *sql.TxOptions) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BeginTX", ctx, options)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BeginTX indicates an expected call of BeginTX.
+func (mr *LedgerControllerMockRecorder) BeginTX(ctx, options any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginTX", reflect.TypeOf((*LedgerController)(nil).BeginTX), ctx, options)
+}
+
+// Commit mocks base method.
+func (m *LedgerController) Commit(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Commit", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Commit indicates an expected call of Commit.
+func (mr *LedgerControllerMockRecorder) Commit(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*LedgerController)(nil).Commit), ctx)
 }
 
 // CountAccounts mocks base method.
@@ -307,6 +336,20 @@ func (m *LedgerController) RevertTransaction(ctx context.Context, parameters led
 func (mr *LedgerControllerMockRecorder) RevertTransaction(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*LedgerController)(nil).RevertTransaction), ctx, parameters)
+}
+
+// Rollback mocks base method.
+func (m *LedgerController) Rollback(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Rollback", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Rollback indicates an expected call of Rollback.
+func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*LedgerController)(nil).Rollback), ctx)
 }
 
 // SaveAccountMetadata mocks base method.

@@ -35,6 +35,7 @@ generate:
     RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
     COPY (+tidy/*) /src/
     COPY --dir (+sources/src/*) /src/
+
     WORKDIR /src
     RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal

@@ -27,9 +27,12 @@ type Balance struct {
 type BalanceQuery = vm.BalanceQuery
 type Balances = vm.Balances
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . TX
-type TX interface {
-	GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error)
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . Store
+type Store interface {
+	BeginTX(ctx context.Context, options *sql.TxOptions) error
+	Commit() error
+	Rollback() error
+
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query BalanceQuery) (Balances, error)
 	CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error
@@ -48,11 +51,7 @@ type TX interface {
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
 	LockLedger(ctx context.Context) error
-	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
-}
 
-type Store interface {
-	WithTX(context.Context, *sql.TxOptions, func(TX) (bool, error)) error
 	GetDB() bun.IDB
 	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 	ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error)
@@ -272,11 +271,11 @@ func NewListLogsQuery(options PaginatedQueryOptions[any]) GetLogsQuery {
 }
 
 type vmStoreAdapter struct {
-	TX
+	Store
 }
 
 func (v *vmStoreAdapter) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
-	account, err := v.TX.GetAccount(ctx, NewGetAccountQuery(address))
+	account, err := v.Store.GetAccount(ctx, NewGetAccountQuery(address))
 	if err != nil {
 		return nil, err
 	}
@@ -285,9 +284,9 @@ func (v *vmStoreAdapter) GetAccount(ctx context.Context, address string) (*ledge
 
 var _ vm.Store = (*vmStoreAdapter)(nil)
 
-func newVmStoreAdapter(tx TX) *vmStoreAdapter {
+func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	return &vmStoreAdapter{
-		TX: tx,
+		Store: tx,
 	}
 }
 
@@ -303,21 +302,22 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 
 var _ numscript.Store = (*numscriptRewriteAdapter)(nil)
 
-func newNumscriptRewriteAdapter(tx TX) *numscriptRewriteAdapter {
+func newNumscriptRewriteAdapter(store Store) *numscriptRewriteAdapter {
 	return &numscriptRewriteAdapter{
-		TX: tx,
+		Store: store,
 	}
 }
 
 type numscriptRewriteAdapter struct {
-	TX TX
+	Store Store
 }
 
 func (s *numscriptRewriteAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
-	vmBalances, err := s.TX.GetBalances(ctx, BalanceQuery(q))
+	vmBalances, err := s.Store.GetBalances(ctx, BalanceQuery(q))
 	if err != nil {
 		return nil, err
 	}
+
 	return numscript.Balances(vmBalances), nil
 }
 
@@ -326,7 +326,7 @@ func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q num
 
 	// we ignore the needed metadata values and just return all of them
 	for address := range q {
-		v, err := s.TX.GetAccount(ctx, GetAccountQuery{
+		v, err := s.Store.GetAccount(ctx, GetAccountQuery{
 			Addr: address,
 		})
 		if err != nil {

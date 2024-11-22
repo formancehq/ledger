@@ -3,6 +3,7 @@
 package test_suite
 
 import (
+	"github.com/formancehq/go-libs/v2/pointer"
 	"math/big"
 	"time"
 
@@ -159,9 +160,11 @@ var _ = Context("Ledger engine tests", func() {
 					now          = time.Now().Round(time.Microsecond).UTC()
 					err          error
 					bulkResponse []components.V2BulkElementResult
+					atomic       bool
 				)
-				BeforeEach(func() {
+				JustBeforeEach(func() {
 					bulkResponse, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+						Atomic: pointer.For(atomic),
 						RequestBody: []components.V2BulkElement{
 							components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 								Data: &components.V2PostTransaction{
@@ -192,8 +195,11 @@ var _ = Context("Ledger engine tests", func() {
 					})
 					Expect(err).To(Succeed())
 				})
-				It("should respond with an error", func() {
+				shouldRespondWithAnError := func() {
+					GinkgoHelper()
+
 					var expectedErr string
+					// todo: must be fixed before switch to the new implementation
 					if data.numscriptRewrite {
 						expectedErr = "INTERPRETER_RUNTIME"
 					} else {
@@ -201,9 +207,33 @@ var _ = Context("Ledger engine tests", func() {
 					}
 					Expect(bulkResponse[1].Type).To(Equal(components.V2BulkElementResultType("ERROR")))
 					Expect(bulkResponse[1].V2BulkElementResultError.ErrorCode).To(Equal(expectedErr))
+				}
+				It("should respond with an error", func() {
+					shouldRespondWithAnError()
+
+					By("should have created the first item", func() {
+						txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+							Ledger: "default",
+						})
+						Expect(err).To(Succeed())
+						Expect(txs.Data).To(HaveLen(1))
+					})
+				})
+				Context("with atomic", func() {
+					BeforeEach(func() {
+						atomic = true
+					})
+					It("should not commit anything", func() {
+						shouldRespondWithAnError()
+
+						txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+							Ledger: "default",
+						})
+						Expect(err).To(Succeed())
+						Expect(txs.Data).To(HaveLen(0))
+					})
 				})
 			})
 		})
 	}
-
 })

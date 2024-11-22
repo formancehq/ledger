@@ -279,6 +279,18 @@ paths:
           schema:
             type: string
             example: ledger001
+        - name: continueOnFailure
+          in: query
+          description: Continue on failure
+          schema:
+              type: boolean
+              example: true
+        - name: atomic
+          in: query
+          description: Make bulk atomic
+          schema:
+            type: boolean
+            example: true
       requestBody:
         content:
           application/json:

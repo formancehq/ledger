@@ -13,60 +13,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type TX struct {
-	newStore    *ledgerstore.Store
-	legacyStore *Store
-	sqlTX       bun.Tx
-}
-
-func (tx TX) GetAccount(ctx context.Context, query ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
-	return tx.legacyStore.GetAccountWithVolumes(ctx, query)
-}
-
-func (tx TX) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
-	return tx.newStore.GetBalances(ctx, query)
-}
-
-func (tx TX) CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error {
-	return tx.newStore.CommitTransaction(ctx, transaction)
-}
-
-func (tx TX) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {
-	return tx.newStore.RevertTransaction(ctx, id, at)
-}
-
-func (tx TX) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error) {
-	return tx.newStore.UpdateTransactionMetadata(ctx, transactionID, m)
-}
-
-func (tx TX) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error) {
-	return tx.newStore.DeleteTransactionMetadata(ctx, transactionID, key)
-}
-
-func (tx TX) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
-	return tx.newStore.UpdateAccountsMetadata(ctx, m)
-}
-
-func (tx TX) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
-	return tx.newStore.UpsertAccount(ctx, account)
-}
-
-func (tx TX) DeleteAccountMetadata(ctx context.Context, address, key string) error {
-	return tx.newStore.DeleteAccountMetadata(ctx, address, key)
-}
-
-func (tx TX) InsertLog(ctx context.Context, log *ledger.Log) error {
-	return tx.newStore.InsertLog(ctx, log)
-}
-
-func (tx TX) LockLedger(ctx context.Context) error {
-	return tx.newStore.LockLedger(ctx)
-}
-
-func (tx TX) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	return tx.legacyStore.GetLogs(ctx, q)
-}
-
 type DefaultStoreAdapter struct {
 	newStore    *ledgerstore.Store
 	legacyStore *Store
@@ -74,6 +20,46 @@ type DefaultStoreAdapter struct {
 
 func (d *DefaultStoreAdapter) GetDB() bun.IDB {
 	return d.newStore.GetDB()
+}
+
+func (d *DefaultStoreAdapter) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
+	return d.newStore.GetBalances(ctx, query)
+}
+
+func (d *DefaultStoreAdapter) CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error {
+	return d.newStore.CommitTransaction(ctx, transaction)
+}
+
+func (d *DefaultStoreAdapter) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {
+	return d.newStore.RevertTransaction(ctx, id, at)
+}
+
+func (d *DefaultStoreAdapter) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error) {
+	return d.newStore.UpdateTransactionMetadata(ctx, transactionID, m)
+}
+
+func (d *DefaultStoreAdapter) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error) {
+	return d.newStore.DeleteTransactionMetadata(ctx, transactionID, key)
+}
+
+func (d *DefaultStoreAdapter) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
+	return d.newStore.UpdateAccountsMetadata(ctx, m)
+}
+
+func (d *DefaultStoreAdapter) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
+	return d.newStore.UpsertAccount(ctx, account)
+}
+
+func (d *DefaultStoreAdapter) DeleteAccountMetadata(ctx context.Context, address, key string) error {
+	return d.newStore.DeleteAccountMetadata(ctx, address, key)
+}
+
+func (d *DefaultStoreAdapter) InsertLog(ctx context.Context, log *ledger.Log) error {
+	return d.newStore.InsertLog(ctx, log)
+}
+
+func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) error {
+	return d.newStore.LockLedger(ctx)
 }
 
 func (d *DefaultStoreAdapter) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
@@ -124,30 +110,23 @@ func (d *DefaultStoreAdapter) GetMigrationsInfo(ctx context.Context) ([]migratio
 	return d.newStore.GetMigrationsInfo(ctx)
 }
 
-func (d *DefaultStoreAdapter) WithTX(ctx context.Context, opts *sql.TxOptions, f func(ledgercontroller.TX) (bool, error)) error {
-	if opts == nil {
-		opts = &sql.TxOptions{}
-	}
-
-	tx, err := d.newStore.GetDB().BeginTx(ctx, opts)
+func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) error {
+	err := d.newStore.BeginTX(ctx, opts)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
 
-	if commit, err := f(&TX{
-		newStore:    d.newStore.WithDB(tx),
-		legacyStore: d.legacyStore.WithDB(tx),
-		sqlTX:       tx,
-	}); err != nil {
-		return err
-	} else if commit {
-		return tx.Commit()
-	}
+	d.legacyStore = d.legacyStore.WithDB(d.newStore.GetDB())
 
 	return nil
+}
+
+func (d *DefaultStoreAdapter) Commit() error {
+	return d.newStore.Commit()
+}
+
+func (d *DefaultStoreAdapter) Rollback() error {
+	return d.newStore.Rollback()
 }
 
 func NewDefaultStoreAdapter(store *ledgerstore.Store) *DefaultStoreAdapter {

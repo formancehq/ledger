@@ -29,33 +29,41 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	var (
 		output *OUTPUT
 		log    ledger.Log
 	)
-	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
-		output, err = fn(ctx, tx, parameters)
-		if err != nil {
-			return false, err
-		}
-		log = ledger.NewLog(*output)
-		log.IdempotencyKey = parameters.IdempotencyKey
-		log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
+	if err := store.BeginTX(ctx, nil); err != nil {
+		return nil, nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer func() {
+		_ = store.Rollback()
+	}()
 
-		err = tx.InsertLog(ctx, &log)
-		if err != nil {
-			return false, fmt.Errorf("failed to insert log: %w", err)
-		}
-		logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
+	output, err := fn(ctx, store, parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+	log = ledger.NewLog(*output)
+	log.IdempotencyKey = parameters.IdempotencyKey
+	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
 
-		if parameters.DryRun {
-			return false, nil
-		}
+	err = store.InsertLog(ctx, &log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to insert log: %w", err)
+	}
+	logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
 
-		return true, nil
-	})
+	if parameters.DryRun {
+		return &log, output, nil
+	}
+
+	if err := store.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return &log, output, err
 }
 
@@ -63,7 +71,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
 		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)

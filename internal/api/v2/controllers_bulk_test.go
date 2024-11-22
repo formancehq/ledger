@@ -349,9 +349,76 @@ func TestBulk(t *testing.T) {
 			}},
 			expectError: true,
 		},
+		{
+			name: "with atomic",
+			body: `[
+				{
+					"action": "ADD_METADATA",
+					"data": {
+						"targetId": "world",
+						"targetType": "ACCOUNT",
+						"metadata": {
+							"foo": "bar"
+						}			
+					}
+				},
+				{
+					"action": "ADD_METADATA",
+					"data": {
+						"targetId": "world",
+						"targetType": "ACCOUNT",
+						"metadata": {
+							"foo2": "bar2"
+						}			
+					}
+				}
+			]`,
+			queryParams: map[string][]string{
+				"atomic": {"true"},
+			},
+			expectations: func(mockLedger *LedgerController) {
+				mockLedger.EXPECT().
+					BeginTX(gomock.Any(), nil).
+					Return(nil)
+
+				mockLedger.EXPECT().
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo": "bar",
+							},
+						},
+					}).
+					Return(&ledger.Log{}, nil)
+
+				mockLedger.EXPECT().
+					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+						Input: ledgercontroller.SaveAccountMetadata{
+							Address: "world",
+							Metadata: metadata.Metadata{
+								"foo2": "bar2",
+							},
+						},
+					}).
+					Return(&ledger.Log{}, nil)
+
+				mockLedger.EXPECT().
+					Commit(gomock.Any()).
+					Return(nil)
+
+				mockLedger.EXPECT().
+					Rollback(gomock.Any()).
+					Return(nil)
+			},
+			expectResults: []Result{{
+				ResponseType: ActionAddMetadata,
+			}, {
+				ResponseType: ActionAddMetadata,
+			}},
+		},
 	}
 	for _, testCase := range testCases {
-		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 
 			systemController, ledgerController := newTestingSystemController(t, true)
