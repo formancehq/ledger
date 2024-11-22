@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
@@ -23,7 +23,7 @@ func TestMigrations(t *testing.T) {
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
 
-	require.NoError(t, driver.Migrate(ctx, db))
+	require.NoError(t, system.Migrate(ctx, db))
 	if testing.Verbose() {
 		db.AddQueryHook(bundebug.NewQueryHook())
 	}

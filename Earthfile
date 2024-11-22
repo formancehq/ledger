@@ -66,15 +66,17 @@ tests:
     CACHE --id go-mod-cache /go/pkg/mod
     CACHE --id go-cache /root/.cache/go-build
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
+    RUN apk add gcc musl-dev
+
     COPY --dir --pass-args (+generate/*) .
 
     ARG includeIntegrationTests="true"
     ARG coverage=""
     ARG debug=false
+    ARG additionalArgs=""
 
     ENV DEBUG=$debug
     ENV CGO_ENABLED=1 # required for -race
-    RUN apk add gcc musl-dev
 
     LET goFlags="-race"
     IF [ "$coverage" = "true" ]
@@ -90,10 +92,10 @@ tests:
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
         WITH DOCKER --load=postgres:15-alpine=+postgres
-            RUN go test $goFlags ./...
+            RUN go test $goFlags $additionalArgs ./...
         END
     ELSE
-        RUN go test $goFlags ./...
+        RUN go test $goFlags $additionalArgs ./...
     END
     IF [ "$coverage" = "true" ]
         # as special case, exclude files suffixed by debug.go

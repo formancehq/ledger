@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"os"
 	"testing"
 
@@ -60,7 +60,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		bunDB, err := bunconnect.OpenSQLDB(context.Background(), templateDatabase.ConnectionOptions())
 		Expect(err).To(BeNil())
 
-		err = driver.Migrate(context.Background(), bunDB)
+		err = system.Migrate(context.Background(), bunDB)
 		Expect(err).To(BeNil())
 
 		// Initialize the _default bucket on the default database

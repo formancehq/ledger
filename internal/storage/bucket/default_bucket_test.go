@@ -5,7 +5,7 @@ package bucket_test
 import (
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/trace/noop"
 	"testing"
 
@@ -28,8 +28,8 @@ func TestBuckets(t *testing.T) {
 		db.AddQueryHook(bundebug.NewQueryHook())
 	}
 
-	require.NoError(t, driver.Migrate(ctx, db))
+	require.NoError(t, system.Migrate(ctx, db))
 
-	b := bucket.New(db, name)
-	require.NoError(t, b.Migrate(ctx, noop.Tracer{}, make(chan struct{})))
+	b := bucket.NewDefault(db, noop.Tracer{}, name)
+	require.NoError(t, b.Migrate(ctx, make(chan struct{})))
 }

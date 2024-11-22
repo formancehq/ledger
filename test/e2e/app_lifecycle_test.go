@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
@@ -179,7 +179,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			bunDB, err := bunconnect.OpenSQLDB(ctx, db.GetValue().ConnectionOptions())
 			Expect(err).To(BeNil())
 
-			Expect(driver.Migrate(ctx, bunDB)).To(BeNil())
+			Expect(system.Migrate(ctx, bunDB)).To(BeNil())
 
 			_, err = bunDB.NewInsert().
 				Model(pointer.For(ledger.MustNewWithDefault(ledgerName))).

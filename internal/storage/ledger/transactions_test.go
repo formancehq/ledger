@@ -7,9 +7,13 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	driver "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
 	"slices"
 	"testing"
@@ -188,7 +192,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get from database and check metadata presence
-	tx, err := store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx1.ID))
+	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID))
 	require.NoError(t, err)
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"})
 
@@ -197,7 +201,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	tx, err = store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx1.ID))
+	tx, err = store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID))
 	require.NoError(t, err)
 	require.Equal(t, metadata.Metadata{"foo2": "bar2"}, tx.Metadata)
 
@@ -610,22 +614,36 @@ func TestTransactionsInsert(t *testing.T) {
 	t.Run("check reference conflict with minimal store version", func(t *testing.T) {
 		t.Parallel()
 
-		driver := newDriver(t)
+		// Waiting for the pg server to be ready
+		<-srv.Done()
+
+		// Create a dedicated database for this test as we want to run migrations only until the minimal schema version
+		db := srv.GetValue().NewDatabase(t)
+		bunDB, err := bunconnect.OpenSQLDB(ctx, db.ConnectionOptions())
+		require.NoError(t, err)
+
+		driver := driver.New(
+			ledgerstore.NewFactory(bunDB),
+			systemstore.New(bunDB),
+			bucket.NewDefaultFactory(bunDB),
+		)
+		require.NoError(t, driver.Initialize(ctx))
+
 		ledgerName := uuid.NewString()[:8]
 
 		l := ledger.MustNewWithDefault(ledgerName)
 		l.Bucket = ledgerName
 
-		migrator := bucket.GetMigrator(driver.GetDB(), ledgerName)
+		migrator := bucket.GetMigrator(bunDB, ledgerName)
 		for i := 0; i < bucket.MinimalSchemaVersion; i++ {
 			require.NoError(t, migrator.UpByOne(ctx))
 		}
 
-		b := bucket.New(driver.GetDB(), ledgerName)
-		err := b.AddLedger(ctx, l, driver.GetDB())
+		b := bucket.NewDefault(bunDB, noop.Tracer{}, ledgerName)
+		err = b.AddLedger(ctx, l)
 		require.NoError(t, err)
 
-		store := ledgerstore.New(driver.GetDB(), b, l)
+		store := ledgerstore.New(bunDB, b, l)
 
 		const nbTry = 100
 

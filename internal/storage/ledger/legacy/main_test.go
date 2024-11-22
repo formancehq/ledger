@@ -7,9 +7,9 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	systemstore "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/ledger/legacy"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/trace/noop"
 	"os"
 	"testing"
@@ -68,9 +68,9 @@ func newLedgerStore(t T) *testStore {
 
 	l := ledger.MustNewWithDefault(ledgerName)
 
-	b := bucket.New(db, ledger.DefaultBucket)
-	require.NoError(t, b.Migrate(ctx, noop.Tracer{}, make(chan struct{})))
-	require.NoError(t, b.AddLedger(ctx, l, db))
+	b := bucket.NewDefault(db, noop.Tracer{}, ledger.DefaultBucket)
+	require.NoError(t, b.Migrate(ctx, make(chan struct{})))
+	require.NoError(t, b.AddLedger(ctx, l))
 
 	return &testStore{
 		Store:    legacy.New(db, ledger.DefaultBucket, l.Name),

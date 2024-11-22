@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/httpserver"
 	"github.com/formancehq/go-libs/v2/otlp"
-	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
 
@@ -137,7 +137,7 @@ func NewServeCommand() *cobra.Command {
 	otlptraces.AddFlags(cmd.Flags())
 	auth.AddFlags(cmd.Flags())
 	publish.AddFlags(ServiceName, cmd.Flags(), func(cd *publish.ConfigDefault) {
-		cd.PublisherCircuitBreakerSchema = driver.SchemaSystem
+		cd.PublisherCircuitBreakerSchema = systemstore.SchemaSystem
 	})
 	iam.AddFlags(cmd.Flags())
 
