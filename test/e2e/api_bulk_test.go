@@ -4,6 +4,10 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v2/pointer"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/bus"
+	ledgerevents "github.com/formancehq/ledger/pkg/events"
+	"github.com/nats-io/nats.go"
 	"math/big"
 	"time"
 
@@ -25,14 +29,16 @@ var _ = Context("Ledger engine tests", func() {
 		numscriptRewrite bool
 	}{
 		{"default", false},
-		//{"numscript rewrite", true},
+		{"numscript rewrite", true},
 	} {
 
 		Context(data.description, func() {
 			var (
-				db          = UseTemplatedDatabase()
-				ctx         = logging.TestingContext()
-				bulkMaxSize = 5
+				db           = UseTemplatedDatabase()
+				ctx          = logging.TestingContext()
+				events       chan *nats.Msg
+				bulkResponse []components.V2BulkElementResult
+				bulkMaxSize  = 5
 			)
 
 			testServer := NewTestServer(func() Configuration {
@@ -50,12 +56,14 @@ var _ = Context("Ledger engine tests", func() {
 					Ledger: "default",
 				})
 				Expect(err).To(BeNil())
+				events = Subscribe(GinkgoT(), testServer.GetValue())
 			})
 			When("creating a bulk on a ledger", func() {
 				var (
-					now   = time.Now().Round(time.Microsecond).UTC()
-					items []components.V2BulkElement
-					err   error
+					now    = time.Now().Round(time.Microsecond).UTC()
+					items  []components.V2BulkElement
+					err    error
+					atomic bool
 				)
 				BeforeEach(func() {
 					items = []components.V2BulkElement{
@@ -96,12 +104,13 @@ var _ = Context("Ledger engine tests", func() {
 					}
 				})
 				JustBeforeEach(func() {
-					_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+					bulkResponse, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+						Atomic:      pointer.For(atomic),
 						RequestBody: items,
 						Ledger:      "default",
 					})
 				})
-				It("should be ok", func() {
+				shouldBeOk := func() {
 					Expect(err).To(Succeed())
 
 					tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
@@ -131,6 +140,19 @@ var _ = Context("Ledger engine tests", func() {
 						Timestamp:  now,
 						InsertedAt: tx.InsertedAt,
 					}))
+					By("It should send events", func() {
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions)))
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata)))
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeDeletedMetadata)))
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction)))
+					})
+				}
+				It("should be ok", shouldBeOk)
+				Context("with atomic", func() {
+					BeforeEach(func() {
+						atomic = true
+					})
+					It("should be ok", shouldBeOk)
 				})
 				Context("with exceeded batch size", func() {
 					BeforeEach(func() {
@@ -157,10 +179,9 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			When("creating a bulk with an error on a ledger", func() {
 				var (
-					now          = time.Now().Round(time.Microsecond).UTC()
-					err          error
-					bulkResponse []components.V2BulkElementResult
-					atomic       bool
+					now    = time.Now().Round(time.Microsecond).UTC()
+					err    error
+					atomic bool
 				)
 				JustBeforeEach(func() {
 					bulkResponse, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
@@ -218,6 +239,15 @@ var _ = Context("Ledger engine tests", func() {
 						Expect(err).To(Succeed())
 						Expect(txs.Data).To(HaveLen(1))
 					})
+
+					By("Should have sent one event", func() {
+						Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+							Ledger:          "default",
+							Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&bulkResponse[0].V2BulkElementResultCreateTransaction.Data)},
+							AccountMetadata: ledger.AccountMetadata{},
+						}))))
+						Eventually(events).ShouldNot(Receive())
+					})
 				})
 				Context("with atomic", func() {
 					BeforeEach(func() {
@@ -231,6 +261,10 @@ var _ = Context("Ledger engine tests", func() {
 						})
 						Expect(err).To(Succeed())
 						Expect(txs.Data).To(HaveLen(0))
+
+						By("Should not have sent any event", func() {
+							Eventually(events).ShouldNot(Receive())
+						})
 					})
 				})
 			})
