@@ -14,8 +14,9 @@ import (
 )
 
 type DefaultStoreAdapter struct {
-	newStore    *ledgerstore.Store
-	legacyStore *Store
+	newStore       *ledgerstore.Store
+	legacyStore    *Store
+	isFullUpToDate bool
 }
 
 func (d *DefaultStoreAdapter) GetDB() bun.IDB {
@@ -63,7 +64,11 @@ func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) error {
 }
 
 func (d *DefaultStoreAdapter) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	return d.legacyStore.GetLogs(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetLogs(ctx, q)
+	}
+
+	return d.newStore.ListLogs(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error) {
@@ -71,35 +76,67 @@ func (d *DefaultStoreAdapter) ReadLogWithIdempotencyKey(ctx context.Context, ik 
 }
 
 func (d *DefaultStoreAdapter) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return d.legacyStore.GetTransactions(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetTransactions(ctx, q)
+	}
+
+	return d.newStore.ListTransactions(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) CountTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (int, error) {
-	return d.legacyStore.CountTransactions(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.CountTransactions(ctx, q)
+	}
+
+	return d.newStore.CountTransactions(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) GetTransaction(ctx context.Context, query ledgercontroller.GetTransactionQuery) (*ledger.Transaction, error) {
-	return d.legacyStore.GetTransactionWithVolumes(ctx, query)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetTransactionWithVolumes(ctx, query)
+	}
+
+	return d.newStore.GetTransaction(ctx, query)
 }
 
 func (d *DefaultStoreAdapter) CountAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (int, error) {
-	return d.legacyStore.CountAccounts(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.CountAccounts(ctx, q)
+	}
+
+	return d.newStore.CountAccounts(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
-	return d.legacyStore.GetAccountsWithVolumes(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetAccountsWithVolumes(ctx, q)
+	}
+
+	return d.newStore.ListAccounts(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
-	return d.legacyStore.GetAccountWithVolumes(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetAccountWithVolumes(ctx, q)
+	}
+
+	return d.newStore.GetAccount(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
-	return d.legacyStore.GetAggregatedBalances(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetAggregatedBalances(ctx, q)
+	}
+
+	return d.newStore.GetAggregatedBalances(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-	return d.legacyStore.GetVolumesWithBalances(ctx, q)
+	if !d.isFullUpToDate {
+		return d.legacyStore.GetVolumesWithBalances(ctx, q)
+	}
+
+	return d.newStore.GetVolumesWithBalances(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) IsUpToDate(ctx context.Context) (bool, error) {
@@ -132,10 +169,11 @@ func (d *DefaultStoreAdapter) Rollback() error {
 	return d.newStore.Rollback()
 }
 
-func NewDefaultStoreAdapter(store *ledgerstore.Store) *DefaultStoreAdapter {
+func NewDefaultStoreAdapter(isFullUpToDate bool, store *ledgerstore.Store) *DefaultStoreAdapter {
 	return &DefaultStoreAdapter{
-		newStore:    store,
-		legacyStore: New(store.GetDB(), store.GetLedger().Bucket, store.GetLedger().Name),
+		isFullUpToDate: isFullUpToDate,
+		newStore:       store,
+		legacyStore:    New(store.GetDB(), store.GetLedger().Bucket, store.GetLedger().Name),
 	}
 }
 

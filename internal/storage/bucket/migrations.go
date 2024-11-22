@@ -15,11 +15,11 @@ var MigrationsFS embed.FS
 func GetMigrator(db *bun.DB, name string, options ...migrations.Option) *migrations.Migrator {
 	options = append(options, migrations.WithSchema(name))
 	migrator := migrations.NewMigrator(db, options...)
-	_migrations, err := migrations.CollectMigrations(MigrationsFS, name)
+	migrations, err := migrations.CollectMigrations(MigrationsFS, name)
 	if err != nil {
 		panic(err)
 	}
-	migrator.RegisterMigrations(_migrations...)
+	migrator.RegisterMigrations(migrations...)
 
 	return migrator
 }

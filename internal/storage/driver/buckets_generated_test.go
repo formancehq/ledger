@@ -82,6 +82,21 @@ func (mr *MockBucketMockRecorder) HasMinimalVersion(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasMinimalVersion", reflect.TypeOf((*MockBucket)(nil).HasMinimalVersion), ctx)
 }
 
+// IsUpToDate mocks base method.
+func (m *MockBucket) IsUpToDate(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsUpToDate", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsUpToDate indicates an expected call of IsUpToDate.
+func (mr *MockBucketMockRecorder) IsUpToDate(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUpToDate", reflect.TypeOf((*MockBucket)(nil).IsUpToDate), ctx)
+}
+
 // Migrate mocks base method.
 func (m *MockBucket) Migrate(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
 	m.ctrl.T.Helper()

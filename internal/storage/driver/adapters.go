@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -19,7 +20,12 @@ func (d *DefaultStorageDriverAdapter) OpenLedger(ctx context.Context, name strin
 		return nil, nil, err
 	}
 
-	return ledgerstore.NewDefaultStoreAdapter(store), l, nil
+	isUpToDate, err := store.GetBucket().IsUpToDate(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("checking if bucket is up to date: %w", err)
+	}
+
+	return ledgerstore.NewDefaultStoreAdapter(isUpToDate, store), l, nil
 }
 
 func (d *DefaultStorageDriverAdapter) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
