@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -51,7 +53,28 @@ func (s *GeneratorSet) Run(ctx context.Context) error {
 					}
 					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
 				}
-				if s.untilLogID != 0 && uint64(ret.GetLogID()) >= s.untilLogID {
+				maxLogID := collectionutils.Reduce(ret, func(acc int64, r components.V2BulkElementResult) int64 {
+					var logID int64
+					switch r.Type {
+					case components.V2BulkElementResultTypeCreateTransaction:
+						logID = r.V2BulkElementResultCreateTransaction.LogID
+					case components.V2BulkElementResultTypeAddMetadata:
+						logID = r.V2BulkElementResultAddMetadata.LogID
+					case components.V2BulkElementResultTypeDeleteMetadata:
+						logID = r.V2BulkElementResultDeleteMetadata.LogID
+					case components.V2BulkElementResultTypeRevertTransaction:
+						logID = r.V2BulkElementResultRevertTransaction.LogID
+					default:
+						panic(fmt.Sprintf("unexpected result type: %s", r.Type))
+					}
+
+					if logID > acc {
+						return logID
+					}
+					return acc
+				}, 0)
+
+				if s.untilLogID != 0 && uint64(maxLogID) >= s.untilLogID {
 					return nil
 				}
 				iteration++
