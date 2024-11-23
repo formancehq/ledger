@@ -126,7 +126,12 @@ func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOn
 	return results, nil
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic bool) (BulkResult, error) {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ... BulkOption) (BulkResult, error) {
+
+	bulkOptions := BulkOptions{}
+	for _, option := range providedOptions {
+		option(&bulkOptions)
+	}
 
 	for i, element := range bulk {
 		switch element.Action {
@@ -154,7 +159,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic b
 	}
 
 	ctrl := b.ctrl
-	if atomic {
+	if bulkOptions.Atomic {
 		var err error
 		ctrl, err = ctrl.BeginTX(ctx, nil)
 		if err != nil {
@@ -162,9 +167,9 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic b
 		}
 	}
 
-	results, err := b.run(ctx, ctrl, bulk, continueOnFailure)
+	results, err := b.run(ctx, ctrl, bulk, bulkOptions.ContinueOnFailure)
 	if err != nil {
-		if atomic {
+		if bulkOptions.Atomic {
 			if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 			}
@@ -173,7 +178,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic b
 		return nil, fmt.Errorf("error running bulk: %s", err)
 	}
 
-	if atomic {
+	if bulkOptions.Atomic {
 		if results.HasErrors() {
 			if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
@@ -330,4 +335,23 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 
 func NewBulker(ctrl Controller) *Bulker {
 	return &Bulker{ctrl: ctrl}
+}
+
+type BulkOptions struct {
+	ContinueOnFailure bool
+	Atomic            bool
+}
+
+type BulkOption func(*BulkOptions)
+
+func WithContinueOnFailure(v bool) BulkOption {
+	return func(options *BulkOptions) {
+		options.ContinueOnFailure = v
+	}
+}
+
+func WithAtomic(v bool) BulkOption {
+	return func(options *BulkOptions) {
+		options.Atomic = v
+	}
 }

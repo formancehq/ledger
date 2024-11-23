@@ -31,8 +31,8 @@ func bulkHandler(bulkMaxSize int) http.HandlerFunc {
 		bulker := ledgercontroller.NewBulker(ledgerController)
 		results, err := bulker.Run(r.Context(),
 			b,
-			api.QueryParamBool(r, "continueOnFailure"),
-			api.QueryParamBool(r, "atomic"),
+			ledgercontroller.WithContinueOnFailure(api.QueryParamBool(r, "continueOnFailure")),
+			ledgercontroller.WithAtomic(api.QueryParamBool(r, "atomic")),
 		)
 		if err != nil {
 			api.InternalServerError(w, r, err)
