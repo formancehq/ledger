@@ -412,17 +412,21 @@ func (mr *MockStoreMockRecorder) UpdateTransactionMetadata(ctx, transactionID, m
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTransactionMetadata", reflect.TypeOf((*MockStore)(nil).UpdateTransactionMetadata), ctx, transactionID, m)
 }
 
-// UpsertAccount mocks base method.
-func (m *MockStore) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
+// UpsertAccounts mocks base method.
+func (m *MockStore) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertAccount", ctx, account)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	varargs := []any{ctx}
+	for _, a := range accounts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpsertAccounts", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-// UpsertAccount indicates an expected call of UpsertAccount.
-func (mr *MockStoreMockRecorder) UpsertAccount(ctx, account any) *gomock.Call {
+// UpsertAccounts indicates an expected call of UpsertAccounts.
+func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertAccount", reflect.TypeOf((*MockStore)(nil).UpsertAccount), ctx, account)
+	varargs := append([]any{ctx}, accounts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertAccounts", reflect.TypeOf((*MockStore)(nil).UpsertAccounts), varargs...)
 }

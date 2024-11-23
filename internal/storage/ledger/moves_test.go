@@ -38,7 +38,7 @@ func TestMovesInsert(t *testing.T) {
 		account := &ledger.Account{
 			Address: "world",
 		}
-		_, err := store.UpsertAccount(ctx, account)
+		err := store.UpsertAccounts(ctx, account)
 		require.NoError(t, err)
 
 		now := time.Now()

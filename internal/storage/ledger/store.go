@@ -31,9 +31,9 @@ type Store struct {
 	getAccountHistogram                metric.Int64Histogram
 	countAccountsHistogram             metric.Int64Histogram
 	updateAccountsMetadataHistogram    metric.Int64Histogram
-	deleteAccountMetadataHistogram     metric.Int64Histogram
-	upsertAccountHistogram             metric.Int64Histogram
-	getBalancesHistogram               metric.Int64Histogram
+	deleteAccountMetadataHistogram metric.Int64Histogram
+	upsertAccountsHistogram        metric.Int64Histogram
+	getBalancesHistogram           metric.Int64Histogram
 	insertLogHistogram                 metric.Int64Histogram
 	listLogsHistogram                  metric.Int64Histogram
 	readLogWithIdempotencyKeyHistogram metric.Int64Histogram
@@ -154,7 +154,7 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 		panic(err)
 	}
 
-	ret.upsertAccountHistogram, err = ret.meter.Int64Histogram("store.upsertAccount")
+	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsertAccounts")
 	if err != nil {
 		panic(err)
 	}

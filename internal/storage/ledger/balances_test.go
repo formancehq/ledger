@@ -33,7 +33,7 @@ func TestBalancesGet(t *testing.T) {
 		UpdatedAt:     time.Now(),
 		FirstUsage:    time.Now(),
 	}
-	_, err := store.UpsertAccount(ctx, world)
+	err := store.UpsertAccounts(ctx, world)
 	require.NoError(t, err)
 
 	_, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
@@ -146,7 +146,7 @@ func TestBalancesGet(t *testing.T) {
 			InsertionDate: tx.InsertedAt,
 			UpdatedAt:     tx.InsertedAt,
 		}
-		_, err = store.UpsertAccount(ctx, &bankAccount)
+		err = store.UpsertAccounts(ctx, &bankAccount)
 		require.NoError(t, err)
 
 		err = store.InsertMoves(ctx, &ledger.Move{

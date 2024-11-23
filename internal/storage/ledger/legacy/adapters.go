@@ -46,8 +46,8 @@ func (d *DefaultStoreAdapter) UpdateAccountsMetadata(ctx context.Context, m map[
 	return d.newStore.UpdateAccountsMetadata(ctx, m)
 }
 
-func (d *DefaultStoreAdapter) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
-	return d.newStore.UpsertAccount(ctx, account)
+func (d *DefaultStoreAdapter) UpsertAccounts(ctx context.Context, accounts ... *ledger.Account) error {
+	return d.newStore.UpsertAccounts(ctx, accounts...)
 }
 
 func (d *DefaultStoreAdapter) DeleteAccountMetadata(ctx context.Context, address, key string) error {

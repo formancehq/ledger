@@ -255,7 +255,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	}
 
 	for _, address := range tx.InvolvedAccounts() {
-		_, err := s.UpsertAccount(ctx, &ledger.Account{
+		err := s.UpsertAccounts(ctx, &ledger.Account{
 			Address:    address,
 			FirstUsage: tx.Timestamp,
 			Metadata:   make(metadata.Metadata),
