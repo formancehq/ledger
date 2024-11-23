@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/formancehq/go-libs/v2/api"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -66,6 +67,7 @@ func NewRouter(
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithMiddlewares(commonMiddlewares...),
 		v2.WithBulkMaxSize(routerOptions.bulkMaxSize),
+		v2.WithBulkerFactory(routerOptions.bulkerFactory),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -84,8 +86,9 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer      trace.Tracer
-	bulkMaxSize int
+	tracer        trace.Tracer
+	bulkMaxSize   int
+	bulkerFactory ledgercontroller.BulkerFactory
 }
 
 type RouterOption func(ro *routerOptions)
@@ -99,6 +102,12 @@ func WithTracer(tracer trace.Tracer) RouterOption {
 func WithBulkMaxSize(bulkMaxSize int) RouterOption {
 	return func(ro *routerOptions) {
 		ro.bulkMaxSize = bulkMaxSize
+	}
+}
+
+func WithBulkerFactory(bf ledgercontroller.BulkerFactory) RouterOption {
+	return func(ro *routerOptions) {
+		ro.bulkerFactory = bf
 	}
 }
 

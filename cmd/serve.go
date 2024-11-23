@@ -41,6 +41,7 @@ const (
 	AutoUpgradeFlag            = "auto-upgrade"
 	ExperimentalFeaturesFlag   = "experimental-features"
 	BulkMaxSizeFlag            = "bulk-max-size"
+	BulkParallelFlag           = "bulk-parallel"
 	NumscriptInterpreterFlag   = "experimental-numscript-interpreter"
 )
 
@@ -63,6 +64,11 @@ func NewServeCommand() *cobra.Command {
 			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
 
 			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
+			if err != nil {
+				return err
+			}
+
+			bulkParallel, err := cmd.Flags().GetInt(BulkParallelFlag)
 			if err != nil {
 				return err
 			}
@@ -90,9 +96,12 @@ func NewServeCommand() *cobra.Command {
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
 				api.Module(api.Config{
-					Version:     Version,
-					Debug:       service.IsDebug(cmd),
-					BulkMaxSize: bulkMaxSize,
+					Version: Version,
+					Debug:   service.IsDebug(cmd),
+					Bulk: api.BulkConfig{
+						MaxSize:  bulkMaxSize,
+						Parallel: bulkParallel,
+					},
 				}),
 				fx.Decorate(func(
 					params struct {
@@ -129,6 +138,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
+	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 
 	service.AddFlags(cmd.Flags())

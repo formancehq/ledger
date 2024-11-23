@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/ledger/internal/controller/ledger"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
@@ -52,7 +53,7 @@ func NewRouter(
 			router.With(common.LedgerMiddleware(systemController, func(r *http.Request) string {
 				return chi.URLParam(r, "ledger")
 			}, routerOptions.tracer, "/_info")).Group(func(router chi.Router) {
-				router.Post("/_bulk", bulkHandler(routerOptions.bulkMaxSize))
+				router.Post("/_bulk", bulkHandler(routerOptions.bulkerFactory, routerOptions.bulkMaxSize))
 
 				// LedgerController
 				router.Get("/_info", getLedgerInfo)
@@ -92,6 +93,7 @@ func NewRouter(
 type routerOptions struct {
 	tracer      trace.Tracer
 	middlewares []func(http.Handler) http.Handler
+	bulkerFactory ledger.BulkerFactory
 	bulkMaxSize int
 }
 
@@ -115,6 +117,13 @@ func WithBulkMaxSize(bulkMaxSize int) RouterOption {
 	}
 }
 
+func WithBulkerFactory(bulkerFactory ledger.BulkerFactory) RouterOption {
+	return func(ro *routerOptions) {
+		ro.bulkerFactory = bulkerFactory
+	}
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
+	WithBulkerFactory(ledger.NewDefaultBulkerFactory()),
 }
