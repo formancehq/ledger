@@ -20,7 +20,7 @@ import (
 )
 
 type Action struct {
-	elements []bulking.BulkElement
+	elements []bulking.BulkElementData
 }
 
 func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]components.V2BulkElementResult, error) {
@@ -255,7 +255,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 				ik       string
 				data     map[string]any
 				ok       bool
-				elements = make([]bulking.BulkElement, 0)
+				elements = make([]bulking.BulkElementData, 0)
 			)
 			for _, rawElement := range rawElements {
 
@@ -291,7 +291,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 					}
 				}
 
-				elements = append(elements, bulking.BulkElement{
+				elements = append(elements, bulking.BulkElementData{
 					Action:         action,
 					IdempotencyKey: ik,
 					Data:           dataAsJsonRawMessage,

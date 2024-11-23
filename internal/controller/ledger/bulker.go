@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -21,21 +21,14 @@ const (
 	ActionDeleteMetadata    = "DELETE_METADATA"
 )
 
-type Bulk []BulkElement
-
-type BulkResult []BulkElementResult
-
-func (r BulkResult) HasErrors() bool {
-	for _, element := range r {
-		if element.Error != nil {
-			return true
-		}
-	}
-
-	return false
-}
+type Bulk chan BulkElement
 
 type BulkElement struct {
+	Data     BulkElementData
+	Response chan BulkElementResult
+}
+
+type BulkElementData struct {
 	Action         string          `json:"action"`
 	IdempotencyKey string          `json:"ik"`
 	Data           json.RawMessage `json:"data"`
@@ -103,88 +96,64 @@ type Bulker struct {
 	parallelism int
 }
 
-func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOnFailure, parallel bool) (BulkResult, error) {
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOnFailure, parallel bool) bool {
 
 	parallelism := 1
 	if parallel && b.parallelism != 0 {
 		parallelism = b.parallelism
 	}
 
-	wp := pond.New(parallelism, len(bulk), pond.Context(ctx))
-	results := sync.Map{}
+	wp := pond.New(parallelism, parallelism)
+	hasError := atomic.Bool{}
 
-	for index, element := range bulk {
+	for element := range bulk {
 		wp.Submit(func() {
-			ret, logID, err := b.processElement(ctx, ctrl, element)
-			if err != nil {
-				results.Store(index, BulkElementResult{
-					Error: err,
-				})
+			select {
+			case <-ctx.Done():
+				element.Response <- BulkElementResult{
+					Error: ctx.Err(),
+				}
+			default:
+				if hasError.Load() && !continueOnFailure {
+					element.Response <- BulkElementResult{
+						Error: context.Canceled,
+					}
+					return
+				}
+				ret, logID, err := b.processElement(ctx, ctrl, element.Data)
+				if err != nil {
+					hasError.Store(true)
 
-				if !continueOnFailure {
-					cancel()
+					element.Response <- BulkElementResult{
+						Error: err,
+					}
+
+					return
 				}
 
-				return
+				element.Response <- BulkElementResult{
+					Data:  ret,
+					LogID: logID,
+				}
 			}
 
-			results.Store(index, BulkElementResult{
-				Data:  ret,
-				LogID: logID,
-			})
 		})
 	}
 
 	wp.StopAndWait()
 
-	finalResults := make(BulkResult, 0, len(bulk))
-	for index := range bulk {
-		v, ok := results.Load(index)
-		if ok {
-			finalResults = append(finalResults, v.(BulkElementResult))
-			continue
-		}
-		finalResults = append(finalResults, BulkElementResult{
-			Error: errors.New("canceled"),
-		})
-	}
-
-	return finalResults, nil
+	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingOption) (BulkResult, error) {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingOption) error {
 
 	bulkOptions := BulkingOptions{}
 	for _, option := range providedOptions {
 		option(&bulkOptions)
 	}
 
-	for i, element := range bulk {
-		switch element.Action {
-		case ActionCreateTransaction:
-			req := &TransactionRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		case ActionAddMetadata:
-			req := &AddMetadataRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		case ActionRevertTransaction:
-			req := &RevertTransactionRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		case ActionDeleteMetadata:
-			req := &DeleteMetadataRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return nil, fmt.Errorf("error parsing element %d: %s", i, err)
-			}
-		}
+	if err := bulkOptions.Validate(); err != nil {
+		return fmt.Errorf("validating bulk options: %s", err)
 	}
 
 	ctrl := b.ctrl
@@ -192,42 +161,34 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingO
 		var err error
 		ctrl, err = ctrl.BeginTX(ctx, nil)
 		if err != nil {
-			return nil, fmt.Errorf("error starting transaction: %s", err)
+			return fmt.Errorf("error starting transaction: %s", err)
 		}
 	}
 
-	results, err := b.run(ctx, ctrl, bulk, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
-	if err != nil {
-		if bulkOptions.Atomic {
-			if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
-				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
-			}
+	hasError := b.run(ctx, ctrl, bulk, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
+	if hasError && bulkOptions.Atomic {
+		if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
+			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 
-		return nil, fmt.Errorf("error running bulk: %s", err)
+		return nil
 	}
 
 	if bulkOptions.Atomic {
-		if results.HasErrors() {
-			if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
-				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
-			}
-		} else {
-			if err := ctrl.Commit(ctx); err != nil {
-				return nil, fmt.Errorf("error committing transaction: %s", err)
-			}
+		if err := ctrl.Commit(ctx); err != nil {
+			return fmt.Errorf("error committing transaction: %s", err)
 		}
 	}
 
-	return results, err
+	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element BulkElement) (any, int, error) {
+func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkElementData) (any, int, error) {
 
-	switch element.Action {
+	switch data.Action {
 	case ActionCreateTransaction:
 		req := &TransactionRequest{}
-		if err := json.Unmarshal(element.Data, req); err != nil {
+		if err := json.Unmarshal(data.Data, req); err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 		rs, err := req.ToRunScript(false)
@@ -237,7 +198,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 
 		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, Parameters[RunScript]{
 			DryRun:         false,
-			IdempotencyKey: element.IdempotencyKey,
+			IdempotencyKey: data.IdempotencyKey,
 			Input:          *rs,
 		})
 		if err != nil {
@@ -247,7 +208,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 		return createTransactionResult.Transaction, log.ID, nil
 	case ActionAddMetadata:
 		req := &AddMetadataRequest{}
-		if err := json.Unmarshal(element.Data, req); err != nil {
+		if err := json.Unmarshal(data.Data, req); err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
@@ -263,7 +224,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 			}
 			log, err = ctrl.SaveAccountMetadata(ctx, Parameters[SaveAccountMetadata]{
 				DryRun:         false,
-				IdempotencyKey: element.IdempotencyKey,
+				IdempotencyKey: data.IdempotencyKey,
 				Input: SaveAccountMetadata{
 					Address:  address,
 					Metadata: req.Metadata,
@@ -276,7 +237,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 			}
 			log, err = ctrl.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
 				DryRun:         false,
-				IdempotencyKey: element.IdempotencyKey,
+				IdempotencyKey: data.IdempotencyKey,
 				Input: SaveTransactionMetadata{
 					TransactionID: transactionID,
 					Metadata:      req.Metadata,
@@ -292,13 +253,13 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 		return nil, log.ID, nil
 	case ActionRevertTransaction:
 		req := &RevertTransactionRequest{}
-		if err := json.Unmarshal(element.Data, req); err != nil {
+		if err := json.Unmarshal(data.Data, req); err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
 		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, Parameters[RevertTransaction]{
 			DryRun:         false,
-			IdempotencyKey: element.IdempotencyKey,
+			IdempotencyKey: data.IdempotencyKey,
 			Input: RevertTransaction{
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
@@ -312,7 +273,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 		return revertTransactionResult.RevertedTransaction, log.ID, nil
 	case ActionDeleteMetadata:
 		req := &DeleteMetadataRequest{}
-		if err := json.Unmarshal(element.Data, req); err != nil {
+		if err := json.Unmarshal(data.Data, req); err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
@@ -329,7 +290,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 
 			log, err = ctrl.DeleteAccountMetadata(ctx, Parameters[DeleteAccountMetadata]{
 				DryRun:         false,
-				IdempotencyKey: element.IdempotencyKey,
+				IdempotencyKey: data.IdempotencyKey,
 				Input: DeleteAccountMetadata{
 					Address: address,
 					Key:     req.Key,
@@ -343,7 +304,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 
 			log, err = ctrl.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
 				DryRun:         false,
-				IdempotencyKey: element.IdempotencyKey,
+				IdempotencyKey: data.IdempotencyKey,
 				Input: DeleteTransactionMetadata{
 					TransactionID: transactionID,
 					Key:           req.Key,
@@ -383,6 +344,14 @@ type BulkingOptions struct {
 	ContinueOnFailure bool
 	Atomic            bool
 	Parallel          bool
+}
+
+func (opts BulkingOptions) Validate() error {
+	if opts.Atomic && opts.Parallel {
+		return errors.New("atomic and parallel options are mutually exclusive")
+	}
+
+	return nil
 }
 
 type BulkingOption func(*BulkingOptions)

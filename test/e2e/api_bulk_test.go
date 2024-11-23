@@ -66,6 +66,8 @@ var _ = Context("Ledger engine tests", func() {
 					atomic, parallel bool
 				)
 				BeforeEach(func() {
+					atomic = false
+					parallel = false
 					items = []components.V2BulkElement{
 						components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 							Data: &components.V2PostTransaction{
