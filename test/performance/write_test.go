@@ -104,13 +104,19 @@ func BenchmarkWrite(b *testing.B) {
 			script, err := scriptsDir.ReadFile(filepath.Join("scripts", entry.Name()))
 			require.NoError(b, err)
 
-			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSActionProviderFactory(string(script))
+			rootPath, err := filepath.Abs("scripts")
+			require.NoError(b, err)
+
+			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSActionProviderFactory(rootPath, string(script))
 		}
 	} else {
 		file, err := os.ReadFile(scriptFlag)
 		require.NoError(b, err, "reading file "+scriptFlag)
 
-		scripts["provided"] = NewJSActionProviderFactory(string(file))
+		rootPath, err := filepath.Abs(filepath.Dir(scriptFlag))
+		require.NoError(b, err)
+
+		scripts["provided"] = NewJSActionProviderFactory(rootPath, string(file))
 	}
 
 	if envFactory == nil {
