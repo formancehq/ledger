@@ -66,8 +66,10 @@ func NewRouter(
 		debug,
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithMiddlewares(commonMiddlewares...),
-		v2.WithBulkMaxSize(routerOptions.bulkMaxSize),
 		v2.WithBulkerFactory(routerOptions.bulkerFactory),
+		v2.WithBulkHandlerFactories(map[string]v2.BulkHandlerFactory{
+			"application/json": v2.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
+		}),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
