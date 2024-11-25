@@ -20,7 +20,7 @@ import (
 )
 
 type Action struct {
-	elements []bulking.BulkElementData
+	elements []bulking.BulkElement
 }
 
 func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]components.V2BulkElementResult, error) {
@@ -32,11 +32,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 
 		switch element.Action {
 		case bulking.ActionCreateTransaction:
-			transactionRequest := &bulking.TransactionRequest{}
-			err := json.Unmarshal(element.Data, transactionRequest)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal transaction request: %w", err)
-			}
+			transactionRequest := element.Data.(bulking.TransactionRequest)
 
 			bulkElement = components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 				Data: &components.V2PostTransaction{
@@ -70,11 +66,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 				},
 			})
 		case bulking.ActionAddMetadata:
-			addMetadataRequest := &bulking.AddMetadataRequest{}
-			err := json.Unmarshal(element.Data, addMetadataRequest)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal add metadata request: %w", err)
-			}
+			addMetadataRequest := element.Data.(bulking.AddMetadataRequest)
 
 			var targetID components.V2TargetID
 			switch addMetadataRequest.TargetType {
@@ -102,11 +94,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 				},
 			})
 		case bulking.ActionDeleteMetadata:
-			deleteMetadataRequest := &bulking.DeleteMetadataRequest{}
-			err := json.Unmarshal(element.Data, deleteMetadataRequest)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal delete metadata request: %w", err)
-			}
+			deleteMetadataRequest := element.Data.(bulking.DeleteMetadataRequest)
 
 			var targetID components.V2TargetID
 			switch deleteMetadataRequest.TargetType {
@@ -134,11 +122,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 				},
 			})
 		case bulking.ActionRevertTransaction:
-			revertMetadataRequest := &bulking.RevertTransactionRequest{}
-			err := json.Unmarshal(element.Data, revertMetadataRequest)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal delete metadata request: %w", err)
-			}
+			revertMetadataRequest := element.Data.(bulking.RevertTransactionRequest)
 
 			bulkElement = components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
 				Data: &components.V2BulkElementRevertTransactionData{
@@ -255,7 +239,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 				ik       string
 				data     map[string]any
 				ok       bool
-				elements = make([]bulking.BulkElementData, 0)
+				elements = make([]bulking.BulkElement, 0)
 			)
 			for _, rawElement := range rawElements {
 
@@ -282,6 +266,10 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 				if err != nil {
 					return nil, err
 				}
+				payload, err := bulking.UnmarshalBulkElementPayload(action, dataAsJsonRawMessage)
+				if err != nil {
+					return nil, err
+				}
 
 				rawIK := rawElement["ik"]
 				if rawIK != nil {
@@ -291,10 +279,10 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 					}
 				}
 
-				elements = append(elements, bulking.BulkElementData{
+				elements = append(elements, bulking.BulkElement{
 					Action:         action,
 					IdempotencyKey: ik,
-					Data:           dataAsJsonRawMessage,
+					Data:           payload,
 				})
 			}
 

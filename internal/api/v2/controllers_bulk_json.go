@@ -5,84 +5,45 @@ import (
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/api"
-	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
+	"slices"
 )
-
-type JSONBulk []ledgercontroller.BulkElementData
-
-func (b JSONBulk) Validate() error {
-	for index, element := range b {
-		switch element.Action {
-		case ledgercontroller.ActionCreateTransaction:
-			req := &ledgercontroller.TransactionRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return fmt.Errorf("error parsing element %d: %s", index, err)
-			}
-		case ledgercontroller.ActionAddMetadata:
-			req := &ledgercontroller.AddMetadataRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return fmt.Errorf("error parsing element %d: %s", index, err)
-			}
-		case ledgercontroller.ActionRevertTransaction:
-			req := &ledgercontroller.RevertTransactionRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return fmt.Errorf("error parsing element %d: %s", index, err)
-			}
-		case ledgercontroller.ActionDeleteMetadata:
-			req := &ledgercontroller.DeleteMetadataRequest{}
-			if err := json.Unmarshal(element.Data, req); err != nil {
-				return fmt.Errorf("error parsing element %d: %s", index, err)
-			}
-		}
-	}
-
-	return nil
-}
 
 type jsonBulkHandler struct {
 	bulkMaxSize  int
 	bulkElements []ledgercontroller.BulkElement
+	receive      chan ledgercontroller.BulkElementResult
 }
 
-func (h *jsonBulkHandler) GetChannel(w http.ResponseWriter, r *http.Request) ledgercontroller.Bulk {
-	bulkElementDatas := make(JSONBulk, 0)
-	if err := json.NewDecoder(r.Body).Decode(&bulkElementDatas); err != nil {
+func (h *jsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (ledgercontroller.Bulk, chan ledgercontroller.BulkElementResult, bool) {
+	h.bulkElements = make([]ledgercontroller.BulkElement, 0)
+	if err := json.NewDecoder(r.Body).Decode(&h.bulkElements); err != nil {
 		api.BadRequest(w, ErrValidation, err)
-		return nil
+		return nil, nil, false
 	}
 
-	if h.bulkMaxSize != 0 && len(bulkElementDatas) > h.bulkMaxSize {
+	if h.bulkMaxSize != 0 && len(h.bulkElements) > h.bulkMaxSize {
 		api.WriteErrorResponse(w, http.StatusRequestEntityTooLarge, ErrBulkSizeExceeded, fmt.Errorf("bulk size exceeded, max size is %d", h.bulkMaxSize))
-		return nil
+		return nil, nil, false
 	}
 
-	if err := bulkElementDatas.Validate(); err != nil {
-		api.BadRequest(w, ErrValidation, err)
-		return nil
-	}
-
-	h.bulkElements = Map(bulkElementDatas, func(data ledgercontroller.BulkElementData) ledgercontroller.BulkElement {
-		return ledgercontroller.BulkElement{
-			Data:     data,
-			Response: make(chan ledgercontroller.BulkElementResult, 1),
-		}
-	})
-	bulk := make(ledgercontroller.Bulk, len(bulkElementDatas))
+	bulk := make(ledgercontroller.Bulk, len(h.bulkElements))
 	for _, element := range h.bulkElements {
 		bulk <- element
 	}
 	close(bulk)
 
-	return bulk
+	h.receive = make(chan ledgercontroller.BulkElementResult, len(h.bulkElements))
+
+	return bulk, h.receive, true
 }
 
 func (h *jsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
 	results := make([]ledgercontroller.BulkElementResult, 0, len(h.bulkElements))
-	for _, element := range h.bulkElements {
-		results = append(results, <-element.Response)
+	for element := range h.receive {
+		results = append(results, element)
 	}
 
 	for _, result := range results {
@@ -92,12 +53,16 @@ func (h *jsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
+	slices.SortFunc(results, func(a, b ledgercontroller.BulkElementResult) int {
+		return a.ElementID - b.ElementID
+	})
+
 	mappedResults := make([]Result, 0, len(h.bulkElements))
 	for ind, result := range results {
 		var (
 			errorCode        string
 			errorDescription string
-			responseType     = h.bulkElements[ind].Data.Action
+			responseType     = h.bulkElements[ind].Action
 		)
 
 		if result.Error != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
+	"reflect"
 	"sync/atomic"
 )
 
@@ -24,20 +25,55 @@ const (
 type Bulk chan BulkElement
 
 type BulkElement struct {
-	Data     BulkElementData
-	Response chan BulkElementResult
+	Action         string `json:"action"`
+	IdempotencyKey string `json:"ik"`
+	Data           any    `json:"data"`
 }
 
-type BulkElementData struct {
-	Action         string          `json:"action"`
-	IdempotencyKey string          `json:"ik"`
-	Data           json.RawMessage `json:"data"`
+func (b *BulkElement) UnmarshalJSON(data []byte) error {
+
+	type Aux BulkElement
+	type X struct {
+		Aux
+		Data json.RawMessage `json:"data"`
+	}
+	x := X{}
+	if err := json.Unmarshal(data, &x); err != nil {
+		return err
+	}
+
+	*b = BulkElement(x.Aux)
+
+	var err error
+	b.Data, err = UnmarshalBulkElementPayload(x.Action, x.Data)
+
+	return err
+}
+
+func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
+	var req any
+	switch action {
+	case ActionCreateTransaction:
+		req = &TransactionRequest{}
+	case ActionAddMetadata:
+		req = &AddMetadataRequest{}
+	case ActionRevertTransaction:
+		req = &RevertTransactionRequest{}
+	case ActionDeleteMetadata:
+		req = &DeleteMetadataRequest{}
+	}
+	if err := json.Unmarshal(data, req); err != nil {
+		return nil, fmt.Errorf("error parsing element: %s", err)
+	}
+
+	return reflect.ValueOf(req).Elem().Interface(), nil
 }
 
 type BulkElementResult struct {
-	Error error
-	Data  any `json:"data,omitempty"`
-	LogID int `json:"logID"`
+	Error     error
+	Data      any `json:"data,omitempty"`
+	LogID     int `json:"logID"`
+	ElementID int `json:"elementID"`
 }
 
 type AddMetadataRequest struct {
@@ -66,7 +102,7 @@ type TransactionRequest struct {
 	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
 }
 
-func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*RunScript, error) {
+func (req TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*RunScript, error) {
 
 	if _, err := req.Postings.Validate(); err != nil {
 		return nil, err
@@ -96,7 +132,7 @@ type Bulker struct {
 	parallelism int
 }
 
-func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
 
 	parallelism := 1
 	if parallel && b.parallelism != 0 {
@@ -110,28 +146,28 @@ func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOn
 		wp.Submit(func() {
 			select {
 			case <-ctx.Done():
-				element.Response <- BulkElementResult{
+				result <- BulkElementResult{
 					Error: ctx.Err(),
 				}
 			default:
 				if hasError.Load() && !continueOnFailure {
-					element.Response <- BulkElementResult{
+					result <- BulkElementResult{
 						Error: context.Canceled,
 					}
 					return
 				}
-				ret, logID, err := b.processElement(ctx, ctrl, element.Data)
+				ret, logID, err := b.processElement(ctx, ctrl, element)
 				if err != nil {
 					hasError.Store(true)
 
-					element.Response <- BulkElementResult{
+					result <- BulkElementResult{
 						Error: err,
 					}
 
 					return
 				}
 
-				element.Response <- BulkElementResult{
+				result <- BulkElementResult{
 					Data:  ret,
 					LogID: logID,
 				}
@@ -142,10 +178,12 @@ func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOn
 
 	wp.StopAndWait()
 
+	close(result)
+
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingOption) error {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResult, providedOptions ...BulkingOption) error {
 
 	bulkOptions := BulkingOptions{}
 	for _, option := range providedOptions {
@@ -165,7 +203,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingO
 		}
 	}
 
-	hasError := b.run(ctx, ctrl, bulk, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
+	hasError := b.run(ctx, ctrl, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
 	if hasError && bulkOptions.Atomic {
 		if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
@@ -183,15 +221,11 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingO
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkElementData) (any, int, error) {
+func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkElement) (any, int, error) {
 
 	switch data.Action {
 	case ActionCreateTransaction:
-		req := &TransactionRequest{}
-		if err := json.Unmarshal(data.Data, req); err != nil {
-			return nil, 0, fmt.Errorf("error parsing element: %s", err)
-		}
-		rs, err := req.ToRunScript(false)
+		rs, err := data.Data.(TransactionRequest).ToRunScript(false)
 		if err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
@@ -207,10 +241,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 
 		return createTransactionResult.Transaction, log.ID, nil
 	case ActionAddMetadata:
-		req := &AddMetadataRequest{}
-		if err := json.Unmarshal(data.Data, req); err != nil {
-			return nil, 0, fmt.Errorf("error parsing element: %s", err)
-		}
+		req := data.Data.(AddMetadataRequest)
 
 		var (
 			log *ledger.Log
@@ -252,10 +283,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 
 		return nil, log.ID, nil
 	case ActionRevertTransaction:
-		req := &RevertTransactionRequest{}
-		if err := json.Unmarshal(data.Data, req); err != nil {
-			return nil, 0, fmt.Errorf("error parsing element: %s", err)
-		}
+		req := data.Data.(RevertTransactionRequest)
 
 		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, Parameters[RevertTransaction]{
 			DryRun:         false,
@@ -272,10 +300,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 
 		return revertTransactionResult.RevertedTransaction, log.ID, nil
 	case ActionDeleteMetadata:
-		req := &DeleteMetadataRequest{}
-		if err := json.Unmarshal(data.Data, req); err != nil {
-			return nil, 0, fmt.Errorf("error parsing element: %s", err)
-		}
+		req := data.Data.(DeleteMetadataRequest)
 
 		var (
 			log *ledger.Log

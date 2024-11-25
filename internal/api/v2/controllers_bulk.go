@@ -2,11 +2,11 @@ package v2
 
 import (
 	"errors"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func bulkHandler(bulkerFactory ledgercontroller.BulkerFactory, bulkHandlerFactories map[string]BulkHandlerFactory) http.HandlerFunc {
@@ -23,14 +23,14 @@ func bulkHandler(bulkerFactory ledgercontroller.BulkerFactory, bulkHandlerFactor
 		}
 
 		bulkHandler := bulkHandlerFactory.CreateBulkHandler()
-		channel := bulkHandler.GetChannel(w, r)
-		if channel == nil {
+		send, receive, ok := bulkHandler.GetChannels(w, r)
+		if !ok {
 			return
 		}
 
 		l := common.LedgerFromContext(r.Context())
 
-		err := bulkerFactory.CreateBulker(l).Run(r.Context(), channel,
+		err := bulkerFactory.CreateBulker(l).Run(r.Context(), send, receive,
 			ledgercontroller.WithContinueOnFailure(api.QueryParamBool(r, "continueOnFailure")),
 			ledgercontroller.WithAtomic(api.QueryParamBool(r, "atomic")),
 			ledgercontroller.WithParallel(api.QueryParamBool(r, "parallel")),
@@ -53,7 +53,7 @@ type Result struct {
 }
 
 type BulkHandler interface {
-	GetChannel(w http.ResponseWriter, r *http.Request) ledgercontroller.Bulk
+	GetChannels(w http.ResponseWriter, r *http.Request) (ledgercontroller.Bulk, chan ledgercontroller.BulkElementResult, bool)
 	Terminate(w http.ResponseWriter, r *http.Request)
 }
 
