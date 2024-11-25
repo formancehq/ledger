@@ -68,12 +68,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResult, providedOptions ...BulkingOption) error {
-
-	bulkOptions := BulkingOptions{}
-	for _, option := range providedOptions {
-		option(&bulkOptions)
-	}
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResult, bulkOptions BulkingOptions) error {
 
 	if err := bulkOptions.Validate(); err != nil {
 		return fmt.Errorf("validating bulk options: %s", err)
@@ -262,26 +257,6 @@ func (opts BulkingOptions) Validate() error {
 	}
 
 	return nil
-}
-
-type BulkingOption func(*BulkingOptions)
-
-func WithContinueOnFailure(v bool) BulkingOption {
-	return func(options *BulkingOptions) {
-		options.ContinueOnFailure = v
-	}
-}
-
-func WithAtomic(v bool) BulkingOption {
-	return func(options *BulkingOptions) {
-		options.Atomic = v
-	}
-}
-
-func WithParallel(v bool) BulkingOption {
-	return func(options *BulkingOptions) {
-		options.Parallel = v
-	}
 }
 
 type BulkerFactory interface {
