@@ -444,7 +444,7 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 }
 
 func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
-	if _, err := store.UpsertAccount(ctx, &ledger.Account{
+	if err := store.UpsertAccounts(ctx, &ledger.Account{
 		Address:  parameters.Input.Address,
 		Metadata: parameters.Input.Metadata,
 	}); err != nil {

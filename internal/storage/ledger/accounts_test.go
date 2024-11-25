@@ -402,22 +402,30 @@ func TestAccountsUpsert(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	account := ledger.Account{
+	account1 := ledger.Account{
 		Address: "foo",
 	}
 
+	account2 := ledger.Account{
+		Address: "foo2",
+	}
+
 	// Initial insert
-	upserted, err := store.UpsertAccount(ctx, &account)
+	err := store.UpsertAccounts(ctx, &account1, &account2)
 	require.NoError(t, err)
-	require.True(t, upserted)
-	require.NotEmpty(t, account.FirstUsage)
-	require.NotEmpty(t, account.InsertionDate)
-	require.NotEmpty(t, account.UpdatedAt)
+
+	require.NotEmpty(t, account1.FirstUsage)
+	require.NotEmpty(t, account1.InsertionDate)
+	require.NotEmpty(t, account1.UpdatedAt)
+
+	require.NotEmpty(t, account2.FirstUsage)
+	require.NotEmpty(t, account2.InsertionDate)
+	require.NotEmpty(t, account2.UpdatedAt)
 
 	now := time.Now()
 
 	// Reset the account model
-	account = ledger.Account{
+	account1 = ledger.Account{
 		Address: "foo",
 		// The account will be upserted on the timeline after its initial usage.
 		// The upsert should not modify anything, but, it should retrieve and load the account entity
@@ -427,7 +435,6 @@ func TestAccountsUpsert(t *testing.T) {
 	}
 
 	// Upsert with no modification
-	upserted, err = store.UpsertAccount(ctx, &account)
+	err = store.UpsertAccounts(ctx, &account1)
 	require.NoError(t, err)
-	require.False(t, upserted)
 }

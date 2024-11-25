@@ -14,6 +14,8 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/google/uuid"
 	"math/big"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -185,12 +187,24 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) (*Result
 	return &Result{response.V2BulkResponse.Data[0]}, nil
 }
 
-type Generator struct {
-	next func(int) (*Action, error)
+type NextOptions struct {
+	Globals map[string]any
 }
 
-func (g *Generator) Next(iteration int) (*Action, error) {
-	return g.next(iteration)
+type NextOption func(options *NextOptions)
+
+func WithNextGlobals(globals map[string]any) NextOption {
+	return func(options *NextOptions) {
+		options.Globals = globals
+	}
+}
+
+type Generator struct {
+	next func(int, ...NextOption) (*Action, error)
+}
+
+func (g *Generator) Next(iteration int, options ...NextOption) (*Action, error) {
+	return g.next(iteration, options...)
 }
 
 func NewGenerator(script string, opts ...Option) (*Generator, error) {
@@ -221,6 +235,19 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 		return nil, err
 	}
 
+	err = runtime.Set("read_file", func(path string) string {
+		fmt.Println("read file", path)
+		f, err := os.ReadFile(filepath.Join(cfg.rootPath, path))
+		if err != nil {
+			panic(err)
+		}
+
+		return string(f)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	var next func(int) map[string]any
 	err = runtime.ExportTo(runtime.Get("next"), &next)
 	if err != nil {
@@ -228,7 +255,21 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 	}
 
 	return &Generator{
-		next: func(i int) (*Action, error) {
+		next: func(i int, options ...NextOption) (*Action, error) {
+
+			nextOptions := NextOptions{}
+			for _, option := range options {
+				option(&nextOptions)
+			}
+
+			if nextOptions.Globals != nil {
+				for k, v := range nextOptions.Globals {
+					if err := runtime.Set(k, v); err != nil {
+						return nil, fmt.Errorf("failed to set global variable %s: %w", k, err)
+					}
+				}
+			}
+
 			ret := next(i)
 
 			var (
@@ -281,7 +322,8 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 }
 
 type config struct {
-	globals map[string]any
+	globals  map[string]any
+	rootPath string
 }
 
 type Option func(*config)
@@ -289,5 +331,11 @@ type Option func(*config)
 func WithGlobals(globals map[string]any) Option {
 	return func(c *config) {
 		c.globals = globals
+	}
+}
+
+func WithRootPath(path string) Option {
+	return func(c *config) {
+		c.rootPath = path
 	}
 }

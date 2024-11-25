@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"regexp"
@@ -254,15 +255,15 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
-	for _, address := range tx.InvolvedAccounts() {
-		_, err := s.UpsertAccount(ctx, &ledger.Account{
+	err = s.UpsertAccounts(ctx, collectionutils.Map(tx.InvolvedAccounts(), func(address string) *ledger.Account {
+		return &ledger.Account{
 			Address:    address,
 			FirstUsage: tx.Timestamp,
 			Metadata:   make(metadata.Metadata),
-		})
-		if err != nil {
-			return fmt.Errorf("upserting account: %w", err)
 		}
+	})...)
+	if err != nil {
+		return fmt.Errorf("upserting accounts: %w", err)
 	}
 
 	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
@@ -302,7 +303,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		}
 
 		if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-			// todo: tx is inserted earlier!
 			tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
 		}
 	}

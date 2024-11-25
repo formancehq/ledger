@@ -46,7 +46,7 @@ type Store interface {
 	DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error)
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
-	UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error)
+	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertLog(ctx context.Context, log *ledger.Log) error
 

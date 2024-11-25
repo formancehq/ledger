@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/ledger/pkg/features"
@@ -12,11 +11,8 @@ import (
 
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/formancehq/go-libs/v2/time"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
@@ -333,45 +329,29 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 	return err
 }
 
-// todo: since we update first balances of an accounts in the transaction process, we can avoid nested sql txs
-// while upserting account and upsert them all in one shot
-func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
-	return tracing.TraceWithMetric(
+func (s *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
+	return tracing.SkipResult(tracing.TraceWithMetric(
 		ctx,
-		"UpsertAccount",
+		"UpsertAccounts",
 		s.tracer,
-		s.upsertAccountHistogram,
-		func(ctx context.Context) (bool, error) {
-			upserted := false
-			err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-				ret, err := tx.NewInsert().
-					Model(account).
-					ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-					On("conflict (ledger, address) do update").
-					Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
-					Set("metadata = accounts.metadata || excluded.metadata").
-					Set("updated_at = excluded.updated_at").
-					Value("ledger", "?", s.ledger.Name).
-					Returning("*").
-					Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage).
-					Exec(ctx)
-				if err != nil {
-					return err
-				}
-				rowsModified, err := ret.RowsAffected()
-				if err != nil {
-					return err
-				}
-				upserted = rowsModified > 0
-				return nil
-			})
-			return upserted, postgres.ResolveError(err)
-		},
-		func(ctx context.Context, upserted bool) {
-			trace.SpanFromContext(ctx).SetAttributes(
-				attribute.String("address", account.Address),
-				attribute.Bool("upserted", upserted),
-			)
-		},
-	)
+		s.upsertAccountsHistogram,
+		tracing.NoResult(func(ctx context.Context) error {
+			_, err := s.db.NewInsert().
+				Model(&accounts).
+				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+				On("conflict (ledger, address) do update").
+				Set("first_usage = case when excluded.first_usage < accounts.first_usage then excluded.first_usage else accounts.first_usage end").
+				Set("metadata = accounts.metadata || excluded.metadata").
+				Set("updated_at = excluded.updated_at").
+				Value("ledger", "?", s.ledger.Name).
+				Returning("*").
+				Where("(excluded.first_usage < accounts.first_usage) or not accounts.metadata @> excluded.metadata").
+				Exec(ctx)
+			if err != nil {
+				return fmt.Errorf("upserting accounts: %w", postgres.ResolveError(err))
+			}
+
+			return nil
+		}),
+	))
 }
