@@ -2,6 +2,7 @@ package v2
 
 import (
 	"bytes"
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -74,7 +75,7 @@ func TestGetVolumes(t *testing.T) {
 			name:              "using invalid query payload",
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "using pit",

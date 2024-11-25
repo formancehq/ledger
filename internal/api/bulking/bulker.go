@@ -63,8 +63,6 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 
 	wp.StopAndWait()
 
-	close(result)
-
 	return hasError.Load()
 }
 
@@ -278,4 +276,3 @@ func NewDefaultBulkerFactory(options ...BulkerOption) *DefaultBulkerFactory {
 }
 
 var _ BulkerFactory = (*DefaultBulkerFactory)(nil)
-

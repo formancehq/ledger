@@ -2,7 +2,7 @@ package api
 
 import (
 	"github.com/formancehq/go-libs/v2/api"
-	ledgercontroller "github.com/formancehq/ledger/internal/bulking"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -67,8 +67,8 @@ func NewRouter(
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithMiddlewares(commonMiddlewares...),
 		v2.WithBulkerFactory(routerOptions.bulkerFactory),
-		v2.WithBulkHandlerFactories(map[string]v2.BulkHandlerFactory{
-			"application/json": v2.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
+		v2.WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
+			"application/json": bulking.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
 		}),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +90,7 @@ func NewRouter(
 type routerOptions struct {
 	tracer        trace.Tracer
 	bulkMaxSize   int
-	bulkerFactory ledgercontroller.BulkerFactory
+	bulkerFactory bulking.BulkerFactory
 }
 
 type RouterOption func(ro *routerOptions)
@@ -107,7 +107,7 @@ func WithBulkMaxSize(bulkMaxSize int) RouterOption {
 	}
 }
 
-func WithBulkerFactory(bf ledgercontroller.BulkerFactory) RouterOption {
+func WithBulkerFactory(bf bulking.BulkerFactory) RouterOption {
 	return func(ro *routerOptions) {
 		ro.bulkerFactory = bf
 	}

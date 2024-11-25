@@ -8,7 +8,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bulking"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"

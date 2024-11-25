@@ -26,6 +26,10 @@ type BulkElement struct {
 	Data           any    `json:"data"`
 }
 
+func (b BulkElement) GetAction() string {
+	return b.Action
+}
+
 func (b *BulkElement) UnmarshalJSON(data []byte) error {
 
 	type Aux BulkElement

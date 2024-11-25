@@ -2,7 +2,7 @@ package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/bulking"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -19,22 +19,22 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 
 	payload := bulking.TransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		api.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
+		api.BadRequest(w, common.ErrValidation, errors.New("invalid transaction format"))
 		return
 	}
 
 	if len(payload.Postings) > 0 && payload.Script.Plain != "" {
-		api.BadRequest(w, ErrValidation, errors.New("cannot pass postings and numscript in the same request"))
+		api.BadRequest(w, common.ErrValidation, errors.New("cannot pass postings and numscript in the same request"))
 		return
 	}
 
 	if len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		api.BadRequest(w, ErrNoPostings, errors.New("you need to pass either a posting array or a numscript script"))
+		api.BadRequest(w, common.ErrNoPostings, errors.New("you need to pass either a posting array or a numscript script"))
 		return
 	}
 	runScript, err := payload.ToRunScript(api.QueryParamBool(r, "force"))
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
@@ -42,21 +42,21 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
-			api.BadRequest(w, ErrInsufficientFund, err)
+			api.BadRequest(w, common.ErrInsufficientFund, err)
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
-			api.BadRequest(w, ErrCompilationFailed, err)
+			api.BadRequest(w, common.ErrCompilationFailed, err)
 		case errors.Is(err, &ledgercontroller.ErrMetadataOverride{}):
-			api.BadRequest(w, ErrMetadataOverride, err)
+			api.BadRequest(w, common.ErrMetadataOverride, err)
 		case errors.Is(err, ledgercontroller.ErrNoPostings):
-			api.BadRequest(w, ErrNoPostings, err)
+			api.BadRequest(w, common.ErrNoPostings, err)
 		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
-			api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
+			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		case errors.Is(err, ledgercontroller.ErrParsing{}):
-			api.BadRequest(w, ErrInterpreterParse, err)
+			api.BadRequest(w, common.ErrInterpreterParse, err)
 		case errors.Is(err, ledgercontroller.ErrRuntime{}):
-			api.BadRequest(w, ErrInterpreterRuntime, err)
+			api.BadRequest(w, common.ErrInterpreterRuntime, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

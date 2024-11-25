@@ -2,6 +2,7 @@ package v2
 
 import (
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -42,13 +43,13 @@ func TestAccountsAddMetadata(t *testing.T) {
 			account:           "world",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "invalid account address",
 			account:           "%8X%2F",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {

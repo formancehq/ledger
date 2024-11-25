@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -52,7 +53,7 @@ func TestAccountsRead(t *testing.T) {
 			name:              "invalid account address",
 			account:           "%8X%2F",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "with not existing account",

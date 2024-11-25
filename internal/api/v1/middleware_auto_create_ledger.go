@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/api/common"
 	"go.opentelemetry.io/otel/trace"
 	"net/http"
 
@@ -34,7 +35,7 @@ func autoCreateMiddleware(backend system.Controller, tracer trace.Tracer) func(h
 				}); err != nil {
 					switch {
 					case errors.Is(err, ledger.ErrInvalidLedgerName{}):
-						api.BadRequest(w, ErrValidation, err)
+						api.BadRequest(w, common.ErrValidation, err)
 					default:
 						api.InternalServerError(w, r, err)
 					}

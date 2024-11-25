@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -74,7 +75,7 @@ func TestAccountsCount(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "page size over maximum",
@@ -107,7 +108,7 @@ func TestAccountsCount(t *testing.T) {
 		{
 			name:              "with invalid query from core point of view",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
@@ -120,7 +121,7 @@ func TestAccountsCount(t *testing.T) {
 		{
 			name:              "with missing feature",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{

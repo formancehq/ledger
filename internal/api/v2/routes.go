@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/bulking"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
@@ -97,7 +97,7 @@ type routerOptions struct {
 	tracer               trace.Tracer
 	middlewares          []func(http.Handler) http.Handler
 	bulkerFactory        bulking.BulkerFactory
-	bulkHandlerFactories map[string]BulkHandlerFactory
+	bulkHandlerFactories map[string]bulking.HandlerFactory
 }
 
 type RouterOption func(ro *routerOptions)
@@ -114,7 +114,7 @@ func WithMiddlewares(middlewares ...func(http.Handler) http.Handler) RouterOptio
 	}
 }
 
-func WithBulkHandlerFactories(bulkHandlerFactories map[string]BulkHandlerFactory) RouterOption {
+func WithBulkHandlerFactories(bulkHandlerFactories map[string]bulking.HandlerFactory) RouterOption {
 	return func(ro *routerOptions) {
 		ro.bulkHandlerFactories = bulkHandlerFactories
 	}
@@ -129,7 +129,8 @@ func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
-	WithBulkHandlerFactories(map[string]BulkHandlerFactory{
-		"application/json": NewJSONBulkHandlerFactory(100),
+	WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
+		"application/json": bulking.NewJSONBulkHandlerFactory(100),
+		"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
 	}),
 }

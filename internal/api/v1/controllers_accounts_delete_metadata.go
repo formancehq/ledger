@@ -13,7 +13,7 @@ import (
 func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	address, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
-		api.BadRequestWithDetails(w, ErrValidation, err, err.Error())
+		api.BadRequestWithDetails(w, common.ErrValidation, err, err.Error())
 		return
 	}
 

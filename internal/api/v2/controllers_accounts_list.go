@@ -22,7 +22,7 @@ func listAccounts(w http.ResponseWriter, r *http.Request) {
 		return pointer.For(ledgercontroller.NewListAccountsQuery(*options)), nil
 	})
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
@@ -30,7 +30,7 @@ func listAccounts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

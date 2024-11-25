@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -70,7 +71,7 @@ func TestGetLogs(t *testing.T) {
 				"cursor": []string{"xxx"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "using invalid page size",
@@ -78,19 +79,19 @@ func TestGetLogs(t *testing.T) {
 				"pageSize": []string{"-1"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "using malformed query",
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "with invalid query",
 			expectStatusCode:  http.StatusBadRequest,
 			expectQuery:       ledgercontroller.NewPaginatedQueryOptions[any](nil),
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
 		},

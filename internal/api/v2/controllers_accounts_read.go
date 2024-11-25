@@ -16,7 +16,7 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 
 	param, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
-		api.BadRequestWithDetails(w, ErrValidation, err, err.Error())
+		api.BadRequestWithDetails(w, common.ErrValidation, err, err.Error())
 		return
 	}
 
@@ -29,7 +29,7 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	pitFilter, err := getPITFilter(r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 	query.PITFilter = *pitFilter

@@ -2,14 +2,14 @@ package v2
 
 import (
 	"errors"
-	"github.com/formancehq/ledger/internal/bulking"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/api/common"
 )
 
-func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[string]BulkHandlerFactory) http.HandlerFunc {
+func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[string]bulking.HandlerFactory) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		contentType := r.Header.Get("Content-Type")
@@ -18,7 +18,7 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 		}
 		bulkHandlerFactory, ok := bulkHandlerFactories[contentType]
 		if !ok {
-			api.BadRequest(w, ErrValidation, errors.New("unsupported content type: "+contentType))
+			api.BadRequest(w, common.ErrValidation, errors.New("unsupported content type: "+contentType))
 			return
 		}
 
@@ -44,21 +44,4 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 
 		bulkHandler.Terminate(w, r)
 	}
-}
-
-type Result struct {
-	ErrorCode        string `json:"errorCode,omitempty"`
-	ErrorDescription string `json:"errorDescription,omitempty"`
-	Data             any    `json:"data,omitempty"`
-	ResponseType     string `json:"responseType"` // Added for sdk generation (discriminator in oneOf)
-	LogID            int    `json:"logID"`
-}
-
-type BulkHandler interface {
-	GetChannels(w http.ResponseWriter, r *http.Request) (bulking.Bulk, chan bulking.BulkElementResult, bool)
-	Terminate(w http.ResponseWriter, r *http.Request)
-}
-
-type BulkHandlerFactory interface {
-	CreateBulkHandler() BulkHandler
 }
