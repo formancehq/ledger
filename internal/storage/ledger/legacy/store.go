@@ -13,8 +13,8 @@ type Store struct {
 	name   string
 }
 
-func (s *Store) GetPrefixedRelationName(v string) string {
-	return fmt.Sprintf(`"%s".%s`, s.bucket, v)
+func (store *Store) GetPrefixedRelationName(v string) string {
+	return fmt.Sprintf(`"%s".%s`, store.bucket, v)
 }
 
 func (store *Store) Name() string {
@@ -25,10 +25,9 @@ func (store *Store) GetDB() bun.IDB {
 	return store.db
 }
 
-func (s *Store) WithDB(db bun.IDB) *Store {
-	ret := *s
-	ret.db = db
-	return &ret
+func (store Store) WithDB(db bun.IDB) *Store {
+	store.db = db
+	return &store
 }
 
 func New(
