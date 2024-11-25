@@ -265,6 +265,10 @@ func TestBulk(t *testing.T) {
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 				ResponseType:     "ERROR",
+			}, {
+				ErrorCode:        api.ErrorInternal,
+				ErrorDescription: "canceled",
+				ResponseType:     "ERROR",
 			}},
 			expectError: true,
 		},

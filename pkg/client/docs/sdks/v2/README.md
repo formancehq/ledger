@@ -398,6 +398,7 @@ func main() {
         Ledger: "ledger001",
         ContinueOnFailure: client.Bool(true),
         Atomic: client.Bool(true),
+        Parallel: client.Bool(true),
         RequestBody: []components.V2BulkElement{
             components.CreateV2BulkElementV2BulkElementCreateTransaction(
                 components.V2BulkElementCreateTransaction{

@@ -3,12 +3,15 @@ package ledger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
+	"sync"
 )
 
 const (
@@ -96,37 +99,68 @@ func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*RunS
 }
 
 type Bulker struct {
-	ctrl Controller
+	ctrl        Controller
+	parallelism int
 }
 
-func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOnFailure bool) (BulkResult, error) {
+func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, continueOnFailure, parallel bool) (BulkResult, error) {
 
-	results := make([]BulkElementResult, 0, len(bulk))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	for _, element := range bulk {
-		ret, logID, err := b.processElement(ctx, ctrl, element)
-		if err != nil {
-			results = append(results, BulkElementResult{
-				Error: err,
-			})
+	parallelism := 1
+	if parallel && b.parallelism != 0 {
+		parallelism = b.parallelism
+	}
 
-			if !continueOnFailure {
-				return results, nil
+	wp := pond.New(parallelism, len(bulk), pond.Context(ctx))
+	results := sync.Map{}
+
+	for index, element := range bulk {
+		wp.Submit(func() {
+			ret, logID, err := b.processElement(ctx, ctrl, element)
+			if err != nil {
+				results.Store(index, BulkElementResult{
+					Error: err,
+				})
+
+				if !continueOnFailure {
+					cancel()
+				}
+
+				return
 			}
 
-			continue
-		}
-
-		results = append(results, BulkElementResult{
-			Data:  ret,
-			LogID: logID,
+			results.Store(index, BulkElementResult{
+				Data:  ret,
+				LogID: logID,
+			})
 		})
 	}
 
-	return results, nil
+	wp.StopAndWait()
+
+	finalResults := make(BulkResult, 0, len(bulk))
+	for index := range bulk {
+		v, ok := results.Load(index)
+		if ok {
+			finalResults = append(finalResults, v.(BulkElementResult))
+			continue
+		}
+		finalResults = append(finalResults, BulkElementResult{
+			Error: errors.New("canceled"),
+		})
+	}
+
+	return finalResults, nil
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic bool) (BulkResult, error) {
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, providedOptions ...BulkingOption) (BulkResult, error) {
+
+	bulkOptions := BulkingOptions{}
+	for _, option := range providedOptions {
+		option(&bulkOptions)
+	}
 
 	for i, element := range bulk {
 		switch element.Action {
@@ -154,7 +188,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic b
 	}
 
 	ctrl := b.ctrl
-	if atomic {
+	if bulkOptions.Atomic {
 		var err error
 		ctrl, err = ctrl.BeginTX(ctx, nil)
 		if err != nil {
@@ -162,9 +196,9 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic b
 		}
 	}
 
-	results, err := b.run(ctx, ctrl, bulk, continueOnFailure)
+	results, err := b.run(ctx, ctrl, bulk, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
 	if err != nil {
-		if atomic {
+		if bulkOptions.Atomic {
 			if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 			}
@@ -173,7 +207,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, continueOnFailure, atomic b
 		return nil, fmt.Errorf("error running bulk: %s", err)
 	}
 
-	if atomic {
+	if bulkOptions.Atomic {
 		if results.HasErrors() {
 			if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
@@ -328,6 +362,65 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, element Bu
 	}
 }
 
-func NewBulker(ctrl Controller) *Bulker {
-	return &Bulker{ctrl: ctrl}
+func NewBulker(ctrl Controller, options ...BulkerOption) *Bulker {
+	ret := &Bulker{ctrl: ctrl}
+	for _, option := range options {
+		option(ret)
+	}
+
+	return ret
 }
+
+type BulkerOption func(bulker *Bulker)
+
+func WithParallelism(v int) BulkerOption {
+	return func(options *Bulker) {
+		options.parallelism = v
+	}
+}
+
+type BulkingOptions struct {
+	ContinueOnFailure bool
+	Atomic            bool
+	Parallel          bool
+}
+
+type BulkingOption func(*BulkingOptions)
+
+func WithContinueOnFailure(v bool) BulkingOption {
+	return func(options *BulkingOptions) {
+		options.ContinueOnFailure = v
+	}
+}
+
+func WithAtomic(v bool) BulkingOption {
+	return func(options *BulkingOptions) {
+		options.Atomic = v
+	}
+}
+
+func WithParallel(v bool) BulkingOption {
+	return func(options *BulkingOptions) {
+		options.Parallel = v
+	}
+}
+
+type BulkerFactory interface {
+	CreateBulker(ctrl Controller) *Bulker
+}
+
+type DefaultBulkerFactory struct {
+	Options []BulkerOption
+}
+
+func (d *DefaultBulkerFactory) CreateBulker(ctrl Controller) *Bulker {
+	return NewBulker(ctrl, d.Options...)
+}
+
+func NewDefaultBulkerFactory(options ...BulkerOption) *DefaultBulkerFactory {
+	return &DefaultBulkerFactory{
+		Options: options,
+	}
+}
+
+var _ BulkerFactory = (*DefaultBulkerFactory)(nil)

@@ -38,7 +38,7 @@ var _ = Context("Ledger engine tests", func() {
 				ctx          = logging.TestingContext()
 				events       chan *nats.Msg
 				bulkResponse []components.V2BulkElementResult
-				bulkMaxSize  = 5
+				bulkMaxSize  = 100
 			)
 
 			testServer := NewTestServer(func() Configuration {
@@ -60,10 +60,10 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			When("creating a bulk on a ledger", func() {
 				var (
-					now    = time.Now().Round(time.Microsecond).UTC()
-					items  []components.V2BulkElement
-					err    error
-					atomic bool
+					now              = time.Now().Round(time.Microsecond).UTC()
+					items            []components.V2BulkElement
+					err              error
+					atomic, parallel bool
 				)
 				BeforeEach(func() {
 					items = []components.V2BulkElement{
@@ -106,6 +106,7 @@ var _ = Context("Ledger engine tests", func() {
 				JustBeforeEach(func() {
 					bulkResponse, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
 						Atomic:      pointer.For(atomic),
+						Parallel:    pointer.For(parallel),
 						RequestBody: items,
 						Ledger:      "default",
 					})
@@ -174,6 +175,29 @@ var _ = Context("Ledger engine tests", func() {
 					})
 					It("should respond with an error", func() {
 						Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumBulkSizeExceeded)))
+					})
+				})
+				Context("with parallel", func() {
+					BeforeEach(func() {
+						parallel = true
+						items = make([]components.V2BulkElement, 0)
+						for i := 0; i < bulkMaxSize; i++ {
+							items = append(items, components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+								Data: &components.V2PostTransaction{
+									Metadata: map[string]string{},
+									Postings: []components.V2Posting{{
+										Amount:      big.NewInt(100),
+										Asset:       "USD/2",
+										Destination: "bank",
+										Source:      "world",
+									}},
+									Timestamp: &now,
+								},
+							}))
+						}
+					})
+					It("should be ok", func() {
+						Expect(err).To(BeNil())
 					})
 				})
 			})

@@ -12,7 +12,9 @@ type V2CreateBulkRequest struct {
 	// Continue on failure
 	ContinueOnFailure *bool `queryParam:"style=form,explode=true,name=continueOnFailure"`
 	// Make bulk atomic
-	Atomic      *bool                      `queryParam:"style=form,explode=true,name=atomic"`
+	Atomic *bool `queryParam:"style=form,explode=true,name=atomic"`
+	// Process bulk elements in parallel
+	Parallel    *bool                      `queryParam:"style=form,explode=true,name=parallel"`
 	RequestBody []components.V2BulkElement `request:"mediaType=application/json"`
 }
 
@@ -35,6 +37,13 @@ func (o *V2CreateBulkRequest) GetAtomic() *bool {
 		return nil
 	}
 	return o.Atomic
+}
+
+func (o *V2CreateBulkRequest) GetParallel() *bool {
+	if o == nil {
+		return nil
+	}
+	return o.Parallel
 }
 
 func (o *V2CreateBulkRequest) GetRequestBody() []components.V2BulkElement {

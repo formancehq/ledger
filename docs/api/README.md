@@ -500,6 +500,7 @@ Accept: application/json
 |ledger|path|string|true|Name of the ledger.|
 |continueOnFailure|query|boolean|false|Continue on failure|
 |atomic|query|boolean|false|Make bulk atomic|
+|parallel|query|boolean|false|Process bulk elements in parallel|
 |body|body|[V2Bulk](#schemav2bulk)|false|none|
 
 > Example responses

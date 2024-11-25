@@ -12,7 +12,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-func bulkHandler(bulkMaxSize int) http.HandlerFunc {
+func bulkHandler(bulkerFactory ledgercontroller.BulkerFactory, bulkMaxSize int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		b := ledgercontroller.Bulk{}
 		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
@@ -28,11 +28,11 @@ func bulkHandler(bulkMaxSize int) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		ledgerController := common.LedgerFromContext(r.Context())
-		bulker := ledgercontroller.NewBulker(ledgerController)
-		results, err := bulker.Run(r.Context(),
-			b,
-			api.QueryParamBool(r, "continueOnFailure"),
-			api.QueryParamBool(r, "atomic"),
+
+		results, err := bulkerFactory.CreateBulker(ledgerController).Run(r.Context(), b,
+			ledgercontroller.WithContinueOnFailure(api.QueryParamBool(r, "continueOnFailure")),
+			ledgercontroller.WithAtomic(api.QueryParamBool(r, "atomic")),
+			ledgercontroller.WithParallel(api.QueryParamBool(r, "parallel")),
 		)
 		if err != nil {
 			api.InternalServerError(w, r, err)

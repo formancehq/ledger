@@ -116,11 +116,11 @@ func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) 
 		return nil, err
 	}
 
-	d.legacyStore = d.legacyStore.WithDB(store.GetDB())
+	legacyStore := d.legacyStore.WithDB(store.GetDB())
 
 	return &DefaultStoreAdapter{
 		newStore:    store,
-		legacyStore: d.legacyStore,
+		legacyStore: legacyStore,
 	}, nil
 }
 
