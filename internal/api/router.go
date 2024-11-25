@@ -2,7 +2,7 @@ package api
 
 import (
 	"github.com/formancehq/go-libs/v2/api"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgercontroller "github.com/formancehq/ledger/internal/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

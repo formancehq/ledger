@@ -1,4 +1,4 @@
-package ledger
+package bulking
 
 import (
 	"context"
@@ -7,132 +7,17 @@ import (
 	"fmt"
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"reflect"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"sync/atomic"
 )
 
-const (
-	ActionCreateTransaction = "CREATE_TRANSACTION"
-	ActionAddMetadata       = "ADD_METADATA"
-	ActionRevertTransaction = "REVERT_TRANSACTION"
-	ActionDeleteMetadata    = "DELETE_METADATA"
-)
-
-type Bulk chan BulkElement
-
-type BulkElement struct {
-	Action         string `json:"action"`
-	IdempotencyKey string `json:"ik"`
-	Data           any    `json:"data"`
-}
-
-func (b *BulkElement) UnmarshalJSON(data []byte) error {
-
-	type Aux BulkElement
-	type X struct {
-		Aux
-		Data json.RawMessage `json:"data"`
-	}
-	x := X{}
-	if err := json.Unmarshal(data, &x); err != nil {
-		return err
-	}
-
-	*b = BulkElement(x.Aux)
-
-	var err error
-	b.Data, err = UnmarshalBulkElementPayload(x.Action, x.Data)
-
-	return err
-}
-
-func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
-	var req any
-	switch action {
-	case ActionCreateTransaction:
-		req = &TransactionRequest{}
-	case ActionAddMetadata:
-		req = &AddMetadataRequest{}
-	case ActionRevertTransaction:
-		req = &RevertTransactionRequest{}
-	case ActionDeleteMetadata:
-		req = &DeleteMetadataRequest{}
-	}
-	if err := json.Unmarshal(data, req); err != nil {
-		return nil, fmt.Errorf("error parsing element: %s", err)
-	}
-
-	return reflect.ValueOf(req).Elem().Interface(), nil
-}
-
-type BulkElementResult struct {
-	Error     error
-	Data      any `json:"data,omitempty"`
-	LogID     int `json:"logID"`
-	ElementID int `json:"elementID"`
-}
-
-type AddMetadataRequest struct {
-	TargetType string            `json:"targetType"`
-	TargetID   json.RawMessage   `json:"targetId"`
-	Metadata   metadata.Metadata `json:"metadata"`
-}
-
-type RevertTransactionRequest struct {
-	ID              int  `json:"id"`
-	Force           bool `json:"force"`
-	AtEffectiveDate bool `json:"atEffectiveDate"`
-}
-
-type DeleteMetadataRequest struct {
-	TargetType string          `json:"targetType"`
-	TargetID   json.RawMessage `json:"targetId"`
-	Key        string          `json:"key"`
-}
-
-type TransactionRequest struct {
-	Postings  ledger.Postings   `json:"postings"`
-	Script    ScriptV1          `json:"script"`
-	Timestamp time.Time         `json:"timestamp"`
-	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
-}
-
-func (req TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*RunScript, error) {
-
-	if _, err := req.Postings.Validate(); err != nil {
-		return nil, err
-	}
-
-	if len(req.Postings) > 0 {
-		txData := ledger.TransactionData{
-			Postings:  req.Postings,
-			Timestamp: req.Timestamp,
-			Reference: req.Reference,
-			Metadata:  req.Metadata,
-		}
-
-		return pointer.For(TxToScriptData(txData, allowUnboundedOverdrafts)), nil
-	}
-
-	return &RunScript{
-		Script:    req.Script.ToCore(),
-		Timestamp: req.Timestamp,
-		Reference: req.Reference,
-		Metadata:  req.Metadata,
-	}, nil
-}
-
 type Bulker struct {
-	ctrl        Controller
+	ctrl        ledgercontroller.Controller
 	parallelism int
 }
 
-func (b *Bulker) run(ctx context.Context, ctrl Controller, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
 
 	parallelism := 1
 	if parallel && b.parallelism != 0 {
@@ -221,7 +106,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkElement) (any, int, error) {
+func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, int, error) {
 
 	switch data.Action {
 	case ActionCreateTransaction:
@@ -230,7 +115,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
-		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, Parameters[RunScript]{
+		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input:          *rs,
@@ -253,10 +138,10 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 			if err := json.Unmarshal(req.TargetID, &address); err != nil {
 				return nil, 0, err
 			}
-			log, err = ctrl.SaveAccountMetadata(ctx, Parameters[SaveAccountMetadata]{
+			log, err = ctrl.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: SaveAccountMetadata{
+				Input: ledgercontroller.SaveAccountMetadata{
 					Address:  address,
 					Metadata: req.Metadata,
 				},
@@ -266,10 +151,10 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 				return nil, 0, err
 			}
-			log, err = ctrl.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
+			log, err = ctrl.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: SaveTransactionMetadata{
+				Input: ledgercontroller.SaveTransactionMetadata{
 					TransactionID: transactionID,
 					Metadata:      req.Metadata,
 				},
@@ -285,10 +170,10 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 	case ActionRevertTransaction:
 		req := data.Data.(RevertTransactionRequest)
 
-		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, Parameters[RevertTransaction]{
+		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
-			Input: RevertTransaction{
+			Input: ledgercontroller.RevertTransaction{
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
 				TransactionID:   req.ID,
@@ -313,10 +198,10 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 				return nil, 0, err
 			}
 
-			log, err = ctrl.DeleteAccountMetadata(ctx, Parameters[DeleteAccountMetadata]{
+			log, err = ctrl.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: DeleteAccountMetadata{
+				Input: ledgercontroller.DeleteAccountMetadata{
 					Address: address,
 					Key:     req.Key,
 				},
@@ -327,10 +212,10 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 				return nil, 0, err
 			}
 
-			log, err = ctrl.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
+			log, err = ctrl.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				Input: DeleteTransactionMetadata{
+				Input: ledgercontroller.DeleteTransactionMetadata{
 					TransactionID: transactionID,
 					Key:           req.Key,
 				},
@@ -348,7 +233,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl Controller, data BulkE
 	}
 }
 
-func NewBulker(ctrl Controller, options ...BulkerOption) *Bulker {
+func NewBulker(ctrl ledgercontroller.Controller, options ...BulkerOption) *Bulker {
 	ret := &Bulker{ctrl: ctrl}
 	for _, option := range options {
 		option(ret)
@@ -400,14 +285,14 @@ func WithParallel(v bool) BulkingOption {
 }
 
 type BulkerFactory interface {
-	CreateBulker(ctrl Controller) *Bulker
+	CreateBulker(ctrl ledgercontroller.Controller) *Bulker
 }
 
 type DefaultBulkerFactory struct {
 	Options []BulkerOption
 }
 
-func (d *DefaultBulkerFactory) CreateBulker(ctrl Controller) *Bulker {
+func (d *DefaultBulkerFactory) CreateBulker(ctrl ledgercontroller.Controller) *Bulker {
 	return NewBulker(ctrl, d.Options...)
 }
 
@@ -418,3 +303,4 @@ func NewDefaultBulkerFactory(options ...BulkerOption) *DefaultBulkerFactory {
 }
 
 var _ BulkerFactory = (*DefaultBulkerFactory)(nil)
+

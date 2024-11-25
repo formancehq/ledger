@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/internal/bulking"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -92,7 +93,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"id":        float64(0),
 				},
-				ResponseType: ledgercontroller.ActionCreateTransaction,
+				ResponseType: bulking.ActionCreateTransaction,
 			}},
 		},
 		{
@@ -120,7 +121,7 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 		},
 		{
@@ -148,7 +149,7 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 		},
 		{
@@ -176,7 +177,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",
 				},
-				ResponseType: ledgercontroller.ActionRevertTransaction,
+				ResponseType: bulking.ActionRevertTransaction,
 			}},
 		},
 		{
@@ -200,7 +201,7 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionDeleteMetadata,
+				ResponseType: bulking.ActionDeleteMetadata,
 			}},
 		},
 		{
@@ -260,7 +261,7 @@ func TestBulk(t *testing.T) {
 					Return(nil, errors.New("unexpected error"))
 			},
 			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}, {
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
@@ -342,13 +343,13 @@ func TestBulk(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}, {
 				ResponseType:     "ERROR",
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 			}, {
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 			expectError: true,
 		},
@@ -411,9 +412,9 @@ func TestBulk(t *testing.T) {
 					Return(nil)
 			},
 			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}, {
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 		},
 	}

@@ -2,7 +2,7 @@ package v2
 
 import (
 	"errors"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgercontroller "github.com/formancehq/ledger/internal/bulking"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"

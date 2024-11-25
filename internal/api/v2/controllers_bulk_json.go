@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/ledger/internal/bulking"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"slices"
@@ -13,12 +14,12 @@ import (
 
 type jsonBulkHandler struct {
 	bulkMaxSize  int
-	bulkElements []ledgercontroller.BulkElement
-	receive      chan ledgercontroller.BulkElementResult
+	bulkElements []bulking.BulkElement
+	receive      chan bulking.BulkElementResult
 }
 
-func (h *jsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (ledgercontroller.Bulk, chan ledgercontroller.BulkElementResult, bool) {
-	h.bulkElements = make([]ledgercontroller.BulkElement, 0)
+func (h *jsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (bulking.Bulk, chan bulking.BulkElementResult, bool) {
+	h.bulkElements = make([]bulking.BulkElement, 0)
 	if err := json.NewDecoder(r.Body).Decode(&h.bulkElements); err != nil {
 		api.BadRequest(w, ErrValidation, err)
 		return nil, nil, false
@@ -29,19 +30,19 @@ func (h *jsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (l
 		return nil, nil, false
 	}
 
-	bulk := make(ledgercontroller.Bulk, len(h.bulkElements))
+	bulk := make(bulking.Bulk, len(h.bulkElements))
 	for _, element := range h.bulkElements {
 		bulk <- element
 	}
 	close(bulk)
 
-	h.receive = make(chan ledgercontroller.BulkElementResult, len(h.bulkElements))
+	h.receive = make(chan bulking.BulkElementResult, len(h.bulkElements))
 
 	return bulk, h.receive, true
 }
 
 func (h *jsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
-	results := make([]ledgercontroller.BulkElementResult, 0, len(h.bulkElements))
+	results := make([]bulking.BulkElementResult, 0, len(h.bulkElements))
 	for element := range h.receive {
 		results = append(results, element)
 	}
@@ -53,7 +54,7 @@ func (h *jsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	slices.SortFunc(results, func(a, b ledgercontroller.BulkElementResult) int {
+	slices.SortFunc(results, func(a, b bulking.BulkElementResult) int {
 		return a.ElementID - b.ElementID
 	})
 

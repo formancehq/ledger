@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/bulking"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -16,7 +17,7 @@ import (
 func createTransaction(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	payload := ledgercontroller.TransactionRequest{}
+	payload := bulking.TransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		api.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
 		return

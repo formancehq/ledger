@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/health"
-	"github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
@@ -12,14 +12,14 @@ import (
 )
 
 type BulkConfig struct {
-	MaxSize int
+	MaxSize  int
 	Parallel int
 }
 
 type Config struct {
-	Version     string
-	Debug       bool
-	Bulk BulkConfig
+	Version string
+	Debug   bool
+	Bulk    BulkConfig
 }
 
 func Module(cfg Config) fx.Option {
@@ -36,8 +36,8 @@ func Module(cfg Config) fx.Option {
 				cfg.Debug,
 				WithTracer(tracer.Tracer("api")),
 				WithBulkMaxSize(cfg.Bulk.MaxSize),
-				WithBulkerFactory(ledger.NewDefaultBulkerFactory(
-					ledger.WithParallelism(cfg.Bulk.Parallel),
+				WithBulkerFactory(bulking.NewDefaultBulkerFactory(
+					bulking.WithParallelism(cfg.Bulk.Parallel),
 				)),
 			)
 		}),

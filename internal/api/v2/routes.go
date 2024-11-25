@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/bulking"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
@@ -96,7 +96,7 @@ func NewRouter(
 type routerOptions struct {
 	tracer               trace.Tracer
 	middlewares          []func(http.Handler) http.Handler
-	bulkerFactory        ledger.BulkerFactory
+	bulkerFactory        bulking.BulkerFactory
 	bulkHandlerFactories map[string]BulkHandlerFactory
 }
 
@@ -120,7 +120,7 @@ func WithBulkHandlerFactories(bulkHandlerFactories map[string]BulkHandlerFactory
 	}
 }
 
-func WithBulkerFactory(bulkerFactory ledger.BulkerFactory) RouterOption {
+func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 	return func(ro *routerOptions) {
 		ro.bulkerFactory = bulkerFactory
 	}
@@ -128,7 +128,7 @@ func WithBulkerFactory(bulkerFactory ledger.BulkerFactory) RouterOption {
 
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
-	WithBulkerFactory(ledger.NewDefaultBulkerFactory()),
+	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
 	WithBulkHandlerFactories(map[string]BulkHandlerFactory{
 		"application/json": NewJSONBulkHandlerFactory(100),
 	}),
