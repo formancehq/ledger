@@ -8,7 +8,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	bulking "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -20,7 +20,7 @@ import (
 )
 
 type Action struct {
-	elements []ledgercontroller.BulkElement
+	elements []bulking.BulkElement
 }
 
 func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]components.V2BulkElementResult, error) {
@@ -31,8 +31,8 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 		var bulkElement components.V2BulkElement
 
 		switch element.Action {
-		case ledgercontroller.ActionCreateTransaction:
-			transactionRequest := &ledgercontroller.TransactionRequest{}
+		case bulking.ActionCreateTransaction:
+			transactionRequest := &bulking.TransactionRequest{}
 			err := json.Unmarshal(element.Data, transactionRequest)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal transaction request: %w", err)
@@ -69,8 +69,8 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 					Metadata: transactionRequest.Metadata,
 				},
 			})
-		case ledgercontroller.ActionAddMetadata:
-			addMetadataRequest := &ledgercontroller.AddMetadataRequest{}
+		case bulking.ActionAddMetadata:
+			addMetadataRequest := &bulking.AddMetadataRequest{}
 			err := json.Unmarshal(element.Data, addMetadataRequest)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal add metadata request: %w", err)
@@ -101,8 +101,8 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 					Metadata:   addMetadataRequest.Metadata,
 				},
 			})
-		case ledgercontroller.ActionDeleteMetadata:
-			deleteMetadataRequest := &ledgercontroller.DeleteMetadataRequest{}
+		case bulking.ActionDeleteMetadata:
+			deleteMetadataRequest := &bulking.DeleteMetadataRequest{}
 			err := json.Unmarshal(element.Data, deleteMetadataRequest)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal delete metadata request: %w", err)
@@ -133,8 +133,8 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 					Key:        deleteMetadataRequest.Key,
 				},
 			})
-		case ledgercontroller.ActionRevertTransaction:
-			revertMetadataRequest := &ledgercontroller.RevertTransactionRequest{}
+		case bulking.ActionRevertTransaction:
+			revertMetadataRequest := &bulking.RevertTransactionRequest{}
 			err := json.Unmarshal(element.Data, revertMetadataRequest)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal delete metadata request: %w", err)
@@ -251,11 +251,11 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 			rawElements := next(i)
 
 			var (
-				action string
-				ik     string
-				data   map[string]any
-				ok     bool
-				elements = make([]ledgercontroller.BulkElement, 0)
+				action   string
+				ik       string
+				data     map[string]any
+				ok       bool
+				elements = make([]bulking.BulkElement, 0)
 			)
 			for _, rawElement := range rawElements {
 
@@ -291,7 +291,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 					}
 				}
 
-				elements = append(elements, ledgercontroller.BulkElement{
+				elements = append(elements, bulking.BulkElement{
 					Action:         action,
 					IdempotencyKey: ik,
 					Data:           dataAsJsonRawMessage,
