@@ -3,7 +3,6 @@
 package operations
 
 import (
-	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
@@ -14,7 +13,7 @@ type GetBalancesRequest struct {
 	Address *string `queryParam:"style=form,explode=true,name=address"`
 	// The maximum number of results to return per page.
 	//
-	PageSize *int64 `default:"15" queryParam:"style=form,explode=true,name=pageSize"`
+	PageSize *int64 `queryParam:"style=form,explode=true,name=pageSize"`
 	// Pagination cursor, will return accounts after given address, in descending order.
 	After *string `queryParam:"style=form,explode=true,name=after"`
 	// Parameter used in pagination requests. Maximum page size is set to 1000.
@@ -23,17 +22,6 @@ type GetBalancesRequest struct {
 	// No other parameters can be set when this parameter is set.
 	//
 	Cursor *string `queryParam:"style=form,explode=true,name=cursor"`
-}
-
-func (g GetBalancesRequest) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(g, "", false)
-}
-
-func (g *GetBalancesRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &g, "", false, false); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (o *GetBalancesRequest) GetLedger() string {

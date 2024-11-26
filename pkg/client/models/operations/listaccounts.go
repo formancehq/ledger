@@ -3,7 +3,6 @@
 package operations
 
 import (
-	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 )
@@ -13,7 +12,7 @@ type ListAccountsRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// The maximum number of results to return per page.
 	//
-	PageSize *int64 `default:"15" queryParam:"style=form,explode=true,name=pageSize"`
+	PageSize *int64 `queryParam:"style=form,explode=true,name=pageSize"`
 	// Pagination cursor, will return accounts after given address, in descending order.
 	After *string `queryParam:"style=form,explode=true,name=after"`
 	// Filter accounts by address pattern (regular expression placed between ^ and $).
@@ -37,17 +36,6 @@ type ListAccountsRequest struct {
 	//
 	// Deprecated field: This will be removed in a future release, please migrate away from it as soon as possible.
 	PaginationToken *string `queryParam:"style=form,explode=true,name=pagination_token"`
-}
-
-func (l ListAccountsRequest) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(l, "", false)
-}
-
-func (l *ListAccountsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &l, "", false, false); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (o *ListAccountsRequest) GetLedger() string {
