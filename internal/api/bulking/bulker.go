@@ -9,12 +9,16 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"sync/atomic"
 )
 
 type Bulker struct {
 	ctrl        ledgercontroller.Controller
 	parallelism int
+	tracer      trace.Tracer
 }
 
 func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
@@ -27,8 +31,16 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 	wp := pond.New(parallelism, parallelism)
 	hasError := atomic.Bool{}
 
+	index := 0
 	for element := range bulk {
 		wp.Submit(func() {
+			ctx, span := b.tracer.Start(ctx, "Bulk:ProcessElement",
+				trace.WithNewRoot(),
+				trace.WithLinks(trace.LinkFromContext(ctx)),
+				trace.WithAttributes(attribute.Int("index", index)),
+			)
+			defer span.End()
+
 			select {
 			case <-ctx.Done():
 				result <- BulkElementResult{
@@ -44,6 +56,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 				ret, logID, err := b.processElement(ctx, ctrl, element)
 				if err != nil {
 					hasError.Store(true)
+					span.RecordError(err)
 
 					result <- BulkElementResult{
 						Error: err,
@@ -63,10 +76,20 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 
 	wp.StopAndWait()
 
+	defer close(result)
+
 	return hasError.Load()
 }
 
 func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResult, bulkOptions BulkingOptions) error {
+
+	ctx, span := b.tracer.Start(ctx, "Bulk:Run", trace.WithAttributes(
+		attribute.Bool("atomic", bulkOptions.Atomic),
+		attribute.Bool("parallel", bulkOptions.Parallel),
+		attribute.Bool("continueOnFailure", bulkOptions.ContinueOnFailure),
+		attribute.Int("parallelism", b.parallelism),
+	))
+	defer span.End()
 
 	if err := bulkOptions.Validate(); err != nil {
 		return fmt.Errorf("validating bulk options: %s", err)
@@ -229,7 +252,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 
 func NewBulker(ctrl ledgercontroller.Controller, options ...BulkerOption) *Bulker {
 	ret := &Bulker{ctrl: ctrl}
-	for _, option := range options {
+	for _, option := range append(defaultBulkerOptions, options...) {
 		option(ret)
 	}
 
@@ -242,6 +265,17 @@ func WithParallelism(v int) BulkerOption {
 	return func(options *Bulker) {
 		options.parallelism = v
 	}
+}
+
+func WithTracer(tracer trace.Tracer) BulkerOption {
+	return func(options *Bulker) {
+		options.tracer = tracer
+	}
+}
+
+var defaultBulkerOptions = []BulkerOption{
+	WithTracer(noop.Tracer{}),
+	WithParallelism(10),
 }
 
 type BulkingOptions struct {

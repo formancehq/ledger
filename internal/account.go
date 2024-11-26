@@ -23,6 +23,10 @@ type Account struct {
 	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"effective_volumes,scanonly"`
 }
 
+func (a Account) GetAddress() string {
+	return a.Address
+}
+
 type AccountsVolumes struct {
 	bun.BaseModel `bun:"accounts_volumes"`
 

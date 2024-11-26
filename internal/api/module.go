@@ -27,17 +27,18 @@ func Module(cfg Config) fx.Option {
 		fx.Provide(func(
 			backend system.Controller,
 			authenticator auth.Authenticator,
-			tracer trace.TracerProvider,
+			tracerProvider trace.TracerProvider,
 		) chi.Router {
 			return NewRouter(
 				backend,
 				authenticator,
 				"develop",
 				cfg.Debug,
-				WithTracer(tracer.Tracer("api")),
+				WithTracer(tracerProvider.Tracer("api")),
 				WithBulkMaxSize(cfg.Bulk.MaxSize),
 				WithBulkerFactory(bulking.NewDefaultBulkerFactory(
 					bulking.WithParallelism(cfg.Bulk.Parallel),
+					bulking.WithTracer(tracerProvider.Tracer("api.bulking")),
 				)),
 			)
 		}),

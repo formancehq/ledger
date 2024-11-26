@@ -84,6 +84,7 @@ send [USD 100] (
 			}
 
 			require.NoError(t, writer.Close())
+			close(receive)
 
 			h.Terminate(w, r)
 

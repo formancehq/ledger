@@ -76,7 +76,7 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 	}
 
 	if scanner.Err() != nil {
-		return nil, fmt.Errorf("error reading script: %w", scanner.Err())
+		return nil, fmt.Errorf("error while reading script: %w", scanner.Err())
 	}
 
 	return nil, nil

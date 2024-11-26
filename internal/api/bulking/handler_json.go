@@ -43,8 +43,6 @@ func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (B
 }
 
 func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
-	close(h.receive)
-
 	results := make([]BulkElementResult, 0, len(h.bulkElements))
 	for element := range h.receive {
 		results = append(results, element)
@@ -92,7 +90,7 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 		var (
 			errorCode        string
 			errorDescription string
-			responseType = actions[index]
+			responseType     = actions[index]
 		)
 
 		if result.Error != nil {

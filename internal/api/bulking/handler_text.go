@@ -21,10 +21,10 @@ func (h *ScriptStreamBulkHandler) GetChannels(_ http.ResponseWriter, r *http.Req
 	h.terminated = make(chan struct{})
 
 	go func() {
-		defer close(h.receive)
 		defer close(h.channel)
 
 		scanner := bufio.NewScanner(r.Body)
+
 		for {
 			select {
 			case <-r.Context().Done():
@@ -73,7 +73,7 @@ func (h *ScriptStreamBulkHandler) Terminate(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func NewScriptStreamBulkHandler() Handler {
+func NewScriptStreamBulkHandler() *ScriptStreamBulkHandler {
 	return &ScriptStreamBulkHandler{}
 }
 
