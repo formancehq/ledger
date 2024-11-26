@@ -19,7 +19,8 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 		case text == "":
 		case strings.HasPrefix(text, "//script"):
 			bulkElement := BulkElement{}
-			text = strings.TrimSuffix(text, "//script")
+			bulkElement.Action = ActionCreateTransaction
+			text = strings.TrimPrefix(text, "//script")
 			text = strings.TrimSpace(text)
 
 			if len(text) > 0 {
@@ -28,6 +29,9 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 					parts2 := strings.Split(part, "=")
 					switch {
 					case parts2[0] == "ik":
+						if bulkElement.IdempotencyKey != "" {
+							return nil, errors.New("invalid header, idempotency key already set")
+						}
 						bulkElement.IdempotencyKey = parts2[1]
 					default:
 						return nil, errors.New("invalid header, key '" + parts2[0] + "' not recognized")

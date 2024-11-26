@@ -156,7 +156,7 @@ func TestBulk(t *testing.T) {
 			}},
 		},
 		{
-			name: "delete metadata",
+			name: "delete metadata on transaction",
 			bulk: []BulkElement{{
 				Action: ActionDeleteMetadata,
 				Data: DeleteMetadataRequest{
@@ -171,6 +171,28 @@ func TestBulk(t *testing.T) {
 						Input: ledgercontroller.DeleteTransactionMetadata{
 							TransactionID: 1,
 							Key:           "foo",
+						},
+					}).
+					Return(&ledger.Log{}, nil)
+			},
+			expectResults: []BulkElementResult{{}},
+		},
+		{
+			name: "delete metadata on account",
+			bulk: []BulkElement{{
+				Action: ActionDeleteMetadata,
+				Data: DeleteMetadataRequest{
+					TargetID:   json.RawMessage(`"world"`),
+					TargetType: "ACCOUNT",
+					Key:        "foo",
+				},
+			}},
+			expectations: func(mockLedger *LedgerController) {
+				mockLedger.EXPECT().
+					DeleteAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
+						Input: ledgercontroller.DeleteAccountMetadata{
+							Address: "world",
+							Key:     "foo",
 						},
 					}).
 					Return(&ledger.Log{}, nil)

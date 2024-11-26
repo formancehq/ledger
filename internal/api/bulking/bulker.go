@@ -117,6 +117,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			return nil, 0, err
 		}
 
+		// todo(next api version): no reason to return only the transaction...
 		return createTransactionResult.Transaction, log.ID, nil
 	case ActionAddMetadata:
 		req := data.Data.(AddMetadataRequest)
