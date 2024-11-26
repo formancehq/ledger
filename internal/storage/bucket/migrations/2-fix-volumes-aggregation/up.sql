@@ -23,4 +23,3 @@ with all_assets as (select v.v as asset
 select moves.asset, moves.post_commit_volumes
 from moves
 $$ set search_path from current;
-

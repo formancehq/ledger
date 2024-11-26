@@ -7,13 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/ledger/internal/storage/bucket"
-	driver "github.com/formancehq/ledger/internal/storage/driver"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace/noop"
 	"math/big"
 	"slices"
 	"testing"
@@ -609,98 +602,6 @@ func TestTransactionsInsert(t *testing.T) {
 		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
-	})
-	// todo(next-minor): remove this test
-	t.Run("check reference conflict with minimal store version", func(t *testing.T) {
-		t.Parallel()
-
-		// Waiting for the pg server to be ready
-		<-srv.Done()
-
-		// Create a dedicated database for this test as we want to run migrations only until the minimal schema version
-		db := srv.GetValue().NewDatabase(t)
-		bunDB, err := bunconnect.OpenSQLDB(ctx, db.ConnectionOptions())
-		require.NoError(t, err)
-
-		driver := driver.New(
-			ledgerstore.NewFactory(bunDB),
-			systemstore.New(bunDB),
-			bucket.NewDefaultFactory(bunDB),
-		)
-		require.NoError(t, driver.Initialize(ctx))
-
-		ledgerName := uuid.NewString()[:8]
-
-		l := ledger.MustNewWithDefault(ledgerName)
-		l.Bucket = ledgerName
-
-		migrator := bucket.GetMigrator(bunDB, ledgerName)
-		for i := 0; i < bucket.MinimalSchemaVersion; i++ {
-			require.NoError(t, migrator.UpByOne(ctx))
-		}
-
-		b := bucket.NewDefault(bunDB, noop.Tracer{}, ledgerName)
-		err = b.AddLedger(ctx, l)
-		require.NoError(t, err)
-
-		store := ledgerstore.New(bunDB, b, l)
-
-		const nbTry = 100
-
-		for i := 0; i < nbTry; i++ {
-			errChan := make(chan error, 2)
-
-			// Create a simple tx
-			tx1 := ledger.Transaction{
-				TransactionData: ledger.TransactionData{
-					Timestamp: now,
-					Reference: fmt.Sprintf("foo:%d", i),
-					Postings: []ledger.Posting{
-						ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-					},
-				},
-			}
-			go func() {
-				errChan <- store.InsertTransaction(ctx, &tx1)
-			}()
-
-			// Create another tx with the same reference
-			tx2 := ledger.Transaction{
-				TransactionData: ledger.TransactionData{
-					Timestamp: now,
-					Reference: fmt.Sprintf("foo:%d", i),
-					Postings: []ledger.Posting{
-						ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-					},
-				},
-			}
-			go func() {
-				errChan <- store.InsertTransaction(ctx, &tx2)
-			}()
-
-			select {
-			case err1 := <-errChan:
-				if err1 != nil {
-					require.True(t, errors.Is(err1, ledgercontroller.ErrTransactionReferenceConflict{}))
-					select {
-					case err2 := <-errChan:
-						require.NoError(t, err2)
-					case <-time.After(time.Second):
-						require.Fail(t, "should have received an error")
-					}
-				} else {
-					select {
-					case err2 := <-errChan:
-						require.Error(t, err2)
-						require.True(t, errors.Is(err2, ledgercontroller.ErrTransactionReferenceConflict{}))
-					case <-time.After(time.Second):
-						require.Fail(t, "should have received an error")
-					}
-				}
-			case <-time.After(time.Second):
-				require.Fail(t, "should have received an error")
-			}
-		}
 	})
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()

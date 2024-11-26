@@ -407,11 +407,6 @@ func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) e
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
 						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
 					}
-				case errors.Is(err, postgres.ErrRaisedException{}):
-					// todo(next-minor): remove this test
-					if err.(postgres.ErrRaisedException).GetMessage() == "duplicate reference" {
-						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
-					}
 				default:
 					return nil, err
 				}

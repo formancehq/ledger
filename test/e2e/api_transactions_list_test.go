@@ -331,8 +331,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 				)
 				Expect(err).To(HaveOccurred())
 			})
-			It("Should fail with "+string(components.V2ErrorsEnumInternal)+" error code", func() {
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInternal)))
+			It("Should fail with "+string(components.V2ErrorsEnumValidation)+" error code", func() {
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 			})
 		})
 	})

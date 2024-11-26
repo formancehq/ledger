@@ -13,6 +13,7 @@ type Bucket interface {
 	Migrate(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error
 	AddLedger(ctx context.Context, ledger ledger.Ledger) error
 	HasMinimalVersion(ctx context.Context) (bool, error)
+	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 }
 

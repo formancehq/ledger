@@ -86,6 +86,10 @@ func (s *Store) GetDB() bun.IDB {
 	return s.db
 }
 
+func (s *Store) GetBucket() bucket.Bucket {
+	return s.bucket
+}
+
 func (s *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, s.ledger.Bucket, v)
 }

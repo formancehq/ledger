@@ -22,18 +22,25 @@ type DefaultBucket struct {
 	tracer trace.Tracer
 }
 
+func (b *DefaultBucket) IsUpToDate(ctx context.Context) (bool, error) {
+	return GetMigrator(b.db, b.name).IsUpToDate(ctx)
+}
+
 func (b *DefaultBucket) Migrate(ctx context.Context, minimalVersionReached chan struct{}, options ...migrations.Option) error {
 	return migrate(ctx, b.tracer, b.db, b.name, minimalVersionReached, options...)
 }
 
 func (b *DefaultBucket) HasMinimalVersion(ctx context.Context) (bool, error) {
-	migrator := GetMigrator(b.db, b.name)
-	lastVersion, err := migrator.GetLastVersion(ctx)
+	lastVersion, err := b.GetLastVersion(ctx)
 	if err != nil {
 		return false, err
 	}
 
 	return lastVersion >= MinimalSchemaVersion, nil
+}
+
+func (b *DefaultBucket) GetLastVersion(ctx context.Context) (int, error) {
+	return GetMigrator(b.db, b.name).GetLastVersion(ctx)
 }
 
 func (b *DefaultBucket) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
