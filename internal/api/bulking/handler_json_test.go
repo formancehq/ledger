@@ -116,6 +116,7 @@ send [USD 100] (
 				t.Fatal("send channel should have been closed since the bulk has been completely consumed")
 			}
 
+			close(receive)
 			h.Terminate(w, r)
 
 			require.Equal(t, http.StatusOK, w.Result().StatusCode)
