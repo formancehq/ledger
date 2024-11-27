@@ -135,7 +135,6 @@ lint:
 
 pre-commit:
     BUILD +tidy
-    BUILD +lint
     BUILD +openapi
     BUILD +openapi-markdown
     BUILD +generate

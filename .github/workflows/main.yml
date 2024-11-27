@@ -12,6 +12,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
 jobs:
   PR:
     if: github.event_name == 'pull_request'
@@ -53,6 +58,27 @@ jobs:
             git diff
             exit 1
           fi
+
+  Lint:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: 'actions/checkout@v4'
+        with:
+          fetch-depth: 0
+      - name: Setup Env
+        uses: ./.github/actions/env
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.60
+          github-token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          args: --fix --build-tags it --timeout 5m
 
   Tests:
     runs-on: "formance-runner"
@@ -123,6 +149,7 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
     needs:
       - Dirty
+      - Lint
     steps:
       - uses: earthly/actions-setup@v1
         with:
