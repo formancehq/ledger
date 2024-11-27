@@ -4,12 +4,10 @@ import (
 	"context"
 	"database/sql"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/uptrace/bun"
 )
 
 type TX struct {
 	*Store
-	sqlTX bun.Tx
 }
 
 type DefaultStoreAdapter struct {
