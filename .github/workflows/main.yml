@@ -104,7 +104,10 @@ jobs:
         env:
           CGO_ENABLED: 1
       - name: Clear coverate.txt
-        run: cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage.txt
+        run: |
+          cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
+          rm -rf coverage.txt
+          mv coverage2.txt coverage.txt
       - name: Upload coverage reports to Codecov with GitHub Action
         uses: codecov/codecov-action@v4.2.0
         env:
