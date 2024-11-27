@@ -63,7 +63,7 @@ func TestK8SRollingUpgrades(t *testing.T) {
 		auto.ConfigMap{
 			"version": auto.ConfigValue{Value: *latestVersion},
 			"postgres.uri": auto.ConfigValue{
-				Value: "postgres://ledger:ledger@" + pgStackOutputs["service-name"].Value.(string) + ".svc.cluster.local:5432/ledger?sslmode=disable",
+				Value: "postgres://postgres:postgres@" + pgStackOutputs["service-name"].Value.(string) + ".svc.cluster.local:5432/ledger?sslmode=disable",
 			},
 			"debug":                auto.ConfigValue{Value: "true"},
 			"image.pullPolicy":     auto.ConfigValue{Value: "Always"},
@@ -104,7 +104,7 @@ func TestK8SRollingUpgrades(t *testing.T) {
 
 	// Let a moment ensure the test image is actually sending requests
 	// We could maybe find a dynamic way to do that
-	<-time.After(5 * time.Second)
+	<-time.After(10 * time.Second)
 
 	err = ledgerStack.SetConfig(ctx, "version", auto.ConfigValue{
 		Value: *actualVersion,
@@ -253,15 +253,14 @@ func deployPostgres(ctx *pulumi.Context) error {
 		Namespace: pulumi.String(namespace),
 		Values: pulumi.Map(map[string]pulumi.Input{
 			"auth": pulumi.Map{
-				"password": pulumi.String("ledger"),
-				"username": pulumi.String("ledger"),
-				"database": pulumi.String("ledger"),
+				"postgresPassword": pulumi.String("postgres"),
+				"database":         pulumi.String("ledger"),
 			},
 			"primary": pulumi.Map{
 				"resources": pulumi.Map{
 					"requests": pulumi.Map{
 						"memory": pulumi.String("256Mi"),
-						"cpu":    pulumi.String("250m"),
+						"cpu":    pulumi.String("256m"),
 					},
 				},
 			},

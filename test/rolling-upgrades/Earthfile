@@ -61,7 +61,7 @@ cluster-create:
     RUN vcluster create $CLUSTER_NAME --connect=false --upgrade
 
 run:
-    ARG CLUSTER_NAME=test
+    ARG CLUSTER_NAME=test-rolling-upgrades
     WAIT
         BUILD --pass-args +cluster-create
         BUILD +image-test --TAG=$CLUSTER_NAME-rolling-upgrade-test
