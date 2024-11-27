@@ -65,10 +65,6 @@ jobs:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
-      - name: Setup Env
-        uses: ./.github/actions/env
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Install Go
         uses: actions/setup-go@v5
         with:
