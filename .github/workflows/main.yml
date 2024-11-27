@@ -77,7 +77,7 @@ jobs:
           args: --fix --build-tags it --timeout 5m
 
   Tests:
-    runs-on: "formance-runner"
+    runs-on: "ubuntu-latest"
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
