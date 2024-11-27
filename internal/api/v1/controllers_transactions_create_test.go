@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -176,7 +177,7 @@ func TestTransactionsCreate(t *testing.T) {
 			name:               "no postings or script",
 			payload:            CreateTransactionRequest{},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name: "postings and script",
@@ -200,13 +201,13 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name:               "using invalid body",
 			payload:            "not a valid payload",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 	}
 

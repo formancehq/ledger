@@ -26,7 +26,7 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 		return pointer.For(ledgercontroller.NewListAccountsQuery(*options)), nil
 	})
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 

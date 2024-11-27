@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,7 @@ func TestBulk(t *testing.T) {
 		body          string
 		expectations  func(mockLedger *LedgerController)
 		expectError   bool
-		expectResults []Result
+		expectResults []bulking.APIResult
 	}
 
 	testCases := []bulkTestCase{
@@ -77,7 +78,7 @@ func TestBulk(t *testing.T) {
 						},
 					}, nil)
 			},
-			expectResults: []Result{{
+			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
 					"postings": []any{
 						map[string]any{
@@ -92,7 +93,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"id":        float64(0),
 				},
-				ResponseType: ledgercontroller.ActionCreateTransaction,
+				ResponseType: bulking.ActionCreateTransaction,
 			}},
 		},
 		{
@@ -119,8 +120,8 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{}, nil)
 			},
-			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+			expectResults: []bulking.APIResult{{
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 		},
 		{
@@ -147,8 +148,8 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{}, nil)
 			},
-			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+			expectResults: []bulking.APIResult{{
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 		},
 		{
@@ -168,7 +169,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{}, &ledger.RevertedTransaction{}, nil)
 			},
-			expectResults: []Result{{
+			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
 					"id":        float64(0),
 					"metadata":  nil,
@@ -176,7 +177,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",
 				},
-				ResponseType: ledgercontroller.ActionRevertTransaction,
+				ResponseType: bulking.ActionRevertTransaction,
 			}},
 		},
 		{
@@ -199,8 +200,8 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{}, nil)
 			},
-			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionDeleteMetadata,
+			expectResults: []bulking.APIResult{{
+				ResponseType: bulking.ActionDeleteMetadata,
 			}},
 		},
 		{
@@ -259,15 +260,15 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(nil, errors.New("unexpected error"))
 			},
-			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+			expectResults: []bulking.APIResult{{
+				ResponseType: bulking.ActionAddMetadata,
 			}, {
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 				ResponseType:     "ERROR",
 			}, {
 				ErrorCode:        api.ErrorInternal,
-				ErrorDescription: "canceled",
+				ErrorDescription: "context canceled",
 				ResponseType:     "ERROR",
 			}},
 			expectError: true,
@@ -341,14 +342,14 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{}, nil)
 			},
-			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+			expectResults: []bulking.APIResult{{
+				ResponseType: bulking.ActionAddMetadata,
 			}, {
 				ResponseType:     "ERROR",
 				ErrorCode:        api.ErrorInternal,
 				ErrorDescription: "unexpected error",
 			}, {
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 			expectError: true,
 		},
@@ -410,15 +411,16 @@ func TestBulk(t *testing.T) {
 					Commit(gomock.Any()).
 					Return(nil)
 			},
-			expectResults: []Result{{
-				ResponseType: ledgercontroller.ActionAddMetadata,
+			expectResults: []bulking.APIResult{{
+				ResponseType: bulking.ActionAddMetadata,
 			}, {
-				ResponseType: ledgercontroller.ActionAddMetadata,
+				ResponseType: bulking.ActionAddMetadata,
 			}},
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			testCase.expectations(ledgerController)
@@ -439,8 +441,8 @@ func TestBulk(t *testing.T) {
 				require.Equal(t, http.StatusOK, rec.Code)
 			}
 
-			ret, _ := api.DecodeSingleResponse[[]Result](t, rec.Body)
-			ret = collectionutils.Map(ret, func(from Result) Result {
+			ret, _ := api.DecodeSingleResponse[[]bulking.APIResult](t, rec.Body)
+			ret = collectionutils.Map(ret, func(from bulking.APIResult) bulking.APIResult {
 				switch data := from.Data.(type) {
 				case map[string]any:
 					delete(data, "insertedAt")

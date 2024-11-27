@@ -20,7 +20,7 @@ func listLogs(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
-			api.BadRequest(w, ErrValidation, fmt.Errorf("invalid '%s' query param", QueryKeyCursor))
+			api.BadRequest(w, common.ErrValidation, fmt.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return
 		}
 	} else {
@@ -28,13 +28,13 @@ func listLogs(w http.ResponseWriter, r *http.Request) {
 
 		pageSize, err := bunpaginate.GetPageSize(r)
 		if err != nil {
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
 		qb, err := getQueryBuilder(r)
 		if err != nil {
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
@@ -48,7 +48,7 @@ func listLogs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

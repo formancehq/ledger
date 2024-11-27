@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -55,28 +56,28 @@ func TestLedgersCreate(t *testing.T) {
 			expectedBackendCall: true,
 			returnErr:           system.ErrLedgerAlreadyExists,
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrLedgerAlreadyExists,
+			expectErrorCode:     common.ErrLedgerAlreadyExists,
 		},
 		{
 			name:                "invalid ledger name",
 			expectedBackendCall: true,
 			returnErr:           ledger.ErrInvalidLedgerName{},
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     common.ErrValidation,
 		},
 		{
 			name:                "invalid bucket name",
 			expectedBackendCall: true,
 			returnErr:           ledger.ErrInvalidBucketName{},
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     common.ErrValidation,
 		},
 		{
 			name:                "invalid ledger configuration",
 			expectedBackendCall: true,
 			returnErr:           system.ErrInvalidLedgerConfiguration{},
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     common.ErrValidation,
 		},
 		{
 			name:                "unexpected error",

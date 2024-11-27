@@ -2,6 +2,7 @@ package v2
 
 import (
 	"bytes"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -85,7 +86,7 @@ func TestAccountsList(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -93,7 +94,7 @@ func TestAccountsList(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "page size over maximum",
@@ -136,12 +137,12 @@ func TestAccountsList(t *testing.T) {
 			name:              "using invalid query payload",
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "with invalid query from core point of view",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
@@ -154,7 +155,7 @@ func TestAccountsList(t *testing.T) {
 		{
 			name:              "with missing feature",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{

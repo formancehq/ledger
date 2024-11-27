@@ -13,7 +13,7 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 
 	options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 	options.QueryBuilder = buildGetTransactionsQuery(r)

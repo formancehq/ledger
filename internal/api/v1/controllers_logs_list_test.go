@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -64,7 +65,7 @@ func TestGetLogs(t *testing.T) {
 				"cursor": []string{"xxx"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {

@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -138,7 +139,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name:              "with invalid query from core point of view",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
@@ -150,7 +151,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name:              "with missing feature",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
 			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{

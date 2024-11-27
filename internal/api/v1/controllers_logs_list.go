@@ -42,7 +42,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
-			api.BadRequest(w, ErrValidation, fmt.Errorf("invalid '%s' query param: %w", QueryKeyCursor, err))
+			api.BadRequest(w, common.ErrValidation, fmt.Errorf("invalid '%s' query param: %w", QueryKeyCursor, err))
 			return
 		}
 	} else {

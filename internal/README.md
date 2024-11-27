@@ -12,6 +12,7 @@ import "github.com/formancehq/ledger/internal"
 - [Variables](<#variables>)
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
 - [type Account](<#Account>)
+  - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
 - [type AccountsVolumes](<#AccountsVolumes>)
 - [type BalancesByAssets](<#BalancesByAssets>)
@@ -171,6 +172,15 @@ type Account struct {
     EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"effective_volumes,scanonly"`
 }
 ```
+
+<a name="Account.GetAddress"></a>
+### func \(Account\) GetAddress
+
+```go
+func (a Account) GetAddress() string
+```
+
+
 
 <a name="AccountMetadata"></a>
 ## type AccountMetadata

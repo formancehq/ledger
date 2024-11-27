@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
@@ -53,7 +53,10 @@ func NewRouter(
 			router.With(common.LedgerMiddleware(systemController, func(r *http.Request) string {
 				return chi.URLParam(r, "ledger")
 			}, routerOptions.tracer, "/_info")).Group(func(router chi.Router) {
-				router.Post("/_bulk", bulkHandler(routerOptions.bulkerFactory, routerOptions.bulkMaxSize))
+				router.Post("/_bulk", bulkHandler(
+					routerOptions.bulkerFactory,
+					routerOptions.bulkHandlerFactories,
+				))
 
 				// LedgerController
 				router.Get("/_info", getLedgerInfo)
@@ -91,10 +94,10 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer      trace.Tracer
-	middlewares []func(http.Handler) http.Handler
-	bulkerFactory ledger.BulkerFactory
-	bulkMaxSize int
+	tracer               trace.Tracer
+	middlewares          []func(http.Handler) http.Handler
+	bulkerFactory        bulking.BulkerFactory
+	bulkHandlerFactories map[string]bulking.HandlerFactory
 }
 
 type RouterOption func(ro *routerOptions)
@@ -111,13 +114,13 @@ func WithMiddlewares(middlewares ...func(http.Handler) http.Handler) RouterOptio
 	}
 }
 
-func WithBulkMaxSize(bulkMaxSize int) RouterOption {
+func WithBulkHandlerFactories(bulkHandlerFactories map[string]bulking.HandlerFactory) RouterOption {
 	return func(ro *routerOptions) {
-		ro.bulkMaxSize = bulkMaxSize
+		ro.bulkHandlerFactories = bulkHandlerFactories
 	}
 }
 
-func WithBulkerFactory(bulkerFactory ledger.BulkerFactory) RouterOption {
+func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 	return func(ro *routerOptions) {
 		ro.bulkerFactory = bulkerFactory
 	}
@@ -125,5 +128,9 @@ func WithBulkerFactory(bulkerFactory ledger.BulkerFactory) RouterOption {
 
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
-	WithBulkerFactory(ledger.NewDefaultBulkerFactory()),
+	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
+	WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
+		"application/json": bulking.NewJSONBulkHandlerFactory(100),
+		"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
+	}),
 }

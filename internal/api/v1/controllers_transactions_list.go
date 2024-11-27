@@ -23,7 +23,7 @@ func listTransactions(w http.ResponseWriter, r *http.Request) {
 		return pointer.For(ledgercontroller.NewListTransactionsQuery(*options)), nil
 	})
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 

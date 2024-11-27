@@ -21,7 +21,7 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 
 	pitFilter, err := getPITFilter(r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 

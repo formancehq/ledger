@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -45,13 +46,13 @@ func TestTransactionsAddMetadata(t *testing.T) {
 			name:              "invalid body",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "invalid id",
 			id:                "abc",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "not found",

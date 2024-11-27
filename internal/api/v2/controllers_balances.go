@@ -14,13 +14,13 @@ func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 
 	pitFilter, err := getPITFilter(r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
 	queryBuilder, err := getQueryBuilder(r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
@@ -30,7 +30,7 @@ func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

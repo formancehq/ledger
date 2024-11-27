@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -105,7 +106,7 @@ func TestTransactionsList(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -113,7 +114,7 @@ func TestTransactionsList(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "page size over maximum",

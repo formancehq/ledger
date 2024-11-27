@@ -1,6 +1,8 @@
 package v2
 
 import (
+	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +37,7 @@ func TestTransactionCreate(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "using plain numscript",
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `XXX`,
@@ -52,7 +54,7 @@ func TestTransactionCreate(t *testing.T) {
 		},
 		{
 			name: "using plain numscript with variables",
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `vars {
@@ -89,7 +91,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "using plain numscript with variables (legacy format)",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `vars {
@@ -128,7 +130,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "using plain numscript and dry run",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `send (
@@ -155,7 +157,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "using JSON postings",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
@@ -170,7 +172,7 @@ func TestTransactionCreate(t *testing.T) {
 			queryParams: url.Values{
 				"dryRun": []string{"true"},
 			},
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
@@ -182,16 +184,16 @@ func TestTransactionCreate(t *testing.T) {
 		},
 		{
 			name: "no postings or script",
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Metadata: map[string]string{},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrNoPostings,
+			expectedErrorCode:  common.ErrNoPostings,
 			returnError:        errors.New("you need to pass either a posting array or a numscript script"),
 		},
 		{
 			name: "postings and script",
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Postings: ledger.Postings{
 					{
 						Source:      "world",
@@ -211,18 +213,18 @@ func TestTransactionCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name:               "using invalid body",
 			payload:            "not a valid payload",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name:                 "with insufficient funds",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `XXX`,
@@ -237,22 +239,22 @@ func TestTransactionCreate(t *testing.T) {
 			},
 			returnError:        &ledgercontroller.ErrInsufficientFunds{},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrInsufficientFund,
+			expectedErrorCode:  common.ErrInsufficientFund,
 		},
 		{
 			name: "using JSON postings and negative amount",
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			expectControllerCall: true,
 			name:                 "numscript and negative amount",
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `send [COIN -100] (
@@ -263,7 +265,7 @@ func TestTransactionCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrCompilationFailed,
+			expectedErrorCode:  common.ErrCompilationFailed,
 			expectedRunScript: ledgercontroller.RunScript{
 				Script: ledgercontroller.Script{
 					Plain: `send [COIN -100] (
@@ -278,7 +280,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "numscript and compilation failed",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `send [COIN XXX] (
@@ -289,7 +291,7 @@ func TestTransactionCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrCompilationFailed,
+			expectedErrorCode:  common.ErrCompilationFailed,
 			expectedRunScript: ledgercontroller.RunScript{
 				Script: ledgercontroller.Script{
 					Plain: `send [COIN XXX] (
@@ -304,7 +306,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "numscript and no postings",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `vars {}`,
@@ -312,7 +314,7 @@ func TestTransactionCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrNoPostings,
+			expectedErrorCode:  common.ErrNoPostings,
 			expectedRunScript: ledgercontroller.RunScript{
 				Script: ledgercontroller.Script{
 					Plain: `vars {}`,
@@ -324,7 +326,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "numscript and metadata override",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `send [COIN 100] (
@@ -340,7 +342,7 @@ func TestTransactionCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrMetadataOverride,
+			expectedErrorCode:  common.ErrMetadataOverride,
 			expectedRunScript: ledgercontroller.RunScript{
 				Script: ledgercontroller.Script{
 					Plain: `send [COIN 100] (
@@ -360,7 +362,7 @@ func TestTransactionCreate(t *testing.T) {
 		{
 			name:                 "unexpected error",
 			expectControllerCall: true,
-			payload: ledgercontroller.TransactionRequest{
+			payload: bulking.TransactionRequest{
 				Script: ledgercontroller.ScriptV1{
 					Script: ledgercontroller.Script{
 						Plain: `send [COIN 100] (

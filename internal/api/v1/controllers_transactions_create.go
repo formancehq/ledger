@@ -63,17 +63,17 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 
 	payload := CreateTransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		api.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
+		api.BadRequest(w, common.ErrValidation, errors.New("invalid transaction format"))
 		return
 	}
 
 	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
 		len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		api.BadRequest(w, ErrValidation, errors.New("invalid payload: should contain either postings or script"))
+		api.BadRequest(w, common.ErrValidation, errors.New("invalid payload: should contain either postings or script"))
 		return
 	} else if len(payload.Postings) > 0 {
 		if _, err := payload.Postings.Validate(); err != nil {
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 		txData := ledger.TransactionData{
@@ -87,16 +87,16 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			switch {
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
-				api.BadRequest(w, ErrInsufficientFund, err)
+				api.BadRequest(w, common.ErrInsufficientFund, err)
 			case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
-				api.BadRequest(w, ErrScriptCompilationFailed, err)
+				api.BadRequest(w, common.ErrScriptCompilationFailed, err)
 			case errors.Is(err, &ledgercontroller.ErrMetadataOverride{}):
-				api.BadRequest(w, ErrScriptMetadataOverride, err)
+				api.BadRequest(w, common.ErrScriptMetadataOverride, err)
 			case errors.Is(err, ledgercontroller.ErrNoPostings) ||
 				errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
-				api.BadRequest(w, ErrValidation, err)
+				api.BadRequest(w, common.ErrValidation, err)
 			case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
-				api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
+				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 			default:
 				common.HandleCommonErrors(w, r, err)
 			}
@@ -108,7 +108,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 
 	script, err := payload.Script.ToCore()
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
@@ -123,15 +123,15 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
-			api.BadRequest(w, ErrInsufficientFund, err)
+			api.BadRequest(w, common.ErrInsufficientFund, err)
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) ||
 			errors.Is(err, ledgercontroller.ErrCompilationFailed{}) ||
 			errors.Is(err, &ledgercontroller.ErrMetadataOverride{}) ||
 			errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
 			errors.Is(err, ledgercontroller.ErrNoPostings):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
-			api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
+			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}
