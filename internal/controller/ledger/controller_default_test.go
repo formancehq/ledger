@@ -394,7 +394,7 @@ func TestIsDatabaseUpToDate(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	store.EXPECT().
-		IsUpToDate(gomock.Any()).
+		HasMinimalVersion(gomock.Any()).
 		Return(true, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)

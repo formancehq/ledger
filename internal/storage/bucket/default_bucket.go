@@ -14,11 +14,11 @@ import (
 )
 
 // stateless version (+1 regarding directory name, as migrations start from 1 in the lib)
-const MinimalSchemaVersion = 12
+const MinimalSchemaVersion = 24
 
 type DefaultBucket struct {
-	name string
-	db   *bun.DB
+	name   string
+	db     *bun.DB
 	tracer trace.Tracer
 }
 
@@ -69,8 +69,8 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 
 func NewDefault(db *bun.DB, tracer trace.Tracer, name string) *DefaultBucket {
 	return &DefaultBucket{
-		db:   db,
-		name: name,
+		db:     db,
+		name:   name,
 		tracer: tracer,
 	}
 }
