@@ -79,22 +79,32 @@ jobs:
   Tests:
     runs-on: "formance-runner"
     steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
-      - name: Setup Env
-        uses: ./.github/actions/env
+      - name: Install Go
+        uses: actions/setup-go@v5
         with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - run: >
-          earthly
-          --no-output
-          --allow-privileged
-          --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +tests --coverage=true
+          go-version-file: go.mod
+      - name: Install Ginkgo
+        run: go install github.com/onsi/ginkgo/v2/ginkgo@latest
+      - name: Run tests
+        run: > 
+          go test 
+          -race 
+          -tags it
+          -covermode=atomic
+          -coverpkg=github.com/formancehq/ledger/internal/...,github.com/formancehq/ledger/pkg/events/...,github.com/formancehq/ledger/pkg/accounts/...,github.com/formancehq/ledger/pkg/assets/...,github.com/formancehq/ledger/cmd/...
+          -coverprofile coverage.txt
+          ./...
         env:
-          SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+          CGO_ENABLED: 1
+      - name: Clear coverate.txt
+        run: cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage.txt
       - name: Upload coverage reports to Codecov with GitHub Action
         uses: codecov/codecov-action@v4.2.0
         env:
