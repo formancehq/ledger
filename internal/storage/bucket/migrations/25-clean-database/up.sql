@@ -31,8 +31,6 @@ drop function revert_transaction(_ledger character varying, _id numeric, _date t
 
 drop index transactions_sources_arrays;
 drop index transactions_destinations_arrays;
-drop index accounts_address_array;
-drop index accounts_address_array_length;
 drop index transactions_sources;
 drop index transactions_destinations;
 
