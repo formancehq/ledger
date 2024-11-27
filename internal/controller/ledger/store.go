@@ -64,7 +64,7 @@ type Store interface {
 	GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error)
 	GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
 	GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
-	IsUpToDate(ctx context.Context) (bool, error)
+	HasMinimalVersion(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 }
 
