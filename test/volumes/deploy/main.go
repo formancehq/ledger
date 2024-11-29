@@ -17,11 +17,15 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"golang.org/x/crypto/ssh"
 	"io/fs"
-	"maps"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strings"
 	"text/template"
 )
+
+//go:embed ec2/setup.sh
+var setupEC2 string
 
 var r = rand.New(rand.NewSource(1))
 
@@ -73,8 +77,10 @@ func main() {
 			awsRegion = "eu-west-1"
 		}
 
-		deleteAllResources, _ := config.TryBool(ctx, "delete-all-resources")
-		debug, _ := config.TryBool(ctx, "debug")
+		deleteAllResources := config.GetBool(ctx, "delete-all-resources")
+		debug := config.GetBool(ctx, "debug")
+		otlpSignozAccessToken := config.Get(ctx, "otlp-signoz-access-token")
+		otlpSignozEndpoint := config.Get(ctx, "otlp-signoz-endpoint")
 
 		privateKey, err := rsa.GenerateKey(&stableReader{}, 4096)
 		if err != nil {
@@ -179,26 +185,6 @@ func main() {
 			return fmt.Errorf("creating RDS instance: %w", err)
 		}
 
-		setupLedgerInstance := pulumi.All(
-			primaryRDSInstance.Endpoint,
-			primaryRDSInstance.Port,
-		).ApplyT(func(v []interface{}) (string, error) {
-			endpoint := v[0].(string)
-			port := v[1].(int)
-
-			tpl := template.Must(template.New("setupEC2Ledger").Parse(setupEC2))
-			buf := bytes.NewBuffer(nil)
-			if err := tpl.Execute(buf, map[string]any{
-				"PostgresURI":   fmt.Sprintf("postgres://root:password@%s:%d/postgres", endpoint, port),
-				"LedgerVersion": ledgerVersion,
-				"Debug":         debug,
-			}); err != nil {
-				return "", fmt.Errorf("executing template: %w", err)
-			}
-
-			return buf.String(), nil
-		})
-
 		ledgerInstance, err := ec2.NewInstance(ctx, "ledger", &ec2.InstanceArgs{
 			Ami:          pulumi.String("ami-0715d656023fe21b4"), // debian-12-amd64-20240717-1811
 			InstanceType: pulumi.String(ledgerInstanceType),
@@ -209,9 +195,9 @@ func main() {
 			Tags: pulumi.StringMap{
 				"Name": pulumi.String("ledger-high-volumes-tests-app"),
 			},
-			KeyName:                 pair.KeyName,
-			UserData:                pulumi.Sprintf("%s", setupLedgerInstance),
-			UserDataReplaceOnChange: pulumi.BoolPtr(true),
+			KeyName:  pair.KeyName,
+			UserData: pulumi.String(setupEC2),
+			//UserDataReplaceOnChange: pulumi.BoolPtr(true),
 		})
 		if err != nil {
 			return fmt.Errorf("creating EC2 instance: %w", err)
@@ -229,39 +215,6 @@ func main() {
 			return err
 		}
 
-		setupDriverInstance := pulumi.All(
-			ledgerInstance.PrivateIp,
-			clusterInfo.ClusterIdentifier,
-			bucket.Bucket,
-			accessKey.ID(),
-			accessKey.Secret,
-		).
-			ApplyT(func(v []any) (string, error) {
-				ip := v[0].(string)
-				clusterIdentifier := v[1].(string)
-				bucket := v[2].(string)
-				awsAccessKeyID := v[3].(pulumi.ID)
-				awsSecretAccessKey := v[4].(string)
-
-				tpl := template.Must(template.New("setupEC2Driver").Parse(setupEC2Driver))
-				buf := bytes.NewBuffer(nil)
-
-				if err := tpl.Execute(buf, map[string]any{
-					"LedgerIP":            ip,
-					"DriverVersion":       driverVersion,
-					"DBClusterIdentifier": clusterIdentifier,
-					"S3Bucket":            bucket,
-					"Steps":               steps,
-					"AwsRegion":           awsRegion,
-					"AwsAccessKeyID":      awsAccessKeyID,
-					"AwsSecretAccessKey":  awsSecretAccessKey,
-				}); err != nil {
-					return "", fmt.Errorf("executing template: %w", err)
-				}
-
-				return buf.String(), nil
-			})
-
 		driverInstance, err := ec2.NewInstance(ctx, "driver", &ec2.InstanceArgs{
 			Ami:          pulumi.String("ami-0715d656023fe21b4"), // debian-12-amd64-20240717-1811
 			InstanceType: pulumi.String(ledgerInstanceType),
@@ -273,7 +226,7 @@ func main() {
 				"Name": pulumi.String("ledger-high-volumes-tests-driver"),
 			},
 			KeyName:  pair.KeyName,
-			UserData: pulumi.Sprintf("%s", setupDriverInstance),
+			UserData: pulumi.String(setupEC2),
 			//UserDataReplaceOnChange: pulumi.BoolPtr(true),
 		})
 		if err != nil {
@@ -302,11 +255,27 @@ func main() {
 						"LedgerVersion": pulumi.String(ledgerVersion),
 						"Debug":         pulumi.Bool(debug),
 					},
+					".config/otel-collector/config.yaml": {
+						"OTLPSignozAccessToken": pulumi.String(otlpSignozAccessToken),
+						"OTLPSignozEndpoint":    pulumi.String(otlpSignozEndpoint),
+					},
 				},
 			},
 			{
 				Instance: driverInstance,
 				Name:     "driver",
+				TemplateData: map[string]map[string]any{
+					".config/systemd/user/driver.service": {
+						"LedgerIP":            ledgerInstance.PrivateIp,
+						"DriverVersion":       driverVersion,
+						"DBClusterIdentifier": clusterInfo.ClusterIdentifier,
+						"S3Bucket":            bucket.Bucket,
+						"Steps":               steps,
+						"AwsRegion":           awsRegion,
+						"AwsAccessKeyID":      accessKey.ID(),
+						"AwsSecretAccessKey":  accessKey.Secret,
+					},
+				},
 			},
 		} {
 			_, err = installUserKeyPairToInstance(ctx, instance.Name, instance.Instance, userKeyPair, string(privatePEM))
@@ -314,85 +283,72 @@ func main() {
 				return fmt.Errorf("installing key pair to instance: %w", err)
 			}
 
-			_, err = createSystemDConfigDir(ctx, instance.Name, instance.Instance, string(privatePEM))
-			if err != nil {
-				return fmt.Errorf("creating systemd unit dir: %w", err)
-			}
-
-			err = fs.WalkDir(os.DirFS("./ec2"), "./ec2", func(path string, d fs.DirEntry, err error) error {
+			instanceCopiedFiles := make([]pulumi.Resource, 0)
+			err = filepath.WalkDir("./ec2/"+instance.Name, func(path string, d fs.DirEntry, err error) error {
 				if d.IsDir() {
 					return nil
 				}
 
-				keys := make([]string, 0)
-				values := make([]any, 0)
-				for key := range maps.Keys(instance.TemplateData) {
-					keys = append(keys, key)
-					values = append(values, instance.TemplateData[key])
-				}
+				targetPath := strings.TrimPrefix(path, "ec2/"+instance.Name+"/")
 
 				templatedFileContent := pulumi.
-					All(values...).
+					All(instance.TemplateData[targetPath]).
 					ApplyT(func(v []any) (string, error) {
-						templateData := map[string]any{}
-						for i, key := range keys {
-							templateData[key] = v[i]
+						fileContent, err := os.ReadFile(path)
+						if err != nil {
+							return "", fmt.Errorf("reading file: %w", err)
 						}
 
 						buf := bytes.NewBuffer(nil)
-						err = template.Must(template.New("tpl").ParseFiles(path)).Execute(buf, templateData)
+						err = template.Must(template.New("tpl-"+path).
+							Parse(string(fileContent))).
+							Execute(buf, v[0])
 						if err != nil {
-							return "", fmt.Errorf("executing template: %w", err)
+							return "", fmt.Errorf("executing template for %s: %w", path, err)
 						}
 
 						return buf.String(), nil
 					})
 
-				_, err = remote.NewCommand(ctx, "ledger-systemd-unit", &remote.CommandArgs{
+				ret, err := remote.NewCommand(ctx, "systemd-unit "+instance.Name+" "+targetPath, &remote.CommandArgs{
 					Connection: remote.ConnectionArgs{
 						Host:       instance.Instance.PrivateIp,
 						User:       pulumi.String("admin"),
 						PrivateKey: pulumi.String(privatePEM),
 					},
-					Create: pulumi.Sprintf(`cat > /home/admin/%s < EOF
+					Create: pulumi.Sprintf(`mkdir -p /home/admin/%s && cat <<EOF > /home/admin/%s
 %s
-EOF`, path, templatedFileContent),
-				}, pulumi.DependsOn([]pulumi.Resource{instance.Instance}))
+EOF`, filepath.Dir(targetPath), targetPath, templatedFileContent),
+				})
 				if err != nil {
 					return fmt.Errorf("uploading ledger systemd unit file: %w", err)
 				}
+
+				instanceCopiedFiles = append(instanceCopiedFiles, ret)
 
 				return nil
 			})
 			if err != nil {
 				return err
 			}
-		}
 
-		//if _, err := uploadLedgerSystemDUnitFile(
-		//	ctx,
-		//	pair,
-		//	ledgerInstance,
-		//	string(privatePEM),
-		//	primaryRDSInstance,
-		//	ledgerVersion,
-		//	debug,
-		//); err != nil {
-		//	return fmt.Errorf("uploading ledger systemd unit file: %w", err)
-		//}
-		//
-		//if _, err := uploadCollectorSystemDUnitFile(
-		//	ctx,
-		//	pair,
-		//	ledgerInstance,
-		//	string(privatePEM),
-		//); err != nil {
-		//	return fmt.Errorf("uploading ledger systemd unit file: %w", err)
-		//}
-		//
-		//if _, err := uploadOtelCollectorConfig(ctx, pair, ledgerInstance, string(privatePEM)); err != nil {
-		//	return fmt.Errorf("uploading otel collector config: %w", err)
-		//}
+			_, err = remote.NewCommand(ctx, "systemd-unit "+instance.Name+" restart services", &remote.CommandArgs{
+				Connection: remote.ConnectionArgs{
+					Host:       instance.Instance.PrivateIp,
+					User:       pulumi.String("admin"),
+					PrivateKey: pulumi.String(privatePEM),
+				},
+				Create: pulumi.Sprintf(`
+					pushd .config/systemd/user;
+					systemctl --user enable *.service;
+					systemctl --user daemon-reload;
+					systemctl --user restart *.service;
+				`),
+			}, pulumi.DependsOn(instanceCopiedFiles))
+			if err != nil {
+				return fmt.Errorf("uploading ledger systemd unit file: %w", err)
+			}
+		}
 
 		ctx.Export("driver-private-ip", driverInstance.PrivateIp)
 		ctx.Export("db-instance-name", primaryRDSInstance.Identifier)
@@ -400,21 +356,9 @@ EOF`, path, templatedFileContent),
 		ctx.Export("metrics-bucket", bucket.Bucket)
 		ctx.Export("db-endpoint", primaryRDSInstance.Endpoint)
 		ctx.Export("public-key", pair.PublicKey)
-		ctx.Export("private-key", pulumi.String(privatePEM))
 
 		return nil
 	})
-}
-
-func createSystemDConfigDir(ctx *pulumi.Context, name string, instance *ec2.Instance, privatePEM string) (*remote.Command, error) {
-	return remote.NewCommand(ctx, "create-systemd-unit-dir-"+name, &remote.CommandArgs{
-		Connection: remote.ConnectionArgs{
-			Host:       instance.PrivateIp,
-			User:       pulumi.String("admin"),
-			PrivateKey: pulumi.String(privatePEM),
-		},
-		Create: pulumi.String("mkdir -p /home/admin/.config/systemd/user"),
-	}, pulumi.DependsOn([]pulumi.Resource{instance}))
 }
 
 func installUserKeyPairToInstance(ctx *pulumi.Context, name string, instance *ec2.Instance, userKeyPair *ec2.LookupKeyPairResult, privatePEM string) (*remote.Command, error) {
@@ -427,86 +371,3 @@ func installUserKeyPairToInstance(ctx *pulumi.Context, name string, instance *ec
 		Create: pulumi.String(`echo '` + userKeyPair.PublicKey + `' >> /home/admin/.ssh/authorized_keys && cat /home/admin/.ssh/authorized_keys`),
 	}, pulumi.DependsOn([]pulumi.Resource{instance}))
 }
-
-////go:embed ec2/ledger/.config/systemd/user/ledger.service
-//var ledgerSystemdUnit string
-
-//func uploadLedgerSystemDUnitFile(ctx *pulumi.Context, pair *ec2.KeyPair, instance *ec2.Instance, privatePEM string, rdsInstance *rds.ClusterInstance, ledgerVersion string, debug bool) (*remote.CopyToRemote, error) {
-//	return remote.NewCopyToRemote(ctx, "ledger-systemd-unit", &remote.CopyToRemoteArgs{
-//		Connection: remote.ConnectionArgs{
-//			Host:       instance.PrivateIp,
-//			User:       pulumi.String("admin"),
-//			PrivateKey: pulumi.String(privatePEM),
-//		},
-//		Source: pulumi.All(
-//			rdsInstance.Endpoint,
-//			rdsInstance.Port,
-//		).ApplyT(func(v []interface{}) (pulumi.Asset, error) {
-//			endpoint := v[0].(string)
-//			port := v[1].(int)
-//
-//			unitFilePath := filepath.Join(os.TempDir(), fmt.Sprint(rand.Int())+".service")
-//			f, err := os.Create(unitFilePath)
-//			if err != nil {
-//				return nil, fmt.Errorf("creating file: %w", err)
-//			}
-//			err = template.Must(template.New("ledger-systemd-unit").Parse(ledgerSystemdUnit)).Execute(f, map[string]any{
-//				"PostgresURI":   fmt.Sprintf("postgres://root:password@%s:%d/postgres", endpoint, port),
-//				"LedgerVersion": ledgerVersion,
-//				"Debug":         debug,
-//			})
-//			if err != nil {
-//				return nil, fmt.Errorf("executing template: %w", err)
-//			}
-//
-//			return pulumi.NewFileAsset(unitFilePath), nil
-//		}).(pulumi.AssetOutput),
-//		RemotePath: pulumi.String("/home/admin/.config/systemd/user/ledger.service"),
-//	}, pulumi.DependsOn([]pulumi.Resource{pair, instance}))
-//}
-//
-//func uploadCollectorSystemDUnitFile(ctx *pulumi.Context, pair *ec2.KeyPair, instance *ec2.Instance, privatePEM string) (*remote.CopyToRemote, error) {
-//	return remote.NewCopyToRemote(ctx, "otel-collector-systemd-unit", &remote.CopyToRemoteArgs{
-//		Connection: remote.ConnectionArgs{
-//			Host:       instance.PrivateIp,
-//			User:       pulumi.String("admin"),
-//			PrivateKey: pulumi.String(privatePEM),
-//		},
-//		Source:     pulumi.NewFileAsset("./systemd/otel-collector.service"),
-//		RemotePath: pulumi.String("/home/admin/.config/systemd/user/otel-collector.service"),
-//	}, pulumi.DependsOn([]pulumi.Resource{pair, instance}))
-//}
-//
-//func uploadOtelCollectorConfig(ctx *pulumi.Context, pair *ec2.KeyPair, instance *ec2.Instance, privatePEM string) (*remote.CopyToRemote, error) {
-//	return remote.NewCopyToRemote(ctx, "otel-collector-config", &remote.CopyToRemoteArgs{
-//		Connection: remote.ConnectionArgs{
-//			Host:       instance.PrivateIp,
-//			User:       pulumi.String("admin"),
-//			PrivateKey: pulumi.String(privatePEM),
-//		},
-//		Source:     pulumi.NewFileAsset("./config.yaml"),
-//		RemotePath: pulumi.String("/home/admin/otel-collector-config.yaml"),
-//	}, pulumi.DependsOn([]pulumi.Resource{pair, instance}))
-//}
-
-//go:embed setupEC2.sh
-var setupEC2 string
-
-var setupEC2Driver = setupEC2 + `
-
-docker run -d \
-	--restart on-failure \
-	--name driver \
-	--pull {{ if eq .DriverVersion "latest" }}always{{ else }}missing{{ end }} \
-	-e AWS_REGION={{ .AwsRegion }} \
-	-e AWS_ACCESS_KEY_ID="{{ .AwsAccessKeyID }}" \
-	-e AWS_SECRET_ACCESS_KEY="{{ .AwsSecretAccessKey }}" \
-	ghcr.io/formancehq/ledger-volumes-tests-driver:{{ .DriverVersion }} \
-		--ledger-ip {{ .LedgerIP }} \
-		{{- range .Steps }}
-		--step {{ . }} \
-		{{- end }}
-		--vus 100 \
-		--db-cluster-identifier {{ .DBClusterIdentifier }} \
-		--s3-bucket {{ .S3Bucket }};
-`

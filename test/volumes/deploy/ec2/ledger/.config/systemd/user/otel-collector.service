@@ -9,7 +9,7 @@ ExecStartPre=-/usr/bin/docker network create ledger
 ExecStart=/usr/bin/docker run --rm \
     --network ledger \
     --name otel-collector \
-    -v /home/admin/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml \
+    -v /home/admin/.config/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml \
     otel/opentelemetry-collector-contrib:0.114.0
 
 [Install]

@@ -2,9 +2,9 @@
 exporters:
   debug: {}
   otlp/signoz:
-    endpoint: ingest.eu.signoz.cloud:443
+    endpoint: {{ .OTLPSignozEndpoint }}
     headers:
-      signoz-access-token: v1yHwAYVI6Gp2EyMQURWqmB1hALFwdGrcyyX
+      signoz-access-token: {{ .OTLPSignozAccessToken }}
 processors:
   attributes/formance:
     actions:
