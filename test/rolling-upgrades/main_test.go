@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/ledger/pkg/features"
+	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/ledger/pkg"
+	pulumi_postgres "github.com/formancehq/ledger/deployments/pulumi/postgres/pkg"
+	"github.com/formancehq/ledger/test/rolling-upgrades/generator/pkg"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
-	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -22,8 +22,7 @@ var (
 	actualVersion      = flag.String("actual-version", "latest", "The version to upgrade")
 	noCleanup          = flag.Bool("no-cleanup", false, "Disable cleanup of created resources")
 	noCleanupOnFailure = flag.Bool("no-cleanup-on-failure", false, "Disable cleanup of created resources on failure")
-	projectName        = flag.String("project", "", "Pulumi project")
-	stackPrefixName    = flag.String("stack-prefix-name", "", "Pulumi stack prefix for names")
+	stackName          = flag.String("stack", "", "Pulumi stack name")
 	testImage          = flag.String("test-image", "", "Test image")
 )
 
@@ -34,138 +33,102 @@ func TestK8SRollingUpgrades(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	testFailure := false
-	cleanup := func(stack auto.Stack) func() {
-		return func() {
-			if testFailure && *noCleanupOnFailure {
-				return
-			}
-			cleanup(ctx, stack)
+
+	// Installing the stack
+	stack, err := auto.UpsertStackInlineSource(ctx, *stackName, "rolling-upgrades-tests", deployStack)
+	require.NoError(t, err, "creating stack")
+
+	t.Cleanup(func() {
+		if testFailure && *noCleanupOnFailure {
+			return
 		}
-	}
 
-	logging.FromContext(ctx).Info("Installing Postgres")
-	pgStack, err := auto.UpsertStackInlineSource(ctx, *stackPrefixName+"postgres", *projectName, deployPostgres)
-	require.NoError(t, err, "creating ledger stack")
-	t.Cleanup(cleanup(pgStack))
+		if *noCleanup {
+			return
+		}
 
-	_, err = upAndPrintOutputs(ctx, pgStack)
-	require.NoError(t, err, "upping pg stack")
+		if _, err := stack.Destroy(ctx); err != nil {
+			logging.FromContext(ctx).Errorf("destroying stack: %v", err)
+		}
 
-	ledgerStack, err := auto.UpsertStackLocalSource(ctx, *stackPrefixName+"ledger", "../../deployments/pulumi")
-	require.NoError(t, err, "creating ledger stack")
-	t.Cleanup(cleanup(ledgerStack))
-
-	pgStackOutputs, err := pgStack.Outputs(ctx)
-	require.NoError(t, err, "unable to extract pg stack outputs")
-
-	err = ledgerStack.SetAllConfig(
-		ctx,
-		auto.ConfigMap{
-			"version": auto.ConfigValue{Value: *latestVersion},
-			"postgres.uri": auto.ConfigValue{
-				Value: "postgres://postgres:postgres@" + pgStackOutputs["service-name"].Value.(string) + ".svc.cluster.local:5432/ledger?sslmode=disable",
-			},
-			"debug":                auto.ConfigValue{Value: "true"},
-			"image.pullPolicy":     auto.ConfigValue{Value: "Always"},
-			"replicaCount":         auto.ConfigValue{Value: "1"},
-			"experimentalFeatures": auto.ConfigValue{Value: "true"},
-		},
-	)
-	require.NoError(t, err, "setting config on ledger stack")
-
-	_, err = upAndPrintOutputs(ctx, ledgerStack)
-	require.NoError(t, err, "upping ledger stack first time")
-
-	testStack, err := auto.UpsertStackInlineSource(ctx, *stackPrefixName+"test", *projectName, deployTest)
-	require.NoError(t, err, "creating test stack")
-	t.Cleanup(cleanup(testStack))
-
-	ledgerStackOutputs, err := ledgerStack.Outputs(ctx)
-	require.NoError(t, err, "unable to extract ledger stack outputs")
-
-	ledgerURL := fmt.Sprintf(
-		"http://%s.%s.svc.cluster.local:%.0f",
-		ledgerStackOutputs["service-name"].Value,
-		ledgerStackOutputs["service-namespace"].Value,
-		ledgerStackOutputs["service-port"].Value,
-	)
-
-	err = testStack.SetAllConfig(ctx, auto.ConfigMap{
-		"ledger-url": auto.ConfigValue{Value: ledgerURL},
-		"image":      auto.ConfigValue{Value: *testImage},
+		if err := stack.Workspace().RemoveStack(ctx, stack.Name()); err != nil {
+			logging.FromContext(ctx).Errorf("removing stack: %v", err)
+		}
 	})
-	require.NoError(t, err, "setting config on test stack")
 
-	_, err = testStack.Destroy(ctx)
-	require.NoError(t, err, "destroying test stack")
-
-	_, err = upAndPrintOutputs(ctx, testStack)
-	require.NoError(t, err, "upping test stack")
+	_, err = upAndPrintOutputs(ctx, stack, map[string]auto.ConfigValue{
+		"ledger:version":  {Value: *latestVersion},
+		"generator:image": {Value: *testImage},
+	})
+	require.NoError(t, err, "upping base stack")
 
 	// Let a moment ensure the test image is actually sending requests
 	// We could maybe find a dynamic way to do that
-	<-time.After(10 * time.Second)
+	<-time.After(5 * time.Second)
 
-	err = ledgerStack.SetConfig(ctx, "version", auto.ConfigValue{
-		Value: *actualVersion,
+	_, err = upAndPrintOutputs(ctx, stack, map[string]auto.ConfigValue{
+		"ledger:version":  {Value: *actualVersion},
+		"generator:image": {Value: *testImage},
 	})
-	require.NoError(t, err, "setting version on ledger stack")
-
-	_, err = upAndPrintOutputs(ctx, ledgerStack)
 	require.NoError(t, err, "upping ledger stack second time")
 
-	testStackOutputs, err := testStack.Outputs(ctx)
+	<-time.After(5 * time.Second)
+
+	stackOutputs, err := stack.Outputs(ctx)
 	require.NoError(t, err, "unable to extract test stack outputs")
 
+	projectSettings, err := stack.Workspace().ProjectSettings(ctx)
+	require.NoError(t, err, "unable to extract project settings")
+
+	// Check the test stack
 	checkStack, err := auto.UpsertStackInlineSource(
 		ctx,
-		*stackPrefixName+"check",
-		*projectName,
+		*stackName+"-check",
+		string(projectSettings.Name),
 		func(ctx *pulumi.Context) error {
 			pod, err := corev1.GetPod(
 				ctx,
-				testStackOutputs["name"].Value.(string),
-				pulumi.ID(testStackOutputs["id"].Value.(string)),
+				stackOutputs["generator:pod-name"].Value.(string),
+				pulumi.ID(stackOutputs["generator:pod-id"].Value.(string)),
 				nil,
 			)
 			if err != nil {
 				return err
 			}
 
-			ctx.Export("phase", pod.Status.Phase().ApplyT(func(phase *string) string {
-				return *phase
-			}))
+			ctx.Export("phase", pod.Status.Phase().Elem())
 
 			return nil
 		},
 	)
 	require.NoError(t, err, "creating test stack")
-	t.Cleanup(cleanup(checkStack))
+	t.Cleanup(func() {
+		_, err := checkStack.Destroy(ctx)
+		if err != nil {
+			t.Log(err)
+			return
+		}
 
-	ret, err := upAndPrintOutputs(ctx, checkStack)
+		err = checkStack.Workspace().RemoveStack(ctx, stack.Name())
+		if err != nil {
+			t.Log(err)
+			return
+		}
+	})
+
+	ret, err := upAndPrintOutputs(ctx, checkStack, map[string]auto.ConfigValue{})
 	require.NoError(t, err, "upping check stack")
 
 	testFailure = ret.Outputs["phase"].Value.(string) == "Failed"
 	require.False(t, testFailure)
 }
 
-func cleanup(ctx context.Context, stack auto.Stack) {
-	if *noCleanup {
-		return
+func upAndPrintOutputs(ctx context.Context, stack auto.Stack, configs map[string]auto.ConfigValue) (auto.UpResult, error) {
+
+	if err := stack.SetAllConfig(ctx, configs); err != nil {
+		return auto.UpResult{}, fmt.Errorf("setting config: %w", err)
 	}
 
-	fmt.Printf("Destroying stack '%s'...\r\n", stack.Name())
-	if _, err := stack.Destroy(ctx); err != nil {
-		logging.FromContext(ctx).Errorf("destroying stack: %v", err)
-	}
-
-	fmt.Printf("Removing stack '%s'...\r\n", stack.Name())
-	if err := stack.Workspace().RemoveStack(ctx, stack.Name()); err != nil {
-		logging.FromContext(ctx).Errorf("removing stack: %v", err)
-	}
-}
-
-func upAndPrintOutputs(ctx context.Context, stack auto.Stack) (auto.UpResult, error) {
 	out, err := stack.Up(ctx)
 	if out.StdErr != "" {
 		fmt.Println(out.StdErr)
@@ -181,106 +144,85 @@ func upAndPrintOutputs(ctx context.Context, stack auto.Stack) (auto.UpResult, er
 	return out, nil
 }
 
-func deployTest(ctx *pulumi.Context) error {
-	conf := config.New(ctx, "")
-	namespace, err := conf.Try("namespace")
-	if err != nil {
-		namespace = "default"
-	}
-	image := conf.Require("image")
-	ledgerURL := conf.Require("ledger-url")
-
-	generatorArgs := pulumi.StringArray{
-		pulumi.String(ledgerURL),
-		pulumi.String("/examples/example1.js"),
-		pulumi.String("-p"),
-		pulumi.String("30"),
-	}
-
-	for _, key := range features.MinimalFeatureSet.SortedKeys() {
-		generatorArgs = append(generatorArgs,
-			pulumi.String("--ledger-feature"),
-			pulumi.String(key+"="+features.MinimalFeatureSet[key]),
-		)
-	}
-
-	rel, err := corev1.NewPod(
-		ctx,
-		"test",
-		&corev1.PodArgs{
-			Metadata: metav1.ObjectMetaArgs{
-				Namespace: pulumi.String(namespace),
-			},
-			Spec: corev1.PodSpecArgs{
-				RestartPolicy: pulumi.String("Never"),
-				Containers: corev1.ContainerArray{
-					corev1.ContainerArgs{
-						Name:            pulumi.String("test"),
-						Args:            generatorArgs,
-						Image:           pulumi.String(image),
-						ImagePullPolicy: pulumi.String("Always"),
-					},
-				},
-			},
-		},
-		pulumi.Timeouts(&pulumi.CustomTimeouts{
-			Create: "10s",
-			Update: "10s",
-			Delete: "10s",
-		}),
-		pulumi.DeleteBeforeReplace(true),
-	)
+func deployStack(ctx *pulumi.Context) error {
+	stack, err := NewStackComponent(ctx, "full", &StackComponentArgs{
+		GeneratorImage: pulumi.String(config.Get(ctx, "generator:image")),
+		LedgerVersion:  pulumi.String(config.Get(ctx, "ledger:version")),
+	})
 	if err != nil {
 		return err
 	}
 
-	ctx.Export("name", rel.Metadata.Name())
-	ctx.Export("id", rel.ID())
+	ctx.Export("generator:pod-namespace", stack.GeneratorComponent.PodNamespace)
+	ctx.Export("generator:pod-name", stack.GeneratorComponent.PodName)
+	ctx.Export("generator:pod-id", stack.GeneratorComponent.PodID)
 
 	return nil
 }
 
-func deployPostgres(ctx *pulumi.Context) error {
-	conf := config.New(ctx, "")
-	namespace, err := conf.Try("namespace")
+type StackComponent struct {
+	pulumi.ResourceState
+
+	PostgresComponent  *pulumi_postgres.PostgresComponent
+	LedgerComponent    *pulumi_ledger.LedgerComponent
+	GeneratorComponent *pulumi_generator.GeneratorComponent
+}
+
+type StackComponentArgs struct {
+	Namespace      pulumi.StringInput
+	LedgerVersion  pulumi.StringInput
+	GeneratorImage pulumi.StringInput
+}
+
+func NewStackComponent(ctx *pulumi.Context, name string, args *StackComponentArgs, opts ...pulumi.ResourceOption) (*StackComponent, error) {
+	cmp := &StackComponent{}
+	err := ctx.RegisterComponentResource("Formance:Ledger:RollingUpgradesTests", name, cmp, opts...)
 	if err != nil {
-		namespace = "default"
+		return nil, err
 	}
 
-	rel, err := helm.NewRelease(ctx, "postgres", &helm.ReleaseArgs{
-		Chart:     pulumi.String("oci://registry-1.docker.io/bitnamicharts/postgresql"),
-		Version:   pulumi.String("16.1.1"),
-		Namespace: pulumi.String(namespace),
-		Values: pulumi.Map(map[string]pulumi.Input{
-			"auth": pulumi.Map{
-				"postgresPassword": pulumi.String("postgres"),
-				"database":         pulumi.String("ledger"),
-			},
-			"primary": pulumi.Map{
-				"resources": pulumi.Map{
-					"requests": pulumi.Map{
-						"memory": pulumi.String("256Mi"),
-						"cpu":    pulumi.String("256m"),
-					},
-				},
-			},
-		}),
-		CreateNamespace: pulumi.BoolPtr(true),
+	cmp.PostgresComponent, err = pulumi_postgres.NewPostgresComponent(
+		ctx,
+		"postgres",
+		&pulumi_postgres.PostgresComponentArgs{},
+		pulumi.Parent(cmp),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating postgres component: %w", err)
+	}
+
+	cmp.LedgerComponent, err = pulumi_ledger.NewLedgerComponent(ctx, "ledger", &pulumi_ledger.LedgerComponentArgs{
+		ImagePullPolicy:      pulumi.String("Always"),
+		PostgresURI:          pulumi.Sprintf("postgres://postgres:postgres@%s.svc.cluster.local:5432/ledger?sslmode=disable", cmp.PostgresComponent.Service),
+		Debug:                pulumi.Bool(true),
+		ReplicaCount:         pulumi.Int(1),
+		ExperimentalFeatures: pulumi.Bool(true),
+		Timeout:              pulumi.Int(30),
+		Tag:                  args.LedgerVersion,
+	}, pulumi.Transforms([]pulumi.ResourceTransform{
+		// Update relative location of the helm chart
+		func(context context.Context, args *pulumi.ResourceTransformArgs) *pulumi.ResourceTransformResult {
+			if args.Type == "kubernetes:helm.sh/v3:Release" {
+				args.Props["chart"] = pulumi.String("../../deployments/helm")
+			}
+
+			return &pulumi.ResourceTransformResult{
+				Props: args.Props,
+			}
+		},
+	}), pulumi.Parent(cmp))
+	if err != nil {
+		return nil, fmt.Errorf("creating ledger component: %w", err)
+	}
+
+	cmp.GeneratorComponent, err = pulumi_generator.NewGeneratorComponent(ctx, "generator", &pulumi_generator.GeneratorComponentArgs{
+		Namespace: args.Namespace,
+		LedgerURL: cmp.LedgerComponent.ServiceInternalURL,
+		Image:     args.GeneratorImage,
 	})
 	if err != nil {
-		return fmt.Errorf("installing release")
+		return nil, err
 	}
 
-	svc := pulumi.All(rel.Status.Namespace(), rel.Status.Name()).
-		ApplyT(func(r any) string {
-			arr := r.([]interface{})
-			namespace := arr[0].(*string)
-			name := arr[1].(*string)
-
-			return fmt.Sprintf("%s-postgresql.%s", *name, *namespace)
-		})
-
-	ctx.Export("service-name", svc)
-
-	return nil
+	return cmp, nil
 }

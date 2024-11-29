@@ -1,0 +1,6 @@
+name: generator
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: kubernetes-go

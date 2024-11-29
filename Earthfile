@@ -144,6 +144,7 @@ pre-commit:
 
     BUILD ./test/*+pre-commit
     BUILD ./tools/*+pre-commit
+    BUILD ./deployments/pulumi/*+pre-commit
 
 openapi:
     FROM node:20-alpine

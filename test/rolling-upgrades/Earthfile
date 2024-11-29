@@ -1,4 +1,4 @@
-VERSION 0.8
+VERSION --wildcard-builds 0.8
 PROJECT FormanceHQ/ledger
 
 IMPORT github.com/formancehq/earthly:tags/v0.19.0 AS core
@@ -7,13 +7,7 @@ FROM core+base-image
 
 CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
 CACHE --sharing=shared --id go-cache /root/.cache/go-build
-
-image-test:
-    ARG REPOSITORY=ghcr.io
-    ARG TAG=latest
-    FROM --pass-args ../../tools/generator+build-image
-
-    DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --tag=$TAG
+CACHE --sharing=shared --id golangci-cache /root/.cache/golangci-lint
 
 image-main:
     ARG REPOSITORY=ghcr.io
@@ -27,7 +21,9 @@ image-current:
 
 sources:
     FROM core+builder-image
-    COPY ../..+sources/src /src
+    COPY ./generator+sources/src /src
+    COPY ../../deployments/pulumi/ledger+sources/src /src/deployments/pulumi/ledger
+    COPY ../../deployments/pulumi/postgres+sources/src /src/deployments/pulumi/postgres
     WORKDIR /src/test/rolling-upgrades
     COPY go.* *.go .
 
@@ -60,13 +56,17 @@ cluster-create:
     ARG CLUSTER_NAME=test
     RUN vcluster create $CLUSTER_NAME --connect=false --upgrade
 
+requirements:
+    ARG CLUSTER_NAME=test-rolling-upgrades
+    BUILD --pass-args +cluster-create
+    BUILD --pass-args ../../tools/generator+build-image --tag=$CLUSTER_NAME-rolling-upgrade-test
+    BUILD --pass-args +image-main --TAG=$CLUSTER_NAME-main
+    BUILD --pass-args +image-current --TAG=$CLUSTER_NAME-current
+
 run:
     ARG CLUSTER_NAME=test-rolling-upgrades
     WAIT
-        BUILD --pass-args +cluster-create
-        BUILD +image-test --TAG=$CLUSTER_NAME-rolling-upgrade-test
-        BUILD +image-main --TAG=$CLUSTER_NAME-main
-        BUILD +image-current --TAG=$CLUSTER_NAME-current
+        BUILD --pass-args +requirements
     END
 
     FROM --pass-args +cluster-create
@@ -77,19 +77,19 @@ run:
     CACHE --id go-cache /root/.cache/go-build
 
     COPY +sources/src /src
-    COPY ../../deployments/pulumi+sources/src /src/deployments/pulumi
+    COPY ../../deployments/pulumi/ledger+sources/src /src/deployments/pulumi/ledger
+    COPY ../../deployments/pulumi/postgres+sources/src /src/deployments/pulumi/postgres
     COPY ../../deployments/helm+sources/src /src/deployments/helm
 
     WORKDIR /src/test/rolling-upgrades
     COPY go.* *.go .
+    COPY --dir generator .
 
     ARG NO_CLEANUP=false
     ARG NO_CLEANUP_ON_FAILURE=false
 
     WITH DOCKER
         RUN --secret PULUMI_ACCESS_TOKEN --secret GITHUB_TOKEN sh -c '
-            set -e;
-
             echo "Connecting to VCluster..."
             vcluster connect ${CLUSTER_NAME} --namespace vcluster-${CLUSTER_NAME};
 
@@ -100,11 +100,10 @@ run:
 
             echo "Running test..."
             go test \
-                --test-image ghcr.io/formancehq/ledger:$CLUSTER_NAME-rolling-upgrade-test \
+                --test-image ghcr.io/formancehq/ledger-generator:$CLUSTER_NAME-rolling-upgrade-test \
                 --latest-version $CLUSTER_NAME-main \
                 --actual-version $CLUSTER_NAME-current \
-                --project ledger \
-                --stack-prefix-name $CLUSTER_NAME- \
+                --stack $CLUSTER_NAME-rolling-upgrade-test \
                 --no-cleanup=$NO_CLEANUP \
                 --no-cleanup-on-failure=$NO_CLEANUP_ON_FAILURE;
         '
@@ -127,3 +126,5 @@ lint:
 pre-commit:
     BUILD +tidy
     BUILD +lint
+
+    BUILD ./*+pre-commit
