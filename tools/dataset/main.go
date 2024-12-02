@@ -20,6 +20,7 @@ func main() {
 			GeneratorVersion: pulumi.String(config.Get(ctx, "generator-version")),
 			UntilLogID:       pulumi.Int(config.GetInt(ctx, "until-log-id")),
 			CreateSnapshot:   pulumi.Bool(config.GetBool(ctx, "create-snapshot")),
+			Script:           pulumi.String(config.Require(ctx, "script")),
 		})
 
 		ctx.Export("ledger-url", cmp.Ledger.ServiceInternalURL)

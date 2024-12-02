@@ -1,0 +1,53 @@
+name: Generate dataset
+on:
+  workflow_dispatch:
+    inputs:
+      ledger-version:
+        description: 'The version of the ledger to deploy'
+        required: true
+      preview:
+        description: 'Preview the changes'
+        required: false
+        type: boolean
+      rds-db-subnet-group-name:
+        description: 'The network to deploy the RDS instance to'
+        required: false
+      until-log-id:
+        description: 'The log id to stop at'
+        required: false
+      generator-version:
+        default: 'latest'
+        description: 'The version of the generator to use'
+        required: false
+      namespace:
+        default: 'default'
+        description: 'The namespace to deploy the dataset to'
+        required: false
+      create-snapshot:
+        default: 'false'
+        description: 'Create a snapshot of the dataset'
+        required: false
+      script:
+        required: true
+        description: 'The script to generate the dataset'
+
+jobs:
+  GenerateDataset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pulumi/actions@v6
+        with:
+          command: ${{ github.event.inputs.preview == 'true' && 'preview' || 'up' }}
+          stack-name: formancehq/${{ github.event.inputs.ledger-version }}
+          work-dir: './tools/dataset'
+          config-map:
+            ledger-version: ${{ github.event.inputs.ledger-version }}
+            rds-db-subnet-group-name: ${{ github.event.inputs.rds-db-subnet-group-name }}
+            until-log-id: ${{ github.event.inputs.until-log-id }}
+            generator-version: ${{ github.event.inputs.generator-version }}
+            namespace: ${{ github.event.inputs.namespace }}
+            create-snapshot: ${{ github.event.inputs.create-snapshot }}
+            script: ${{ github.event.inputs.script }}
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}

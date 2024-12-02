@@ -1,8 +1,8 @@
 package pulumi_generator
 
 import (
+	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/pkg/features"
 	v3 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	v2 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -24,6 +24,9 @@ type GeneratorComponentArgs struct {
 	LedgerURL  pulumix.Input[string]
 	Version    pulumix.Input[string]
 	UntilLogID pulumix.Input[int]
+	Script     pulumix.Input[string]
+	VUs        pulumix.Input[int]
+	Features   pulumix.Map[string]
 }
 
 func NewGeneratorComponent(ctx *pulumi.Context, name string, args *GeneratorComponentArgs, opts ...pulumi.ResourceOption) (*GeneratorComponent, error) {
@@ -32,6 +35,30 @@ func NewGeneratorComponent(ctx *pulumi.Context, name string, args *GeneratorComp
 	if err != nil {
 		return nil, err
 	}
+
+	if args.UntilLogID == nil {
+		return nil, errors.New("untilLogID is required")
+	}
+
+	if args.Script == nil {
+		return nil, errors.New("script is required")
+	}
+
+	untilLogID := pulumix.ApplyErr(args.UntilLogID, func(untilLogID int) (int, error) {
+		if untilLogID == 0 {
+			return 0, errors.New("untilLogID must be greater than 0")
+		}
+
+		return untilLogID, nil
+	})
+
+	script := pulumix.ApplyErr(args.Script, func(script string) (string, error) {
+		if script == "" {
+			return "", errors.New("script is required")
+		}
+
+		return script, nil
+	})
 
 	var version = pulumix.Val("latest")
 	if args.Version != nil {
@@ -43,38 +70,53 @@ func NewGeneratorComponent(ctx *pulumi.Context, name string, args *GeneratorComp
 		})
 	}
 
-	generatorArgs := pulumix.Array[string]{
-		args.LedgerURL,
-		pulumix.Val("/examples/example1.js"),
-		pulumix.Val("-p"),
-		pulumix.Val("30"),
-	}
-
-	if args.UntilLogID != nil {
-		generatorArgs = append(generatorArgs,
-			pulumix.Val("--until-log-id"),
-			pulumix.Apply(args.UntilLogID, func(v int) string {
-				return fmt.Sprintf("%d", v)
-			}),
-		)
-	}
-
-	for _, key := range features.MinimalFeatureSet.SortedKeys() {
-		generatorArgs = append(generatorArgs,
-			pulumix.Val("--ledger-feature"),
-			pulumix.Val(key+"="+features.MinimalFeatureSet[key]),
-		)
-	}
-
 	namespace := pulumix.Val[string]("")
 	if args.Namespace != nil {
 		namespace = args.Namespace.ToOutput(ctx.Context())
 	}
 
-	cmp.Job = pulumix.ApplyErr(args.UntilLogID, func(untilLogID int) (*v3.Job, error) {
+	scriptConfigMap := pulumix.ApplyErr(script, func(script string) (*v1.ConfigMap, error) {
+		return v1.NewConfigMap(ctx, "generator-script", &v1.ConfigMapArgs{
+			Metadata: v2.ObjectMetaArgs{
+				Namespace: namespace.Untyped().(pulumi.StringOutput),
+			},
+			Data: pulumi.StringMap{
+				"script.js": pulumi.String(script),
+			},
+		})
+	})
+
+	vus := pulumix.Val(30)
+	if args.VUs != nil {
+		vus = args.VUs.ToOutput(ctx.Context())
+	}
+
+	generatorArgs := pulumix.Apply4Err(
+		args.LedgerURL,
+		args.Features,
+		vus,
+		untilLogID,
+		func(ledgerURL string, features map[string]string, vus, untilLogID int) ([]string, error) {
+			ret := make([]string, 0)
+			for key, value := range features {
+				ret = append(ret, "--ledger-feature", key+"="+value)
+			}
+			ret = append(ret,
+				ledgerURL,
+				"/scripts/script.js",
+				"-p", fmt.Sprint(vus),
+				"--until-log-id", fmt.Sprint(untilLogID))
+			return ret, nil
+		},
+	)
+
+	cmp.Job = pulumix.Apply2Err(args.UntilLogID, scriptConfigMap, func(untilLogID int, configMap *v1.ConfigMap) (*v3.Job, error) {
 		return v3.NewJob(ctx, fmt.Sprintf("generator-%d", untilLogID), &v3.JobArgs{
 			Metadata: v2.ObjectMetaArgs{
-				Namespace:   namespace.Untyped().(pulumi.StringOutput),
+				Namespace: namespace.Untyped().(pulumi.StringOutput),
+				//Annotations: pulumi.StringMap{
+				//	"pulumi.com/skipAwait": pulumi.String("true"),
+				//},
 			},
 			Spec: v3.JobSpecArgs{
 				Template: v1.PodTemplateSpecArgs{
@@ -86,6 +128,21 @@ func NewGeneratorComponent(ctx *pulumi.Context, name string, args *GeneratorComp
 								Args:            generatorArgs.ToOutput(ctx.Context()).Untyped().(pulumi.StringArrayOutput),
 								Image:           pulumi.Sprintf("ghcr.io/formancehq/ledger-generator:%s", version),
 								ImagePullPolicy: pulumi.String("Always"),
+								VolumeMounts: v1.VolumeMountArray{
+									v1.VolumeMountArgs{
+										MountPath: pulumi.String("/scripts"),
+										Name:      pulumi.String("scripts"),
+										ReadOnly:  pulumi.BoolPtr(true),
+									},
+								},
+							},
+						},
+						Volumes: v1.VolumeArray{
+							v1.VolumeArgs{
+								Name: pulumi.String("scripts"),
+								ConfigMap: &v1.ConfigMapVolumeSourceArgs{
+									Name: configMap.Metadata.Name(),
+								},
 							},
 						},
 					},

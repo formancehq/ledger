@@ -25,6 +25,7 @@ type DatasetComponentArgs struct {
 	GeneratorVersion pulumix.Input[string]
 	UntilLogID       pulumix.Input[int]
 	CreateSnapshot   pulumix.Input[bool]
+	Script           pulumix.Input[string]
 }
 
 func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponentArgs, opts ...pulumi.ResourceOption) (*DatasetComponent, error) {
@@ -80,6 +81,7 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 			Version:    args.GeneratorVersion,
 			UntilLogID: pulumi.Int(untilLogID),
 			Namespace:  args.Namespace,
+			Script:     args.Script,
 		}, pulumi.Parent(cmp))
 	})
 
@@ -88,13 +90,20 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 			return nil, nil
 		}
 
+		resourceOptions := []pulumi.ResourceOption{
+			pulumi.Parent(cmp),
+			pulumi.RetainOnDelete(true),
+		}
+
+		if generator != nil {
+			resourceOptions = append(resourceOptions, pulumi.DependsOn([]pulumi.Resource{generator}))
+		}
+
 		return rds.NewClusterSnapshot(ctx, fmt.Sprintf("snapshot-%d", args.UntilLogID), &rds.ClusterSnapshotArgs{
 			DbClusterIdentifier:         cmp.RDS.ClusterIdentifier.Untyped().(pulumi.StringOutput),
 			DbClusterSnapshotIdentifier: pulumi.Sprintf("%s-%d", cmp.RDS.ClusterIdentifier, args.UntilLogID),
 		},
-			pulumi.Parent(cmp),
-			//pulumi.Protect(true),
-			pulumi.RetainOnDelete(true),
+			resourceOptions...,
 		)
 	})
 
