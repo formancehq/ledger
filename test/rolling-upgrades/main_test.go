@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/ledger/pkg"
 	pulumi_postgres "github.com/formancehq/ledger/deployments/pulumi/postgres/pkg"
-	"github.com/formancehq/ledger/test/rolling-upgrades/generator/pkg"
+	"github.com/formancehq/ledger/tools/generator/pulumi/pkg"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -153,9 +153,9 @@ func deployStack(ctx *pulumi.Context) error {
 		return err
 	}
 
-	ctx.Export("generator:pod-namespace", stack.GeneratorComponent.PodNamespace)
-	ctx.Export("generator:pod-name", stack.GeneratorComponent.PodName)
-	ctx.Export("generator:pod-id", stack.GeneratorComponent.PodID)
+	ctx.Export("generator:pod-namespace", stack.GeneratorComponent.JobNamespace)
+	ctx.Export("generator:pod-name", stack.GeneratorComponent.JobName)
+	ctx.Export("generator:pod-id", stack.GeneratorComponent.JobID)
 
 	return nil
 }
@@ -218,7 +218,7 @@ func NewStackComponent(ctx *pulumi.Context, name string, args *StackComponentArg
 	cmp.GeneratorComponent, err = pulumi_generator.NewGeneratorComponent(ctx, "generator", &pulumi_generator.GeneratorComponentArgs{
 		Namespace: args.Namespace,
 		LedgerURL: cmp.LedgerComponent.ServiceInternalURL,
-		Image:     args.GeneratorImage,
+		Version:   args.GeneratorImage,
 	})
 	if err != nil {
 		return nil, err

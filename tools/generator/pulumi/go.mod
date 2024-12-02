@@ -1,12 +1,12 @@
-module github.com/formancehq/ledger/test/rolling-upgrades/generator
+module github.com/formancehq/ledger/tools/generator/pulumi
 
 go 1.23
 
 toolchain go1.23.3
 
-replace github.com/formancehq/ledger => ../../..
+replace github.com/formancehq/ledger => ./../../..
 
-replace github.com/formancehq/ledger/pkg/client => ../../../pkg/client
+replace github.com/formancehq/ledger/pkg/client => ./../../../pkg/client
 
 require (
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000

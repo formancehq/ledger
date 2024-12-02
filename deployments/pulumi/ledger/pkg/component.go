@@ -4,40 +4,41 @@ import (
 	"fmt"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
 type LedgerComponent struct {
 	pulumi.ResourceState
 
-	ServiceName        pulumi.StringPtrOutput
-	ServiceNamespace   pulumi.StringPtrOutput
-	ServicePort        pulumi.IntPtrOutput
-	ServiceInternalURL pulumi.StringOutput
+	ServiceName        pulumix.Output[string]
+	ServiceNamespace   pulumix.Output[string]
+	ServicePort        pulumix.Output[int]
+	ServiceInternalURL pulumix.Output[string]
 }
 
 type LedgerComponentArgs struct {
-	Namespace            pulumi.StringInput
-	Timeout              pulumi.IntInput
-	Tag                  pulumi.StringInput
-	ImagePullPolicy      pulumi.StringInput
-	PostgresURI          pulumi.StringInput
-	Debug                pulumi.BoolInput
-	ReplicaCount         pulumi.IntInput
-	ExperimentalFeatures pulumi.BoolInput
+	Namespace            pulumix.Input[string]
+	Timeout              pulumix.Input[int]
+	Tag                  pulumix.Input[string]
+	ImagePullPolicy      pulumix.Input[string]
+	PostgresURI          pulumix.Input[string]
+	Debug                pulumix.Input[bool]
+	ReplicaCount         pulumix.Input[int]
+	ExperimentalFeatures pulumix.Input[bool]
 }
 
 func NewLedgerComponent(ctx *pulumi.Context, name string, args *LedgerComponentArgs, opts ...pulumi.ResourceOption) (*LedgerComponent, error) {
 	cmp := &LedgerComponent{}
-	err := ctx.RegisterComponentResource("Formance:Ledger:Deployment", name, cmp, opts...)
+	err := ctx.RegisterComponentResource("Formance:Ledger", name, cmp, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	rel, err := helm.NewRelease(ctx, "ledger", &helm.ReleaseArgs{
 		Chart:           pulumi.String("../../../helm"),
-		Namespace:       args.Namespace,
+		Namespace:       pulumix.Cast[pulumi.StringOutput](args.Namespace),
 		CreateNamespace: pulumi.BoolPtr(true),
-		Timeout:         args.Timeout,
+		Timeout:         pulumix.Cast[pulumi.IntOutput](args.Timeout),
 		Values: pulumi.Map(map[string]pulumi.Input{
 			"image": pulumi.Map{
 				"repository": pulumi.String("ghcr.io/formancehq/ledger"),
@@ -56,15 +57,21 @@ func NewLedgerComponent(ctx *pulumi.Context, name string, args *LedgerComponentA
 		return nil, fmt.Errorf("installing release: %w", err)
 	}
 
-	cmp.ServiceName = rel.Status.Name()
-	cmp.ServiceNamespace = rel.Status.Namespace()
-	cmp.ServicePort = pulumi.IntPtr(8080).ToIntPtrOutput()
-	cmp.ServiceInternalURL = pulumi.Sprintf(
+	cmp.ServiceName = pulumix.Apply(rel.Status.Name().ToStringPtrOutput(), func(a1 *string) string {
+		return *a1
+	})
+	cmp.ServiceNamespace = pulumix.Apply(rel.Status.Namespace().ToStringPtrOutput(), func(a1 *string) string {
+		return *a1
+	})
+	cmp.ServicePort = pulumix.Val(8080)
+	cmp.ServiceInternalURL = pulumix.Apply(pulumi.Sprintf(
 		"http://%s.%s.svc.cluster.local:%d",
-		cmp.ServiceName.Elem(),
-		cmp.ServiceNamespace.Elem(),
-		cmp.ServicePort.Elem(),
-	)
+		cmp.ServiceName,
+		cmp.ServiceNamespace,
+		cmp.ServicePort,
+	), func(a1 string) string {
+		return a1
+	})
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{
 		"service-name":         cmp.ServiceName,
