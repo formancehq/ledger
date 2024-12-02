@@ -12,11 +12,10 @@ import (
 type RDSComponent struct {
 	pulumi.ResourceState
 
-	MasterUsername    pulumix.Output[string]
-	MasterPassword    pulumix.Output[string]
-	ClusterIdentifier pulumix.Output[string]
-	Endpoint          pulumix.Output[string]
-	Port              pulumix.Output[int]
+	MasterUsername  pulumix.Output[string]
+	MasterPassword  pulumix.Output[string]
+	Cluster         *rds.Cluster
+	PrimaryInstance *rds.ClusterInstance
 }
 
 type RDSComponentArgs struct {
@@ -46,7 +45,7 @@ func NewRDSComponent(ctx *pulumi.Context, name string, args *RDSComponentArgs, o
 		})
 	}
 
-	clusterInfo, err := rds.NewCluster(ctx, "default", &rds.ClusterArgs{
+	cmp.Cluster, err = rds.NewCluster(ctx, "default", &rds.ClusterArgs{
 		DbSubnetGroupName: pulumix.ApplyErr(args.DBSubnetGroupName, func(v string) (string, error) {
 			if v == "" {
 				return "", errors.New("dbSubnetGroupName is required")
@@ -69,8 +68,8 @@ func NewRDSComponent(ctx *pulumi.Context, name string, args *RDSComponentArgs, o
 		return nil, fmt.Errorf("creating RDS cluster: %w", err)
 	}
 
-	_, err = rds.NewClusterInstance(ctx, "primary", &rds.ClusterInstanceArgs{
-		ClusterIdentifier: clusterInfo.ClusterIdentifier,
+	cmp.PrimaryInstance, err = rds.NewClusterInstance(ctx, "primary", &rds.ClusterInstanceArgs{
+		ClusterIdentifier: cmp.Cluster.ClusterIdentifier,
 		InstanceClass: pulumix.Apply(args.InstanceClass, func(v string) string {
 			if v == "" {
 				return string(rds.InstanceType_T3_Medium)
@@ -89,21 +88,10 @@ func NewRDSComponent(ctx *pulumi.Context, name string, args *RDSComponentArgs, o
 
 	cmp.MasterUsername = masterUsername
 	cmp.MasterPassword = masterPassword
-	cmp.ClusterIdentifier = pulumix.Apply(clusterInfo.ClusterIdentifier.ToStringOutput(), func(clusterIdentifier string) string {
-		return clusterIdentifier
-	})
-	cmp.Endpoint = pulumix.Apply(clusterInfo.Endpoint, func(endpoint string) string {
-		return endpoint
-	})
-	cmp.Port = pulumix.Apply(clusterInfo.Port, func(port int) int {
-		return port
-	})
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{
-		"masterUsername":    masterUsername,
-		"masterPassword":    masterPassword,
-		"clusterIdentifier": clusterInfo.ClusterIdentifier,
-		"endpoint":          clusterInfo.Endpoint,
+		"masterUsername": masterUsername,
+		"masterPassword": masterPassword,
 	}); err != nil {
 		return nil, fmt.Errorf("registering outputs: %w", err)
 	}

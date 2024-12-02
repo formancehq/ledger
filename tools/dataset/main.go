@@ -24,7 +24,7 @@ func main() {
 		})
 
 		ctx.Export("ledger-url", cmp.Ledger.ServiceInternalURL)
-		ctx.Export("rds-cluster-identifier", cmp.RDS.ClusterIdentifier)
+		ctx.Export("rds-cluster-identifier", cmp.RDS.Cluster.ClusterIdentifier)
 		ctx.Export("snapshot-identifier", pulumix.Apply(cmp.Snapshot, func(snapshot *rds.ClusterSnapshot) pulumi.IDPtrOutput {
 			if snapshot != nil {
 				return snapshot.ID().ToIDPtrOutput()

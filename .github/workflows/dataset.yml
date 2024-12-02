@@ -30,24 +30,60 @@ on:
       script:
         required: true
         description: 'The script to generate the dataset'
+      organization:
+        description: 'The organization to deploy the dataset to'
+        required: false
+        default: formance
+
+concurrency:
+  group: dataset-${{ github.event.inputs.ledger-version }}
+  cancel-in-progress: true
 
 jobs:
-  GenerateDataset:
+  Run:
+    name: Generate dataset
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        name: Checkout
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '^1.23'
       - uses: pulumi/actions@v6
+        name: Run Pulumi
         with:
           command: ${{ github.event.inputs.preview == 'true' && 'preview' || 'up' }}
-          stack-name: formancehq/${{ github.event.inputs.ledger-version }}
+          stack-name: ${{ github.event.inputs.organization }}/ledger-dataset/${{ github.event.inputs.ledger-version }}
           work-dir: './tools/dataset'
-          config-map:
-            ledger-version: ${{ github.event.inputs.ledger-version }}
-            rds-db-subnet-group-name: ${{ github.event.inputs.rds-db-subnet-group-name }}
-            until-log-id: ${{ github.event.inputs.until-log-id }}
-            generator-version: ${{ github.event.inputs.generator-version }}
-            namespace: ${{ github.event.inputs.namespace }}
-            create-snapshot: ${{ github.event.inputs.create-snapshot }}
-            script: ${{ github.event.inputs.script }}
+          config-map: |
+            ledger-version:
+              value: ${{ github.event.inputs.ledger-version }}
+            rds-db-subnet-group-name:
+              value: ${{ github.event.inputs.rds-db-subnet-group-name }}
+            until-log-id:
+              value: ${{ github.event.inputs.until-log-id }}
+            generator-version:
+              value: ${{ github.event.inputs.generator-version }}
+            namespace:
+              value: ${{ github.event.inputs.namespace }}
+            create-snapshot:
+              value: ${{ github.event.inputs.create-snapshot }}
+            script:
+              value: "${{ github.event.inputs.script }}"
+          upsert: 'true'
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+      - uses: pulumi/actions@v6
+        name: Clean resources
+        with:
+          command: destroy
+          stack-name: ${{ github.event.inputs.organization }}/ledger-dataset/${{ github.event.inputs.ledger-version }}
+          work-dir: './tools/dataset'
+
+ #
+  #RUN --secret KUBE_APISERVER kubectl config set clusters.default.server ${KUBE_APISERVER}
+  #RUN kubectl config set clusters.default.insecure-skip-tls-verify true
+  #RUN --secret KUBE_TOKEN kubectl config set-credentials default --token=${KUBE_TOKEN}
+  #RUN kubectl config set-context default --cluster=default --user=default
+  #RUN kubectl config use-context default

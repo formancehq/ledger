@@ -83,7 +83,7 @@ func NewGeneratorComponent(ctx *pulumi.Context, name string, args *GeneratorComp
 			Data: pulumi.StringMap{
 				"script.js": pulumi.String(script),
 			},
-		})
+		}, pulumi.Parent(cmp))
 	})
 
 	vus := pulumix.Val(30)

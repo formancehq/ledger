@@ -1,7 +1,6 @@
 package pulumi_dataset_init_stack
 
 import (
-	"context"
 	"fmt"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/ledger/pkg"
 	pulumi_generator "github.com/formancehq/ledger/tools/generator/pulumi/pkg"
@@ -51,23 +50,12 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 			"postgres://%s:%s@%s:%d/postgres?sslmode=disable",
 			cmp.RDS.MasterUsername,
 			cmp.RDS.MasterPassword,
-			cmp.RDS.Endpoint,
-			cmp.RDS.Port,
+			cmp.RDS.PrimaryInstance.Endpoint,
+			cmp.RDS.PrimaryInstance.Port,
 		),
 		ExperimentalFeatures: pulumi.Bool(true),
 		Namespace:            args.Namespace,
-	}, pulumi.Transforms([]pulumi.ResourceTransform{
-		// Update relative location of the helm chart
-		func(context context.Context, args *pulumi.ResourceTransformArgs) *pulumi.ResourceTransformResult {
-			if args.Type == "kubernetes:helm.sh/v3:Release" {
-				args.Props["chart"] = pulumi.String("../../deployments/helm")
-			}
-
-			return &pulumi.ResourceTransformResult{
-				Props: args.Props,
-			}
-		},
-	}), pulumi.Parent(cmp))
+	}, pulumi.Parent(cmp))
 
 	// todo: check actual log on the ledger to avoid running the generator if not necessary
 
@@ -100,8 +88,8 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 		}
 
 		return rds.NewClusterSnapshot(ctx, fmt.Sprintf("snapshot-%d", args.UntilLogID), &rds.ClusterSnapshotArgs{
-			DbClusterIdentifier:         cmp.RDS.ClusterIdentifier.Untyped().(pulumi.StringOutput),
-			DbClusterSnapshotIdentifier: pulumi.Sprintf("%s-%d", cmp.RDS.ClusterIdentifier, args.UntilLogID),
+			DbClusterIdentifier:         cmp.RDS.Cluster.ClusterIdentifier,
+			DbClusterSnapshotIdentifier: pulumi.Sprintf("%s-%d", cmp.RDS.Cluster.ClusterIdentifier, args.UntilLogID),
 		},
 			resourceOptions...,
 		)
