@@ -62,7 +62,12 @@ func NewRDSComponent(ctx *pulumi.Context, name string, args *RDSComponentArgs, o
 		MasterPassword: masterPassword.ApplyT(func(v string) string {
 			return v
 		}).(pulumi.StringOutput),
-		ClusterIdentifier: pulumi.String(ctx.Project() + "-" + strings.Replace(ctx.Stack(), ".", "-", -1)),
+		ClusterIdentifier: pulumi.Sprintf(
+			"%s-%s-%s",
+			ctx.Organization(),
+			ctx.Project(),
+			strings.Replace(ctx.Stack(), ".", "-", -1),
+		),
 	}, pulumi.Parent(cmp))
 	if err != nil {
 		return nil, fmt.Errorf("creating RDS cluster: %w", err)

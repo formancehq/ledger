@@ -34,18 +34,85 @@ on:
         description: 'The organization to deploy the dataset to'
         required: false
         default: formance
-      kubeconfig:
-        description: 'The kubeconfig to use'
+      refresh:
+        default: false
+        description: 'Refresh the stack'
+        required: false
+  workflow_call:
+    secrets:
+      PULUMI_ACCESS_TOKEN:
         required: true
+      KUBE_APISERVER:
+        required: true
+      KUBE_TOKEN:
+        required: true
+      TS_OAUTH_CLIENT_ID:
+        required: true
+      TS_OAUTH_SECRET:
+        required: true
+    inputs:
+      ledger-version:
+        type: string
+        description: 'The version of the ledger to deploy'
+        required: true
+      preview:
+        description: 'Preview the changes'
+        required: false
+        type: boolean
+      rds-db-subnet-group-name:
+        type: string
+        description: 'The network to deploy the RDS instance to'
+        required: false
+      until-log-id:
+        type: number
+        description: 'The log id to stop at'
+        required: false
+      generator-version:
+        type: string
+        default: 'latest'
+        description: 'The version of the generator to use'
+        required: false
+      namespace:
+        type: string
+        default: 'default'
+        description: 'The namespace to deploy the dataset to'
+        required: false
+      create-snapshot:
+        type: boolean
+        default: false
+        description: 'Create a snapshot of the dataset'
+        required: false
+      script:
+        type: string
+        required: true
+        description: 'The script to generate the dataset'
+      organization:
+        type: string
+        description: 'The organization to deploy the dataset to'
+        required: false
+        default: formance
+      refresh:
+        type: boolean
+        default: false
+        description: 'Refresh the stack'
+        required: false
+      destroy:
+        type: boolean
+        default: true
+        description: 'Destroy the stack'
+        required: false
 
 concurrency:
-  group: dataset-${{ github.event.inputs.ledger-version }}
+  group: dataset-${{ inputs.ledger-version }}
   cancel-in-progress: true
 
 jobs:
   Run:
     name: Generate dataset
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         name: Checkout
@@ -55,13 +122,18 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::288350113309:role/github-access
+          role-to-assume: arn:aws:iam::955332203423:role/github-access
           aws-region: eu-west-1
-          #aws-region: us-east-1
+      - name: Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
       - name: Create kube config file
         env:
-          KUBE_APISERVER: ${{ secrets.FORMANCE_DEV_KUBE_API_SERVER_ADDRESS }}
-          KUBE_TOKEN: ${{ secrets.FORMANCE_DEV_KUBE_TOKEN }}
+          KUBE_APISERVER: ${{ secrets.KUBE_APISERVER }}
+          KUBE_TOKEN: ${{ secrets.KUBE_TOKEN }}
         run: |
           mkdir .kube;
           
@@ -87,30 +159,37 @@ jobs:
       - uses: pulumi/actions@v6
         name: Run Pulumi
         with:
-          command: ${{ github.event.inputs.preview == 'true' && 'preview' || 'up' }}
-          stack-name: ${{ github.event.inputs.organization }}/ledger-dataset/${{ github.event.inputs.ledger-version }}
+          command: ${{ inputs.preview && 'preview' || 'up' }}
+          stack-name: ${{ inputs.organization }}/ledger-dataset/${{ inputs.ledger-version }}
           work-dir: './tools/dataset'
+          suppress-progress: 'true'
+          refresh: ${{ inputs.refresh }}
           config-map: |
             ledger-version:
-              value: ${{ github.event.inputs.ledger-version }}
+              value: ${{ inputs.ledger-version }}
             rds-db-subnet-group-name:
-              value: ${{ github.event.inputs.rds-db-subnet-group-name }}
+              value: ${{ inputs.rds-db-subnet-group-name }}
             until-log-id:
-              value: ${{ github.event.inputs.until-log-id }}
+              value: ${{ inputs.until-log-id }}
             generator-version:
-              value: ${{ github.event.inputs.generator-version }}
+              value: ${{ inputs.generator-version }}
             namespace:
-              value: ${{ github.event.inputs.namespace }}
+              value: ${{ inputs.namespace }}
             create-snapshot:
-              value: ${{ github.event.inputs.create-snapshot }}
+              value: ${{ inputs.create-snapshot }}
             script:
-              value: "${{ github.event.inputs.script }}"
-          upsert: 'true'
+              value: ${{ toJSON(inputs.script) }}
+          upsert: true
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG: /home/runner/work/ledger/ledger/.kube/config
       - uses: pulumi/actions@v6
         name: Clean resources
+        if: ${{ inputs.destroy && !inputs.preview }}
         with:
           command: destroy
-          stack-name: ${{ github.event.inputs.organization }}/ledger-dataset/${{ github.event.inputs.ledger-version }}
+          stack-name: ${{ inputs.organization }}/ledger-dataset/${{ inputs.ledger-version }}
           work-dir: './tools/dataset'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG: /home/runner/work/ledger/ledger/.kube/config

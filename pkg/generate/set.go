@@ -69,6 +69,8 @@ func (s *GeneratorSet) Run(ctx context.Context) error {
 							logID = r.V2BulkElementResultDeleteMetadata.LogID
 						case components.V2BulkElementResultTypeRevertTransaction:
 							logID = r.V2BulkElementResultRevertTransaction.LogID
+						case components.V2BulkElementResultTypeError:
+							panic(fmt.Sprintf("unexpected error: %s [%s]", r.V2BulkElementResultError.ErrorDescription, r.V2BulkElementResultError.ErrorCode))
 						default:
 							panic(fmt.Sprintf("unexpected result type: %s", r.Type))
 						}
