@@ -34,6 +34,9 @@ on:
         description: 'The organization to deploy the dataset to'
         required: false
         default: formance
+      kubeconfig:
+        description: 'The kubeconfig to use'
+        required: true
 
 concurrency:
   group: dataset-${{ github.event.inputs.ledger-version }}
@@ -49,6 +52,38 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '^1.23'
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::288350113309:role/github-access
+          aws-region: eu-west-1
+          #aws-region: us-east-1
+      - name: Create kube config file
+        env:
+          KUBE_APISERVER: ${{ secrets.FORMANCE_DEV_KUBE_API_SERVER_ADDRESS }}
+          KUBE_TOKEN: ${{ secrets.FORMANCE_DEV_KUBE_TOKEN }}
+        run: |
+          mkdir .kube;
+          
+          cat <<EOF > .kube/config
+          apiVersion: v1
+          kind: Config
+          clusters:
+            - cluster:
+                insecure-skip-tls-verify: true
+                server: $KUBE_APISERVER
+              name: default
+          contexts:
+            - name: default
+              context:
+                cluster: default
+                user: default
+          users:
+            - name: default
+              user:
+                token: $KUBE_TOKEN
+          current-context: default
+          EOF
       - uses: pulumi/actions@v6
         name: Run Pulumi
         with:
@@ -73,17 +108,9 @@ jobs:
           upsert: 'true'
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
       - uses: pulumi/actions@v6
         name: Clean resources
         with:
           command: destroy
           stack-name: ${{ github.event.inputs.organization }}/ledger-dataset/${{ github.event.inputs.ledger-version }}
           work-dir: './tools/dataset'
-
- #
-  #RUN --secret KUBE_APISERVER kubectl config set clusters.default.server ${KUBE_APISERVER}
-  #RUN kubectl config set clusters.default.insecure-skip-tls-verify true
-  #RUN --secret KUBE_TOKEN kubectl config set-credentials default --token=${KUBE_TOKEN}
-  #RUN kubectl config set-context default --cluster=default --user=default
-  #RUN kubectl config use-context default

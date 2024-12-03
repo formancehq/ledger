@@ -5,6 +5,8 @@ import (
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/ledger/pkg"
 	pulumi_generator "github.com/formancehq/ledger/tools/generator/pulumi/pkg"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/rds"
+	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	v2 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
@@ -34,12 +36,32 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 		return nil, err
 	}
 
+	resourceOptions := []pulumi.ResourceOption{
+		pulumi.Parent(cmp),
+	}
+
 	cmp.RDS, err = NewRDSComponent(ctx, "rds", &RDSComponentArgs{
 		InstanceClass:     args.RDS.InstanceClass,
 		DBSubnetGroupName: args.RDS.DBSubnetGroupName,
-	}, pulumi.Parent(cmp))
+	},
+		resourceOptions...,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("creating RDS component: %w", err)
+	}
+
+	var namespace *v1.Namespace
+	if args.Namespace != nil {
+		namespace, err = v1.NewNamespace(ctx, "namespace", &v1.NamespaceArgs{
+			Metadata: &v2.ObjectMetaArgs{
+				Name: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("creating namespace: %w", err)
+		}
+
+		resourceOptions = append(resourceOptions, pulumi.DependsOn([]pulumi.Resource{namespace}))
 	}
 
 	cmp.Ledger, err = pulumi_ledger.NewLedgerComponent(ctx, "ledger", &pulumi_ledger.LedgerComponentArgs{
@@ -55,7 +77,9 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 		),
 		ExperimentalFeatures: pulumi.Bool(true),
 		Namespace:            args.Namespace,
-	}, pulumi.Parent(cmp))
+	},
+		resourceOptions...,
+	)
 
 	// todo: check actual log on the ledger to avoid running the generator if not necessary
 
@@ -70,7 +94,9 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 			UntilLogID: pulumi.Int(untilLogID),
 			Namespace:  args.Namespace,
 			Script:     args.Script,
-		}, pulumi.Parent(cmp))
+		},
+			resourceOptions...,
+		)
 	})
 
 	cmp.Snapshot = pulumix.Apply2Err(args.CreateSnapshot, cmp.Generator, func(createSnapshot bool, generator *pulumi_generator.GeneratorComponent) (*rds.ClusterSnapshot, error) {
@@ -78,11 +104,7 @@ func NewDatasetComponent(ctx *pulumi.Context, name string, args *DatasetComponen
 			return nil, nil
 		}
 
-		resourceOptions := []pulumi.ResourceOption{
-			pulumi.Parent(cmp),
-			pulumi.RetainOnDelete(true),
-		}
-
+		resourceOptions := append(resourceOptions, pulumi.RetainOnDelete(true))
 		if generator != nil {
 			resourceOptions = append(resourceOptions, pulumi.DependsOn([]pulumi.Resource{generator}))
 		}
