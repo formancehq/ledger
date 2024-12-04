@@ -1,6 +1,0 @@
-name: ledger-dataset
-runtime: go
-config:
-  pulumi:tags:
-    value:
-      pulumi:template: kubernetes-go
