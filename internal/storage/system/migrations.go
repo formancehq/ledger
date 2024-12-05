@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/ledger/pkg/features"
 
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/uptrace/bun"
@@ -197,6 +198,19 @@ func GetMigrator(db *bun.DB, options ...migrations.Option) *migrations.Migrator 
 						create extension if not exists pgcrypto
 						with schema public;
 					`)
+					return err
+				})
+			},
+		},
+		migrations.Migration{
+			Name: "Configure features for old ledgers",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, `
+					update _system.ledgers
+					set features = ?
+					where features is null;
+				`, features.DefaultFeatures)
 					return err
 				})
 			},
