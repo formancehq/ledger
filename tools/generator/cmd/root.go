@@ -19,14 +19,7 @@ import (
 	"strings"
 )
 
-var (
-	rootCmd = &cobra.Command{
-		Use:          "generator <ledger-url> <script-location>",
-		Short:        "Generate data for a ledger. WARNING: This is an experimental tool.",
-		RunE:         run,
-		Args:         cobra.ExactArgs(2),
-		SilenceUsage: true,
-	}
+const (
 	parallelFlag           = "parallel"
 	ledgerFlag             = "ledger"
 	ledgerMetadataFlag     = "ledger-metadata"
@@ -37,6 +30,17 @@ var (
 	clientSecretFlag       = "client-secret"
 	authUrlFlag            = "auth-url"
 	insecureSkipVerifyFlag = "insecure-skip-verify"
+	httpClientTimeoutFlag  = "http-client-timeout"
+)
+
+var (
+	rootCmd = &cobra.Command{
+		Use:          "generator <ledger-url> <script-location>",
+		Short:        "Generate data for a ledger. WARNING: This is an experimental tool.",
+		RunE:         run,
+		Args:         cobra.ExactArgs(2),
+		SilenceUsage: true,
+	}
 )
 
 func init() {
@@ -50,6 +54,7 @@ func init() {
 	rootCmd.Flags().String(ledgerBucketFlag, "", "Ledger bucket")
 	rootCmd.Flags().StringSlice(ledgerMetadataFlag, []string{}, "Ledger metadata")
 	rootCmd.Flags().StringSlice(ledgerFeatureFlag, []string{}, "Ledger features")
+	rootCmd.Flags().Duration(httpClientTimeoutFlag, 0, "HTTP client timeout (default: no timeout)")
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
@@ -106,7 +111,13 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get insecureSkipVerify: %w", err)
 	}
 
+	httpClientTimeout, err := cmd.Flags().GetDuration(httpClientTimeoutFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get http client timeout: %w", err)
+	}
+
 	httpClient := &http.Client{
+		Timeout: httpClientTimeout,
 		Transport: &http.Transport{
 			MaxIdleConns:        vus,
 			MaxConnsPerHost:     vus,
