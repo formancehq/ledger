@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/testing/migrations"
+	"github.com/formancehq/ledger/pkg/features"
 	"os"
 	"testing"
 
@@ -37,6 +38,7 @@ func TestMigrations(t *testing.T) {
 
 	test := migrations.NewMigrationTest(t, GetMigrator(db), db)
 	test.Append(8, addIdOnLedgerTable)
+	test.Append(14, addDefaultFeatures)
 	test.Run()
 }
 
@@ -78,5 +80,22 @@ var addIdOnLedgerTable = migrations.Hook{
 			Exec(ctx)
 		require.NoError(t, err)
 		require.Equal(t, int64(4), newLedger["id"])
+	},
+}
+
+var addDefaultFeatures = migrations.Hook{
+	After: func(ctx context.Context, t *testing.T, db bun.IDB) {
+		type x struct {
+			Features map[string]string `bun:"features"`
+		}
+		model := make([]x, 0)
+		err := db.NewSelect().
+			ModelTableExpr("_system.ledgers").
+			Scan(ctx, &model)
+		require.NoError(t, err)
+
+		for _, m := range model {
+			require.EqualValues(t, features.DefaultFeatures, m.Features)
+		}
 	},
 }
