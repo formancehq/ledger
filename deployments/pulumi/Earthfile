@@ -5,7 +5,37 @@ IMPORT github.com/formancehq/earthly:tags/v0.19.0 AS core
 
 FROM core+base-image
 
+CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
+CACHE --sharing=shared --id go-cache /root/.cache/go-build
+CACHE --sharing=shared --id golangci-cache /root/.cache/golangci-lint
+
 sources:
+    FROM core+builder-image
     WORKDIR /src
     COPY *.go go.* Pulumi.yaml .
+    COPY --dir pkg .
     SAVE ARTIFACT /src
+
+tidy:
+    FROM +sources
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
+    RUN go mod tidy
+
+    SAVE ARTIFACT go.mod AS LOCAL go.mod
+    SAVE ARTIFACT go.sum AS LOCAL go.sum
+
+lint:
+    FROM +tidy
+    CACHE --id go-mod-cache /go/pkg/mod
+    CACHE --id go-cache /root/.cache/go-build
+    CACHE --id golangci-cache /root/.cache/golangci-lint
+
+    RUN golangci-lint run --fix --build-tags it --timeout 5m
+
+    SAVE ARTIFACT main.go AS LOCAL main.go
+    SAVE ARTIFACT pkg AS LOCAL pkg
+
+pre-commit:
+    BUILD +tidy
+    BUILD +lint
