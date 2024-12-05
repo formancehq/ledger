@@ -147,19 +147,27 @@ func run(cmd *cobra.Command, args []string) error {
 	)
 
 	logging.FromContext(cmd.Context()).Infof("Creating ledger '%s' if not exists", targetedLedger)
-	_, err = client.Ledger.V2.CreateLedger(cmd.Context(), operations.V2CreateLedgerRequest{
+	_, err = client.Ledger.V2.GetLedger(cmd.Context(), operations.V2GetLedgerRequest{
 		Ledger: targetedLedger,
-		V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-			Bucket:   &ledgerBucket,
-			Metadata: ledgerMetadata,
-			Features: ledgerFeatures,
-		},
 	})
 	if err != nil {
 		sdkError := &sdkerrors.V2ErrorResponse{}
-		if !errors.As(err, &sdkError) || (sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
-			sdkError.ErrorCode != components.V2ErrorsEnumValidation) {
-			return fmt.Errorf("failed to create ledger: %w", err)
+		if !errors.As(err, &sdkError) || sdkError.ErrorCode != components.V2ErrorsEnumNotFound {
+			return fmt.Errorf("failed to get ledger: %w", err)
+		}
+		_, err = client.Ledger.V2.CreateLedger(cmd.Context(), operations.V2CreateLedgerRequest{
+			Ledger: targetedLedger,
+			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+				Bucket:   &ledgerBucket,
+				Metadata: ledgerMetadata,
+				Features: ledgerFeatures,
+			},
+		})
+		if err != nil {
+			if !errors.As(err, &sdkError) || (sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
+				sdkError.ErrorCode != components.V2ErrorsEnumValidation) {
+				return fmt.Errorf("failed to create ledger: %w", err)
+			}
 		}
 	}
 

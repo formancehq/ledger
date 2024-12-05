@@ -44,6 +44,21 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	}
 
 	b := d.bucketFactory.Create(l.Bucket)
+	isInitialized, err := b.IsInitialized(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("checking if bucket is initialized: %w", err)
+	}
+	if isInitialized {
+		upToDate, err := b.IsUpToDate(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("checking if bucket is up to date: %w", err)
+		}
+
+		if !upToDate {
+			return nil, systemcontroller.ErrBucketOutdated
+		}
+	}
+
 	if err := b.Migrate(
 		ctx,
 		make(chan struct{}),

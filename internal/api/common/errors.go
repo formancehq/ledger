@@ -17,6 +17,7 @@ const (
 	ErrMetadataOverride    = "METADATA_OVERRIDE"
 	ErrBulkSizeExceeded    = "BULK_SIZE_EXCEEDED"
 	ErrLedgerAlreadyExists = "LEDGER_ALREADY_EXISTS"
+	ErrBucketOutdated = "BUCKET_OUTDATED"
 
 	ErrInterpreterParse   = "INTERPRETER_PARSE"
 	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"

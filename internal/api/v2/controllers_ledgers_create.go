@@ -37,6 +37,8 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 				errors.Is(err, ledger.ErrInvalidLedgerName{}) ||
 				errors.Is(err, ledger.ErrInvalidBucketName{}):
 				api.BadRequest(w, common.ErrValidation, err)
+			case errors.Is(err, system.ErrBucketOutdated):
+				api.BadRequest(w, common.ErrBucketOutdated, err)
 			case errors.Is(err, system.ErrLedgerAlreadyExists):
 				api.BadRequest(w, common.ErrLedgerAlreadyExists, err)
 			default:

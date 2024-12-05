@@ -7,6 +7,7 @@ import (
 
 var (
 	ErrLedgerAlreadyExists          = errors.New("ledger already exists")
+	ErrBucketOutdated               = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
 	ErrExperimentalFeaturesDisabled = errors.New("experimental features are disabled")
 )
 

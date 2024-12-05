@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
@@ -20,6 +21,17 @@ type DefaultBucket struct {
 	name string
 	db   *bun.DB
 	tracer trace.Tracer
+}
+
+func (b *DefaultBucket) IsInitialized(ctx context.Context) (bool, error) {
+	_, err := GetMigrator(b.db, b.name).GetLastVersion(ctx)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, migrations.ErrMissingVersionTable) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (b *DefaultBucket) IsUpToDate(ctx context.Context) (bool, error) {
