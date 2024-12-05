@@ -522,10 +522,10 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 			Spec: batchv1.JobSpecArgs{
 				Template: corev1.PodTemplateSpecArgs{
 					Spec: corev1.PodSpecArgs{
-						RestartPolicy: pulumi.String("Always"),
+						RestartPolicy: pulumi.String("OnFailure"),
 						Containers: corev1.ContainerArray{
 							corev1.ContainerArgs{
-								Name: pulumi.String("check"),
+								Name: pulumi.String("migrate"),
 								Args: pulumi.StringArray{
 									pulumi.String("migrate"),
 								},

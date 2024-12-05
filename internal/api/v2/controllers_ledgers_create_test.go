@@ -84,7 +84,7 @@ func TestLedgersCreate(t *testing.T) {
 			expectedBackendCall: true,
 			returnErr:           system.ErrBucketOutdated,
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     common.ErrBucketOutdated,
+			expectErrorCode:     common.ErrOutdatedSchema,
 		},
 		{
 			name:                "unexpected error",
