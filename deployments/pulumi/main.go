@@ -42,11 +42,13 @@ func deploy(ctx *pulumi.Context) error {
 	experimentalFeatures, _ := conf.TryBool("experimentalFeatures")
 
 	_, err = pulumi_ledger.NewComponent(ctx, "ledger", &pulumi_ledger.ComponentArgs{
-		Namespace:            pulumi.String(namespace),
-		Timeout:              pulumi.Int(timeout),
-		Tag:                  pulumi.String(version),
-		ImagePullPolicy:      pulumi.String(imagePullPolicy),
-		PostgresURI:          pulumi.String(postgresURI),
+		Namespace:       pulumi.String(namespace),
+		Timeout:         pulumi.Int(timeout),
+		Tag:             pulumi.String(version),
+		ImagePullPolicy: pulumi.String(imagePullPolicy),
+		Postgres: pulumi_ledger.PostgresArgs{
+			URI: pulumi.String(postgresURI),
+		},
 		Debug:                pulumi.Bool(debug),
 		ReplicaCount:         pulumi.Int(replicaCount),
 		ExperimentalFeatures: pulumi.Bool(experimentalFeatures),

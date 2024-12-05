@@ -142,7 +142,6 @@ pre-commit:
     BUILD +generate-client
     BUILD +export-docs-events
 
-    BUILD ./test/*+pre-commit
     BUILD ./tools/*+pre-commit
     BUILD ./deployments/*+pre-commit
 
