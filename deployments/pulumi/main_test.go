@@ -19,38 +19,59 @@ import (
 
 func TestProgram(t *testing.T) {
 
-	ctx := logging.TestingContext()
-	stackName := "ledger-tests-pulumi-" + uuid.NewString()[:8]
-
-	stack, err := auto.UpsertStackInlineSource(ctx, stackName, "ledger-tests-pulumi-postgres", deployPostgres(stackName))
-	require.NoError(t, err)
-
-	t.Log("Deploy pg stack")
-	up, err := stack.Up(ctx, optup.ProgressStreams(os.Stdout), optup.ErrorProgressStreams(os.Stderr))
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		t.Log("Destroy stack")
-		_, err := stack.Destroy(ctx, optdestroy.Remove(), optdestroy.ProgressStreams(os.Stdout), optdestroy.ErrorProgressStreams(os.Stderr))
-		require.NoError(t, err)
-	})
-
-	postgresURI := up.Outputs["uri"].Value.(string)
-
-	t.Log("Test program")
-	integration.ProgramTest(t, &integration.ProgramTestOptions{
-		Quick:       true,
-		SkipRefresh: true,
-		Dir:         ".",
-		Config: map[string]string{
-			"namespace":    stackName,
-			"postgres.uri": postgresURI,
-			"timeout":      "30",
+	type testCase struct {
+		name   string
+		config map[string]string
+	}
+	for _, tc := range []testCase{
+		{
+			name: "nominal",
+			config: map[string]string{
+				"timeout": "30",
+			},
 		},
-		Stdout:  os.Stdout,
-		Stderr:  os.Stderr,
-		Verbose: testing.Verbose(),
-	})
+		{
+			name: "upgrade using a job",
+			config: map[string]string{
+				"timeout":      "30",
+				"upgrade-mode": "job",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := logging.TestingContext()
+			stackName := "ledger-tests-pulumi-" + uuid.NewString()[:8]
+
+			stack, err := auto.UpsertStackInlineSource(ctx, stackName, "ledger-tests-pulumi-postgres", deployPostgres(stackName))
+			require.NoError(t, err)
+
+			t.Log("Deploy pg stack")
+			up, err := stack.Up(ctx, optup.ProgressStreams(os.Stdout), optup.ErrorProgressStreams(os.Stderr))
+			require.NoError(t, err)
+
+			t.Cleanup(func() {
+				t.Log("Destroy stack")
+				_, err := stack.Destroy(ctx, optdestroy.Remove(), optdestroy.ProgressStreams(os.Stdout), optdestroy.ErrorProgressStreams(os.Stderr))
+				require.NoError(t, err)
+			})
+
+			postgresURI := up.Outputs["uri"].Value.(string)
+
+			tc.config["postgres.uri"] = postgresURI
+			tc.config["namespace"] = stackName
+
+			t.Log("Test program")
+			integration.ProgramTest(t, &integration.ProgramTestOptions{
+				Quick:       true,
+				SkipRefresh: true,
+				Dir:         ".",
+				Config:      tc.config,
+				Stdout:      os.Stdout,
+				Stderr:      os.Stderr,
+				Verbose:     testing.Verbose(),
+			})
+		})
+	}
 }
 
 func deployPostgres(stackName string) func(ctx *pulumi.Context) error {

@@ -15,6 +15,14 @@ import (
 
 var ErrPostgresURIRequired = fmt.Errorf("postgresURI is required")
 
+type UpgradeMode string
+
+const (
+	UpgradeModeDisabled UpgradeMode = "disabled"
+	UpgradeModeJob      UpgradeMode = "job"
+	UpgradeModeInApp    UpgradeMode = "in-app"
+)
+
 type Component struct {
 	pulumi.ResourceState
 
@@ -22,7 +30,6 @@ type Component struct {
 	ServiceNamespace   pulumix.Output[string]
 	ServicePort        pulumix.Output[int]
 	ServiceInternalURL pulumix.Output[string]
-	Migrations         pulumix.Output[*batchv1.Job]
 }
 
 type PostgresArgs struct {
@@ -73,13 +80,12 @@ type ComponentArgs struct {
 	Debug                         pulumix.Input[bool]
 	ReplicaCount                  pulumix.Input[int]
 	GracePeriod                   pulumix.Input[string]
-	AutoUpgrade                   pulumix.Input[bool]
-	WaitUpgrade                   pulumix.Input[bool]
 	BallastSizeInBytes            pulumix.Input[int]
 	NumscriptCacheMaxCount        pulumix.Input[int]
 	BulkMaxSize                   pulumix.Input[int]
 	BulkParallel                  pulumix.Input[int]
 	TerminationGracePeriodSeconds pulumix.Input[*int]
+	Upgrade                       pulumix.Input[UpgradeMode]
 
 	ExperimentalFeatures             pulumix.Input[bool]
 	ExperimentalNumscriptInterpreter pulumix.Input[bool]
@@ -129,14 +135,29 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 	}
 	ledgerImage := pulumi.Sprintf("ghcr.io/formancehq/ledger:%s", tag)
 
-	autoUpgrade := pulumix.Val(true)
-	if args.AutoUpgrade != nil {
-		autoUpgrade = args.AutoUpgrade.ToOutput(ctx.Context())
+	upgradeMode := UpgradeModeInApp
+	if args.Upgrade != nil {
+		var (
+			upgradeModeChan = make(chan UpgradeMode, 1)
+		)
+		pulumix.ApplyErr(args.Upgrade, func(upgradeMode UpgradeMode) (any, error) {
+			upgradeModeChan <- upgradeMode
+			close(upgradeModeChan)
+			return nil, nil
+		})
+
+		select {
+		case <-ctx.Context().Done():
+			return nil, ctx.Context().Err()
+		case upgradeMode = <-upgradeModeChan:
+			if upgradeMode == "" {
+				upgradeMode = UpgradeModeInApp
+			}
+		}
 	}
 
-	waitUpgrade := pulumix.Val(true)
-	if args.WaitUpgrade != nil {
-		waitUpgrade = args.WaitUpgrade.ToOutput(ctx.Context())
+	if upgradeMode != "" && upgradeMode != UpgradeModeDisabled && upgradeMode != UpgradeModeJob && upgradeMode != UpgradeModeInApp {
+		return nil, fmt.Errorf("invalid upgrade mode: %s", upgradeMode)
 	}
 
 	imagePullPolicy := pulumix.Val("")
@@ -351,18 +372,10 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 		})
 	}
 
-	if args.AutoUpgrade != nil {
+	if upgradeMode == UpgradeModeInApp {
 		envVars = append(envVars, corev1.EnvVarArgs{
-			Name: pulumi.String("AUTO_UPGRADE"),
-			Value: pulumix.Apply2Err(autoUpgrade, waitUpgrade, func(autoUpgrade, waitUpgrade bool) (string, error) {
-				if waitUpgrade && !autoUpgrade {
-					return "", fmt.Errorf("waitUpgrade requires autoUpgrade to be true")
-				}
-				if !autoUpgrade {
-					return "false", nil
-				}
-				return "true", nil
-			}).Untyped().(pulumi.StringOutput),
+			Name:  pulumi.String("AUTO_UPGRADE"),
+			Value: pulumi.String("true"),
 		})
 	}
 
@@ -501,18 +514,15 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 		return nil, err
 	}
 
-	cmp.Migrations = pulumix.ApplyErr(waitUpgrade, func(waitUpgrade bool) (*batchv1.Job, error) {
-		if !waitUpgrade {
-			return nil, nil
-		}
-		return batchv1.NewJob(ctx, "wait-migration-completion", &batchv1.JobArgs{
+	if upgradeMode == UpgradeModeJob {
+		_, err = batchv1.NewJob(ctx, "migrate", &batchv1.JobArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Namespace: namespace.Untyped().(pulumi.StringOutput),
 			},
 			Spec: batchv1.JobSpecArgs{
 				Template: corev1.PodTemplateSpecArgs{
 					Spec: corev1.PodSpecArgs{
-						RestartPolicy: pulumi.String("OnFailure"),
+						RestartPolicy: pulumi.String("Always"),
 						Containers: corev1.ContainerArray{
 							corev1.ContainerArgs{
 								Name: pulumi.String("check"),
@@ -537,7 +547,10 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 				},
 			},
 		}, pulumi.Parent(cmp))
-	})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	service, err := corev1.NewService(ctx, "ledger", &corev1.ServiceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
