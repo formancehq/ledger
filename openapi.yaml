@@ -3492,6 +3492,7 @@ components:
         - INTERPRETER_PARSE
         - INTERPRETER_RUNTIME
         - LEDGER_ALREADY_EXISTS
+        - BUCKET_OUTDATED
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object

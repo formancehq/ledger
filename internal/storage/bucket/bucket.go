@@ -15,6 +15,7 @@ type Bucket interface {
 	HasMinimalVersion(ctx context.Context) (bool, error)
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
+	IsInitialized(context.Context) (bool, error)
 }
 
 type Factory interface {

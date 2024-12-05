@@ -210,6 +210,10 @@ func TestLedgersCreate(t *testing.T) {
 		CreateLedger(gomock.Any(), l)
 
 	bucket.EXPECT().
+		IsInitialized(gomock.Any()).
+		Return(false, nil)
+
+	bucket.EXPECT().
 		Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 

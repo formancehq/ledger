@@ -82,6 +82,21 @@ func (mr *MockBucketMockRecorder) HasMinimalVersion(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasMinimalVersion", reflect.TypeOf((*MockBucket)(nil).HasMinimalVersion), ctx)
 }
 
+// IsInitialized mocks base method.
+func (m *MockBucket) IsInitialized(arg0 context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsInitialized", arg0)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsInitialized indicates an expected call of IsInitialized.
+func (mr *MockBucketMockRecorder) IsInitialized(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsInitialized", reflect.TypeOf((*MockBucket)(nil).IsInitialized), arg0)
+}
+
 // IsUpToDate mocks base method.
 func (m *MockBucket) IsUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()

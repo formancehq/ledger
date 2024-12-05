@@ -3244,6 +3244,7 @@ Authorization ( Scopes: ledger:write )
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
+|*anonymous*|BUCKET_OUTDATED|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->
