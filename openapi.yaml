@@ -1507,14 +1507,6 @@ paths:
           schema:
             type: string
             format: date-time
-        - name: query
-          in: query
-          description: Query string to filter accounts. The query string must be a valid JSON object.
-          schema:
-            type: string
-            example:
-              $match:
-                address: users:001
       requestBody:
         content:
           application/json:
@@ -1586,14 +1578,6 @@ paths:
           schema:
             type: string
             format: date-time
-        - name: query
-          in: query
-          description: Query string to filter accounts. The query string must be a valid JSON object.
-          schema:
-            type: string
-            example:
-              $match:
-                address: users:001
       requestBody:
         content:
           application/json:
@@ -1823,14 +1807,6 @@ paths:
           schema:
             type: string
             format: date-time
-        - name: query
-          in: query
-          description: Query string to filter transactions. The query string must be a valid JSON object.
-          schema:
-            type: string
-            example:
-              $match:
-                account: users:001
       requestBody:
         content:
           application/json:
@@ -1870,14 +1846,6 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: query
-          in: query
-          description: Query string to filter transactions. The query string must be a valid JSON object.
-          schema:
-            type: string
-            example:
-              $match:
-                account: users:001
         - name: pageSize
           in: query
           description: |
