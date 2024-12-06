@@ -74,12 +74,15 @@ type T interface {
 func newLedgerStore(t T) *ledgerstore.Store {
 	t.Helper()
 
+	<-defaultBunDB.Done()
 	<-defaultDriver.Done()
 
 	ledgerName := uuid.NewString()[:8]
 	ctx := logging.TestingContext()
 
 	l := ledger.MustNewWithDefault(ledgerName)
+	err := bucket.GetMigrator(defaultBunDB.GetValue(), "_default").Up(ctx)
+	require.NoError(t, err)
 
 	store, err := defaultDriver.GetValue().CreateLedger(ctx, &l)
 	require.NoError(t, err)
