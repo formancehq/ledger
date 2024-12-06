@@ -1,0 +1,24 @@
+[Unit]
+Description=Driver Service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+ExecStartPre=-/usr/bin/docker rm driver
+ExecStartPre=/usr/bin/docker pull ghcr.io/formancehq/ledger-volumes-tests-driver:{{ .DriverVersion }}
+ExecStart=/usr/bin/docker run --rm \
+    --name driver \
+    -e AWS_REGION={{ .AwsRegion }} \
+    -e AWS_ACCESS_KEY_ID="{{ .AwsAccessKeyID }}" \
+    -e AWS_SECRET_ACCESS_KEY="{{ .AwsSecretAccessKey }}" \
+    ghcr.io/formancehq/ledger-volumes-tests-driver:{{ .DriverVersion }} \
+        --ledger-ip {{ .LedgerIP }} \
+        {{- range .Steps }}
+        --step {{ . }} \
+        {{- end }}
+        --vus 100 \
+        --db-cluster-identifier {{ .DBClusterIdentifier }} \
+        --s3-bucket {{ .S3Bucket }}
+
+[Install]
+WantedBy=default.target

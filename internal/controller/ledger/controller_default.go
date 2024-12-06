@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"reflect"
 
-	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"

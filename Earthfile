@@ -58,9 +58,9 @@ build-image:
     ENTRYPOINT ["/bin/ledger"]
     CMD ["serve"]
     COPY --pass-args (+compile/main) /bin/ledger
-    ARG REPOSITORY=ghcr.io
+    ARG repository=ghcr.io
     ARG tag=latest
-    DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
+    DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${repository} --TAG=$tag
 
 tests:
     FROM +tidy
