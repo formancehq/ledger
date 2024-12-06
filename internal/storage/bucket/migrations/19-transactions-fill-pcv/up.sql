@@ -57,6 +57,8 @@ do $$
 		end loop;
 		
 		alter table transactions
-		alter column post_commit_volumes set not null;
+		add constraint post_commit_volumes_not_null
+		check (post_commit_volumes is not null)
+		not valid;
 	end
 $$;

@@ -32,7 +32,9 @@ do $$
 		end loop;
 
 		alter table logs
-		alter column memento set not null;
+		add constraint memento_not_null
+		check (memento is not null)
+		not valid;
 	end
 $$;
 
