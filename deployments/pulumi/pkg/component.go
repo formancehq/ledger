@@ -485,7 +485,8 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 									Port: pulumi.String("http"),
 								},
 								FailureThreshold: pulumi.Int(1),
-								PeriodSeconds:    pulumi.Int(10),
+								PeriodSeconds:    pulumi.Int(60),
+								TimeoutSeconds:   pulumi.IntPtr(3),
 							},
 							ReadinessProbe: corev1.ProbeArgs{
 								HttpGet: corev1.HTTPGetActionArgs{
@@ -493,15 +494,17 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 									Port: pulumi.String("http"),
 								},
 								FailureThreshold: pulumi.Int(1),
-								PeriodSeconds:    pulumi.Int(10),
+								PeriodSeconds:    pulumi.Int(60),
+								TimeoutSeconds:   pulumi.IntPtr(3),
 							},
 							StartupProbe: corev1.ProbeArgs{
 								HttpGet: corev1.HTTPGetActionArgs{
 									Path: pulumi.String("/_healthcheck"),
 									Port: pulumi.String("http"),
 								},
-								FailureThreshold: pulumi.Int(60),
-								PeriodSeconds:    pulumi.Int(5),
+								PeriodSeconds:       pulumi.Int(5),
+								InitialDelaySeconds: pulumi.IntPtr(2),
+								TimeoutSeconds:      pulumi.IntPtr(3),
 							},
 							Env: envVars,
 						},
