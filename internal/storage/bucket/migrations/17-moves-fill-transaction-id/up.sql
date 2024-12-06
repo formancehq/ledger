@@ -5,8 +5,6 @@ do $$
 	begin
 		set search_path = '{{.Schema}}';
 
-		create index moves_transactions_id on moves(transactions_id);
-
 		select count(seq)
 		from moves
 		where transactions_id is null
