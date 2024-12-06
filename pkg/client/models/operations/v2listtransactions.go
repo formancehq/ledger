@@ -36,8 +36,6 @@ func (e *Order) UnmarshalJSON(data []byte) error {
 type V2ListTransactionsRequest struct {
 	// Name of the ledger.
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
-	// Query string to filter transactions. The query string must be a valid JSON object.
-	Query *string `queryParam:"style=form,explode=true,name=query"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `queryParam:"style=form,explode=true,name=pageSize"`
@@ -70,13 +68,6 @@ func (o *V2ListTransactionsRequest) GetLedger() string {
 		return ""
 	}
 	return o.Ledger
-}
-
-func (o *V2ListTransactionsRequest) GetQuery() *string {
-	if o == nil {
-		return nil
-	}
-	return o.Query
 }
 
 func (o *V2ListTransactionsRequest) GetPageSize() *int64 {
