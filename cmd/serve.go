@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"github.com/bombsimon/logrusr/v4"
 	"github.com/formancehq/go-libs/v2/logging"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -50,6 +53,12 @@ func NewServeCommand() *cobra.Command {
 		Use:          "serve",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			l := logrus.New()
+			l.SetLevel(logrus.DebugLevel)
+			otelLogger := logrusr.New(l)
+			otel.SetLogger(otelLogger)
+			l.Debugf("Starting otel logger")
+
 			serveConfiguration := discoverServeConfiguration(cmd)
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
@@ -105,15 +114,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-						fx.In
+					fx.In
 
-						Handler          chi.Router
-						HealthController *health.HealthController
-						Logger           logging.Logger
+					Handler          chi.Router
+					HealthController *health.HealthController
+					Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-					},
+					MeterProvider *metric.MeterProvider         `optional:"true"`
+					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
