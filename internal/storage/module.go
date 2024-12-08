@@ -15,12 +15,17 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
 		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
+			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
-				isUpToDate, err := driver.HasReachMinimalVersion(ctx)
+				if hasReachedMinimalVersion {
+					return nil
+				}
+				var err error
+				hasReachedMinimalVersion, err = driver.HasReachMinimalVersion(ctx)
 				if err != nil {
 					return err
 				}
-				if !isUpToDate {
+				if !hasReachedMinimalVersion {
 					return errors.New("storage driver is not up to date")
 				}
 				return nil
