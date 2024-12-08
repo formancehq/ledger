@@ -1,0 +1,1 @@
+create index concurrently moves_transactions_id on "{{ .Schema }}".moves(transactions_id);

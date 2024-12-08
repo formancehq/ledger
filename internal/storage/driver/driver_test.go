@@ -51,16 +51,15 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			Return(bucket)
 
 		bucket.EXPECT().
-			Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
-				close(minimalVersionReached)
+			Migrate(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
 				return nil
 			})
 
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		t.Cleanup(cancel)
 
-		require.NoError(t, d.UpgradeAllBuckets(ctx, make(chan struct{})))
+		require.NoError(t, d.UpgradeAllBuckets(ctx))
 	})
 
 	t.Run("with concurrent buckets", func(t *testing.T) {
@@ -92,9 +91,8 @@ func TestUpgradeAllLedgers(t *testing.T) {
 					Return(bucket)
 
 				bucket.EXPECT().
-					Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
-					DoAndReturn(func(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
-						close(minimalVersionReached)
+					Migrate(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
 						return nil
 					})
 			}
@@ -106,7 +104,7 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			t.Cleanup(cancel)
 
-			require.NoError(t, d.UpgradeAllBuckets(ctx, make(chan struct{})))
+			require.NoError(t, d.UpgradeAllBuckets(ctx))
 		})
 
 		t.Run("and error", func(t *testing.T) {
@@ -124,7 +122,6 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			bucket1 := driver.NewMockBucket(ctrl)
 			bucket2 := driver.NewMockBucket(ctrl)
 			bucketList := []string{"bucket1", "bucket2"}
-			allBucketsMinimalVersionReached := make(chan struct{})
 
 			bucketFactory.EXPECT().
 				Create(gomock.AnyOf(
@@ -141,10 +138,9 @@ func TestUpgradeAllLedgers(t *testing.T) {
 
 			bucket1MigrationStarted := make(chan struct{})
 			bucket1.EXPECT().
-				Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
+				Migrate(gomock.Any(), gomock.Any()).
 				AnyTimes().
-				DoAndReturn(func(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
-					close(minimalVersionReached)
+				DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
 					close(bucket1MigrationStarted)
 
 					return nil
@@ -152,9 +148,9 @@ func TestUpgradeAllLedgers(t *testing.T) {
 
 			firstCall := true
 			bucket2.EXPECT().
-				Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
+				Migrate(gomock.Any(), gomock.Any()).
 				AnyTimes().
-				DoAndReturn(func(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
+				DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
@@ -163,7 +159,6 @@ func TestUpgradeAllLedgers(t *testing.T) {
 							firstCall = false
 							return errors.New("unknown error")
 						}
-						close(minimalVersionReached)
 						return nil
 					}
 				})
@@ -177,7 +172,7 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			t.Cleanup(cancel)
 
 			bucket1MigrationStarted = make(chan struct{})
-			err := d.UpgradeAllBuckets(ctx, allBucketsMinimalVersionReached)
+			err := d.UpgradeAllBuckets(ctx)
 			require.NoError(t, err)
 		})
 	})
@@ -214,7 +209,7 @@ func TestLedgersCreate(t *testing.T) {
 		Return(false, nil)
 
 	bucket.EXPECT().
-		Migrate(gomock.Any(), gomock.Any(), gomock.Any()).
+		Migrate(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	bucket.EXPECT().

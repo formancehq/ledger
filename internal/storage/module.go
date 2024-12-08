@@ -2,23 +2,43 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"go.uber.org/fx"
 )
 
+const HealthCheckName = `storage-driver-up-to-date`
+
 func NewFXModule(autoUpgrade bool) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
+		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
+			hasReachedMinimalVersion := false
+			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
+				if hasReachedMinimalVersion {
+					return nil
+				}
+				var err error
+				hasReachedMinimalVersion, err = driver.HasReachMinimalVersion(ctx)
+				if err != nil {
+					return err
+				}
+				if !hasReachedMinimalVersion {
+					return errors.New("storage driver is not up to date")
+				}
+				return nil
+			}))
+		}),
 	}
 	if autoUpgrade {
 		ret = append(ret,
 			fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
 				var (
-					upgradeContext        context.Context
-					cancelContext         func()
-					upgradeStopped        = make(chan struct{})
-					minimalVersionReached = make(chan struct{})
+					upgradeContext context.Context
+					cancelContext  func()
+					upgradeStopped = make(chan struct{})
 				)
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
@@ -26,17 +46,12 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 						go func() {
 							defer close(upgradeStopped)
 
-							if err := driver.UpgradeAllBuckets(upgradeContext, minimalVersionReached); err != nil {
+							if err := driver.UpgradeAllBuckets(upgradeContext); err != nil {
 								logging.FromContext(ctx).Errorf("failed to upgrade all buckets: %v", err)
 							}
 						}()
 
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-minimalVersionReached:
-							return nil
-						}
+						return nil
 					},
 					OnStop: func(ctx context.Context) error {
 						cancelContext()

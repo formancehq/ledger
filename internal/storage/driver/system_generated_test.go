@@ -116,6 +116,21 @@ func (mr *SystemStoreMockRecorder) GetMigrator(options ...any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrator", reflect.TypeOf((*SystemStore)(nil).GetMigrator), options...)
 }
 
+// IsUpToDate mocks base method.
+func (m *SystemStore) IsUpToDate(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsUpToDate", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsUpToDate indicates an expected call of IsUpToDate.
+func (mr *SystemStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUpToDate", reflect.TypeOf((*SystemStore)(nil).IsUpToDate), ctx)
+}
+
 // ListLedgers mocks base method.
 func (m *SystemStore) ListLedgers(ctx context.Context, q ledger0.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()

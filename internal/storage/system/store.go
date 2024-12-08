@@ -24,6 +24,7 @@ type Store interface {
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
+	IsUpToDate(ctx context.Context) (bool, error)
 }
 
 const (
@@ -32,6 +33,10 @@ const (
 
 type DefaultStore struct {
 	db *bun.DB
+}
+
+func (d *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
+	return d.GetMigrator().IsUpToDate(ctx)
 }
 
 func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error) {

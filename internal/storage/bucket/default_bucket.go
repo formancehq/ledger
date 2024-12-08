@@ -38,8 +38,8 @@ func (b *DefaultBucket) IsUpToDate(ctx context.Context) (bool, error) {
 	return GetMigrator(b.db, b.name).IsUpToDate(ctx)
 }
 
-func (b *DefaultBucket) Migrate(ctx context.Context, minimalVersionReached chan struct{}, options ...migrations.Option) error {
-	return migrate(ctx, b.tracer, b.db, b.name, minimalVersionReached, options...)
+func (b *DefaultBucket) Migrate(ctx context.Context, options ...migrations.Option) error {
+	return migrate(ctx, b.tracer, b.db, b.name, options...)
 }
 
 func (b *DefaultBucket) HasMinimalVersion(ctx context.Context) (bool, error) {

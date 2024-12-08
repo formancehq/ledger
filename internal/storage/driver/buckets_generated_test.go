@@ -113,9 +113,9 @@ func (mr *MockBucketMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 }
 
 // Migrate mocks base method.
-func (m *MockBucket) Migrate(ctx context.Context, minimalVersionReached chan struct{}, opts ...migrations.Option) error {
+func (m *MockBucket) Migrate(ctx context.Context, opts ...migrations.Option) error {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, minimalVersionReached}
+	varargs := []any{ctx}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
@@ -125,9 +125,9 @@ func (m *MockBucket) Migrate(ctx context.Context, minimalVersionReached chan str
 }
 
 // Migrate indicates an expected call of Migrate.
-func (mr *MockBucketMockRecorder) Migrate(ctx, minimalVersionReached any, opts ...any) *gomock.Call {
+func (mr *MockBucketMockRecorder) Migrate(ctx any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, minimalVersionReached}, opts...)
+	varargs := append([]any{ctx}, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Migrate", reflect.TypeOf((*MockBucket)(nil).Migrate), varargs...)
 }
 

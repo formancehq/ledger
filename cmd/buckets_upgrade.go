@@ -30,7 +30,7 @@ func NewBucketUpgrade() *cobra.Command {
 			}()
 
 			if args[0] == "*" {
-				return driver.UpgradeAllBuckets(cmd.Context(), make(chan struct{}))
+				return driver.UpgradeAllBuckets(cmd.Context())
 			}
 
 			return driver.UpgradeBucket(cmd.Context(), args[0])

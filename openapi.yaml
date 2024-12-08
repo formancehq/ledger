@@ -3492,7 +3492,7 @@ components:
         - INTERPRETER_PARSE
         - INTERPRETER_RUNTIME
         - LEDGER_ALREADY_EXISTS
-        - BUCKET_OUTDATED
+        - OUTDATED_SCHEMA
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object
@@ -3633,11 +3633,13 @@ components:
                 - targetType
                 - key
     V2BulkResponse:
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/V2BulkElementResult'
+      allOf:
+        - properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/V2BulkElementResult'
+        - $ref: '#/components/schemas/V2ErrorResponse'
       type: object
       required:
         - data

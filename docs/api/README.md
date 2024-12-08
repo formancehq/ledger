@@ -597,7 +597,10 @@ Accept: application/json
         }
       }
     }
-  ]
+  ],
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -3244,7 +3247,7 @@ Authorization ( Scopes: ledger:write )
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
-|*anonymous*|BUCKET_OUTDATED|
+|*anonymous*|OUTDATED_SCHEMA|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->
@@ -3788,16 +3791,28 @@ and
         }
       }
     }
-  ]
+  ],
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 
 ```
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|true|none|none|
+|*anonymous*|object|false|none|none|
+|» data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2ErrorResponse](#schemav2errorresponse)|false|none|none|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->
