@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"github.com/formancehq/ledger/pkg/features"
-
 	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/pkg/features"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	lquery "github.com/formancehq/go-libs/v2/query"
@@ -68,10 +67,6 @@ func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.Acco
 func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
 	ret := s.db.NewSelect()
 
-	if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
-	}
-
 	var (
 		useMetadata        bool
 		needSegmentAddress bool
@@ -107,27 +102,45 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 		}
 	}
 
-	selectVolumes := s.db.NewSelect().
-		ColumnExpr("accounts_address as address").
-		Column("asset").
-		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
-		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
-		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-		ModelTableExpr(s.GetPrefixedRelationName("moves")).
-		Where("ledger = ?", s.ledger.Name).
-		GroupExpr("accounts_address, asset").
-		Order("accounts_address", "asset")
+	var selectVolumes *bun.SelectQuery
 
-	dateFilterColumn := "effective_date"
-	if useInsertionDate {
-		dateFilterColumn = "insertion_date"
-	}
+	if (pit == nil || pit.IsZero()) && (oot == nil || oot.IsZero()) {
+		selectVolumes = s.db.NewSelect().
+			DistinctOn("accounts_address, asset").
+			ColumnExpr("accounts_address as address").
+			Column("asset", "input", "output").
+			ColumnExpr("input - output as balance").
+			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+			Where("ledger = ?", s.ledger.Name).
+			Order("accounts_address", "asset")
+	} else {
+		if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+			return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
+		}
 
-	if pit != nil && !pit.IsZero() {
-		selectVolumes = selectVolumes.Where(dateFilterColumn+" <= ?", pit)
-	}
-	if oot != nil && !oot.IsZero() {
-		selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", oot)
+		dateFilterColumn := "effective_date"
+		if useInsertionDate {
+			dateFilterColumn = "insertion_date"
+		}
+
+		selectVolumes = s.db.NewSelect().
+			ColumnExpr("accounts_address as address").
+			Column("asset").
+			ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
+			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
+			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
+			ModelTableExpr(s.GetPrefixedRelationName("moves")).
+			Where("ledger = ?", s.ledger.Name).
+			GroupExpr("accounts_address, asset").
+			Order("accounts_address", "asset")
+
+		if pit != nil && !pit.IsZero() {
+			selectVolumes = selectVolumes.Where(dateFilterColumn+" <= ?", pit)
+		}
+
+		if oot != nil && !oot.IsZero() {
+			selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", oot)
+		}
 	}
 
 	ret = ret.
