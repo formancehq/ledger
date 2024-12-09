@@ -50,11 +50,11 @@ func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun
 	return ret
 }
 
-func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffectiveVolumes bool, q query.Builder) *bun.SelectQuery {
+func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffectiveVolumes bool, q query.Builder) (*bun.SelectQuery, error) {
 
 	ret := s.db.NewSelect()
 	if expandEffectiveVolumes && !s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes))
+		return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 	}
 
 	if q != nil {
@@ -91,7 +91,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 
 			return nil
 		}); err != nil {
-			return ret.Err(err)
+			return nil, err
 		}
 	}
 
@@ -229,7 +229,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 			}
 		}))
 		if err != nil {
-			return ret.Err(err)
+			return nil, err
 		}
 
 		if len(args) > 0 {
@@ -239,7 +239,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 		}
 	}
 
-	return ret
+	return ret, nil
 }
 
 func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
@@ -317,14 +317,18 @@ func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTra
 		s.tracer,
 		s.listTransactionsHistogram,
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
+			selectTransactions, err := s.selectTransactions(
+				q.Options.Options.PIT,
+				q.Options.Options.ExpandVolumes,
+				q.Options.Options.ExpandEffectiveVolumes,
+				q.Options.QueryBuilder,
+			)
+			if err != nil {
+				return nil, err
+			}
 			cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Transaction](
 				ctx,
-				s.selectTransactions(
-					q.Options.Options.PIT,
-					q.Options.Options.ExpandVolumes,
-					q.Options.Options.ExpandEffectiveVolumes,
-					q.Options.QueryBuilder,
-				),
+				selectTransactions,
 				bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]](q),
 			)
 			if err != nil {
@@ -343,13 +347,17 @@ func (s *Store) CountTransactions(ctx context.Context, q ledgercontroller.ListTr
 		s.tracer,
 		s.countTransactionsHistogram,
 		func(ctx context.Context) (int, error) {
+			selectTransactions, err := s.selectTransactions(
+				q.Options.Options.PIT,
+				q.Options.Options.ExpandVolumes,
+				q.Options.Options.ExpandEffectiveVolumes,
+				q.Options.QueryBuilder,
+			)
+			if err != nil {
+				return 0, err
+			}
 			return s.db.NewSelect().
-				TableExpr("(?) data", s.selectTransactions(
-					q.Options.Options.PIT,
-					q.Options.Options.ExpandVolumes,
-					q.Options.Options.ExpandEffectiveVolumes,
-					q.Options.QueryBuilder,
-				)).
+				TableExpr("(?) data", selectTransactions).
 				Count(ctx)
 		},
 	)
@@ -364,12 +372,16 @@ func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetT
 		func(ctx context.Context) (*ledger.Transaction, error) {
 
 			ret := &ledger.Transaction{}
-			if err := s.selectTransactions(
+			selectTransactions, err := s.selectTransactions(
 				filter.PIT,
 				filter.ExpandVolumes,
 				filter.ExpandEffectiveVolumes,
 				nil,
-			).
+			)
+			if err != nil {
+				return nil, err
+			}
+			if err := selectTransactions.
 				Where("transactions.id = ?", filter.ID).
 				Limit(1).
 				Model(ret).

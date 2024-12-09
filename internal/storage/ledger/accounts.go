@@ -42,22 +42,26 @@ func convertOperatorToSQL(operator string) string {
 	panic("unreachable")
 }
 
-func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
+func (s *Store) selectBalance(date *time.Time) (*bun.SelectQuery, error) {
 
 	if date != nil && !date.IsZero() {
-		sortedMoves := s.SelectDistinctMovesBySeq(date).
+		selectDistinctMovesBySeq, err := s.SelectDistinctMovesBySeq(date)
+		if err != nil {
+			return nil, err
+		}
+		sortedMoves := selectDistinctMovesBySeq.
 			ColumnExpr("(post_commit_volumes).inputs - (post_commit_volumes).outputs as balance")
 
 		return s.db.NewSelect().
 			ModelTableExpr("(?) moves", sortedMoves).
 			Where("ledger = ?", s.ledger.Name).
-			ColumnExpr("accounts_address, asset, balance")
+			ColumnExpr("accounts_address, asset, balance"), nil
 	}
 
 	return s.db.NewSelect().
 		ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 		Where("ledger = ?", s.ledger.Name).
-		ColumnExpr("input - output as balance")
+		ColumnExpr("input - output as balance"), nil
 }
 
 func (s *Store) selectDistinctAccountMetadataHistories(date *time.Time) *bun.SelectQuery {
@@ -75,7 +79,7 @@ func (s *Store) selectDistinctAccountMetadataHistories(date *time.Time) *bun.Sel
 	return ret
 }
 
-func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVolumes bool, qb query.Builder) *bun.SelectQuery {
+func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVolumes bool, qb query.Builder) (*bun.SelectQuery, error) {
 
 	ret := s.db.NewSelect()
 
@@ -104,7 +108,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 			return nil
 		}); err != nil {
-			return ret.Err(fmt.Errorf("failed to check filters: %w", err))
+			return nil, fmt.Errorf("failed to check filters: %w", err)
 		}
 	}
 
@@ -131,16 +135,24 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	}
 
 	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") && needVolumes {
+		selectAccountWithAggregatedVolumes, err := s.selectAccountWithAggregatedVolumes(date, true, "volumes")
+		if err != nil {
+			return nil, err
+		}
 		ret = ret.Join(
 			`left join (?) volumes on volumes.accounts_address = accounts.address`,
-			s.selectAccountWithAggregatedVolumes(date, true, "volumes"),
+			selectAccountWithAggregatedVolumes,
 		).Column("volumes.*")
 	}
 
 	if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
+		selectAccountWithAggregatedVolumes, err := s.selectAccountWithAggregatedVolumes(date, false, "effective_volumes")
+		if err != nil {
+			return nil, err
+		}
 		ret = ret.Join(
 			`left join (?) effective_volumes on effective_volumes.accounts_address = accounts.address`,
-			s.selectAccountWithAggregatedVolumes(date, false, "effective_volumes"),
+			selectAccountWithAggregatedVolumes,
 		).Column("effective_volumes.*")
 	}
 
@@ -156,20 +168,30 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				match := balanceRegex.FindAllStringSubmatch(key, 2)
 				asset := match[0][1]
 
+				selectBalance, err := s.selectBalance(date)
+				if err != nil {
+					return "", nil, err
+				}
+
 				return s.db.NewSelect().
 					TableExpr(
 						"(?) balance",
-						s.selectBalance(date).
+						selectBalance.
 							Where("asset = ? and accounts_address = accounts.address", asset),
 					).
 					ColumnExpr(fmt.Sprintf("balance %s ?", convertOperatorToSQL(operator)), value).
 					String(), nil, nil
 
 			case key == "balance":
+				selectBalance, err := s.selectBalance(date)
+				if err != nil {
+					return "", nil, err
+				}
+
 				return s.db.NewSelect().
 					TableExpr(
 						"(?) balance",
-						s.selectBalance(date).
+						selectBalance.
 							Where("accounts_address = accounts.address"),
 					).
 					ColumnExpr(fmt.Sprintf("balance %s ?", convertOperatorToSQL(operator)), value).
@@ -198,7 +220,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			panic("unreachable")
 		}))
 		if err != nil {
-			return ret.Err(fmt.Errorf("evaluating filters: %w", err))
+			return nil, fmt.Errorf("evaluating filters: %w", err)
 		}
 		if len(args) > 0 {
 			ret = ret.Where(where, args...)
@@ -207,10 +229,19 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		}
 	}
 
-	return ret
+	return ret, nil
 }
 
 func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*Cursor[ledger.Account], error) {
+	selectAccounts, err := s.selectAccounts(
+		q.Options.Options.PIT,
+		q.Options.Options.ExpandVolumes,
+		q.Options.Options.ExpandEffectiveVolumes,
+		q.Options.QueryBuilder,
+	)
+	if err != nil {
+		return nil, err
+	}
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
@@ -219,12 +250,7 @@ func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccount
 		func(ctx context.Context) (*Cursor[ledger.Account], error) {
 			ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](
 				ctx,
-				s.selectAccounts(
-					q.Options.Options.PIT,
-					q.Options.Options.ExpandVolumes,
-					q.Options.Options.ExpandEffectiveVolumes,
-					q.Options.QueryBuilder,
-				),
+				selectAccounts,
 				OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]](q),
 			)
 
@@ -245,7 +271,11 @@ func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQue
 		s.getAccountHistogram,
 		func(ctx context.Context) (*ledger.Account, error) {
 			ret := &ledger.Account{}
-			if err := s.selectAccounts(q.PIT, q.ExpandVolumes, q.ExpandEffectiveVolumes, nil).
+			selectAccounts, err := s.selectAccounts(q.PIT, q.ExpandVolumes, q.ExpandEffectiveVolumes, nil)
+			if err != nil {
+				return nil, err
+			}
+			if err := selectAccounts.
 				Model(ret).
 				Where("accounts.address = ?", q.Addr).
 				Limit(1).
@@ -265,13 +295,17 @@ func (s *Store) CountAccounts(ctx context.Context, q ledgercontroller.ListAccoun
 		s.tracer,
 		s.countAccountsHistogram,
 		func(ctx context.Context) (int, error) {
+			selectAccounts, err := s.selectAccounts(
+				q.Options.Options.PIT,
+				q.Options.Options.ExpandVolumes,
+				q.Options.Options.ExpandEffectiveVolumes,
+				q.Options.QueryBuilder,
+			)
+			if err != nil {
+				return 0, err
+			}
 			return s.db.NewSelect().
-				TableExpr("(?) data", s.selectAccounts(
-					q.Options.Options.PIT,
-					q.Options.Options.ExpandVolumes,
-					q.Options.Options.ExpandEffectiveVolumes,
-					q.Options.QueryBuilder,
-				)).
+				TableExpr("(?) data", selectAccounts).
 				Count(ctx)
 		},
 	)

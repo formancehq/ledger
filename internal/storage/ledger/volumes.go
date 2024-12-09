@@ -64,7 +64,7 @@ func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.Acco
 	)
 }
 
-func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
+func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) (*bun.SelectQuery, error) {
 	ret := s.db.NewSelect()
 
 	var (
@@ -98,7 +98,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 			return nil
 		})
 		if err != nil {
-			return ret.Err(err)
+			return nil, err
 		}
 	}
 
@@ -115,7 +115,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 			Order("accounts_address", "asset")
 	} else {
 		if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
+			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
 		dateFilterColumn := "effective_date"
@@ -210,7 +210,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 			}
 		}))
 		if err != nil {
-			return ret.Err(err)
+			return nil, err
 		}
 		ret = ret.Where(where, args...)
 	}
@@ -232,7 +232,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 		globalQuery = globalQuery.ColumnExpr("address as account, asset, input, output, balance")
 	}
 
-	return globalQuery
+	return globalQuery, nil
 }
 
 func (s *Store) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
@@ -242,15 +242,19 @@ func (s *Store) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.G
 		s.tracer,
 		s.getVolumesWithBalancesHistogram,
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+			selectVolumes, err := s.selectVolumes(
+				q.Options.Options.OOT,
+				q.Options.Options.PIT,
+				q.Options.Options.UseInsertionDate,
+				q.Options.Options.GroupLvl,
+				q.Options.QueryBuilder,
+			)
+			if err != nil {
+				return nil, err
+			}
 			return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
 				ctx,
-				s.selectVolumes(
-					q.Options.Options.OOT,
-					q.Options.Options.PIT,
-					q.Options.Options.UseInsertionDate,
-					q.Options.Options.GroupLvl,
-					q.Options.QueryBuilder,
-				),
+				selectVolumes,
 				bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes]](q),
 			)
 		},
