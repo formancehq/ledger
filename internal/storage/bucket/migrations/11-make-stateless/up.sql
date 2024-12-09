@@ -4,7 +4,7 @@ create or replace function transaction_date() returns timestamp as $$
     declare
         ret timestamp without time zone;
     begin
-        create temporary table if not exists transaction_date on commit drop as
+        create temporary table if not exists transaction_date on commit delete rows as
         select statement_timestamp();
 
         select *
@@ -16,7 +16,7 @@ create or replace function transaction_date() returns timestamp as $$
             ret = statement_timestamp();
 
             insert into transaction_date
-            select ret;
+            select ret at time zone 'utc';
         end if;
 
         return ret at time zone 'utc';

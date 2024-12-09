@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/dop251/goja"
 	"github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/pkg/client"
@@ -14,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/google/uuid"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -141,9 +143,28 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 	response, err := client.CreateBulk(ctx, operations.V2CreateBulkRequest{
 		Ledger:      l,
 		RequestBody: bulkElements,
+		Atomic:      pointer.For(true),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating transaction: %w", err)
+	}
+
+	if response.HTTPMeta.Response.StatusCode == http.StatusBadRequest {
+		return nil, fmt.Errorf(
+			"unexpected error: %s [%s]",
+			response.V2BulkResponse.ErrorMessage,
+			response.V2BulkResponse.ErrorCode,
+		)
+	}
+
+	for _, data := range response.V2BulkResponse.Data {
+		if data.Type == components.V2BulkElementResultTypeError {
+			return nil, fmt.Errorf(
+				"unexpected error: %s [%s]",
+				data.V2BulkElementResultError.ErrorDescription,
+				data.V2BulkElementResultError.ErrorCode,
+			)
+		}
 	}
 
 	return response.V2BulkResponse.Data, nil

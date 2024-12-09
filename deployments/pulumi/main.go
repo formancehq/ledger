@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
 func main() {
@@ -35,23 +36,18 @@ func deploy(ctx *pulumi.Context) error {
 		}
 	}
 
-	debug, _ := conf.TryBool("debug")
-	imagePullPolicy, _ := conf.Try("image.pullPolicy")
-
-	replicaCount, _ := conf.TryInt("replicaCount")
-	experimentalFeatures, _ := conf.TryBool("experimentalFeatures")
-
 	_, err = pulumi_ledger.NewComponent(ctx, "ledger", &pulumi_ledger.ComponentArgs{
 		Namespace:       pulumi.String(namespace),
 		Timeout:         pulumi.Int(timeout),
 		Tag:             pulumi.String(version),
-		ImagePullPolicy: pulumi.String(imagePullPolicy),
+		ImagePullPolicy: pulumi.String(conf.Get("image.pullPolicy")),
 		Postgres: pulumi_ledger.PostgresArgs{
 			URI: pulumi.String(postgresURI),
 		},
-		Debug:                pulumi.Bool(debug),
-		ReplicaCount:         pulumi.Int(replicaCount),
-		ExperimentalFeatures: pulumi.Bool(experimentalFeatures),
+		Debug:                pulumi.Bool(conf.GetBool("debug")),
+		ReplicaCount:         pulumi.Int(conf.GetInt("replicaCount")),
+		ExperimentalFeatures: pulumi.Bool(conf.GetBool("experimentalFeatures")),
+		Upgrade: pulumix.Val(pulumi_ledger.UpgradeMode(config.Get(ctx, "upgrade-mode"))),
 	})
 
 	return err

@@ -61,7 +61,6 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	if err := b.Migrate(
 		ctx,
-		make(chan struct{}),
 		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 	); err != nil {
 		return nil, fmt.Errorf("migrating bucket: %w", err)
@@ -82,6 +81,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 }
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
+	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
 	ret, err := d.systemStore.GetLedger(ctx, name)
 	if err != nil {
 		return nil, nil, err
@@ -159,19 +159,16 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
 	return d.bucketFactory.Create(name).Migrate(
 		ctx,
-		make(chan struct{}),
 		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 	)
 }
 
-func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached chan struct{}) error {
+func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 
 	buckets, err := d.systemStore.GetDistinctBuckets(ctx)
 	if err != nil {
 		return fmt.Errorf("getting distinct buckets: %w", err)
 	}
-
-	sem := make(chan struct{}, len(buckets))
 
 	wp := pond.New(d.parallelBucketMigrations, len(buckets), pond.Context(ctx))
 
@@ -182,18 +179,13 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 			})
 			b := d.bucketFactory.Create(bucketName)
 
-			// copy semaphore to be able to nil it
-			sem := sem
-
 		l:
 			for {
-				minimalVersionReached := make(chan struct{})
 				errChan := make(chan error, 1)
 				go func() {
 					logger.Infof("Upgrading...")
 					errChan <- b.Migrate(
 						logging.ContextWithLogger(ctx, logger),
-						minimalVersionReached,
 						migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
 					)
 				}()
@@ -213,40 +205,45 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context, minimalVersionReached ch
 								return
 							}
 						}
-						if sem != nil {
-							logger.Infof("Reached minimal workable version")
-							sem <- struct{}{}
-						}
 
 						logger.Info("Upgrade terminated")
 						return
-					case <-minimalVersionReached:
-						minimalVersionReached = nil
-						if sem != nil {
-							logger.Infof("Reached minimal workable version")
-							sem <- struct{}{}
-							sem = nil
-						}
 					}
 				}
 			}
 		})
 	}
 
-	for i := 0; i < len(buckets); i++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-sem:
-		}
-	}
-
-	logging.FromContext(ctx).Infof("All buckets have reached minimal workable version")
-	close(minimalVersionReached)
-
 	wp.StopAndWait()
 
 	return nil
+}
+
+func (d *Driver) HasReachMinimalVersion(ctx context.Context) (bool, error) {
+	isUpToDate, err := d.systemStore.IsUpToDate(ctx)
+	if err != nil {
+		return false, fmt.Errorf("checking if system store is up to date: %w", err)
+	}
+	if !isUpToDate {
+		return false, nil
+	}
+
+	buckets, err := d.systemStore.GetDistinctBuckets(ctx)
+	if err != nil {
+		return false, fmt.Errorf("getting distinct buckets: %w", err)
+	}
+
+	for _, b := range buckets {
+		hasMinimalVersion, err := d.bucketFactory.Create(b).HasMinimalVersion(ctx)
+		if err != nil {
+			return false, fmt.Errorf("checking if bucket '%s' is up to date: %w", b, err)
+		}
+		if !hasMinimalVersion {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func New(

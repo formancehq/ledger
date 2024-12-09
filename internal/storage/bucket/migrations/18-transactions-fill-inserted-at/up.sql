@@ -1,6 +1,6 @@
 do $$
 	declare
-		_batch_size integer := 100;
+		_batch_size integer := 1000;
 		_date timestamp without time zone;
 		_count integer := 0;
 	begin

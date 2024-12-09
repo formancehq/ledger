@@ -73,7 +73,7 @@ func TestMigrations(t *testing.T) {
 		driver.WithParallelBucketMigration(1),
 	)
 	require.NoError(t, driver.Initialize(ctx))
-	require.NoError(t, driver.UpgradeAllBuckets(ctx, make(chan struct{})))
+	require.NoError(t, driver.UpgradeAllBuckets(ctx))
 }
 
 func copyDatabase(t *testing.T, dockerPool *docker.Pool, source, destination string) {

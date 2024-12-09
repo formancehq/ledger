@@ -1,7 +1,7 @@
 
 do $$
 	declare
-		_batch_size integer := 100;
+		_batch_size integer := 1000;
 		_count integer;
 	begin
 		set search_path = '{{.Schema}}';
@@ -38,7 +38,9 @@ do $$
 		end loop;
 
 		alter table accounts_metadata
-		alter column accounts_address set not null ;
+		add constraint accounts_address_not_null
+		check (accounts_address is not null)
+		not valid;
 	end
 $$;
 

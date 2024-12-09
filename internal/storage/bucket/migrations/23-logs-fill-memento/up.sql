@@ -1,6 +1,6 @@
 do $$
 	declare
-		_batch_size integer := 100;
+		_batch_size integer := 1000;
 		_count integer;
 	begin
 		set search_path = '{{.Schema}}';
@@ -32,7 +32,9 @@ do $$
 		end loop;
 
 		alter table logs
-		alter column memento set not null;
+		add constraint memento_not_null
+		check (memento is not null)
+		not valid;
 	end
 $$;
 
