@@ -18,9 +18,8 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
+func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDate bool, builder query.Builder) (*bun.SelectQuery, error) {
 
-	ret := s.db.NewSelect()
 	var (
 		needMetadata       bool
 		needAddressSegment bool
@@ -53,27 +52,31 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 			}
 			return nil
 		}); err != nil {
-			return ret.Err(err)
+			return nil, err
 		}
 	}
 
 	if needAddressSegment && !s.ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureIndexAddressSegments))
+		return nil, ledgercontroller.NewErrMissingFeature(features.FeatureIndexAddressSegments)
 	}
 
 	var selectAccountsWithVolumes *bun.SelectQuery
 	if date != nil && !date.IsZero() {
 		if useInsertionDate {
 			if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
+				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+			}
+			selectDistinctMovesBySeq, err := s.SelectDistinctMovesBySeq(date)
+			if err != nil {
+				return nil, err
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
-				TableExpr("(?) moves", s.SelectDistinctMovesBySeq(date)).
+				TableExpr("(?) moves", selectDistinctMovesBySeq).
 				Column("asset", "accounts_address").
 				ColumnExpr("post_commit_volumes as volumes")
 		} else {
 			if !s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes))
+				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesByEffectiveDate(date)).
@@ -143,26 +146,32 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 			}
 		}))
 		if err != nil {
-			return ret.Err(fmt.Errorf("building where clause: %w", err))
+			return nil, fmt.Errorf("building where clause: %w", err)
 		}
 		finalQuery = finalQuery.Where(where, args...)
 	}
 
-	return finalQuery
+	return finalQuery, nil
 }
 
-func (s *Store) selectAccountWithAggregatedVolumes(date *time.Time, useInsertionDate bool, alias string) *bun.SelectQuery {
-	selectAccountWithAssetAndVolumes := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, nil)
+func (s *Store) selectAccountWithAggregatedVolumes(date *time.Time, useInsertionDate bool, alias string) (*bun.SelectQuery, error) {
+	selectAccountWithAssetAndVolumes, err := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, nil)
+	if err != nil {
+		return nil, err
+	}
 	return s.db.NewSelect().
 		TableExpr("(?) values", selectAccountWithAssetAndVolumes).
 		Group("accounts_address").
 		Column("accounts_address").
-		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + alias)
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + alias), nil
 }
 
-func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
+func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) (*bun.SelectQuery, error) {
 
-	selectAccountsWithVolumes := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, builder)
+	selectAccountsWithVolumes, err := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, builder)
+	if err != nil {
+		return nil, err
+	}
 	sumVolumesForAsset := s.db.NewSelect().
 		TableExpr("(?) values", selectAccountsWithVolumes).
 		Group("asset").
@@ -171,7 +180,7 @@ func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool,
 
 	return s.db.NewSelect().
 		TableExpr("(?) values", sumVolumesForAsset).
-		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated")
+		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
 }
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
@@ -179,9 +188,14 @@ func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.Ge
 		Aggregated ledger.VolumesByAssets `bun:"aggregated,type:jsonb"`
 	}
 
+	selectAggregatedBalances, err := s.SelectAggregatedBalances(q.PIT, q.UseInsertionDate, q.QueryBuilder)
+	if err != nil {
+		return nil, err
+	}
+
 	aggregatedVolumes := AggregatedVolumes{}
 	if err := s.db.NewSelect().
-		ModelTableExpr("(?) aggregated_volumes", s.SelectAggregatedBalances(q.PIT, q.UseInsertionDate, q.QueryBuilder)).
+		ModelTableExpr("(?) aggregated_volumes", selectAggregatedBalances).
 		Model(&aggregatedVolumes).
 		Scan(ctx); err != nil {
 		return nil, err

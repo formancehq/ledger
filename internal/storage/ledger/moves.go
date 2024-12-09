@@ -12,11 +12,11 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (s *Store) SortMovesBySeq(date *time.Time) *bun.SelectQuery {
+func (s *Store) SortMovesBySeq(date *time.Time) (*bun.SelectQuery, error) {
 
 	ret := s.db.NewSelect()
 	if !s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory))
+		return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 	}
 
 	ret = ret.
@@ -28,12 +28,16 @@ func (s *Store) SortMovesBySeq(date *time.Time) *bun.SelectQuery {
 		ret = ret.Where("insertion_date <= ?", date)
 	}
 
-	return ret
+	return ret, nil
 }
 
-func (s *Store) SelectDistinctMovesBySeq(date *time.Time) *bun.SelectQuery {
+func (s *Store) SelectDistinctMovesBySeq(date *time.Time) (*bun.SelectQuery, error) {
+	sortMovesBySeq, err := s.SortMovesBySeq(date)
+	if err != nil {
+		return nil, err
+	}
 	ret := s.db.NewSelect().
-		TableExpr("(?) moves", s.SortMovesBySeq(date)).
+		TableExpr("(?) moves", sortMovesBySeq).
 		DistinctOn("accounts_address, asset").
 		Column("accounts_address", "asset").
 		ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as post_commit_volumes").
@@ -43,7 +47,7 @@ func (s *Store) SelectDistinctMovesBySeq(date *time.Time) *bun.SelectQuery {
 		ret = ret.Where("insertion_date <= ?", date)
 	}
 
-	return ret
+	return ret, nil
 }
 
 func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQuery {
