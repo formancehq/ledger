@@ -190,18 +190,18 @@ func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ..
 		if otel.ResourceAttributes != nil {
 			envVars = append(envVars, corev1.EnvVarArgs{
 				Name: pulumi.String("OTEL_RESOURCE_ATTRIBUTES"),
-				Value: pulumi.All(otel.ResourceAttributes).ApplyT(func(v []map[string]string) string {
+				Value: pulumix.Apply(otel.ResourceAttributes, func(rawResourceAttributes map[string]string) string {
 					ret := ""
-					keys := collectionutils.Keys(v[0])
+					keys := collectionutils.Keys(rawResourceAttributes)
 					slices.Sort(keys)
 					for _, key := range keys {
-						ret += key + "=" + v[0][key] + ","
+						ret += key + "=" + rawResourceAttributes[key] + ","
 					}
 					if len(ret) > 0 {
 						ret = ret[:len(ret)-1]
 					}
 					return ret
-				}).(pulumi.StringOutput),
+				}).Untyped().(pulumi.StringOutput),
 			})
 		}
 		if traces := args.Otel.Traces; traces != nil {
