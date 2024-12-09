@@ -1,7 +1,7 @@
 
 do $$
 	declare
-		_batch_size integer := 100;
+		_batch_size integer := 1000;
 		_count integer;
 	begin
 		set search_path = '{{.Schema}}';

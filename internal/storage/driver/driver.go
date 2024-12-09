@@ -81,6 +81,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 }
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
+	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
 	ret, err := d.systemStore.GetLedger(ctx, name)
 	if err != nil {
 		return nil, nil, err
