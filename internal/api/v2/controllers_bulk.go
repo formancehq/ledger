@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"net/http"
+	"strings"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -16,6 +17,10 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 		if contentType == "" {
 			contentType = "application/json"
 		}
+		if strings.Index(contentType, ";") > 0 {
+			contentType = strings.Split(contentType, ";")[0]
+		}
+
 		bulkHandlerFactory, ok := bulkHandlerFactories[contentType]
 		if !ok {
 			api.BadRequest(w, common.ErrValidation, errors.New("unsupported content type: "+contentType))
