@@ -325,4 +325,20 @@ func TestBalancesAggregates(t *testing.T) {
 			),
 		}, ret)
 	})
+
+	t.Run("using a filter on metadata and on address", func(t *testing.T) {
+		t.Parallel()
+		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(
+			ledgercontroller.PITFilter{},
+			query.And(
+				query.Match("address", "users:"),
+				query.Match("metadata[category]", "premium"),
+			),
+			false,
+		))
+		require.NoError(t, err)
+		require.Equal(t, ledger.BalancesByAssets{
+			"USD": big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+		}, ret)
+	})
 }

@@ -95,6 +95,7 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 		ColumnExpr("*").
 		TableExpr("(?) accounts_volumes", selectAccountsWithVolumes)
 
+	needAccount := needAddressSegment
 	if needMetadata {
 		if s.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 			selectAccountsWithVolumes = selectAccountsWithVolumes.
@@ -103,17 +104,11 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 					s.selectDistinctAccountMetadataHistories(date),
 				)
 		} else {
-			selectAccountsWithVolumes = selectAccountsWithVolumes.
-				Join(
-					`join (?) accounts on accounts.address = accounts_volumes.accounts_address`,
-					s.db.NewSelect().
-						ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-						Where("ledger = ?", s.ledger.Name),
-				)
+			needAccount = true
 		}
 	}
 
-	if needAddressSegment {
+	if needAccount {
 		selectAccountsWithVolumes = s.db.NewSelect().
 			TableExpr(
 				"(?) accounts",
