@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"fmt"
 	"net/http"
 
 	"errors"
@@ -15,36 +14,13 @@ import (
 func listLogs(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	query := ledgercontroller.GetLogsQuery{}
-
-	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
-		if err != nil {
-			api.BadRequest(w, common.ErrValidation, fmt.Errorf("invalid '%s' query param", QueryKeyCursor))
-			return
-		}
-	} else {
-		var err error
-
-		pageSize, err := bunpaginate.GetPageSize(r)
-		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
-			return
-		}
-
-		qb, err := getQueryBuilder(r)
-		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
-			return
-		}
-
-		query = ledgercontroller.NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
-			QueryBuilder: qb,
-			PageSize:     pageSize,
-		})
+	rq, err := getColumnPaginatedQuery[any](r, "id", bunpaginate.OrderDesc)
+	if err != nil {
+		api.BadRequest(w, common.ErrValidation, err)
+		return
 	}
 
-	cursor, err := l.ListLogs(r.Context(), query)
+	cursor, err := l.ListLogs(r.Context(), *rq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}):

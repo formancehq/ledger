@@ -171,14 +171,20 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedBalances, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
-			// By using a PIT, we force the usage of the moves table.
-			// If it was not specified, the test would not been correct.
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			PIT: pointer.For(time.Now()),
-		}, nil, true))
+			Opts: ledgercontroller.GetAggregatedVolumesOptions{
+				UseInsertionDate: true,
+			},
+		})
 		require.NoError(t, err)
-		RequireEqual(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0),
-		}, aggregatedBalances)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": {
+					Input:  big.NewInt(1000),
+					Output: big.NewInt(1000),
+				},
+			},
+		}, *aggregatedVolumes)
 	})
 }

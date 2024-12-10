@@ -1,14 +1,12 @@
 package v1
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func buildGetLogsQuery(r *http.Request) query.Builder {
@@ -37,32 +35,15 @@ func buildGetLogsQuery(r *http.Request) query.Builder {
 func getLogs(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	query := ledgercontroller.GetLogsQuery{}
-
-	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
-		if err != nil {
-			api.BadRequest(w, common.ErrValidation, fmt.Errorf("invalid '%s' query param: %w", QueryKeyCursor, err))
-			return
-		}
-	} else {
-		var err error
-
-		pageSize, err := bunpaginate.GetPageSize(r,
-			bunpaginate.WithDefaultPageSize(DefaultPageSize),
-			bunpaginate.WithMaxPageSize(MaxPageSize))
-		if err != nil {
-			common.HandleCommonErrors(w, r, err)
-			return
-		}
-
-		query = ledgercontroller.NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
-			QueryBuilder: buildGetLogsQuery(r),
-			PageSize:     pageSize,
-		})
+	paginatedQuery, err := getColumnPaginatedQuery[any](r, "id", bunpaginate.OrderDesc)
+	if err != nil {
+		api.BadRequest(w, common.ErrValidation, err)
+		return
 	}
 
-	cursor, err := l.ListLogs(r.Context(), query)
+	paginatedQuery.Options.Builder = buildGetLogsQuery(r)
+
+	cursor, err := l.ListLogs(r.Context(), *paginatedQuery)
 	if err != nil {
 		common.HandleCommonErrors(w, r, err)
 		return

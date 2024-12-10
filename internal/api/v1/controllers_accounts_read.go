@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/go-libs/v2/query"
 	"net/http"
 	"net/url"
 
@@ -22,10 +23,10 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := ledgercontroller.NewGetAccountQuery(address)
-	query = query.WithExpandVolumes()
-
-	acc, err := l.GetAccount(r.Context(), query)
+	acc, err := l.GetAccount(r.Context(), ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("address", address),
+		Expand: []string{"volumes"},
+	})
 	if err != nil {
 		switch {
 		case postgres.IsNotFoundError(err):

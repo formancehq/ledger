@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/metric"
@@ -25,28 +27,59 @@ type Store struct {
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
-	listAccountsHistogram              metric.Int64Histogram
 	checkBucketSchemaHistogram         metric.Int64Histogram
 	checkLedgerSchemaHistogram         metric.Int64Histogram
-	getAccountHistogram                metric.Int64Histogram
-	countAccountsHistogram             metric.Int64Histogram
 	updateAccountsMetadataHistogram    metric.Int64Histogram
-	deleteAccountMetadataHistogram metric.Int64Histogram
-	upsertAccountsHistogram        metric.Int64Histogram
-	getBalancesHistogram           metric.Int64Histogram
+	deleteAccountMetadataHistogram     metric.Int64Histogram
+	upsertAccountsHistogram            metric.Int64Histogram
+	getBalancesHistogram               metric.Int64Histogram
 	insertLogHistogram                 metric.Int64Histogram
-	listLogsHistogram                  metric.Int64Histogram
 	readLogWithIdempotencyKeyHistogram metric.Int64Histogram
 	insertMovesHistogram               metric.Int64Histogram
-	countTransactionsHistogram         metric.Int64Histogram
-	getTransactionHistogram            metric.Int64Histogram
 	insertTransactionHistogram         metric.Int64Histogram
 	revertTransactionHistogram         metric.Int64Histogram
 	updateTransactionMetadataHistogram metric.Int64Histogram
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	updateBalancesHistogram            metric.Int64Histogram
 	getVolumesWithBalancesHistogram    metric.Int64Histogram
-	listTransactionsHistogram          metric.Int64Histogram
+}
+
+func (s *Store) Volumes() ledgercontroller.PaginatedResource[
+	ledger.VolumesWithBalanceByAssetByAccount,
+	ledgercontroller.GetVolumesOptions,
+	ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
+	return newPaginatedResourceRepository(s, s.ledger, &volumesResourceHandler{}, offsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{})
+}
+
+func (s *Store) AggregatedVolumes() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
+	return newResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](s, s.ledger, &aggregatedBalancesResourceRepositoryHandler{})
+}
+
+func (s *Store) Transactions() ledgercontroller.PaginatedResource[
+	ledger.Transaction,
+	any,
+	ledgercontroller.ColumnPaginatedQuery[any]] {
+	return newPaginatedResourceRepository(s, s.ledger, &transactionsResourceHandler{}, columnPaginator[ledger.Transaction, any]{
+		defaultPaginationColumn: "id",
+		defaultOrder:            bunpaginate.OrderDesc,
+	})
+}
+
+func (s *Store) Logs() ledgercontroller.PaginatedResource[
+	ledger.Log,
+	any,
+	ledgercontroller.ColumnPaginatedQuery[any]] {
+	return newPaginatedResourceRepositoryMapper[ledger.Log, Log, any, ledgercontroller.ColumnPaginatedQuery[any]](s, s.ledger, &logsResourceHandler{}, columnPaginator[Log, any]{
+		defaultPaginationColumn: "id",
+		defaultOrder:            bunpaginate.OrderDesc,
+	})
+}
+
+func (s *Store) Accounts() ledgercontroller.PaginatedResource[
+	ledger.Account,
+	any,
+	ledgercontroller.OffsetPaginatedQuery[any]] {
+	return newPaginatedResourceRepository(s, s.ledger, &accountsResourceHandler{}, offsetPaginator[ledger.Account, any]{})
 }
 
 func (s *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
@@ -94,13 +127,13 @@ func (s *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, s.ledger.Bucket, v)
 }
 
-func (s *Store) validateAddressFilter(operator string, value any) error {
+func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {
 	if operator != "$match" {
-		return errors.New("'address' column can only be used with $match")
+		return fmt.Errorf("'address' column can only be used with $match, operator used is: %s", operator)
 	}
 	if value, ok := value.(string); !ok {
 		return fmt.Errorf("invalid 'address' filter")
-	} else if isSegmentedAddress(value) && !s.ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
+	} else if isSegmentedAddress(value) && !ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
 		return fmt.Errorf("feature %s must be 'ON' to use segments address", features.FeatureIndexAddressSegments)
 	}
 
@@ -112,10 +145,10 @@ func (s *Store) LockLedger(ctx context.Context) error {
 	return postgres.ResolveError(err)
 }
 
-func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option) *Store {
+func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
 		db:     db,
-		ledger: ledger,
+		ledger: l,
 		bucket: bucket,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
@@ -123,27 +156,12 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 	}
 
 	var err error
-	ret.listAccountsHistogram, err = ret.meter.Int64Histogram("store.listAccounts")
-	if err != nil {
-		panic(err)
-	}
-
 	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.checkBucketSchema")
 	if err != nil {
 		panic(err)
 	}
 
 	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.checkLedgerSchema")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.getAccountHistogram, err = ret.meter.Int64Histogram("store.getAccount")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.countAccountsHistogram, err = ret.meter.Int64Histogram("store.countAccounts")
 	if err != nil {
 		panic(err)
 	}
@@ -173,27 +191,12 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 		panic(err)
 	}
 
-	ret.listLogsHistogram, err = ret.meter.Int64Histogram("store.listLogs")
-	if err != nil {
-		panic(err)
-	}
-
 	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.readLogWithIdempotencyKey")
 	if err != nil {
 		panic(err)
 	}
 
 	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insertMoves")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.countTransactionsHistogram, err = ret.meter.Int64Histogram("store.countTransactions")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.getTransactionHistogram, err = ret.meter.Int64Histogram("store.getTransaction")
 	if err != nil {
 		panic(err)
 	}
@@ -224,11 +227,6 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 	}
 
 	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.getVolumesWithBalances")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.listTransactionsHistogram, err = ret.meter.Int64Histogram("store.listTransactions")
 	if err != nil {
 		panic(err)
 	}

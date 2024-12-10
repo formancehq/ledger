@@ -35,7 +35,7 @@ func (store *Store) logsQueryBuilder(q ledgercontroller.PaginatedQueryOptions[an
 	}
 }
 
-func (store *Store) GetLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
+func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
 	logs, err := paginateWithColumn[ledgercontroller.PaginatedQueryOptions[any], ledgerstore.Log](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[any]])(&q),
 		store.logsQueryBuilder(q.Options),

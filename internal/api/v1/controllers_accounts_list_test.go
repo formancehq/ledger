@@ -25,7 +25,7 @@ func TestAccountsList(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		expectQuery       ledgercontroller.OffsetPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -36,8 +36,9 @@ func TestAccountsList(t *testing.T) {
 		{
 			name:              "nominal",
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+			},
 		},
 		{
 			name: "using metadata",
@@ -45,9 +46,12 @@ func TestAccountsList(t *testing.T) {
 				"metadata[roles]": []string{"admin"},
 			},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin")).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("metadata[roles]", "admin"),
+				},
+			},
 		},
 		{
 			name: "using address",
@@ -55,17 +59,20 @@ func TestAccountsList(t *testing.T) {
 				"address": []string{"foo"},
 			},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("address", "foo")).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("address", "foo"),
+				},
+			},
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.NewListAccountsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{})))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.OffsetPaginatedQuery[any]{})},
 			},
 			expectBackendCall: true,
-			expectQuery:       ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
+			expectQuery:       ledgercontroller.OffsetPaginatedQuery[any]{},
 		},
 		{
 			name: "using invalid cursor",
@@ -89,8 +96,9 @@ func TestAccountsList(t *testing.T) {
 				"pageSize": []string{"1000000"},
 			},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithPageSize(MaxPageSize),
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+				PageSize: MaxPageSize,
+			},
 		},
 		{
 			name: "using balance filter",
@@ -99,9 +107,12 @@ func TestAccountsList(t *testing.T) {
 				"balanceOperator": []string{"e"},
 			},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("balance", int64(100))).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("balance", int64(100)),
+				},
+			},
 		},
 		{
 			name:              "with missing feature",
@@ -109,8 +120,9 @@ func TestAccountsList(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -133,7 +145,7 @@ func TestAccountsList(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectBackendCall {
 				ledgerController.EXPECT().
-					ListAccounts(gomock.Any(), ledgercontroller.NewListAccountsQuery(testCase.expectQuery)).
+					ListAccounts(gomock.Any(), testCase.expectQuery).
 					Return(&expectedCursor, testCase.returnErr)
 			}
 
