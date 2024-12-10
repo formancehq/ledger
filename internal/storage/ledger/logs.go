@@ -9,10 +9,8 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
@@ -111,43 +109,6 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	)
 
 	return err
-}
-
-func (s *Store) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	return tracing.TraceWithMetric(
-		ctx,
-		"ListLogs",
-		s.tracer,
-		s.listLogsHistogram,
-		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Log], error) {
-			selectQuery := s.db.NewSelect().
-				ModelTableExpr(s.GetPrefixedRelationName("logs")).
-				ColumnExpr("*").
-				Where("ledger = ?", s.ledger.Name)
-
-			if q.Options.QueryBuilder != nil {
-				subQuery, args, err := q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
-					switch {
-					case key == "date":
-						return fmt.Sprintf("%s %s ?", key, query.DefaultComparisonOperatorsMapping[operator]), []any{value}, nil
-					default:
-						return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
-					}
-				}))
-				if err != nil {
-					return nil, err
-				}
-				selectQuery = selectQuery.Where(subQuery, args...)
-			}
-
-			cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[any], Log](ctx, selectQuery, bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[any]](q))
-			if err != nil {
-				return nil, err
-			}
-
-			return bunpaginate.MapCursor(cursor, Log.ToCore), nil
-		},
-	)
 }
 
 func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*ledger.Log, error) {

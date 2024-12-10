@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"math/big"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 	err = store.newStore.CommitTransaction(ctx, &tx2)
 	require.NoError(t, err)
 
-	tx, err := store.GetTransactionWithVolumes(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).
+	tx, err := store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx1.ID).
 		WithExpandVolumes().
 		WithExpandEffectiveVolumes())
 	require.NoError(t, err)
@@ -68,7 +69,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 		},
 	}, tx.PostCommitVolumes)
 
-	tx, err = store.GetTransactionWithVolumes(ctx, ledgercontroller.NewGetTransactionQuery(tx2.ID).
+	tx, err = store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx2.ID).
 		WithExpandVolumes().
 		WithExpandEffectiveVolumes())
 	require.NoError(t, err)
@@ -104,7 +105,7 @@ func TestCountTransactions(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	count, err := store.CountTransactions(context.Background(), ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{})))
+	count, err := store.CountTransactions(context.Background(), ledgerstore.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))
 	require.NoError(t, err, "counting transactions should not fail")
 	require.Equal(t, 3, count, "count should be equal")
 }
@@ -158,7 +159,7 @@ func TestGetTransactions(t *testing.T) {
 	// refresh tx3
 	// we can't take the result of the call on RevertTransaction nor UpdateTransactionMetadata as the result does not contains pc(e)v
 	tx3 := func() ledger.Transaction {
-		tx3, err := store.newStore.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx3BeforeRevert.ID).
+		tx3, err := store.Store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx3BeforeRevert.ID).
 			WithExpandVolumes().
 			WithExpandEffectiveVolumes())
 		require.NoError(t, err)
@@ -175,44 +176,44 @@ func TestGetTransactions(t *testing.T) {
 
 	type testCase struct {
 		name        string
-		query       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		query       ledgercontroller.PaginatedQueryOptions[ledgerstore.PITFilterWithVolumes]
 		expected    []ledger.Transaction
 		expectError error
 	}
 	testCases := []testCase{
 		{
 			name:     "nominal",
-			query:    ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
+			query:    ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
 			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "bob")),
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "address filter using segments matching two addresses by individual segments",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "users:amazon")),
 			expected: []ledger.Transaction{},
 		},
 		{
 			name: "address filter using segment",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "users:")),
 			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
 			name: "filter using metadata",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("metadata[category]", "2")),
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "using point in time",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			}),
@@ -220,20 +221,20 @@ func TestGetTransactions(t *testing.T) {
 		},
 		{
 			name: "reverted transactions",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("reverted", true)),
 			expected: []ledger.Transaction{tx3},
 		},
 		{
 			name: "filter using exists metadata",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Exists("metadata", "category")),
 			expected: []ledger.Transaction{tx3, tx2, tx1},
 		},
 		{
 			name: "filter using metadata and pit",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
 					PIT: pointer.For(tx3.Timestamp),
 				},
 			}).
@@ -242,13 +243,13 @@ func TestGetTransactions(t *testing.T) {
 		},
 		{
 			name: "filter using not exists metadata",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Not(query.Exists("metadata", "category"))),
 			expected: []ledger.Transaction{tx5, tx4},
 		},
 		{
 			name: "filter using timestamp",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
+			query: ledgercontroller.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano))),
 			expected: []ledger.Transaction{tx5, tx4},
 		},
@@ -262,7 +263,7 @@ func TestGetTransactions(t *testing.T) {
 			tc.query.Options.ExpandVolumes = true
 			tc.query.Options.ExpandEffectiveVolumes = true
 
-			cursor, err := store.GetTransactions(ctx, ledgercontroller.NewListTransactionsQuery(tc.query))
+			cursor, err := store.GetTransactions(ctx, ledgerstore.NewListTransactionsQuery(tc.query))
 			if tc.expectError != nil {
 				require.True(t, errors.Is(err, tc.expectError))
 			} else {
@@ -270,7 +271,7 @@ func TestGetTransactions(t *testing.T) {
 				require.Len(t, cursor.Data, len(tc.expected))
 				RequireEqual(t, tc.expected, cursor.Data)
 
-				count, err := store.CountTransactions(ctx, ledgercontroller.NewListTransactionsQuery(tc.query))
+				count, err := store.CountTransactions(ctx, ledgerstore.NewListTransactionsQuery(tc.query))
 				require.NoError(t, err)
 
 				require.EqualValues(t, len(tc.expected), count)

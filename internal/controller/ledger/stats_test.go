@@ -15,14 +15,13 @@ func TestStats(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]](ctrl)
 
-	store.EXPECT().
-		CountTransactions(gomock.Any(), NewListTransactionsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}))).
-		Return(10, nil)
-
-	store.EXPECT().
-		CountAccounts(gomock.Any(), NewListAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}))).
-		Return(10, nil)
+	store.EXPECT().Transactions().Return(transactions)
+	transactions.EXPECT().Count(ctx, ResourceQuery[any]{}).Return(10, nil)
+	store.EXPECT().Accounts().Return(accounts)
+	accounts.EXPECT().Count(ctx, ResourceQuery[any]{}).Return(10, nil)
 
 	ledgerController := NewDefaultController(
 		ledger.MustNewWithDefault("foo"),
