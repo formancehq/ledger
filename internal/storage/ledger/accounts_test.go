@@ -277,9 +277,10 @@ func TestAccountsGet(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().WithPostings(
+	tx1 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(100)),
-	).WithTimestamp(now)))
+	).WithTimestamp(now))
+	err := store.CommitTransaction(ctx, tx1)
 	require.NoError(t, err)
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
@@ -288,9 +289,10 @@ func TestAccountsGet(t *testing.T) {
 		},
 	}))
 
-	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().WithPostings(
+	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),
-	).WithTimestamp(now.Add(-time.Minute))))
+	).WithTimestamp(now.Add(-time.Minute)))
+	err = store.CommitTransaction(ctx, tx2)
 	require.NoError(t, err)
 
 	t.Run("find account", func(t *testing.T) {
@@ -302,15 +304,19 @@ func TestAccountsGet(t *testing.T) {
 			Metadata: metadata.Metadata{
 				"category": "gold",
 			},
-			FirstUsage: now.Add(-time.Minute),
+			FirstUsage:    now.Add(-time.Minute),
+			InsertionDate: tx1.InsertedAt,
+			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
 
 		account, err = store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("world"))
 		require.NoError(t, err)
 		require.Equal(t, ledger.Account{
-			Address:    "world",
-			Metadata:   metadata.Metadata{},
-			FirstUsage: now.Add(-time.Minute),
+			Address:       "world",
+			Metadata:      metadata.Metadata{},
+			FirstUsage:    now.Add(-time.Minute),
+			InsertionDate: tx1.InsertedAt,
+			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
 	})
 
@@ -320,9 +326,11 @@ func TestAccountsGet(t *testing.T) {
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now.Add(-30*time.Second)))
 		require.NoError(t, err)
 		require.Equal(t, ledger.Account{
-			Address:    "multi",
-			Metadata:   metadata.Metadata{},
-			FirstUsage: now.Add(-time.Minute),
+			Address:       "multi",
+			Metadata:      metadata.Metadata{},
+			FirstUsage:    now.Add(-time.Minute),
+			InsertionDate: tx1.InsertedAt,
+			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
 	})
 
@@ -340,6 +348,8 @@ func TestAccountsGet(t *testing.T) {
 			Volumes: ledger.VolumesByAssets{
 				"USD/2": ledger.NewVolumesInt64(100, 0),
 			},
+			InsertionDate: tx1.InsertedAt,
+			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
 	})
 
@@ -357,6 +367,8 @@ func TestAccountsGet(t *testing.T) {
 			EffectiveVolumes: ledger.VolumesByAssets{
 				"USD/2": ledger.NewVolumesInt64(100, 0),
 			},
+			InsertionDate: tx1.InsertedAt,
+			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
 	})
 
@@ -366,9 +378,11 @@ func TestAccountsGet(t *testing.T) {
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now))
 		require.NoError(t, err)
 		require.Equal(t, ledger.Account{
-			Address:    "multi",
-			Metadata:   metadata.Metadata{},
-			FirstUsage: now.Add(-time.Minute),
+			Address:       "multi",
+			Metadata:      metadata.Metadata{},
+			FirstUsage:    now.Add(-time.Minute),
+			InsertionDate: tx1.InsertedAt,
+			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
 	})
 

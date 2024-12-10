@@ -257,9 +257,11 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 	err = s.UpsertAccounts(ctx, collectionutils.Map(tx.InvolvedAccounts(), func(address string) *ledger.Account {
 		return &ledger.Account{
-			Address:    address,
-			FirstUsage: tx.Timestamp,
-			Metadata:   make(metadata.Metadata),
+			Address:       address,
+			FirstUsage:    tx.Timestamp,
+			Metadata:      make(metadata.Metadata),
+			InsertionDate: tx.InsertedAt,
+			UpdatedAt:     tx.InsertedAt,
 		}
 	})...)
 	if err != nil {
