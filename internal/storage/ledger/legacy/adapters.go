@@ -3,7 +3,6 @@ package legacy
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/time"
@@ -17,6 +16,27 @@ type DefaultStoreAdapter struct {
 	newStore       *ledgerstore.Store
 	legacyStore    *Store
 	isFullUpToDate bool
+}
+
+// todo; handle compat with v1
+func (d *DefaultStoreAdapter) Accounts() ledgercontroller.PaginatedResource[ledger.Account, any, ledgercontroller.OffsetPaginatedQuery[any]] {
+	return d.newStore.Accounts()
+}
+
+func (d *DefaultStoreAdapter) Logs() ledgercontroller.PaginatedResource[ledger.Log, any, ledgercontroller.ColumnPaginatedQuery[any]] {
+	return d.newStore.Logs()
+}
+
+func (d *DefaultStoreAdapter) Transactions() ledgercontroller.PaginatedResource[ledger.Transaction, any, ledgercontroller.ColumnPaginatedQuery[any]] {
+	return d.newStore.Transactions()
+}
+
+func (d *DefaultStoreAdapter) AggregatedBalances() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
+	return d.newStore.AggregatedVolumes()
+}
+
+func (d *DefaultStoreAdapter) Volumes() ledgercontroller.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
+	return d.newStore.Volumes()
 }
 
 func (d *DefaultStoreAdapter) GetDB() bun.IDB {
@@ -47,7 +67,7 @@ func (d *DefaultStoreAdapter) UpdateAccountsMetadata(ctx context.Context, m map[
 	return d.newStore.UpdateAccountsMetadata(ctx, m)
 }
 
-func (d *DefaultStoreAdapter) UpsertAccounts(ctx context.Context, accounts ... *ledger.Account) error {
+func (d *DefaultStoreAdapter) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
 	return d.newStore.UpsertAccounts(ctx, accounts...)
 }
 
@@ -63,80 +83,8 @@ func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) error {
 	return d.newStore.LockLedger(ctx)
 }
 
-func (d *DefaultStoreAdapter) ListLogs(ctx context.Context, q ledgercontroller.GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetLogs(ctx, q)
-	}
-
-	return d.newStore.ListLogs(ctx, q)
-}
-
 func (d *DefaultStoreAdapter) ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error) {
 	return d.newStore.ReadLogWithIdempotencyKey(ctx, ik)
-}
-
-func (d *DefaultStoreAdapter) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetTransactions(ctx, q)
-	}
-
-	return d.newStore.ListTransactions(ctx, q)
-}
-
-func (d *DefaultStoreAdapter) CountTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (int, error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.CountTransactions(ctx, q)
-	}
-
-	return d.newStore.CountTransactions(ctx, q)
-}
-
-func (d *DefaultStoreAdapter) GetTransaction(ctx context.Context, query ledgercontroller.GetTransactionQuery) (*ledger.Transaction, error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetTransactionWithVolumes(ctx, query)
-	}
-
-	return d.newStore.GetTransaction(ctx, query)
-}
-
-func (d *DefaultStoreAdapter) CountAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (int, error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.CountAccounts(ctx, q)
-	}
-
-	return d.newStore.CountAccounts(ctx, q)
-}
-
-func (d *DefaultStoreAdapter) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetAccountsWithVolumes(ctx, q)
-	}
-
-	return d.newStore.ListAccounts(ctx, q)
-}
-
-func (d *DefaultStoreAdapter) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetAccountWithVolumes(ctx, q)
-	}
-
-	return d.newStore.GetAccount(ctx, q)
-}
-
-func (d *DefaultStoreAdapter) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetAggregatedBalances(ctx, q)
-	}
-
-	return d.newStore.GetAggregatedBalances(ctx, q)
-}
-
-func (d *DefaultStoreAdapter) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-	if !d.isFullUpToDate {
-		return d.legacyStore.GetVolumesWithBalances(ctx, q)
-	}
-
-	return d.newStore.GetVolumesWithBalances(ctx, q)
 }
 
 func (d *DefaultStoreAdapter) IsUpToDate(ctx context.Context) (bool, error) {

@@ -5,8 +5,6 @@ import (
 
 	"errors"
 	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
@@ -14,23 +12,19 @@ import (
 func listAccounts(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	query, err := bunpaginate.Extract[ledgercontroller.ListAccountsQuery](r, func() (*ledgercontroller.ListAccountsQuery, error) {
-		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
-		if err != nil {
-			return nil, err
-		}
-		options.QueryBuilder, err = buildAccountsFilterQuery(r)
-		if err != nil {
-			return nil, err
-		}
-		return pointer.For(ledgercontroller.NewListAccountsQuery(*options)), nil
-	})
+	rq, err := getOffsetPaginatedQuery[any](r)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	cursor, err := l.ListAccounts(r.Context(), *query)
+	rq.Options.Builder, err = buildAccountsFilterQuery(r)
+	if err != nil {
+		api.BadRequest(w, common.ErrValidation, err)
+		return
+	}
+
+	cursor, err := l.ListAccounts(r.Context(), *rq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrMissingFeature{}):

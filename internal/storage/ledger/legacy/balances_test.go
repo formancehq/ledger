@@ -3,7 +3,7 @@
 package legacy_test
 
 import (
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"github.com/google/go-cmp/cmp"
 	"math/big"
 	"testing"
@@ -74,7 +74,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
-		cursor, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{}, nil, false))
+		cursor, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{}, nil, false))
 		require.NoError(t, err)
 		RequireEqual(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0),
@@ -83,7 +83,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("filter on address", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{},
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{},
 			query.Match("address", "users:"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
@@ -95,7 +95,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using pit on effective date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{
 			PIT: pointer.For(now.Add(-time.Second)),
 		}, query.Match("address", "users:"), false))
 		require.NoError(t, err)
@@ -108,7 +108,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using pit on insertion date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{
 			PIT: pointer.For(now),
 		}, query.Match("address", "users:"), true))
 		require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	t.Run("using a metadata and pit", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{
 			PIT: pointer.For(now.Add(time.Minute)),
 		}, query.Match("metadata[category]", "premium"), false))
 		require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{},
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{},
 			query.Match("metadata[category]", "premium"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
@@ -144,7 +144,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("when no matching", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{},
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{},
 			query.Match("metadata[category]", "guest"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{}, ret)
@@ -152,7 +152,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 	t.Run("using a filter exist on metadata", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{}, query.Exists("metadata", "category"), false))
+		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.PITFilter{}, query.Exists("metadata", "category"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0).Add(

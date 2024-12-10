@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
@@ -106,40 +107,52 @@ func NewDefaultController(
 	return ret
 }
 
+func (ctrl *DefaultController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
+	return ctrl.store.IsUpToDate(ctx)
+}
+
 func (ctrl *DefaultController) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
 	return ctrl.store.GetMigrationsInfo(ctx)
 }
 
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return ctrl.store.ListTransactions(ctx, q)
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+	return ctrl.store.Transactions().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error) {
-	return ctrl.store.CountTransactions(ctx, q)
+func (ctrl *DefaultController) CountTransactions(ctx context.Context, q ResourceQuery[any]) (int, error) {
+	return ctrl.store.Transactions().Count(ctx, q)
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error) {
-	return ctrl.store.GetTransaction(ctx, query)
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, q ResourceQuery[any]) (*ledger.Transaction, error) {
+	return ctrl.store.Transactions().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) CountAccounts(ctx context.Context, a ListAccountsQuery) (int, error) {
-	return ctrl.store.CountAccounts(ctx, a)
+func (ctrl *DefaultController) CountAccounts(ctx context.Context, q ResourceQuery[any]) (int, error) {
+	return ctrl.store.Accounts().Count(ctx, q)
 }
 
-func (ctrl *DefaultController) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
-	return ctrl.store.ListAccounts(ctx, a)
+func (ctrl *DefaultController) ListAccounts(ctx context.Context, q OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+	return ctrl.store.Accounts().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error) {
-	return ctrl.store.GetAccount(ctx, q)
+func (ctrl *DefaultController) GetAccount(ctx context.Context, q ResourceQuery[any]) (*ledger.Account, error) {
+	return ctrl.store.Accounts().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
-	return ctrl.store.GetAggregatedBalances(ctx, q)
+func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+	ret, err := ctrl.store.AggregatedBalances().GetOne(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return ret.Aggregated.Balances(), nil
 }
 
-func (ctrl *DefaultController) ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	return ctrl.store.ListLogs(ctx, q)
+func (ctrl *DefaultController) ListLogs(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+	return ctrl.store.Logs().Paginate(ctx, q)
+}
+
+func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error {
@@ -174,9 +187,9 @@ func (ctrl *DefaultController) importLogs(ctx context.Context, store Store, stre
 	}
 
 	// We can import only if the ledger is empty.
-	logs, err := store.ListLogs(ctx, NewListLogsQuery(PaginatedQueryOptions[any]{
+	logs, err := store.Logs().Paginate(ctx, ColumnPaginatedQuery[any]{
 		PageSize: 1,
-	}))
+	})
 	if err != nil {
 		return fmt.Errorf("error listing logs: %w", err)
 	}
@@ -276,10 +289,12 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
 	return bunpaginate.Iterate(
 		ctx,
-		NewListLogsQuery(NewPaginatedQueryOptions[any](nil).WithPageSize(100)).
-			WithOrder(bunpaginate.OrderAsc),
-		func(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-			return ctrl.store.ListLogs(ctx, q)
+		ColumnPaginatedQuery[any]{
+			PageSize: 100,
+			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		},
+		func(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+			return ctrl.store.Logs().Paginate(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Log]) error {
 			for _, data := range cursor.Data {
@@ -290,14 +305,6 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 			return nil
 		},
 	)
-}
-
-func (ctrl *DefaultController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
-	return ctrl.store.IsUpToDate(ctx)
-}
-
-func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-	return ctrl.store.GetVolumesWithBalances(ctx, q)
 }
 
 func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {

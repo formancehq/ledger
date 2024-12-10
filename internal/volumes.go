@@ -153,3 +153,7 @@ func (a PostCommitVolumes) Merge(volumes PostCommitVolumes) PostCommitVolumes {
 
 	return a
 }
+
+type AggregatedVolumes struct {
+	Aggregated VolumesByAssets `bun:"aggregated,type:jsonb"`
+}

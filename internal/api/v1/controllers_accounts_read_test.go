@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ func TestAccountsRead(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.GetAccountQuery
+		expectQuery       ledgercontroller.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -35,15 +36,21 @@ func TestAccountsRead(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name:              "nominal",
-			account:           "foo",
-			expectQuery:       ledgercontroller.NewGetAccountQuery("foo").WithExpandVolumes(),
+			name:    "nominal",
+			account: "foo",
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "foo"),
+				Expand:  []string{"volumes"},
+			},
 			expectBackendCall: true,
 		},
 		{
-			name:              "with expand volumes",
-			account:           "foo",
-			expectQuery:       ledgercontroller.NewGetAccountQuery("foo").WithExpandVolumes(),
+			name:    "with expand volumes",
+			account: "foo",
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "foo"),
+				Expand:  []string{"volumes"},
+			},
 			expectBackendCall: true,
 			queryParams: url.Values{
 				"expand": {"volumes"},
@@ -56,9 +63,12 @@ func TestAccountsRead(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 		},
 		{
-			name:              "with not existing account",
-			account:           "foo",
-			expectQuery:       ledgercontroller.NewGetAccountQuery("foo").WithExpandVolumes(),
+			name:    "with not existing account",
+			account: "foo",
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "foo"),
+				Expand:  []string{"volumes"},
+			},
 			expectBackendCall: true,
 			returnErr:         postgres.ErrNotFound,
 		},

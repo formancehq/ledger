@@ -22,7 +22,7 @@ func TestCountTransactions(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		expectQuery       ledgercontroller.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -31,63 +31,70 @@ func TestCountTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
+			expectQuery: ledgercontroller.ResourceQuery[any]{},
 		},
 		{
 			name: "using metadata",
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("metadata[roles]", "admin"),
+			},
 		},
 		{
 			name: "using startTime",
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Gte("date", now.Format(time.DateFormat)),
+			},
 		},
 		{
 			name: "using endTime",
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Lt("date", now.Format(time.DateFormat)),
+			},
 		},
 		{
 			name: "using account",
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("account", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("account", "xxx"),
+			},
 		},
 		{
 			name: "using reference",
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("reference", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("reference", "xxx"),
+			},
 		},
 		{
 			name: "using destination",
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("destination", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("destination", "xxx"),
+			},
 		},
 		{
 			name: "using source",
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("source", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("source", "xxx"),
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -101,7 +108,7 @@ func TestCountTransactions(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				ledgerController.EXPECT().
-					CountTransactions(gomock.Any(), ledgercontroller.NewListTransactionsQuery(testCase.expectQuery)).
+					CountTransactions(gomock.Any(), testCase.expectQuery).
 					Return(10, nil)
 			}
 

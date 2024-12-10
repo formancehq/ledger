@@ -14,7 +14,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (store *Store) buildAccountQuery(q ledgercontroller.PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
+func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
 
 	query = query.
 		Column("accounts.address", "accounts.first_usage").
@@ -55,7 +55,7 @@ func (store *Store) buildAccountQuery(q ledgercontroller.PITFilterWithVolumes, q
 	return query
 }
 
-func (store *Store) accountQueryContext(qb query.Builder, q ledgercontroller.ListAccountsQuery) (string, []any, error) {
+func (store *Store) accountQueryContext(qb query.Builder, q ListAccountsQuery) (string, []any, error) {
 	metadataRegex := regexp.MustCompile(`metadata\[(.+)]`)
 	balanceRegex := regexp.MustCompile(`balance\[(.*)]`)
 
@@ -134,7 +134,7 @@ func (store *Store) accountQueryContext(qb query.Builder, q ledgercontroller.Lis
 	}))
 }
 
-func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q ledgercontroller.ListAccountsQuery, where string, args []any) *bun.SelectQuery {
+func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q ListAccountsQuery, where string, args []any) *bun.SelectQuery {
 	selectQuery = store.buildAccountQuery(q.Options.Options, selectQuery)
 
 	if where != "" {
@@ -144,7 +144,7 @@ func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q ledger
 	return selectQuery
 }
 
-func (store *Store) GetAccountsWithVolumes(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
+func (store *Store) GetAccountsWithVolumes(ctx context.Context, q ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
 	var (
 		where string
 		args  []any
@@ -157,15 +157,15 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q ledgercontroll
 		}
 	}
 
-	return paginateWithOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](store, ctx,
-		(*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]])(&q),
+	return paginateWithOffset[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes], ledger.Account](store, ctx,
+		(*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildAccountListQuery(query, q, where, args)
 		},
 	)
 }
 
-func (store *Store) GetAccountWithVolumes(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
+func (store *Store) GetAccountWithVolumes(ctx context.Context, q GetAccountQuery) (*ledger.Account, error) {
 	account, err := fetch[*ledger.Account](store, true, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		query = store.buildAccountQuery(q.PITFilterWithVolumes, query).
 			Where("accounts.address = ?", q.Addr).
@@ -179,7 +179,7 @@ func (store *Store) GetAccountWithVolumes(ctx context.Context, q ledgercontrolle
 	return account, nil
 }
 
-func (store *Store) CountAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (int, error) {
+func (store *Store) CountAccounts(ctx context.Context, q ListAccountsQuery) (int, error) {
 	var (
 		where string
 		args  []any

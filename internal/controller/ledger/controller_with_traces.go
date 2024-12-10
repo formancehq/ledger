@@ -195,7 +195,7 @@ func (c *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrati
 	)
 }
 
-func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListTransactions",
@@ -207,7 +207,7 @@ func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q ListTrans
 	)
 }
 
-func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error) {
+func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q ResourceQuery[any]) (int, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"CountTransactions",
@@ -219,7 +219,7 @@ func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q ListTran
 	)
 }
 
-func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error) {
+func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query ResourceQuery[any]) (*ledger.Transaction, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetTransaction",
@@ -231,7 +231,7 @@ func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query GetTran
 	)
 }
 
-func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a ListAccountsQuery) (int, error) {
+func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a ResourceQuery[any]) (int, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"CountAccounts",
@@ -243,7 +243,7 @@ func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a ListAccounts
 	)
 }
 
-func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
+func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
@@ -255,7 +255,7 @@ func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a ListAccountsQ
 	)
 }
 
-func (c *ControllerWithTraces) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error) {
+func (c *ControllerWithTraces) GetAccount(ctx context.Context, q ResourceQuery[any]) (*ledger.Account, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAccount",
@@ -267,7 +267,7 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q GetAccountQuery
 	)
 }
 
-func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
+func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAggregatedBalances",
@@ -279,7 +279,7 @@ func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q GetA
 	)
 }
 
-func (c *ControllerWithTraces) ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
+func (c *ControllerWithTraces) ListLogs(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListLogs",
@@ -327,7 +327,7 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",

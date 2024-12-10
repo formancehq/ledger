@@ -12,21 +12,17 @@ import (
 
 func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 
-	pitFilter, err := getPITFilter(r)
+	rq, err := getResourceQuery[ledgercontroller.GetAggregatedVolumesOptions](r, func(options *ledgercontroller.GetAggregatedVolumesOptions) error {
+		options.UseInsertionDate = api.QueryParamBool(r, "use_insertion_date") || api.QueryParamBool(r, "useInsertionDate")
+
+		return nil
+	})
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	queryBuilder, err := getQueryBuilder(r)
-	if err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
-		return
-	}
-
-	balances, err := common.LedgerFromContext(r.Context()).
-		GetAggregatedBalances(r.Context(), ledgercontroller.NewGetAggregatedBalancesQuery(
-			*pitFilter, queryBuilder, api.QueryParamBool(r, "use_insertion_date") || api.QueryParamBool(r, "useInsertionDate")))
+	balances, err := common.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), *rq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):

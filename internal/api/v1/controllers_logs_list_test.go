@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +27,7 @@ func TestGetLogs(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.PaginatedQueryOptions[any]
+		expectQuery       ledgercontroller.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -34,30 +35,47 @@ func TestGetLogs(t *testing.T) {
 	now := time.Now()
 	testCases := []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions[any](nil),
+			name: "nominal",
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			},
 		},
 		{
 			name: "using start time",
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions[any](nil).WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Gte("date", now.Format(time.DateFormat)),
+				},
+			},
 		},
 		{
 			name: "using end time",
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions[any](nil).
-				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Lt("date", now.Format(time.DateFormat)),
+				},
+			},
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil)))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{})},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions[any](nil),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{},
 		},
 		{
 			name: "using invalid cursor",
@@ -88,7 +106,7 @@ func TestGetLogs(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				ledgerController.EXPECT().
-					ListLogs(gomock.Any(), ledgercontroller.NewListLogsQuery(testCase.expectQuery)).
+					ListLogs(gomock.Any(), testCase.expectQuery).
 					Return(&expectedCursor, nil)
 			}
 

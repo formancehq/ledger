@@ -31,7 +31,7 @@ func TestGetVolumes(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes]
+		expectQuery       ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -40,36 +40,37 @@ func TestGetVolumes(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "basic",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:    &before,
+					Expand: make([]string, 0),
 				},
-
-				UseInsertionDate: false,
-			}).
-				WithPageSize(DefaultPageSize),
+			},
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": { "metadata[roles]": "admin" }}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &before,
+					Builder: query.Match("metadata[roles]", "admin"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin")).
-				WithPageSize(DefaultPageSize),
+			},
 		},
 		{
 			name: "using account",
 			body: `{"$match": { "account": "foo" }}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &before,
+					Builder: query.Match("account", "foo"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Match("account", "foo")).
-				WithPageSize(DefaultPageSize),
+			},
 		},
 		{
 			name:              "using invalid query payload",
@@ -83,31 +84,40 @@ func TestGetVolumes(t *testing.T) {
 				"pit":     []string{before.Format(time.RFC3339Nano)},
 				"groupBy": []string{"3"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:    &before,
+					Expand: make([]string, 0),
+					Opts: ledgercontroller.GetVolumesOptions{
+						GroupLvl: 3,
+					},
 				},
-				GroupLvl: 3,
-			}).WithPageSize(DefaultPageSize),
+			},
 		},
 		{
 			name: "using Exists metadata filter",
 			body: `{"$exists": { "metadata": "foo" }}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &before,
+					Builder: query.Exists("metadata", "foo"),
+					Expand:  make([]string, 0),
 				},
-			}).WithPageSize(DefaultPageSize).WithQueryBuilder(query.Exists("metadata", "foo")),
+			},
 		},
 		{
 			name: "using balance filter",
 			body: `{"$gte": { "balance[EUR]": 50 }}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
+			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+				PageSize: DefaultPageSize,
+				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+					PIT:     &before,
+					Builder: query.Gte("balance[EUR]", float64(50)),
+					Expand:  make([]string, 0),
 				},
-			}).WithQueryBuilder(query.Gte("balance[EUR]", float64(50))).
-				WithPageSize(DefaultPageSize),
+			},
 		},
 	}
 
@@ -136,7 +146,7 @@ func TestGetVolumes(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				ledgerController.EXPECT().
-					GetVolumesWithBalances(gomock.Any(), ledgercontroller.NewGetVolumesWithBalancesQuery(testCase.expectQuery)).
+					GetVolumesWithBalances(gomock.Any(), testCase.expectQuery).
 					Return(&expectedCursor, nil)
 			}
 

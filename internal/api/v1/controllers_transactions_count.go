@@ -6,20 +6,17 @@ import (
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func countTransactions(w http.ResponseWriter, r *http.Request) {
 
-	options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
+	rq, err := getResourceQuery[any](r)
 	if err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
-	options.QueryBuilder = buildGetTransactionsQuery(r)
+	rq.Builder = buildGetTransactionsQuery(r)
 
-	count, err := common.LedgerFromContext(r.Context()).
-		CountTransactions(r.Context(), ledgercontroller.NewListTransactionsQuery(*options))
+	count, err := common.LedgerFromContext(r.Context()).CountTransactions(r.Context(), *rq)
 	if err != nil {
 		common.HandleCommonErrors(w, r, err)
 		return
