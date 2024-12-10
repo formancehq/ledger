@@ -115,7 +115,12 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	// Build the query
 	ret = ret.
 		ModelTableExpr(s.GetPrefixedRelationName("accounts")).
-		Column("accounts.address", "accounts.first_usage").
+		Column(
+			"accounts.address",
+			"accounts.first_usage",
+			"accounts.insertion_date",
+			"accounts.updated_at",
+		).
 		Where("ledger = ?", s.ledger.Name).
 		Order("accounts.address")
 
@@ -132,28 +137,6 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata")
 	} else {
 		ret = ret.ColumnExpr("accounts.metadata")
-	}
-
-	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") && needVolumes {
-		selectAccountWithAggregatedVolumes, err := s.selectAccountWithAggregatedVolumes(date, true, "volumes")
-		if err != nil {
-			return nil, err
-		}
-		ret = ret.Join(
-			`left join (?) volumes on volumes.accounts_address = accounts.address`,
-			selectAccountWithAggregatedVolumes,
-		).Column("volumes.*")
-	}
-
-	if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
-		selectAccountWithAggregatedVolumes, err := s.selectAccountWithAggregatedVolumes(date, false, "effective_volumes")
-		if err != nil {
-			return nil, err
-		}
-		ret = ret.Join(
-			`left join (?) effective_volumes on effective_volumes.accounts_address = accounts.address`,
-			selectAccountWithAggregatedVolumes,
-		).Column("effective_volumes.*")
 	}
 
 	if qb != nil {
@@ -229,25 +212,64 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		}
 	}
 
-	return ret, nil
+	var (
+		selectVolumes          *bun.SelectQuery
+		selectEffectiveVolumes *bun.SelectQuery
+	)
+
+	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") && needVolumes {
+		var err error
+		selectVolumes, err = s.selectAccountWithAggregatedVolumes(date, true, "volumes")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		selectVolumes = s.db.NewSelect().
+			Table("accounts").
+			ColumnExpr("accounts.address as accounts_address").
+			ColumnExpr("null as volumes")
+	}
+
+	if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
+		var err error
+		selectEffectiveVolumes, err = s.selectAccountWithAggregatedVolumes(date, false, "effective_volumes")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		selectEffectiveVolumes = s.db.NewSelect().
+			Table("accounts").
+			ColumnExpr("accounts.address as accounts_address").
+			ColumnExpr("null as effective_volumes")
+	}
+
+	return s.db.NewSelect().
+		With("accounts", ret).
+		With("volumes", selectVolumes).
+		With("effective_volumes", selectEffectiveVolumes).
+		ModelTableExpr("accounts").
+		ColumnExpr("*").
+		Join("left join volumes on volumes.accounts_address = accounts.address").
+		Join("left join effective_volumes on effective_volumes.accounts_address = accounts.address"), nil
 }
 
 func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*Cursor[ledger.Account], error) {
-	selectAccounts, err := s.selectAccounts(
-		q.Options.Options.PIT,
-		q.Options.Options.ExpandVolumes,
-		q.Options.Options.ExpandEffectiveVolumes,
-		q.Options.QueryBuilder,
-	)
-	if err != nil {
-		return nil, err
-	}
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
 		s.tracer,
 		s.listAccountsHistogram,
 		func(ctx context.Context) (*Cursor[ledger.Account], error) {
+			selectAccounts, err := s.selectAccounts(
+				q.Options.Options.PIT,
+				q.Options.Options.ExpandVolumes,
+				q.Options.Options.ExpandEffectiveVolumes,
+				q.Options.QueryBuilder,
+			)
+			if err != nil {
+				return nil, err
+			}
+
 			ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Account](
 				ctx,
 				selectAccounts,
