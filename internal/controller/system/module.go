@@ -48,8 +48,8 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 				listener,
 				WithParser(parser),
 				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
-				WithMeter(meterProvider.Meter("core")),
-				WithTracer(tracerProvider.Tracer("core")),
+				WithMeterProvider(meterProvider),
+				WithTracerProvider(tracerProvider),
 				WithEnableFeatures(configuration.EnableFeatures),
 			)
 		}),
