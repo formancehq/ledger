@@ -30,12 +30,12 @@ func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	// Page with transactions before
 	if query.Offset > 0 {
 		cp := query
-		if query.Offset < query.PageSize {
+		offset := int(query.Offset) - int(query.PageSize)
+		if offset < 0 {
 			offset = 0
-		} else {
-			offset = query.Offset - query.PageSize
 		}
-		cp.Offset = offset
+		cp.Offset = uint64(offset)
+		previous = &cp
 	}
 
 	// Page with transactions after
