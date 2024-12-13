@@ -22,6 +22,9 @@ func readVolumes(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
+			if v < 0 {
+				return errors.New("groupBy must be non-negative")
+			}
 			opts.GroupLvl = int(v)
 		}
 
