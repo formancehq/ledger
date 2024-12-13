@@ -3301,7 +3301,6 @@ components:
         - id
         - metadata
         - reverted
-        - insertedAt
     V2PostTransaction:
       type: object
       required:
