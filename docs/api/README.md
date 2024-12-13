@@ -2635,7 +2635,7 @@ Authorization ( Scopes: ledger:write )
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|insertedAt|string(date-time)|true|none|none|
+|insertedAt|string(date-time)|false|none|none|
 |timestamp|string(date-time)|true|none|none|
 |postings|[[V2Posting](#schemav2posting)]|true|none|none|
 |reference|string|false|none|none|
