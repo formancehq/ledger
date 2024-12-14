@@ -44,57 +44,57 @@ type Store struct {
 	getVolumesWithBalancesHistogram    metric.Int64Histogram
 }
 
-func (s *Store) Volumes() ledgercontroller.PaginatedResource[
+func (store *Store) Volumes() ledgercontroller.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
 	ledgercontroller.GetVolumesOptions,
 	ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
-	return newPaginatedResourceRepository(s, s.ledger, &volumesResourceHandler{}, offsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{})
+	return newPaginatedResourceRepository(store, store.ledger, &volumesResourceHandler{}, offsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{})
 }
 
-func (s *Store) AggregatedVolumes() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
-	return newResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](s, s.ledger, &aggregatedBalancesResourceRepositoryHandler{})
+func (store *Store) AggregatedVolumes() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
+	return newResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](store, store.ledger, &aggregatedBalancesResourceRepositoryHandler{})
 }
 
-func (s *Store) Transactions() ledgercontroller.PaginatedResource[
+func (store *Store) Transactions() ledgercontroller.PaginatedResource[
 	ledger.Transaction,
 	any,
 	ledgercontroller.ColumnPaginatedQuery[any]] {
-	return newPaginatedResourceRepository(s, s.ledger, &transactionsResourceHandler{}, columnPaginator[ledger.Transaction, any]{
+	return newPaginatedResourceRepository(store, store.ledger, &transactionsResourceHandler{}, columnPaginator[ledger.Transaction, any]{
 		defaultPaginationColumn: "id",
 		defaultOrder:            bunpaginate.OrderDesc,
 	})
 }
 
-func (s *Store) Logs() ledgercontroller.PaginatedResource[
+func (store *Store) Logs() ledgercontroller.PaginatedResource[
 	ledger.Log,
 	any,
 	ledgercontroller.ColumnPaginatedQuery[any]] {
-	return newPaginatedResourceRepositoryMapper[ledger.Log, Log, any, ledgercontroller.ColumnPaginatedQuery[any]](s, s.ledger, &logsResourceHandler{}, columnPaginator[Log, any]{
+	return newPaginatedResourceRepositoryMapper[ledger.Log, Log, any, ledgercontroller.ColumnPaginatedQuery[any]](store, store.ledger, &logsResourceHandler{}, columnPaginator[Log, any]{
 		defaultPaginationColumn: "id",
 		defaultOrder:            bunpaginate.OrderDesc,
 	})
 }
 
-func (s *Store) Accounts() ledgercontroller.PaginatedResource[
+func (store *Store) Accounts() ledgercontroller.PaginatedResource[
 	ledger.Account,
 	any,
 	ledgercontroller.OffsetPaginatedQuery[any]] {
-	return newPaginatedResourceRepository(s, s.ledger, &accountsResourceHandler{}, offsetPaginator[ledger.Account, any]{})
+	return newPaginatedResourceRepository(store, store.ledger, &accountsResourceHandler{}, offsetPaginator[ledger.Account, any]{})
 }
 
-func (s *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
-	tx, err := s.db.BeginTx(ctx, options)
+func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
+	tx, err := store.db.BeginTx(ctx, options)
 	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}
-	cp := *s
+	cp := *store
 	cp.db = tx
 
 	return &cp, nil
 }
 
-func (s *Store) Commit() error {
-	switch db := s.db.(type) {
+func (store *Store) Commit() error {
+	switch db := store.db.(type) {
 	case bun.Tx:
 		return db.Commit()
 	default:
@@ -102,8 +102,8 @@ func (s *Store) Commit() error {
 	}
 }
 
-func (s *Store) Rollback() error {
-	switch db := s.db.(type) {
+func (store *Store) Rollback() error {
+	switch db := store.db.(type) {
 	case bun.Tx:
 		return db.Rollback()
 	default:
@@ -111,20 +111,20 @@ func (s *Store) Rollback() error {
 	}
 }
 
-func (s *Store) GetLedger() ledger.Ledger {
-	return s.ledger
+func (store *Store) GetLedger() ledger.Ledger {
+	return store.ledger
 }
 
-func (s *Store) GetDB() bun.IDB {
-	return s.db
+func (store *Store) GetDB() bun.IDB {
+	return store.db
 }
 
-func (s *Store) GetBucket() bucket.Bucket {
-	return s.bucket
+func (store *Store) GetBucket() bucket.Bucket {
+	return store.bucket
 }
 
-func (s *Store) GetPrefixedRelationName(v string) string {
-	return fmt.Sprintf(`"%s".%s`, s.ledger.Bucket, v)
+func (store *Store) GetPrefixedRelationName(v string) string {
+	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
 }
 
 func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {
@@ -140,8 +140,8 @@ func validateAddressFilter(ledger ledger.Ledger, operator string, value any) err
 	return nil
 }
 
-func (s *Store) LockLedger(ctx context.Context) error {
-	_, err := s.db.NewRaw(`lock table ` + s.GetPrefixedRelationName("logs")).Exec(ctx)
+func (store *Store) LockLedger(ctx context.Context) error {
+	_, err := store.db.NewRaw(`lock table ` + store.GetPrefixedRelationName("logs")).Exec(ctx)
 	return postgres.ResolveError(err)
 }
 
@@ -234,16 +234,16 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 	return ret
 }
 
-func (s *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
-	return s.bucket.HasMinimalVersion(ctx)
+func (store *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
+	return store.bucket.HasMinimalVersion(ctx)
 }
 
-func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return s.bucket.GetMigrationsInfo(ctx)
+func (store *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
+	return store.bucket.GetMigrationsInfo(ctx)
 }
 
-func (s *Store) WithDB(db bun.IDB) *Store {
-	ret := *s
+func (store *Store) WithDB(db bun.IDB) *Store {
+	ret := *store
 	ret.db = db
 
 	return &ret

@@ -18,12 +18,12 @@ var (
 	balanceRegex = regexp.MustCompile(`balance\[(.*)]`)
 )
 
-func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
+func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"UpdateAccountsMetadata",
-		s.tracer,
-		s.updateAccountsMetadataHistogram,
+		store.tracer,
+		store.updateAccountsMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 
 			span := trace.SpanFromContext(ctx)
@@ -37,7 +37,7 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 			accounts := make([]AccountWithLedger, 0)
 			for account, accountMetadata := range m {
 				accounts = append(accounts, AccountWithLedger{
-					Ledger: s.ledger.Name,
+					Ledger: store.ledger.Name,
 					Account: ledger.Account{
 						Address:  account,
 						Metadata: accountMetadata,
@@ -45,9 +45,9 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 				})
 			}
 
-			ret, err := s.db.NewInsert().
+			ret, err := store.db.NewInsert().
 				Model(&accounts).
-				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				On("CONFLICT (ledger, address) DO UPDATE").
 				Set("metadata = excluded.metadata || accounts.metadata").
 				Set("updated_at = excluded.updated_at").
@@ -71,18 +71,18 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 	return err
 }
 
-func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) error {
+func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key string) error {
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"DeleteAccountMetadata",
-		s.tracer,
-		s.deleteAccountMetadataHistogram,
+		store.tracer,
+		store.deleteAccountMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
-			_, err := s.db.NewUpdate().
-				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+			_, err := store.db.NewUpdate().
+				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				Set("metadata = metadata - ?", key).
 				Where("address = ?", account).
-				Where("ledger = ?", s.ledger.Name).
+				Where("ledger = ?", store.ledger.Name).
 				Exec(ctx)
 			return postgres.ResolveError(err)
 		}),
@@ -90,24 +90,24 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 	return err
 }
 
-func (s *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
+func (store *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
 	return tracing.SkipResult(tracing.TraceWithMetric(
 		ctx,
 		"UpsertAccounts",
-		s.tracer,
-		s.upsertAccountsHistogram,
+		store.tracer,
+		store.upsertAccountsHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 			span := trace.SpanFromContext(ctx)
 			span.SetAttributes(attribute.StringSlice("accounts", Map(accounts, (*ledger.Account).GetAddress)))
 
-			ret, err := s.db.NewInsert().
+			ret, err := store.db.NewInsert().
 				Model(&accounts).
-				ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				On("conflict (ledger, address) do update").
 				Set("first_usage = case when excluded.first_usage < accounts.first_usage then excluded.first_usage else accounts.first_usage end").
 				Set("metadata = accounts.metadata || excluded.metadata").
 				Set("updated_at = excluded.updated_at").
-				Value("ledger", "?", s.ledger.Name).
+				Value("ledger", "?", store.ledger.Name).
 				Returning("*").
 				Where("(excluded.first_usage < accounts.first_usage) or not accounts.metadata @> excluded.metadata").
 				Exec(ctx)

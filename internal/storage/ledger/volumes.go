@@ -8,12 +8,12 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 )
 
-func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
+func (store *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"UpdateBalances",
-		s.tracer,
-		s.updateBalancesHistogram,
+		store.tracer,
+		store.updateBalancesHistogram,
 		func(ctx context.Context) (ledger.PostCommitVolumes, error) {
 
 			type AccountsVolumesWithLedger struct {
@@ -24,13 +24,13 @@ func (s *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.Acco
 			accountsVolumesWithLedger := collectionutils.Map(accountVolumes, func(from ledger.AccountsVolumes) AccountsVolumesWithLedger {
 				return AccountsVolumesWithLedger{
 					AccountsVolumes: from,
-					Ledger:          s.ledger.Name,
+					Ledger:          store.ledger.Name,
 				}
 			})
 
-			_, err := s.db.NewInsert().
+			_, err := store.db.NewInsert().
 				Model(&accountsVolumesWithLedger).
-				ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+				ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 				On("conflict (ledger, accounts_address, asset) do update").
 				Set("input = accounts_volumes.input + excluded.input").
 				Set("output = accounts_volumes.output + excluded.output").
