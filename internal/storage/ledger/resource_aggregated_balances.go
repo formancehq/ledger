@@ -35,16 +35,16 @@ func (h aggregatedBalancesResourceRepositoryHandler) filters() []filter {
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.PIT != nil && !query.PIT.IsZero() {
 		ret := store.db.NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
 			Column("accounts_address", "asset").
-			Where("ledger = ?", ledger.Name)
+			Where("ledger = ?", store.ledger.Name)
 		if query.Opts.UseInsertionDate {
-			if !ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+			if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 			}
 
@@ -52,7 +52,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as volumes").
 				Where("insertion_date <= ?", query.PIT), nil
 		} else {
-			if !ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+			if !store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 			}
 
@@ -65,11 +65,11 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", ledger.Name), nil
+			Where("ledger = ?", store.ledger.Name), nil
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		address := value.(string)
@@ -85,7 +85,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store,
 		return "accounts_address = ?", []any{address}, nil
 	case metadataRegex.Match([]byte(property)) || property == "metadata":
 		var selectMetadata *bun.SelectQuery
-		if ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && query.PIT != nil && !query.PIT.IsZero() {
+		if store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && query.PIT != nil && !query.PIT.IsZero() {
 			selectMetadata = store.db.NewSelect().
 				DistinctOn("accounts_address").
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
@@ -101,7 +101,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store,
 				Where("address = dataset.accounts_address")
 		}
 		selectMetadata = selectMetadata.
-			Where("ledger = ?", ledger.Name).
+			Where("ledger = ?", store.ledger.Name).
 			Column("metadata").
 			Limit(1)
 
@@ -123,13 +123,12 @@ func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store,
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) expand(_ *Store, _ ledger.Ledger, _ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) aggregate(
 	store *Store,
-	_ ledger.Ledger,
 	_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {

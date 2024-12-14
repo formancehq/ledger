@@ -34,20 +34,20 @@ var (
 	metadataRegex = regexp.MustCompile(`metadata\[(.+)]`)
 )
 
-func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
+func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
 
-	postCommitVolumes, err := s.UpdateVolumes(ctx, tx.VolumeUpdates()...)
+	postCommitVolumes, err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
 		return fmt.Errorf("failed to update balances: %w", err)
 	}
 	tx.PostCommitVolumes = postCommitVolumes.Copy()
 
-	err = s.InsertTransaction(ctx, tx)
+	err = store.InsertTransaction(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
-	err = s.UpsertAccounts(ctx, collectionutils.Map(tx.InvolvedAccounts(), func(address string) *ledger.Account {
+	err = store.UpsertAccounts(ctx, collectionutils.Map(tx.InvolvedAccounts(), func(address string) *ledger.Account {
 		return &ledger.Account{
 			Address:       address,
 			FirstUsage:    tx.Timestamp,
@@ -60,7 +60,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return fmt.Errorf("upserting accounts: %w", err)
 	}
 
-	if s.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+	if store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 		moves := ledger.Moves{}
 		postings := tx.Postings
 		slices.Reverse(postings)
@@ -92,11 +92,11 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 		slices.Reverse(moves)
 
-		if err := s.InsertMoves(ctx, moves...); err != nil {
+		if err := store.InsertMoves(ctx, moves...); err != nil {
 			return fmt.Errorf("failed to insert moves: %w", err)
 		}
 
-		if s.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+		if store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 			tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
 		}
 	}
@@ -104,21 +104,21 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	return nil
 }
 
-func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) error {
+func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) error {
 	return tracing.SkipResult(tracing.TraceWithMetric(
 		ctx,
 		"InsertTransaction",
-		s.tracer,
-		s.insertTransactionHistogram,
+		store.tracer,
+		store.insertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			query := s.db.NewInsert().
+			query := store.db.NewInsert().
 				Model(tx).
-				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
-				Value("ledger", "?", s.ledger.Name).
+				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
+				Value("ledger", "?", store.ledger.Name).
 				Returning("id, timestamp, inserted_at")
 
 			if tx.ID == 0 {
-				query = query.Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID)))
+				query = query.Value("id", "nextval(?)", store.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, store.ledger.ID)))
 			}
 
 			_, err := query.Exec(ctx)
@@ -146,25 +146,25 @@ func (s *Store) InsertTransaction(ctx context.Context, tx *ledger.Transaction) e
 }
 
 // updateTxWithRetrieve try to apply to provided update query and check (if the update return no rows modified), that the row exists
-func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
+func (store *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
 	type modifiedEntity struct {
 		ledger.Transaction `bun:",extend"`
 		Modified           bool `bun:"modified"`
 	}
 	me := &modifiedEntity{}
 
-	err := s.db.NewSelect().
+	err := store.db.NewSelect().
 		With("upd", query).
 		ModelTableExpr(
 			"(?) transactions",
-			s.db.NewSelect().
+			store.db.NewSelect().
 				ColumnExpr("upd.*, true as modified").
 				ModelTableExpr("upd").
 				UnionAll(
-					s.db.NewSelect().
-						ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+					store.db.NewSelect().
+						ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 						ColumnExpr("*, false as modified").
-						Where("id = ? and ledger = ?", id, s.ledger.Name).
+						Where("id = ? and ledger = ?", id, store.ledger.Name).
 						Limit(1),
 				),
 		).
@@ -176,19 +176,19 @@ func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.Upd
 	return &me.Transaction, me.Modified, postgres.ResolveError(err)
 }
 
-func (s *Store) RevertTransaction(ctx context.Context, id int, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"RevertTransaction",
-		s.tracer,
-		s.revertTransactionHistogram,
+		store.tracer,
+		store.revertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			query := s.db.NewUpdate().
+			query := store.db.NewUpdate().
 				Model(&ledger.Transaction{}).
-				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Where("id = ?", id).
 				Where("reverted_at is null").
-				Where("ledger = ?", s.ledger.Name).
+				Where("ledger = ?", store.ledger.Name).
 				Returning("*")
 			if at.IsZero() {
 				query = query.
@@ -200,28 +200,28 @@ func (s *Store) RevertTransaction(ctx context.Context, id int, at time.Time) (tx
 					Set("updated_at = ?", at)
 			}
 
-			tx, modified, err = s.updateTxWithRetrieve(ctx, id, query)
+			tx, modified, err = store.updateTxWithRetrieve(ctx, id, query)
 			return nil, err
 		},
 	)
 	return tx, modified, err
 }
 
-func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"UpdateTransactionMetadata",
-		s.tracer,
-		s.updateTransactionMetadataHistogram,
+		store.tracer,
+		store.updateTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			tx, modified, err = s.updateTxWithRetrieve(
+			tx, modified, err = store.updateTxWithRetrieve(
 				ctx,
 				id,
-				s.db.NewUpdate().
+				store.db.NewUpdate().
 					Model(&ledger.Transaction{}).
-					ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+					ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 					Where("id = ?", id).
-					Where("ledger = ?", s.ledger.Name).
+					Where("ledger = ?", store.ledger.Name).
 					Set("metadata = metadata || ?", m).
 					Set("updated_at = (now() at time zone 'utc')").
 					Where("not (metadata @> ?)", m).
@@ -233,23 +233,23 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadat
 	return tx, modified, err
 }
 
-func (s *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteTransactionMetadata",
-		s.tracer,
-		s.deleteTransactionMetadataHistogram,
+		store.tracer,
+		store.deleteTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			tx, modified, err = s.updateTxWithRetrieve(
+			tx, modified, err = store.updateTxWithRetrieve(
 				ctx,
 				id,
-				s.db.NewUpdate().
+				store.db.NewUpdate().
 					Model(&ledger.Transaction{}).
-					ModelTableExpr(s.GetPrefixedRelationName("transactions")).
+					ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 					Set("metadata = metadata - ?", key).
 					Set("updated_at = (now() at time zone 'utc')").
 					Where("id = ?", id).
-					Where("ledger = ?", s.ledger.Name).
+					Where("ledger = ?", store.ledger.Name).
 					Where("metadata -> ? is not null", key).
 					Returning("*"),
 			)

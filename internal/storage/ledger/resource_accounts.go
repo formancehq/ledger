@@ -11,7 +11,7 @@ import (
 
 type accountsResourceHandler struct{}
 
-func (h accountsResourceHandler) aggregate(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) aggregate(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery, nil
 }
 
@@ -52,26 +52,26 @@ func (h accountsResourceHandler) filters() []filter {
 	}
 }
 
-func (h accountsResourceHandler) buildDataset(s *Store, ledger ledger.Ledger, opts ledgercontroller.ResourceQuery[any]) (*bun.SelectQuery, error) {
-	ret := s.db.NewSelect()
+func (h accountsResourceHandler) buildDataset(store *Store, opts ledgercontroller.ResourceQuery[any]) (*bun.SelectQuery, error) {
+	ret := store.db.NewSelect()
 
 	// Build the query
 	ret = ret.
-		ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+		ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 		Column("address", "address_array", "first_usage", "insertion_date", "updated_at").
-		Where("ledger = ?", ledger.Name).
+		Where("ledger = ?", store.ledger.Name).
 		Order("accounts.address")
 
 	if opts.PIT != nil && !opts.PIT.IsZero() {
 		ret = ret.Where("accounts.first_usage <= ?", opts.PIT)
 	}
 
-	if ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
+	if store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
 		// todo: take first value over revision order for metadata!
-		selectDistinctAccountMetadataHistories := s.db.NewSelect().
+		selectDistinctAccountMetadataHistories := store.db.NewSelect().
 			DistinctOn("accounts_address").
-			ModelTableExpr(s.GetPrefixedRelationName("accounts_metadata")).
-			Where("ledger = ?", s.ledger.Name).
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
+			Where("ledger = ?", store.ledger.Name).
 			Column("accounts_address").
 			ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 			Where("date <= ?", opts.PIT)
@@ -89,7 +89,7 @@ func (h accountsResourceHandler) buildDataset(s *Store, ledger ledger.Ledger, op
 	return ret, nil
 }
 
-func (h accountsResourceHandler) resolveFilter(store *Store, ledger ledger.Ledger, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
@@ -99,10 +99,10 @@ func (h accountsResourceHandler) resolveFilter(store *Store, ledger ledger.Ledge
 
 		selectBalance := store.db.NewSelect().
 			Where("accounts_address = dataset.address").
-			Where("ledger = ?", ledger.Name)
+			Where("ledger = ?", store.ledger.Name)
 
 		if opts.PIT != nil && !opts.PIT.IsZero() {
-			if !ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+			if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return "", nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 			}
 			selectBalance = selectBalance.
@@ -138,14 +138,14 @@ func (h accountsResourceHandler) resolveFilter(store *Store, ledger ledger.Ledge
 	panic("unreachable")
 }
 
-func (h accountsResourceHandler) expand(store *Store, ledger ledger.Ledger, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	switch property {
 	case "volumes":
-		if !ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 			return nil, nil, ledgercontroller.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
 		}
 	case "effectiveVolumes":
-		if !ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+		if !store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 			return nil, nil, ledgercontroller.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 		}
 	}
@@ -156,7 +156,7 @@ func (h accountsResourceHandler) expand(store *Store, ledger ledger.Ledger, opts
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
 			Column("accounts_address", "asset").
-			Where("ledger = ?", ledger.Name).
+			Where("ledger = ?", store.ledger.Name).
 			Where("accounts_address in (select address from dataset)")
 		if property == "volumes" {
 			selectRowsQuery = selectRowsQuery.
@@ -172,7 +172,7 @@ func (h accountsResourceHandler) expand(store *Store, ledger ledger.Ledger, opts
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", ledger.Name)
+			Where("ledger = ?", store.ledger.Name)
 	}
 
 	return store.db.NewSelect().

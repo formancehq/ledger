@@ -13,19 +13,19 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
+func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetBalances",
-		s.tracer,
-		s.getBalancesHistogram,
+		store.tracer,
+		store.getBalancesHistogram,
 		func(ctx context.Context) (ledgercontroller.Balances, error) {
 			conditions := make([]string, 0)
 			args := make([]any, 0)
 			for account, assets := range query {
 				for _, asset := range assets {
 					conditions = append(conditions, "ledger = ? and accounts_address = ? and asset = ?")
-					args = append(args, s.ledger.Name, account, asset)
+					args = append(args, store.ledger.Name, account, asset)
 				}
 			}
 
@@ -38,7 +38,7 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			for account, assets := range query {
 				for _, asset := range assets {
 					accountsVolumes = append(accountsVolumes, AccountsVolumesWithLedger{
-						Ledger: s.ledger.Name,
+						Ledger: store.ledger.Name,
 						AccountsVolumes: ledger.AccountsVolumes{
 							Account: account,
 							Asset:   asset,
@@ -52,55 +52,55 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			// Try to insert volumes using last move (to keep compat with previous version) or 0 values.
 			// This way, if the account has a 0 balance at this point, it will be locked as any other accounts.
 			// If the complete sql transaction fails, the account volumes will not be inserted.
-			selectMoves := s.db.NewSelect().
-				ModelTableExpr(s.GetPrefixedRelationName("moves")).
+			selectMoves := store.db.NewSelect().
+				ModelTableExpr(store.GetPrefixedRelationName("moves")).
 				DistinctOn("accounts_address, asset").
 				Column("accounts_address", "asset").
 				ColumnExpr("first_value(post_commit_volumes) over (partition by accounts_address, asset order by seq desc) as post_commit_volumes").
 				ColumnExpr("first_value(ledger) over (partition by accounts_address, asset order by seq desc) as ledger").
 				Where("("+strings.Join(conditions, ") OR (")+")", args...)
 
-			zeroValuesAndMoves := s.db.NewSelect().
+			zeroValuesAndMoves := store.db.NewSelect().
 				TableExpr("(?) data", selectMoves).
 				Column("ledger", "accounts_address", "asset").
 				ColumnExpr("(post_commit_volumes).inputs as input").
 				ColumnExpr("(post_commit_volumes).outputs as output").
 				UnionAll(
-					s.db.NewSelect().
+					store.db.NewSelect().
 						TableExpr(
 							"(?) data",
-							s.db.NewSelect().NewValues(&accountsVolumes),
+							store.db.NewSelect().NewValues(&accountsVolumes),
 						).
 						Column("*"),
 				)
 
-			zeroValueOrMoves := s.db.NewSelect().
+			zeroValueOrMoves := store.db.NewSelect().
 				TableExpr("(?) data", zeroValuesAndMoves).
 				Column("ledger", "accounts_address", "asset", "input", "output").
 				DistinctOn("ledger, accounts_address, asset")
 
-			insertDefaultValue := s.db.NewInsert().
-				TableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+			insertDefaultValue := store.db.NewInsert().
+				TableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 				TableExpr("(" + zeroValueOrMoves.String() + ") data").
 				On("conflict (ledger, accounts_address, asset) do nothing").
 				Returning("ledger, accounts_address, asset, input, output")
 
-			selectExistingValues := s.db.NewSelect().
-				ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+			selectExistingValues := store.db.NewSelect().
+				ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 				Column("ledger", "accounts_address", "asset", "input", "output").
 				Where("("+strings.Join(conditions, ") OR (")+")", args...).
 				For("update").
 				// notes(gfyrag): Keep order, it ensures consistent locking order and limit deadlocks
 				Order("accounts_address", "asset")
 
-			finalQuery := s.db.NewSelect().
+			finalQuery := store.db.NewSelect().
 				With("inserted", insertDefaultValue).
 				With("existing", selectExistingValues).
 				ModelTableExpr(
 					"(?) accounts_volumes",
-					s.db.NewSelect().
+					store.db.NewSelect().
 						ModelTableExpr("inserted").
-						UnionAll(s.db.NewSelect().ModelTableExpr("existing")),
+						UnionAll(store.db.NewSelect().ModelTableExpr("existing")),
 				).
 				Model(&accountsVolumes)
 

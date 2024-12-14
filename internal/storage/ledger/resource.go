@@ -61,10 +61,10 @@ type filter struct {
 
 type repositoryHandler[Opts any] interface {
 	filters() []filter
-	buildDataset(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[Opts]) (*bun.SelectQuery, error)
-	resolveFilter(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
-	aggregate(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
-	expand(store *Store, ledger ledger.Ledger, query ledgercontroller.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
+	buildDataset(store *Store, query ledgercontroller.ResourceQuery[Opts]) (*bun.SelectQuery, error)
+	resolveFilter(store *Store, query ledgercontroller.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
+	aggregate(store *Store, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
+	expand(store *Store, query ledgercontroller.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
 }
 
 type resourceRepository[ResourceType, OptionsType any] struct {
@@ -107,7 +107,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 	q ledgercontroller.ResourceQuery[OptionsType],
 	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
-	dataset, err := r.resourceHandler.buildDataset(r.store, r.ledger, q)
+	dataset, err := r.resourceHandler.buildDataset(r.store, q)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 	if q.Builder != nil {
 		// Convert filters to where clause
 		where, args, err := q.Builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
-			return r.resourceHandler.resolveFilter(r.store, r.ledger, q, operator, key, value)
+			return r.resourceHandler.resolveFilter(r.store, q, operator, key, value)
 		}))
 		if err != nil {
 			return nil, err
@@ -129,7 +129,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 		}
 	}
 
-	dataset, err = r.resourceHandler.aggregate(r.store, r.ledger, q, dataset)
+	dataset, err = r.resourceHandler.aggregate(r.store, q, dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) Query(
 	slices.Sort(q.Expand)
 
 	for i, expand := range q.Expand {
-		selectQuery, joinCondition, err := r.resourceHandler.expand(r.store, r.ledger, q, expand)
+		selectQuery, joinCondition, err := r.resourceHandler.expand(r.store, q, expand)
 		if err != nil {
 			return nil, err
 		}

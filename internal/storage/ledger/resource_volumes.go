@@ -51,7 +51,7 @@ func (h volumesResourceHandler) filters() []filter {
 	}
 }
 
-func (h volumesResourceHandler) buildDataset(store *Store, ledger ledger.Ledger, opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) buildDataset(store *Store, opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
@@ -62,10 +62,10 @@ func (h volumesResourceHandler) buildDataset(store *Store, ledger ledger.Ledger,
 			ColumnExpr("input - output as balance").
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("ledger = ?", ledger.Name).
+			Where("ledger = ?", store.ledger.Name).
 			Order("accounts_address", "asset")
 	} else {
-		if !ledger.HasFeature(features.FeatureMovesHistory, "ON") {
+		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
@@ -81,7 +81,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, ledger ledger.Ledger,
 			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
-			Where("ledger = ?", ledger.Name).
+			Where("ledger = ?", store.ledger.Name).
 			GroupExpr("accounts_address, asset").
 			Order("accounts_address", "asset")
 
@@ -99,7 +99,6 @@ func (h volumesResourceHandler) buildDataset(store *Store, ledger ledger.Ledger,
 
 func (h volumesResourceHandler) resolveFilter(
 	store *Store,
-	ledger ledger.Ledger,
 	opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
 	value any,
@@ -133,7 +132,7 @@ func (h volumesResourceHandler) resolveFilter(
 		return "(" + strings.Join(clauses, ") and (") + ")", args, nil
 	case metadataRegex.Match([]byte(property)) || property == "metadata":
 		var selectMetadata *bun.SelectQuery
-		if ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
+		if store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
 			selectMetadata = store.db.NewSelect().
 				DistinctOn("accounts_address").
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
@@ -149,7 +148,7 @@ func (h volumesResourceHandler) resolveFilter(
 				Where("address = dataset.account")
 		}
 		selectMetadata = selectMetadata.
-			Where("ledger = ?", ledger.Name).
+			Where("ledger = ?", store.ledger.Name).
 			Column("metadata").
 			Limit(1)
 
@@ -173,7 +172,6 @@ func (h volumesResourceHandler) resolveFilter(
 
 func (h volumesResourceHandler) aggregate(
 	store *Store,
-	ledger ledger.Ledger,
 	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
@@ -195,7 +193,7 @@ func (h volumesResourceHandler) aggregate(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) expand(_ *Store, _ ledger.Ledger, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h volumesResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 

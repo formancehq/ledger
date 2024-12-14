@@ -44,18 +44,18 @@ func (j RawMessage) Value() (driver.Value, error) {
 	return string(j), nil
 }
 
-func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
+func (store *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"InsertLog",
-		s.tracer,
-		s.insertLogHistogram,
+		store.tracer,
+		store.insertLogHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 
 			// We lock logs table as we need than the last log does not change until the transaction commit
-			if s.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
-				_, err := s.db.NewRaw(`select pg_advisory_xact_lock(?)`, s.ledger.ID).Exec(ctx)
+			if store.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
+				_, err := store.db.NewRaw(`select pg_advisory_xact_lock(?)`, store.ledger.ID).Exec(ctx)
 				if err != nil {
 					return postgres.ResolveError(err)
 				}
@@ -76,19 +76,19 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 				return err
 			}
 
-			query := s.db.
+			query := store.db.
 				NewInsert().
 				Model(&Log{
 					Log:     log,
-					Ledger:  s.ledger.Name,
+					Ledger:  store.ledger.Name,
 					Data:    payloadData,
 					Memento: mementoData,
 				}).
-				ModelTableExpr(s.GetPrefixedRelationName("logs")).
+				ModelTableExpr(store.GetPrefixedRelationName("logs")).
 				Returning("*")
 
 			if log.ID == 0 {
-				query = query.Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, s.ledger.ID)))
+				query = query.Value("id", "nextval(?)", store.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, store.ledger.ID)))
 			}
 
 			_, err = query.Exec(ctx)
@@ -111,20 +111,20 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	return err
 }
 
-func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*ledger.Log, error) {
+func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*ledger.Log, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ReadLogWithIdempotencyKey",
-		s.tracer,
-		s.readLogWithIdempotencyKeyHistogram,
+		store.tracer,
+		store.readLogWithIdempotencyKeyHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
 			ret := &Log{}
-			if err := s.db.NewSelect().
+			if err := store.db.NewSelect().
 				Model(ret).
-				ModelTableExpr(s.GetPrefixedRelationName("logs")).
+				ModelTableExpr(store.GetPrefixedRelationName("logs")).
 				Column("*").
 				Where("idempotency_key = ?", key).
-				Where("ledger = ?", s.ledger.Name).
+				Where("ledger = ?", store.ledger.Name).
 				Limit(1).
 				Scan(ctx); err != nil {
 				return nil, postgres.ResolveError(err)
