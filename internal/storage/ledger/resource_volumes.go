@@ -38,45 +38,70 @@ func (h volumesResourceHandler) filters() []filter {
 		},
 		{
 			name: "metadata",
-			validators: []propertyValidator{
-				acceptOperators("$exists"),
+			matchers: []func(string) bool{
+				func(key string) bool {
+					return key == "metadata" || metadataRegex.Match([]byte(key))
+				},
 			},
-		},
-		{
-			name: `metadata\[.*]`,
 			validators: []propertyValidator{
-				acceptOperators("$match"),
+				propertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
+					if key == "metadata" {
+						if operator != "$exists" {
+							return fmt.Errorf("unsupported operator %s for metadata", operator)
+						}
+						return nil
+					}
+					if operator != "$match" {
+						return fmt.Errorf("unsupported operator %s for metadata", operator)
+					}
+					return nil
+				}),
 			},
 		},
 	}
 }
 
-func (h volumesResourceHandler) buildDataset(store *Store, opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
-	if (opts.PIT == nil || opts.PIT.IsZero()) && (opts.OOT == nil || opts.OOT.IsZero()) {
+	needAddressSegments := query.useFilter("address", isPartialAddress) ||
+		query.useFilter("account", isPartialAddress)
+	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = store.db.NewSelect().
 			DistinctOn("accounts_address, asset").
-			Column("asset", "input", "output").
+			Column("accounts_address", "asset", "input", "output").
 			ColumnExpr("input - output as balance").
-			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Where("ledger = ?", store.ledger.Name).
 			Order("accounts_address", "asset")
+
+		if query.useFilter("metadata") || needAddressSegments {
+			subQuery := store.db.NewSelect().
+				TableExpr(store.GetPrefixedRelationName("accounts")).
+				Column("address").
+				Where("ledger = ?", store.ledger.Name).
+				Where("accounts.address = accounts_address")
+
+			if needAddressSegments {
+				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
+				selectVolumes = selectVolumes.Column("accounts_address_array")
+			}
+			if query.useFilter("metadata") {
+				subQuery = subQuery.ColumnExpr("metadata")
+				selectVolumes = selectVolumes.Column("metadata")
+			}
+
+			selectVolumes = selectVolumes.
+				Join(`join lateral (?) accounts on true`, subQuery)
+		}
 	} else {
 		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
-		dateFilterColumn := "effective_date"
-		if opts.Opts.UseInsertionDate {
-			dateFilterColumn = "insertion_date"
-		}
-
 		selectVolumes = store.db.NewSelect().
-			Column("asset").
-			ColumnExpr("accounts_address as account").
+			Column("accounts_address", "asset").
 			ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
@@ -85,12 +110,43 @@ func (h volumesResourceHandler) buildDataset(store *Store, opts ledgercontroller
 			GroupExpr("accounts_address, asset").
 			Order("accounts_address", "asset")
 
-		if opts.PIT != nil && !opts.PIT.IsZero() {
-			selectVolumes = selectVolumes.Where(dateFilterColumn+" <= ?", opts.PIT)
+		dateFilterColumn := "effective_date"
+		if query.Opts.UseInsertionDate {
+			dateFilterColumn = "insertion_date"
 		}
 
-		if opts.OOT != nil && !opts.OOT.IsZero() {
-			selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", opts.OOT)
+		if query.UsePIT() {
+			selectVolumes = selectVolumes.Where(dateFilterColumn+" <= ?", query.PIT)
+		}
+
+		if query.UseOOT() {
+			selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", query.OOT)
+		}
+
+		if needAddressSegments {
+			subQuery := store.db.NewSelect().
+				TableExpr(store.GetPrefixedRelationName("accounts")).
+				Column("address_array").
+				Where("accounts.address = accounts_address").
+				Where("ledger = ?", store.ledger.Name)
+
+			selectVolumes.
+				ColumnExpr("(array_agg(accounts.address_array))[1] as accounts_address_array").
+				Join(`join lateral (?) accounts on true`, subQuery)
+		}
+
+		if query.useFilter("metadata") {
+			subQuery := store.db.NewSelect().
+				DistinctOn("accounts_address").
+				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
+				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
+				Where("ledger = ?", store.ledger.Name).
+				Where("accounts_metadata.accounts_address = moves.accounts_address").
+				Where("date <= ?", query.PIT)
+
+			selectVolumes = selectVolumes.
+				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
+				ColumnExpr("(array_agg(metadata))[1] as metadata")
 		}
 	}
 
@@ -106,17 +162,7 @@ func (h volumesResourceHandler) resolveFilter(
 
 	switch {
 	case property == "address" || property == "account":
-		address := value.(string)
-		if isPartialAddress(address) {
-			return store.db.NewSelect().
-				TableExpr(store.GetPrefixedRelationName("accounts")).
-				ColumnExpr("true").
-				Where(filterAccountAddress(address, "address")).
-				Where("address = dataset.account").
-				String(), []any{}, nil
-		}
-
-		return "account = ?", []any{address}, nil
+		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 		clauses := make([]string, 0)
 		args := make([]any, 0)
@@ -131,39 +177,14 @@ func (h volumesResourceHandler) resolveFilter(
 
 		return "(" + strings.Join(clauses, ") and (") + ")", args, nil
 	case metadataRegex.Match([]byte(property)) || property == "metadata":
-		var selectMetadata *bun.SelectQuery
-		if store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
-			selectMetadata = store.db.NewSelect().
-				DistinctOn("accounts_address").
-				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
-				Where("accounts_address = dataset.account").
-				Order("accounts_address", "revision desc")
-
-			if opts.PIT != nil && !opts.PIT.IsZero() {
-				selectMetadata = selectMetadata.Where("date <= ?", opts.PIT)
-			}
+		if property == "metadata" {
+			return "metadata -> ? is not null", []any{value}, nil
 		} else {
-			selectMetadata = store.db.NewSelect().
-				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
-				Where("address = dataset.account")
-		}
-		selectMetadata = selectMetadata.
-			Where("ledger = ?", store.ledger.Name).
-			Column("metadata").
-			Limit(1)
-
-		switch {
-		case metadataRegex.Match([]byte(property)):
 			match := metadataRegex.FindAllStringSubmatch(property, 3)
 
-			return "(?) @> ?", []any{selectMetadata, map[string]any{
+			return "metadata @> ?", []any{map[string]any{
 				match[0][1]: value,
 			}}, nil
-
-		case property == "metadata":
-			return "(?) -> ? is not null", []any{selectMetadata, value}, nil
-		default:
-			panic("unreachable")
 		}
 	}
 
@@ -176,13 +197,16 @@ func (h volumesResourceHandler) aggregate(
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	if query.Opts.GroupLvl == 0 {
-		return selectQuery, nil
+		return store.db.NewSelect().
+			ModelTableExpr("(?) data", selectQuery).
+			Column("asset", "input", "output", "balance").
+			ColumnExpr("accounts_address as account"), nil
 	}
 
 	intermediate := store.db.NewSelect().
 		ModelTableExpr("(?) data", selectQuery).
 		Column("asset", "input", "output", "balance").
-		ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(account, ':'))[1:LEAST(array_length(string_to_array(account, ':'),1),%d)],':')) as account`, query.Opts.GroupLvl))
+		ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(accounts_address, ':'))[1:LEAST(array_length(string_to_array(accounts_address, ':'),1),%d)],':')) as account`, query.Opts.GroupLvl))
 
 	return store.db.NewSelect().
 		ModelTableExpr("(?) data", intermediate).

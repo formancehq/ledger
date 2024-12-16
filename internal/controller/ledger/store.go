@@ -154,6 +154,14 @@ type ResourceQuery[Opts any] struct {
 	Opts    Opts          `json:"opts"`
 }
 
+func (rq ResourceQuery[Opts]) UsePIT() bool {
+	return rq.PIT != nil && !rq.PIT.IsZero()
+}
+
+func (rq ResourceQuery[Opts]) UseOOT() bool {
+	return rq.OOT != nil && !rq.OOT.IsZero()
+}
+
 func (rq *ResourceQuery[Opts]) UnmarshalJSON(data []byte) error {
 	type rawResourceQuery ResourceQuery[Opts]
 	type aux struct {

@@ -56,12 +56,32 @@ func acceptOperators(operators ...string) propertyValidator {
 
 type filter struct {
 	name       string
+	matchers   []func(key string) bool
 	validators []propertyValidator
+}
+
+type repositoryHandlerBuildContext[Opts any] struct {
+	ledgercontroller.ResourceQuery[Opts]
+	filters map[string]any
+}
+
+func (ctx repositoryHandlerBuildContext[Opts]) useFilter(v string, matchers ...func(value any) bool) bool {
+	value, ok := ctx.filters[v]
+	if !ok {
+		return false
+	}
+	for _, matcher := range matchers {
+		if !matcher(value) {
+			return false
+		}
+	}
+
+	return true
 }
 
 type repositoryHandler[Opts any] interface {
 	filters() []filter
-	buildDataset(store *Store, query ledgercontroller.ResourceQuery[Opts]) (*bun.SelectQuery, error)
+	buildDataset(store *Store, query repositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	resolveFilter(store *Store, query ledgercontroller.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	aggregate(store *Store, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
 	expand(store *Store, query ledgercontroller.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
@@ -73,26 +93,39 @@ type resourceRepository[ResourceType, OptionsType any] struct {
 	ledger          ledger.Ledger
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) error {
+func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) (map[string]any, error) {
 	if builder == nil {
-		return nil
+		return nil, nil
 	}
 
+	ret := make(map[string]any)
 	properties := r.resourceHandler.filters()
-	return builder.Walk(func(operator string, key string, value any) (err error) {
+	if err := builder.Walk(func(operator string, key string, value any) (err error) {
 
 		found := false
 		for _, property := range properties {
-			if found, err = regexp.MatchString("^"+property.name+"$", key); err != nil {
-				panic(err)
-			} else if found {
-				for _, validator := range property.validators {
-					if err := validator.validate(r.ledger, operator, key, value); err != nil {
-						return err
+			if len(property.matchers) > 0 {
+				for _, matcher := range property.matchers {
+					if found = matcher(key); found {
+						break
 					}
 				}
-				break
+			} else {
+				if found, err = regexp.MatchString("^"+property.name+"$", key); err != nil {
+					panic(err)
+				}
 			}
+			if !found {
+				continue
+			}
+
+			for _, validator := range property.validators {
+				if err := validator.validate(r.ledger, operator, key, value); err != nil {
+					return err
+				}
+			}
+			ret[property.name] = value
+			break
 		}
 
 		if !found {
@@ -100,14 +133,27 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
 }
 
 func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 	q ledgercontroller.ResourceQuery[OptionsType],
 	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
-	dataset, err := r.resourceHandler.buildDataset(r.store, q)
+
+	filters, err := r.validateFilters(q.Builder)
+	if err != nil {
+		return nil, err
+	}
+
+	dataset, err := r.resourceHandler.buildDataset(r.store, repositoryHandlerBuildContext[OptionsType]{
+		ResourceQuery: q,
+		filters:       filters,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -208,18 +254,10 @@ func (r *resourceRepository[ResourceType, OptionsType]) List(
 	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
 ) ([]ResourceType, error) {
 
-	if err := r.validateFilters(query.Builder); err != nil {
-		return nil, err
-	}
-
 	return r.scan(ctx, query, modifiers...)
 }
 
 func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (*ResourceType, error) {
-	if err := r.validateFilters(query.Builder); err != nil {
-		return nil, err
-	}
-
 	ret, err := r.scan(ctx, query, func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
 		return selectQuery.Limit(1)
 	})
@@ -234,10 +272,6 @@ func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Conte
 }
 
 func (r *resourceRepository[ResourceType, OptionsType]) Count(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (int, error) {
-
-	if err := r.validateFilters(query.Builder); err != nil {
-		return 0, err
-	}
 
 	finalQuery, err := r.buildFilteredDataset(query)
 	if err != nil {
@@ -278,10 +312,6 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 		resourceQuery = v.Options
 	default:
 		panic("should not happen")
-	}
-
-	if err := r.validateFilters(resourceQuery.Builder); err != nil {
-		return nil, err
 	}
 
 	ret, err := r.scan(ctx, resourceQuery, func(selectQuery *bun.SelectQuery) *bun.SelectQuery {

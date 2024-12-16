@@ -35,7 +35,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) filters() []filter {
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.PIT != nil && !query.PIT.IsZero() {
 		ret := store.db.NewSelect().

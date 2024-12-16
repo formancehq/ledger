@@ -65,7 +65,7 @@ func (h transactionsResourceHandler) filters() []filter {
 	}
 }
 
-func (h transactionsResourceHandler) buildDataset(store *Store, opts ledgercontroller.ResourceQuery[any]) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.db.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 		Column(
