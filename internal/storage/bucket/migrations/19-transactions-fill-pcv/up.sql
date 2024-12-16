@@ -22,9 +22,13 @@ do $$
 		) moves
 		group by transactions_id;
 
-		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || (select count(*) from moves_view));
-
 		create index moves_view_idx on moves_view(transactions_id);
+
+		if (select count(*) from moves_view) = 0 then
+			return;
+		end if;
+
+		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || (select count(*) from moves_view));
 
 		-- disable triggers
 		set session_replication_role = replica;

@@ -31,7 +31,7 @@ do $$
 
 		raise info '_count: %', _count;
 
-		for i in 0.._count by _batch_size loop
+		for i in 0.._count-1 by _batch_size loop
 			with _rows as (
 				select *
 				from tmp_volumes
