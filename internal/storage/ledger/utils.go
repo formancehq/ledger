@@ -39,11 +39,15 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
-func isPartialAddress(address string) bool {
-	for _, segment := range strings.Split(address, ":") {
-		if segment == "" {
-			return true
+func isPartialAddress[V any](address V) bool {
+	switch address := any(address).(type) {
+	case string:
+		for _, segment := range strings.Split(address, ":") {
+			if segment == "" {
+				return true
+			}
 		}
 	}
+
 	return false
 }

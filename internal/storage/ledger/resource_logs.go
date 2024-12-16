@@ -18,7 +18,7 @@ func (h logsResourceHandler) filters() []filter {
 	}
 }
 
-func (h logsResourceHandler) buildDataset(store *Store, _ ledgercontroller.ResourceQuery[any]) (*bun.SelectQuery, error) {
+func (h logsResourceHandler) buildDataset(store *Store, _ repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	return store.db.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("logs")).
 		ColumnExpr("*").

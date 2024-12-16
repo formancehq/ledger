@@ -52,7 +52,7 @@ func (h accountsResourceHandler) filters() []filter {
 	}
 }
 
-func (h accountsResourceHandler) buildDataset(store *Store, opts ledgercontroller.ResourceQuery[any]) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.db.NewSelect()
 
 	// Build the query
