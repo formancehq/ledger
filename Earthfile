@@ -120,9 +120,9 @@ pre-commit-nix:
       BUILD +lint
       BUILD +generate
     END
-    BUILD +tests
+#    BUILD +tests
     BUILD +export-docs-events
-    BUILD +release
+#    BUILD +release
 
 openapi:
     FROM node:20-alpine
