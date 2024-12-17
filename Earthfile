@@ -21,20 +21,11 @@ sources:
     SAVE ARTIFACT /src
 
 generate:
-    FROM core+builder-image
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    RUN apk update && apk add openjdk11
-    RUN go install go.uber.org/mock/mockgen@v0.4.0
-    RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
-    COPY (+tidy/*) /src/
-    COPY --dir (+sources/src/*) /src/
-
-    WORKDIR /src
+    LOCALLY
     RUN go generate ./...
-    SAVE ARTIFACT internal AS LOCAL internal
-    SAVE ARTIFACT pkg AS LOCAL pkg
-    SAVE ARTIFACT cmd AS LOCAL cmd
+    SAVE ARTIFACT internal
+    SAVE ARTIFACT pkg
+    SAVE ARTIFACT cmd
 
 compile:
     LOCALLY
@@ -127,8 +118,11 @@ pre-commit-nix:
     WAIT
       BUILD +tidy
       BUILD +lint
+      BUILD +generate
     END
     BUILD +tests
+    BUILD +export-docs-events
+    BUILD +release
 
 openapi:
     FROM node:20-alpine
@@ -154,10 +148,21 @@ tidy:
     SAVE ARTIFACT go.sum
 
 release:
-    FROM core+builder-image
+    LOCALLY
     ARG mode=local
-    COPY --dir . /src
-    DO core+GORELEASER --mode=$mode
+    # TODO: Move to function in earthly repostiory
+    LET buildArgs = --clean
+    IF [ "$mode" = "local" ]
+        SET buildArgs = --nightly --skip=publish --clean
+    ELSE IF [ "$mode" = "ci" ]
+        SET buildArgs = --nightly --clean
+    END
+    IF [ "$mode" != "local" ]
+        WITH DOCKER
+            RUN --secret GITHUB_TOKEN echo $GITHUB_TOKEN | docker login ghcr.io -u NumaryBot --password-stdin
+        END
+    END
+    RUN goreleaser release -f .goreleaser.yml $buildArgs
 
 generate-client:
     FROM node:20-alpine
