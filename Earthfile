@@ -78,7 +78,7 @@ tests:
         # toremovelater: exclude machine code as it will be updated soon
         RUN cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
         RUN mv coverage2.txt coverage.txt
-        SAVE ARTIFACT coverage.txt AS LOCAL coverage.txt
+        SAVE ARTIFACT coverage.txt
     END
 
 deploy:
