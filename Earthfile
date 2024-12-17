@@ -3,12 +3,6 @@ PROJECT FormanceHQ/ledger
 
 IMPORT github.com/formancehq/earthly:tags/v0.19.0 AS core
 
-FROM core+base-image
-
-CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
-CACHE --sharing=shared --id golangci-cache /root/.cache/golangci-lint
-CACHE --sharing=shared --id go-cache /root/.cache/go-build
-
 postgres:
     FROM postgres:15-alpine
 
@@ -43,10 +37,7 @@ generate:
     SAVE ARTIFACT cmd AS LOCAL cmd
 
 compile:
-    FROM +sources
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    WORKDIR /src
+    LOCALLY
     ARG VERSION=latest
     RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
         -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
@@ -63,14 +54,7 @@ build-image:
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
 tests:
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-    RUN apk add gcc musl-dev
-
-    COPY --dir --pass-args (+generate/*) .
-
+    LOCALLY
     ARG includeIntegrationTests="true"
     ARG coverage=""
     ARG debug=false
@@ -92,9 +76,9 @@ tests:
 
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
-        WITH DOCKER --load=postgres:15-alpine=+postgres
-            RUN go test $goFlags $additionalArgs ./...
-        END
+        #WITH DOCKER --load=postgres:15-alpine=+postgres
+        RUN go test $goFlags $additionalArgs ./...
+        #END
     ELSE
         RUN go test $goFlags $additionalArgs ./...
     END
@@ -119,19 +103,13 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 lint:
-    #todo: get config from core
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    CACHE --id golangci-cache /root/.cache/golangci-lint
-
+    LOCALLY
     RUN golangci-lint run --fix --build-tags it --timeout 5m
-
-    SAVE ARTIFACT cmd AS LOCAL cmd
-    SAVE ARTIFACT internal AS LOCAL internal
-    SAVE ARTIFACT pkg AS LOCAL pkg
-    SAVE ARTIFACT test AS LOCAL test
-    SAVE ARTIFACT main.go AS LOCAL main.go
+    SAVE ARTIFACT cmd
+    SAVE ARTIFACT internal
+    SAVE ARTIFACT pkg
+    SAVE ARTIFACT test
+    SAVE ARTIFACT main.go
 
 pre-commit:
     BUILD +tidy
@@ -141,9 +119,16 @@ pre-commit:
     BUILD +generate
     BUILD +generate-client
     BUILD +export-docs-events
-
     BUILD ./tools/*+pre-commit
     BUILD ./deployments/*+pre-commit
+
+pre-commit-nix:
+    LOCALLY
+    WAIT
+      BUILD +tidy
+      BUILD +lint
+    END
+    BUILD +tests
 
 openapi:
     FROM node:20-alpine
@@ -163,15 +148,10 @@ openapi-markdown:
     SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
 
 tidy:
-    FROM +sources
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    WORKDIR /src
-    COPY --dir test .
+    LOCALLY
     RUN go mod tidy
-
-    SAVE ARTIFACT go.mod AS LOCAL go.mod
-    SAVE ARTIFACT go.sum AS LOCAL go.sum
+    SAVE ARTIFACT go.mod
+    SAVE ARTIFACT go.sum
 
 release:
     FROM core+builder-image
@@ -217,10 +197,6 @@ export-database-schema:
     SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
 
 export-docs-events:
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-
+    LOCALLY
     RUN go run . docs events --write-dir docs/events
-
-    SAVE ARTIFACT docs/events AS LOCAL docs/events
+    SAVE ARTIFACT docs/events
