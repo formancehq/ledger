@@ -120,7 +120,6 @@ pre-commit-nix:
     END
 #    BUILD +tests
     BUILD +export-docs-events
-#    BUILD +release
 
 openapi:
     FROM node:20-alpine
@@ -146,21 +145,10 @@ tidy:
     SAVE ARTIFACT go.sum
 
 release:
-    LOCALLY
+    FROM core+builder-image
     ARG mode=local
-    # TODO: Move to function in earthly repostiory
-    LET buildArgs = --clean
-    IF [ "$mode" = "local" ]
-        SET buildArgs = --nightly --skip=publish --clean
-    ELSE IF [ "$mode" = "ci" ]
-        SET buildArgs = --nightly --clean
-    END
-    IF [ "$mode" != "local" ]
-        WITH DOCKER
-            RUN --secret GITHUB_TOKEN echo $GITHUB_TOKEN | docker login ghcr.io -u NumaryBot --password-stdin
-        END
-    END
-    RUN goreleaser release -f .goreleaser.yml $buildArgs
+    COPY --dir . /src
+    DO core+GORELEASER --mode=$mode
 
 generate-client:
     FROM node:20-alpine
