@@ -61,7 +61,6 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 	needAddressSegments := query.useFilter("address", isPartialAddress)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = store.db.NewSelect().
-			DistinctOn("accounts_address, asset").
 			Column("accounts_address", "asset", "input", "output").
 			ColumnExpr("input - output as balance").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
@@ -188,6 +187,8 @@ func (h volumesResourceHandler) aggregate(
 	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
+	selectQuery = selectQuery.DistinctOn("accounts_address, asset")
+
 	if query.Opts.GroupLvl == 0 {
 		return store.db.NewSelect().
 			ModelTableExpr("(?) data", selectQuery).
