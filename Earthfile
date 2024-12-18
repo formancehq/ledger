@@ -67,9 +67,7 @@ tests:
 
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
-        #WITH DOCKER --load=postgres:15-alpine=+postgres
         RUN go test $goFlags $additionalArgs ./...
-        #END
     ELSE
         RUN go test $goFlags $additionalArgs ./...
     END
