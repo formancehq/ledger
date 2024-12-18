@@ -15,15 +15,8 @@ type volumesResourceHandler struct{}
 func (h volumesResourceHandler) filters() []filter {
 	return []filter{
 		{
-			name: "account",
-			validators: []propertyValidator{
-				propertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
-				}),
-			},
-		},
-		{
-			name: "address",
+			name:    "address",
+			aliases: []string{"account"},
 			validators: []propertyValidator{
 				propertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
 					return validateAddressFilter(l, operator, value)
@@ -65,8 +58,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 	var selectVolumes *bun.SelectQuery
 
-	needAddressSegments := query.useFilter("address", isPartialAddress) ||
-		query.useFilter("account", isPartialAddress)
+	needAddressSegments := query.useFilter("address", isPartialAddress)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = store.db.NewSelect().
 			DistinctOn("accounts_address, asset").
