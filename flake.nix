@@ -40,6 +40,7 @@
             mockgen
             gomarkdoc
             jdk11
+            just
           ];
         };
       });
