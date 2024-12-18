@@ -20,13 +20,6 @@ sources:
     COPY main.go .
     SAVE ARTIFACT /src
 
-generate:
-    LOCALLY
-    RUN go generate ./...
-    SAVE ARTIFACT internal
-    SAVE ARTIFACT pkg
-    SAVE ARTIFACT cmd
-
 compile:
     LOCALLY
     ARG VERSION=latest
@@ -44,41 +37,6 @@ build-image:
     ARG tag=latest
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
-tests:
-    LOCALLY
-    ARG includeIntegrationTests="true"
-    ARG coverage=""
-    ARG debug=false
-    ARG additionalArgs=""
-
-    ENV DEBUG=$debug
-    ENV CGO_ENABLED=1 # required for -race
-
-    LET goFlags="-race"
-    IF [ "$coverage" = "true" ]
-        SET goFlags="$goFlags -covermode=atomic"
-        SET goFlags="$goFlags -coverpkg=github.com/formancehq/ledger/internal/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/events/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/accounts/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/assets/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
-        SET goFlags="$goFlags -coverprofile coverage.txt"
-    END
-
-    IF [ "$includeIntegrationTests" = "true" ]
-        SET goFlags="$goFlags -tags it"
-        RUN go test $goFlags $additionalArgs ./...
-    ELSE
-        RUN go test $goFlags $additionalArgs ./...
-    END
-    IF [ "$coverage" = "true" ]
-        # as special case, exclude files suffixed by debug.go
-        # toremovelater: exclude machine code as it will be updated soon
-        RUN cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
-        RUN mv coverage2.txt coverage.txt
-        SAVE ARTIFACT coverage.txt
-    END
-
 deploy:
     COPY (+sources/*) /src
     LET tag=$(tar cf - /src | sha1sum | awk '{print $1}')
@@ -91,35 +49,10 @@ deploy:
 deploy-staging:
     BUILD --pass-args core+deploy-staging
 
-lint:
-    LOCALLY
-    RUN golangci-lint run --fix --build-tags it --timeout 5m
-    SAVE ARTIFACT cmd
-    SAVE ARTIFACT internal
-    SAVE ARTIFACT pkg
-    SAVE ARTIFACT test
-    SAVE ARTIFACT main.go
-
 pre-commit:
-    BUILD +tidy
-    BUILD +lint
     BUILD +openapi
     BUILD +openapi-markdown
-    BUILD +generate
     BUILD +generate-client
-    BUILD +export-docs-events
-    BUILD ./tools/*+pre-commit
-    BUILD ./deployments/*+pre-commit
-
-pre-commit-nix:
-    LOCALLY
-    WAIT
-      BUILD +tidy
-      BUILD +lint
-      BUILD +generate
-    END
-#    BUILD +tests
-    BUILD +export-docs-events
 
 openapi:
     FROM node:20-alpine
@@ -137,12 +70,6 @@ openapi-markdown:
     COPY openapi/v2.yaml openapi.yaml
     RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
     SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
-
-tidy:
-    LOCALLY
-    RUN go mod tidy
-    SAVE ARTIFACT go.mod
-    SAVE ARTIFACT go.sum
 
 release:
     FROM core+builder-image
@@ -186,8 +113,3 @@ export-database-schema:
     END
     SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
     SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
-
-export-docs-events:
-    LOCALLY
-    RUN go run . docs events --write-dir docs/events
-    SAVE ARTIFACT docs/events

@@ -35,9 +35,8 @@ jobs:
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" develop --impure --command earthly
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +pre-commit-nix
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just pre-commit
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Get changed files
@@ -63,11 +62,8 @@ jobs:
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" develop --impure --command earthly
-          --no-output
-          --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +tests --coverage=true
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just tests
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Upload coverage reports to Codecov with GitHub Action
@@ -99,8 +95,8 @@ jobs:
           username: "NumaryBot"
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" develop --impure --command earthly
-          --no-output
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" 
+          develop --impure --command earthly --no-output
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
           +release --mode=ci
         env:
