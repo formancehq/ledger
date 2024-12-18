@@ -71,12 +71,6 @@ openapi-markdown:
     RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
     SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
 
-release:
-    FROM core+builder-image
-    ARG mode=local
-    COPY --dir . /src
-    DO core+GORELEASER --mode=$mode
-
 generate-client:
     FROM node:20-alpine
     RUN apk update && apk add yq jq

@@ -96,9 +96,7 @@ jobs:
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
           /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" 
-          develop --impure --command earthly --no-output
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +release --mode=ci
+          develop --impure --command just release-ci
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}

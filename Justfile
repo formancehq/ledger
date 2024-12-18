@@ -37,3 +37,12 @@ tests:
     ./...
   @cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
   @mv coverage2.txt coverage.txt
+
+release-local:
+  @goreleaser release --nightly --skip=publish --clean
+
+release-ci:
+  @goreleaser release --nightly --clean
+
+release:
+  @goreleaser release --clean
