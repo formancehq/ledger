@@ -56,6 +56,7 @@ func acceptOperators(operators ...string) propertyValidator {
 
 type filter struct {
 	name       string
+	aliases []string
 	matchers   []func(key string) bool
 	validators []propertyValidator
 }
@@ -111,8 +112,13 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 					}
 				}
 			} else {
-				if found, err = regexp.MatchString("^"+property.name+"$", key); err != nil {
-					panic(err)
+				options := append([]string{property.name}, property.aliases...)
+				for _, option := range options {
+					if found, err = regexp.MatchString("^"+option+"$", key); err != nil {
+						panic(err)
+					} else if found {
+						break
+					}
 				}
 			}
 			if !found {
