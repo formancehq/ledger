@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/query"
@@ -56,7 +55,7 @@ func acceptOperators(operators ...string) propertyValidator {
 
 type filter struct {
 	name       string
-	aliases []string
+	aliases    []string
 	matchers   []func(key string) bool
 	validators []propertyValidator
 }
@@ -84,7 +83,7 @@ type repositoryHandler[Opts any] interface {
 	filters() []filter
 	buildDataset(store *Store, query repositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	resolveFilter(store *Store, query ledgercontroller.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
-	aggregate(store *Store, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
+	project(store *Store, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
 	expand(store *Store, query ledgercontroller.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
 }
 
@@ -146,10 +145,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	return ret, nil
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
-	q ledgercontroller.ResourceQuery[OptionsType],
-	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
-) (*bun.SelectQuery, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	filters, err := r.validateFilters(q.Builder)
 	if err != nil {
@@ -164,6 +160,9 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 		return nil, err
 	}
 
+	dataset = r.store.db.NewSelect().
+		ModelTableExpr("(?) dataset", dataset)
+
 	if q.Builder != nil {
 		// Convert filters to where clause
 		where, args, err := q.Builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
@@ -172,8 +171,6 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 		if err != nil {
 			return nil, err
 		}
-		dataset = r.store.db.NewSelect().
-			ModelTableExpr("(?) dataset", dataset)
 		if len(args) > 0 {
 			dataset = dataset.Where(where, args...)
 		} else {
@@ -181,30 +178,20 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(
 		}
 	}
 
-	dataset, err = r.resourceHandler.aggregate(r.store, q, dataset)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, modifier := range modifiers {
-		dataset = dataset.Apply(modifier)
-	}
-
-	return r.store.db.NewSelect().
-		With("dataset", dataset).
-		ModelTableExpr("dataset").
-		ColumnExpr("*"), nil
+	return r.resourceHandler.project(r.store, q, dataset)
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) Query(
-	q ledgercontroller.ResourceQuery[OptionsType],
-	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
-) (*bun.SelectQuery, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) query(q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
 
-	filteredDatasetQuery, err := r.buildFilteredDataset(q, modifiers...)
+	filteredDatasetQuery, err := r.buildFilteredDataset(q)
 	if err != nil {
 		return nil, err
 	}
+
+	filteredDatasetQuery = r.store.db.NewSelect().
+		With("dataset", filteredDatasetQuery).
+		ModelTableExpr("dataset").
+		ColumnExpr("*")
 
 	slices.Sort(q.Expand)
 
@@ -233,41 +220,16 @@ func (r *resourceRepository[ResourceType, OptionsType]) Query(
 	return filteredDatasetQuery, nil
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) scan(
-	ctx context.Context,
-	q ledgercontroller.ResourceQuery[OptionsType],
-	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
-) ([]ResourceType, error) {
-
-	finalQuery, err := r.Query(q, modifiers...)
+func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (*ResourceType, error) {
+	finalQuery, err := r.query(query)
 	if err != nil {
 		return nil, err
 	}
-
 	ret := make([]ResourceType, 0)
-	//_, _ = fmt.Fprintln(logging.FromContext(ctx).Writer(), finalQuery.Model(&ret).String())
-
-	if err := finalQuery.Model(&ret).Scan(ctx); err != nil {
-		return nil, postgres.ResolveError(err)
-	}
-
-	return ret, nil
-}
-
-func (r *resourceRepository[ResourceType, OptionsType]) List(
-	ctx context.Context,
-	query ledgercontroller.ResourceQuery[OptionsType],
-	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
-) ([]ResourceType, error) {
-
-	return r.scan(ctx, query, modifiers...)
-}
-
-func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (*ResourceType, error) {
-	ret, err := r.scan(ctx, query, func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
-		return selectQuery.Limit(1)
-	})
-	if err != nil {
+	if err := finalQuery.
+		Model(&ret).
+		Limit(1).
+		Scan(ctx); err != nil {
 		return nil, err
 	}
 	if len(ret) == 0 {
@@ -320,9 +282,16 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 		panic("should not happen")
 	}
 
-	ret, err := r.scan(ctx, resourceQuery, func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
-		return r.paginator.paginate(selectQuery, paginationOptions)
-	})
+	finalQuery, err := r.query(resourceQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]ResourceType, 0)
+	err = r.paginator.
+		paginate(finalQuery, paginationOptions).
+		Model(&ret).
+		Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -370,19 +339,6 @@ func (m paginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, 
 	}
 
 	return pointer.For((*item).ToCore()), nil
-}
-
-func (m paginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType, PaginationQueryType]) List(
-	ctx context.Context,
-	query ledgercontroller.ResourceQuery[OptionsType],
-	modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
-) ([]ToResourceType, error) {
-	items, err := m.paginatedResourceRepository.List(ctx, query, modifiers...)
-	if err != nil {
-		return nil, err
-	}
-
-	return collectionutils.Map(items, OriginalResourceType.ToCore), nil
 }
 
 func newPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType interface {

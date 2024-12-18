@@ -61,8 +61,9 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 	needAddressSegments := query.useFilter("address", isPartialAddress)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = store.db.NewSelect().
-			Column("accounts_address", "asset", "input", "output").
+			Column("asset", "input", "output").
 			ColumnExpr("input - output as balance").
+			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Where("ledger = ?", store.ledger.Name).
 			Order("accounts_address", "asset")
@@ -75,8 +76,8 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				Where("accounts.address = accounts_address")
 
 			if needAddressSegments {
-				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
-				selectVolumes = selectVolumes.Column("accounts_address_array")
+				subQuery = subQuery.ColumnExpr("address_array as account_array")
+				selectVolumes = selectVolumes.Column("account_array")
 			}
 			if query.useFilter("metadata") {
 				subQuery = subQuery.ColumnExpr("metadata")
@@ -92,7 +93,8 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 		}
 
 		selectVolumes = store.db.NewSelect().
-			Column("accounts_address", "asset").
+			Column("asset").
+			ColumnExpr("accounts_address as account").
 			ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
@@ -122,7 +124,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				Where("ledger = ?", store.ledger.Name)
 
 			selectVolumes.
-				ColumnExpr("(array_agg(accounts.address_array))[1] as accounts_address_array").
+				ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
 				Join(`join lateral (?) accounts on true`, subQuery)
 		}
 
@@ -153,7 +155,7 @@ func (h volumesResourceHandler) resolveFilter(
 
 	switch {
 	case property == "address" || property == "account":
-		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
+		return filterAccountAddress(value.(string), "account"), nil, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 		clauses := make([]string, 0)
 		args := make([]any, 0)
@@ -182,24 +184,21 @@ func (h volumesResourceHandler) resolveFilter(
 	panic("unreachable")
 }
 
-func (h volumesResourceHandler) aggregate(
+func (h volumesResourceHandler) project(
 	store *Store,
 	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
-	selectQuery = selectQuery.DistinctOn("accounts_address, asset")
+	selectQuery = selectQuery.DistinctOn("account, asset")
 
 	if query.Opts.GroupLvl == 0 {
-		return store.db.NewSelect().
-			ModelTableExpr("(?) data", selectQuery).
-			Column("asset", "input", "output", "balance").
-			ColumnExpr("accounts_address as account"), nil
+		return selectQuery.ColumnExpr("*"), nil
 	}
 
 	intermediate := store.db.NewSelect().
 		ModelTableExpr("(?) data", selectQuery).
 		Column("asset", "input", "output", "balance").
-		ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(accounts_address, ':'))[1:LEAST(array_length(string_to_array(accounts_address, ':'),1),%d)],':')) as account`, query.Opts.GroupLvl))
+		ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(account, ':'))[1:LEAST(array_length(string_to_array(account, ':'),1),%d)],':')) as account`, query.Opts.GroupLvl))
 
 	return store.db.NewSelect().
 		ModelTableExpr("(?) data", intermediate).

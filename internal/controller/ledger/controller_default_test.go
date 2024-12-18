@@ -317,13 +317,13 @@ func TestListAccounts(t *testing.T) {
 	store.EXPECT().Accounts().Return(accounts)
 	accounts.EXPECT().Paginate(gomock.Any(), OffsetPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    bunpaginate.OrderAsc,
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
 	ret, err := l.ListAccounts(ctx, OffsetPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    bunpaginate.OrderAsc,
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, cursor, ret)
@@ -388,13 +388,13 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	store.EXPECT().Volumes().Return(volumes)
 	volumes.EXPECT().Paginate(gomock.Any(), OffsetPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    bunpaginate.OrderAsc,
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
 	ret, err := l.GetVolumesWithBalances(ctx, OffsetPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    bunpaginate.OrderAsc,
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, balancesByAssets, ret)

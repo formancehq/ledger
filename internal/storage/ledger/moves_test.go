@@ -5,7 +5,6 @@ package ledger_test
 import (
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -172,7 +171,6 @@ func TestMovesInsert(t *testing.T) {
 		wp.StopAndWait()
 
 		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-			PIT: pointer.For(time.Now()),
 			Opts: ledgercontroller.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},

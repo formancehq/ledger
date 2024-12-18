@@ -153,7 +153,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) expand(_ *Store, _ ledgerco
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) aggregate(
+func (h aggregatedBalancesResourceRepositoryHandler) project(
 	store *Store,
 	_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,

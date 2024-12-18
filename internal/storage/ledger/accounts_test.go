@@ -72,159 +72,189 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list all", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{})
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{})
 		require.NoError(t, err)
-		require.Len(t, accounts, 7)
+		require.Len(t, accounts.Data, 7)
 	})
 
 	t.Run("list using metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Match("metadata[category]", "1"),
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("metadata[category]", "1"),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1)
+		require.Len(t, accounts.Data, 1)
 	})
 
 	t.Run("list before date", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			PIT: &now,
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				PIT: &now,
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 2)
+		require.Len(t, accounts.Data, 2)
 	})
 
 	t.Run("list with volumes", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Match("address", "account:1"),
-			Expand:  []string{"volumes"},
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "account:1"),
+				Expand:  []string{"volumes"},
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1)
+		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
 			"USD": ledger.NewVolumesInt64(200, 50),
-		}, accounts[0].Volumes)
+		}, accounts.Data[0].Volumes)
 	})
 
 	t.Run("list with volumes using PIT", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Match("address", "account:1"),
-			PIT:     &now,
-			Expand:  []string{"volumes"},
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "account:1"),
+				PIT:     &now,
+				Expand:  []string{"volumes"},
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1)
+		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
 			"USD": ledger.NewVolumesInt64(100, 0),
-		}, accounts[0].Volumes)
+		}, accounts.Data[0].Volumes)
 	})
 
 	t.Run("list with effective volumes", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Match("address", "account:1"),
-			Expand:  []string{"effectiveVolumes"},
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "account:1"),
+				Expand:  []string{"effectiveVolumes"},
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1)
+		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
 			"USD": ledger.NewVolumesInt64(200, 50),
-		}, accounts[0].EffectiveVolumes)
+		}, accounts.Data[0].EffectiveVolumes)
 	})
 
 	t.Run("list with effective volumes using PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Match("address", "account:1"),
-			PIT:     &now,
-			Expand:  []string{"effectiveVolumes"},
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "account:1"),
+				PIT:     &now,
+				Expand:  []string{"effectiveVolumes"},
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1)
+		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
 			"USD": ledger.NewVolumesInt64(100, 0),
-		}, accounts[0].EffectiveVolumes)
+		}, accounts.Data[0].EffectiveVolumes)
 	})
 
 	t.Run("list using filter on address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Match("address", "account:"),
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Match("address", "account:"),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 3)
+		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on multiple address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Or(
-				query.Match("address", "account:1"),
-				query.Match("address", "orders:"),
-			),
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Or(
+					query.Match("address", "account:1"),
+					query.Match("address", "orders:"),
+				),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 3)
+		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on balances", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Lt("balance[USD]", 0),
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Lt("balance[USD]", 0),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1) // world
+		require.Len(t, accounts.Data, 1) // world
 
-		accounts, err = store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Gt("balance[USD]", 0),
+		accounts, err = store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Gt("balance[USD]", 0),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 2)
-		require.Equal(t, "account:1", accounts[0].Address)
-		require.Equal(t, "bank", accounts[1].Address)
+		require.Len(t, accounts.Data, 2)
+		require.Equal(t, "account:1", accounts.Data[0].Address)
+		require.Equal(t, "bank", accounts.Data[1].Address)
 	})
 	t.Run("list using filter on balances[USD] and PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Lt("balance[USD]", 0),
-			PIT:     &now,
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Lt("balance[USD]", 0),
+				PIT:     &now,
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1) // world
+		require.Len(t, accounts.Data, 1) // world
 	})
 	t.Run("list using filter on balances and PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Lt("balance", 0),
-			PIT:     &now,
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Lt("balance", 0),
+				PIT:     &now,
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 1) // world
+		require.Len(t, accounts.Data, 1) // world
 	})
 
 	t.Run("list using filter on exists metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Exists("metadata", "foo"),
+		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Exists("metadata", "foo"),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 2)
+		require.Len(t, accounts.Data, 2)
 
-		accounts, err = store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Exists("metadata", "category"),
+		accounts, err = store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Exists("metadata", "category"),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, accounts, 3)
+		require.Len(t, accounts.Data, 3)
 	})
 
 	t.Run("list using filter invalid field", func(t *testing.T) {
 		t.Parallel()
-		_, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Lt("invalid", 0),
+		_, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Lt("invalid", 0),
+			},
 		})
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrInvalidQuery{}))
@@ -233,11 +263,13 @@ func TestAccountsList(t *testing.T) {
 	t.Run("filter on first_usage", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.Accounts().List(ctx, ledgercontroller.ResourceQuery[any]{
-			Builder: query.Lte("first_usage", now),
+		ret, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
+			Options: ledgercontroller.ResourceQuery[any]{
+				Builder: query.Lte("first_usage", now),
+			},
 		})
 		require.NoError(t, err)
-		require.Len(t, ret, 2)
+		require.Len(t, ret.Data, 2)
 	})
 }
 

@@ -11,10 +11,6 @@ import (
 
 type accountsResourceHandler struct{}
 
-func (h accountsResourceHandler) aggregate(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
-	return selectQuery, nil
-}
-
 func (h accountsResourceHandler) filters() []filter {
 	return []filter{
 		{
@@ -59,15 +55,13 @@ func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandl
 	ret = ret.
 		ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 		Column("address", "address_array", "first_usage", "insertion_date", "updated_at").
-		Where("ledger = ?", store.ledger.Name).
-		Order("accounts.address")
+		Where("ledger = ?", store.ledger.Name)
 
 	if opts.PIT != nil && !opts.PIT.IsZero() {
 		ret = ret.Where("accounts.first_usage <= ?", opts.PIT)
 	}
 
 	if store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
-		// todo: take first value over revision order for metadata!
 		selectDistinctAccountMetadataHistories := store.db.NewSelect().
 			DistinctOn("accounts_address").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
@@ -136,6 +130,10 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 	}
 
 	panic("unreachable")
+}
+
+func (h accountsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+	return selectQuery, nil
 }
 
 func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {

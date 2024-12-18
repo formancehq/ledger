@@ -36,7 +36,8 @@ func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 	if query.Reverse {
 		order = originalOrder.Reverse()
 	}
-	sb = sb.OrderExpr(fmt.Sprintf("%s %s", paginationColumn, order))
+	orderExpression := fmt.Sprintf("%s %s", paginationColumn, order)
+	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
 	if query.PaginationID != nil {
 		if query.Reverse {

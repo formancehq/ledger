@@ -153,7 +153,7 @@ func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercont
 	panic("unreachable")
 }
 
-func (h transactionsResourceHandler) aggregate(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery, nil
 }
 

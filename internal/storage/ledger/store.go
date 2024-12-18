@@ -48,7 +48,10 @@ func (store *Store) Volumes() ledgercontroller.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
 	ledgercontroller.GetVolumesOptions,
 	ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
-	return newPaginatedResourceRepository(store, store.ledger, &volumesResourceHandler{}, offsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{})
+	return newPaginatedResourceRepository(store, store.ledger, &volumesResourceHandler{}, offsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
+		defaultPaginationColumn: "account",
+		defaultOrder:            bunpaginate.OrderAsc,
+	})
 }
 
 func (store *Store) AggregatedVolumes() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
@@ -79,7 +82,10 @@ func (store *Store) Accounts() ledgercontroller.PaginatedResource[
 	ledger.Account,
 	any,
 	ledgercontroller.OffsetPaginatedQuery[any]] {
-	return newPaginatedResourceRepository(store, store.ledger, &accountsResourceHandler{}, offsetPaginator[ledger.Account, any]{})
+	return newPaginatedResourceRepository(store, store.ledger, &accountsResourceHandler{}, offsetPaginator[ledger.Account, any]{
+		defaultPaginationColumn: "address",
+		defaultOrder:            bunpaginate.OrderAsc,
+	})
 }
 
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {

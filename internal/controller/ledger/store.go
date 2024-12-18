@@ -184,12 +184,16 @@ func (rq *ResourceQuery[Opts]) UnmarshalJSON(data []byte) error {
 type Resource[ResourceType, OptionsType any] interface {
 	GetOne(ctx context.Context, query ResourceQuery[OptionsType]) (*ResourceType, error)
 	Count(ctx context.Context, query ResourceQuery[OptionsType]) (int, error)
-	// todo: remove quickly
-	Query(q ResourceQuery[OptionsType], modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery) (*bun.SelectQuery, error)
 }
 
 type (
-	OffsetPaginatedQuery[OptionsType any] bunpaginate.OffsetPaginatedQuery[ResourceQuery[OptionsType]]
+	OffsetPaginatedQuery[OptionsType any] struct {
+		Column   string                     `json:"column"`
+		Offset   uint64                     `json:"offset"`
+		Order    *bunpaginate.Order         `json:"order"`
+		PageSize uint64                     `json:"pageSize"`
+		Options  ResourceQuery[OptionsType] `json:"filters"`
+	}
 	ColumnPaginatedQuery[OptionsType any] struct {
 		PageSize     uint64   `json:"pageSize"`
 		Bottom       *big.Int `json:"bottom"`
@@ -209,11 +213,6 @@ type (
 type PaginatedResource[ResourceType, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]] interface {
 	Resource[ResourceType, OptionsType]
 	Paginate(ctx context.Context, paginationOptions PaginationQueryType) (*bunpaginate.Cursor[ResourceType], error)
-	List(
-		ctx context.Context,
-		query ResourceQuery[OptionsType],
-		modifiers ...func(selectQuery *bun.SelectQuery) *bun.SelectQuery,
-	) ([]ResourceType, error)
 }
 
 // numscript rewrite implementation

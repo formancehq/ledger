@@ -1,15 +1,28 @@
 package ledger
 
 import (
+	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
 )
 
-type offsetPaginator[ResourceType, OptionsType any] struct{}
+type offsetPaginator[ResourceType, OptionsType any] struct {
+	defaultPaginationColumn string
+	defaultOrder            bunpaginate.Order
+}
 
 //nolint:unused
 func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) *bun.SelectQuery {
+
+	paginationColumn := o.defaultPaginationColumn
+	originalOrder := o.defaultOrder
+	if query.Order != nil {
+		originalOrder = *query.Order
+	}
+
+	orderExpression := fmt.Sprintf("%s %s", paginationColumn, originalOrder)
+	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
 	if query.Offset > 0 {
 		sb = sb.Offset(int(query.Offset))

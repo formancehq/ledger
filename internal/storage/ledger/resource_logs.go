@@ -38,7 +38,7 @@ func (h logsResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[a
 	return nil, nil, errors.New("no expand supported")
 }
 
-func (h logsResourceHandler) aggregate(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h logsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery, nil
 }
 
