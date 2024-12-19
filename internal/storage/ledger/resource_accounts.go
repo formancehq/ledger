@@ -148,14 +148,14 @@ func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.Reso
 		}
 	}
 
-	selectRowsQuery := store.db.NewSelect()
-	if opts.PIT != nil && !opts.PIT.IsZero() {
+	selectRowsQuery := store.db.NewSelect().
+		Where("accounts_address in (select address from dataset)")
+	if opts.UsePIT() {
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
 			Column("accounts_address", "asset").
-			Where("ledger = ?", store.ledger.Name).
-			Where("accounts_address in (select address from dataset)")
+			Where("ledger = ?", store.ledger.Name)
 		if property == "volumes" {
 			selectRowsQuery = selectRowsQuery.
 				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as volumes").

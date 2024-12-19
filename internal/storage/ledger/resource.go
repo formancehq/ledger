@@ -294,6 +294,7 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 	if err != nil {
 		return nil, err
 	}
+	finalQuery = finalQuery.Order("row_number")
 
 	ret := make([]ResourceType, 0)
 	//fmt.Println(finalQuery.Model(&ret).String())
