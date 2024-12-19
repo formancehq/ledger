@@ -8,7 +8,6 @@ pre-commit: tidy lint generate export-docs-events earthly
 earthly:
   @earthly --no-output +pre-commit
 
-[group('lint')]
 lint:
   @golangci-lint run --fix --build-tags it --timeout 5m
   @cd {{justfile_directory()}}/tools/generator && golangci-lint run --fix --build-tags it --timeout 5m
