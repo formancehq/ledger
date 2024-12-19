@@ -18,8 +18,8 @@ import (
 const MinimalSchemaVersion = 12
 
 type DefaultBucket struct {
-	name string
-	db   *bun.DB
+	name   string
+	db     *bun.DB
 	tracer trace.Tracer
 }
 
@@ -81,8 +81,8 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 
 func NewDefault(db *bun.DB, tracer trace.Tracer, name string) *DefaultBucket {
 	return &DefaultBucket{
-		db:   db,
-		name: name,
+		db:     db,
+		name:   name,
 		tracer: tracer,
 	}
 }
