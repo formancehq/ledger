@@ -166,7 +166,7 @@ func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.Reso
 				Where("effective_date <= ?", opts.PIT)
 		}
 	} else {
-		selectRowsQuery = store.db.NewSelect().
+		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes").
