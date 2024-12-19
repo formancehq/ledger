@@ -3,12 +3,6 @@ PROJECT FormanceHQ/ledger
 
 IMPORT github.com/formancehq/earthly:tags/v0.19.0 AS core
 
-FROM core+base-image
-
-CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
-CACHE --sharing=shared --id golangci-cache /root/.cache/golangci-lint
-CACHE --sharing=shared --id go-cache /root/.cache/go-build
-
 postgres:
     FROM postgres:15-alpine
 
@@ -26,27 +20,8 @@ sources:
     COPY main.go .
     SAVE ARTIFACT /src
 
-generate:
-    FROM core+builder-image
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    RUN apk update && apk add openjdk11
-    RUN go install go.uber.org/mock/mockgen@v0.4.0
-    RUN go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
-    COPY (+tidy/*) /src/
-    COPY --dir (+sources/src/*) /src/
-
-    WORKDIR /src
-    RUN go generate ./...
-    SAVE ARTIFACT internal AS LOCAL internal
-    SAVE ARTIFACT pkg AS LOCAL pkg
-    SAVE ARTIFACT cmd AS LOCAL cmd
-
 compile:
-    FROM +sources
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    WORKDIR /src
+    LOCALLY
     ARG VERSION=latest
     RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
         -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
@@ -62,50 +37,6 @@ build-image:
     ARG tag=latest
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
-tests:
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-    RUN apk add gcc musl-dev
-
-    COPY --dir --pass-args (+generate/*) .
-
-    ARG includeIntegrationTests="true"
-    ARG coverage=""
-    ARG debug=false
-    ARG additionalArgs=""
-
-    ENV DEBUG=$debug
-    ENV CGO_ENABLED=1 # required for -race
-
-    LET goFlags="-race"
-    IF [ "$coverage" = "true" ]
-        SET goFlags="$goFlags -covermode=atomic"
-        SET goFlags="$goFlags -coverpkg=github.com/formancehq/ledger/internal/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/events/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/accounts/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/assets/..."
-        SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
-        SET goFlags="$goFlags -coverprofile coverage.txt"
-    END
-
-    IF [ "$includeIntegrationTests" = "true" ]
-        SET goFlags="$goFlags -tags it"
-        WITH DOCKER --load=postgres:15-alpine=+postgres
-            RUN go test $goFlags $additionalArgs ./...
-        END
-    ELSE
-        RUN go test $goFlags $additionalArgs ./...
-    END
-    IF [ "$coverage" = "true" ]
-        # as special case, exclude files suffixed by debug.go
-        # toremovelater: exclude machine code as it will be updated soon
-        RUN cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
-        RUN mv coverage2.txt coverage.txt
-        SAVE ARTIFACT coverage.txt AS LOCAL coverage.txt
-    END
-
 deploy:
     COPY (+sources/*) /src
     LET tag=$(tar cf - /src | sha1sum | awk '{print $1}')
@@ -118,32 +49,10 @@ deploy:
 deploy-staging:
     BUILD --pass-args core+deploy-staging
 
-lint:
-    #todo: get config from core
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    CACHE --id golangci-cache /root/.cache/golangci-lint
-
-    RUN golangci-lint run --fix --build-tags it --timeout 5m
-
-    SAVE ARTIFACT cmd AS LOCAL cmd
-    SAVE ARTIFACT internal AS LOCAL internal
-    SAVE ARTIFACT pkg AS LOCAL pkg
-    SAVE ARTIFACT test AS LOCAL test
-    SAVE ARTIFACT main.go AS LOCAL main.go
-
 pre-commit:
-    BUILD +tidy
-    BUILD +lint
     BUILD +openapi
     BUILD +openapi-markdown
-    BUILD +generate
     BUILD +generate-client
-    BUILD +export-docs-events
-
-    BUILD ./tools/*+pre-commit
-    BUILD ./deployments/*+pre-commit
 
 openapi:
     FROM node:20-alpine
@@ -161,23 +70,6 @@ openapi-markdown:
     COPY openapi/v2.yaml openapi.yaml
     RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
     SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
-
-tidy:
-    FROM +sources
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    WORKDIR /src
-    COPY --dir test .
-    RUN go mod tidy
-
-    SAVE ARTIFACT go.mod AS LOCAL go.mod
-    SAVE ARTIFACT go.sum AS LOCAL go.sum
-
-release:
-    FROM core+builder-image
-    ARG mode=local
-    COPY --dir . /src
-    DO core+GORELEASER --mode=$mode
 
 generate-client:
     FROM node:20-alpine
@@ -215,12 +107,3 @@ export-database-schema:
     END
     SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
     SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
-
-export-docs-events:
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-
-    RUN go run . docs events --write-dir docs/events
-
-    SAVE ARTIFACT docs/events AS LOCAL docs/events
