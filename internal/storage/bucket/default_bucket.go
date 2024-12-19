@@ -121,12 +121,6 @@ var ledgerSetups = []ledgerSetup{
 		requireFeatures: features.FeatureSet{
 			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
 		},
-		script: `create index "pcev_{{.ID}}" on "{{.Bucket}}".moves (accounts_address, asset, effective_date desc) where ledger = '{{.Name}}';`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
-		},
 		script: `
 		create trigger "set_effective_volumes_{{.ID}}"
 		before insert
@@ -230,22 +224,6 @@ var ledgerSetups = []ledgerSetup{
 	},
 	{
 		requireFeatures: features.FeatureSet{
-			features.FeatureIndexTransactionAccounts: "SYNC",
-		},
-		script: `
-		create index "transactions_sources_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources jsonb_path_ops) where ledger = '{{.Name}}';
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexTransactionAccounts: "ON",
-		},
-		script: `
-		create index "transactions_destinations_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations jsonb_path_ops) where ledger = '{{.Name}}';
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
 			features.FeatureIndexTransactionAccounts: "ON",
 		},
 		script: `
@@ -264,22 +242,6 @@ var ledgerSetups = []ledgerSetup{
 			features.FeatureIndexAddressSegments: "ON",
 		},
 		script: `
-		create index "accounts_address_array_{{.ID}}" on "{{.Bucket}}".accounts using gin (address_array jsonb_ops) where ledger = '{{.Name}}';
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments: "ON",
-		},
-		script: `
-		create index "accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".accounts (jsonb_array_length(address_array)) where ledger = '{{.Name}}';
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments: "ON",
-		},
-		script: `
 		create trigger "accounts_set_address_array_{{.ID}}"
 		before insert
 		on "{{.Bucket}}"."accounts"
@@ -288,24 +250,6 @@ var ledgerSetups = []ledgerSetup{
 			new.ledger = '{{.Name}}'
 		)
 		execute procedure "{{.Bucket}}".set_address_array_for_account();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments:     "ON",
-			features.FeatureIndexTransactionAccounts: "ON",
-		},
-		script: `
-		create index "transactions_sources_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources_arrays jsonb_path_ops) where ledger = '{{.Name}}';
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments:     "ON",
-			features.FeatureIndexTransactionAccounts: "ON",
-		},
-		script: `
-		create index "transactions_destinations_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations_arrays jsonb_path_ops) where ledger = '{{.Name}}';
 		`,
 	},
 	{
