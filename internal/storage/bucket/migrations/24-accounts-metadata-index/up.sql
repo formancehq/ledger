@@ -1,0 +1,1 @@
+create index concurrently accounts_metadata_idx on "{{.Schema}}".accounts using gin(metadata JSONB_PATH_OPS);
