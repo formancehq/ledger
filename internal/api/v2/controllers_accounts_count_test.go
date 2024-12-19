@@ -26,7 +26,7 @@ func TestAccountsCount(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		expectQuery       ledgercontroller.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		returnErr         error
@@ -37,82 +37,51 @@ func TestAccountsCount(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name:              "using metadata",
 			body:              `{"$match": { "metadata[roles]": "admin" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin")).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("metadata[roles]", "admin"),
+				Expand:  make([]string, 0),
+			},
 		},
 		{
 			name:              "using address",
 			body:              `{"$match": { "address": "foo" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("address", "foo")).
-				WithPageSize(DefaultPageSize),
-		},
-		{
-			name: "invalid page size",
-			queryParams: url.Values{
-				"pageSize": []string{"nan"},
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("address", "foo"),
+				Expand:  make([]string, 0),
 			},
-			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: common.ErrValidation,
-		},
-		{
-			name:              "page size over maximum",
-			expectBackendCall: true,
-			queryParams: url.Values{
-				"pageSize": []string{"1000000"},
-			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithPageSize(MaxPageSize),
 		},
 		{
 			name:              "using balance filter",
 			body:              `{"$lt": { "balance[USD/2]": 100 }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Lt("balance[USD/2]", float64(100))).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Lt("balance[USD/2]", float64(100)),
+				Expand:  make([]string, 0),
+			},
 		},
 		{
 			name:              "using exists filter",
 			body:              `{"$exists": { "metadata": "foo" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Exists("metadata", "foo")).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Exists("metadata", "foo"),
+				Expand:  make([]string, 0),
+			},
 		},
 		{
 			name:              "using invalid query payload",
@@ -126,12 +95,10 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 		},
 		{
 			name:              "with missing feature",
@@ -139,12 +106,10 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 		},
 		{
 			name:              "with unexpected error",
@@ -152,12 +117,10 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: api.ErrorInternal,
 			expectBackendCall: true,
 			returnErr:         errors.New("undefined error"),
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithPageSize(DefaultPageSize),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -171,7 +134,7 @@ func TestAccountsCount(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectBackendCall {
 				ledgerController.EXPECT().
-					CountAccounts(gomock.Any(), ledgercontroller.NewListAccountsQuery(testCase.expectQuery)).
+					CountAccounts(gomock.Any(), testCase.expectQuery).
 					Return(10, testCase.returnErr)
 			}
 

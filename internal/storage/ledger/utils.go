@@ -21,17 +21,9 @@ func isSegmentedAddress(address string) bool {
 
 func filterAccountAddress(address, key string) string {
 	parts := make([]string, 0)
-	src := strings.Split(address, ":")
 
-	needSegmentCheck := false
-	for _, segment := range src {
-		needSegmentCheck = segment == ""
-		if needSegmentCheck {
-			break
-		}
-	}
-
-	if needSegmentCheck {
+	if isPartialAddress(address) {
+		src := strings.Split(address, ":")
 		parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = %d", key, len(src)))
 
 		for i, segment := range src {
@@ -45,4 +37,17 @@ func filterAccountAddress(address, key string) string {
 	}
 
 	return strings.Join(parts, " and ")
+}
+
+func isPartialAddress[V any](address V) bool {
+	switch address := any(address).(type) {
+	case string:
+		for _, segment := range strings.Split(address, ":") {
+			if segment == "" {
+				return true
+			}
+		}
+	}
+
+	return false
 }

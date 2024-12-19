@@ -4,6 +4,7 @@ package legacy_test
 
 import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -33,20 +34,20 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.GetLogs(ctx, ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil)))
+	cursor, err := store.GetLogs(ctx, ledgerstore.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil)))
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, cursor.Data[0].ID)
 
-	cursor, err = store.GetLogs(ctx, ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
+	cursor, err = store.GetLogs(ctx, ledgerstore.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, cursor.Data[0].ID)
 
-	cursor, err = store.GetLogs(ctx, ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).
+	cursor, err = store.GetLogs(ctx, ledgerstore.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).
 		WithQueryBuilder(query.And(
 			query.Gte("date", now.Add(-2*time.Hour)),
 			query.Lt("date", now.Add(-time.Hour)),

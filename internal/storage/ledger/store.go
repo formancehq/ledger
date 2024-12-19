@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/metric"
@@ -25,43 +27,80 @@ type Store struct {
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
-	listAccountsHistogram              metric.Int64Histogram
 	checkBucketSchemaHistogram         metric.Int64Histogram
 	checkLedgerSchemaHistogram         metric.Int64Histogram
-	getAccountHistogram                metric.Int64Histogram
-	countAccountsHistogram             metric.Int64Histogram
 	updateAccountsMetadataHistogram    metric.Int64Histogram
-	deleteAccountMetadataHistogram metric.Int64Histogram
-	upsertAccountsHistogram        metric.Int64Histogram
-	getBalancesHistogram           metric.Int64Histogram
+	deleteAccountMetadataHistogram     metric.Int64Histogram
+	upsertAccountsHistogram            metric.Int64Histogram
+	getBalancesHistogram               metric.Int64Histogram
 	insertLogHistogram                 metric.Int64Histogram
-	listLogsHistogram                  metric.Int64Histogram
 	readLogWithIdempotencyKeyHistogram metric.Int64Histogram
 	insertMovesHistogram               metric.Int64Histogram
-	countTransactionsHistogram         metric.Int64Histogram
-	getTransactionHistogram            metric.Int64Histogram
 	insertTransactionHistogram         metric.Int64Histogram
 	revertTransactionHistogram         metric.Int64Histogram
 	updateTransactionMetadataHistogram metric.Int64Histogram
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	updateBalancesHistogram            metric.Int64Histogram
 	getVolumesWithBalancesHistogram    metric.Int64Histogram
-	listTransactionsHistogram          metric.Int64Histogram
 }
 
-func (s *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
-	tx, err := s.db.BeginTx(ctx, options)
+func (store *Store) Volumes() ledgercontroller.PaginatedResource[
+	ledger.VolumesWithBalanceByAssetByAccount,
+	ledgercontroller.GetVolumesOptions,
+	ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
+	return newPaginatedResourceRepository(store, store.ledger, &volumesResourceHandler{}, offsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
+		defaultPaginationColumn: "account",
+		defaultOrder:            bunpaginate.OrderAsc,
+	})
+}
+
+func (store *Store) AggregatedVolumes() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
+	return newResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](store, store.ledger, &aggregatedBalancesResourceRepositoryHandler{})
+}
+
+func (store *Store) Transactions() ledgercontroller.PaginatedResource[
+	ledger.Transaction,
+	any,
+	ledgercontroller.ColumnPaginatedQuery[any]] {
+	return newPaginatedResourceRepository(store, store.ledger, &transactionsResourceHandler{}, columnPaginator[ledger.Transaction, any]{
+		defaultPaginationColumn: "id",
+		defaultOrder:            bunpaginate.OrderDesc,
+	})
+}
+
+func (store *Store) Logs() ledgercontroller.PaginatedResource[
+	ledger.Log,
+	any,
+	ledgercontroller.ColumnPaginatedQuery[any]] {
+	return newPaginatedResourceRepositoryMapper[ledger.Log, Log, any, ledgercontroller.ColumnPaginatedQuery[any]](store, store.ledger, &logsResourceHandler{}, columnPaginator[Log, any]{
+		defaultPaginationColumn: "id",
+		defaultOrder:            bunpaginate.OrderDesc,
+	})
+}
+
+func (store *Store) Accounts() ledgercontroller.PaginatedResource[
+	ledger.Account,
+	any,
+	ledgercontroller.OffsetPaginatedQuery[any]] {
+	return newPaginatedResourceRepository(store, store.ledger, &accountsResourceHandler{}, offsetPaginator[ledger.Account, any]{
+		defaultPaginationColumn: "address",
+		defaultOrder:            bunpaginate.OrderAsc,
+	})
+}
+
+func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
+	tx, err := store.db.BeginTx(ctx, options)
 	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}
-	cp := *s
+	cp := *store
 	cp.db = tx
 
 	return &cp, nil
 }
 
-func (s *Store) Commit() error {
-	switch db := s.db.(type) {
+func (store *Store) Commit() error {
+	switch db := store.db.(type) {
 	case bun.Tx:
 		return db.Commit()
 	default:
@@ -69,8 +108,8 @@ func (s *Store) Commit() error {
 	}
 }
 
-func (s *Store) Rollback() error {
-	switch db := s.db.(type) {
+func (store *Store) Rollback() error {
+	switch db := store.db.(type) {
 	case bun.Tx:
 		return db.Rollback()
 	default:
@@ -78,44 +117,44 @@ func (s *Store) Rollback() error {
 	}
 }
 
-func (s *Store) GetLedger() ledger.Ledger {
-	return s.ledger
+func (store *Store) GetLedger() ledger.Ledger {
+	return store.ledger
 }
 
-func (s *Store) GetDB() bun.IDB {
-	return s.db
+func (store *Store) GetDB() bun.IDB {
+	return store.db
 }
 
-func (s *Store) GetBucket() bucket.Bucket {
-	return s.bucket
+func (store *Store) GetBucket() bucket.Bucket {
+	return store.bucket
 }
 
-func (s *Store) GetPrefixedRelationName(v string) string {
-	return fmt.Sprintf(`"%s".%s`, s.ledger.Bucket, v)
+func (store *Store) GetPrefixedRelationName(v string) string {
+	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
 }
 
-func (s *Store) validateAddressFilter(operator string, value any) error {
+func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {
 	if operator != "$match" {
-		return errors.New("'address' column can only be used with $match")
+		return fmt.Errorf("'address' column can only be used with $match, operator used is: %s", operator)
 	}
 	if value, ok := value.(string); !ok {
 		return fmt.Errorf("invalid 'address' filter")
-	} else if isSegmentedAddress(value) && !s.ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
+	} else if isSegmentedAddress(value) && !ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
 		return fmt.Errorf("feature %s must be 'ON' to use segments address", features.FeatureIndexAddressSegments)
 	}
 
 	return nil
 }
 
-func (s *Store) LockLedger(ctx context.Context) error {
-	_, err := s.db.NewRaw(`lock table ` + s.GetPrefixedRelationName("logs")).Exec(ctx)
+func (store *Store) LockLedger(ctx context.Context) error {
+	_, err := store.db.NewRaw(`lock table ` + store.GetPrefixedRelationName("logs")).Exec(ctx)
 	return postgres.ResolveError(err)
 }
 
-func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option) *Store {
+func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
 		db:     db,
-		ledger: ledger,
+		ledger: l,
 		bucket: bucket,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
@@ -123,27 +162,12 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 	}
 
 	var err error
-	ret.listAccountsHistogram, err = ret.meter.Int64Histogram("store.listAccounts")
-	if err != nil {
-		panic(err)
-	}
-
 	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.checkBucketSchema")
 	if err != nil {
 		panic(err)
 	}
 
 	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.checkLedgerSchema")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.getAccountHistogram, err = ret.meter.Int64Histogram("store.getAccount")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.countAccountsHistogram, err = ret.meter.Int64Histogram("store.countAccounts")
 	if err != nil {
 		panic(err)
 	}
@@ -173,27 +197,12 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 		panic(err)
 	}
 
-	ret.listLogsHistogram, err = ret.meter.Int64Histogram("store.listLogs")
-	if err != nil {
-		panic(err)
-	}
-
 	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.readLogWithIdempotencyKey")
 	if err != nil {
 		panic(err)
 	}
 
 	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insertMoves")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.countTransactionsHistogram, err = ret.meter.Int64Histogram("store.countTransactions")
-	if err != nil {
-		panic(err)
-	}
-
-	ret.getTransactionHistogram, err = ret.meter.Int64Histogram("store.getTransaction")
 	if err != nil {
 		panic(err)
 	}
@@ -228,24 +237,19 @@ func New(db bun.IDB, bucket bucket.Bucket, ledger ledger.Ledger, opts ...Option)
 		panic(err)
 	}
 
-	ret.listTransactionsHistogram, err = ret.meter.Int64Histogram("store.listTransactions")
-	if err != nil {
-		panic(err)
-	}
-
 	return ret
 }
 
-func (s *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
-	return s.bucket.HasMinimalVersion(ctx)
+func (store *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
+	return store.bucket.HasMinimalVersion(ctx)
 }
 
-func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return s.bucket.GetMigrationsInfo(ctx)
+func (store *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
+	return store.bucket.GetMigrationsInfo(ctx)
 }
 
-func (s *Store) WithDB(db bun.IDB) *Store {
-	ret := *s
+func (store *Store) WithDB(db bun.IDB) *Store {
+	ret := *store
 	ret.db = db
 
 	return &ret

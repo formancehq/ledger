@@ -11,7 +11,6 @@ import (
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
@@ -53,136 +52,16 @@ type Store interface {
 	LockLedger(ctx context.Context) error
 
 	GetDB() bun.IDB
-	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 	ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error)
 
-	ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error)
-	CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error)
-	GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error)
-	CountAccounts(ctx context.Context, a ListAccountsQuery) (int, error)
-	ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error)
-	GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error)
-	GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
-	GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
-}
 
-type ListTransactionsQuery bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
-
-func (q ListTransactionsQuery) WithColumn(column string) ListTransactionsQuery {
-	ret := pointer.For((bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(q))
-	ret = ret.WithColumn(column)
-
-	return ListTransactionsQuery(*ret)
-}
-
-func NewListTransactionsQuery(options PaginatedQueryOptions[PITFilterWithVolumes]) ListTransactionsQuery {
-	return ListTransactionsQuery{
-		PageSize: options.PageSize,
-		Column:   "id",
-		Order:    bunpaginate.OrderDesc,
-		Options:  options,
-	}
-}
-
-type GetTransactionQuery struct {
-	PITFilterWithVolumes
-	ID int
-}
-
-func (q GetTransactionQuery) WithExpandVolumes() GetTransactionQuery {
-	q.ExpandVolumes = true
-
-	return q
-}
-
-func (q GetTransactionQuery) WithExpandEffectiveVolumes() GetTransactionQuery {
-	q.ExpandEffectiveVolumes = true
-
-	return q
-}
-
-func NewGetTransactionQuery(id int) GetTransactionQuery {
-	return GetTransactionQuery{
-		PITFilterWithVolumes: PITFilterWithVolumes{},
-		ID:                   id,
-	}
-}
-
-type ListAccountsQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
-
-func (q ListAccountsQuery) WithExpandVolumes() ListAccountsQuery {
-	q.Options.Options.ExpandVolumes = true
-
-	return q
-}
-
-func (q ListAccountsQuery) WithExpandEffectiveVolumes() ListAccountsQuery {
-	q.Options.Options.ExpandEffectiveVolumes = true
-
-	return q
-}
-
-func NewListAccountsQuery(opts PaginatedQueryOptions[PITFilterWithVolumes]) ListAccountsQuery {
-	return ListAccountsQuery{
-		PageSize: opts.PageSize,
-		Order:    bunpaginate.OrderAsc,
-		Options:  opts,
-	}
-}
-
-type GetAccountQuery struct {
-	PITFilterWithVolumes
-	Addr string
-}
-
-func (q GetAccountQuery) WithPIT(pit time.Time) GetAccountQuery {
-	q.PIT = &pit
-
-	return q
-}
-
-func (q GetAccountQuery) WithExpandVolumes() GetAccountQuery {
-	q.ExpandVolumes = true
-
-	return q
-}
-
-func (q GetAccountQuery) WithExpandEffectiveVolumes() GetAccountQuery {
-	q.ExpandEffectiveVolumes = true
-
-	return q
-}
-
-func NewGetAccountQuery(addr string) GetAccountQuery {
-	return GetAccountQuery{
-		Addr: addr,
-	}
-}
-
-type GetAggregatedBalanceQuery struct {
-	PITFilter
-	QueryBuilder     query.Builder
-	UseInsertionDate bool
-}
-
-func NewGetAggregatedBalancesQuery(filter PITFilter, qb query.Builder, useInsertionDate bool) GetAggregatedBalanceQuery {
-	return GetAggregatedBalanceQuery{
-		PITFilter:        filter,
-		QueryBuilder:     qb,
-		UseInsertionDate: useInsertionDate,
-	}
-}
-
-type GetVolumesWithBalancesQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[FiltersForVolumes]]
-
-func NewGetVolumesWithBalancesQuery(opts PaginatedQueryOptions[FiltersForVolumes]) GetVolumesWithBalancesQuery {
-	return GetVolumesWithBalancesQuery{
-		PageSize: opts.PageSize,
-		Order:    bunpaginate.OrderAsc,
-		Options:  opts,
-	}
+	Accounts() PaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]]
+	Logs() PaginatedResource[ledger.Log, any, ColumnPaginatedQuery[any]]
+	Transactions() PaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]]
+	AggregatedBalances() Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions]
+	Volumes() PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, OffsetPaginatedQuery[GetVolumesOptions]]
 }
 
 type PaginatedQueryOptions[T any] struct {
@@ -237,45 +116,14 @@ func NewPaginatedQueryOptions[T any](options T) PaginatedQueryOptions[T] {
 	}
 }
 
-type PITFilter struct {
-	PIT *time.Time `json:"pit"`
-	OOT *time.Time `json:"oot"`
-}
-
-type PITFilterWithVolumes struct {
-	PITFilter
-	ExpandVolumes          bool `json:"volumes"`
-	ExpandEffectiveVolumes bool `json:"effectiveVolumes"`
-}
-
-type FiltersForVolumes struct {
-	PITFilter
-	UseInsertionDate bool
-	GroupLvl         int
-}
-
-type GetLogsQuery bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]]
-
-func (q GetLogsQuery) WithOrder(order bunpaginate.Order) GetLogsQuery {
-	q.Order = order
-	return q
-}
-
-func NewListLogsQuery(options PaginatedQueryOptions[any]) GetLogsQuery {
-	return GetLogsQuery{
-		PageSize: options.PageSize,
-		Column:   "id",
-		Order:    bunpaginate.OrderDesc,
-		Options:  options,
-	}
-}
-
 type vmStoreAdapter struct {
 	Store
 }
 
 func (v *vmStoreAdapter) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
-	account, err := v.Store.GetAccount(ctx, NewGetAccountQuery(address))
+	account, err := v.Store.Accounts().GetOne(ctx, ResourceQuery[any]{
+		Builder: query.Match("address", address),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -296,6 +144,75 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 	return ListLedgersQuery{
 		PageSize: pageSize,
 	}
+}
+
+type ResourceQuery[Opts any] struct {
+	PIT     *time.Time    `json:"pit"`
+	OOT     *time.Time    `json:"oot"`
+	Builder query.Builder `json:"qb"`
+	Expand  []string      `json:"expand,omitempty"`
+	Opts    Opts          `json:"opts"`
+}
+
+func (rq ResourceQuery[Opts]) UsePIT() bool {
+	return rq.PIT != nil && !rq.PIT.IsZero()
+}
+
+func (rq ResourceQuery[Opts]) UseOOT() bool {
+	return rq.OOT != nil && !rq.OOT.IsZero()
+}
+
+func (rq *ResourceQuery[Opts]) UnmarshalJSON(data []byte) error {
+	type rawResourceQuery ResourceQuery[Opts]
+	type aux struct {
+		rawResourceQuery
+		Builder json.RawMessage `json:"qb"`
+	}
+	x := aux{}
+	if err := json.Unmarshal(data, &x); err != nil {
+		return err
+	}
+
+	var err error
+	*rq = ResourceQuery[Opts](x.rawResourceQuery)
+	rq.Builder, err = query.ParseJSON(string(x.Builder))
+
+	return err
+}
+
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . Resource
+type Resource[ResourceType, OptionsType any] interface {
+	GetOne(ctx context.Context, query ResourceQuery[OptionsType]) (*ResourceType, error)
+	Count(ctx context.Context, query ResourceQuery[OptionsType]) (int, error)
+}
+
+type (
+	OffsetPaginatedQuery[OptionsType any] struct {
+		Column   string                     `json:"column"`
+		Offset   uint64                     `json:"offset"`
+		Order    *bunpaginate.Order         `json:"order"`
+		PageSize uint64                     `json:"pageSize"`
+		Options  ResourceQuery[OptionsType] `json:"filters"`
+	}
+	ColumnPaginatedQuery[OptionsType any] struct {
+		PageSize     uint64   `json:"pageSize"`
+		Bottom       *big.Int `json:"bottom"`
+		Column       string   `json:"column"`
+		PaginationID *big.Int `json:"paginationID"`
+		// todo: backport in go-libs
+		Order   *bunpaginate.Order         `json:"order"`
+		Options ResourceQuery[OptionsType] `json:"filters"`
+		Reverse bool                       `json:"reverse"`
+	}
+	PaginatedQuery[OptionsType any] interface {
+		OffsetPaginatedQuery[OptionsType] | ColumnPaginatedQuery[OptionsType]
+	}
+)
+
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . PaginatedResource
+type PaginatedResource[ResourceType, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]] interface {
+	Resource[ResourceType, OptionsType]
+	Paginate(ctx context.Context, paginationOptions PaginationQueryType) (*bunpaginate.Cursor[ResourceType], error)
 }
 
 // numscript rewrite implementation
@@ -326,8 +243,8 @@ func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q num
 
 	// we ignore the needed metadata values and just return all of them
 	for address := range q {
-		v, err := s.Store.GetAccount(ctx, GetAccountQuery{
-			Addr: address,
+		v, err := s.Store.Accounts().GetOne(ctx, ResourceQuery[any]{
+			Builder: query.Match("address", address),
 		})
 		if err != nil {
 			return nil, err
@@ -336,4 +253,13 @@ func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q num
 	}
 
 	return m, nil
+}
+
+type GetAggregatedVolumesOptions struct {
+	UseInsertionDate bool `json:"useInsertionDate"`
+}
+
+type GetVolumesOptions struct {
+	UseInsertionDate bool `json:"useInsertionDate"`
+	GroupLvl         int  `json:"groupLvl"`
 }

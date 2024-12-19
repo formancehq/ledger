@@ -28,7 +28,7 @@ func TestBalancesAggregates(t *testing.T) {
 		name        string
 		queryParams url.Values
 		body        string
-		expectQuery ledgercontroller.GetAggregatedBalanceQuery
+		expectQuery ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
 	}
 
 	now := time.Now()
@@ -36,30 +36,30 @@ func TestBalancesAggregates(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
-				},
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts:   ledgercontroller.GetAggregatedVolumesOptions{},
+				PIT:    &now,
+				Expand: make([]string, 0),
 			},
 		},
 		{
 			name: "using address",
 			body: `{"$match": {"address": "foo"}}`,
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
-				},
-				QueryBuilder: query.Match("address", "foo"),
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts:    ledgercontroller.GetAggregatedVolumesOptions{},
+				PIT:     &now,
+				Builder: query.Match("address", "foo"),
+				Expand:  make([]string, 0),
 			},
 		},
 		{
 			name: "using exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
-				},
-				QueryBuilder: query.Exists("metadata", "foo"),
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts:    ledgercontroller.GetAggregatedVolumesOptions{},
+				PIT:     &now,
+				Builder: query.Exists("metadata", "foo"),
+				Expand:  make([]string, 0),
 			},
 		},
 		{
@@ -67,10 +67,10 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"pit": []string{now.Format(time.RFC3339Nano)},
 			},
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
-				},
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts:   ledgercontroller.GetAggregatedVolumesOptions{},
+				PIT:    &now,
+				Expand: make([]string, 0),
 			},
 		},
 		{
@@ -79,11 +79,12 @@ func TestBalancesAggregates(t *testing.T) {
 				"pit":              []string{now.Format(time.RFC3339Nano)},
 				"useInsertionDate": []string{"true"},
 			},
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts: ledgercontroller.GetAggregatedVolumesOptions{
+					UseInsertionDate: true,
 				},
-				UseInsertionDate: true,
+				PIT:    &now,
+				Expand: make([]string, 0),
 			},
 		},
 	}
