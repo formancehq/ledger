@@ -39,7 +39,7 @@ func (h logsResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[a
 }
 
 func (h logsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
-	return selectQuery, nil
+	return selectQuery.ColumnExpr("*"), nil
 }
 
 var _ repositoryHandler[any] = logsResourceHandler{}

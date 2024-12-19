@@ -181,15 +181,9 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q l
 	return r.resourceHandler.project(r.store, q, dataset)
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) query(q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
-
-	filteredDatasetQuery, err := r.buildFilteredDataset(q)
-	if err != nil {
-		return nil, err
-	}
-
-	filteredDatasetQuery = r.store.db.NewSelect().
-		With("dataset", filteredDatasetQuery).
+func (r *resourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
+	dataset = r.store.db.NewSelect().
+		With("dataset", dataset).
 		ModelTableExpr("dataset").
 		ColumnExpr("*")
 
@@ -206,7 +200,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) query(q ledgercontroller
 		}
 
 		expandCTEName := fmt.Sprintf("expand%d", i)
-		filteredDatasetQuery = filteredDatasetQuery.
+		dataset = dataset.
 			With(expandCTEName, selectQuery).
 			Join(fmt.Sprintf(
 				"left join %s on %s.%s = dataset.%s",
@@ -217,14 +211,21 @@ func (r *resourceRepository[ResourceType, OptionsType]) query(q ledgercontroller
 			))
 	}
 
-	return filteredDatasetQuery, nil
+	return dataset, nil
 }
 
 func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (*ResourceType, error) {
-	finalQuery, err := r.query(query)
+
+	finalQuery, err := r.buildFilteredDataset(query)
 	if err != nil {
 		return nil, err
 	}
+
+	finalQuery, err = r.expand(finalQuery, query)
+	if err != nil {
+		return nil, err
+	}
+
 	ret := make([]ResourceType, 0)
 	if err := finalQuery.
 		Model(&ret).
@@ -282,16 +283,21 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 		panic("should not happen")
 	}
 
-	finalQuery, err := r.query(resourceQuery)
+	finalQuery, err := r.buildFilteredDataset(resourceQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery = r.paginator.paginate(finalQuery, paginationOptions)
+
+	finalQuery, err = r.expand(finalQuery, resourceQuery)
 	if err != nil {
 		return nil, err
 	}
 
 	ret := make([]ResourceType, 0)
-	err = r.paginator.
-		paginate(finalQuery, paginationOptions).
-		Model(&ret).
-		Scan(ctx)
+	//fmt.Println(finalQuery.Model(&ret).String())
+	err = finalQuery.Model(&ret).Scan(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -154,7 +154,7 @@ func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercont
 }
 
 func (h transactionsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
-	return selectQuery, nil
+	return selectQuery.ColumnExpr("*"), nil
 }
 
 func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {

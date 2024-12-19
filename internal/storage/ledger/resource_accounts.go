@@ -133,7 +133,7 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 }
 
 func (h accountsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
-	return selectQuery, nil
+	return selectQuery.ColumnExpr("*"), nil
 }
 
 func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
