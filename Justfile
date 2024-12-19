@@ -3,7 +3,7 @@ set dotenv-load
 default:
   @just --list
 
-pre-commit: tidy lint generate export-docs-events earthly
+pre-commit: generate earthly tidy lint export-docs-events
 
 earthly:
   @earthly --no-output +pre-commit
