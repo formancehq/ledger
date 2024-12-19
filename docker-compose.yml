@@ -43,7 +43,7 @@ services:
       - "16686:16686/tcp"
 
   ledger:
-    image: golang:1.22-alpine
+    image: golang:1.23-alpine
     entrypoint: go run main.go serve
     volumes:
       - .:/src
