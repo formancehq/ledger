@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
@@ -29,7 +30,7 @@ func TestTransactionsList(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.ListTransactionsQuery
+		expectQuery       ledgercontroller.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -38,90 +39,120 @@ func TestTransactionsList(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:    &now,
+					Expand: make([]string, 0),
 				},
-			})),
+			},
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Match("metadata[roles]", "admin"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin"))),
+			},
 		},
 		{
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"start_time": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Gte("start_time", now.Format(time.DateFormat)),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Gte("start_time", now.Format(time.DateFormat)))),
+			},
 		},
 		{
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$lte": {"end_time": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Lte("end_time", now.Format(time.DateFormat)),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Lte("end_time", now.Format(time.DateFormat)))),
+			},
 		},
 		{
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Match("account", "xxx"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Match("account", "xxx"))),
+			},
 		},
 		{
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Match("reference", "xxx"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Match("reference", "xxx"))),
+			},
 		},
 		{
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Expand:  make([]string, 0),
+					Builder: query.Match("destination", "xxx"),
 				},
-			}).
-				WithQueryBuilder(query.Match("destination", "xxx"))),
+			},
 		},
 		{
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Match("source", "xxx"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Match("source", "xxx"))),
+			},
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{})))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{})},
 			},
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{},
-			})),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{},
 		},
 		{
 			name: "using invalid cursor",
@@ -144,39 +175,65 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: MaxPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:    &now,
+					Expand: make([]string, 0),
 				},
-			}).
-				WithPageSize(MaxPageSize)),
+			},
 		},
 		{
 			name: "using cursor",
 			queryParams: url.Values{
-				"cursor": []string{"eyJwYWdlU2l6ZSI6MTUsImJvdHRvbSI6bnVsbCwiY29sdW1uIjoiaWQiLCJwYWdpbmF0aW9uSUQiOm51bGwsIm9yZGVyIjoxLCJmaWx0ZXJzIjp7InFiIjp7fSwicGFnZVNpemUiOjE1LCJvcHRpb25zIjp7InBpdCI6bnVsbCwidm9sdW1lcyI6ZmFsc2UsImVmZmVjdGl2ZVZvbHVtZXMiOmZhbHNlfX0sInJldmVyc2UiOmZhbHNlfQ"},
+				"cursor": []string{func() string {
+					return bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{
+						PageSize: DefaultPageSize,
+						Column:   "id",
+						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+						Options: ledgercontroller.ResourceQuery[any]{
+							PIT: &now,
+						},
+					})
+				}()},
 			},
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{})),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT: &now,
+				},
+			},
 		},
 		{
 			name: "using $exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Exists("metadata", "foo"),
+					Expand:  make([]string, 0),
 				},
-			}).
-				WithQueryBuilder(query.Exists("metadata", "foo"))),
+			},
 		},
 		{
 			name:        "paginate using effective order",
 			queryParams: map[string][]string{"order": {"effective"}},
-			expectQuery: ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Column:   "timestamp",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					PIT:    &now,
+					Expand: make([]string, 0),
 				},
-			})).
-				WithColumn("timestamp"),
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -223,7 +280,6 @@ func TestTransactionsList(t *testing.T) {
 				err := api.ErrorResponse{}
 				api.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
-
 			}
 		})
 	}
