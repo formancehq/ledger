@@ -27,7 +27,7 @@ const (
 	V2ErrorsEnumInterpreterParse    V2ErrorsEnum = "INTERPRETER_PARSE"
 	V2ErrorsEnumInterpreterRuntime  V2ErrorsEnum = "INTERPRETER_RUNTIME"
 	V2ErrorsEnumLedgerAlreadyExists V2ErrorsEnum = "LEDGER_ALREADY_EXISTS"
-	V2ErrorsEnumBucketOutdated      V2ErrorsEnum = "BUCKET_OUTDATED"
+	V2ErrorsEnumOutdatedSchema      V2ErrorsEnum = "OUTDATED_SCHEMA"
 )
 
 func (e V2ErrorsEnum) ToPointer() *V2ErrorsEnum {
@@ -73,7 +73,7 @@ func (e *V2ErrorsEnum) UnmarshalJSON(data []byte) error {
 		fallthrough
 	case "LEDGER_ALREADY_EXISTS":
 		fallthrough
-	case "BUCKET_OUTDATED":
+	case "OUTDATED_SCHEMA":
 		*e = V2ErrorsEnum(v)
 		return nil
 	default:
