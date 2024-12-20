@@ -6,3 +6,6 @@ dist
 vendor
 worktrees
 dumps
+.env
+!.envrc
+.direnv
