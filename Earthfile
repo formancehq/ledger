@@ -50,7 +50,6 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 pre-commit:
-    BUILD +openapi
     BUILD +openapi-markdown
     BUILD +generate-client
 
@@ -76,7 +75,7 @@ generate-client:
     RUN apk update && apk add yq jq
     WORKDIR /src
     COPY (core+sources-speakeasy/speakeasy) /bin/speakeasy
-    COPY (+openapi/openapi.yaml) openapi.yaml
+    COPY openapi.yaml openapi.yaml
     RUN cat ./openapi.yaml |  yq e -o json > openapi.json
     COPY (core+sources/out --LOCATION=openapi-overlay.json) openapi-overlay.json
     RUN jq -s '.[0] * .[1]' openapi.json openapi-overlay.json > final.json

@@ -34,7 +34,7 @@
             gotools
             golangci-lint
             ginkgo
-            yq
+            yq-go
             jq
             pkgs.nur.repos.goreleaser.goreleaser-pro
             mockgen

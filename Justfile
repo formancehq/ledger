@@ -3,7 +3,8 @@ set dotenv-load
 default:
   @just --list
 
-pre-commit: generate earthly tidy lint export-docs-events
+pc: pre-commit
+pre-commit: generate openapi earthly tidy lint export-docs-events
 
 earthly:
   @earthly --no-output +pre-commit
@@ -17,6 +18,9 @@ tidy:
   @go mod tidy
   @cd {{justfile_directory()}}/tools/generator && go mod tidy
   @cd {{justfile_directory()}}/deployments/pulumi && go mod tidy
+
+openapi:
+  @yq eval-all '. as $item ireduce ({}; . * $item)' ./openapi/*.yaml > openapi.yaml
 
 generate:
   @go generate ./...
