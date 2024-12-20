@@ -99,7 +99,7 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			Expect(err).To(Succeed())
 
-			firstTransactionsInsertedAt = ret[2].V2BulkElementResultCreateTransaction.Data.InsertedAt
+			firstTransactionsInsertedAt = *ret[2].V2BulkElementResultCreateTransaction.Data.InsertedAt
 
 			_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
 				RequestBody: []components.V2BulkElement{

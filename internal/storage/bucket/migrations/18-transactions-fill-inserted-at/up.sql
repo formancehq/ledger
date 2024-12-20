@@ -24,7 +24,7 @@ do $$
 
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || _count);
 
-		for i in 0.._count by _batch_size loop
+		for i in 0.._count-1 by _batch_size loop
 			-- disable triggers
 			set session_replication_role = replica;
 

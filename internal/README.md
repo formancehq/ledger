@@ -15,6 +15,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
 - [type AccountsVolumes](<#AccountsVolumes>)
+- [type AggregatedVolumes](<#AggregatedVolumes>)
 - [type BalancesByAssets](<#BalancesByAssets>)
 - [type BalancesByAssetsByAccounts](<#BalancesByAssetsByAccounts>)
 - [type Configuration](<#Configuration>)
@@ -204,6 +205,17 @@ type AccountsVolumes struct {
     Asset   string   `bun:"asset,type:varchar"`
     Input   *big.Int `bun:"input,type:numeric"`
     Output  *big.Int `bun:"output,type:numeric"`
+}
+```
+
+<a name="AggregatedVolumes"></a>
+## type AggregatedVolumes
+
+
+
+```go
+type AggregatedVolumes struct {
+    Aggregated VolumesByAssets `bun:"aggregated,type:jsonb"`
 }
 ```
 

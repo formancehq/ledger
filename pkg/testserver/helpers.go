@@ -26,7 +26,7 @@ func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 		TransactionData: ledger.TransactionData{
 			Postings:   collectionutils.Map(tx.Postings, ConvertSDKPostingToCorePosting),
 			Timestamp:  time.New(tx.Timestamp),
-			InsertedAt: time.New(tx.InsertedAt),
+			InsertedAt: time.New(*tx.InsertedAt),
 			Metadata:   tx.Metadata,
 			Reference: func() string {
 				if tx.Reference == nil {

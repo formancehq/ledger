@@ -72,7 +72,7 @@ func (mr *MockControllerMockRecorder) Commit(ctx any) *gomock.Call {
 }
 
 // CountAccounts mocks base method.
-func (m *MockController) CountAccounts(ctx context.Context, query ListAccountsQuery) (int, error) {
+func (m *MockController) CountAccounts(ctx context.Context, query ResourceQuery[any]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountAccounts", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -87,7 +87,7 @@ func (mr *MockControllerMockRecorder) CountAccounts(ctx, query any) *gomock.Call
 }
 
 // CountTransactions mocks base method.
-func (m *MockController) CountTransactions(ctx context.Context, query ListTransactionsQuery) (int, error) {
+func (m *MockController) CountTransactions(ctx context.Context, query ResourceQuery[any]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountTransactions", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -162,7 +162,7 @@ func (mr *MockControllerMockRecorder) Export(ctx, w any) *gomock.Call {
 }
 
 // GetAccount mocks base method.
-func (m *MockController) GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error) {
+func (m *MockController) GetAccount(ctx context.Context, query ResourceQuery[any]) (*ledger.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, query)
 	ret0, _ := ret[0].(*ledger.Account)
@@ -177,7 +177,7 @@ func (mr *MockControllerMockRecorder) GetAccount(ctx, query any) *gomock.Call {
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *MockController) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
+func (m *MockController) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
 	ret0, _ := ret[0].(ledger.BalancesByAssets)
@@ -222,7 +222,7 @@ func (mr *MockControllerMockRecorder) GetStats(ctx any) *gomock.Call {
 }
 
 // GetTransaction mocks base method.
-func (m *MockController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error) {
+func (m *MockController) GetTransaction(ctx context.Context, query ResourceQuery[any]) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, query)
 	ret0, _ := ret[0].(*ledger.Transaction)
@@ -237,7 +237,7 @@ func (mr *MockControllerMockRecorder) GetTransaction(ctx, query any) *gomock.Cal
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *MockController) GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *MockController) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
@@ -281,7 +281,7 @@ func (mr *MockControllerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call {
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, query ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, query OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
@@ -296,7 +296,7 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, query any) *gomock.Call 
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, query GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
@@ -311,7 +311,7 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, query ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
