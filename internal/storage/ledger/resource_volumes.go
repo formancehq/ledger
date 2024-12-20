@@ -179,9 +179,9 @@ func (h volumesResourceHandler) resolveFilter(
 				match[0][1]: value,
 			}}, nil
 		}
+	default:
+		return "", nil, fmt.Errorf("unsupported filter %s", property)
 	}
-
-	panic("unreachable")
 }
 
 func (h volumesResourceHandler) project(

@@ -18,7 +18,7 @@ type columnPaginator[ResourceType, OptionsType any] struct {
 }
 
 //nolint:unused
-func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) *bun.SelectQuery {
+func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.defaultPaginationColumn
 	originalOrder := o.defaultOrder
@@ -57,7 +57,7 @@ func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 		}
 	}
 
-	return sb
+	return sb, nil
 }
 
 //nolint:unused

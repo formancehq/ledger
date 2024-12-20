@@ -8,15 +8,13 @@ import (
 func isSegmentedAddress(address string) bool {
 	src := strings.Split(address, ":")
 
-	needSegmentCheck := false
 	for _, segment := range src {
-		needSegmentCheck = segment == ""
-		if needSegmentCheck {
-			break
+		if segment == "" {
+			return true
 		}
 	}
 
-	return needSegmentCheck
+	return false
 }
 
 func filterAccountAddress(address, key string) string {
@@ -39,15 +37,6 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
-func isPartialAddress[V any](address V) bool {
-	switch address := any(address).(type) {
-	case string:
-		for _, segment := range strings.Split(address, ":") {
-			if segment == "" {
-				return true
-			}
-		}
-	}
-
-	return false
+func isPartialAddress(address any) bool {
+	return isSegmentedAddress(address.(string))
 }

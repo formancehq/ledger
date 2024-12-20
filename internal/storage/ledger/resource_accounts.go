@@ -127,9 +127,9 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 		return "metadata @> ?", []any{map[string]any{
 			match[0][1]: value,
 		}}, nil
+	default:
+		return "", nil, ledgercontroller.NewErrInvalidQuery("invalid filter property %s", property)
 	}
-
-	panic("unreachable")
 }
 
 func (h accountsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {

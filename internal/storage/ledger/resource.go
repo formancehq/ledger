@@ -114,7 +114,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 				options := append([]string{property.name}, property.aliases...)
 				for _, option := range options {
 					if found, err = regexp.MatchString("^"+option+"$", key); err != nil {
-						panic(err)
+						return fmt.Errorf("failed to match regex for key '%s': %w", key, err)
 					} else if found {
 						break
 					}
@@ -285,22 +285,24 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 
 	finalQuery, err := r.buildFilteredDataset(resourceQuery)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("building filtered dataset: %w", err)
 	}
 
-	finalQuery = r.paginator.paginate(finalQuery, paginationOptions)
+	finalQuery, err = r.paginator.paginate(finalQuery, paginationOptions)
+	if err != nil {
+		return nil, fmt.Errorf("paginating request: %w", err)
+	}
 
 	finalQuery, err = r.expand(finalQuery, resourceQuery)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("expanding results: %w", err)
 	}
 	finalQuery = finalQuery.Order("row_number")
 
 	ret := make([]ResourceType, 0)
-	fmt.Println(finalQuery.Model(&ret).String())
 	err = finalQuery.Model(&ret).Scan(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scanning results: %w", err)
 	}
 
 	return r.paginator.buildCursor(ret, paginationOptions)

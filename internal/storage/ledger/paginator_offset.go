@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
+	"math"
 )
 
 type offsetPaginator[ResourceType, OptionsType any] struct {
@@ -13,7 +14,7 @@ type offsetPaginator[ResourceType, OptionsType any] struct {
 }
 
 //nolint:unused
-func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) *bun.SelectQuery {
+func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.defaultPaginationColumn
 	originalOrder := o.defaultOrder
@@ -24,6 +25,9 @@ func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 	orderExpression := fmt.Sprintf("%s %s", paginationColumn, originalOrder)
 	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
+	if query.Offset > math.MaxInt32 {
+		return nil, fmt.Errorf("offset value exceeds maximum allowed value")
+	}
 	if query.Offset > 0 {
 		sb = sb.Offset(int(query.Offset))
 	}
@@ -32,7 +36,7 @@ func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 		sb = sb.Limit(int(query.PageSize) + 1)
 	}
 
-	return sb
+	return sb, nil
 }
 
 //nolint:unused
@@ -54,6 +58,10 @@ func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	// Page with transactions after
 	if query.PageSize != 0 && len(ret) > int(query.PageSize) {
 		cp := query
+		// Check for potential overflow
+		if query.Offset > math.MaxUint64-query.PageSize {
+			return nil, fmt.Errorf("offset overflow")
+		}
 		cp.Offset = query.Offset + query.PageSize
 		next = &cp
 		ret = ret[:len(ret)-1]

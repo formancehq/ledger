@@ -146,11 +146,9 @@ func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercont
 
 	case property == "metadata":
 		return "metadata -> ? is not null", []any{value}, nil
-	case property == "timestamp":
-		return fmt.Sprintf("timestamp %s ?", convertOperatorToSQL(operator)), []any{value}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported filter: %s", property)
 	}
-
-	panic("unreachable")
 }
 
 func (h transactionsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
@@ -161,39 +159,6 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}
-
-	/**
-	SELECT "transactions_id", public.aggregate_objects(post_commit_effective_volumes::JSONB) AS post_commit_effective_volumes
-	FROM (
-		SELECT "transactions_id", json_build_object(moves.accounts_address, json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))) AS post_commit_effective_volumes
-	    FROM (
-			SELECT DISTINCT ON (transactions_id, accounts_address, asset)
-				"transactions_id",
-	            "accounts_address",
-	            "asset",
-	            first_value(moves.post_commit_effective_volumes)
-					OVER (PARTITION BY (transactions_id, accounts_address, asset) ORDER BY seq DESC) AS post_commit_effective_volumes
-	         FROM "_default".moves
-		) moves
-	) DATA
-	GROUP BY "transactions_id";
-
-	SELECT "transactions_id", public.aggregate_objects(json_build_object(accounts_address, post_commit_effective_volumes)::jsonb) AS post_commit_effective_volumes
-	FROM (
-		SELECT "transactions_id", "accounts_address", public.aggregate_objects(json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))::jsonb) AS post_commit_effective_volumes
-		FROM (
-			SELECT DISTINCT ON (transactions_id, accounts_address, asset)
-				"transactions_id",
-				"accounts_address",
-				"asset",
-				first_value(moves.post_commit_effective_volumes)
-					OVER (PARTITION BY (transactions_id, accounts_address, asset) ORDER BY seq DESC) AS post_commit_effective_volumes
-			 FROM "_default".moves
-		) moves
-		GROUP BY "transactions_id", "accounts_address"
-	) data
-	GROUP BY "transactions_id";
-	*/
 
 	ret := store.db.NewSelect().
 		TableExpr(
