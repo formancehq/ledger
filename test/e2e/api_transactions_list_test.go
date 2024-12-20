@@ -76,6 +76,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 									Source:      "world",
 									Destination: fmt.Sprintf("account:%d", i),
 								},
+								{
+									Amount:      big.NewInt(100),
+									Asset:       "EUR",
+									Source:      "world",
+									Destination: fmt.Sprintf("account:%d", i),
+								},
 							},
 							Timestamp: pointer.For(txTimestamp),
 						},

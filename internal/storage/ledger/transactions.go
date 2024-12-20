@@ -62,7 +62,8 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 
 	if store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 		moves := ledger.Moves{}
-		postings := tx.Postings
+		postings := make([]ledger.Posting, len(tx.Postings))
+		copy(postings, tx.Postings)
 		slices.Reverse(postings)
 
 		for _, posting := range postings {

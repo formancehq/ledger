@@ -676,6 +676,7 @@ func TestTransactionsList(t *testing.T) {
 	tx1 := ledger.NewTransaction().
 		WithPostings(
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
+			ledger.NewPosting("world", "alice", "EUR", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
 		WithTimestamp(now.Add(-3 * time.Hour))
@@ -850,6 +851,8 @@ func TestTransactionsList(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			store.DumpTables(ctx, "transactions")
 
 			tc.query.Options.Expand = []string{"volumes", "effectiveVolumes"}
 

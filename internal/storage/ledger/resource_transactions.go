@@ -110,7 +110,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 		ret = ret.ColumnExpr("metadata")
 	}
 
-	if opts.PIT != nil && !opts.PIT.IsZero() {
+	if opts.UsePIT() {
 		ret = ret.ColumnExpr("(case when transactions.reverted_at <= ? then transactions.reverted_at else null end) as reverted_at", opts.PIT)
 	} else {
 		ret = ret.Column("reverted_at")
@@ -162,6 +162,39 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 		return nil, nil, nil
 	}
 
+	/**
+	SELECT "transactions_id", public.aggregate_objects(post_commit_effective_volumes::JSONB) AS post_commit_effective_volumes
+	FROM (
+		SELECT "transactions_id", json_build_object(moves.accounts_address, json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))) AS post_commit_effective_volumes
+	    FROM (
+			SELECT DISTINCT ON (transactions_id, accounts_address, asset)
+				"transactions_id",
+	            "accounts_address",
+	            "asset",
+	            first_value(moves.post_commit_effective_volumes)
+					OVER (PARTITION BY (transactions_id, accounts_address, asset) ORDER BY seq DESC) AS post_commit_effective_volumes
+	         FROM "_default".moves
+		) moves
+	) DATA
+	GROUP BY "transactions_id";
+
+	SELECT "transactions_id", public.aggregate_objects(json_build_object(accounts_address, post_commit_effective_volumes)::jsonb) AS post_commit_effective_volumes
+	FROM (
+		SELECT "transactions_id", "accounts_address", public.aggregate_objects(json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))::jsonb) AS post_commit_effective_volumes
+		FROM (
+			SELECT DISTINCT ON (transactions_id, accounts_address, asset)
+				"transactions_id",
+				"accounts_address",
+				"asset",
+				first_value(moves.post_commit_effective_volumes)
+					OVER (PARTITION BY (transactions_id, accounts_address, asset) ORDER BY seq DESC) AS post_commit_effective_volumes
+			 FROM "_default".moves
+		) moves
+		GROUP BY "transactions_id", "accounts_address"
+	) data
+	GROUP BY "transactions_id";
+	*/
+
 	ret := store.db.NewSelect().
 		TableExpr(
 			"(?) data",
@@ -176,22 +209,12 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 						Where("ledger = ?", store.ledger.Name).
 						Where("transactions_id in (select id from dataset)"),
 				).
-				Column("transactions_id").
-				ColumnExpr(`
-					json_build_object(
-						moves.accounts_address,
-						json_build_object(
-							moves.asset,
-							json_build_object(
-								'input', (moves.post_commit_effective_volumes).inputs,
-								'output', (moves.post_commit_effective_volumes).outputs
-							)
-						)
-					) as post_commit_effective_volumes
-				`),
+				Column("transactions_id", "accounts_address").
+				ColumnExpr(`public.aggregate_objects(json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))::jsonb) AS post_commit_effective_volumes`).
+				Group("transactions_id", "accounts_address"),
 		).
 		Column("transactions_id").
-		ColumnExpr("public.aggregate_objects(post_commit_effective_volumes::jsonb) as post_commit_effective_volumes").
+		ColumnExpr("public.aggregate_objects(json_build_object(accounts_address, post_commit_effective_volumes)::jsonb) AS post_commit_effective_volumes").
 		Group("transactions_id")
 
 	return ret, &joinCondition{
