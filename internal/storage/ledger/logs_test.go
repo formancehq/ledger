@@ -5,6 +5,7 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
@@ -120,9 +121,10 @@ func TestInsertLog(t *testing.T) {
 		err := errGroup.Wait()
 		require.NoError(t, err)
 
-		logs, err := store.ListLogs(ctx, ledgercontroller.NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
+		logs, err := store.Logs().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
 			PageSize: countLogs,
-		}).WithOrder(bunpaginate.OrderAsc))
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		})
 		require.NoError(t, err)
 
 		var previous *ledger.Log
@@ -180,26 +182,30 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.ListLogs(context.Background(), ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil)))
+	cursor, err := store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, cursor.Data[0].ID)
 
-	cursor, err = store.ListLogs(context.Background(), ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
+	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 1,
+	})
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, cursor.Data[0].ID)
 
-	cursor, err = store.ListLogs(context.Background(), ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).
-		WithQueryBuilder(query.And(
-			query.Gte("date", now.Add(-2*time.Hour)),
-			query.Lt("date", now.Add(-time.Hour)),
-		)).
-		WithPageSize(10),
-	))
+	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 10,
+		Options: ledgercontroller.ResourceQuery[any]{
+			Builder: query.And(
+				query.Gte("date", now.Add(-2*time.Hour)),
+				query.Lt("date", now.Add(-time.Hour)),
+			),
+		},
+	})
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.

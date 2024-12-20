@@ -13,12 +13,12 @@ type Stats struct {
 func (ctrl *DefaultController) GetStats(ctx context.Context) (Stats, error) {
 	var stats Stats
 
-	transactions, err := ctrl.store.CountTransactions(ctx, NewListTransactionsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
+	transactions, err := ctrl.store.Transactions().Count(ctx, ResourceQuery[any]{})
 	if err != nil {
 		return stats, fmt.Errorf("counting transactions: %w", err)
 	}
 
-	accounts, err := ctrl.store.CountAccounts(ctx, NewListAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
+	accounts, err := ctrl.store.Accounts().Count(ctx, ResourceQuery[any]{})
 	if err != nil {
 		return stats, fmt.Errorf("counting accounts: %w", err)
 	}

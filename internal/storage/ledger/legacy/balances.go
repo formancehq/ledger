@@ -7,11 +7,10 @@ import (
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
 )
 
-func (store *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
+func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 
 	var (
 		needMetadata bool

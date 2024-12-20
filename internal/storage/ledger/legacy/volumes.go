@@ -12,7 +12,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (store *Store) volumesQueryContext(q ledgercontroller.GetVolumesWithBalancesQuery) (string, []any, bool, error) {
+func (store *Store) volumesQueryContext(q GetVolumesWithBalancesQuery) (string, []any, bool, error) {
 
 	metadataRegex := regexp.MustCompile(`metadata\[(.+)]`)
 	balanceRegex := regexp.MustCompile(`balance\[(.*)]`)
@@ -90,7 +90,7 @@ func (store *Store) volumesQueryContext(q ledgercontroller.GetVolumesWithBalance
 
 }
 
-func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q ledgercontroller.GetVolumesWithBalancesQuery, where string, args []any, useMetadata bool) *bun.SelectQuery {
+func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetVolumesWithBalancesQuery, where string, args []any, useMetadata bool) *bun.SelectQuery {
 
 	filtersForVolumes := q.Options.Options
 	dateFilterColumn := "effective_date"
@@ -165,7 +165,7 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q ledg
 	return globalQuery
 }
 
-func (store *Store) GetVolumesWithBalances(ctx context.Context, q ledgercontroller.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (store *Store) GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	var (
 		where       string
 		args        []any
@@ -179,8 +179,8 @@ func (store *Store) GetVolumesWithBalances(ctx context.Context, q ledgercontroll
 		}
 	}
 
-	return paginateWithOffsetWithoutModel[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
-		store, ctx, (*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes]])(&q),
+	return paginateWithOffsetWithoutModel[ledgercontroller.PaginatedQueryOptions[FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
+		store, ctx, (*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FiltersForVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildVolumesWithBalancesQuery(query, q, where, args, useMetadata)
 		},

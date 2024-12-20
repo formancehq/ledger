@@ -5,29 +5,21 @@ import (
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func listTransactions(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	query, err := bunpaginate.Extract[ledgercontroller.ListTransactionsQuery](r, func() (*ledgercontroller.ListTransactionsQuery, error) {
-		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
-		if err != nil {
-			return nil, err
-		}
-		options.QueryBuilder = buildGetTransactionsQuery(r)
-
-		return pointer.For(ledgercontroller.NewListTransactionsQuery(*options)), nil
-	})
+	paginatedQuery, err := getColumnPaginatedQuery[any](r, "id", bunpaginate.OrderDesc)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
+	paginatedQuery.Options.Builder = buildGetTransactionsQuery(r)
+	paginatedQuery.Options.Expand = []string{"volumes"}
 
-	cursor, err := l.ListTransactions(r.Context(), *query)
+	cursor, err := l.ListTransactions(r.Context(), *paginatedQuery)
 	if err != nil {
 		common.HandleCommonErrors(w, r, err)
 		return

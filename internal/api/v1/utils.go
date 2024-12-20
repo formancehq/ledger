@@ -6,65 +6,10 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/time"
-
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 
-	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/query"
 )
-
-func getPITFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
-	pitString := r.URL.Query().Get("pit")
-	if pitString == "" {
-		return &ledgercontroller.PITFilter{}, nil
-	}
-	pit, err := time.ParseTime(pitString)
-	if err != nil {
-		return nil, err
-	}
-	return &ledgercontroller.PITFilter{
-		PIT: &pit,
-	}, nil
-}
-
-func getPITFilterWithVolumes(r *http.Request) (*ledgercontroller.PITFilterWithVolumes, error) {
-	pit, err := getPITFilter(r)
-	if err != nil {
-		return nil, err
-	}
-	return &ledgercontroller.PITFilterWithVolumes{
-		PITFilter:              *pit,
-		ExpandVolumes:          collectionutils.Contains(r.URL.Query()["expand"], "volumes"),
-		ExpandEffectiveVolumes: collectionutils.Contains(r.URL.Query()["expand"], "effectiveVolumes"),
-	}, nil
-}
-
-func getQueryBuilder(r *http.Request) (query.Builder, error) {
-	return query.ParseJSON(r.URL.Query().Get("query"))
-}
-
-func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], error) {
-	qb, err := getQueryBuilder(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pitFilter, err := getPITFilterWithVolumes(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pageSize, err := bunpaginate.GetPageSize(r, bunpaginate.WithMaxPageSize(MaxPageSize), bunpaginate.WithDefaultPageSize(DefaultPageSize))
-	if err != nil {
-		return nil, err
-	}
-
-	return pointer.For(ledgercontroller.NewPaginatedQueryOptions(*pitFilter).
-		WithQueryBuilder(qb).
-		WithPageSize(pageSize)), nil
-}
 
 func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontroller.Parameters[INPUT] {
 	dryRunAsString := r.URL.Query().Get("preview")
@@ -77,4 +22,58 @@ func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontrol
 		IdempotencyKey: idempotencyKey,
 		Input:          input,
 	}
+}
+
+func getOffsetPaginatedQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+	return bunpaginate.Extract[ledgercontroller.OffsetPaginatedQuery[v]](r, func() (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+		rq, err := getResourceQuery[v](r, modifiers...)
+		if err != nil {
+			return nil, err
+		}
+
+		pageSize, err := bunpaginate.GetPageSize(r, bunpaginate.WithMaxPageSize(MaxPageSize), bunpaginate.WithDefaultPageSize(DefaultPageSize))
+		if err != nil {
+			return nil, err
+		}
+
+		return &ledgercontroller.OffsetPaginatedQuery[v]{
+			PageSize: pageSize,
+			Options:  *rq,
+		}, nil
+	})
+}
+
+func getColumnPaginatedQuery[v any](r *http.Request, column string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+	return bunpaginate.Extract[ledgercontroller.ColumnPaginatedQuery[v]](r, func() (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+		rq, err := getResourceQuery[v](r, modifiers...)
+		if err != nil {
+			return nil, err
+		}
+
+		pageSize, err := bunpaginate.GetPageSize(r, bunpaginate.WithMaxPageSize(MaxPageSize), bunpaginate.WithDefaultPageSize(DefaultPageSize))
+		if err != nil {
+			return nil, err
+		}
+
+		return &ledgercontroller.ColumnPaginatedQuery[v]{
+			PageSize: pageSize,
+			Column:   column,
+			Order:    pointer.For(order),
+			Options:  *rq,
+		}, nil
+	})
+}
+
+func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.ResourceQuery[v], error) {
+	var options v
+	for _, modifier := range modifiers {
+		if err := modifier(&options); err != nil {
+			return nil, err
+		}
+	}
+
+	return &ledgercontroller.ResourceQuery[v]{
+		Expand:  r.URL.Query()["expand"],
+		Opts:    options,
+	}, nil
 }

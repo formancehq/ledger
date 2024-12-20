@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/v2/query"
 	"net/http"
 	"strconv"
 
@@ -20,22 +21,17 @@ func readTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := ledgercontroller.NewGetTransactionQuery(int(txId))
-	if hasExpandVolumes(r) {
-		query = query.WithExpandVolumes()
-	}
-	if hasExpandEffectiveVolumes(r) {
-		query = query.WithExpandEffectiveVolumes()
-	}
-
-	pitFilter, err := getPITFilter(r)
+	pit, err := getPIT(r)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
-	query.PITFilter = *pitFilter
 
-	tx, err := l.GetTransaction(r.Context(), query)
+	tx, err := l.GetTransaction(r.Context(), ledgercontroller.ResourceQuery[any]{
+		PIT:     pit,
+		Builder: query.Match("id", int(txId)),
+		Expand:  r.URL.Query()["expand"],
+	})
 	if err != nil {
 		switch {
 		case postgres.IsNotFoundError(err):

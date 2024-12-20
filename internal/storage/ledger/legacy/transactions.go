@@ -20,7 +20,7 @@ var (
 	metadataRegex = regexp.MustCompile(`metadata\[(.+)]`)
 )
 
-func (store *Store) buildTransactionQuery(p ledgercontroller.PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
+func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
 
 	selectMetadata := query.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("transactions_metadata")).
@@ -64,7 +64,7 @@ func (store *Store) buildTransactionQuery(p ledgercontroller.PITFilterWithVolume
 	return query
 }
 
-func (store *Store) transactionQueryContext(qb query.Builder, q ledgercontroller.ListTransactionsQuery) (string, []any, error) {
+func (store *Store) transactionQueryContext(qb query.Builder, q ListTransactionsQuery) (string, []any, error) {
 
 	return qb.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 		switch {
@@ -144,7 +144,7 @@ func (store *Store) transactionQueryContext(qb query.Builder, q ledgercontroller
 	}))
 }
 
-func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], where string, args []any) *bun.SelectQuery {
+func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes], where string, args []any) *bun.SelectQuery {
 
 	selectQuery = store.buildTransactionQuery(q.Options, selectQuery)
 	if where != "" {
@@ -154,7 +154,7 @@ func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q le
 	return selectQuery
 }
 
-func (store *Store) GetTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (store *Store) GetTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
 
 	var (
 		where string
@@ -168,15 +168,15 @@ func (store *Store) GetTransactions(ctx context.Context, q ledgercontroller.List
 		}
 	}
 
-	return paginateWithColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Transaction](store, ctx,
-		(*bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]])(&q),
+	return paginateWithColumn[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes], ledger.Transaction](store, ctx,
+		(*bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionListQuery(query, q.Options, where, args)
 		},
 	)
 }
 
-func (store *Store) CountTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (int, error) {
+func (store *Store) CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error) {
 
 	var (
 		where string
@@ -196,7 +196,7 @@ func (store *Store) CountTransactions(ctx context.Context, q ledgercontroller.Li
 	})
 }
 
-func (store *Store) GetTransactionWithVolumes(ctx context.Context, filter ledgercontroller.GetTransactionQuery) (*ledger.Transaction, error) {
+func (store *Store) GetTransactionWithVolumes(ctx context.Context, filter GetTransactionQuery) (*ledger.Transaction, error) {
 	return fetch[*ledger.Transaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionQuery(filter.PITFilterWithVolumes, query).
