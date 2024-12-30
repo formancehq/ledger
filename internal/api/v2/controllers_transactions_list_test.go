@@ -40,7 +40,7 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "nominal",
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -53,7 +53,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -67,7 +67,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"start_time": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -81,7 +81,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$lte": {"end_time": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -95,7 +95,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -109,7 +109,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -123,7 +123,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -137,7 +137,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -176,7 +176,7 @@ func TestTransactionsList(t *testing.T) {
 				"pageSize": []string{"1000000"},
 			},
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: MaxPageSize,
+				PageSize: bunpaginate.MaxPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -190,7 +190,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"cursor": []string{func() string {
 					return bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{
-						PageSize: DefaultPageSize,
+						PageSize: bunpaginate.QueryDefaultPageSize,
 						Column:   "id",
 						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 						Options: ledgercontroller.ResourceQuery[any]{
@@ -200,7 +200,7 @@ func TestTransactionsList(t *testing.T) {
 				}()},
 			},
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -212,7 +212,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "using $exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -226,7 +226,7 @@ func TestTransactionsList(t *testing.T) {
 			name:        "paginate using effective order",
 			queryParams: map[string][]string{"order": {"effective"}},
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "timestamp",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{

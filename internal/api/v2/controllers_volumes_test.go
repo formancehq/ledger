@@ -41,7 +41,7 @@ func TestGetVolumes(t *testing.T) {
 		{
 			name: "basic",
 			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:    &before,
 					Expand: make([]string, 0),
@@ -52,7 +52,7 @@ func TestGetVolumes(t *testing.T) {
 			name: "using metadata",
 			body: `{"$match": { "metadata[roles]": "admin" }}`,
 			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Match("metadata[roles]", "admin"),
@@ -64,7 +64,7 @@ func TestGetVolumes(t *testing.T) {
 			name: "using account",
 			body: `{"$match": { "account": "foo" }}`,
 			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Match("account", "foo"),
@@ -85,7 +85,7 @@ func TestGetVolumes(t *testing.T) {
 				"groupBy": []string{"3"},
 			},
 			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:    &before,
 					Expand: make([]string, 0),
@@ -99,7 +99,7 @@ func TestGetVolumes(t *testing.T) {
 			name: "using Exists metadata filter",
 			body: `{"$exists": { "metadata": "foo" }}`,
 			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Exists("metadata", "foo"),
@@ -111,7 +111,7 @@ func TestGetVolumes(t *testing.T) {
 			name: "using balance filter",
 			body: `{"$gte": { "balance[EUR]": 50 }}`,
 			expectQuery: ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Gte("balance[EUR]", float64(50)),

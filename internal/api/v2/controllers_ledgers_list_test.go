@@ -71,7 +71,7 @@ func TestListLedgers(t *testing.T) {
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
 			returnErr:          ledgercontroller.ErrInvalidQuery{},
-			expectQuery:        ledgercontroller.NewListLedgersQuery(DefaultPageSize),
+			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 		{
 			name:               "with missing feature",
@@ -79,7 +79,7 @@ func TestListLedgers(t *testing.T) {
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
 			returnErr:          ledgercontroller.ErrMissingFeature{},
-			expectQuery:        ledgercontroller.NewListLedgersQuery(DefaultPageSize),
+			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
