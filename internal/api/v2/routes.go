@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
@@ -35,7 +36,7 @@ func NewRouter(
 		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
 
-		router.Get("/", listLedgers(systemController))
+		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,19 +62,19 @@ func NewRouter(
 				// LedgerController
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", readStats)
-				router.Get("/logs", listLogs)
+				router.Get("/logs", listLogs(routerOptions.paginationConfig))
 				router.Post("/logs/import", importLogs)
 				router.Post("/logs/export", exportLogs)
 
 				// AccountController
-				router.Get("/accounts", listAccounts)
+				router.Get("/accounts", listAccounts(routerOptions.paginationConfig))
 				router.Head("/accounts", countAccounts)
 				router.Get("/accounts/{address}", readAccount)
 				router.Post("/accounts/{address}/metadata", addAccountMetadata)
 				router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
 
 				// TransactionController
-				router.Get("/transactions", listTransactions)
+				router.Get("/transactions", listTransactions(routerOptions.paginationConfig))
 				router.Head("/transactions", countTransactions)
 
 				router.Post("/transactions", createTransaction)
@@ -85,7 +86,7 @@ func NewRouter(
 
 				router.Get("/aggregate/balances", readBalancesAggregated)
 
-				router.Get("/volumes", readVolumes)
+				router.Get("/volumes", readVolumes(routerOptions.paginationConfig))
 			})
 		})
 	})
@@ -98,6 +99,7 @@ type routerOptions struct {
 	middlewares          []func(http.Handler) http.Handler
 	bulkerFactory        bulking.BulkerFactory
 	bulkHandlerFactories map[string]bulking.HandlerFactory
+	paginationConfig     common.PaginationConfig
 }
 
 type RouterOption func(ro *routerOptions)
@@ -126,11 +128,21 @@ func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 	}
 }
 
+func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption {
+	return func(ro *routerOptions) {
+		ro.paginationConfig = paginationConfig
+	}
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
 	WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
 		"application/json": bulking.NewJSONBulkHandlerFactory(100),
 		"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
+	}),
+	WithPaginationConfig(common.PaginationConfig{
+		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
+		MaxPageSize: bunpaginate.MaxPageSize,
 	}),
 }

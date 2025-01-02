@@ -48,6 +48,8 @@ type Configuration struct {
 	DisableAutoUpgrade           bool
 	BulkMaxSize                  int
 	ExperimentalNumscriptRewrite bool
+	MaxPageSize uint64
+	DefaultPageSize uint64
 }
 
 type Logger interface {
@@ -177,7 +179,12 @@ func (s *Server) Start() error {
 			args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.BaseConfig.ServiceName)
 		}
 	}
-
+	if s.configuration.MaxPageSize != 0 {
+		args = append(args, "--"+cmd.MaxPageSizeFlag, fmt.Sprint(s.configuration.MaxPageSize))
+	}
+	if s.configuration.DefaultPageSize != 0 {
+		args = append(args, "--"+cmd.DefaultPageSizeFlag, fmt.Sprint(s.configuration.DefaultPageSize))
+	}
 	if s.configuration.Debug {
 		args = append(args, "--"+service.DebugFlag)
 	}

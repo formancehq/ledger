@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
@@ -17,9 +18,10 @@ type BulkConfig struct {
 }
 
 type Config struct {
-	Version string
-	Debug   bool
-	Bulk    BulkConfig
+	Version    string
+	Debug      bool
+	Bulk       BulkConfig
+	Pagination common.PaginationConfig
 }
 
 func Module(cfg Config) fx.Option {
@@ -40,6 +42,7 @@ func Module(cfg Config) fx.Option {
 					bulking.WithParallelism(cfg.Bulk.Parallel),
 					bulking.WithTracer(tracerProvider.Tracer("api.bulking")),
 				)),
+				WithPaginationConfiguration(cfg.Pagination),
 			)
 		}),
 		health.Module(),

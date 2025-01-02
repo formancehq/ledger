@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/attribute"
@@ -71,6 +72,7 @@ func NewRouter(
 			"application/json": bulking.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
 			"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
 		}),
+		v2.WithPaginationConfig(routerOptions.paginationConfig),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -91,7 +93,8 @@ func NewRouter(
 type routerOptions struct {
 	tracer        trace.Tracer
 	bulkMaxSize   int
-	bulkerFactory bulking.BulkerFactory
+	bulkerFactory    bulking.BulkerFactory
+	paginationConfig common.PaginationConfig
 }
 
 type RouterOption func(ro *routerOptions)
@@ -114,9 +117,19 @@ func WithBulkerFactory(bf bulking.BulkerFactory) RouterOption {
 	}
 }
 
+func WithPaginationConfiguration(paginationConfig common.PaginationConfig) RouterOption {
+	return func(ro *routerOptions) {
+		ro.paginationConfig = paginationConfig
+	}
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
+	WithPaginationConfiguration(common.PaginationConfig{
+		MaxPageSize:     bunpaginate.MaxPageSize,
+		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
+	}),
 }
 
 const DefaultBulkMaxSize = 100

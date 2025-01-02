@@ -12,11 +12,14 @@ import (
 	"github.com/formancehq/ledger/internal/controller/system"
 )
 
-func listLedgers(b system.Controller) http.HandlerFunc {
+func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		query, err := bunpaginate.Extract[ledgercontroller.ListLedgersQuery](r, func() (*ledgercontroller.ListLedgersQuery, error) {
-			pageSize, err := bunpaginate.GetPageSize(r)
+			pageSize, err := bunpaginate.GetPageSize(r,
+				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+				bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+			)
 			if err != nil {
 				return nil, err
 			}

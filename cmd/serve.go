@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/ledger/internal/api/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
@@ -43,6 +44,8 @@ const (
 	BulkMaxSizeFlag            = "bulk-max-size"
 	BulkParallelFlag           = "bulk-parallel"
 	NumscriptInterpreterFlag   = "experimental-numscript-interpreter"
+	DefaultPageSizeFlag        = "default-page-size"
+	MaxPageSizeFlag            = "max-page-size"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -69,6 +72,16 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			bulkParallel, err := cmd.Flags().GetInt(BulkParallelFlag)
+			if err != nil {
+				return err
+			}
+
+			maxPageSize, err := cmd.Flags().GetUint64(MaxPageSizeFlag)
+			if err != nil {
+				return err
+			}
+
+			defaultPageSize, err := cmd.Flags().GetUint64(DefaultPageSizeFlag)
 			if err != nil {
 				return err
 			}
@@ -102,18 +115,22 @@ func NewServeCommand() *cobra.Command {
 						MaxSize:  bulkMaxSize,
 						Parallel: bulkParallel,
 					},
+					Pagination: common.PaginationConfig{
+						MaxPageSize:     maxPageSize,
+						DefaultPageSize: defaultPageSize,
+					},
 				}),
 				fx.Decorate(func(
 					params struct {
-						fx.In
+					fx.In
 
-						Handler          chi.Router
-						HealthController *health.HealthController
-						Logger           logging.Logger
+					Handler          chi.Router
+					HealthController *health.HealthController
+					Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-					},
+					MeterProvider *metric.MeterProvider         `optional:"true"`
+					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
@@ -140,6 +157,8 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
+	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
+	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())

@@ -2,6 +2,7 @@ package v2
 
 import (
 	. "github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"io"
 	"net/http"
@@ -61,14 +62,18 @@ func getExpand(r *http.Request) []string {
 	)
 }
 
-func getOffsetPaginatedQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, modifiers ...func(*v) error) (*ledgercontroller.OffsetPaginatedQuery[v], error) {
 	return bunpaginate.Extract[ledgercontroller.OffsetPaginatedQuery[v]](r, func() (*ledgercontroller.OffsetPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
 		if err != nil {
 			return nil, err
 		}
 
-		pageSize, err := bunpaginate.GetPageSize(r, bunpaginate.WithMaxPageSize(MaxPageSize), bunpaginate.WithDefaultPageSize(DefaultPageSize))
+		pageSize, err := bunpaginate.GetPageSize(
+			r,
+			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -80,14 +85,18 @@ func getOffsetPaginatedQuery[v any](r *http.Request, modifiers ...func(*v) error
 	})
 }
 
-func getColumnPaginatedQuery[v any](r *http.Request, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
 	return bunpaginate.Extract[ledgercontroller.ColumnPaginatedQuery[v]](r, func() (*ledgercontroller.ColumnPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
 		if err != nil {
 			return nil, err
 		}
 
-		pageSize, err := bunpaginate.GetPageSize(r, bunpaginate.WithMaxPageSize(MaxPageSize), bunpaginate.WithDefaultPageSize(DefaultPageSize))
+		pageSize, err := bunpaginate.GetPageSize(
+			r,
+			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+		)
 		if err != nil {
 			return nil, err
 		}

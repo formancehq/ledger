@@ -43,7 +43,7 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "nominal",
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -56,7 +56,7 @@ func TestGetLogs(t *testing.T) {
 			name: "using start time",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -70,7 +70,7 @@ func TestGetLogs(t *testing.T) {
 			name: "using end time",
 			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -84,13 +84,13 @@ func TestGetLogs(t *testing.T) {
 			name: "using empty cursor",
 			queryParams: url.Values{
 				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{
-					PageSize: DefaultPageSize,
+					PageSize: bunpaginate.QueryDefaultPageSize,
 					Column:   "id",
 					Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				})},
 			},
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 			},
@@ -122,7 +122,7 @@ func TestGetLogs(t *testing.T) {
 			name:             "with invalid query",
 			expectStatusCode: http.StatusBadRequest,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
@@ -137,7 +137,7 @@ func TestGetLogs(t *testing.T) {
 			name:             "with unexpected error",
 			expectStatusCode: http.StatusInternalServerError,
 			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
-				PageSize: DefaultPageSize,
+				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: ledgercontroller.ResourceQuery[any]{
