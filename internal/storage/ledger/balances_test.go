@@ -4,7 +4,6 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"math/big"
 	"testing"
 
@@ -43,6 +42,32 @@ func TestBalancesGet(t *testing.T) {
 		Output:  big.NewInt(100),
 	})
 	require.NoError(t, err)
+
+	t.Run("get balances of not existing account should create an empty row", func(t *testing.T) {
+		t.Parallel()
+
+		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
+			"orders:1234": []string{"USD"},
+		})
+		require.NoError(t, err)
+		require.Len(t, balances, 1)
+		require.NotNil(t, balances["orders:1234"])
+		require.Len(t, balances["orders:1234"], 1)
+		require.Equal(t, big.NewInt(0), balances["orders:1234"]["USD"])
+
+		volumes := make([]*ledger.AccountsVolumes, 0)
+
+		err = store.GetDB().NewSelect().
+			Model(&volumes).
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("accounts_address = ?", "orders:1234").
+			Scan(ctx)
+		require.NoError(t, err)
+		require.Len(t, volumes, 1)
+		require.Equal(t, "USD", volumes[0].Asset)
+		require.Equal(t, big.NewInt(0), volumes[0].Input)
+		require.Equal(t, big.NewInt(0), volumes[0].Output)
+	})
 
 	t.Run("check concurrent access on same balance", func(t *testing.T) {
 		t.Parallel()
@@ -129,56 +154,6 @@ func TestBalancesGet(t *testing.T) {
 			Count(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
-	})
-
-	t.Run("with balance from move", func(t *testing.T) {
-		t.Parallel()
-
-		tx := ledger.NewTransaction().WithPostings(
-			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-		)
-		err := store.InsertTransaction(ctx, &tx)
-		require.NoError(t, err)
-
-		bankAccount := ledger.Account{
-			Address:       "bank",
-			FirstUsage:    tx.InsertedAt,
-			InsertionDate: tx.InsertedAt,
-			UpdatedAt:     tx.InsertedAt,
-		}
-		err = store.UpsertAccounts(ctx, &bankAccount)
-		require.NoError(t, err)
-
-		err = store.InsertMoves(ctx, &ledger.Move{
-			TransactionID:     tx.ID,
-			IsSource:          false,
-			Account:           "bank",
-			Amount:            (*bunpaginate.BigInt)(big.NewInt(100)),
-			Asset:             "USD",
-			InsertionDate:     tx.InsertedAt,
-			EffectiveDate:     tx.InsertedAt,
-			PostCommitVolumes: pointer.For(ledger.NewVolumesInt64(100, 0)),
-		})
-		require.NoError(t, err)
-
-		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
-			"bank": {"USD"},
-		})
-		require.NoError(t, err)
-
-		require.NotNil(t, balances["bank"])
-		RequireEqual(t, big.NewInt(100), balances["bank"]["USD"])
-
-		// Check a new line has been inserted into accounts_volumes table
-		volumes := &ledger.AccountsVolumes{}
-		err = store.GetDB().NewSelect().
-			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("accounts_address = ? and ledger = ?", "bank", store.GetLedger().Name).
-			Scan(ctx, volumes)
-		require.NoError(t, err)
-
-		RequireEqual(t, big.NewInt(100), volumes.Input)
-		RequireEqual(t, big.NewInt(0), volumes.Output)
 	})
 }
 
