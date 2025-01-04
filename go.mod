@@ -36,7 +36,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/uptrace/bun v1.2.7
 	github.com/uptrace/bun/dialect/pgdialect v1.2.7
-	github.com/uptrace/bun/extra/bundebug v1.2.5
+	github.com/uptrace/bun/extra/bundebug v1.2.7
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/xo/dburl v0.23.2
 	go.opentelemetry.io/otel v1.33.0
