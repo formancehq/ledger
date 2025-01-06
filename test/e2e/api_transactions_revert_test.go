@@ -19,7 +19,7 @@ import (
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 )
 
-var _ = Context("Ledger accounts list API tests", func() {
+var _ = Context("Ledger revert transactions API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()

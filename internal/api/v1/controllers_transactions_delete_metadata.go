@@ -17,13 +17,13 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 
 	transactionID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, errors.New("invalid transaction ID"))
+		api.BadRequest(w, common.ErrValidation, errors.New("invalid transaction ID"))
 		return
 	}
 
 	metadataKey := chi.URLParam(r, "key")
 
-	if err := l.DeleteTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.DeleteTransactionMetadata{
+	if _, err := l.DeleteTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.DeleteTransactionMetadata{
 		TransactionID: int(transactionID),
 		Key:           metadataKey,
 	})); err != nil {

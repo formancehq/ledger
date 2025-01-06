@@ -4,14 +4,9 @@ package performance_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/collectionutils"
-	ledgerclient "github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/generate"
-	"net/http"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -22,42 +17,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type TransactionProvider interface {
-	Get(iteration int) (string, map[string]string)
+type ActionProvider interface {
+	Get(globalIteration, iteration int) (*generate.Action, error)
 }
-type TransactionProviderFn func(iteration int) (string, map[string]string)
+type ActionProviderFn func(globalIteration, iteration int) (*generate.Action, error)
 
-func (fn TransactionProviderFn) Get(iteration int) (string, map[string]string) {
-	return fn(iteration)
-}
-
-type TransactionProviderFactory interface {
-	Create() (TransactionProvider, error)
+func (fn ActionProviderFn) Get(globalIteration, iteration int) (*generate.Action, error) {
+	return fn(globalIteration, iteration)
 }
 
-type TransactionProviderFactoryFn func() (TransactionProvider, error)
+type ActionProviderFactory interface {
+	Create() (ActionProvider, error)
+}
 
-func (fn TransactionProviderFactoryFn) Create() (TransactionProvider, error) {
+type ActionProviderFactoryFn func() (ActionProvider, error)
+
+func (fn ActionProviderFactoryFn) Create() (ActionProvider, error) {
 	return fn()
 }
 
-func NewJSTransactionProviderFactory(script string) TransactionProviderFactoryFn {
-	return func() (TransactionProvider, error) {
-		generator, err := generate.NewGenerator(script)
+func NewJSActionProviderFactory(rootPath, script string) ActionProviderFactoryFn {
+	return func() (ActionProvider, error) {
+		generator, err := generate.NewGenerator(script, generate.WithRootPath(rootPath))
 		if err != nil {
 			return nil, err
 		}
 
-		return TransactionProviderFn(func(iteration int) (string, map[string]string) {
-			ret := generator.Next(iteration)
-			return ret.Script, ret.Variables
+		return ActionProviderFn(func(globalIteration, iteration int) (*generate.Action, error) {
+			return generator.Next(iteration, generate.WithNextGlobals(map[string]any{
+				"iteration": globalIteration,
+			}))
 		}), nil
 	}
 }
 
 type Benchmark struct {
 	EnvFactory EnvFactory
-	Scenarios  map[string]TransactionProviderFactory
+	Scenarios  map[string]ActionProviderFactory
 
 	reports map[string]map[string]*report
 	b       *testing.B
@@ -88,7 +84,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 					Name:          uuid.NewString()[:8],
 				}
 
-				cpt := atomic.Int64{}
+				globalIteration := atomic.Int64{}
 
 				env := envFactory.Create(ctx, b, l)
 				b.Logf("ledger: %s/%s", l.Bucket, l.Name)
@@ -98,17 +94,20 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 
 				b.RunParallel(func(pb *testing.PB) {
 
-					transactionProvider, err := benchmark.Scenarios[scenario].Create()
+					actionProvider, err := benchmark.Scenarios[scenario].Create()
 					require.NoError(b, err)
+					iteration := atomic.Int64{}
 
 					for pb.Next() {
-						iteration := int(cpt.Add(1))
+						globalIteration := int(globalIteration.Add(1))
+						iteration := int(iteration.Add(1))
 
-						script, vars := transactionProvider.Get(iteration)
+						action, err := actionProvider.Get(globalIteration, iteration)
+						require.NoError(b, err)
 
 						now := time.Now()
 
-						_, err := benchmark.createTransaction(ctx, env.Client(), l, script, vars)
+						_, err = action.Apply(ctx, env.Client().Ledger.V2, l.Name)
 						require.NoError(b, err)
 
 						report.registerTransactionLatency(time.Since(now))
@@ -118,14 +117,11 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				report.End = time.Now()
 
 				// Fetch otel metrics
-				rsp, err := http.Get(env.URL() + "/_/metrics")
-				require.NoError(b, err)
-				if rsp.StatusCode == http.StatusOK {
-					ret := make(map[string]any)
-					require.NoError(b, json.NewDecoder(rsp.Body).Decode(&ret))
-					report.InternalMetrics = ret
+				metrics, err := env.Client().Ledger.GetMetrics(ctx)
+				if err != nil {
+					b.Logf("Unable to fetch ledger metrics: %s", err)
 				} else {
-					b.Logf("Unable to fetch ledger metrics, got status code %d", rsp.StatusCode)
+					report.InternalMetrics = metrics.Object
 				}
 
 				// Compute final results
@@ -149,58 +145,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 	return results
 }
 
-func (benchmark *Benchmark) createTransaction(
-	ctx context.Context,
-	client *ledgerclient.Formance,
-	l ledger.Ledger,
-	script string,
-	vars map[string]string,
-) (*ledger.Transaction, error) {
-	response, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-		Ledger: l.Name,
-		V2PostTransaction: components.V2PostTransaction{
-			Script: &components.V2PostTransactionScript{
-				Plain: script,
-				Vars:  vars,
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating transaction: %w", err)
-	}
-
-	return &ledger.Transaction{
-		TransactionData: ledger.TransactionData{
-			Postings: Map(response.V2CreateTransactionResponse.Data.Postings, func(from components.V2Posting) ledger.Posting {
-				return ledger.Posting{
-					Source:      from.Source,
-					Destination: from.Destination,
-					Amount:      from.Amount,
-					Asset:       from.Asset,
-				}
-			}),
-			Metadata: response.V2CreateTransactionResponse.Data.Metadata,
-			Timestamp: time.Time{
-				Time: response.V2CreateTransactionResponse.Data.Timestamp,
-			},
-			Reference: func() string {
-				if response.V2CreateTransactionResponse.Data.Reference == nil {
-					return ""
-				}
-				return *response.V2CreateTransactionResponse.Data.Reference
-			}(),
-		},
-		ID: int(response.V2CreateTransactionResponse.Data.ID.Int64()),
-		RevertedAt: func() *time.Time {
-			if response.V2CreateTransactionResponse.Data.RevertedAt == nil {
-				return nil
-			}
-			return &time.Time{Time: *response.V2CreateTransactionResponse.Data.RevertedAt}
-		}(),
-	}, nil
-}
-
-func New(b *testing.B, envFactory EnvFactory, scenarios map[string]TransactionProviderFactory) *Benchmark {
+func New(b *testing.B, envFactory EnvFactory, scenarios map[string]ActionProviderFactory) *Benchmark {
 	return &Benchmark{
 		b:          b,
 		EnvFactory: envFactory,

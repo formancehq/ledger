@@ -13,7 +13,7 @@ type ListTransactionsRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// The maximum number of results to return per page.
 	//
-	PageSize *int64 `default:"15" queryParam:"style=form,explode=true,name=pageSize"`
+	PageSize *int64 `queryParam:"style=form,explode=true,name=pageSize"`
 	// Pagination cursor, will return transactions after given txid (in descending order).
 	After *string `queryParam:"style=form,explode=true,name=after"`
 	// Find transactions by reference field.

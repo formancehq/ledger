@@ -4,20 +4,18 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"go.opentelemetry.io/otel/trace/noop"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"math/big"
 	"os"
-	"sync/atomic"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -31,9 +29,9 @@ import (
 )
 
 var (
-	srv         = NewDeferred[*pgtesting.PostgresServer]()
-	bunDB       = NewDeferred[*bun.DB]()
-	ledgerCount = atomic.Int64{}
+	srv           = NewDeferred[*pgtesting.PostgresServer]()
+	defaultBunDB  = NewDeferred[*bun.DB]()
+	defaultDriver = NewDeferred[*driver.Driver]()
 )
 
 func TestMain(m *testing.M) {
@@ -41,7 +39,7 @@ func TestMain(m *testing.M) {
 		srv.LoadAsync(func() *pgtesting.PostgresServer {
 			ret := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()), pgtesting.WithExtension("pgcrypto"))
 
-			bunDB.LoadAsync(func() *bun.DB {
+			defaultBunDB.LoadAsync(func() *bun.DB {
 				db, err := sql.Open("pgx", ret.GetDSN())
 				require.NoError(t, err)
 
@@ -51,7 +49,12 @@ func TestMain(m *testing.M) {
 				}
 				bunDB.SetMaxOpenConns(100)
 
-				require.NoError(t, driver.Migrate(logging.TestingContext(), bunDB))
+				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
+				defaultDriver.SetValue(driver.New(
+					ledgerstore.NewFactory(bunDB),
+					systemstore.New(bunDB),
+					bucket.NewDefaultFactory(bunDB),
+				))
 
 				return bunDB
 			})
@@ -71,32 +74,20 @@ type T interface {
 func newLedgerStore(t T) *ledgerstore.Store {
 	t.Helper()
 
+	<-defaultBunDB.Done()
+	<-defaultDriver.Done()
+
 	ledgerName := uuid.NewString()[:8]
 	ctx := logging.TestingContext()
 
-	Wait(srv, bunDB)
-
-	pgDatabase := srv.GetValue().NewDatabase(t)
-
-	hooks := make([]bun.QueryHook, 0)
-	if os.Getenv("DEBUG") == "true" {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
-
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
+	l := ledger.MustNewWithDefault(ledgerName)
+	err := bucket.GetMigrator(defaultBunDB.GetValue(), "_default").Up(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, driver.Migrate(ctx, db))
+	store, err := defaultDriver.GetValue().CreateLedger(ctx, &l)
+	require.NoError(t, err)
 
-	l := ledger.MustNewWithDefault(ledgerName)
-	l.Bucket = ledgerName
-	l.ID = int(ledgerCount.Add(1))
-
-	b := bucket.New(bunDB.GetValue(), ledgerName)
-	require.NoError(t, b.Migrate(ctx, noop.Tracer{}))
-	require.NoError(t, b.AddLedger(ctx, l, bunDB.GetValue()))
-
-	return ledgerstore.New(bunDB.GetValue(), b, l)
+	return store
 }
 
 func bigIntComparer(v1 *big.Int, v2 *big.Int) bool {

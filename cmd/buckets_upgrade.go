@@ -4,8 +4,12 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/service"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
 )
 
 func NewBucketUpgrade() *cobra.Command {
@@ -14,12 +18,10 @@ func NewBucketUpgrade() *cobra.Command {
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
-			if err != nil {
-				return err
-			}
+			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
+			cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
 
-			db, err := bunconnect.OpenSQLDB(cmd.Context(), *connectionOptions)
+			driver, db, err := getDriver(cmd)
 			if err != nil {
 				return err
 			}
@@ -27,18 +29,11 @@ func NewBucketUpgrade() *cobra.Command {
 				_ = db.Close()
 			}()
 
-			driver := driver.New(db)
-			if err := driver.Initialize(cmd.Context()); err != nil {
-				return err
-			}
-
 			if args[0] == "*" {
-				return upgradeAll(cmd)
+				return driver.UpgradeAllBuckets(cmd.Context())
 			}
 
-			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
-
-			return driver.UpgradeBucket(logging.ContextWithLogger(cmd.Context(), logger), args[0])
+			return driver.UpgradeBucket(cmd.Context(), args[0])
 		},
 	}
 
@@ -48,27 +43,26 @@ func NewBucketUpgrade() *cobra.Command {
 	return cmd
 }
 
-func upgradeAll(cmd *cobra.Command) error {
-	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
-	ctx := logging.ContextWithLogger(cmd.Context(), logger)
+func getDriver(cmd *cobra.Command) (*driver.Driver, *bun.DB, error) {
 
 	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	db, err := bunconnect.OpenSQLDB(cmd.Context(), *connectionOptions)
 	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = db.Close()
-	}()
-
-	driver := driver.New(db)
-	if err := driver.Initialize(ctx); err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	return driver.UpgradeAllBuckets(ctx)
+	driver := driver.New(
+		ledger.NewFactory(db),
+		systemstore.New(db),
+		bucket.NewDefaultFactory(db),
+	)
+	if err := driver.Initialize(cmd.Context()); err != nil {
+		return nil, nil, err
+	}
+
+	return driver, db, nil
 }

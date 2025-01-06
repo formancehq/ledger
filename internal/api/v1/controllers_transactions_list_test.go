@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +27,7 @@ func TestTransactionsList(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		expectQuery       ledgercontroller.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -33,71 +35,131 @@ func TestTransactionsList(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
+			name: "nominal",
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Expand: []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using metadata",
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin")),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("metadata[roles]", "admin"),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using startTime",
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Gte("date", now.Format(time.DateFormat)),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using endTime",
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Lt("date", now.Format(time.DateFormat)),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using account",
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("account", "xxx")),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("account", "xxx"),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using reference",
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("reference", "xxx")),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("reference", "xxx"),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using destination",
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("destination", "xxx")),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("destination", "xxx"),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using source",
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("source", "xxx")),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("source", "xxx"),
+					Expand:  []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{})))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{})},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Expand: []string{"volumes"},
+				},
+			},
 		},
 		{
 			name: "using invalid cursor",
@@ -105,7 +167,7 @@ func TestTransactionsList(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -113,15 +175,21 @@ func TestTransactionsList(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "page size over maximum",
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithPageSize(MaxPageSize),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: MaxPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: ledgercontroller.ResourceQuery[any]{
+					Expand: []string{"volumes"},
+				},
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -143,7 +211,7 @@ func TestTransactionsList(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				ledgerController.EXPECT().
-					ListTransactions(gomock.Any(), ledgercontroller.NewListTransactionsQuery(testCase.expectQuery)).
+					ListTransactions(gomock.Any(), testCase.expectQuery).
 					Return(&expectedCursor, nil)
 			}
 

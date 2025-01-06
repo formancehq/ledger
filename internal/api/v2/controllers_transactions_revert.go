@@ -17,11 +17,11 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 
 	txId, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	ret, err := l.RevertTransaction(
+	_, ret, err := l.RevertTransaction(
 		r.Context(),
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "force"),
@@ -32,9 +32,9 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
-			api.BadRequest(w, ErrInsufficientFund, err)
+			api.BadRequest(w, common.ErrInsufficientFund, err)
 		case errors.Is(err, ledgercontroller.ErrAlreadyReverted{}):
-			api.BadRequest(w, ErrAlreadyRevert, err)
+			api.BadRequest(w, common.ErrAlreadyRevert, err)
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
 		default:

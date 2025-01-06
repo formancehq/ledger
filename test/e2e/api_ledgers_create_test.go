@@ -6,9 +6,9 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -49,8 +49,8 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("with specific features set", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest.Features = ledger.MinimalFeatureSet.
-					With(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "DISABLED")
+				createLedgerRequest.V2CreateLedgerRequest.Features = features.MinimalFeatureSet.
+					With(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "DISABLED")
 			})
 			It("should be ok", func() {
 				Expect(err).To(BeNil())
@@ -58,8 +58,8 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("with invalid feature configuration", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest.Features = ledger.MinimalFeatureSet.
-					With(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "XXX")
+				createLedgerRequest.V2CreateLedgerRequest.Features = features.MinimalFeatureSet.
+					With(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "XXX")
 			})
 			It("should fail", func() {
 				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
@@ -67,7 +67,7 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("with invalid feature name", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest.Features = ledger.MinimalFeatureSet.
+				createLedgerRequest.V2CreateLedgerRequest.Features = features.MinimalFeatureSet.
 					With("foo", "XXX")
 			})
 			It("should fail", func() {

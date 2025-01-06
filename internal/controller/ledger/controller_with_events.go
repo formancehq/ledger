@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -10,6 +11,9 @@ type ControllerWithEvents struct {
 	Controller
 	ledger   ledger.Ledger
 	listener Listener
+	atCommit []func()
+	parent   *ControllerWithEvents
+	hasTx    bool
 }
 
 func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listener Listener) *ControllerWithEvents {
@@ -19,105 +23,165 @@ func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listen
 		listener:   listener,
 	}
 }
-func (ctrl *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
-	ret, err := ctrl.Controller.CreateTransaction(ctx, parameters)
+
+func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
+	if !c.hasTx {
+		fn()
+		return
+	}
+	if c.parent != nil && c.parent.hasTx {
+		c.parent.handleEvent(ctx, fn)
+		return
+	}
+
+	c.atCommit = append(c.atCommit, fn)
+}
+
+func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+	log, ret, err := c.Controller.CreateTransaction(ctx, parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !parameters.DryRun {
+		c.handleEvent(ctx, func() {
+			c.listener.CommittedTransactions(ctx, c.ledger.Name, ret.Transaction, ret.AccountMetadata)
+		})
+	}
+
+	return log, ret, nil
+}
+
+func (c *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+	log, ret, err := c.Controller.RevertTransaction(ctx, parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !parameters.DryRun {
+		c.handleEvent(ctx, func() {
+			c.listener.RevertedTransaction(
+				ctx,
+				c.ledger.Name,
+				ret.RevertedTransaction,
+				ret.RevertedTransaction,
+			)
+		})
+	}
+
+	return log, ret, nil
+}
+
+func (c *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+	log, err := c.Controller.SaveTransactionMetadata(ctx, parameters)
 	if err != nil {
 		return nil, err
 	}
 	if !parameters.DryRun {
-		ctrl.listener.CommittedTransactions(ctx, ctrl.ledger.Name, ret.Transaction, ret.AccountMetadata)
+		c.handleEvent(ctx, func() {
+			c.listener.SavedMetadata(
+				ctx,
+				c.ledger.Name,
+				ledger.MetaTargetTypeTransaction,
+				fmt.Sprint(parameters.Input.TransactionID),
+				parameters.Input.Metadata,
+			)
+		})
 	}
 
-	return ret, nil
+	return log, nil
 }
 
-func (ctrl *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
-	ret, err := ctrl.Controller.RevertTransaction(ctx, parameters)
+func (c *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+	log, err := c.Controller.SaveAccountMetadata(ctx, parameters)
 	if err != nil {
 		return nil, err
 	}
 	if !parameters.DryRun {
-		ctrl.listener.RevertedTransaction(
-			ctx,
-			ctrl.ledger.Name,
-			ret.RevertedTransaction,
-			ret.RevertedTransaction,
-		)
+		c.handleEvent(ctx, func() {
+			c.listener.SavedMetadata(
+				ctx,
+				c.ledger.Name,
+				ledger.MetaTargetTypeAccount,
+				parameters.Input.Address,
+				parameters.Input.Metadata,
+			)
+		})
 	}
 
-	return ret, nil
+	return log, nil
 }
 
-func (ctrl *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) error {
-	err := ctrl.Controller.SaveTransactionMetadata(ctx, parameters)
+func (c *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+	log, err := c.Controller.DeleteTransactionMetadata(ctx, parameters)
+	if err != nil {
+		return nil, err
+	}
+	if !parameters.DryRun {
+		c.handleEvent(ctx, func() {
+			c.listener.DeletedMetadata(
+				ctx,
+				c.ledger.Name,
+				ledger.MetaTargetTypeTransaction,
+				fmt.Sprint(parameters.Input.TransactionID),
+				parameters.Input.Key,
+			)
+		})
+	}
+
+	return log, nil
+}
+
+func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+	log, err := c.Controller.DeleteAccountMetadata(ctx, parameters)
+	if err != nil {
+		return nil, err
+	}
+	if !parameters.DryRun {
+		c.handleEvent(ctx, func() {
+			c.listener.DeletedMetadata(
+				ctx,
+				c.ledger.Name,
+				ledger.MetaTargetTypeAccount,
+				parameters.Input.Address,
+				parameters.Input.Key,
+			)
+		})
+	}
+
+	return log, nil
+}
+
+func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
+	ctrl, err := c.Controller.BeginTX(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ControllerWithEvents{
+		ledger:     c.ledger,
+		Controller: ctrl,
+		listener:   c.listener,
+		parent:     c,
+		hasTx:      true,
+	}, nil
+}
+
+func (c *ControllerWithEvents) Commit(ctx context.Context) error {
+	err := c.Controller.Commit(ctx)
 	if err != nil {
 		return err
 	}
-	if !parameters.DryRun {
-		ctrl.listener.SavedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeTransaction,
-			fmt.Sprint(parameters.Input.TransactionID),
-			parameters.Input.Metadata,
-		)
+
+	for _, f := range c.atCommit {
+		f()
 	}
 
 	return nil
 }
 
-func (ctrl *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) error {
-	err := ctrl.Controller.SaveAccountMetadata(ctx, parameters)
-	if err != nil {
-		return err
-	}
-	if !parameters.DryRun {
-		ctrl.listener.SavedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeAccount,
-			parameters.Input.Address,
-			parameters.Input.Metadata,
-		)
-	}
+func (c *ControllerWithEvents) Rollback(ctx context.Context) error {
+	c.atCommit = nil
 
-	return nil
-}
-
-func (ctrl *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) error {
-	err := ctrl.Controller.DeleteTransactionMetadata(ctx, parameters)
-	if err != nil {
-		return err
-	}
-	if !parameters.DryRun {
-		ctrl.listener.DeletedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeTransaction,
-			fmt.Sprint(parameters.Input.TransactionID),
-			parameters.Input.Key,
-		)
-	}
-
-	return nil
-}
-
-func (ctrl *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) error {
-	err := ctrl.Controller.DeleteAccountMetadata(ctx, parameters)
-	if err != nil {
-		return err
-	}
-	if !parameters.DryRun {
-		ctrl.listener.DeletedMetadata(
-			ctx,
-			ctrl.ledger.Name,
-			ledger.MetaTargetTypeAccount,
-			parameters.Input.Address,
-			parameters.Input.Key,
-		)
-	}
-
-	return nil
+	return c.Controller.Rollback(ctx)
 }
 
 var _ Controller = (*ControllerWithEvents)(nil)

@@ -1,18 +1,12 @@
 package v2
 
 import (
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/ledger/internal"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/internal/api/common"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"io"
 	"net/http"
-	"slices"
-	"strconv"
 	"strings"
-
-	"github.com/formancehq/go-libs/v2/api"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/time"
@@ -21,106 +15,27 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 )
 
-func getPITOOTFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
-	pitString := r.URL.Query().Get("endTime")
-	ootString := r.URL.Query().Get("startTime")
+func getDate(r *http.Request, key string) (*time.Time, error) {
+	dateString := r.URL.Query().Get(key)
 
-	var (
-		pit *time.Time
-		oot *time.Time
-	)
-
-	if pitString != "" {
-		var err error
-		_pit, err := time.ParseTime(pitString)
-		if err != nil {
-			return nil, err
-		}
-
-		pit = &_pit
+	if dateString == "" {
+		return nil, nil
 	}
 
-	if ootString != "" {
-		var err error
-		_oot, err := time.ParseTime(ootString)
-		if err != nil {
-			return nil, err
-		}
-
-		oot = &_oot
-	}
-
-	return &ledgercontroller.PITFilter{
-		PIT: pit,
-		OOT: oot,
-	}, nil
-}
-
-func getPITFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
-	pitString := r.URL.Query().Get("pit")
-
-	var pit *time.Time
-	if pitString != "" {
-		var err error
-		_pit, err := time.ParseTime(pitString)
-		if err != nil {
-			return nil, err
-		}
-
-		pit = &_pit
-	}
-
-	return &ledgercontroller.PITFilter{
-		PIT: pit,
-	}, nil
-}
-
-func getPITFilterWithVolumes(r *http.Request) (*ledgercontroller.PITFilterWithVolumes, error) {
-	pit, err := getPITFilter(r)
-	if err != nil {
-		return nil, err
-	}
-	return &ledgercontroller.PITFilterWithVolumes{
-		PITFilter:              *pit,
-		ExpandVolumes:          hasExpandVolumes(r),
-		ExpandEffectiveVolumes: hasExpandEffectiveVolumes(r),
-	}, nil
-}
-
-func hasExpandVolumes(r *http.Request) bool {
-	parts := strings.Split(r.URL.Query().Get("expand"), ",")
-	return slices.Contains(parts, "volumes")
-}
-
-func hasExpandEffectiveVolumes(r *http.Request) bool {
-	parts := strings.Split(r.URL.Query().Get("expand"), ",")
-	return slices.Contains(parts, "effectiveVolumes")
-}
-
-func getFiltersForVolumes(r *http.Request) (*ledgercontroller.FiltersForVolumes, error) {
-	pit, err := getPITOOTFilter(r)
+	date, err := time.ParseTime(dateString)
 	if err != nil {
 		return nil, err
 	}
 
-	useInsertionDate := api.QueryParamBool(r, "insertionDate")
-	groupLvl := 0
+	return &date, nil
+}
 
-	groupLvlStr := r.URL.Query().Get("groupBy")
-	if groupLvlStr != "" {
-		groupLvlInt, err := strconv.Atoi(groupLvlStr)
-		if err != nil {
-			return nil, err
-		}
-		if groupLvlInt > 0 {
-			groupLvl = groupLvlInt
-		}
-	}
-	return &ledgercontroller.FiltersForVolumes{
-		PITFilter:        *pit,
-		UseInsertionDate: useInsertionDate,
-		GroupLvl:         groupLvl,
-	}, nil
+func getPIT(r *http.Request) (*time.Time, error) {
+	return getDate(r, "pit")
+}
+
+func getOOT(r *http.Request) (*time.Time, error) {
+	return getDate(r, "oot")
 }
 
 func getQueryBuilder(r *http.Request) (query.Builder, error) {
@@ -139,77 +54,88 @@ func getQueryBuilder(r *http.Request) (query.Builder, error) {
 	return nil, nil
 }
 
-func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], error) {
-	qb, err := getQueryBuilder(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pitFilter, err := getPITFilterWithVolumes(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pageSize, err := bunpaginate.GetPageSize(r)
-	if err != nil {
-		return nil, err
-	}
-
-	return pointer.For(ledgercontroller.NewPaginatedQueryOptions(*pitFilter).
-		WithQueryBuilder(qb).
-		WithPageSize(pageSize)), nil
+func getExpand(r *http.Request) []string {
+	return Flatten(
+		Map(r.URL.Query()["expand"], func(from string) []string {
+			return strings.Split(from, ",")
+		}),
+	)
 }
 
-func getPaginatedQueryOptionsOfFiltersForVolumes(r *http.Request) (*ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes], error) {
-	qb, err := getQueryBuilder(r)
-	if err != nil {
-		return nil, err
-	}
-
-	filtersForVolumes, err := getFiltersForVolumes(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pageSize, err := bunpaginate.GetPageSize(r)
-	if err != nil {
-		return nil, err
-	}
-
-	return pointer.For(ledgercontroller.NewPaginatedQueryOptions(*filtersForVolumes).
-		WithPageSize(pageSize).
-		WithQueryBuilder(qb)), nil
-}
-
-type TransactionRequest struct {
-	Postings  ledger.Postings           `json:"postings"`
-	Script    ledgercontroller.ScriptV1 `json:"script"`
-	Timestamp time.Time                 `json:"timestamp"`
-	Reference string                    `json:"reference"`
-	Metadata  metadata.Metadata         `json:"metadata" swaggertype:"object"`
-}
-
-func (req *TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {
-
-	if _, err := req.Postings.Validate(); err != nil {
-		return nil, err
-	}
-
-	if len(req.Postings) > 0 {
-		txData := ledger.TransactionData{
-			Postings:  req.Postings,
-			Timestamp: req.Timestamp,
-			Reference: req.Reference,
-			Metadata:  req.Metadata,
+func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, modifiers ...func(*v) error) (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+	return bunpaginate.Extract[ledgercontroller.OffsetPaginatedQuery[v]](r, func() (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+		rq, err := getResourceQuery[v](r, modifiers...)
+		if err != nil {
+			return nil, err
 		}
 
-		return pointer.For(common.TxToScriptData(txData, allowUnboundedOverdrafts)), nil
+		pageSize, err := bunpaginate.GetPageSize(
+			r,
+			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return &ledgercontroller.OffsetPaginatedQuery[v]{
+			PageSize: pageSize,
+			Options:  *rq,
+		}, nil
+	})
+}
+
+func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+	return bunpaginate.Extract[ledgercontroller.ColumnPaginatedQuery[v]](r, func() (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+		rq, err := getResourceQuery[v](r, modifiers...)
+		if err != nil {
+			return nil, err
+		}
+
+		pageSize, err := bunpaginate.GetPageSize(
+			r,
+			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return &ledgercontroller.ColumnPaginatedQuery[v]{
+			PageSize: pageSize,
+			Column:   defaultPaginationColumn,
+			Order:    pointer.For(order),
+			Options:  *rq,
+		}, nil
+	})
+}
+
+func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.ResourceQuery[v], error) {
+	pit, err := getPIT(r)
+	if err != nil {
+		return nil, err
+	}
+	oot, err := getOOT(r)
+	if err != nil {
+		return nil, err
+	}
+	builder, err := getQueryBuilder(r)
+	if err != nil {
+		return nil, err
 	}
 
-	return &ledgercontroller.RunScript{
-		Script:    req.Script.ToCore(),
-		Timestamp: req.Timestamp,
-		Reference: req.Reference,
-		Metadata:  req.Metadata,
+	var options v
+	for _, modifier := range modifiers {
+		if err := modifier(&options); err != nil {
+			return nil, err
+		}
+	}
+
+	return &ledgercontroller.ResourceQuery[v]{
+		PIT:     pit,
+		OOT:     oot,
+		Builder: builder,
+		Expand:  getExpand(r),
+		Opts:    options,
 	}, nil
 }

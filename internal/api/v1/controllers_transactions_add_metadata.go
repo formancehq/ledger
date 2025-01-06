@@ -19,7 +19,7 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 
 	var m metadata.Metadata
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		api.BadRequest(w, ErrValidation, errors.New("invalid metadata format"))
+		api.BadRequest(w, common.ErrValidation, errors.New("invalid metadata format"))
 		return
 	}
 
@@ -29,7 +29,7 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
+	if _, err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
 		TransactionID: int(txID),
 		Metadata:      m,
 	})); err != nil {

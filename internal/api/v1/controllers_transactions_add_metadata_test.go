@@ -1,6 +1,8 @@
 package v1
 
 import (
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -37,7 +39,7 @@ func TestTransactionsAddMetadata(t *testing.T) {
 			name:              "invalid body",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {
@@ -58,7 +60,7 @@ func TestTransactionsAddMetadata(t *testing.T) {
 							Metadata:      testCase.body.(metadata.Metadata),
 						},
 					}).
-					Return(nil)
+					Return(&ledger.Log{}, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")

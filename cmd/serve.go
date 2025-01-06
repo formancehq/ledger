@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/ledger/internal/api/common"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -9,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/httpserver"
 	"github.com/formancehq/go-libs/v2/otlp"
-	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
 
@@ -40,7 +42,10 @@ const (
 	AutoUpgradeFlag            = "auto-upgrade"
 	ExperimentalFeaturesFlag   = "experimental-features"
 	BulkMaxSizeFlag            = "bulk-max-size"
+	BulkParallelFlag           = "bulk-parallel"
 	NumscriptInterpreterFlag   = "experimental-numscript-interpreter"
+	DefaultPageSizeFlag        = "default-page-size"
+	MaxPageSizeFlag            = "max-page-size"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -62,6 +67,21 @@ func NewServeCommand() *cobra.Command {
 			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
 
 			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
+			if err != nil {
+				return err
+			}
+
+			bulkParallel, err := cmd.Flags().GetInt(BulkParallelFlag)
+			if err != nil {
+				return err
+			}
+
+			maxPageSize, err := cmd.Flags().GetUint64(MaxPageSizeFlag)
+			if err != nil {
+				return err
+			}
+
+			defaultPageSize, err := cmd.Flags().GetUint64(DefaultPageSizeFlag)
 			if err != nil {
 				return err
 			}
@@ -89,26 +109,35 @@ func NewServeCommand() *cobra.Command {
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
 				api.Module(api.Config{
-					Version:     Version,
-					Debug:       service.IsDebug(cmd),
-					BulkMaxSize: bulkMaxSize,
+					Version: Version,
+					Debug:   service.IsDebug(cmd),
+					Bulk: api.BulkConfig{
+						MaxSize:  bulkMaxSize,
+						Parallel: bulkParallel,
+					},
+					Pagination: common.PaginationConfig{
+						MaxPageSize:     maxPageSize,
+						DefaultPageSize: defaultPageSize,
+					},
 				}),
 				fx.Decorate(func(
 					params struct {
-						fx.In
+					fx.In
 
-						Handler          chi.Router
-						HealthController *health.HealthController
+					Handler          chi.Router
+					HealthController *health.HealthController
+					Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-					},
+					MeterProvider *metric.MeterProvider         `optional:"true"`
+					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
 						params.MeterProvider,
 						params.Exporter,
 						params.HealthController,
+						params.Logger,
 						params.Handler,
 					)
 				}),
@@ -126,7 +155,10 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
+	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
+	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
+	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
@@ -134,7 +166,7 @@ func NewServeCommand() *cobra.Command {
 	otlptraces.AddFlags(cmd.Flags())
 	auth.AddFlags(cmd.Flags())
 	publish.AddFlags(ServiceName, cmd.Flags(), func(cd *publish.ConfigDefault) {
-		cd.PublisherCircuitBreakerSchema = driver.SchemaSystem
+		cd.PublisherCircuitBreakerSchema = systemstore.SchemaSystem
 	})
 	iam.AddFlags(cmd.Flags())
 
@@ -163,9 +195,18 @@ func assembleFinalRouter(
 	meterProvider *metric.MeterProvider,
 	exporter *otlpmetrics.InMemoryExporter,
 	healthController *health.HealthController,
+	logger logging.Logger,
 	handler http.Handler,
 ) *chi.Mux {
 	wrappedRouter := chi.NewRouter()
+	wrappedRouter.Use(func(handler http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
+
+			handler.ServeHTTP(w, r)
+		})
+	})
 	wrappedRouter.Route("/_/", func(r chi.Router) {
 		if exporter != nil {
 			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(

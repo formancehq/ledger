@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,7 +31,7 @@ func TestGetLogs(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.PaginatedQueryOptions[any]
+		expectQuery       ledgercontroller.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -39,29 +41,59 @@ func TestGetLogs(t *testing.T) {
 	now := time.Now()
 	testCases := []testCase{
 		{
-			name:              "nominal",
-			expectQuery:       ledgercontroller.NewPaginatedQueryOptions[any](nil),
+			name: "nominal",
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Expand: make([]string, 0),
+				},
+			},
 			expectBackendCall: true,
 		},
 		{
-			name:              "using start time",
-			body:              fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery:       ledgercontroller.NewPaginatedQueryOptions[any](nil).WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
+			name: "using start time",
+			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Gte("date", now.Format(time.DateFormat)),
+					Expand:  make([]string, 0),
+				},
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using end time",
 			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions[any](nil).
-				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Lt("date", now.Format(time.DateFormat)),
+					Expand:  make([]string, 0),
+				},
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil)))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{
+					PageSize: bunpaginate.QueryDefaultPageSize,
+					Column:   "id",
+					Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				})},
 			},
-			expectQuery:       ledgercontroller.NewPaginatedQueryOptions[any](nil),
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			},
 			expectBackendCall: true,
 		},
 		{
@@ -70,7 +102,7 @@ func TestGetLogs(t *testing.T) {
 				"cursor": []string{"xxx"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name: "using invalid page size",
@@ -78,26 +110,40 @@ func TestGetLogs(t *testing.T) {
 				"pageSize": []string{"-1"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
 			name:              "using malformed query",
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 		{
-			name:              "with invalid query",
-			expectStatusCode:  http.StatusBadRequest,
-			expectQuery:       ledgercontroller.NewPaginatedQueryOptions[any](nil),
-			expectedErrorCode: ErrValidation,
+			name:             "with invalid query",
+			expectStatusCode: http.StatusBadRequest,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Expand: make([]string, 0),
+				},
+			},
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
 		},
 		{
-			name:              "with unexpected error",
-			expectStatusCode:  http.StatusInternalServerError,
-			expectQuery:       ledgercontroller.NewPaginatedQueryOptions[any](nil),
+			name:             "with unexpected error",
+			expectStatusCode: http.StatusInternalServerError,
+			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: ledgercontroller.ResourceQuery[any]{
+					Expand: make([]string, 0),
+				},
+			},
 			expectedErrorCode: api.ErrorInternal,
 			expectBackendCall: true,
 			returnErr:         errors.New("unexpected error"),
@@ -124,7 +170,7 @@ func TestGetLogs(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectBackendCall {
 				ledgerController.EXPECT().
-					ListLogs(gomock.Any(), ledgercontroller.NewListLogsQuery(testCase.expectQuery)).
+					ListLogs(gomock.Any(), testCase.expectQuery).
 					Return(&expectedCursor, testCase.returnErr)
 			}
 

@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - releases/*
+      - release/*
   pull_request:
     types: [ assigned, opened, synchronize, reopened, labeled ]
 
@@ -35,11 +35,8 @@ jobs:
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          earthly
-          --allow-privileged
-          --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +pre-commit
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just pre-commit
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Get changed files
@@ -65,11 +62,8 @@ jobs:
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          earthly
-          --allow-privileged
-          --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +tests --coverage=true
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just tests
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Upload coverage reports to Codecov with GitHub Action
@@ -101,15 +95,8 @@ jobs:
           username: "NumaryBot"
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          earthly
-          --no-output
-          --allow-privileged
-          --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
-          --secret GITHUB_TOKEN=$GITHUB_TOKEN
-          --secret FURY_TOKEN=$FURY_TOKEN
-          --secret GORELEASER_KEY=$GORELEASER_KEY
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +release --mode=ci
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" 
+          develop --impure --command just release-ci
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
@@ -131,12 +118,6 @@ jobs:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
-      - name: Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
       - name: "Deploy in staging"
         env:
           TAG: ${{ github.sha }}

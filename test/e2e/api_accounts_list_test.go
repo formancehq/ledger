@@ -109,7 +109,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInternal)))
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 		})
 		It("should be countable on api", func() {
 			response, err := CountAccounts(

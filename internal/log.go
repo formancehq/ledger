@@ -91,7 +91,7 @@ type Log struct {
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              int    `json:"id" bun:"id,unique,type:numeric"`
-	Hash            []byte `json:"hash" bun:"hash,type:bytea,scanonly"`
+	Hash            []byte `json:"hash" bun:"hash,type:bytea"`
 }
 
 func (l Log) WithIdempotencyKey(key string) Log {

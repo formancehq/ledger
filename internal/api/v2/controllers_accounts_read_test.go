@@ -2,6 +2,8 @@ package v2
 
 import (
 	"bytes"
+	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -24,7 +26,7 @@ func TestAccountsRead(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.GetAccountQuery
+		expectQuery       ledgercontroller.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -37,13 +39,20 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:              "nominal",
 			account:           "foo",
-			expectQuery:       ledgercontroller.NewGetAccountQuery("foo").WithPIT(before),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Builder: query.Match("address", "foo"),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name:              "with expand volumes",
 			account:           "foo",
-			expectQuery:       ledgercontroller.NewGetAccountQuery("foo").WithPIT(before).WithExpandVolumes(),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Builder: query.Match("address", "foo"),
+				Expand: []string{"volumes"},
+			},
 			expectBackendCall: true,
 			queryParams: url.Values{
 				"expand": {"volumes"},
@@ -52,7 +61,11 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:              "with expand effective volumes",
 			account:           "foo",
-			expectQuery:       ledgercontroller.NewGetAccountQuery("foo").WithPIT(before).WithExpandEffectiveVolumes(),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Builder: query.Match("address", "foo"),
+				Expand: []string{"effectiveVolumes"},
+			},
 			expectBackendCall: true,
 			queryParams: url.Values{
 				"expand": {"effectiveVolumes"},
@@ -62,7 +75,7 @@ func TestAccountsRead(t *testing.T) {
 			name:              "invalid account address",
 			account:           "%8X%2F",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {

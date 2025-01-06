@@ -2,6 +2,8 @@ package v2
 
 import (
 	"encoding/json"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -50,7 +52,7 @@ func TestAccountsDeleteMetadata(t *testing.T) {
 			name:               "invalid account address",
 			account:            "%8X%2F",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  false,
 		},
 	} {
@@ -67,7 +69,7 @@ func TestAccountsDeleteMetadata(t *testing.T) {
 							Key:     "foo",
 						},
 					}).
-					Return(tc.returnErr)
+					Return(&ledger.Log{}, tc.returnErr)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")

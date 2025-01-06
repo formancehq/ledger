@@ -45,9 +45,11 @@ type Configuration struct {
 	Debug                        bool
 	OTLPConfig                   *OTLPConfig
 	ExperimentalFeatures         bool
-	DisableAutoUpgrade bool
+	DisableAutoUpgrade           bool
 	BulkMaxSize                  int
 	ExperimentalNumscriptRewrite bool
+	MaxPageSize uint64
+	DefaultPageSize uint64
 }
 
 type Logger interface {
@@ -57,11 +59,13 @@ type Logger interface {
 type Server struct {
 	configuration Configuration
 	logger        Logger
-	httpClient    *ledgerclient.Formance
+	sdkClient     *ledgerclient.Formance
 	cancel        func()
 	ctx           context.Context
 	errorChan     chan error
 	id            string
+	httpClient    *http.Client
+	serverURL     string
 }
 
 func (s *Server) Start() error {
@@ -175,7 +179,12 @@ func (s *Server) Start() error {
 			args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.BaseConfig.ServiceName)
 		}
 	}
-
+	if s.configuration.MaxPageSize != 0 {
+		args = append(args, "--"+cmd.MaxPageSizeFlag, fmt.Sprint(s.configuration.MaxPageSize))
+	}
+	if s.configuration.DefaultPageSize != 0 {
+		args = append(args, "--"+cmd.DefaultPageSizeFlag, fmt.Sprint(s.configuration.DefaultPageSize))
+	}
 	if s.configuration.Debug {
 		args = append(args, "--"+service.DebugFlag)
 	}
@@ -221,11 +230,14 @@ func (s *Server) Start() error {
 		transport = httpclient.NewDebugHTTPTransport(transport)
 	}
 
-	s.httpClient = ledgerclient.New(
-		ledgerclient.WithServerURL(httpserver.URL(s.ctx)),
-		ledgerclient.WithClient(&http.Client{
-			Transport: transport,
-		}),
+	s.httpClient = &http.Client{
+		Transport: transport,
+	}
+	s.serverURL = httpserver.URL(s.ctx)
+
+	s.sdkClient = ledgerclient.New(
+		ledgerclient.WithServerURL(s.serverURL),
+		ledgerclient.WithClient(s.httpClient),
 	)
 
 	return nil
@@ -255,7 +267,15 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 func (s *Server) Client() *ledgerclient.Formance {
+	return s.sdkClient
+}
+
+func (s *Server) HTTPClient() *http.Client {
 	return s.httpClient
+}
+
+func (s *Server) ServerURL() string {
+	return s.serverURL
 }
 
 func (s *Server) Restart(ctx context.Context) error {

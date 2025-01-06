@@ -1,5 +1,3 @@
-version: '3.8'
-
 volumes:
   postgres: {}
 
@@ -29,7 +27,7 @@ services:
     image: prom/prometheus:latest
     restart: always
     volumes:
-      - ./deployments/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - ./deployments/docker-compose/prometheus.yaml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
 
@@ -37,7 +35,7 @@ services:
     image: "otel/opentelemetry-collector-contrib:0.81.0"
     command: [ "--config=/etc/otel-collector-config.yaml" ]
     volumes:
-      - ./deployments/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./deployments/docker-compose/otel-collector-config.yaml:/etc/otel-collector-config.yaml
 
   jaeger:
     image: jaegertracing/opentelemetry-all-in-one
@@ -45,7 +43,7 @@ services:
       - "16686:16686/tcp"
 
   ledger:
-    image: golang:1.22-alpine
+    image: golang:1.23-alpine
     entrypoint: go run main.go serve
     volumes:
       - .:/src
@@ -73,4 +71,9 @@ services:
       OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
       OTEL_TRACES_BATCH: "true"
       POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+      POSTGRES_MAX_OPEN_CONNS: "40"
+      POSTGRES_MAX_IDLE_CONNS: "40"
+      POSTGRES_CONN_MAX_IDLE_TIME: "5m"
+      EXPERIMENTAL_FEATURES: "true"
       AUTO_UPGRADE: "true"
+      BULK_PARALLEL: "10"

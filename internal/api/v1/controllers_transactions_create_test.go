@@ -154,7 +154,7 @@ func TestTransactionsCreate(t *testing.T) {
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
 			},
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -169,7 +169,7 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedPreview: true,
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -177,7 +177,7 @@ func TestTransactionsCreate(t *testing.T) {
 			name:               "no postings or script",
 			payload:            CreateTransactionRequest{},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name: "postings and script",
@@ -201,21 +201,20 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name:               "using invalid body",
 			payload:            "not a valid payload",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 	}
 
-	for _, testCase := range testCases {
-		tc := testCase
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if testCase.expectedStatusCode == 0 {
-				testCase.expectedStatusCode = http.StatusOK
+			if tc.expectedStatusCode == 0 {
+				tc.expectedStatusCode = http.StatusOK
 			}
 
 			expectedTx := ledger.NewTransaction().WithPostings(
@@ -223,35 +222,35 @@ func TestTransactionsCreate(t *testing.T) {
 			)
 
 			systemController, ledgerController := newTestingSystemController(t, true)
-			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
-				testCase.expectedRunScript.Timestamp = time.Time{}
+			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
+				tc.expectedRunScript.Timestamp = time.Time{}
 				ledgerController.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
 						DryRun: tc.expectedPreview,
-						Input:  testCase.expectedRunScript,
+						Input:  tc.expectedRunScript,
 					}).
-					Return(&ledger.CreatedTransaction{
+					Return(&ledger.Log{}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
 					}, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
-			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions", api.Buffer(t, testCase.payload))
+			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions", api.Buffer(t, tc.payload))
 			rec := httptest.NewRecorder()
-			req.URL.RawQuery = testCase.queryParams.Encode()
+			req.URL.RawQuery = tc.queryParams.Encode()
 
 			router.ServeHTTP(rec, req)
 
-			require.Equal(t, testCase.expectedStatusCode, rec.Code)
-			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
+			require.Equal(t, tc.expectedStatusCode, rec.Code)
+			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
 				tx, ok := api.DecodeSingleResponse[[]ledger.Transaction](t, rec.Body)
 				require.True(t, ok)
 				require.Equal(t, expectedTx, tx[0])
 			} else {
 				err := api.ErrorResponse{}
 				api.Decode(t, rec.Body, &err)
-				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
+				require.EqualValues(t, tc.expectedErrorCode, err.ErrorCode)
 			}
 		})
 	}

@@ -87,6 +87,7 @@ func main() {
 ### [Ledger](docs/sdks/ledger/README.md)
 
 * [GetInfo](docs/sdks/ledger/README.md#getinfo) - Show server information
+* [GetMetrics](docs/sdks/ledger/README.md#getmetrics) - Read in memory metrics
 
 ### [Ledger.V1](docs/sdks/v1/README.md)
 

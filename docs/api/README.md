@@ -60,6 +60,52 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:read )
 </aside>
 
+## Read in memory metrics
+
+<a id="opIdgetMetrics"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/_/metrics HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /_/metrics`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "property1": null,
+  "property2": null
+}
+```
+
+<h3 id="read-in-memory-metrics-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="read-in-memory-metrics-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» **additionalProperties**|any|false|none|none|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
 <h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
 ## List ledgers
@@ -452,6 +498,9 @@ Accept: application/json
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
+|continueOnFailure|query|boolean|false|Continue on failure|
+|atomic|query|boolean|false|Make bulk atomic|
+|parallel|query|boolean|false|Process bulk elements in parallel|
 |body|body|[V2Bulk](#schemav2bulk)|false|none|
 
 > Example responses
@@ -463,6 +512,7 @@ Accept: application/json
   "data": [
     {
       "responseType": "string",
+      "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
@@ -547,7 +597,10 @@ Accept: application/json
         }
       }
     }
-  ]
+  ],
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -2582,7 +2635,7 @@ Authorization ( Scopes: ledger:write )
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|insertedAt|string(date-time)|true|none|none|
+|insertedAt|string(date-time)|false|none|none|
 |timestamp|string(date-time)|true|none|none|
 |postings|[[V2Posting](#schemav2posting)]|true|none|none|
 |reference|string|false|none|none|
@@ -2697,6 +2750,7 @@ Authorization ( Scopes: ledger:write )
 |type|NEW_TRANSACTION|
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
+|type|DELETE_METADATA|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -3193,6 +3247,7 @@ Authorization ( Scopes: ledger:write )
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
+|*anonymous*|OUTDATED_SCHEMA|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->
@@ -3651,6 +3706,7 @@ and
   "data": [
     {
       "responseType": "string",
+      "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
@@ -3735,16 +3791,28 @@ and
         }
       }
     }
-  ]
+  ],
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 
 ```
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|true|none|none|
+|*anonymous*|object|false|none|none|
+|» data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2ErrorResponse](#schemav2errorresponse)|false|none|none|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->
@@ -3756,6 +3824,7 @@ and
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
@@ -3884,7 +3953,8 @@ xor
 
 ```json
 {
-  "responseType": "string"
+  "responseType": "string",
+  "logID": 0
 }
 
 ```
@@ -3894,6 +3964,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |responseType|string|true|none|none|
+|logID|integer|true|none|none|
 
 <h2 id="tocS_V2BulkElementResultCreateTransaction">V2BulkElementResultCreateTransaction</h2>
 <!-- backwards compatibility -->
@@ -3905,6 +3976,7 @@ xor
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
@@ -4016,7 +4088,8 @@ and
 
 ```json
 {
-  "responseType": "string"
+  "responseType": "string",
+  "logID": 0
 }
 
 ```
@@ -4035,6 +4108,7 @@ and
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
@@ -4146,7 +4220,8 @@ and
 
 ```json
 {
-  "responseType": "string"
+  "responseType": "string",
+  "logID": 0
 }
 
 ```
@@ -4165,6 +4240,7 @@ and
 ```json
 {
   "responseType": "string",
+  "logID": 0,
   "errorCode": "string",
   "errorDescription": "string",
   "errorDetails": "string"

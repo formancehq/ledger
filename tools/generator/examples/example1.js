@@ -1,4 +1,4 @@
-const script = `vars {
+const plain = `vars {
     account $order
     account $seller
 }
@@ -16,11 +16,16 @@ send [USD/2 99] (
 )`
 
 function next(iteration) {
-    return {
-        script,
-        variables: {
-            order: `orders:${uuid()}`,
-            seller: `sellers:${iteration % 5}`
+    return [{
+        action: 'CREATE_TRANSACTION',
+        data: {
+            script: {
+                plain,
+                vars: {
+                    order: `orders:${uuid()}`,
+                    seller: `sellers:${iteration % 5}`
+                }
+            }
         }
-    }
+    }]
 }

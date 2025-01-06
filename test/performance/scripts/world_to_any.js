@@ -1,16 +1,23 @@
 function next() {
-    return {
-        script: `vars {
-            account $destination
+    return [
+        {
+            action: 'CREATE_TRANSACTION',
+            data: {
+                script: {
+                    plain: `vars {
+                        account $destination
+                    }
+                    send [USD/2 100] (
+                        source = @world
+                        destination = $destination
+                    )`,
+                    vars: {
+                        destination: "dst:" + uuid()
+                    }
+                }
+            }
         }
-        send [USD/2 100] (
-            source = @world
-            destination = $destination
-        )`,
-        variables: {
-            destination: "dst:" + uuid()
-        }
-    }
+    ]
 }
 
 

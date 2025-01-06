@@ -4,7 +4,6 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"math/big"
 	"testing"
 
@@ -33,7 +32,7 @@ func TestBalancesGet(t *testing.T) {
 		UpdatedAt:     time.Now(),
 		FirstUsage:    time.Now(),
 	}
-	_, err := store.UpsertAccount(ctx, world)
+	err := store.UpsertAccounts(ctx, world)
 	require.NoError(t, err)
 
 	_, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
@@ -43,6 +42,32 @@ func TestBalancesGet(t *testing.T) {
 		Output:  big.NewInt(100),
 	})
 	require.NoError(t, err)
+
+	t.Run("get balances of not existing account should create an empty row", func(t *testing.T) {
+		t.Parallel()
+
+		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
+			"orders:1234": []string{"USD"},
+		})
+		require.NoError(t, err)
+		require.Len(t, balances, 1)
+		require.NotNil(t, balances["orders:1234"])
+		require.Len(t, balances["orders:1234"], 1)
+		require.Equal(t, big.NewInt(0), balances["orders:1234"]["USD"])
+
+		volumes := make([]*ledger.AccountsVolumes, 0)
+
+		err = store.GetDB().NewSelect().
+			Model(&volumes).
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("accounts_address = ?", "orders:1234").
+			Scan(ctx)
+		require.NoError(t, err)
+		require.Len(t, volumes, 1)
+		require.Equal(t, "USD", volumes[0].Asset)
+		require.Equal(t, big.NewInt(0), volumes[0].Input)
+		require.Equal(t, big.NewInt(0), volumes[0].Output)
+	})
 
 	t.Run("check concurrent access on same balance", func(t *testing.T) {
 		t.Parallel()
@@ -106,6 +131,7 @@ func TestBalancesGet(t *testing.T) {
 
 		count, err := store.GetDB().NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("ledger = ?", store.GetLedger().Name).
 			Count(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
@@ -124,59 +150,10 @@ func TestBalancesGet(t *testing.T) {
 
 		count, err = store.GetDB().NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("ledger = ?", store.GetLedger().Name).
 			Count(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
-	})
-
-	t.Run("with balance from move", func(t *testing.T) {
-		t.Parallel()
-
-		tx := ledger.NewTransaction().WithPostings(
-			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-		)
-		err := store.InsertTransaction(ctx, &tx)
-		require.NoError(t, err)
-
-		bankAccount := ledger.Account{
-			Address:       "bank",
-			FirstUsage:    tx.InsertedAt,
-			InsertionDate: tx.InsertedAt,
-			UpdatedAt:     tx.InsertedAt,
-		}
-		_, err = store.UpsertAccount(ctx, &bankAccount)
-		require.NoError(t, err)
-
-		err = store.InsertMoves(ctx, &ledger.Move{
-			TransactionID:     tx.ID,
-			IsSource:          false,
-			Account:           "bank",
-			Amount:            (*bunpaginate.BigInt)(big.NewInt(100)),
-			Asset:             "USD",
-			InsertionDate:     tx.InsertedAt,
-			EffectiveDate:     tx.InsertedAt,
-			PostCommitVolumes: pointer.For(ledger.NewVolumesInt64(100, 0)),
-		})
-		require.NoError(t, err)
-
-		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
-			"bank": {"USD"},
-		})
-		require.NoError(t, err)
-
-		require.NotNil(t, balances["bank"])
-		RequireEqual(t, big.NewInt(100), balances["bank"]["USD"])
-
-		// Check a new line has been inserted into accounts_volumes table
-		volumes := &ledger.AccountsVolumes{}
-		err = store.GetDB().NewSelect().
-			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("accounts_address = ?", "bank").
-			Scan(ctx, volumes)
-		require.NoError(t, err)
-
-		RequireEqual(t, big.NewInt(100), volumes.Input)
-		RequireEqual(t, big.NewInt(0), volumes.Output)
 	})
 }
 
@@ -237,90 +214,168 @@ func TestBalancesAggregates(t *testing.T) {
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
 
-		cursor, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{}, nil, false))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{})
 		require.NoError(t, err)
-		RequireEqual(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0),
-			"EUR": big.NewInt(0),
-		}, cursor)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+				},
+				"EUR": ledger.Volumes{
+					Input:  smallInt,
+					Output: smallInt,
+				},
+			},
+		}, *ret)
 	})
 	t.Run("filter on address", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{},
-			query.Match("address", "users:"), false))
+
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.Match("address", "users:"),
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0).Add(
-				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
-				big.NewInt(0).Mul(smallInt, big.NewInt(2)),
-			),
-		}, ret)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
 	})
 	t.Run("using pit on effective date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
-			PIT: pointer.For(now.Add(-time.Second)),
-		}, query.Match("address", "users:"), false))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.Match("address", "users:"),
+			PIT:     pointer.For(now.Add(-time.Second)),
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0).Add(
-				bigInt,
-				smallInt,
-			),
-		}, ret)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						bigInt,
+						smallInt,
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
 	})
 	t.Run("using pit on insertion date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
-			PIT: pointer.For(now),
-		}, query.Match("address", "users:"), true))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.Match("address", "users:"),
+			PIT:     pointer.For(now),
+			Opts: ledgercontroller.GetAggregatedVolumesOptions{
+				UseInsertionDate: true,
+			},
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0).Add(
-				bigInt,
-				smallInt,
-			),
-		}, ret)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						bigInt,
+						smallInt,
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
 	})
 	t.Run("using a metadata and pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
-			PIT: pointer.For(now.Add(time.Minute)),
-		}, query.Match("metadata[category]", "premium"), false))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			PIT:     pointer.For(now.Add(time.Minute)),
+			Builder: query.Match("metadata[category]", "premium"),
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0).Add(
-				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
-				big.NewInt(0),
-			),
-		}, ret)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0),
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{},
-			query.Match("metadata[category]", "premium"), false))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.Match("metadata[category]", "premium"),
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0).Mul(bigInt, big.NewInt(2)),
-		}, ret)
+
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input:  big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
 	})
 	t.Run("when no matching", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{},
-			query.Match("metadata[category]", "guest"), false))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.Match("metadata[category]", "guest"),
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{}, ret)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{},
+		}, *ret)
 	})
 
 	t.Run("using a filter exist on metadata", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{}, query.Exists("metadata", "category"), false))
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.Exists("metadata", "category"),
+		})
 		require.NoError(t, err)
-		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0).Add(
-				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
-				big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input: big.NewInt(0).Add(
+						big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+						big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+					),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
+	})
+
+	t.Run("using a filter on metadata and on address", func(t *testing.T) {
+		t.Parallel()
+		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Builder: query.And(
+				query.Match("address", "users:"),
+				query.Match("metadata[category]", "premium"),
 			),
-		}, ret)
+		})
+		require.NoError(t, err)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input:  big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
 	})
 }

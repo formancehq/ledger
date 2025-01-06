@@ -2,12 +2,14 @@ package api
 
 import (
 	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
@@ -22,7 +24,6 @@ import (
 func NewRouter(
 	systemController system.Controller,
 	authenticator auth.Authenticator,
-	logger logging.Logger,
 	version string,
 	debug bool,
 	opts ...RouterOption,
@@ -36,14 +37,6 @@ func NewRouter(
 	mux := chi.NewRouter()
 	mux.Use(
 		middleware.Recoverer,
-		func(handler http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
-
-				handler.ServeHTTP(w, r)
-			})
-		},
 		cors.New(cors.Options{
 			AllowOriginFunc: func(r *http.Request, origin string) bool {
 				return true
@@ -57,13 +50,29 @@ func NewRouter(
 		middleware.RequestLogger(api.NewLogFormatter()),
 	}
 
+	if debug {
+		commonMiddlewares = append(commonMiddlewares, func(handler http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				trace.SpanFromContext(r.Context()).
+					SetAttributes(attribute.String("raw-query", r.URL.RawQuery))
+
+				handler.ServeHTTP(w, r)
+			})
+		})
+	}
+
 	v2Router := v2.NewRouter(
 		systemController,
 		authenticator,
 		debug,
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithMiddlewares(commonMiddlewares...),
-		v2.WithBulkMaxSize(routerOptions.bulkMaxSize),
+		v2.WithBulkerFactory(routerOptions.bulkerFactory),
+		v2.WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
+			"application/json": bulking.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
+			"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
+		}),
+		v2.WithPaginationConfig(routerOptions.paginationConfig),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -82,8 +91,10 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer      trace.Tracer
-	bulkMaxSize int
+	tracer        trace.Tracer
+	bulkMaxSize   int
+	bulkerFactory    bulking.BulkerFactory
+	paginationConfig common.PaginationConfig
 }
 
 type RouterOption func(ro *routerOptions)
@@ -100,9 +111,25 @@ func WithBulkMaxSize(bulkMaxSize int) RouterOption {
 	}
 }
 
+func WithBulkerFactory(bf bulking.BulkerFactory) RouterOption {
+	return func(ro *routerOptions) {
+		ro.bulkerFactory = bf
+	}
+}
+
+func WithPaginationConfiguration(paginationConfig common.PaginationConfig) RouterOption {
+	return func(ro *routerOptions) {
+		ro.paginationConfig = paginationConfig
+	}
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
+	WithPaginationConfiguration(common.PaginationConfig{
+		MaxPageSize:     bunpaginate.MaxPageSize,
+		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
+	}),
 }
 
 const DefaultBulkMaxSize = 100

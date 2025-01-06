@@ -5,7 +5,6 @@ package ledger_test
 import (
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -38,7 +37,7 @@ func TestMovesInsert(t *testing.T) {
 		account := &ledger.Account{
 			Address: "world",
 		}
-		_, err := store.UpsertAccount(ctx, account)
+		err := store.UpsertAccounts(ctx, account)
 		require.NoError(t, err)
 
 		now := time.Now()
@@ -171,14 +170,19 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedBalances, err := store.GetAggregatedBalances(ctx, ledgercontroller.NewGetAggregatedBalancesQuery(ledgercontroller.PITFilter{
-			// By using a PIT, we force the usage of the moves table.
-			// If it was not specified, the test would not been correct.
-			PIT: pointer.For(time.Now()),
-		}, nil, true))
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			Opts: ledgercontroller.GetAggregatedVolumesOptions{
+				UseInsertionDate: true,
+			},
+		})
 		require.NoError(t, err)
-		RequireEqual(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(0),
-		}, aggregatedBalances)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": {
+					Input:  big.NewInt(1000),
+					Output: big.NewInt(1000),
+				},
+			},
+		}, *aggregatedVolumes)
 	})
 }

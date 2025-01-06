@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/go-libs/v2/query"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +25,9 @@ func TestTransactionsRead(t *testing.T) {
 
 	systemController, ledgerController := newTestingSystemController(t, true)
 	ledgerController.EXPECT().
-		GetTransaction(gomock.Any(), ledgercontroller.NewGetTransactionQuery(0)).
+		GetTransaction(gomock.Any(), ledgercontroller.ResourceQuery[any]{
+			Builder: query.Match("id", int64(0)),
+		}).
 		Return(&tx, nil)
 
 	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")

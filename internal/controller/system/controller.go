@@ -2,6 +2,8 @@ package system
 
 import (
 	"context"
+	"github.com/formancehq/ledger/pkg/features"
+	"go.opentelemetry.io/otel/attribute"
 	"reflect"
 	"time"
 
@@ -37,29 +39,40 @@ type DefaultController struct {
 	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
 
-	tracer         trace.Tracer
-	meter          metric.Meter
+	tracerProvider trace.TracerProvider
+	meterProvider  metric.MeterProvider
 	enableFeatures bool
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
-	return tracing.Trace(ctx, ctrl.tracer, "GetLedgerController", func(ctx context.Context) (ledgercontroller.Controller, error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "GetLedgerController", func(ctx context.Context) (ledgercontroller.Controller, error) {
 		store, l, err := ctrl.store.OpenLedger(ctx, name)
 		if err != nil {
 			return nil, err
 		}
 
+		instrumentationAttributes := []attribute.KeyValue{
+			attribute.String("ledger", name),
+		}
+
+		meter := ctrl.meterProvider.Meter("ledger", metric.WithInstrumentationAttributes(
+			instrumentationAttributes...,
+		))
+		tracer := ctrl.tracerProvider.Tracer("ledger", trace.WithInstrumentationAttributes(
+			instrumentationAttributes...,
+		))
+
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
 			ctrl.parser,
-			ledgercontroller.WithMeter(ctrl.meter),
+			ledgercontroller.WithMeter(meter),
 		)
 
 		// Add too many client error handling
 		ledgerController = ledgercontroller.NewControllerWithTooManyClientHandling(
 			ledgerController,
-			ctrl.tracer,
+			tracer,
 			ledgercontroller.DelayCalculatorFn(func(i int) time.Duration {
 				if i < ctrl.databaseRetryConfiguration.MaxRetry {
 					return time.Duration(i+1) * ctrl.databaseRetryConfiguration.Delay
@@ -73,7 +86,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		ledgerController = ledgercontroller.NewControllerWithCache(*l, ledgerController, ctrl.registry)
 
 		// Add traces
-		ledgerController = ledgercontroller.NewControllerWithTraces(ledgerController, ctrl.tracer)
+		ledgerController = ledgercontroller.NewControllerWithTraces(ledgerController, tracer, meter)
 
 		// Add events listener
 		if ctrl.listener != nil {
@@ -85,11 +98,11 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 }
 
 func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "CreateLedger", tracing.NoResult(func(ctx context.Context) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "CreateLedger", tracing.NoResult(func(ctx context.Context) error {
 		configuration.SetDefaults()
 
 		if !ctrl.enableFeatures {
-			if !reflect.DeepEqual(configuration.Features, ledger.DefaultFeatures) {
+			if !reflect.DeepEqual(configuration.Features, features.DefaultFeatures) {
 				return ErrExperimentalFeaturesDisabled
 			}
 		}
@@ -104,25 +117,25 @@ func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, co
 }
 
 func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
-	return tracing.Trace(ctx, ctrl.tracer, "GetLedger", func(ctx context.Context) (*ledger.Ledger, error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "GetLedger", func(ctx context.Context) (*ledger.Ledger, error) {
 		return ctrl.store.GetLedger(ctx, name)
 	})
 }
 
 func (ctrl *DefaultController) ListLedgers(ctx context.Context, query ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	return tracing.Trace(ctx, ctrl.tracer, "ListLedgers", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Ledger], error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListLedgers", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Ledger], error) {
 		return ctrl.store.ListLedgers(ctx, query)
 	})
 }
 
 func (ctrl *DefaultController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "UpdateLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "UpdateLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.store.UpdateLedgerMetadata(ctx, name, m)
 	})))
 }
 
 func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param string, key string) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracer, "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.store.DeleteLedgerMetadata(ctx, param, key)
 	})))
 }
@@ -154,15 +167,15 @@ func WithDatabaseRetryConfiguration(configuration DatabaseRetryConfiguration) Op
 	}
 }
 
-func WithMeter(m metric.Meter) Option {
+func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(ctrl *DefaultController) {
-		ctrl.meter = m
+		ctrl.meterProvider = mp
 	}
 }
 
-func WithTracer(t trace.Tracer) Option {
+func WithTracerProvider(t trace.TracerProvider) Option {
 	return func(ctrl *DefaultController) {
-		ctrl.tracer = t
+		ctrl.tracerProvider = t
 	}
 }
 
@@ -173,6 +186,6 @@ func WithEnableFeatures(v bool) Option {
 }
 
 var defaultOptions = []Option{
-	WithMeter(noopmetrics.Meter{}),
-	WithTracer(nooptracer.Tracer{}),
+	WithMeterProvider(noopmetrics.MeterProvider{}),
+	WithTracerProvider(nooptracer.TracerProvider{}),
 }

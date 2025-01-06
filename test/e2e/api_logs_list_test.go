@@ -134,6 +134,10 @@ var _ = Context("Ledger logs list API tests", func() {
 
 			Expect(response.Data).To(HaveLen(3))
 
+			for _, data := range response.Data {
+				Expect(data.Hash).NotTo(BeEmpty())
+			}
+
 			// Cannot check the date and the hash since they are changing at
 			// every run
 			Expect(response.Data[0].ID).To(Equal(big.NewInt(3)))

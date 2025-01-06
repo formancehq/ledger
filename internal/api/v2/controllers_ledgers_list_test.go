@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -53,7 +54,7 @@ func TestListLedgers(t *testing.T) {
 				"pageSize": {"-1"},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  false,
 		},
 		{
@@ -67,18 +68,18 @@ func TestListLedgers(t *testing.T) {
 		{
 			name:               "with invalid query from core point of view",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
 			returnErr:          ledgercontroller.ErrInvalidQuery{},
-			expectQuery:        ledgercontroller.NewListLedgersQuery(DefaultPageSize),
+			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 		{
 			name:               "with missing feature",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
 			returnErr:          ledgercontroller.ErrMissingFeature{},
-			expectQuery:        ledgercontroller.NewListLedgersQuery(DefaultPageSize),
+			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

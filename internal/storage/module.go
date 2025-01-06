@@ -3,14 +3,34 @@ package storage
 import (
 	"context"
 	"errors"
+	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"go.uber.org/fx"
 )
 
+const HealthCheckName = `storage-driver-up-to-date`
+
 func NewFXModule(autoUpgrade bool) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
+		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
+			hasReachedMinimalVersion := false
+			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
+				if hasReachedMinimalVersion {
+					return nil
+				}
+				var err error
+				hasReachedMinimalVersion, err = driver.HasReachMinimalVersion(ctx)
+				if err != nil {
+					return err
+				}
+				if !hasReachedMinimalVersion {
+					return errors.New("storage driver is not up to date")
+				}
+				return nil
+			}))
+		}),
 	}
 	if autoUpgrade {
 		ret = append(ret,
@@ -22,35 +42,15 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 				)
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						upgradeContext, cancelContext = context.WithCancel(logging.ContextWithLogger(
-							context.Background(),
-							logging.FromContext(ctx),
-						))
+						upgradeContext, cancelContext = context.WithCancel(context.WithoutCancel(ctx))
 						go func() {
 							defer close(upgradeStopped)
 
-							for {
-								select {
-								case <-ctx.Done():
-									return
-								default:
-									logging.FromContext(ctx).Infof("Upgrading buckets...")
-									if err := driver.UpgradeAllBuckets(upgradeContext); err != nil {
-										// Long migrations can be cancelled (app rescheduled for example)
-										// before fully terminated, handle this gracefully, don't panic,
-										// the next start will try again.
-										if errors.Is(err, context.DeadlineExceeded) ||
-											errors.Is(err, context.Canceled) {
-											return
-										}
-										logging.FromContext(ctx).Errorf("Upgrading buckets: %s", err)
-										continue
-									}
-									return
-								}
+							if err := driver.UpgradeAllBuckets(upgradeContext); err != nil {
+								logging.FromContext(ctx).Errorf("failed to upgrade all buckets: %v", err)
 							}
-
 						}()
+
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {

@@ -4,7 +4,7 @@ create or replace function transaction_date() returns timestamp as $$
     declare
         ret timestamp without time zone;
     begin
-        create temporary table if not exists transaction_date on commit drop as
+        create temporary table if not exists transaction_date on commit delete rows as
         select statement_timestamp();
 
         select *
@@ -16,10 +16,10 @@ create or replace function transaction_date() returns timestamp as $$
             ret = statement_timestamp();
 
             insert into transaction_date
-            select ret;
+            select ret at time zone 'utc';
         end if;
 
-        return ret;
+        return ret at time zone 'utc';
     end
 $$ language plpgsql;
 
@@ -33,8 +33,8 @@ alter table moves
 add column transactions_id bigint,
 alter column post_commit_volumes drop not null,
 alter column post_commit_effective_volumes drop not null,
-alter column insertion_date set default (transaction_date() at time zone 'utc'),
-alter column effective_date set default (transaction_date() at time zone 'utc'),
+alter column insertion_date set default transaction_date(),
+alter column effective_date set default transaction_date(),
 alter column account_address_array drop not null;
 
 alter table moves
@@ -60,7 +60,6 @@ from (
       group by move.accounts_address, move.asset
 ) data
 $$ set search_path from current;
-
 create or replace function get_aggregated_effective_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
     stable
     language sql
@@ -201,25 +200,23 @@ execute procedure set_compat_on_transactions_metadata();
 
 alter table transactions
 add column post_commit_volumes jsonb,
-add column inserted_at timestamp without time zone default (transaction_date() at time zone 'utc'),
-alter column timestamp set default (transaction_date() at time zone 'utc'),
-alter column id type bigint;
-
-drop index transactions_reference;
-create unique index transactions_reference on transactions (ledger, reference);
-create index transactions_sequences on transactions (id, seq);
+add column inserted_at timestamp without time zone,
+alter column timestamp set default transaction_date()
+-- todo: we should change the type of this column, but actually it cause a full lock of the table
+-- alter column id type bigint
+;
 
 alter table logs
 add column memento bytea,
 add column idempotency_hash bytea,
 alter column hash drop not null,
-alter column date set default (transaction_date() at time zone 'utc');
+alter column date set default transaction_date();
 
 alter table accounts
 alter column address_array drop not null,
-alter column first_usage set default (transaction_date() at time zone 'utc'),
-alter column insertion_date set default (transaction_date() at time zone 'utc'),
-alter column updated_at set default (transaction_date() at time zone 'utc')
+alter column first_usage set default transaction_date(),
+alter column insertion_date set default transaction_date(),
+alter column updated_at set default transaction_date()
 ;
 
 create table accounts_volumes (
@@ -231,8 +228,6 @@ create table accounts_volumes (
 
     primary key (ledger, accounts_address, asset)
 );
-
-create index accounts_sequences on accounts (address, seq);
 
 alter table transactions_metadata
 add column transactions_id bigint;
@@ -366,6 +361,24 @@ from (select row_number() over () as number, v.value
             select null) v) data
 $$ set search_path from current;
 
+create or replace function set_transaction_inserted_at() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.inserted_at = transaction_date();
+
+	return new;
+end
+$$ set search_path from current;
+
+create trigger set_transaction_inserted_at
+before insert on transactions
+for each row
+when ( new.inserted_at is null )
+execute procedure set_transaction_inserted_at();
+
 create or replace function set_transaction_addresses() returns trigger
 	security definer
 	language plpgsql
@@ -471,7 +484,6 @@ $do$
 			execute vsql;
 
 			vsql = 'select setval(''"transaction_id_' || ledger.id || '"'', coalesce((select max(id) + 1 from transactions where ledger = ''' || ledger.name || '''), 1)::bigint, false)';
-			raise info '%', vsql;
 			execute vsql;
 
 			-- create a sequence for logs by ledger instead of a sequence of the table as we want to have contiguous ids
@@ -480,10 +492,6 @@ $do$
 			execute vsql;
 
 			vsql = 'select setval(''"log_id_' || ledger.id || '"'', coalesce((select max(id) + 1 from logs where ledger = ''' || ledger.name || '''), 1)::bigint, false)';
-			execute vsql;
-
-			-- enable post commit effective volumes synchronously
-			vsql = 'create index "pcev_' || ledger.id || '" on moves (accounts_address, asset, effective_date desc) where ledger = ''' || ledger.name || '''';
 			execute vsql;
 
 			vsql = 'create trigger "set_effective_volumes_' || ledger.id || '" before insert on moves for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_effective_volumes()';
@@ -508,28 +516,10 @@ $do$
 			vsql = 'create trigger "insert_transaction_metadata_history_' || ledger.id || '" after insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure insert_transaction_metadata_history()';
 			execute vsql;
 
-			vsql = 'create index "transactions_sources_' || ledger.id || '" on transactions using gin (sources jsonb_path_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
-			vsql = 'create index "transactions_destinations_' || ledger.id || '" on transactions using gin (destinations jsonb_path_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
 			vsql = 'create trigger "transaction_set_addresses_' || ledger.id || '" before insert on transactions for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_transaction_addresses()';
 			execute vsql;
 
-			vsql = 'create index "accounts_address_array_' || ledger.id || '" on accounts using gin (address_array jsonb_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
-			vsql = 'create index "accounts_address_array_length_' || ledger.id || '" on accounts (jsonb_array_length(address_array)) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
 			vsql = 'create trigger "accounts_set_address_array_' || ledger.id || '" before insert on accounts for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_address_array_for_account()';
-			execute vsql;
-
-			vsql = 'create index "transactions_sources_arrays_' || ledger.id || '" on transactions using gin (sources_arrays jsonb_path_ops) where ledger = ''' || ledger.name || '''';
-			execute vsql;
-
-			vsql = 'create index "transactions_destinations_arrays_' || ledger.id || '" on transactions using gin (destinations_arrays jsonb_path_ops) where ledger = ''' || ledger.name || '''';
 			execute vsql;
 
 			vsql = 'create trigger "transaction_set_addresses_segments_' || ledger.id || '"	before insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_transaction_addresses_segments()';
@@ -537,3 +527,35 @@ $do$
 		end loop;
 	END
 $do$;
+
+-- following index will enforce uniqueness of transaction reference until the appropriate index is full built (see next migration)
+create or replace function enforce_reference_uniqueness() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	perform pg_advisory_xact_lock(hashtext('reference-check' || current_schema));
+
+	if exists(
+		select 1
+		from transactions
+		where reference = new.reference
+			and ledger = new.ledger
+			and id != new.id
+	) then
+		raise exception 'duplicate reference';
+	end if;
+
+	return new;
+end
+$$ set search_path from current;
+
+create constraint trigger enforce_reference_uniqueness
+after insert on transactions
+deferrable initially deferred
+for each row
+when ( new.reference is not null )
+execute procedure enforce_reference_uniqueness();
+
+

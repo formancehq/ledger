@@ -35,6 +35,30 @@ paths:
       security:
         - Authorization:
             - ledger:read
+  /_/metrics:
+    get:
+      tags:
+        - ledger
+      summary: Read in memory metrics
+      operationId: getMetrics
+      x-speakeasy-name-override: GetMetrics
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
   /v2:
     get:
       summary: List ledgers
@@ -255,6 +279,24 @@ paths:
           schema:
             type: string
             example: ledger001
+        - name: continueOnFailure
+          in: query
+          description: Continue on failure
+          schema:
+              type: boolean
+              example: true
+        - name: atomic
+          in: query
+          description: Make bulk atomic
+          schema:
+            type: boolean
+            example: true
+        - name: parallel
+          in: query
+          description: Process bulk elements in parallel
+          schema:
+            type: boolean
+            example: true
       requestBody:
         content:
           application/json:
@@ -1543,7 +1585,6 @@ components:
         - id
         - metadata
         - reverted
-        - insertedAt
     V2PostTransaction:
       type: object
       required:
@@ -1604,6 +1645,7 @@ components:
             - NEW_TRANSACTION
             - SET_METADATA
             - REVERTED_TRANSACTION
+            - DELETE_METADATA
         data:
           type: object
           properties: {}
@@ -1727,6 +1769,7 @@ components:
         - INTERPRETER_PARSE
         - INTERPRETER_RUNTIME
         - LEDGER_ALREADY_EXISTS
+        - OUTDATED_SCHEMA
       example: VALIDATION
     V2LedgerInfoResponse:
       type: object
@@ -1867,11 +1910,13 @@ components:
                 - targetType
                 - key
     V2BulkResponse:
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/V2BulkElementResult"
+      allOf:
+        - properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2BulkElementResult"
+        - $ref: "#/components/schemas/V2ErrorResponse"
       type: object
       required:
         - data
@@ -1896,8 +1941,11 @@ components:
       properties:
         responseType:
           type: string
+        logID:
+          type: integer
       required:
         - responseType
+        - logID
     V2BulkElementResultCreateTransaction:
       allOf:
         - $ref: "#/components/schemas/V2BaseBulkElementResult"

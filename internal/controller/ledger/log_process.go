@@ -29,51 +29,77 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
-) (*OUTPUT, error) {
-	var payload *OUTPUT
-	err := store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
-		payload, err = fn(ctx, tx, parameters)
-		if err != nil {
-			return false, err
-		}
-		log := ledger.NewLog(*payload)
-		log.IdempotencyKey = parameters.IdempotencyKey
-		log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
+	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+) (*ledger.Log, *OUTPUT, error) {
+	store, err := store.BeginTX(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
 
-		err = tx.InsertLog(ctx, &log)
-		if err != nil {
-			return false, fmt.Errorf("failed to insert log: %w", err)
+	log, output, err := lp.runLog(ctx, store, parameters, fn)
+	if err != nil {
+		if rollbackErr := store.Rollback(); rollbackErr != nil {
+			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
-		logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
+		return nil, nil, err
+	}
 
-		if parameters.DryRun {
-			return false, nil
+	if parameters.DryRun {
+		if rollbackErr := store.Rollback(); rollbackErr != nil {
+			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
+		return log, output, nil
+	}
 
-		return true, nil
-	})
-	return payload, err
+	if err := store.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return log, output, nil
+}
+
+func (lp *logProcessor[INPUT, OUTPUT]) runLog(
+	ctx context.Context,
+	store Store,
+	parameters Parameters[INPUT],
+	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+) (*ledger.Log, *OUTPUT, error) {
+
+	output, err := fn(ctx, store, parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+	log := ledger.NewLog(*output)
+	log.IdempotencyKey = parameters.IdempotencyKey
+	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
+
+	err = store.InsertLog(ctx, &log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to insert log: %w", err)
+	}
+	logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
+
+	return &log, output, err
 }
 
 func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX TX, parameters Parameters[INPUT]) (*OUTPUT, error),
-) (*OUTPUT, error) {
+	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+) (*ledger.Log, *OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
-		output, err := lp.fetchLogWithIK(ctx, store, parameters)
+		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if output != nil {
-			return output, nil
+			return log, output, nil
 		}
 	}
 
 	for {
-		output, err := lp.runTx(ctx, store, parameters, fn)
+		log, output, err := lp.runTx(ctx, store, parameters, fn)
 		if err != nil {
 			switch {
 			case errors.Is(err, postgres.ErrDeadlockDetected):
@@ -85,39 +111,39 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 				continue
 			// A log with the IK could have been inserted in the meantime, read again the database to retrieve it
 			case errors.Is(err, ErrIdempotencyKeyConflict{}):
-				output, err := lp.fetchLogWithIK(ctx, store, parameters)
+				log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if output == nil {
 					panic("incoherent error, received duplicate IK but log not found in database")
 				}
 
-				return output, nil
+				return log, output, nil
 			default:
-				return nil, fmt.Errorf("unexpected error while forging log: %w", err)
+				return nil, nil, fmt.Errorf("unexpected error while forging log: %w", err)
 			}
 		}
 
-		return output, nil
+		return log, output, nil
 	}
 }
 
-func (lp *logProcessor[INPUT, OUTPUT]) fetchLogWithIK(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error) {
+func (lp *logProcessor[INPUT, OUTPUT]) fetchLogWithIK(ctx context.Context, store Store, parameters Parameters[INPUT]) (*ledger.Log, *OUTPUT, error) {
 	log, err := store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 	if err != nil && !errors.Is(err, postgres.ErrNotFound) {
-		return nil, err
+		return nil, nil, err
 	}
 	if err == nil {
 		// notes(gfyrag): idempotency hash should never be empty in this case, but data from previous
 		// ledger version does not have this field and it cannot be recomputed
 		if log.IdempotencyHash != "" {
 			if computedHash := ledger.ComputeIdempotencyHash(parameters.Input); log.IdempotencyHash != computedHash {
-				return nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
+				return nil, nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
 			}
 		}
 
-		return pointer.For(log.Data.(OUTPUT)), nil
+		return log, pointer.For(log.Data.(OUTPUT)), nil
 	}
-	return nil, nil
+	return nil, nil, nil
 }

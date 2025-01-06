@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/v2/query"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -25,12 +26,15 @@ func TestTransactionsRead(t *testing.T) {
 		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 	)
 
-	query := ledgercontroller.NewGetTransactionQuery(0)
-	query.PIT = &now
+	q := ledgercontroller.ResourceQuery[any]{
+		PIT:     &now,
+		Builder: query.Match("id", tx.ID),
+	}
+	q.PIT = &now
 
 	systemController, ledgerController := newTestingSystemController(t, true)
 	ledgerController.EXPECT().
-		GetTransaction(gomock.Any(), query).
+		GetTransaction(gomock.Any(), q).
 		Return(&tx, nil)
 
 	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")

@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -48,13 +49,13 @@ func TestTransactionsRevert(t *testing.T) {
 			name:             "with insufficient fund",
 			returnErr:        &ledgercontroller.ErrInsufficientFunds{},
 			expectStatusCode: http.StatusBadRequest,
-			expectErrorCode:  ErrInsufficientFund,
+			expectErrorCode:  common.ErrInsufficientFund,
 		},
 		{
 			name:             "with already revert",
 			returnErr:        &ledgercontroller.ErrAlreadyReverted{},
 			expectStatusCode: http.StatusBadRequest,
-			expectErrorCode:  ErrAlreadyRevert,
+			expectErrorCode:  common.ErrAlreadyRevert,
 		},
 		{
 			name:             "with transaction not found",
@@ -76,7 +77,7 @@ func TestTransactionsRevert(t *testing.T) {
 						Force: tc.expectForce,
 					},
 				}).
-				Return(pointer.For(ledger.RevertedTransaction{
+				Return(&ledger.Log{}, pointer.For(ledger.RevertedTransaction{
 					RevertTransaction: tc.returnTx,
 				}), tc.returnErr)
 

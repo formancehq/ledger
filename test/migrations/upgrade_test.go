@@ -7,7 +7,10 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/ory/dockertest/v3"
 	dockerlib "github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/require"
@@ -20,20 +23,21 @@ import (
 var (
 	sourceDatabase      string
 	destinationDatabase string
+	skipCopy            bool
+	skipMigrate         bool
 )
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&sourceDatabase, "databases.source", "", "Source database")
 	flag.StringVar(&destinationDatabase, "databases.destination", "", "Destination database")
+	flag.BoolVar(&skipCopy, "skip-copy", false, "Skip copying database")
+	flag.BoolVar(&skipMigrate, "skip-migrate", false, "Skip migrating database")
 	flag.Parse()
 
 	os.Exit(m.Run())
 }
 
 func TestMigrations(t *testing.T) {
-	if sourceDatabase == "" {
-		t.Skip()
-	}
 
 	ctx := logging.TestingContext()
 	dockerPool := docker.NewPool(t, logging.Testing())
@@ -43,15 +47,31 @@ func TestMigrations(t *testing.T) {
 		destinationDatabase = pgServer.GetDSN()
 	}
 
-	copyDatabase(t, dockerPool, sourceDatabase, destinationDatabase)
+	if !skipCopy {
+		if sourceDatabase == "" {
+			t.Skip()
+		}
+
+		copyDatabase(t, dockerPool, sourceDatabase, destinationDatabase)
+		fmt.Println("Database copied")
+	}
 
 	db, err := bunconnect.OpenSQLDB(ctx, bunconnect.ConnectionOptions{
 		DatabaseSourceName: destinationDatabase,
 	})
 	require.NoError(t, err)
 
+	if skipMigrate {
+		return
+	}
+
 	// Migrate database
-	driver := driver.New(db)
+	driver := driver.New(
+		ledger.NewFactory(db),
+		systemstore.New(db),
+		bucket.NewDefaultFactory(db),
+		driver.WithParallelBucketMigration(1),
+	)
 	require.NoError(t, driver.Initialize(ctx))
 	require.NoError(t, driver.UpgradeAllBuckets(ctx))
 }
@@ -104,6 +124,7 @@ func preparePGDumpCommand(t *testing.T, dsn string) string {
 		"-x",         // Skip privileges
 		"-h", parsedSource.Hostname(),
 		"-p", parsedSource.Port(),
+		"-v",
 	)
 
 	if username := parsedSource.User.Username(); username != "" {
@@ -126,6 +147,7 @@ func preparePSQLCommand(t *testing.T, dsn string) string {
 
 	args = append(args,
 		"psql",
+		"--echo-all",
 		"-h", parsedSource.Hostname(),
 		"-p", parsedSource.Port(),
 		parsedSource.Path[1:],

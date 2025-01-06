@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
@@ -22,8 +23,12 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 		Return(nil, postgres.ErrNotFound)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(ErrIdempotencyKeyConflict{})
+		BeginTX(gomock.Any(), gomock.Any()).
+		Return(store, nil)
+
+	store.EXPECT().
+		Rollback().
+		Return(nil)
 
 	store.EXPECT().
 		ReadLogWithIdempotencyKey(gomock.Any(), "foo").
@@ -32,9 +37,11 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 		}, nil)
 
 	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
-	_, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
+	_, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
 		IdempotencyKey: "foo",
-	}, nil)
+	}, func(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+		return nil, NewErrIdempotencyKeyConflict("foo")
+	})
 	require.NoError(t, err)
 }
 
@@ -47,15 +54,34 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 
 	// First call returns a deadlock
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(postgres.ErrDeadlockDetected)
+		BeginTX(gomock.Any(), gomock.Any()).
+		Return(store, nil)
+
+	store.EXPECT().
+		Rollback().
+		Return(nil)
 
 	// Second call is ok
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any(), gomock.Any()).
+		BeginTX(gomock.Any(), gomock.Any()).
+		Return(store, nil)
+
+	store.EXPECT().
+		InsertLog(gomock.Any(), gomock.Any()).
 		Return(nil)
 
+	store.EXPECT().
+		Commit().
+		Return(nil)
+
+	firstCall := true
 	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
-	_, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, nil)
+	_, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, func(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+		if firstCall {
+			firstCall = false
+			return nil, postgres.ErrDeadlockDetected
+		}
+		return &ledger.CreatedTransaction{}, nil
+	})
 	require.NoError(t, err)
 }

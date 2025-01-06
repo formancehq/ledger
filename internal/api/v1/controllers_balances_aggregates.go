@@ -18,20 +18,19 @@ func buildAggregatedBalancesQuery(r *http.Request) query.Builder {
 }
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
+	rq, err := getResourceQuery[ledgercontroller.GetAggregatedVolumesOptions](r, func(q *ledgercontroller.GetAggregatedVolumesOptions) error {
+		q.UseInsertionDate = true
 
-	pitFilter, err := getPITFilter(r)
+		return nil
+	})
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	queryBuilder := buildAggregatedBalancesQuery(r)
+	rq.Builder = buildAggregatedBalancesQuery(r)
 
-	query := ledgercontroller.NewGetAggregatedBalancesQuery(*pitFilter, queryBuilder,
-		// notes(gfyrag): if pit is not specified, always use insertion date to be backward compatible
-		r.URL.Query().Get("pit") == "" || api.QueryParamBool(r, "useInsertionDate") || api.QueryParamBool(r, "use_insertion_date"))
-
-	balances, err := common.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), query)
+	balances, err := common.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), *rq)
 	if err != nil {
 		common.HandleCommonErrors(w, r, err)
 		return
