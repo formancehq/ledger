@@ -49,22 +49,6 @@ deploy:
 deploy-staging:
     BUILD --pass-args core+deploy-staging
 
-pre-commit:
-    BUILD +generate-client
-
-generate-client:
-    FROM node:20-alpine
-    RUN apk update && apk add yq jq
-    WORKDIR /src
-    COPY (core+sources-speakeasy/speakeasy) /bin/speakeasy
-    COPY (+openapi/openapi.yaml) openapi.yaml
-    RUN cat ./openapi.yaml |  yq e -o json > openapi.json
-    COPY (core+sources/out --LOCATION=openapi-overlay.json) openapi-overlay.json
-    RUN jq -s '.[0] * .[1]' openapi.json openapi-overlay.json > final.json
-    COPY --dir pkg/client client
-    RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./final.json -o ./client -l go
-    SAVE ARTIFACT client AS LOCAL ./pkg/client
-
 export-database-schema:
     FROM +sources
     RUN go install github.com/roerohan/wait-for-it@latest
