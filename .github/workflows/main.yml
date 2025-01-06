@@ -102,6 +102,7 @@ jobs:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          EARTHLY_SECRETS: "SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY,GORELEASER_KEY=$GORELEASER_KEY"
 
   Deploy:
     runs-on: "formance-runner"
