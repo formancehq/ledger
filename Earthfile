@@ -50,26 +50,7 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 pre-commit:
-    BUILD +openapi
-    BUILD +openapi-markdown
     BUILD +generate-client
-
-openapi:
-    FROM node:20-alpine
-    RUN apk update && apk add yq
-    RUN npm install -g openapi-merge-cli
-    WORKDIR /src
-    COPY --dir openapi openapi
-    RUN openapi-merge-cli --config ./openapi/openapi-merge.json
-    RUN yq -oy ./openapi.json > openapi.yaml
-    SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
-
-openapi-markdown:
-    FROM node:20-alpine
-    RUN npm install -g widdershins
-    COPY openapi/v2.yaml openapi.yaml
-    RUN widdershins openapi.yaml -o README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
-    SAVE ARTIFACT README.md AS LOCAL docs/api/README.md
 
 generate-client:
     FROM node:20-alpine
