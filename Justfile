@@ -26,11 +26,7 @@ export-docs-events:
 
 tests:
   @go test -race -covermode=atomic \
-    -coverpkg=github.com/formancehq/ledger/internal/... \
-    -coverpkg=github.com/formancehq/ledger/pkg/events/... \
-    -coverpkg=github.com/formancehq/ledger/pkg/accounts/... \
-    -coverpkg=github.com/formancehq/ledger/pkg/assets/... \
-    -coverpkg=github.com/formancehq/ledger/cmd/... \
+    -coverpkg=github.com/formancehq/ledger/internal/...,github.com/formancehq/ledger/pkg/events/...,github.com/formancehq/ledger/pkg/accounts/...,github.com/formancehq/ledger/pkg/assets/...,github.com/formancehq/ledger/cmd/... \
     -coverprofile coverage.txt \
     -tags it \
     ./...
