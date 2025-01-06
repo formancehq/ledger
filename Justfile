@@ -3,10 +3,7 @@ set dotenv-load
 default:
   @just --list
 
-pre-commit: generate earthly tidy lint export-docs-events
-
-earthly:
-  @earthly --no-output --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY +pre-commit
+pre-commit: generate tidy lint export-docs-events openapi generate-client
 
 lint:
   @golangci-lint run --fix --build-tags it --timeout 5m
@@ -32,6 +29,13 @@ tests:
     ./...
   @cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
   @mv coverage2.txt coverage.txt
+
+openapi:
+  @yq eval-all '. as $item ireduce ({}; . * $item)' openapi/v1.yaml openapi/v2.yaml openapi/overlay.yaml > openapi.yaml
+  @npx -y widdershins {{justfile_directory()}}/openapi/v2.yaml -o {{justfile_directory()}}/docs/api/README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
+
+generate-client:
+  @speakeasy generate sdk -s openapi.yaml -o ./pkg/client -l go
 
 release-local:
   @goreleaser release --nightly --skip=publish --clean
