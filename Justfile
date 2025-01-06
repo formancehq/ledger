@@ -6,7 +6,7 @@ default:
 pre-commit: generate earthly tidy lint export-docs-events
 
 earthly:
-  @earthly --no-output +pre-commit
+  @earthly --no-output --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY +pre-commit
 
 lint:
   @golangci-lint run --fix --build-tags it --timeout 5m
