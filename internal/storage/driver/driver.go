@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -27,7 +26,7 @@ import (
 
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
-	systemStore        systemstore.Store
+	systemStore        SystemStore
 	bucketFactory      bucket.Factory
 	tracer             trace.Tracer
 	meter              metric.Meter
@@ -244,7 +243,7 @@ func (d *Driver) HasReachMinimalVersion(ctx context.Context) (bool, error) {
 
 func New(
 	ledgerStoreFactory ledgerstore.Factory,
-	systemStore systemstore.Store,
+	systemStore SystemStore,
 	bucketFactory bucket.Factory,
 	opts ...Option,
 ) *Driver {

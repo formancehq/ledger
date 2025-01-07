@@ -3,6 +3,7 @@ package system
 import (
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/internal/replication/controller"
 )
 
 var (
@@ -29,3 +30,7 @@ func newErrInvalidLedgerConfiguration(err error) ErrInvalidLedgerConfiguration {
 		err: err,
 	}
 }
+
+type ErrConnectorNotFound = controller.ErrConnectorNotFound
+type ErrInvalidConnectorConfiguration = controller.ErrInvalidDriverConfiguration
+type ErrConnectorUsed = controller.ErrConnectorUsed

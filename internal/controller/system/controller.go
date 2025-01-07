@@ -30,6 +30,11 @@ type Controller interface {
 	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+
+	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
+	CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error)
+	DeleteConnector(ctx context.Context, id string) error
+	GetConnector(ctx context.Context, id string) (*ledger.Connector, error)
 }
 
 type DefaultController struct {
@@ -42,6 +47,26 @@ type DefaultController struct {
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
 	enableFeatures bool
+}
+
+func (ctrl *DefaultController) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (ctrl *DefaultController) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (ctrl *DefaultController) DeleteConnector(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (ctrl *DefaultController) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {

@@ -122,7 +122,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, uint, error) {
+func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, int, error) {
 
 	switch data.Action {
 	case ActionCreateTransaction:

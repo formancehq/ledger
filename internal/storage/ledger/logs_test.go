@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/ledger/internal/pagination"
 	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
@@ -121,7 +122,7 @@ func TestLogsInsert(t *testing.T) {
 		err := errGroup.Wait()
 		require.NoError(t, err)
 
-		logs, err := store.Logs().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+		logs, err := store.Logs().Paginate(ctx, pagination.ColumnPaginatedQuery[any]{
 			PageSize: countLogs,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
@@ -210,14 +211,14 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{})
+	cursor, err := store.Logs().Paginate(context.Background(), pagination.ColumnPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), pagination.ColumnPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	require.NoError(t, err)
@@ -225,9 +226,9 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), pagination.ColumnPaginatedQuery[any]{
 		PageSize: 10,
-		Options: ledgercontroller.ResourceQuery[any]{
+		Options: pagination.ResourceQuery[any]{
 			Builder: query.And(
 				query.Gte("date", now.Add(-2*time.Hour)),
 				query.Lt("date", now.Add(-time.Hour)),

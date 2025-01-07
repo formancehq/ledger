@@ -11,9 +11,9 @@ package controller
 
 import (
 	context "context"
-	ingester "github.com/formancehq/ledger/internal"
 	reflect "reflect"
 
+	ledger "github.com/formancehq/ledger/internal"
 	runner "github.com/formancehq/ledger/internal/replication/runner"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,10 +43,10 @@ func (m *MockPipeline) EXPECT() *MockPipelineMockRecorder {
 }
 
 // GetActiveState mocks base method.
-func (m *MockPipeline) GetActiveState() *runner.Signal[ingester.State] {
+func (m *MockPipeline) GetActiveState() *runner.Signal[ledger.State] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetActiveState")
-	ret0, _ := ret[0].(*runner.Signal[ingester.State])
+	ret0, _ := ret[0].(*runner.Signal[ledger.State])
 	return ret0
 }
 
@@ -152,7 +152,7 @@ func (mr *MockRunnerMockRecorder) GetPipeline(id any) *gomock.Call {
 }
 
 // StartPipeline mocks base method.
-func (m *MockRunner) StartPipeline(ctx context.Context, pipeline ingester.Pipeline) (Pipeline, error) {
+func (m *MockRunner) StartPipeline(ctx context.Context, pipeline ledger.Pipeline) (Pipeline, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StartPipeline", ctx, pipeline)
 	ret0, _ := ret[0].(Pipeline)

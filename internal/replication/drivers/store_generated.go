@@ -11,9 +11,9 @@ package drivers
 
 import (
 	context "context"
-	ingester "github.com/formancehq/ledger/internal"
 	reflect "reflect"
 
+	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,10 +42,10 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // GetConnector mocks base method.
-func (m *MockStore) GetConnector(ctx context.Context, id string) (*ingester.Connector, error) {
+func (m *MockStore) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ingester.Connector)
+	ret0, _ := ret[0].(*ledger.Connector)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

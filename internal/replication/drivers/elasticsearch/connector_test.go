@@ -42,7 +42,7 @@ func TestElasticSearchConnector(t *testing.T) {
 	)
 
 	wg := sync.WaitGroup{}
-	for i := uint(0); i < numberOfEvents; i++ {
+	for i := 0; i < numberOfEvents; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

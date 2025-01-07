@@ -11,10 +11,10 @@ package controller
 
 import (
 	context "context"
-	"github.com/formancehq/ledger/internal"
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
 

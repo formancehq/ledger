@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/ledger/internal/pagination"
 	"math/big"
 	"testing"
 
@@ -200,12 +201,12 @@ func TestListTransactions(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any, pagination.ColumnPaginatedQuery[any]](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Transaction]{}
 	store.EXPECT().Transactions().Return(transactions)
 	transactions.EXPECT().
-		Paginate(gomock.Any(), ColumnPaginatedQuery[any]{
+		Paginate(gomock.Any(), pagination.ColumnPaginatedQuery[any]{
 			PageSize: bunpaginate.QueryDefaultPageSize,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 			Column:   "id",
@@ -213,7 +214,7 @@ func TestListTransactions(t *testing.T) {
 		Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.ListTransactions(ctx, ColumnPaginatedQuery[any]{
+	ret, err := l.ListTransactions(ctx, pagination.ColumnPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		Column:   "id",
@@ -229,13 +230,13 @@ func TestCountAccounts(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	accounts := NewMockPaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any, pagination.OffsetPaginatedQuery[any]](ctrl)
 
 	store.EXPECT().Accounts().Return(accounts)
-	accounts.EXPECT().Count(gomock.Any(), ResourceQuery[any]{}).Return(1, nil)
+	accounts.EXPECT().Count(gomock.Any(), pagination.ResourceQuery[any]{}).Return(1, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	count, err := l.CountAccounts(ctx, ResourceQuery[any]{})
+	count, err := l.CountAccounts(ctx, pagination.ResourceQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 }
@@ -247,16 +248,16 @@ func TestGetTransaction(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any, pagination.ColumnPaginatedQuery[any]](ctrl)
 
 	tx := ledger.Transaction{}
 	store.EXPECT().Transactions().Return(transactions)
-	transactions.EXPECT().GetOne(gomock.Any(), ResourceQuery[any]{
+	transactions.EXPECT().GetOne(gomock.Any(), pagination.ResourceQuery[any]{
 		Builder: query.Match("id", 1),
 	}).Return(&tx, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.GetTransaction(ctx, ResourceQuery[any]{
+	ret, err := l.GetTransaction(ctx, pagination.ResourceQuery[any]{
 		Builder: query.Match("id", 1),
 	})
 	require.NoError(t, err)
@@ -270,16 +271,16 @@ func TestGetAccount(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	accounts := NewMockPaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any, pagination.OffsetPaginatedQuery[any]](ctrl)
 
 	account := ledger.Account{}
 	store.EXPECT().Accounts().Return(accounts)
-	accounts.EXPECT().GetOne(gomock.Any(), ResourceQuery[any]{
+	accounts.EXPECT().GetOne(gomock.Any(), pagination.ResourceQuery[any]{
 		Builder: query.Match("address", "world"),
 	}).Return(&account, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.GetAccount(ctx, ResourceQuery[any]{
+	ret, err := l.GetAccount(ctx, pagination.ResourceQuery[any]{
 		Builder: query.Match("address", "world"),
 	})
 	require.NoError(t, err)
@@ -293,13 +294,13 @@ func TestCountTransactions(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any, pagination.ColumnPaginatedQuery[any]](ctrl)
 
 	store.EXPECT().Transactions().Return(transactions)
-	transactions.EXPECT().Count(gomock.Any(), ResourceQuery[any]{}).Return(1, nil)
+	transactions.EXPECT().Count(gomock.Any(), pagination.ResourceQuery[any]{}).Return(1, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	count, err := l.CountTransactions(ctx, ResourceQuery[any]{})
+	count, err := l.CountTransactions(ctx, pagination.ResourceQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 }
@@ -311,17 +312,17 @@ func TestListAccounts(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	accounts := NewMockPaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any, pagination.OffsetPaginatedQuery[any]](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Account]{}
 	store.EXPECT().Accounts().Return(accounts)
-	accounts.EXPECT().Paginate(gomock.Any(), OffsetPaginatedQuery[any]{
+	accounts.EXPECT().Paginate(gomock.Any(), pagination.OffsetPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.ListAccounts(ctx, OffsetPaginatedQuery[any]{
+	ret, err := l.ListAccounts(ctx, pagination.OffsetPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
@@ -339,11 +340,11 @@ func TestGetAggregatedBalances(t *testing.T) {
 	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](ctrl)
 
 	store.EXPECT().AggregatedBalances().Return(aggregatedBalances)
-	aggregatedBalances.EXPECT().GetOne(gomock.Any(), ResourceQuery[GetAggregatedVolumesOptions]{}).
+	aggregatedBalances.EXPECT().GetOne(gomock.Any(), pagination.ResourceQuery[GetAggregatedVolumesOptions]{}).
 		Return(&ledger.AggregatedVolumes{}, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.GetAggregatedBalances(ctx, ResourceQuery[GetAggregatedVolumesOptions]{})
+	ret, err := l.GetAggregatedBalances(ctx, pagination.ResourceQuery[GetAggregatedVolumesOptions]{})
 	require.NoError(t, err)
 	require.Equal(t, ledger.BalancesByAssets{}, ret)
 }
@@ -355,18 +356,18 @@ func TestListLogs(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	logs := NewMockPaginatedResource[ledger.Log, any, ColumnPaginatedQuery[any]](ctrl)
+	logs := NewMockPaginatedResource[ledger.Log, any, pagination.ColumnPaginatedQuery[any]](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Log]{}
 	store.EXPECT().Logs().Return(logs)
-	logs.EXPECT().Paginate(gomock.Any(), ColumnPaginatedQuery[any]{
+	logs.EXPECT().Paginate(gomock.Any(), pagination.ColumnPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		Column:   "id",
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.ListLogs(ctx, ColumnPaginatedQuery[any]{
+	ret, err := l.ListLogs(ctx, pagination.ColumnPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		Column:   "id",
@@ -382,17 +383,17 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, OffsetPaginatedQuery[GetVolumesOptions]](ctrl)
+	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, pagination.OffsetPaginatedQuery[GetVolumesOptions]](ctrl)
 
 	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
 	store.EXPECT().Volumes().Return(volumes)
-	volumes.EXPECT().Paginate(gomock.Any(), OffsetPaginatedQuery[GetVolumesOptions]{
+	volumes.EXPECT().Paginate(gomock.Any(), pagination.OffsetPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.GetVolumesWithBalances(ctx, OffsetPaginatedQuery[GetVolumesOptions]{
+	ret, err := l.GetVolumesWithBalances(ctx, pagination.OffsetPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})

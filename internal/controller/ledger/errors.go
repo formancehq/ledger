@@ -3,6 +3,7 @@ package ledger
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/formancehq/ledger/internal/replication/controller"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/numscript"
@@ -15,6 +16,11 @@ import (
 var ErrNotFound = postgres.ErrNotFound
 
 type ErrTooManyClient = postgres.ErrTooManyClient
+type ErrPipelineNotFound = controller.ErrPipelineNotFound
+type ErrPipelineAlreadyExists = controller.ErrPipelineAlreadyExists
+type ErrInvalidStateSwitch = controller.ErrInvalidStateSwitch
+type ErrPipelineAlreadyStarted = controller.ErrAlreadyStarted
+type ErrInUsePipeline = controller.ErrInUsePipeline
 
 type ErrImport struct {
 	err error
@@ -40,7 +46,7 @@ func newErrImport(err error) ErrImport {
 var _ error = (*ErrInvalidHash)(nil)
 
 type ErrInvalidHash struct {
-	logID    uint
+	logID    int
 	expected []byte
 	got      []byte
 }
@@ -56,7 +62,7 @@ func (i ErrInvalidHash) Error() string {
 
 var _ error = (*ErrInvalidHash)(nil)
 
-func newErrInvalidHash(logID uint, got, expected []byte) ErrImport {
+func newErrInvalidHash(logID int, got, expected []byte) ErrImport {
 	return newErrImport(ErrInvalidHash{
 		expected: expected,
 		got:      got,

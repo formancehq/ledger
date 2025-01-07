@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"sync"
 	"time"
 
@@ -197,10 +197,10 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 	wg := sync.WaitGroup{}
 	lastID := p.expectedState.Actual().LastID
 	for {
-		logs, err := p.store.ListLogs(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+		logs, err := p.store.ListLogs(ctx, pagination.ColumnPaginatedQuery[any]{
 			PageSize: 100,
 			Column:   "id",
-			Options: ledgercontroller.ResourceQuery[any]{
+			Options: pagination.ResourceQuery[any]{
 				Builder: query.Gte("id", lastID),
 			},
 			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),

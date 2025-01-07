@@ -22,6 +22,10 @@ import "github.com/formancehq/ledger/internal"
   - [func NewDefaultConfiguration\(\) Configuration](<#NewDefaultConfiguration>)
   - [func \(c \*Configuration\) SetDefaults\(\)](<#Configuration.SetDefaults>)
   - [func \(c \*Configuration\) Validate\(\) error](<#Configuration.Validate>)
+- [type Connector](<#Connector>)
+  - [func NewConnector\(configuration ConnectorConfiguration\) Connector](<#NewConnector>)
+- [type ConnectorConfiguration](<#ConnectorConfiguration>)
+  - [func NewConnectorConfiguration\(driver string, config json.RawMessage\) ConnectorConfiguration](<#NewConnectorConfiguration>)
 - [type CreatedTransaction](<#CreatedTransaction>)
   - [func \(p CreatedTransaction\) GetMemento\(\) any](<#CreatedTransaction.GetMemento>)
   - [func \(p CreatedTransaction\) Type\(\) LogType](<#CreatedTransaction.Type>)
@@ -59,6 +63,12 @@ import "github.com/formancehq/ledger/internal"
 - [type Move](<#Move>)
 - [type Moves](<#Moves>)
   - [func \(m Moves\) ComputePostCommitEffectiveVolumes\(\) PostCommitVolumes](<#Moves.ComputePostCommitEffectiveVolumes>)
+- [type Pipeline](<#Pipeline>)
+  - [func NewPipeline\(pipelineConfiguration PipelineConfiguration, state State\) Pipeline](<#NewPipeline>)
+  - [func \(p Pipeline\) String\(\) string](<#Pipeline.String>)
+- [type PipelineConfiguration](<#PipelineConfiguration>)
+  - [func NewPipelineConfiguration\(ledger, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
+  - [func \(p PipelineConfiguration\) String\(\) string](<#PipelineConfiguration.String>)
 - [type PostCommitVolumes](<#PostCommitVolumes>)
   - [func \(a PostCommitVolumes\) AddInput\(account, asset string, input \*big.Int\)](<#PostCommitVolumes.AddInput>)
   - [func \(a PostCommitVolumes\) AddOutput\(account, asset string, output \*big.Int\)](<#PostCommitVolumes.AddOutput>)
@@ -75,6 +85,14 @@ import "github.com/formancehq/ledger/internal"
 - [type SavedMetadata](<#SavedMetadata>)
   - [func \(s SavedMetadata\) Type\(\) LogType](<#SavedMetadata.Type>)
   - [func \(s \*SavedMetadata\) UnmarshalJSON\(data \[\]byte\) error](<#SavedMetadata.UnmarshalJSON>)
+- [type State](<#State>)
+  - [func NewInitState\(\) State](<#NewInitState>)
+  - [func NewPauseState\(previousState State\) State](<#NewPauseState>)
+  - [func NewReadyState\(\) State](<#NewReadyState>)
+  - [func NewReadyStateWithID\(lastID int\) State](<#NewReadyStateWithID>)
+  - [func NewStopState\(previousState State\) State](<#NewStopState>)
+  - [func \(s State\) String\(\) string](<#State.String>)
+- [type StateLabel](<#StateLabel>)
 - [type Transaction](<#Transaction>)
   - [func NewTransaction\(\) Transaction](<#NewTransaction>)
   - [func \(tx Transaction\) InvolvedAccounts\(\) \[\]string](<#Transaction.InvolvedAccounts>)
@@ -277,6 +295,49 @@ func (c *Configuration) Validate() error
 
 
 
+<a name="Connector"></a>
+## type [Connector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L22-L26>)
+
+
+
+```go
+type Connector struct {
+    ID        string    `json:"id"`
+    CreatedAt time.Time `json:"createdAt"`
+    ConnectorConfiguration
+}
+```
+
+<a name="NewConnector"></a>
+### func [NewConnector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L28>)
+
+```go
+func NewConnector(configuration ConnectorConfiguration) Connector
+```
+
+
+
+<a name="ConnectorConfiguration"></a>
+## type [ConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L10-L13>)
+
+
+
+```go
+type ConnectorConfiguration struct {
+    Driver string          `json:"driver"`
+    Config json.RawMessage `json:"config"`
+}
+```
+
+<a name="NewConnectorConfiguration"></a>
+### func [NewConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L15>)
+
+```go
+func NewConnectorConfiguration(driver string, config json.RawMessage) ConnectorConfiguration
+```
+
+
+
 <a name="CreatedTransaction"></a>
 ## type [CreatedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L187-L190>)
 
@@ -473,7 +534,7 @@ type Log struct {
     // IdempotencyHash is a signature used when using IdempotencyKey.
     // It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
     IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-    ID              uint   `json:"id" bun:"id,unique,type:numeric"`
+    ID              int    `json:"id" bun:"id,unique,type:numeric"`
     Hash            []byte `json:"hash" bun:"hash,type:bytea"`
 }
 ```
@@ -667,6 +728,68 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes
 
 
 
+<a name="Pipeline"></a>
+## type [Pipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L26-L31>)
+
+
+
+```go
+type Pipeline struct {
+    CreatedAt time.Time `json:"createdAt"`
+    ID        string    `json:"id"`
+    State     State     `json:"state"`
+    PipelineConfiguration
+}
+```
+
+<a name="NewPipeline"></a>
+### func [NewPipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L37>)
+
+```go
+func NewPipeline(pipelineConfiguration PipelineConfiguration, state State) Pipeline
+```
+
+
+
+<a name="Pipeline.String"></a>
+### func \(Pipeline\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L33>)
+
+```go
+func (p Pipeline) String() string
+```
+
+
+
+<a name="PipelineConfiguration"></a>
+## type [PipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L10-L13>)
+
+
+
+```go
+type PipelineConfiguration struct {
+    Ledger      string `json:"ledger"`
+    ConnectorID string `json:"connectorID"`
+}
+```
+
+<a name="NewPipelineConfiguration"></a>
+### func [NewPipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L19>)
+
+```go
+func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
+```
+
+
+
+<a name="PipelineConfiguration.String"></a>
+### func \(PipelineConfiguration\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L15>)
+
+```go
+func (p PipelineConfiguration) String() string
+```
+
+
+
 <a name="PostCommitVolumes"></a>
 ## type [PostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/volumes.go#L118>)
 
@@ -822,6 +945,96 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error
 ```
 
 
+
+<a name="State"></a>
+## type [State](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L55-L62>)
+
+
+
+```go
+type State struct {
+    Label StateLabel `json:"label"`
+    // Cursor can be set only if Label == StateLabelInit
+    LastID int `json:"lastID,omitempty"`
+    // PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
+    PreviousState *State `json:"previousState,omitempty"`
+    Error         string `json:"error,omitempty"`
+}
+```
+
+<a name="NewInitState"></a>
+### func [NewInitState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L107>)
+
+```go
+func NewInitState() State
+```
+
+
+
+<a name="NewPauseState"></a>
+### func [NewPauseState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L100>)
+
+```go
+func NewPauseState(previousState State) State
+```
+
+
+
+<a name="NewReadyState"></a>
+### func [NewReadyState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L93>)
+
+```go
+func NewReadyState() State
+```
+
+
+
+<a name="NewReadyStateWithID"></a>
+### func [NewReadyStateWithID](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L79>)
+
+```go
+func NewReadyStateWithID(lastID int) State
+```
+
+
+
+<a name="NewStopState"></a>
+### func [NewStopState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L86>)
+
+```go
+func NewStopState(previousState State) State
+```
+
+
+
+<a name="State.String"></a>
+### func \(State\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L64>)
+
+```go
+func (s State) String() string
+```
+
+
+
+<a name="StateLabel"></a>
+## type [StateLabel](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L46>)
+
+
+
+```go
+type StateLabel string
+```
+
+<a name="StateLabelInit"></a>
+
+```go
+const (
+    StateLabelInit  StateLabel = "INIT"
+    StateLabelReady StateLabel = "READY"
+    StateLabelPause StateLabel = "PAUSE"
+    StateLabelStop  StateLabel = "STOP"
+)
+```
 
 <a name="Transaction"></a>
 ## type [Transaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L38-L50>)

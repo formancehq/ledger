@@ -16,6 +16,7 @@ import (
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	pagination "github.com/formancehq/ledger/internal/pagination"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -73,7 +74,7 @@ func (mr *LedgerControllerMockRecorder) Commit(ctx any) *gomock.Call {
 }
 
 // CountAccounts mocks base method.
-func (m *LedgerController) CountAccounts(ctx context.Context, query ledger0.ResourceQuery[any]) (int, error) {
+func (m *LedgerController) CountAccounts(ctx context.Context, query pagination.ResourceQuery[any]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountAccounts", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -88,7 +89,7 @@ func (mr *LedgerControllerMockRecorder) CountAccounts(ctx, query any) *gomock.Ca
 }
 
 // CountTransactions mocks base method.
-func (m *LedgerController) CountTransactions(ctx context.Context, query ledger0.ResourceQuery[any]) (int, error) {
+func (m *LedgerController) CountTransactions(ctx context.Context, query pagination.ResourceQuery[any]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountTransactions", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -100,6 +101,21 @@ func (m *LedgerController) CountTransactions(ctx context.Context, query ledger0.
 func (mr *LedgerControllerMockRecorder) CountTransactions(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountTransactions", reflect.TypeOf((*LedgerController)(nil).CountTransactions), ctx, query)
+}
+
+// CreatePipeline mocks base method.
+func (m *LedgerController) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePipeline", ctx, pipelineConfiguration)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePipeline indicates an expected call of CreatePipeline.
+func (mr *LedgerControllerMockRecorder) CreatePipeline(ctx, pipelineConfiguration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*LedgerController)(nil).CreatePipeline), ctx, pipelineConfiguration)
 }
 
 // CreateTransaction mocks base method.
@@ -133,6 +149,20 @@ func (mr *LedgerControllerMockRecorder) DeleteAccountMetadata(ctx, parameters an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*LedgerController)(nil).DeleteAccountMetadata), ctx, parameters)
 }
 
+// DeletePipeline mocks base method.
+func (m *LedgerController) DeletePipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePipeline indicates an expected call of DeletePipeline.
+func (mr *LedgerControllerMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*LedgerController)(nil).DeletePipeline), ctx, id)
+}
+
 // DeleteTransactionMetadata mocks base method.
 func (m *LedgerController) DeleteTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteTransactionMetadata]) (*ledger.Log, error) {
 	m.ctrl.T.Helper()
@@ -163,7 +193,7 @@ func (mr *LedgerControllerMockRecorder) Export(ctx, w any) *gomock.Call {
 }
 
 // GetAccount mocks base method.
-func (m *LedgerController) GetAccount(ctx context.Context, query ledger0.ResourceQuery[any]) (*ledger.Account, error) {
+func (m *LedgerController) GetAccount(ctx context.Context, query pagination.ResourceQuery[any]) (*ledger.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, query)
 	ret0, _ := ret[0].(*ledger.Account)
@@ -178,7 +208,7 @@ func (mr *LedgerControllerMockRecorder) GetAccount(ctx, query any) *gomock.Call 
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q ledger0.ResourceQuery[ledger0.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q pagination.ResourceQuery[ledger0.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
 	ret0, _ := ret[0].(ledger.BalancesByAssets)
@@ -207,6 +237,21 @@ func (mr *LedgerControllerMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*LedgerController)(nil).GetMigrationsInfo), ctx)
 }
 
+// GetPipeline mocks base method.
+func (m *LedgerController) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPipeline", ctx, id)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPipeline indicates an expected call of GetPipeline.
+func (mr *LedgerControllerMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*LedgerController)(nil).GetPipeline), ctx, id)
+}
+
 // GetStats mocks base method.
 func (m *LedgerController) GetStats(ctx context.Context) (ledger0.Stats, error) {
 	m.ctrl.T.Helper()
@@ -223,7 +268,7 @@ func (mr *LedgerControllerMockRecorder) GetStats(ctx any) *gomock.Call {
 }
 
 // GetTransaction mocks base method.
-func (m *LedgerController) GetTransaction(ctx context.Context, query ledger0.ResourceQuery[any]) (*ledger.Transaction, error) {
+func (m *LedgerController) GetTransaction(ctx context.Context, query pagination.ResourceQuery[any]) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, query)
 	ret0, _ := ret[0].(*ledger.Transaction)
@@ -238,7 +283,7 @@ func (mr *LedgerControllerMockRecorder) GetTransaction(ctx, query any) *gomock.C
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q ledger0.OffsetPaginatedQuery[ledger0.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q pagination.OffsetPaginatedQuery[ledger0.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
@@ -282,7 +327,7 @@ func (mr *LedgerControllerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call
 }
 
 // ListAccounts mocks base method.
-func (m *LedgerController) ListAccounts(ctx context.Context, query ledger0.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *LedgerController) ListAccounts(ctx context.Context, query pagination.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
@@ -297,7 +342,7 @@ func (mr *LedgerControllerMockRecorder) ListAccounts(ctx, query any) *gomock.Cal
 }
 
 // ListLogs mocks base method.
-func (m *LedgerController) ListLogs(ctx context.Context, query ledger0.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *LedgerController) ListLogs(ctx context.Context, query pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
@@ -311,8 +356,23 @@ func (mr *LedgerControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*LedgerController)(nil).ListLogs), ctx, query)
 }
 
+// ListPipelines mocks base method.
+func (m *LedgerController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPipelines", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPipelines indicates an expected call of ListPipelines.
+func (mr *LedgerControllerMockRecorder) ListPipelines(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPipelines", reflect.TypeOf((*LedgerController)(nil).ListPipelines), ctx)
+}
+
 // ListTransactions mocks base method.
-func (m *LedgerController) ListTransactions(ctx context.Context, query ledger0.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *LedgerController) ListTransactions(ctx context.Context, query pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
@@ -324,6 +384,48 @@ func (m *LedgerController) ListTransactions(ctx context.Context, query ledger0.C
 func (mr *LedgerControllerMockRecorder) ListTransactions(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTransactions", reflect.TypeOf((*LedgerController)(nil).ListTransactions), ctx, query)
+}
+
+// PausePipeline mocks base method.
+func (m *LedgerController) PausePipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PausePipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PausePipeline indicates an expected call of PausePipeline.
+func (mr *LedgerControllerMockRecorder) PausePipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PausePipeline", reflect.TypeOf((*LedgerController)(nil).PausePipeline), ctx, id)
+}
+
+// ResetPipeline mocks base method.
+func (m *LedgerController) ResetPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetPipeline indicates an expected call of ResetPipeline.
+func (mr *LedgerControllerMockRecorder) ResetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPipeline", reflect.TypeOf((*LedgerController)(nil).ResetPipeline), ctx, id)
+}
+
+// ResumePipeline mocks base method.
+func (m *LedgerController) ResumePipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResumePipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResumePipeline indicates an expected call of ResumePipeline.
+func (mr *LedgerControllerMockRecorder) ResumePipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResumePipeline", reflect.TypeOf((*LedgerController)(nil).ResumePipeline), ctx, id)
 }
 
 // RevertTransaction mocks base method.
@@ -384,4 +486,32 @@ func (m *LedgerController) SaveTransactionMetadata(ctx context.Context, paramete
 func (mr *LedgerControllerMockRecorder) SaveTransactionMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*LedgerController)(nil).SaveTransactionMetadata), ctx, parameters)
+}
+
+// StartPipeline mocks base method.
+func (m *LedgerController) StartPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartPipeline indicates an expected call of StartPipeline.
+func (mr *LedgerControllerMockRecorder) StartPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartPipeline", reflect.TypeOf((*LedgerController)(nil).StartPipeline), ctx, id)
+}
+
+// StopPipeline mocks base method.
+func (m *LedgerController) StopPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StopPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StopPipeline indicates an expected call of StopPipeline.
+func (mr *LedgerControllerMockRecorder) StopPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*LedgerController)(nil).StopPipeline), ctx, id)
 }

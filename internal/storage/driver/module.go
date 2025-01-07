@@ -28,7 +28,7 @@ func NewFXModule() fx.Option {
 		fx.Provide(fx.Annotate(func(db *bun.DB, tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(db, bucket.WithTracer(tracerProvider.Tracer("store")))
 		})),
-		fx.Provide(func(db *bun.DB) systemstore.Store {
+		fx.Provide(func(db *bun.DB) SystemStore {
 			return systemstore.New(db)
 		}),
 		fx.Provide(func(
@@ -44,7 +44,7 @@ func NewFXModule() fx.Option {
 		fx.Provide(func(
 			bucketFactory bucket.Factory,
 			ledgerStoreFactory ledgerstore.Factory,
-			systemStore systemstore.Store,
+			systemStore SystemStore,
 			tracerProvider trace.TracerProvider,
 			meterProvider metric.MeterProvider,
 		) (*Driver, error) {

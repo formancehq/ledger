@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/pagination"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,7 +26,7 @@ func TestAccountsCount(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.ResourceQuery[any]
+		expectQuery       pagination.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		returnErr         error
@@ -36,7 +37,7 @@ func TestAccountsCount(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},
@@ -46,7 +47,7 @@ func TestAccountsCount(t *testing.T) {
 			name:              "using metadata",
 			body:              `{"$match": { "metadata[roles]": "admin" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("metadata[roles]", "admin"),
 				Expand:  make([]string, 0),
@@ -56,7 +57,7 @@ func TestAccountsCount(t *testing.T) {
 			name:              "using address",
 			body:              `{"$match": { "address": "foo" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("address", "foo"),
 				Expand:  make([]string, 0),
@@ -66,7 +67,7 @@ func TestAccountsCount(t *testing.T) {
 			name:              "using balance filter",
 			body:              `{"$lt": { "balance[USD/2]": 100 }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Lt("balance[USD/2]", float64(100)),
 				Expand:  make([]string, 0),
@@ -76,7 +77,7 @@ func TestAccountsCount(t *testing.T) {
 			name:              "using exists filter",
 			body:              `{"$exists": { "metadata": "foo" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Exists("metadata", "foo"),
 				Expand:  make([]string, 0),
@@ -94,7 +95,7 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},
@@ -105,7 +106,7 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},
@@ -116,7 +117,7 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: api.ErrorInternal,
 			expectBackendCall: true,
 			returnErr:         errors.New("undefined error"),
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},

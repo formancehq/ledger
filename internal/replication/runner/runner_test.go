@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"testing"
 	"time"
 
@@ -67,16 +67,16 @@ func TestRunner(t *testing.T) {
 	delivered := make(chan struct{})
 
 	logFetcher.EXPECT().
-		ListLogs(gomock.Any(), ledgercontroller.ColumnPaginatedQuery[any]{
+		ListLogs(gomock.Any(), pagination.ColumnPaginatedQuery[any]{
 			PageSize: 100,
 			Column:   "id",
-			Options: ledgercontroller.ResourceQuery[any]{
-				Builder: query.Gte("id", uint(0)),
+			Options: pagination.ResourceQuery[any]{
+				Builder: query.Gte("id", 0),
 			},
 			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		}).
 		AnyTimes().
-		DoAndReturn(func(ctx context.Context, paginatedQuery ledgercontroller.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+		DoAndReturn(func(ctx context.Context, paginatedQuery pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 			select {
 			case <-deliver:
 				select {

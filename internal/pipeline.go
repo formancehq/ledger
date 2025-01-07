@@ -25,8 +25,8 @@ func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration 
 
 type Pipeline struct {
 	CreatedAt time.Time `json:"createdAt"`
-	ID    string `json:"id"`
-	State State  `json:"state"`
+	ID        string    `json:"id"`
+	State     State     `json:"state"`
 	PipelineConfiguration
 }
 
@@ -55,7 +55,7 @@ const (
 type State struct {
 	Label StateLabel `json:"label"`
 	// Cursor can be set only if Label == StateLabelInit
-	LastID uint `json:"lastID,omitempty"`
+	LastID int `json:"lastID,omitempty"`
 	// PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
 	PreviousState *State `json:"previousState,omitempty"`
 	Error         string `json:"error,omitempty"`
@@ -76,7 +76,7 @@ func (s State) String() string {
 	}
 }
 
-func NewReadyStateWithID(lastID uint) State {
+func NewReadyStateWithID(lastID int) State {
 	return State{
 		Label:  StateLabelReady,
 		LastID: lastID,

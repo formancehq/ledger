@@ -71,9 +71,9 @@ func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
 
 type BulkElementResult struct {
 	Error     error
-	Data      any  `json:"data,omitempty"`
-	LogID     uint `json:"logID"`
-	ElementID int  `json:"elementID"`
+	Data      any `json:"data,omitempty"`
+	LogID     int `json:"logID"`
+	ElementID int `json:"elementID"`
 }
 
 type AddMetadataRequest struct {

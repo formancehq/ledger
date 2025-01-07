@@ -13,7 +13,7 @@ import (
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
-	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	pagination "github.com/formancehq/ledger/internal/pagination"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,7 +42,7 @@ func (m *MockLogFetcher) EXPECT() *MockLogFetcherMockRecorder {
 }
 
 // ListLogs mocks base method.
-func (m *MockLogFetcher) ListLogs(ctx context.Context, query ledger0.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *MockLogFetcher) ListLogs(ctx context.Context, query pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])

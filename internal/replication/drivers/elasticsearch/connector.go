@@ -115,7 +115,7 @@ func NewConnector(serviceConfig drivers.ServiceConfig, config Config, logger log
 var _ drivers.Driver = (*Connector)(nil)
 
 type DocID struct {
-	LogID  uint   `json:"logID"`
+	LogID  int   `json:"logID"`
 	Ledger string `json:"ledger,omitempty"`
 }
 

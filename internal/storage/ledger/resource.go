@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/uptrace/bun"
 	"regexp"
 	"slices"
@@ -61,7 +62,7 @@ type filter struct {
 }
 
 type repositoryHandlerBuildContext[Opts any] struct {
-	ledgercontroller.ResourceQuery[Opts]
+	pagination.ResourceQuery[Opts]
 	filters map[string]any
 }
 
@@ -82,9 +83,9 @@ func (ctx repositoryHandlerBuildContext[Opts]) useFilter(v string, matchers ...f
 type repositoryHandler[Opts any] interface {
 	filters() []filter
 	buildDataset(store *Store, query repositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
-	resolveFilter(store *Store, query ledgercontroller.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
-	project(store *Store, query ledgercontroller.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
-	expand(store *Store, query ledgercontroller.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
+	resolveFilter(store *Store, query pagination.ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
+	project(store *Store, query pagination.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
+	expand(store *Store, query pagination.ResourceQuery[Opts], property string) (*bun.SelectQuery, *joinCondition, error)
 }
 
 type resourceRepository[ResourceType, OptionsType any] struct {
@@ -145,7 +146,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	return ret, nil
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q pagination.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	filters, err := r.validateFilters(q.Builder)
 	if err != nil {
@@ -181,7 +182,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q l
 	return r.resourceHandler.project(r.store, q, dataset)
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q ledgercontroller.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q pagination.ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
 	dataset = r.store.db.NewSelect().
 		With("dataset", dataset).
 		ModelTableExpr("dataset").
@@ -214,7 +215,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) expand(dataset *bun.Sele
 	return dataset, nil
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (*ResourceType, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query pagination.ResourceQuery[OptionsType]) (*ResourceType, error) {
 
 	finalQuery, err := r.buildFilteredDataset(query)
 	if err != nil {
@@ -240,7 +241,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Conte
 	return &ret[0], nil
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) Count(ctx context.Context, query ledgercontroller.ResourceQuery[OptionsType]) (int, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) Count(ctx context.Context, query pagination.ResourceQuery[OptionsType]) (int, error) {
 
 	finalQuery, err := r.buildFilteredDataset(query)
 	if err != nil {
@@ -263,7 +264,7 @@ func newResourceRepository[ResourceType, OptionsType any](
 	}
 }
 
-type paginatedResourceRepository[ResourceType, OptionsType any, PaginationQueryType ledgercontroller.PaginatedQuery[OptionsType]] struct {
+type paginatedResourceRepository[ResourceType, OptionsType any, PaginationQueryType pagination.PaginatedQuery[OptionsType]] struct {
 	*resourceRepository[ResourceType, OptionsType]
 	paginator paginator[ResourceType, PaginationQueryType]
 }
@@ -273,11 +274,11 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 	paginationOptions PaginationQueryType,
 ) (*bunpaginate.Cursor[ResourceType], error) {
 
-	var resourceQuery ledgercontroller.ResourceQuery[OptionsType]
+	var resourceQuery pagination.ResourceQuery[OptionsType]
 	switch v := any(paginationOptions).(type) {
-	case ledgercontroller.OffsetPaginatedQuery[OptionsType]:
+	case pagination.OffsetPaginatedQuery[OptionsType]:
 		resourceQuery = v.Options
-	case ledgercontroller.ColumnPaginatedQuery[OptionsType]:
+	case pagination.ColumnPaginatedQuery[OptionsType]:
 		resourceQuery = v.Options
 	default:
 		panic("should not happen")
@@ -308,7 +309,7 @@ func (r *paginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 	return r.paginator.buildCursor(ret, paginationOptions)
 }
 
-func newPaginatedResourceRepository[ResourceType, OptionsType any, PaginationQueryType ledgercontroller.PaginatedQuery[OptionsType]](
+func newPaginatedResourceRepository[ResourceType, OptionsType any, PaginationQueryType pagination.PaginatedQuery[OptionsType]](
 	store *Store,
 	l ledger.Ledger,
 	handler repositoryHandler[OptionsType],
@@ -322,7 +323,7 @@ func newPaginatedResourceRepository[ResourceType, OptionsType any, PaginationQue
 
 type paginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType interface {
 	ToCore() ToResourceType
-}, OptionsType any, PaginationQueryType ledgercontroller.PaginatedQuery[OptionsType]] struct {
+}, OptionsType any, PaginationQueryType pagination.PaginatedQuery[OptionsType]] struct {
 	*paginatedResourceRepository[OriginalResourceType, OptionsType, PaginationQueryType]
 }
 
@@ -340,7 +341,7 @@ func (m paginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, 
 
 func (m paginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType, PaginationQueryType]) GetOne(
 	ctx context.Context,
-	query ledgercontroller.ResourceQuery[OptionsType],
+	query pagination.ResourceQuery[OptionsType],
 ) (*ToResourceType, error) {
 	item, err := m.paginatedResourceRepository.GetOne(ctx, query)
 	if err != nil {
@@ -352,7 +353,7 @@ func (m paginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, 
 
 func newPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType interface {
 	ToCore() ToResourceType
-}, OptionsType any, PaginationQueryType ledgercontroller.PaginatedQuery[OptionsType]](
+}, OptionsType any, PaginationQueryType pagination.PaginatedQuery[OptionsType]](
 	store *Store,
 	l ledger.Ledger,
 	handler repositoryHandler[OptionsType],

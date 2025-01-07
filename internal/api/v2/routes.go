@@ -35,6 +35,14 @@ func NewRouter(
 
 		router.Get("/_info", v1.GetInfo(systemController, version))
 
+		router.Route("/_system", func(router chi.Router) {
+			router.Route("/connectors", func(router chi.Router) {
+				router.Get("/", listConnectors(systemController))
+				router.Get("/{connectorID}", getConnector(systemController))
+				router.Delete("/{connectorID}", deleteConnector(systemController))
+				router.Post("/", createConnector(systemController))
+			})
+		})
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
@@ -58,30 +66,46 @@ func NewRouter(
 					routerOptions.bulkHandlerFactories,
 				))
 
-				// LedgerController
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", readStats)
-				router.Get("/logs", listLogs(routerOptions.paginationConfig))
-				router.Post("/logs/import", importLogs)
-				router.Post("/logs/export", exportLogs)
 
-				// AccountController
-				router.Get("/accounts", listAccounts(routerOptions.paginationConfig))
-				router.Head("/accounts", countAccounts)
-				router.Get("/accounts/{address}", readAccount)
-				router.Post("/accounts/{address}/metadata", addAccountMetadata)
-				router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
+				router.Route("/pipelines", func(router chi.Router) {
+					router.Get("/", listPipelines())
+					router.Post("/", createPipeline())
+					router.Route("/{pipelineID}", func(router chi.Router) {
+						router.Get("/", readPipeline())
+						router.Delete("/", deletePipeline())
+						router.Post("/start", startPipeline())
+						router.Post("/stop", stopPipeline())
+						router.Post("/reset", resetPipeline())
+						router.Post("/pause", pausePipeline())
+						router.Post("/resume", resumePipeline())
+					})
+				})
 
-				// TransactionController
-				router.Get("/transactions", listTransactions(routerOptions.paginationConfig))
-				router.Head("/transactions", countTransactions)
+				router.Route("/logs", func(router chi.Router) {
+					router.Get("/", listLogs(routerOptions.paginationConfig))
+					router.Post("/import", importLogs)
+					router.Post("/export", exportLogs)
+				})
 
-				router.Post("/transactions", createTransaction)
+				router.Route("/accounts", func(router chi.Router) {
+					router.Get("/", listAccounts(routerOptions.paginationConfig))
+					router.Head("/", countAccounts)
+					router.Get("/{address}", readAccount)
+					router.Post("/{address}/metadata", addAccountMetadata)
+					router.Delete("/{address}/metadata/{key}", deleteAccountMetadata)
+				})
 
-				router.Get("/transactions/{id}", readTransaction)
-				router.Post("/transactions/{id}/revert", revertTransaction)
-				router.Post("/transactions/{id}/metadata", addTransactionMetadata)
-				router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
+				router.Route("/transactions", func(router chi.Router) {
+					router.Get("/", listTransactions(routerOptions.paginationConfig))
+					router.Head("/", countTransactions)
+					router.Post("/", createTransaction)
+					router.Get("/{id}", readTransaction)
+					router.Post("/{id}/revert", revertTransaction)
+					router.Post("/{id}/metadata", addTransactionMetadata)
+					router.Delete("/{id}/metadata/{key}", deleteTransactionMetadata)
+				})
 
 				router.Get("/aggregate/balances", readBalancesAggregated)
 
