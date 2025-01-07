@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	ingester "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,7 +11,6 @@ import (
 
 	sharedapi "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/logging"
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

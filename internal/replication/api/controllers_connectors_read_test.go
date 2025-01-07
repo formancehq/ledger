@@ -1,12 +1,12 @@
 package api
 
 import (
+	ingester "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	sharedapi "github.com/formancehq/go-libs/v2/testing/api"
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"

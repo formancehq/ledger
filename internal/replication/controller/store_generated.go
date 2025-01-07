@@ -11,10 +11,10 @@ package controller
 
 import (
 	context "context"
+	"github.com/formancehq/ledger/internal"
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	ingester "github.com/formancehq/ledger/internal/replication"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,7 +43,7 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // CreateConnector mocks base method.
-func (m *MockStore) CreateConnector(ctx context.Context, connector ingester.Connector) error {
+func (m *MockStore) CreateConnector(ctx context.Context, connector ledger.Connector) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateConnector", ctx, connector)
 	ret0, _ := ret[0].(error)
@@ -57,7 +57,7 @@ func (mr *MockStoreMockRecorder) CreateConnector(ctx, connector any) *gomock.Cal
 }
 
 // CreatePipeline mocks base method.
-func (m *MockStore) CreatePipeline(ctx context.Context, pipeline ingester.Pipeline) error {
+func (m *MockStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreatePipeline", ctx, pipeline)
 	ret0, _ := ret[0].(error)
@@ -99,10 +99,10 @@ func (mr *MockStoreMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
 }
 
 // GetConnector mocks base method.
-func (m *MockStore) GetConnector(ctx context.Context, id string) (*ingester.Connector, error) {
+func (m *MockStore) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ingester.Connector)
+	ret0, _ := ret[0].(*ledger.Connector)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -114,10 +114,10 @@ func (mr *MockStoreMockRecorder) GetConnector(ctx, id any) *gomock.Call {
 }
 
 // GetPipeline mocks base method.
-func (m *MockStore) GetPipeline(ctx context.Context, id string) (*ingester.Pipeline, error) {
+func (m *MockStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPipeline", ctx, id)
-	ret0, _ := ret[0].(*ingester.Pipeline)
+	ret0, _ := ret[0].(*ledger.Pipeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -129,10 +129,10 @@ func (mr *MockStoreMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
 }
 
 // ListConnectors mocks base method.
-func (m *MockStore) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ingester.Connector], error) {
+func (m *MockStore) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListConnectors", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ingester.Connector])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Connector])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -144,10 +144,10 @@ func (mr *MockStoreMockRecorder) ListConnectors(ctx any) *gomock.Call {
 }
 
 // ListPipelines mocks base method.
-func (m *MockStore) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ingester.Pipeline], error) {
+func (m *MockStore) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ingester.Pipeline])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

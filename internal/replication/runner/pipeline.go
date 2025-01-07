@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"sync"
 	"time"
@@ -58,12 +59,12 @@ var (
 type PipelineHandler struct {
 	mu sync.Mutex
 
-	pipeline       ingester.Pipeline
+	pipeline       ledger.Pipeline
 	stopChannel    chan chan error
 	store          LogFetcher
 	connector      drivers.Driver
-	expectedState  *Signal[ingester.State]
-	activeState    *Signal[ingester.State]
+	expectedState  *Signal[ledger.State]
+	activeState    *Signal[ledger.State]
 	pipelineConfig PipelineHandlerConfig
 	stateHandler   *StateHandler
 	logger         logging.Logger
@@ -76,10 +77,10 @@ func (p *PipelineHandler) Pause() error {
 	defer p.mu.Unlock()
 
 	actualExpectedState := p.expectedState.Actual()
-	if actualExpectedState.Label == ingester.StateLabelPause {
-		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ingester.StateLabelStop)
+	if actualExpectedState.Label == ledger.StateLabelPause {
+		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ledger.StateLabelStop)
 	}
-	p.expectedState.Signal(ingester.NewPauseState(
+	p.expectedState.Signal(ledger.NewPauseState(
 		*p.activeState.Actual(),
 	))
 
@@ -93,8 +94,8 @@ func (p *PipelineHandler) Resume() error {
 	defer p.mu.Unlock()
 
 	actualExpectedState := p.expectedState.Actual()
-	if actualExpectedState.Label != ingester.StateLabelPause {
-		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ingester.StateLabelPause)
+	if actualExpectedState.Label != ledger.StateLabelPause {
+		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ledger.StateLabelPause)
 	}
 	p.expectedState.Signal(*actualExpectedState.PreviousState)
 
@@ -105,7 +106,7 @@ func (p *PipelineHandler) Reset() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.expectedState.Signal(ingester.NewReadyState())
+	p.expectedState.Signal(ledger.NewReadyState())
 
 	return nil
 }
@@ -118,16 +119,16 @@ func (p *PipelineHandler) Stop() error {
 	defer p.mu.Unlock()
 
 	actualExpectedState := p.expectedState.Actual()
-	if actualExpectedState.Label == ingester.StateLabelStop {
-		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ingester.StateLabelStop)
+	if actualExpectedState.Label == ledger.StateLabelStop {
+		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ledger.StateLabelStop)
 	}
 
-	p.expectedState.Signal(ingester.NewStopState(*actualExpectedState))
+	p.expectedState.Signal(ledger.NewStopState(*actualExpectedState))
 
 	return nil
 }
 
-func (p *PipelineHandler) switchToState(ctx context.Context, newState ingester.State) bool {
+func (p *PipelineHandler) switchToState(ctx context.Context, newState ledger.State) bool {
 	if p.activeState.Actual() != nil &&
 		newState.Label == p.activeState.Actual().Label {
 		return true
@@ -136,13 +137,13 @@ func (p *PipelineHandler) switchToState(ctx context.Context, newState ingester.S
 
 	var fn func(ctx context.Context, readyChan chan struct{}) error
 	switch newState.Label {
-	case ingester.StateLabelInit:
+	case ledger.StateLabelInit:
 		fn = p.run
-	case ingester.StateLabelReady:
+	case ledger.StateLabelReady:
 		fn = p.run
-	case ingester.StateLabelPause:
+	case ledger.StateLabelPause:
 		fn = p.pause
-	case ingester.StateLabelStop:
+	case ledger.StateLabelStop:
 		fn = p.stop
 	}
 	if err := p.stateHandler.Switch(ctx, fn); err != nil {
@@ -152,7 +153,7 @@ func (p *PipelineHandler) switchToState(ctx context.Context, newState ingester.S
 	p.activeState.Signal(newState)
 	p.logger.Infof("Switched to state '%s'", newState.Label)
 
-	return newState.Label != ingester.StateLabelStop
+	return newState.Label != ledger.StateLabelStop
 }
 
 func (p *PipelineHandler) Run(ctx context.Context) {
@@ -191,7 +192,7 @@ func (p *PipelineHandler) Run(ctx context.Context) {
 func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 	close(ready)
 
-	p.activeState.Signal(ingester.NewReadyState())
+	p.activeState.Signal(ledger.NewReadyState())
 
 	wg := sync.WaitGroup{}
 	lastID := p.expectedState.Actual().LastID
@@ -252,7 +253,7 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 		}
 		lastID = logs.Data[len(logs.Data)-1].ID
 
-		p.activeState.Signal(ingester.NewReadyStateWithID(lastID))
+		p.activeState.Signal(ledger.NewReadyStateWithID(lastID))
 	}
 }
 
@@ -291,7 +292,7 @@ func (p *PipelineHandler) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (p *PipelineHandler) GetActiveState() *Signal[ingester.State] {
+func (p *PipelineHandler) GetActiveState() *Signal[ledger.State] {
 	if p == nil {
 		return nil
 	}
@@ -299,7 +300,7 @@ func (p *PipelineHandler) GetActiveState() *Signal[ingester.State] {
 }
 
 func NewPipelineHandler(
-	pipeline ingester.Pipeline,
+	pipeline ledger.Pipeline,
 	store LogFetcher,
 	connector drivers.Driver,
 	logger logging.Logger,
@@ -316,7 +317,7 @@ func NewPipelineHandler(
 		store:          store,
 		connector:      connector,
 		expectedState:  NewSignal(&pipeline.State),
-		activeState:    NewSignal[ingester.State](nil),
+		activeState:    NewSignal[ledger.State](nil),
 		pipelineConfig: config,
 		logger: logger.
 			WithField("component", "pipeline").

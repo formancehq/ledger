@@ -2,8 +2,7 @@ package drivers
 
 import (
 	"context"
-
-	ingester "github.com/formancehq/ledger/internal/replication"
+	ingester "github.com/formancehq/ledger/internal"
 )
 
 //go:generate mockgen -source store.go -destination store_generated.go -package drivers . Store

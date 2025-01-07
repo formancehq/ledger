@@ -19,7 +19,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func runPipeline(t *testing.T, ctx context.Context, pipeline ingester.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan ingester.State) {
+func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan ledger.State) {
 	t.Helper()
 
 	handler := NewPipelineHandler(
@@ -85,12 +85,12 @@ func TestPipelineReady(t *testing.T) {
 		Accept(gomock.Any(), ingester.NewLogWithLedger("testing", log)).
 		Return([]error{nil}, nil)
 
-	pipelineConfiguration := ingester.NewPipelineConfiguration("testing", "testing")
-	pipeline := ingester.NewPipeline(pipelineConfiguration, ingester.NewReadyState())
+	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
+	pipeline := ledger.NewPipeline(pipelineConfiguration, ledger.NewReadyState())
 
 	_, stateListener := runPipeline(t, ctx, pipeline, logFetcher, connector)
 
-	ShouldReceive(t, ingester.NewReadyState(), stateListener)
+	ShouldReceive(t, ledger.NewReadyState(), stateListener)
 
 	close(deliver)
 
@@ -105,9 +105,9 @@ func TestPipelinePause(t *testing.T) {
 	logFetcher := NewMockLogFetcher(ctrl)
 	connector := drivers.NewMockDriver(ctrl)
 
-	state := ingester.NewPauseState(ingester.NewReadyState())
-	pipelineConfiguration := ingester.NewPipelineConfiguration("testing", "testing")
-	pipeline := ingester.NewPipeline(pipelineConfiguration, state)
+	state := ledger.NewPauseState(ledger.NewReadyState())
+	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
+	pipeline := ledger.NewPipeline(pipelineConfiguration, state)
 
 	_, stateListener := runPipeline(t, ctx, pipeline, logFetcher, connector)
 

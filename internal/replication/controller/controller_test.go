@@ -3,10 +3,10 @@ package controller
 import (
 	"context"
 	"database/sql"
+	ingester "github.com/formancehq/ledger/internal"
 	"testing"
 	"time"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/google/uuid"
 
 	"github.com/formancehq/go-libs/v2/logging"

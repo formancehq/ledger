@@ -1,4 +1,4 @@
-package ingester
+package ledger
 
 import (
 	"encoding/json"

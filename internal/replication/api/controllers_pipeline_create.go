@@ -1,16 +1,17 @@
 package api
 
 import (
+	ingester "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/v2/api"
-	ingester "github.com/formancehq/ledger/internal/replication"
 )
 
 func (a *API) createPipeline(w http.ResponseWriter, r *http.Request) {
-	withBody[ingester.PipelineConfiguration](w, r, func(req ingester.PipelineConfiguration) {
+	common.WithBody[ingester.PipelineConfiguration](w, r, func(req ingester.PipelineConfiguration) {
 		p, err := a.backend.CreatePipeline(r.Context(), req)
 		if err != nil {
 			switch {

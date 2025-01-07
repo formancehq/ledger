@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"github.com/davecgh/go-spew/spew"
+	ingester "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,7 +11,6 @@ import (
 	"github.com/google/uuid"
 
 	sharedapi "github.com/formancehq/go-libs/v2/api"
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/pkg/errors"
 

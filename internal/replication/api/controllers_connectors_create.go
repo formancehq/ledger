@@ -1,15 +1,16 @@
 package api
 
 import (
+	ingester "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/pkg/errors"
 )
 
 func (a *API) createConnector(w http.ResponseWriter, r *http.Request) {
-	withBody[ingester.ConnectorConfiguration](w, r, func(req ingester.ConnectorConfiguration) {
+	common.WithBody[ingester.ConnectorConfiguration](w, r, func(req ingester.ConnectorConfiguration) {
 		connector, err := a.backend.CreateConnector(r.Context(), req)
 		if err != nil {
 			switch {

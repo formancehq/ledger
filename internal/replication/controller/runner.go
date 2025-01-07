@@ -2,8 +2,8 @@ package controller
 
 import (
 	"context"
+	ingester "github.com/formancehq/ledger/internal"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/runner"
 )
 

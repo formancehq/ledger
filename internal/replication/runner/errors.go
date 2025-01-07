@@ -2,8 +2,8 @@ package runner
 
 import (
 	"fmt"
+	ingester "github.com/formancehq/ledger/internal"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 

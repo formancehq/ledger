@@ -1,13 +1,12 @@
 package api
 
 import (
+	ingester "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	ingester "github.com/formancehq/ledger/internal/replication"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

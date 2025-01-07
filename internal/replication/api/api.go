@@ -2,8 +2,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/controller"
 	"net/http"
 
@@ -20,9 +19,9 @@ import (
 
 //go:generate mockgen -source api.go -destination api_generated.go -package api . Backend
 type Backend interface {
-	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ingester.Pipeline], error)
-	GetPipeline(ctx context.Context, id string) (*ingester.Pipeline, error)
-	CreatePipeline(ctx context.Context, pipelineConfiguration ingester.PipelineConfiguration) (*ingester.Pipeline, error)
+	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
+	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
+	CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error)
 	DeletePipeline(ctx context.Context, id string) error
 	StartPipeline(ctx context.Context, id string) error
 	PausePipeline(ctx context.Context, id string) error
@@ -30,10 +29,10 @@ type Backend interface {
 	ResetPipeline(ctx context.Context, id string) error
 	StopPipeline(ctx context.Context, id string) error
 
-	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ingester.Connector], error)
-	CreateConnector(ctx context.Context, configuration ingester.ConnectorConfiguration) (*ingester.Connector, error)
+	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
+	CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error)
 	DeleteConnector(ctx context.Context, id string) error
-	GetConnector(ctx context.Context, id string) (*ingester.Connector, error)
+	GetConnector(ctx context.Context, id string) (*ledger.Connector, error)
 }
 
 type ErrConnectorNotFound = controller.ErrConnectorNotFound
@@ -117,14 +116,4 @@ func NewAPI(
 		authenticator:    authenticator,
 		healthController: healthController,
 	}
-}
-
-func withBody[V any](w http.ResponseWriter, r *http.Request, fn func(v V)) {
-	var v V
-	if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
-		api.BadRequest(w, "VALIDATION", err)
-		return
-	}
-
-	fn(v)
 }

@@ -2,10 +2,9 @@ package runner
 
 import (
 	"context"
+	ingester "github.com/formancehq/ledger/internal"
 	"sync"
 	"time"
-
-	ingester "github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"

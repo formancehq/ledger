@@ -11,9 +11,9 @@ package controller
 
 import (
 	context "context"
+	ingester "github.com/formancehq/ledger/internal"
 	reflect "reflect"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
 	runner "github.com/formancehq/ledger/internal/replication/runner"
 	gomock "go.uber.org/mock/gomock"
 )

@@ -11,9 +11,9 @@ package drivers
 
 import (
 	context "context"
+	ingester "github.com/formancehq/ledger/internal"
 	reflect "reflect"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
 	gomock "go.uber.org/mock/gomock"
 )
 

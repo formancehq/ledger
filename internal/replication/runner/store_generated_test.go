@@ -14,7 +14,6 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
-	ingester "github.com/formancehq/ledger/internal/replication"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -122,10 +121,10 @@ func (m *MockSystemStore) EXPECT() *MockSystemStoreMockRecorder {
 }
 
 // ListEnabledPipelines mocks base method.
-func (m *MockSystemStore) ListEnabledPipelines(ctx context.Context) ([]ingester.Pipeline, error) {
+func (m *MockSystemStore) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListEnabledPipelines", ctx)
-	ret0, _ := ret[0].([]ingester.Pipeline)
+	ret0, _ := ret[0].([]ledger.Pipeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -137,7 +136,7 @@ func (mr *MockSystemStoreMockRecorder) ListEnabledPipelines(ctx any) *gomock.Cal
 }
 
 // StorePipelineState mocks base method.
-func (m *MockSystemStore) StorePipelineState(ctx context.Context, id string, state ingester.State) error {
+func (m *MockSystemStore) StorePipelineState(ctx context.Context, id string, state ledger.State) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StorePipelineState", ctx, id, state)
 	ret0, _ := ret[0].(error)

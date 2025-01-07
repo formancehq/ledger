@@ -52,8 +52,8 @@ func TestRunner(t *testing.T) {
 	connectorFactory := drivers.NewMockFactory(ctrl)
 	connector := drivers.NewMockDriver(ctrl)
 
-	pipelineConfiguration := ingester.NewPipelineConfiguration("module1", "connector")
-	pipeline := ingester.NewPipeline(pipelineConfiguration, ingester.NewInitState())
+	pipelineConfiguration := ledger.NewPipelineConfiguration("module1", "connector")
+	pipeline := ledger.NewPipeline(pipelineConfiguration, ledger.NewInitState())
 
 	connectorFactory.EXPECT().
 		Create(gomock.Any(), pipelineConfiguration.ConnectorID).
@@ -96,11 +96,11 @@ func TestRunner(t *testing.T) {
 		Return(logFetcher, &ledger.Ledger{}, nil)
 
 	systemStore.EXPECT().
-		StorePipelineState(gomock.Any(), pipeline.ID, ingester.NewInitState()).
+		StorePipelineState(gomock.Any(), pipeline.ID, ledger.NewInitState()).
 		Return(nil)
 
 	systemStore.EXPECT().
-		StorePipelineState(gomock.Any(), pipeline.ID, ingester.NewReadyState()).
+		StorePipelineState(gomock.Any(), pipeline.ID, ledger.NewReadyState()).
 		Return(nil)
 
 	runner := startRunner(t, ctx, storageDriver, systemStore, connectorFactory)
