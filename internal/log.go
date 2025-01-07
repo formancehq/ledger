@@ -90,7 +90,7 @@ type Log struct {
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-	ID              int    `json:"id" bun:"id,unique,type:numeric"`
+	ID              uint    `json:"id" bun:"id,unique,type:numeric"`
 	Hash            []byte `json:"hash" bun:"hash,type:bytea"`
 }
 
@@ -151,7 +151,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		Data           any       `json:"data"`
 		Date           time.Time `json:"date"`
 		IdempotencyKey string    `json:"idempotencyKey"`
-		ID             int       `json:"id"`
+		ID             uint       `json:"id"`
 		Hash           []byte    `json:"hash"`
 	}{
 		Type:           l.Type,

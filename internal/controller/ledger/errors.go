@@ -40,7 +40,7 @@ func newErrImport(err error) ErrImport {
 var _ error = (*ErrInvalidHash)(nil)
 
 type ErrInvalidHash struct {
-	logID    int
+	logID    uint
 	expected []byte
 	got      []byte
 }
@@ -56,7 +56,7 @@ func (i ErrInvalidHash) Error() string {
 
 var _ error = (*ErrInvalidHash)(nil)
 
-func newErrInvalidHash(logID int, got, expected []byte) ErrImport {
+func newErrInvalidHash(logID uint, got, expected []byte) ErrImport {
 	return newErrImport(ErrInvalidHash{
 		expected: expected,
 		got:      got,

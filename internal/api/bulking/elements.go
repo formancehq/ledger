@@ -71,9 +71,9 @@ func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
 
 type BulkElementResult struct {
 	Error     error
-	Data      any `json:"data,omitempty"`
-	LogID     int `json:"logID"`
-	ElementID int `json:"elementID"`
+	Data      any  `json:"data,omitempty"`
+	LogID     uint `json:"logID"`
+	ElementID int  `json:"elementID"`
 }
 
 type AddMetadataRequest struct {
@@ -98,8 +98,8 @@ type TransactionRequest struct {
 	Postings  ledger.Postings           `json:"postings"`
 	Script    ledgercontroller.ScriptV1 `json:"script"`
 	Timestamp time.Time                 `json:"timestamp"`
-	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+	Reference string                    `json:"reference"`
+	Metadata  metadata.Metadata         `json:"metadata" swaggertype:"object"`
 }
 
 func (req TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {
