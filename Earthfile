@@ -72,3 +72,9 @@ export-database-schema:
     END
     SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
     SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
+
+openapi:
+    FROM core+base-image
+    WORKDIR /src
+    COPY openapi.yaml openapi.yaml
+    SAVE ARTIFACT ./openapi.yaml
