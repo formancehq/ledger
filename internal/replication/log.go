@@ -4,13 +4,13 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-type LogWithModule struct {
+type LogWithLedger struct {
 	ledger.Log
 	Ledger string
 }
 
-func NewLogWithLedger(ledger string, log ledger.Log) LogWithModule {
-	return LogWithModule{
+func NewLogWithLedger(ledger string, log ledger.Log) LogWithLedger {
+	return LogWithLedger{
 		Log:    log,
 		Ledger: ledger,
 	}

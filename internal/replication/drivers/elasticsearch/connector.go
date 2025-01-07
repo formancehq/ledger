@@ -52,7 +52,7 @@ func (connector *Connector) Client() *elastic.Client {
 	return connector.client
 }
 
-func (connector *Connector) Accept(ctx context.Context, logs ...ingester.LogWithModule) ([]error, error) {
+func (connector *Connector) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
 
 	bulk := connector.client.Bulk().Refresh("true")
 	for _, log := range logs {

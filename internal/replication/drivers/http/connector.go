@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 
 	"github.com/formancehq/ledger/internal/replication/config"
-	"github.com/formancehq/ledger/internal/replication/httpclient"
 	"github.com/pkg/errors"
 )
 
@@ -32,7 +31,7 @@ func (c *Connector) Start(_ context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithModule) ([]error, error) {
+func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
 	buffer := bytes.NewBufferString("")
 	err := json.NewEncoder(buffer).Encode(logs)
 	if err != nil {
@@ -61,7 +60,7 @@ func NewConnector(serviceConfig drivers.ServiceConfig, config Config, _ logging.
 	return &Connector{
 		serviceConfig: serviceConfig,
 		config:        config,
-		httpClient:    httpclient.NewClient(serviceConfig),
+		httpClient:    http.DefaultClient,
 	}, nil
 }
 

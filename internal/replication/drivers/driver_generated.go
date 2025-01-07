@@ -42,7 +42,7 @@ func (m *MockDriver) EXPECT() *MockDriverMockRecorder {
 }
 
 // Accept mocks base method.
-func (m *MockDriver) Accept(ctx context.Context, logs ...ingester.LogWithModule) ([]error, error) {
+func (m *MockDriver) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range logs {

@@ -36,7 +36,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 	}()
 }
 
-func (c *DriverFacade) Accept(ctx context.Context, logs ...ingester.LogWithModule) ([]error, error) {
+func (c *DriverFacade) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
 	select {
 	case <-c.readyChan:
 		return c.Driver.Accept(ctx, logs...)

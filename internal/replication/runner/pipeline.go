@@ -219,7 +219,7 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 			go func() {
 				defer wg.Done()
 				for {
-					itemsErrors, err := p.connector.Accept(ctx, ingester.LogWithModule{
+					itemsErrors, err := p.connector.Accept(ctx, ingester.LogWithLedger{
 						Log:    log,
 						Ledger: p.pipeline.Ledger,
 					})

@@ -30,7 +30,7 @@ func TestNoOpConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]ingester.LogWithModule, numberOfLogs)
+	logs := make([]ingester.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
 		logs[i] = ingester.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),

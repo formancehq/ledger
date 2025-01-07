@@ -10,5 +10,5 @@ import (
 type Driver interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
-	Accept(ctx context.Context, logs ...ingester.LogWithModule) ([]error, error)
+	Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error)
 }

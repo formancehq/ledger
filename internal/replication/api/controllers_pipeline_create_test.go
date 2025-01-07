@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/davecgh/go-spew/spew"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -46,12 +47,6 @@ func TestCreatePipeline(t *testing.T) {
 			expectErrorCode:       "VALIDATION",
 		},
 		{
-			name:                  "module not available",
-			returnError:           controller.NewErrModuleNotAvailable("module1"),
-			expectErrorStatusCode: http.StatusBadRequest,
-			expectErrorCode:       "VALIDATION",
-		},
-		{
 			name:                  "pipeline actually used",
 			returnError:           controller.NewErrInUsePipeline(""),
 			expectErrorStatusCode: http.StatusBadRequest,
@@ -91,6 +86,7 @@ func TestCreatePipeline(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "application/json", rsp.Header.Get("Content-Type"))
 			if testCase.expectErrorCode != "" {
+				spew.Dump(rsp.StatusCode)
 				require.Equal(t, testCase.expectErrorStatusCode, rsp.StatusCode)
 				errorResponse := sharedapi.ErrorResponse{}
 				require.NoError(t, json.NewDecoder(rsp.Body).Decode(&errorResponse))

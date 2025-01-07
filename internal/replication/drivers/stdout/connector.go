@@ -28,7 +28,7 @@ func (connector *Connector) ClearData(_ context.Context, _ string) error {
 	return nil
 }
 
-func (connector *Connector) Accept(_ context.Context, logs ...ingester.LogWithModule) ([]error, error) {
+func (connector *Connector) Accept(_ context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
 	for _, log := range logs {
 		data, err := json.MarshalIndent(log, "", "  ")
 		if err != nil {

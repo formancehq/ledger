@@ -19,9 +19,9 @@ import (
 func TestHTTPConnector(t *testing.T) {
 	t.Parallel()
 
-	messages := make(chan []ingester.LogWithModule, 1)
+	messages := make(chan []ingester.LogWithLedger, 1)
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		newMessages := make([]ingester.LogWithModule, 0)
+		newMessages := make([]ingester.LogWithLedger, 0)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&newMessages))
 
 		messages <- newMessages
@@ -39,7 +39,7 @@ func TestHTTPConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]ingester.LogWithModule, numberOfLogs)
+	logs := make([]ingester.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
 		logs[i] = ingester.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),

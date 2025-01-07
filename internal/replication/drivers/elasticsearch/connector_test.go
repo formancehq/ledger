@@ -4,10 +4,10 @@ package elasticsearch
 
 import (
 	"context"
-	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/elastictesting"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/google/uuid"
@@ -38,25 +38,23 @@ func TestElasticSearchConnector(t *testing.T) {
 
 	const (
 		numberOfEvents = 50
-		moduleName     = "testing"
+		ledgerName     = "testing"
 	)
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < numberOfEvents; i++ {
+	for i := uint(0); i < numberOfEvents; i++ {
 		wg.Add(1)
-		go func(i int) {
+		go func() {
 			defer wg.Done()
-			itemsErrors, err := connector.Accept(ctx, ingester.NewLogWithLedger(moduleName, ingester.Log{
-				Shard:   "test",
-				ID:      fmt.Sprint(i),
-				Date:    time.Now(),
-				Type:    "test",
-				Payload: []byte(fmt.Sprintf(`{"id": "%s"}`, uuid.NewString())),
-			}))
+			log := ledger.NewLog(ledger.CreatedTransaction{
+				Transaction: ledger.NewTransaction(),
+			})
+			log.ID = i
+			itemsErrors, err := connector.Accept(ctx, ingester.NewLogWithLedger(ledgerName, log))
 			require.NoError(t, err)
 			require.Len(t, itemsErrors, 1)
 			require.Nil(t, itemsErrors[0])
-		}(i)
+		}()
 	}
 	wg.Wait()
 

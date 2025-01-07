@@ -4,17 +4,16 @@ package clickhouse
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/clickhousetesting"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"testing"
-	"time"
 )
 
 func TestClickhouseConnector(t *testing.T) {
@@ -41,17 +40,15 @@ func TestClickhouseConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]ingester.LogWithModule, numberOfLogs)
-	for i := uint64(0); i < numberOfLogs; i++ {
+	logs := make([]ingester.LogWithLedger, numberOfLogs)
+	for i := uint(0); i < numberOfLogs; i++ {
+		log := ledger.NewLog(ledger.CreatedTransaction{
+			Transaction: ledger.NewTransaction(),
+		})
+		log.ID = i
 		logs[i] = ingester.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
-			ingester.Log{
-				Shard:   "test",
-				ID:      i,
-				Date:    time.Now(),
-				Type:    "test",
-				Payload: json.RawMessage(``),
-			},
+			log,
 		)
 	}
 

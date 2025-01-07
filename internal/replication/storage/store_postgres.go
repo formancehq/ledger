@@ -12,7 +12,6 @@ import (
 	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/runner"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -238,6 +237,5 @@ func NewPostgresStore(db *bun.DB) *PostgresStore {
 	}
 }
 
-var _ runner.Store = (*PostgresStore)(nil)
 var _ controller.Store = (*PostgresStore)(nil)
 var _ drivers.Store = (*PostgresStore)(nil)

@@ -2,12 +2,12 @@ package clickhouse
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	ingester "github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/config"
 	"github.com/formancehq/ledger/internal/replication/drivers"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -51,9 +51,9 @@ func (c *Connector) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithModule) ([]error, error) {
+func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
 
-	batch, err := c.db.PrepareBatch(ctx, "insert into logs(module, id, type, date, data)")
+	batch, err := c.db.PrepareBatch(ctx, "insert into logs(ledger, id, type, date, data)")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to prepare batch")
 	}
@@ -69,7 +69,7 @@ func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithModule) 
 			log.Ledger,
 			log.ID,
 			log.Type,
-			log.Date,
+			log.Date.Format(time.DateTime+".000000000"),
 			string(data),
 		); err != nil {
 			return nil, errors.Wrap(err, "appending item to the batch")
@@ -105,15 +105,15 @@ var _ config.Validator = (*Config)(nil)
 
 const createLogsTable = `
 	create table if not exists logs (
-		module String,
+		ledger String,
 		id              Int64,
 		type            String,
-		date            DateTime,
+		date            DateTime64,
 		data            String
 	) 
 	engine = ReplacingMergeTree
-	partition by module
-	primary key (module, shard, id)
+	partition by ledger
+	primary key (ledger, id)
 `
 
 func OpenDB(logger logging.Logger, dsn string, debug bool) (driver.Conn, error) {
@@ -127,7 +127,7 @@ func OpenDB(logger logging.Logger, dsn string, debug bool) (driver.Conn, error) 
 		options.Debugf = logger.Debugf
 	}
 	// todo: make conditional
-	options.TLS = &tls.Config{}
+	// options.TLS = &tls.Config{}
 
 	db, err := clickhouse.Open(options)
 	if err != nil {
