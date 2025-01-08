@@ -234,20 +234,6 @@ func (mr *MockControllerMockRecorder) ListPipelines(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPipelines", reflect.TypeOf((*MockController)(nil).ListPipelines), ctx)
 }
 
-// PausePipeline mocks base method.
-func (m *MockController) PausePipeline(ctx context.Context, id string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PausePipeline", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// PausePipeline indicates an expected call of PausePipeline.
-func (mr *MockControllerMockRecorder) PausePipeline(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PausePipeline", reflect.TypeOf((*MockController)(nil).PausePipeline), ctx, id)
-}
-
 // ResetPipeline mocks base method.
 func (m *MockController) ResetPipeline(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
@@ -260,20 +246,6 @@ func (m *MockController) ResetPipeline(ctx context.Context, id string) error {
 func (mr *MockControllerMockRecorder) ResetPipeline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPipeline", reflect.TypeOf((*MockController)(nil).ResetPipeline), ctx, id)
-}
-
-// ResumePipeline mocks base method.
-func (m *MockController) ResumePipeline(ctx context.Context, id string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResumePipeline", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ResumePipeline indicates an expected call of ResumePipeline.
-func (mr *MockControllerMockRecorder) ResumePipeline(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResumePipeline", reflect.TypeOf((*MockController)(nil).ResumePipeline), ctx, id)
 }
 
 // StartPipeline mocks base method.

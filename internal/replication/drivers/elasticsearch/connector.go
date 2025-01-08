@@ -6,15 +6,12 @@ import (
 	"encoding/json"
 
 	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/olivere/elastic/v7"
 	"github.com/pkg/errors"
 )
 
 type Connector struct {
-	stack         string
-	serviceConfig drivers.ServiceConfig
 	config        Config
 	client        *elastic.Client
 	logger        logging.Logger
@@ -32,13 +29,13 @@ func (connector *Connector) Start(ctx context.Context) error {
 	if connector.config.Authentication != nil {
 		options = append(options, elastic.SetBasicAuth(connector.config.Authentication.Username, connector.config.Authentication.Password))
 	}
-	if connector.serviceConfig.Debug {
-		options = append(options,
-			elastic.SetErrorLog(newLogger(connector.logger.Errorf)),
-			elastic.SetInfoLog(newLogger(connector.logger.Infof)),
-			elastic.SetTraceLog(newLogger(connector.logger.Debugf)),
-		)
-	}
+	//if connector.serviceConfig.Debug {
+	//	options = append(options,
+	//		elastic.SetErrorLog(newLogger(connector.logger.Errorf)),
+	//		elastic.SetInfoLog(newLogger(connector.logger.Infof)),
+	//		elastic.SetTraceLog(newLogger(connector.logger.Debugf)),
+	//	)
+	//}
 	var err error
 	connector.client, err = elastic.NewClient(options...)
 	if err != nil {
@@ -52,7 +49,7 @@ func (connector *Connector) Client() *elastic.Client {
 	return connector.client
 }
 
-func (connector *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
+func (connector *Connector) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 
 	bulk := connector.client.Bulk().Refresh("true")
 	for _, log := range logs {
@@ -64,7 +61,6 @@ func (connector *Connector) Accept(ctx context.Context, logs ...replication.LogW
 
 		doc := struct {
 			ID      string          `json:"id"`
-			Stack   string          `json:"stack"`
 			Payload json.RawMessage `json:"payload"`
 			Module  string          `json:"module"`
 		}{
@@ -72,7 +68,6 @@ func (connector *Connector) Accept(ctx context.Context, logs ...replication.LogW
 				Ledger: log.Ledger,
 				LogID:  log.ID,
 			}.String(),
-			Stack:   connector.stack,
 			Payload: json.RawMessage(data),
 			Module:  log.Ledger,
 		}
@@ -103,10 +98,8 @@ func (connector *Connector) Accept(ctx context.Context, logs ...replication.LogW
 	return ret, nil
 }
 
-func NewConnector(serviceConfig drivers.ServiceConfig, config Config, logger logging.Logger) (*Connector, error) {
+func NewConnector(config Config, logger logging.Logger) (*Connector, error) {
 	return &Connector{
-		stack:         serviceConfig.Stack,
-		serviceConfig: serviceConfig,
 		config:        config,
 		logger:        logger,
 	}, nil
@@ -115,7 +108,7 @@ func NewConnector(serviceConfig drivers.ServiceConfig, config Config, logger log
 var _ drivers.Driver = (*Connector)(nil)
 
 type DocID struct {
-	LogID  int   `json:"logID"`
+	LogID  int    `json:"logID"`
 	Ledger string `json:"ledger,omitempty"`
 }
 

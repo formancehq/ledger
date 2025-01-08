@@ -23,6 +23,7 @@ type Store interface {
 
 	CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error
 	DeletePipeline(ctx context.Context, id string) error
+	UpdatePipeline(ctx context.Context, id string, o map[string]any) error
 	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
 	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
 }

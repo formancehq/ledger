@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/formancehq/ledger/internal/replication/runner"
 	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/attribute"
 	"reflect"
@@ -44,8 +43,6 @@ type Controller interface {
 	CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error)
 	DeletePipeline(ctx context.Context, id string) error
 	StartPipeline(ctx context.Context, id string) error
-	PausePipeline(ctx context.Context, id string) error
-	ResumePipeline(ctx context.Context, id string) error
 	ResetPipeline(ctx context.Context, id string) error
 	StopPipeline(ctx context.Context, id string) error
 }
@@ -119,7 +116,7 @@ func (ctrl *DefaultController) GetPipeline(ctx context.Context, id string) (*led
 	pipeline, err := ctrl.driver.GetSystemStore().GetPipeline(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, runner.NewErrPipelineNotFound(id)
+			return nil, ledger.NewErrPipelineNotFound(id)
 		}
 		return nil, err
 	}
@@ -128,7 +125,7 @@ func (ctrl *DefaultController) GetPipeline(ctx context.Context, id string) (*led
 }
 
 func (ctrl *DefaultController) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
-	pipeline := ledger.NewPipeline(pipelineConfiguration, ledger.NewInitState())
+	pipeline := ledger.NewPipeline(pipelineConfiguration)
 
 	err := ctrl.driver.GetSystemStore().CreatePipeline(ctx, pipeline)
 	if err != nil {
@@ -141,7 +138,7 @@ func (ctrl *DefaultController) CreatePipeline(ctx context.Context, pipelineConfi
 func (ctrl *DefaultController) DeletePipeline(ctx context.Context, id string) error {
 	if err := ctrl.driver.GetSystemStore().DeletePipeline(ctx, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return runner.NewErrPipelineNotFound(id)
+			return ledger.NewErrPipelineNotFound(id)
 		}
 		return err
 	}
@@ -149,30 +146,41 @@ func (ctrl *DefaultController) DeletePipeline(ctx context.Context, id string) er
 }
 
 func (ctrl *DefaultController) StartPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) PausePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) ResumePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
+	if err := ctrl.driver.GetSystemStore().UpdatePipeline(ctx, id, map[string]any{
+		"enabled": true,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ledger.NewErrPipelineNotFound(id)
+		}
+		return err
+	}
+	return nil
 }
 
 func (ctrl *DefaultController) ResetPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
+	if err := ctrl.driver.GetSystemStore().UpdatePipeline(ctx, id, map[string]any{
+		"enabled": true,
+		"last_log_id": nil,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ledger.NewErrPipelineNotFound(id)
+		}
+		return err
+	}
+	return nil
 }
 
 func (ctrl *DefaultController) StopPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
+	if err := ctrl.driver.GetSystemStore().UpdatePipeline(ctx, id, map[string]any{
+		"enabled": false,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ledger.NewErrPipelineNotFound(id)
+		}
+		return err
+	}
+	return nil
 }
-
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
 	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "GetLedgerController", func(ctx context.Context) (ledgercontroller.Controller, error) {
@@ -270,12 +278,13 @@ func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param s
 	})))
 }
 
-func NewDefaultController(store Driver, listener ledgercontroller.Listener, opts ...Option) *DefaultController {
+func NewDefaultController(store Driver, listener ledgercontroller.Listener, validator ConfigValidator, opts ...Option) *DefaultController {
 	ret := &DefaultController{
-		driver:   store,
-		listener: listener,
-		registry: ledgercontroller.NewStateRegistry(),
-		parser:   ledgercontroller.NewDefaultNumscriptParser(),
+		connectorsConfigValidator: validator,
+		driver:                    store,
+		listener:                  listener,
+		registry:                  ledgercontroller.NewStateRegistry(),
+		parser:                    ledgercontroller.NewDefaultNumscriptParser(),
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)

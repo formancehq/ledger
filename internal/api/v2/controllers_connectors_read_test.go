@@ -7,7 +7,6 @@ import (
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	sharedapi "github.com/formancehq/go-libs/v2/testing/api"
@@ -61,7 +60,7 @@ func TestReadConnector(t *testing.T) {
 				GetConnector(gomock.Any(), connectorID).
 				Return(&ledger.Connector{}, testCase.returnError)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodGet, "/_system/connectors/"+connectorID, nil)
 			req = req.WithContext(logging.TestingContext())

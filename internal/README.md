@@ -32,12 +32,28 @@ import "github.com/formancehq/ledger/internal"
 - [type DeletedMetadata](<#DeletedMetadata>)
   - [func \(s DeletedMetadata\) Type\(\) LogType](<#DeletedMetadata.Type>)
   - [func \(s \*DeletedMetadata\) UnmarshalJSON\(data \[\]byte\) error](<#DeletedMetadata.UnmarshalJSON>)
+- [type ErrAlreadyStarted](<#ErrAlreadyStarted>)
+  - [func NewErrAlreadyStarted\(id string\) ErrAlreadyStarted](<#NewErrAlreadyStarted>)
+  - [func \(e ErrAlreadyStarted\) Error\(\) string](<#ErrAlreadyStarted.Error>)
+  - [func \(e ErrAlreadyStarted\) Is\(err error\) bool](<#ErrAlreadyStarted.Is>)
+- [type ErrConnectorUsed](<#ErrConnectorUsed>)
+  - [func NewErrConnectorUsed\(id string\) ErrConnectorUsed](<#NewErrConnectorUsed>)
+  - [func \(e ErrConnectorUsed\) Error\(\) string](<#ErrConnectorUsed.Error>)
+  - [func \(e ErrConnectorUsed\) Is\(err error\) bool](<#ErrConnectorUsed.Is>)
 - [type ErrInvalidBucketName](<#ErrInvalidBucketName>)
   - [func \(e ErrInvalidBucketName\) Error\(\) string](<#ErrInvalidBucketName.Error>)
   - [func \(e ErrInvalidBucketName\) Is\(err error\) bool](<#ErrInvalidBucketName.Is>)
 - [type ErrInvalidLedgerName](<#ErrInvalidLedgerName>)
   - [func \(e ErrInvalidLedgerName\) Error\(\) string](<#ErrInvalidLedgerName.Error>)
   - [func \(e ErrInvalidLedgerName\) Is\(err error\) bool](<#ErrInvalidLedgerName.Is>)
+- [type ErrPipelineAlreadyExists](<#ErrPipelineAlreadyExists>)
+  - [func NewErrPipelineAlreadyExists\(pipelineConfiguration PipelineConfiguration\) ErrPipelineAlreadyExists](<#NewErrPipelineAlreadyExists>)
+  - [func \(e ErrPipelineAlreadyExists\) Error\(\) string](<#ErrPipelineAlreadyExists.Error>)
+  - [func \(e ErrPipelineAlreadyExists\) Is\(err error\) bool](<#ErrPipelineAlreadyExists.Is>)
+- [type ErrPipelineNotFound](<#ErrPipelineNotFound>)
+  - [func NewErrPipelineNotFound\(id string\) ErrPipelineNotFound](<#NewErrPipelineNotFound>)
+  - [func \(e ErrPipelineNotFound\) Error\(\) string](<#ErrPipelineNotFound.Error>)
+  - [func \(e ErrPipelineNotFound\) Is\(err error\) bool](<#ErrPipelineNotFound.Is>)
 - [type Ledger](<#Ledger>)
   - [func MustNewWithDefault\(name string\) Ledger](<#MustNewWithDefault>)
   - [func New\(name string, configuration Configuration\) \(\*Ledger, error\)](<#New>)
@@ -64,19 +80,10 @@ import "github.com/formancehq/ledger/internal"
 - [type Moves](<#Moves>)
   - [func \(m Moves\) ComputePostCommitEffectiveVolumes\(\) PostCommitVolumes](<#Moves.ComputePostCommitEffectiveVolumes>)
 - [type Pipeline](<#Pipeline>)
-  - [func NewPipeline\(pipelineConfiguration PipelineConfiguration, state PipelineState\) Pipeline](<#NewPipeline>)
-  - [func \(p Pipeline\) String\(\) string](<#Pipeline.String>)
+  - [func NewPipeline\(pipelineConfiguration PipelineConfiguration\) Pipeline](<#NewPipeline>)
 - [type PipelineConfiguration](<#PipelineConfiguration>)
   - [func NewPipelineConfiguration\(ledger, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
   - [func \(p PipelineConfiguration\) String\(\) string](<#PipelineConfiguration.String>)
-- [type PipelineState](<#PipelineState>)
-  - [func NewInitState\(\) PipelineState](<#NewInitState>)
-  - [func NewPauseState\(previousState PipelineState\) PipelineState](<#NewPauseState>)
-  - [func NewReadyState\(\) PipelineState](<#NewReadyState>)
-  - [func NewReadyStateWithID\(lastID int\) PipelineState](<#NewReadyStateWithID>)
-  - [func NewStopState\(previousState PipelineState\) PipelineState](<#NewStopState>)
-  - [func \(s PipelineState\) String\(\) string](<#PipelineState.String>)
-- [type PipelineStateLabel](<#PipelineStateLabel>)
 - [type PostCommitVolumes](<#PostCommitVolumes>)
   - [func \(a PostCommitVolumes\) AddInput\(account, asset string, input \*big.Int\)](<#PostCommitVolumes.AddInput>)
   - [func \(a PostCommitVolumes\) AddOutput\(account, asset string, output \*big.Int\)](<#PostCommitVolumes.AddOutput>)
@@ -296,20 +303,22 @@ func (c *Configuration) Validate() error
 
 
 <a name="Connector"></a>
-## type [Connector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L22-L26>)
+## type [Connector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L23-L29>)
 
 
 
 ```go
 type Connector struct {
-    ID        string    `json:"id"`
-    CreatedAt time.Time `json:"createdAt"`
+    bun.BaseModel `bun:"table:_system.connectors"`
+
+    ID        string    `json:"id" bun:"id,pk"`
+    CreatedAt time.Time `json:"createdAt" bun:"created_at"`
     ConnectorConfiguration
 }
 ```
 
 <a name="NewConnector"></a>
-### func [NewConnector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L28>)
+### func [NewConnector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L31>)
 
 ```go
 func NewConnector(configuration ConnectorConfiguration) Connector
@@ -318,19 +327,19 @@ func NewConnector(configuration ConnectorConfiguration) Connector
 
 
 <a name="ConnectorConfiguration"></a>
-## type [ConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L10-L13>)
+## type [ConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L11-L14>)
 
 
 
 ```go
 type ConnectorConfiguration struct {
-    Driver string          `json:"driver"`
-    Config json.RawMessage `json:"config"`
+    Driver string          `json:"driver" bun:"driver"`
+    Config json.RawMessage `json:"config" bun:"config"`
 }
 ```
 
 <a name="NewConnectorConfiguration"></a>
-### func [NewConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L15>)
+### func [NewConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L16>)
 
 ```go
 func NewConnectorConfiguration(driver string, config json.RawMessage) ConnectorConfiguration
@@ -399,8 +408,80 @@ func (s *DeletedMetadata) UnmarshalJSON(data []byte) error
 
 
 
+<a name="ErrAlreadyStarted"></a>
+## type [ErrAlreadyStarted](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L90>)
+
+
+
+```go
+type ErrAlreadyStarted string
+```
+
+<a name="NewErrAlreadyStarted"></a>
+### func [NewErrAlreadyStarted](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L101>)
+
+```go
+func NewErrAlreadyStarted(id string) ErrAlreadyStarted
+```
+
+
+
+<a name="ErrAlreadyStarted.Error"></a>
+### func \(ErrAlreadyStarted\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L92>)
+
+```go
+func (e ErrAlreadyStarted) Error() string
+```
+
+
+
+<a name="ErrAlreadyStarted.Is"></a>
+### func \(ErrAlreadyStarted\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L96>)
+
+```go
+func (e ErrAlreadyStarted) Is(err error) bool
+```
+
+
+
+<a name="ErrConnectorUsed"></a>
+## type [ErrConnectorUsed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L43>)
+
+
+
+```go
+type ErrConnectorUsed string
+```
+
+<a name="NewErrConnectorUsed"></a>
+### func [NewErrConnectorUsed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L54>)
+
+```go
+func NewErrConnectorUsed(id string) ErrConnectorUsed
+```
+
+
+
+<a name="ErrConnectorUsed.Error"></a>
+### func \(ErrConnectorUsed\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L45>)
+
+```go
+func (e ErrConnectorUsed) Error() string
+```
+
+
+
+<a name="ErrConnectorUsed.Is"></a>
+### func \(ErrConnectorUsed\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L49>)
+
+```go
+func (e ErrConnectorUsed) Is(err error) bool
+```
+
+
+
 <a name="ErrInvalidBucketName"></a>
-## type [ErrInvalidBucketName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L23-L26>)
+## type [ErrInvalidBucketName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L25-L28>)
 
 
 
@@ -411,7 +492,7 @@ type ErrInvalidBucketName struct {
 ```
 
 <a name="ErrInvalidBucketName.Error"></a>
-### func \(ErrInvalidBucketName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L28>)
+### func \(ErrInvalidBucketName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L30>)
 
 ```go
 func (e ErrInvalidBucketName) Error() string
@@ -420,7 +501,7 @@ func (e ErrInvalidBucketName) Error() string
 
 
 <a name="ErrInvalidBucketName.Is"></a>
-### func \(ErrInvalidBucketName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L32>)
+### func \(ErrInvalidBucketName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L34>)
 
 ```go
 func (e ErrInvalidBucketName) Is(err error) bool
@@ -429,7 +510,7 @@ func (e ErrInvalidBucketName) Is(err error) bool
 
 
 <a name="ErrInvalidLedgerName"></a>
-## type [ErrInvalidLedgerName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L5-L8>)
+## type [ErrInvalidLedgerName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L7-L10>)
 
 
 
@@ -440,7 +521,7 @@ type ErrInvalidLedgerName struct {
 ```
 
 <a name="ErrInvalidLedgerName.Error"></a>
-### func \(ErrInvalidLedgerName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L10>)
+### func \(ErrInvalidLedgerName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L12>)
 
 ```go
 func (e ErrInvalidLedgerName) Error() string
@@ -449,10 +530,82 @@ func (e ErrInvalidLedgerName) Error() string
 
 
 <a name="ErrInvalidLedgerName.Is"></a>
-### func \(ErrInvalidLedgerName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L14>)
+### func \(ErrInvalidLedgerName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L16>)
 
 ```go
 func (e ErrInvalidLedgerName) Is(err error) bool
+```
+
+
+
+<a name="ErrPipelineAlreadyExists"></a>
+## type [ErrPipelineAlreadyExists](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L60>)
+
+ErrPipelineAlreadyExists denotes a pipeline already created The store is in charge of returning this error on a failing call on Store.CreatePipeline
+
+```go
+type ErrPipelineAlreadyExists PipelineConfiguration
+```
+
+<a name="NewErrPipelineAlreadyExists"></a>
+### func [NewErrPipelineAlreadyExists](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L71>)
+
+```go
+func NewErrPipelineAlreadyExists(pipelineConfiguration PipelineConfiguration) ErrPipelineAlreadyExists
+```
+
+
+
+<a name="ErrPipelineAlreadyExists.Error"></a>
+### func \(ErrPipelineAlreadyExists\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L62>)
+
+```go
+func (e ErrPipelineAlreadyExists) Error() string
+```
+
+
+
+<a name="ErrPipelineAlreadyExists.Is"></a>
+### func \(ErrPipelineAlreadyExists\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L66>)
+
+```go
+func (e ErrPipelineAlreadyExists) Is(err error) bool
+```
+
+
+
+<a name="ErrPipelineNotFound"></a>
+## type [ErrPipelineNotFound](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L75>)
+
+
+
+```go
+type ErrPipelineNotFound string
+```
+
+<a name="NewErrPipelineNotFound"></a>
+### func [NewErrPipelineNotFound](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L86>)
+
+```go
+func NewErrPipelineNotFound(id string) ErrPipelineNotFound
+```
+
+
+
+<a name="ErrPipelineNotFound.Error"></a>
+### func \(ErrPipelineNotFound\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L77>)
+
+```go
+func (e ErrPipelineNotFound) Error() string
+```
+
+
+
+<a name="ErrPipelineNotFound.Is"></a>
+### func \(ErrPipelineNotFound\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L81>)
+
+```go
+func (e ErrPipelineNotFound) Is(err error) bool
 ```
 
 
@@ -729,51 +882,46 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes
 
 
 <a name="Pipeline"></a>
-## type [Pipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L26-L31>)
+## type [Pipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L27-L36>)
 
 
 
 ```go
 type Pipeline struct {
-    CreatedAt time.Time     `json:"createdAt"`
-    ID        string        `json:"id"`
-    State     PipelineState `json:"state"`
+    bun.BaseModel `bun:"table:_system.pipelines"`
+
     PipelineConfiguration
+    CreatedAt time.Time `json:"createdAt" bun:"created_at"`
+    ID        string    `json:"id" bun:"id,pk"`
+    Enabled   bool      `json:"enabled" bun:"enabled"`
+    LastLogID *int      `json:"lastLogID,omitempty" bun:"last_log_id"`
+    Error     string    `json:"error,omitempty" bun:"error"`
 }
 ```
 
 <a name="NewPipeline"></a>
-### func [NewPipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L37>)
+### func [NewPipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L38>)
 
 ```go
-func NewPipeline(pipelineConfiguration PipelineConfiguration, state PipelineState) Pipeline
-```
-
-
-
-<a name="Pipeline.String"></a>
-### func \(Pipeline\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L33>)
-
-```go
-func (p Pipeline) String() string
+func NewPipeline(pipelineConfiguration PipelineConfiguration) Pipeline
 ```
 
 
 
 <a name="PipelineConfiguration"></a>
-## type [PipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L10-L13>)
+## type [PipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L11-L14>)
 
 
 
 ```go
 type PipelineConfiguration struct {
-    Ledger      string `json:"ledger"`
-    ConnectorID string `json:"connectorID"`
+    Ledger      string `json:"ledger" bun:"ledger"`
+    ConnectorID string `json:"connectorID" bun:"connector_id"`
 }
 ```
 
 <a name="NewPipelineConfiguration"></a>
-### func [NewPipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L19>)
+### func [NewPipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L20>)
 
 ```go
 func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
@@ -782,103 +930,13 @@ func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
 
 
 <a name="PipelineConfiguration.String"></a>
-### func \(PipelineConfiguration\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L15>)
+### func \(PipelineConfiguration\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L16>)
 
 ```go
 func (p PipelineConfiguration) String() string
 ```
 
 
-
-<a name="PipelineState"></a>
-## type [PipelineState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L55-L62>)
-
-
-
-```go
-type PipelineState struct {
-    Label PipelineStateLabel `json:"label"`
-    // Cursor can be set only if Label == StateLabelInit
-    LastID int `json:"lastID,omitempty"`
-    // PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
-    PreviousState *PipelineState `json:"previousState,omitempty"`
-    Error         string         `json:"error,omitempty"`
-}
-```
-
-<a name="NewInitState"></a>
-### func [NewInitState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L107>)
-
-```go
-func NewInitState() PipelineState
-```
-
-
-
-<a name="NewPauseState"></a>
-### func [NewPauseState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L100>)
-
-```go
-func NewPauseState(previousState PipelineState) PipelineState
-```
-
-
-
-<a name="NewReadyState"></a>
-### func [NewReadyState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L93>)
-
-```go
-func NewReadyState() PipelineState
-```
-
-
-
-<a name="NewReadyStateWithID"></a>
-### func [NewReadyStateWithID](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L79>)
-
-```go
-func NewReadyStateWithID(lastID int) PipelineState
-```
-
-
-
-<a name="NewStopState"></a>
-### func [NewStopState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L86>)
-
-```go
-func NewStopState(previousState PipelineState) PipelineState
-```
-
-
-
-<a name="PipelineState.String"></a>
-### func \(PipelineState\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L64>)
-
-```go
-func (s PipelineState) String() string
-```
-
-
-
-<a name="PipelineStateLabel"></a>
-## type [PipelineStateLabel](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L46>)
-
-
-
-```go
-type PipelineStateLabel string
-```
-
-<a name="StateLabelInit"></a>
-
-```go
-const (
-    StateLabelInit  PipelineStateLabel = "INIT"
-    StateLabelReady PipelineStateLabel = "READY"
-    StateLabelPause PipelineStateLabel = "PAUSE"
-    StateLabelStop  PipelineStateLabel = "STOP"
-)
-```
 
 <a name="PostCommitVolumes"></a>
 ## type [PostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/volumes.go#L118>)

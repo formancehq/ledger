@@ -8,9 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/elastictesting"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
@@ -24,12 +22,11 @@ func TestElasticSearchConnector(t *testing.T) {
 	srv := elastictesting.CreateServer(dockerPool)
 
 	ctx := context.TODO()
-	stack := uuid.NewString()
 	esConfig := Config{
 		Endpoint: srv.Endpoint(),
 	}
 	esConfig.SetDefaults()
-	connector, err := NewConnector(drivers.NewServiceConfig(stack, testing.Verbose()), esConfig, logging.Testing())
+	connector, err := NewConnector(esConfig, logging.Testing())
 	require.NoError(t, err)
 	require.NoError(t, connector.Start(ctx))
 	t.Cleanup(func() {
@@ -50,7 +47,7 @@ func TestElasticSearchConnector(t *testing.T) {
 				Transaction: ledger.NewTransaction(),
 			})
 			log.ID = i
-			itemsErrors, err := connector.Accept(ctx, replication.NewLogWithLedger(ledgerName, log))
+			itemsErrors, err := connector.Accept(ctx, drivers.NewLogWithLedger(ledgerName, log))
 			require.NoError(t, err)
 			require.Len(t, itemsErrors, 1)
 			require.Nil(t, itemsErrors[0])

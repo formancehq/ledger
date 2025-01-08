@@ -7,7 +7,6 @@ import (
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -62,7 +61,7 @@ func TestDeleteConnector(t *testing.T) {
 				DeleteConnector(gomock.Any(), connectorID).
 				Return(testCase.returnError)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodDelete, "/_system/connectors/"+connectorID, nil)
 			req = req.WithContext(ctx)

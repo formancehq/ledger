@@ -2,10 +2,10 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/auth"
+	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	sharedapi "github.com/formancehq/go-libs/v2/testing/api"
@@ -43,7 +43,7 @@ func TestResetPipeline(t *testing.T) {
 			name:            "pipeline not found",
 			expectErrorCode: "NOT_FOUND",
 			expectCode:      http.StatusNotFound,
-			returnError:     ledgercontroller.ErrPipelineNotFound(""),
+			returnError:     ledger.ErrPipelineNotFound(""),
 		},
 		{
 			name:            "pipeline actually used",
@@ -57,7 +57,7 @@ func TestResetPipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			connectorID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+connectorID+"/reset", nil)

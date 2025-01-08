@@ -9,7 +9,6 @@ import (
 	"go.uber.org/mock/gomock"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -64,7 +63,7 @@ func TestCreateConnector(t *testing.T) {
 				CreateConnector(gomock.Any(), testCase.connectorConfiguration).
 				Return(nil, testCase.returnError)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			data, err := json.Marshal(testCase.connectorConfiguration)
 			require.NoError(t, err)

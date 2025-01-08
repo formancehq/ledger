@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
@@ -14,7 +15,7 @@ func deletePipeline(systemController systemcontroller.Controller) func(w http.Re
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := systemController.DeletePipeline(r.Context(), getPipelineID(r)); err != nil {
 			switch {
-			case errors.Is(err, ledgercontroller.ErrPipelineNotFound("")):
+			case errors.Is(err, ledger.ErrPipelineNotFound("")):
 				api.NotFound(w, err)
 			case errors.Is(err, ledgercontroller.ErrInUsePipeline("")):
 				api.BadRequest(w, "VALIDATION", err)

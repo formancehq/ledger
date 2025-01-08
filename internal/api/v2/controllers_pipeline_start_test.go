@@ -2,16 +2,15 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	sharedapi "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/require"
@@ -38,13 +37,13 @@ func TestStartPipeline(t *testing.T) {
 			name:            "pipeline not exists",
 			expectErrorCode: "NOT_FOUND",
 			expectCode:      http.StatusNotFound,
-			returnError:     controller.ErrPipelineNotFound(""),
+			returnError:     ledger.ErrPipelineNotFound(""),
 		},
 		{
 			name:            "pipeline already started",
 			expectErrorCode: "VALIDATION",
 			expectCode:      http.StatusBadRequest,
-			returnError:     controller.ErrAlreadyStarted(""),
+			returnError:     ledger.ErrAlreadyStarted(""),
 		},
 		{
 			name:            "undefined error",
@@ -64,7 +63,7 @@ func TestStartPipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			connectorID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+connectorID+"/start", nil)

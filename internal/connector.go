@@ -2,14 +2,15 @@ package ledger
 
 import (
 	"encoding/json"
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/google/uuid"
 )
 
 type ConnectorConfiguration struct {
-	Driver string          `json:"driver"`
-	Config json.RawMessage `json:"config"`
+	Driver string          `json:"driver" bun:"driver"`
+	Config json.RawMessage `json:"config" bun:"config"`
 }
 
 func NewConnectorConfiguration(driver string, config json.RawMessage) ConnectorConfiguration {
@@ -20,8 +21,10 @@ func NewConnectorConfiguration(driver string, config json.RawMessage) ConnectorC
 }
 
 type Connector struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"createdAt"`
+	bun.BaseModel `bun:"table:_system.connectors"`
+
+	ID        string    `json:"id" bun:"id,pk"`
+	CreatedAt time.Time `json:"createdAt" bun:"created_at"`
 	ConnectorConfiguration
 }
 

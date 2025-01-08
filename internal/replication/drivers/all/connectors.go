@@ -9,10 +9,10 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers/stdout"
 )
 
-func Register(connectorRegistry *drivers.Registry) {
-	connectorRegistry.RegisterConnector("elasticsearch", elasticsearch.NewConnector)
-	connectorRegistry.RegisterConnector("clickhouse", clickhouse.NewConnector)
-	connectorRegistry.RegisterConnector("stdout", stdout.NewConnector)
-	connectorRegistry.RegisterConnector("http", http.NewConnector)
-	connectorRegistry.RegisterConnector("noop", noop.NewConnector)
+func Register(driversRegistry *drivers.Registry) {
+	driversRegistry.RegisterConnector("elasticsearch", elasticsearch.NewConnector)
+	driversRegistry.RegisterConnector("clickhouse", clickhouse.NewConnector)
+	driversRegistry.RegisterConnector("stdout", stdout.NewConnector)
+	driversRegistry.RegisterConnector("http", http.NewConnector)
+	driversRegistry.RegisterConnector("noop", noop.NewConnector)
 }

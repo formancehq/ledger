@@ -3,30 +3,31 @@ package drivers
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/pkg/errors"
 	"go.vallahaye.net/batcher"
 )
 
 type Batcher struct {
 	Driver
-	batcher  *batcher.Batcher[replication.LogWithLedger, error]
+	mu       sync.Mutex
+	batcher  *batcher.Batcher[LogWithLedger, error]
 	cancel   context.CancelFunc
 	stopped  chan struct{}
 	batching Batching
 	logger   logging.Logger
 }
 
-func (b *Batcher) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
+func (b *Batcher) Accept(ctx context.Context, logs ...LogWithLedger) ([]error, error) {
 	itemsErrors := make([]error, len(logs))
 	for ind, log := range logs {
 		b.logger.WithFields(map[string]any{
 			"module": log.Ledger,
-			"log":    log.Log,
+			"log":    log.ID,
 		}).Debugf("accept new log")
 		ret, err := b.batcher.Send(ctx, log)
 		if err != nil {
@@ -42,11 +43,11 @@ func (b *Batcher) Accept(ctx context.Context, logs ...replication.LogWithLedger)
 	return itemsErrors, nil
 }
 
-func (b *Batcher) commit(ctx context.Context, logs batcher.Operations[replication.LogWithLedger, error]) {
+func (b *Batcher) commit(ctx context.Context, logs batcher.Operations[LogWithLedger, error]) {
 	b.logger.WithFields(map[string]any{
 		"len": len(logs),
 	}).Info("commit batch")
-	itemsErrors, err := b.Driver.Accept(ctx, collectionutils.Map(logs, func(from *batcher.Operation[replication.LogWithLedger, error]) replication.LogWithLedger {
+	itemsErrors, err := b.Driver.Accept(ctx, collectionutils.Map(logs, func(from *batcher.Operation[LogWithLedger, error]) LogWithLedger {
 		return from.Value
 	})...)
 	if err != nil {
@@ -65,6 +66,9 @@ func (b *Batcher) commit(ctx context.Context, logs batcher.Operations[replicatio
 }
 
 func (b *Batcher) Start(ctx context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.logger.Infof("starting batching with parameters: maxItems=%d, flushInterval=%s", b.batching.MaxItems, b.batching.FlushInterval)
 
 	if err := b.Driver.Start(ctx); err != nil {
@@ -81,6 +85,13 @@ func (b *Batcher) Start(ctx context.Context) error {
 }
 
 func (b *Batcher) Stop(ctx context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.cancel == nil {
+		return nil
+	}
+
 	b.logger.Infof("stopping batching")
 	b.cancel()
 	select {
@@ -101,8 +112,8 @@ func newBatcher(connector Driver, batching Batching, logger logging.Logger) *Bat
 	}
 	ret.batcher = batcher.New(
 		ret.commit,
-		batcher.WithTimeout[replication.LogWithLedger, error](batching.FlushInterval),
-		batcher.WithMaxSize[replication.LogWithLedger, error](batching.MaxItems),
+		batcher.WithTimeout[LogWithLedger, error](batching.FlushInterval),
+		batcher.WithMaxSize[LogWithLedger, error](batching.MaxItems),
 	)
 	return ret
 }

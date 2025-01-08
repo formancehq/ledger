@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"io"
 	"testing"
@@ -19,7 +17,7 @@ func TestStdoutConnector(t *testing.T) {
 	ctx := context.TODO()
 
 	// Create our connector
-	connector, err := NewConnector(drivers.NewServiceConfig(uuid.NewString(), testing.Verbose()), struct{}{}, logging.Testing())
+	connector, err := NewConnector(struct{}{}, logging.Testing())
 	require.NoError(t, err)
 	connector.output = io.Discard
 
@@ -33,9 +31,9 @@ func TestStdoutConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]replication.LogWithLedger, numberOfLogs)
+	logs := make([]drivers.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
-		logs[i] = replication.NewLogWithLedger(
+		logs[i] = drivers.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
 			ledger.NewLog(ledger.CreatedTransaction{
 				Transaction: ledger.NewTransaction(),

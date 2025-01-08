@@ -3,8 +3,6 @@ package ledger
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/formancehq/ledger/internal/replication/controller"
-
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/numscript"
 
@@ -16,10 +14,6 @@ import (
 var ErrNotFound = postgres.ErrNotFound
 
 type ErrTooManyClient = postgres.ErrTooManyClient
-type ErrPipelineNotFound = controller.ErrPipelineNotFound
-type ErrPipelineAlreadyExists = controller.ErrPipelineAlreadyExists
-type ErrInvalidStateSwitch = controller.ErrInvalidStateSwitch
-type ErrPipelineAlreadyStarted = controller.ErrAlreadyStarted
 
 // ErrInUsePipeline denotes a pipeline which is actually used
 // The client has to retry later if still relevant

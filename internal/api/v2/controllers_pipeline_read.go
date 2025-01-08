@@ -1,7 +1,7 @@
 package v2
 
 import (
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledger "github.com/formancehq/ledger/internal"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 
@@ -15,7 +15,7 @@ func readPipeline(systemController systemcontroller.Controller) func(w http.Resp
 		pipeline, err := systemController.GetPipeline(r.Context(), getPipelineID(r))
 		if err != nil {
 			switch {
-			case errors.Is(err, ledgercontroller.ErrPipelineNotFound("")):
+			case errors.Is(err, ledger.ErrPipelineNotFound("")):
 				api.NotFound(w, err)
 			default:
 				api.InternalServerError(w, r, err)

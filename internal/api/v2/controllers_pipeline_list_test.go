@@ -5,7 +5,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -17,14 +16,14 @@ func TestListPipelines(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, true)
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines", nil)
 	rec := httptest.NewRecorder()
 
 	pipelines := []ledger.Pipeline{
-		ledger.NewPipeline(ledger.NewPipelineConfiguration("module1", "connector1"), ledger.NewReadyState()),
-		ledger.NewPipeline(ledger.NewPipelineConfiguration("module2", "connector2"), ledger.NewReadyState()),
+		ledger.NewPipeline(ledger.NewPipelineConfiguration("module1", "connector1")),
+		ledger.NewPipeline(ledger.NewPipelineConfiguration("module2", "connector2")),
 	}
 	systemController.EXPECT().
 		ListPipelines(gomock.Any()).

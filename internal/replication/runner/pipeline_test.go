@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/replication"
-
 	"github.com/formancehq/ledger/internal/replication/drivers"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -19,28 +17,28 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan ledger.PipelineState) {
+func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan int) {
 	t.Helper()
 
+	pipeline.LastLogID = pointer.For(0)
 	handler := NewPipelineHandler(
 		pipeline,
 		store,
 		connector,
 		logging.Testing(),
-		WithStateRetryInterval(50*time.Millisecond),
 	)
-	stateListener, cancelStateListener := handler.GetActiveState().Listen()
-	t.Cleanup(cancelStateListener)
 
-	go handler.Run(ctx)
+	lastLogIDChannel := make(chan int)
+
+	go handler.Run(ctx, lastLogIDChannel)
 	t.Cleanup(func() {
 		require.NoError(t, handler.Shutdown(ctx))
 	})
 
-	return handler, stateListener
+	return handler, lastLogIDChannel
 }
 
-func TestPipelineReady(t *testing.T) {
+func TestPipeline(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -52,6 +50,7 @@ func TestPipelineReady(t *testing.T) {
 			Transaction: ledger.NewTransaction(),
 		},
 	)
+	log.ID = 1
 
 	deliver := make(chan struct{})
 	delivered := make(chan struct{})
@@ -84,34 +83,17 @@ func TestPipelineReady(t *testing.T) {
 		})
 
 	connector.EXPECT().
-		Accept(gomock.Any(), replication.NewLogWithLedger("testing", log)).
+		Accept(gomock.Any(), drivers.NewLogWithLedger("testing", log)).
 		Return([]error{nil}, nil)
 
 	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
-	pipeline := ledger.NewPipeline(pipelineConfiguration, ledger.NewReadyState())
+	pipeline := ledger.NewPipeline(pipelineConfiguration)
 
-	_, stateListener := runPipeline(t, ctx, pipeline, logFetcher, connector)
-
-	ShouldReceive(t, ledger.NewReadyState(), stateListener)
+	_, lastLogIDChannel := runPipeline(t, ctx, pipeline, logFetcher, connector)
 
 	close(deliver)
 
+	ShouldReceive(t, 1, lastLogIDChannel)
+
 	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
-}
-
-func TestPipelinePause(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-	ctrl := gomock.NewController(t)
-	logFetcher := NewMockLogFetcher(ctrl)
-	connector := drivers.NewMockDriver(ctrl)
-
-	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
-	state := ledger.NewPauseState(ledger.NewReadyState())
-	pipeline := ledger.NewPipeline(pipelineConfiguration, state)
-
-	_, stateListener := runPipeline(t, ctx, pipeline, logFetcher, connector)
-
-	ShouldReceive(t, state, stateListener)
 }

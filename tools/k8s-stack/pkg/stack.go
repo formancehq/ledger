@@ -1,21 +1,25 @@
 package ledger_stack
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
+	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+	"slices"
 	"strings"
 	"time"
 )
 
 type StackComponent struct {
 	pulumi.ResourceState
-	Ledger   *pulumi_ledger.Component
-	Postgres *PostgresComponent
+	Ledger     *pulumi_ledger.Component
+	Postgres   *PostgresComponent
+	ClickHouse *ClickHouseComponent
 }
 
 type StackLedgerArgs struct {
@@ -26,9 +30,10 @@ type StackLedgerArgs struct {
 }
 
 type StackComponentArgs struct {
-	Debug     pulumix.Input[bool]
-	Namespace pulumix.Input[string]
-	Ledger    *StackLedgerArgs
+	Debug      pulumix.Input[bool]
+	Namespace  pulumix.Input[string]
+	Ledger     *StackLedgerArgs
+	Connectors []string
 }
 
 func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts ...pulumi.ResourceOption) (*StackComponent, error) {
@@ -72,6 +77,26 @@ func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts .
 		return nil, fmt.Errorf("creating Postgres component: %w", err)
 	}
 
+	connectorsConfigs := make(map[string]pulumi.Map)
+
+	if slices.Contains(args.Connectors, "clickhouse") {
+		cmp.ClickHouse, err = NewClickHouseComponent(ctx, "clickhouse", &ClickHouseComponentArgs{
+			Namespace: namespaceName,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("creating ClickHouse component: %w", err)
+		}
+		connectorsConfigs["clickhouse"] = pulumi.Map{
+			"dsn": pulumi.Sprintf(
+				"clickhouse://%s:%s@%s:%d",
+				cmp.ClickHouse.Username,
+				cmp.ClickHouse.Password,
+				cmp.ClickHouse.Host,
+				cmp.ClickHouse.Port,
+			),
+		}
+	}
+
 	cmp.Ledger, err = pulumi_ledger.NewComponent(ctx, "ledger", &pulumi_ledger.ComponentArgs{
 		Timeout:         pulumi.Int(30),
 		Debug:           args.Debug,
@@ -101,6 +126,53 @@ func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts .
 			cmp.Postgres,
 		}))...,
 	)
+
+	for name, connector := range connectorsConfigs {
+		_, err := batchv1.NewJob(ctx, "initialize-connector-"+name, &batchv1.JobArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+			},
+			Spec: batchv1.JobSpecArgs{
+				Template: corev1.PodTemplateSpecArgs{
+					Spec: corev1.PodSpecArgs{
+						RestartPolicy: pulumi.String("Never"),
+						Containers: corev1.ContainerArray{
+							corev1.ContainerArgs{
+								Name: pulumi.String("generator"),
+								Args: pulumi.StringArray{
+									pulumi.String("sh"),
+									pulumi.String("-c"),
+									pulumi.Sprintf(`
+										curl -X POST \
+											-H "Content-Type: application/json" \
+											-d '%s' \
+											--fail \
+											%s/v2/_system/connectors
+									`, pulumi.All(connector).ApplyT(func(m []interface{}) (string, error) {
+										data, err := json.Marshal(map[string]any{
+											"driver": name,
+											"config": m[0],
+										})
+										if err != nil {
+											return "", err
+										}
+
+										return string(data), nil
+									}), cmp.Ledger.ServiceInternalURL),
+								},
+								Image: pulumi.String("alpine/curl"),
+							},
+						},
+					},
+				},
+			},
+		}, pulumi.Parent(cmp), pulumi.DependsOn([]pulumi.Resource{
+			cmp.Ledger,
+		}))
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{}); err != nil {
 		return nil, fmt.Errorf("registering outputs: %w", err)

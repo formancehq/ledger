@@ -8,7 +8,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,7 +27,7 @@ func TestListConnectors(t *testing.T) {
 			},
 		}, nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 	req := httptest.NewRequest(http.MethodGet, "/_system/connectors", nil)
 	rec := httptest.NewRecorder()

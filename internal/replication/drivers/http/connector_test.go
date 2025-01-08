@@ -5,23 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPConnector(t *testing.T) {
 	t.Parallel()
 
-	messages := make(chan []replication.LogWithLedger, 1)
+	messages := make(chan []drivers.LogWithLedger, 1)
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		newMessages := make([]replication.LogWithLedger, 0)
+		newMessages := make([]drivers.LogWithLedger, 0)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&newMessages))
 
 		messages <- newMessages
@@ -29,7 +27,7 @@ func TestHTTPConnector(t *testing.T) {
 	t.Cleanup(testServer.Close)
 
 	// Create our connector
-	connector, err := NewConnector(drivers.NewServiceConfig(uuid.NewString(), testing.Verbose()), Config{
+	connector, err := NewConnector(Config{
 		URL: testServer.URL,
 	}, logging.Testing())
 	require.NoError(t, err)
@@ -39,9 +37,9 @@ func TestHTTPConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]replication.LogWithLedger, numberOfLogs)
+	logs := make([]drivers.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
-		logs[i] = replication.NewLogWithLedger(
+		logs[i] = drivers.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
 			ledger.NewLog(ledger.CreatedTransaction{
 				Transaction: ledger.NewTransaction(),

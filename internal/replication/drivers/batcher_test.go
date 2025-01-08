@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/replication"
-
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -64,7 +62,7 @@ func TestBatcher(t *testing.T) {
 	logger := logging.Testing()
 	ctx := context.TODO()
 
-	log := replication.NewLogWithLedger("module1", ledger.Log{})
+	log := NewLogWithLedger("module1", ledger.Log{})
 
 	connector.EXPECT().Start(gomock.Any()).Return(nil)
 	connector.EXPECT().Stop(gomock.Any()).Return(nil)

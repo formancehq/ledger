@@ -3,8 +3,6 @@ package clickhouse
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/config"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"time"
@@ -16,10 +14,9 @@ import (
 )
 
 type Connector struct {
-	db            driver.Conn
-	serviceConfig drivers.ServiceConfig
-	config        Config
-	logger        logging.Logger
+	db     driver.Conn
+	config Config
+	logger logging.Logger
 }
 
 func (c *Connector) Stop(_ context.Context) error {
@@ -29,16 +26,9 @@ func (c *Connector) Stop(_ context.Context) error {
 func (c *Connector) Start(ctx context.Context) error {
 
 	var err error
-	c.db, err = OpenDB(c.logger, c.config.DSN, c.serviceConfig.Debug)
+	c.db, err = OpenDB(c.logger, c.config.DSN, false)
 	if err != nil {
 		return errors.Wrap(err, "opening database")
-	}
-
-	// Create the database
-	// One database is used for the entire stack
-	err = c.db.Exec(ctx, fmt.Sprintf(`create database if not exists "%s"`, c.serviceConfig.Stack))
-	if err != nil {
-		return errors.Wrap(err, "failed to create database")
 	}
 
 	// Create the logs table
@@ -51,7 +41,7 @@ func (c *Connector) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
+func (c *Connector) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 
 	batch, err := c.db.PrepareBatch(ctx, "insert into logs(ledger, id, type, date, data)")
 	if err != nil {
@@ -79,11 +69,10 @@ func (c *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedge
 	return make([]error, len(logs)), errors.Wrap(batch.Send(), "failed to commit transaction")
 }
 
-func NewConnector(serviceConfig drivers.ServiceConfig, config Config, logger logging.Logger) (*Connector, error) {
+func NewConnector(config Config, logger logging.Logger) (*Connector, error) {
 	return &Connector{
-		serviceConfig: serviceConfig,
-		config:        config,
-		logger:        logger,
+		config: config,
+		logger: logger,
 	}, nil
 }
 

@@ -78,8 +78,6 @@ func NewRouter(
 						router.Post("/start", startPipeline(systemController))
 						router.Post("/stop", stopPipeline(systemController))
 						router.Post("/reset", resetPipeline(systemController))
-						router.Post("/pause", pausePipeline(systemController))
-						router.Post("/resume", resumePipeline(systemController))
 					})
 				})
 

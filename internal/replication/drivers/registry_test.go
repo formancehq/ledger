@@ -22,34 +22,27 @@ func TestRegisterConnector(t *testing.T) {
 	for _, testCase := range []testCase{
 		{
 			name: "nominal",
-			fn: func(_ ServiceConfig, _ struct{}, _ logging.Logger) (*MockDriver, error) {
+			fn: func(_ struct{}, _ logging.Logger) (*MockDriver, error) {
 				return &MockDriver{}, nil
 			},
-		},
-		{
-			name: "invalid first arg",
-			fn: func(_ struct{}, _ struct{}, _ logging.Logger) (*MockDriver, error) {
-				return &MockDriver{}, nil
-			},
-			expectError: "constructor arg 0 must be of kind drivers.ServiceConfig",
 		},
 		{
 			name: "invalid third arg",
-			fn: func(_ ServiceConfig, _ struct{}, _ struct{}) (*MockDriver, error) {
+			fn: func(_ struct{}, _ struct{}) (*MockDriver, error) {
 				return &MockDriver{}, nil
 			},
 			expectError: "constructor arg 2 must be of kind logging.Logger",
 		},
 		{
 			name: "invalid first return",
-			fn: func(_ ServiceConfig, _ struct{}, _ logging.Logger) (struct{}, error) {
+			fn: func(_ struct{}, _ logging.Logger) (struct{}, error) {
 				return struct{}{}, nil
 			},
 			expectError: "return 0 must be of kind drivers.Driver",
 		},
 		{
 			name: "invalid second return",
-			fn: func(_ ServiceConfig, _ struct{}, _ logging.Logger) (*MockDriver, string) {
+			fn: func(_ struct{}, _ logging.Logger) (*MockDriver, string) {
 				return &MockDriver{}, ""
 			},
 			expectError: "return 1 must be of kind error",
@@ -59,11 +52,11 @@ func TestRegisterConnector(t *testing.T) {
 			fn: func() (*MockDriver, string) {
 				return &MockDriver{}, ""
 			},
-			expectError: "constructor must take three parameters",
+			expectError: "constructor must take two parameters",
 		},
 		{
 			name: "invalid number of returned values",
-			fn: func(_ ServiceConfig, _ struct{}, _ logging.Logger) *MockDriver {
+			fn: func(_ struct{}, _ logging.Logger) *MockDriver {
 				return &MockDriver{}
 			},
 			expectError: "constructor must return two values",
@@ -81,7 +74,7 @@ func TestRegisterConnector(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockStore := NewMockStore(ctrl)
 
-			connectorRegistry := NewRegistry(NewServiceConfig("", testing.Verbose()), logging.Testing(), mockStore)
+			connectorRegistry := NewRegistry(logging.Testing(), mockStore)
 			err := connectorRegistry.registerConnector("testing", testCase.fn)
 			if testCase.expectError == "" {
 				require.NoError(t, err)

@@ -5,11 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/internal/replication/config"
 	"reflect"
 
 	"github.com/formancehq/go-libs/v2/logging"
-
-	"github.com/formancehq/ledger/internal/replication/config"
 
 	"github.com/pkg/errors"
 )
@@ -17,10 +16,9 @@ import (
 // Registry holds all available drivers
 // It implements Factory
 type Registry struct {
-	constructors  map[string]any
-	logger        logging.Logger
-	serviceConfig ServiceConfig
-	store         Store
+	constructors map[string]any
+	logger       logging.Logger
+	store        Store
 }
 
 func (c *Registry) RegisterConnector(name string, constructor any) {
@@ -35,18 +33,15 @@ func (c *Registry) registerConnector(name string, constructor any) error {
 		return errors.New("constructor must be a func")
 	}
 
-	if typeOfConstructor.NumIn() != 3 {
-		return errors.New("constructor must take three parameters")
+	if typeOfConstructor.NumIn() != 2 {
+		return errors.New("constructor must take two parameters")
 	}
 
 	if typeOfConstructor.NumOut() != 2 {
 		return errors.New("constructor must return two values")
 	}
 
-	if !typeOfConstructor.In(0).AssignableTo(reflect.TypeOf(ServiceConfig{})) {
-		return fmt.Errorf("constructor arg 0 must be of kind %T", ServiceConfig{})
-	}
-	if !typeOfConstructor.In(2).AssignableTo(reflect.TypeOf(new(logging.Logger)).Elem()) {
+	if !typeOfConstructor.In(1).AssignableTo(reflect.TypeOf(new(logging.Logger)).Elem()) {
 		return fmt.Errorf("constructor arg 2 must be of kind %s", reflect.TypeOf(new(logging.Logger)).Elem().String())
 	}
 
@@ -66,7 +61,7 @@ func (c *Registry) registerConnector(name string, constructor any) error {
 }
 
 func (c *Registry) extractConfigType(constructor any) any {
-	return reflect.New(reflect.TypeOf(constructor).In(1)).Interface()
+	return reflect.New(reflect.TypeOf(constructor).In(0)).Interface()
 }
 
 func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessage, error) {
@@ -95,7 +90,6 @@ func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessa
 	}
 
 	ret := reflect.ValueOf(driverConstructor).Call([]reflect.Value{
-		reflect.ValueOf(c.serviceConfig),
 		reflect.ValueOf(driverConfig).Elem(),
 		reflect.ValueOf(c.logger),
 	})
@@ -120,6 +114,7 @@ func (c *Registry) ValidateConfig(connectorName string, rawConnectorConfig json.
 	if err != nil {
 		return errors.Wrapf(err, "validating config for connector '%s'", connectorName)
 	}
+
 	if err := json.Unmarshal(rawConnectorConfig, connectorConfig); err != nil {
 		return NewErrMalformedConfiguration(connectorName, err)
 	}
@@ -150,12 +145,11 @@ func (c *Registry) ValidateConfig(connectorName string, rawConnectorConfig json.
 	return nil
 }
 
-func NewRegistry(serviceConfig ServiceConfig, logger logging.Logger, store Store) *Registry {
+func NewRegistry(logger logging.Logger, store Store) *Registry {
 	return &Registry{
-		constructors:  map[string]any{},
-		logger:        logger,
-		serviceConfig: serviceConfig,
-		store:         store,
+		constructors: map[string]any{},
+		logger:       logger,
+		store:        store,
 	}
 }
 

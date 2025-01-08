@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
@@ -153,7 +152,7 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 
 func TestListEnabledPipelines(t *testing.T) {
 	ctx := logging.TestingContext()
-	
+
 	store := newStore(t)
 
 	// Create a connector
@@ -165,7 +164,6 @@ func TestListEnabledPipelines(t *testing.T) {
 	// Creating a pair which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
 		ledger.NewPipelineConfiguration("module1", connector.ID),
-		ledger.NewReadyState(),
 	)
 
 	// Save a state
@@ -174,8 +172,8 @@ func TestListEnabledPipelines(t *testing.T) {
 	// Creating a pair which will be marked as stopped
 	stoppedPipeline := ledger.NewPipeline(
 		ledger.NewPipelineConfiguration("module2", connector.ID),
-		ledger.NewStopState(ledger.NewReadyState()),
 	)
+	stoppedPipeline.Enabled = false
 
 	// Save a state
 	require.NoError(t, store.CreatePipeline(ctx, stoppedPipeline))
@@ -202,21 +200,19 @@ func TestCreatePipeline(t *testing.T) {
 	// Creating a pipeline which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
 		ledger.NewPipelineConfiguration("module1", connector.ID),
-		ledger.NewReadyState(),
 	)
 
 	// Save a state
 	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
 
 	// Try to create the same pipeline again
-	require.IsType(t, controller.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, alivePipeline))
+	require.IsType(t, ledger.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, alivePipeline))
 
 	// Try to create another pipeline with the same configuration
 	newPipeline := ledger.NewPipeline(
 		ledger.NewPipelineConfiguration("module1", connector.ID),
-		ledger.NewReadyState(),
 	)
-	require.IsType(t, controller.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, newPipeline))
+	require.IsType(t, ledger.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, newPipeline))
 }
 
 func TestDeletePipeline(t *testing.T) {
@@ -235,7 +231,6 @@ func TestDeletePipeline(t *testing.T) {
 	// Creating a pair which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
 		ledger.NewPipelineConfiguration("module1", connector.ID),
-		ledger.NewReadyState(),
 	)
 
 	// Save a state
@@ -243,6 +238,40 @@ func TestDeletePipeline(t *testing.T) {
 
 	// Try to create the same pipeline again
 	require.NoError(t, store.DeletePipeline(ctx, alivePipeline.ID))
+}
+
+func TestUpdatePipeline(t *testing.T) {
+
+	ctx := logging.TestingContext()
+
+	// Create the store
+	store := newStore(t)
+
+	// Create a connector
+	connector := ledger.NewConnector(
+		ledger.NewConnectorConfiguration("connector1", json.RawMessage("")),
+	)
+	require.NoError(t, store.CreateConnector(ctx, connector))
+
+	// Creating a pair which will be marked as ready
+	alivePipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", connector.ID),
+	)
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
+
+	// Try to create the same pipeline again
+	require.NoError(t, store.UpdatePipeline(ctx, alivePipeline.ID, map[string]any{
+		"enabled": false,
+	}))
+
+	pipelineFromDB, err := store.GetPipeline(ctx, alivePipeline.ID)
+	require.NoError(t, err)
+	require.False(t, pipelineFromDB.Enabled)
+
+	pipelineFromDB.Enabled = true
+	require.Equal(t, alivePipeline, *pipelineFromDB)
 }
 
 func TestDeleteConnector(t *testing.T) {
@@ -260,7 +289,6 @@ func TestDeleteConnector(t *testing.T) {
 	// Creating a pipeline which will be marked as ready
 	pipeline := ledger.NewPipeline(
 		ledger.NewPipelineConfiguration("module1", connector.ID),
-		ledger.NewReadyState(),
 	)
 
 	// Save a state
@@ -269,7 +297,6 @@ func TestDeleteConnector(t *testing.T) {
 	err := store.DeleteConnector(ctx, pipeline.ConnectorID)
 	require.Error(t, err)
 }
-
 
 func newStore(t docker.T) *DefaultStore {
 	t.Helper()

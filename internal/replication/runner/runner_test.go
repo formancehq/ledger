@@ -10,33 +10,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/replication"
-
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func startRunner(t *testing.T, ctx context.Context, storageDriver StorageDriver, systemStore SystemStore, connectorFactory drivers.Factory) *Runner {
+func startRunner(t *testing.T, ctx context.Context, storageDriver Storage, connectorFactory drivers.Factory) *Runner {
 	t.Helper()
 
 	runner := NewRunner(
 		storageDriver,
-		systemStore,
 		connectorFactory,
 		logging.Testing(),
 	)
-	go func() {
-		require.NoError(t, runner.Run(ctx))
-	}()
+	go runner.Run(ctx, nil)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 
 		require.NoError(t, runner.Stop(ctx))
 	})
-	<-runner.Ready()
 
 	return runner
 }
@@ -46,14 +40,13 @@ func TestRunner(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	ctrl := gomock.NewController(t)
-	storageDriver := NewMockStorageDriver(ctrl)
-	systemStore := NewMockSystemStore(ctrl)
+	storage := NewMockStorage(ctrl)
 	logFetcher := NewMockLogFetcher(ctrl)
 	connectorFactory := drivers.NewMockFactory(ctrl)
 	connector := drivers.NewMockDriver(ctrl)
 
 	pipelineConfiguration := ledger.NewPipelineConfiguration("module1", "connector")
-	pipeline := ledger.NewPipeline(pipelineConfiguration, ledger.NewInitState())
+	pipeline := ledger.NewPipeline(pipelineConfiguration)
 
 	connectorFactory.EXPECT().
 		Create(gomock.Any(), pipelineConfiguration.ConnectorID).
@@ -63,6 +56,7 @@ func TestRunner(t *testing.T) {
 	log := ledger.NewLog(ledger.CreatedTransaction{
 		Transaction: ledger.NewTransaction(),
 	})
+	log.ID = 1
 	deliver := make(chan struct{})
 	delivered := make(chan struct{})
 
@@ -93,24 +87,25 @@ func TestRunner(t *testing.T) {
 			return &bunpaginate.Cursor[ledger.Log]{}, nil
 		})
 
-	storageDriver.EXPECT().
+	storage.EXPECT().
+		ListEnabledPipelines(gomock.Any()).
+		AnyTimes().
+		Return([]ledger.Pipeline{pipeline}, nil)
+
+	storage.EXPECT().
 		OpenLedger(gomock.Any(), pipelineConfiguration.Ledger).
 		Return(logFetcher, &ledger.Ledger{}, nil)
 
-	systemStore.EXPECT().
-		StorePipelineState(gomock.Any(), pipeline.ID, ledger.NewInitState()).
+	storage.EXPECT().
+		StorePipelineState(gomock.Any(), pipeline.ID, 1).
 		Return(nil)
 
-	systemStore.EXPECT().
-		StorePipelineState(gomock.Any(), pipeline.ID, ledger.NewReadyState()).
-		Return(nil)
-
-	runner := startRunner(t, ctx, storageDriver, systemStore, connectorFactory)
+	runner := startRunner(t, ctx, storage, connectorFactory)
 	_, err := runner.StartPipeline(ctx, pipeline)
 	require.NoError(t, err)
 
 	connector.EXPECT().
-		Accept(gomock.Any(), replication.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
+		Accept(gomock.Any(), drivers.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
 		Return([]error{nil}, nil)
 
 	require.Eventually(t, func() bool {

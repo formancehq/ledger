@@ -9,9 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/clickhousetesting"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -26,7 +24,7 @@ func TestClickhouseConnector(t *testing.T) {
 	srv := clickhousetesting.CreateServer(dockerPool)
 
 	// Create our connector
-	connector, err := NewConnector(drivers.NewServiceConfig(uuid.NewString(), testing.Verbose()), Config{
+	connector, err := NewConnector(Config{
 		DSN: srv.GetDSN(),
 	}, logging.Testing())
 	require.NoError(t, err)
@@ -40,13 +38,13 @@ func TestClickhouseConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]replication.LogWithLedger, numberOfLogs)
+	logs := make([]drivers.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
 		log := ledger.NewLog(ledger.CreatedTransaction{
 			Transaction: ledger.NewTransaction(),
 		})
 		log.ID = i
-		logs[i] = replication.NewLogWithLedger(
+		logs[i] = drivers.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
 			log,
 		)

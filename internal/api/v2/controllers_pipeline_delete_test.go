@@ -3,10 +3,10 @@ package v2
 import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/auth"
+	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -33,7 +33,7 @@ func TestDeletePipeline(t *testing.T) {
 		},
 		{
 			name:                  "with pipeline not existing",
-			returnError:           ledgercontroller.ErrPipelineNotFound(""),
+			returnError:           ledger.ErrPipelineNotFound(""),
 			expectErrorStatusCode: http.StatusNotFound,
 			expectErrorCode:       "NOT_FOUND",
 		},
@@ -55,7 +55,7 @@ func TestDeletePipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			connectorID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodDelete, "/xxx/pipelines/"+connectorID, nil)

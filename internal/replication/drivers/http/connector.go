@@ -5,21 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/internal/replication/config"
 	"net/http"
 	"net/url"
-
-	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 
-	"github.com/formancehq/ledger/internal/replication/config"
 	"github.com/pkg/errors"
 )
 
 type Connector struct {
 	config        Config
-	serviceConfig drivers.ServiceConfig
 	httpClient    *http.Client
 }
 
@@ -31,7 +28,7 @@ func (c *Connector) Start(_ context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
+func (c *Connector) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 	buffer := bytes.NewBufferString("")
 	err := json.NewEncoder(buffer).Encode(logs)
 	if err != nil {
@@ -56,9 +53,8 @@ func (c *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedge
 	return make([]error, len(logs)), nil
 }
 
-func NewConnector(serviceConfig drivers.ServiceConfig, config Config, _ logging.Logger) (*Connector, error) {
+func NewConnector(config Config, _ logging.Logger) (*Connector, error) {
 	return &Connector{
-		serviceConfig: serviceConfig,
 		config:        config,
 		httpClient:    http.DefaultClient,
 	}, nil

@@ -2,14 +2,15 @@ package ledger
 
 import (
 	"fmt"
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/google/uuid"
 )
 
 type PipelineConfiguration struct {
-	Ledger      string `json:"ledger"`
-	ConnectorID string `json:"connectorID"`
+	Ledger      string `json:"ledger" bun:"ledger"`
+	ConnectorID string `json:"connectorID" bun:"connector_id"`
 }
 
 func (p PipelineConfiguration) String() string {
@@ -24,88 +25,21 @@ func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration 
 }
 
 type Pipeline struct {
-	CreatedAt time.Time     `json:"createdAt"`
-	ID        string        `json:"id"`
-	State     PipelineState `json:"state"`
+	bun.BaseModel `bun:"table:_system.pipelines"`
+
 	PipelineConfiguration
+	CreatedAt time.Time     `json:"createdAt" bun:"created_at"`
+	ID        string        `json:"id" bun:"id,pk"`
+	Enabled   bool   `json:"enabled" bun:"enabled"`
+	LastLogID *int    `json:"lastLogID,omitempty" bun:"last_log_id"`
+	Error     string `json:"error,omitempty" bun:"error"`
 }
 
-func (p Pipeline) String() string {
-	return fmt.Sprintf("%s (%s): %s", p.ID, p.PipelineConfiguration, p.State)
-}
-
-func NewPipeline(pipelineConfiguration PipelineConfiguration, state PipelineState) Pipeline {
+func NewPipeline(pipelineConfiguration PipelineConfiguration) Pipeline {
 	return Pipeline{
 		ID:                    uuid.NewString(),
 		PipelineConfiguration: pipelineConfiguration,
-		State:                 state,
+		Enabled:               true,
 		CreatedAt:             time.Now(),
-	}
-}
-
-type PipelineStateLabel string
-
-const (
-	StateLabelInit  PipelineStateLabel = "INIT"
-	StateLabelReady PipelineStateLabel = "READY"
-	StateLabelPause PipelineStateLabel = "PAUSE"
-	StateLabelStop  PipelineStateLabel = "STOP"
-)
-
-type PipelineState struct {
-	Label PipelineStateLabel `json:"label"`
-	// Cursor can be set only if Label == StateLabelInit
-	LastID int `json:"lastID,omitempty"`
-	// PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
-	PreviousState *PipelineState `json:"previousState,omitempty"`
-	Error         string         `json:"error,omitempty"`
-}
-
-func (s PipelineState) String() string {
-	switch s.Label {
-	case StateLabelInit:
-		return "INIT"
-	case StateLabelReady:
-		return "READY"
-	case StateLabelPause:
-		return "PAUSE"
-	case StateLabelStop:
-		return "STOP"
-	default:
-		return "UNKNOWN_STATE"
-	}
-}
-
-func NewReadyStateWithID(lastID int) PipelineState {
-	return PipelineState{
-		Label:  StateLabelReady,
-		LastID: lastID,
-	}
-}
-
-func NewStopState(previousState PipelineState) PipelineState {
-	return PipelineState{
-		Label:         StateLabelStop,
-		PreviousState: &previousState,
-	}
-}
-
-func NewReadyState() PipelineState {
-	return PipelineState{
-		Label:  StateLabelReady,
-		LastID: 0,
-	}
-}
-
-func NewPauseState(previousState PipelineState) PipelineState {
-	return PipelineState{
-		Label:         StateLabelPause,
-		PreviousState: &previousState,
-	}
-}
-
-func NewInitState() PipelineState {
-	return PipelineState{
-		Label: StateLabelInit,
 	}
 }

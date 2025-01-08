@@ -8,7 +8,6 @@ import (
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -38,7 +37,7 @@ func TestCreatePipeline(t *testing.T) {
 		},
 		{
 			name:                  "pipeline already exists",
-			returnError:           &ledgercontroller.ErrPipelineAlreadyExists{},
+			returnError:           &ledger.ErrPipelineAlreadyExists{},
 			expectErrorStatusCode: http.StatusBadRequest,
 			expectErrorCode:       "VALIDATION",
 		},
@@ -66,7 +65,7 @@ func TestCreatePipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, ledgerController := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			pipelineConfiguration := ledger.PipelineConfiguration{
 				Ledger:      "module1",

@@ -26,7 +26,7 @@ func createPipeline(systemController systemcontroller.Controller) func(w http.Re
 			if err != nil {
 				switch {
 				case errors.Is(err, systemcontroller.ErrConnectorNotFound("")) ||
-					errors.Is(err, ledgercontroller.ErrPipelineAlreadyExists{}) ||
+					errors.Is(err, ledger.ErrPipelineAlreadyExists{}) ||
 					errors.Is(err, ledgercontroller.ErrInUsePipeline("")):
 					api.BadRequest(w, "VALIDATION", err)
 				default:

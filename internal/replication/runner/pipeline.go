@@ -7,274 +7,128 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/pagination"
-	"github.com/formancehq/ledger/internal/replication/signal"
 	"sync"
 	"time"
-
-	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 var (
-	DefaultPollRetryPeriod    = 10 * time.Second
-	DefaultPushRetryPeriod    = 10 * time.Second
-	DefaultStateRetryInterval = 5 * time.Second
+	DefaultPullInterval    = 10 * time.Second
+	DefaultPushRetryPeriod = 10 * time.Second
 )
 
 type PipelineHandlerConfig struct {
-	PollRetryPeriod          time.Duration
-	ConnectorPushRetryPeriod time.Duration
-	StateRetryInterval       time.Duration
+	PullInterval    time.Duration
+	PushRetryPeriod time.Duration
 }
 
 type PipelineOption func(config *PipelineHandlerConfig)
 
-func WithModulePullPeriod(v time.Duration) PipelineOption {
+func WithPullPeriod(v time.Duration) PipelineOption {
 	return func(config *PipelineHandlerConfig) {
-		config.PollRetryPeriod = v
+		config.PullInterval = v
 	}
 }
 
-func WithConnectorPushRetryPeriod(v time.Duration) PipelineOption {
+func WithPushRetryPeriod(v time.Duration) PipelineOption {
 	return func(config *PipelineHandlerConfig) {
-		config.ConnectorPushRetryPeriod = v
-	}
-}
-
-func WithStateRetryInterval(v time.Duration) PipelineOption {
-	return func(config *PipelineHandlerConfig) {
-		config.StateRetryInterval = v
+		config.PushRetryPeriod = v
 	}
 }
 
 var (
 	defaultPipelineOptions = []PipelineOption{
-		WithModulePullPeriod(DefaultPollRetryPeriod),
-		WithStateRetryInterval(DefaultStateRetryInterval),
-		WithConnectorPushRetryPeriod(DefaultPushRetryPeriod),
+		WithPullPeriod(DefaultPullInterval),
+		WithPushRetryPeriod(DefaultPushRetryPeriod),
 	}
 )
 
 type PipelineHandler struct {
-	mu sync.Mutex
-
 	pipeline       ledger.Pipeline
 	stopChannel    chan chan error
 	store          LogFetcher
 	connector      drivers.Driver
-	expectedState  *signal.Signal[ledger.PipelineState]
-	activeState    *signal.Signal[ledger.PipelineState]
 	pipelineConfig PipelineHandlerConfig
-	stateHandler   *StateHandler
 	logger         logging.Logger
 }
 
-// Pause can return following errors:
-// * ErrAlreadyPaused
-func (p *PipelineHandler) Pause() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	actualExpectedState := p.expectedState.Actual()
-	if actualExpectedState.Label == ledger.StateLabelPause {
-		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ledger.StateLabelStop)
-	}
-	p.expectedState.Signal(ledger.NewPauseState(
-		*p.activeState.Actual(),
-	))
-
-	return nil
-}
-
-// Resume can return following errors:
-// * ErrNotInPauseState
-func (p *PipelineHandler) Resume() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	actualExpectedState := p.expectedState.Actual()
-	if actualExpectedState.Label != ledger.StateLabelPause {
-		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ledger.StateLabelPause)
-	}
-	p.expectedState.Signal(*actualExpectedState.PreviousState)
-
-	return nil
-}
-
-func (p *PipelineHandler) Reset() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.expectedState.Signal(ledger.NewReadyState())
-
-	return nil
-}
-
-// Stop try to stop the pipeline
-// It is asynchronous and can controller by watching the active state of the pipeline
-// see GetActiveState
-func (p *PipelineHandler) Stop() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	actualExpectedState := p.expectedState.Actual()
-	if actualExpectedState.Label == ledger.StateLabelStop {
-		return NewErrInvalidStateSwitch(p.pipeline.ID, actualExpectedState.Label, ledger.StateLabelStop)
-	}
-
-	p.expectedState.Signal(ledger.NewStopState(*actualExpectedState))
-
-	return nil
-}
-
-func (p *PipelineHandler) switchToState(ctx context.Context, newState ledger.PipelineState) bool {
-	if p.activeState.Actual() != nil &&
-		newState.Label == p.activeState.Actual().Label {
-		return true
-	}
-	p.logger.Infof("Switching to state '%s'", newState.Label)
-
-	var fn func(ctx context.Context, readyChan chan struct{}) error
-	switch newState.Label {
-	case ledger.StateLabelInit:
-		fn = p.init
-	case ledger.StateLabelReady:
-		fn = p.run
-	case ledger.StateLabelPause:
-		fn = p.pause
-	case ledger.StateLabelStop:
-		fn = p.stop
-	}
-	if err := p.stateHandler.Switch(ctx, fn); err != nil {
-		p.logger.Errorf("Error switching to state '%s': %s", newState.Label, err)
-		return true
-	}
-	p.activeState.Signal(newState)
-	p.logger.Infof("Switched to state '%s'", newState.Label)
-
-	return newState.Label != ledger.StateLabelStop
-}
-
-func (p *PipelineHandler) Run(ctx context.Context) {
-	defer p.activeState.Close()
-
-	stateChangedListener, cancelExpectedStateListener := p.expectedState.Listen()
-	defer cancelExpectedStateListener()
-
-	p.stateHandler = NewEmptyStateHandler(p.logger)
-	p.stateHandler.Run(ctx, make(chan struct{}))
-
+func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan int) {
+	nextInterval := time.Duration(0)
 	for {
 		select {
-		case newState := <-stateChangedListener:
-			if !p.switchToState(ctx, newState) {
-				return
-			}
-		case errorChannel := <-p.stopChannel:
-			p.logger.Debugf("stopping pipeline signal received...")
-			err := p.stateHandler.Cancel(ctx)
-			errorChannel <- err
-			if err != nil {
-				p.logger.Errorf("pipeline stopped with error: %s", err)
-			} else {
-				p.logger.Infof("pipeline stopped")
-			}
+		case ch := <-p.stopChannel:
+			close(ch)
 			return
-		case <-time.After(p.pipelineConfig.StateRetryInterval):
-			if !p.switchToState(ctx, *p.expectedState.Actual()) {
-				return
-			}
-		}
-	}
-}
-
-func (p *PipelineHandler) init(_ context.Context, ready chan struct{}) error {
-	close(ready)
-
-	p.expectedState.Signal(ledger.NewReadyState())
-	return nil
-}
-
-func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
-	close(ready)
-
-	wg := sync.WaitGroup{}
-	lastID := p.expectedState.Actual().LastID
-	for {
-		logs, err := p.store.ListLogs(ctx, pagination.ColumnPaginatedQuery[any]{
-			PageSize: 100,
-			Column:   "id",
-			Options: pagination.ResourceQuery[any]{
-				Builder: query.Gte("id", lastID),
-			},
-			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-		})
-		if err != nil {
-			p.logger.Errorf("Error fetching logs: %s", err)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(p.pipelineConfig.PollRetryPeriod):
-				continue
-			}
-		}
-
-		wg.Add(len(logs.Data))
-		for _, log := range logs.Data {
-			go func() {
-				defer wg.Done()
-				for {
-					itemsErrors, err := p.connector.Accept(ctx, replication.LogWithLedger{
-						Log:    log,
-						Ledger: p.pipeline.Ledger,
-					})
-					if err == nil {
-						err = itemsErrors[0]
-					}
-					if err != nil {
-						p.logger.Errorf("Error pushing data on connector: %s", err)
-						select {
-						case <-ctx.Done():
-							return
-						case <-time.After(p.pipelineConfig.ConnectorPushRetryPeriod):
-							continue
-						}
-					}
-					break
+		case <-time.After(nextInterval):
+			logs, err := p.store.ListLogs(ctx, pagination.ColumnPaginatedQuery[any]{
+				PageSize: 100,
+				Column:   "id",
+				Options: pagination.ResourceQuery[any]{
+					Builder: query.Gte("id", *p.pipeline.LastLogID),
+				},
+				Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			})
+			if err != nil {
+				p.logger.Errorf("Error fetching logs: %s", err)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(p.pipelineConfig.PullInterval):
+					continue
 				}
-			}()
-		}
+			}
 
-		wg.Wait()
-
-		if !logs.HasMore {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(p.pipelineConfig.PollRetryPeriod):
+			if len(logs.Data) == 0 {
+				nextInterval = p.pipelineConfig.PullInterval
 				continue
 			}
+
+			wg := sync.WaitGroup{}
+			wg.Add(len(logs.Data))
+			for _, log := range logs.Data {
+				go func() {
+					defer wg.Done()
+					for {
+						itemsErrors, err := p.connector.Accept(ctx, drivers.LogWithLedger{
+							Log:    log,
+							Ledger: p.pipeline.Ledger,
+						})
+						if err == nil {
+							err = itemsErrors[0]
+						}
+						if err != nil {
+							p.logger.Errorf("Error pushing data on connector: %s, waiting for: %s", err, p.pipelineConfig.PushRetryPeriod)
+							select {
+							case <-ctx.Done():
+								return
+							case <-time.After(p.pipelineConfig.PushRetryPeriod):
+								continue
+							}
+						}
+						break
+					}
+				}()
+			}
+
+			wg.Wait()
+
+			p.pipeline.LastLogID = pointer.For(logs.Data[len(logs.Data)-1].ID)
+
+			select {
+			case <-ctx.Done():
+				return
+			case ingestedLogs <- *p.pipeline.LastLogID:
+			}
+
+			if !logs.HasMore {
+				nextInterval = p.pipelineConfig.PullInterval
+			} else {
+				nextInterval = 0
+			}
 		}
-		lastID = logs.Data[len(logs.Data)-1].ID
-
-		p.activeState.Signal(ledger.NewReadyStateWithID(lastID))
 	}
-}
-
-func (p *PipelineHandler) pause(ctx context.Context, ready chan struct{}) error {
-	close(ready)
-
-	<-ctx.Done()
-	return nil
-}
-
-func (p *PipelineHandler) stop(ctx context.Context, ready chan struct{}) error {
-	close(ready)
-
-	<-ctx.Done()
-	return nil
 }
 
 func (p *PipelineHandler) Shutdown(ctx context.Context) error {
@@ -294,13 +148,6 @@ func (p *PipelineHandler) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (p *PipelineHandler) GetActiveState() *signal.Signal[ledger.PipelineState] {
-	if p == nil {
-		return nil
-	}
-	return p.activeState
-}
-
 func NewPipelineHandler(
 	pipeline ledger.Pipeline,
 	store LogFetcher,
@@ -318,8 +165,6 @@ func NewPipelineHandler(
 		stopChannel:    make(chan chan error, 1),
 		store:          store,
 		connector:      connector,
-		expectedState:  signal.NewSignal(&pipeline.State),
-		activeState:    signal.NewSignal[ledger.PipelineState](nil),
 		pipelineConfig: config,
 		logger: logger.
 			WithField("component", "pipeline").

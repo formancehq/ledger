@@ -13,18 +13,26 @@ import (
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 
+		connectors := make([]string, 0)
+		if err := config.GetObject(ctx, "connectors", &connectors); err != nil {
+			return err
+		}
+
+		ledgerConfig := config.New(ctx, "ledger")
+
 		args := &pulumi_dataset_init_stack.StackComponentArgs{
 			Debug:     pulumix.Val(config.GetBool(ctx, "debug")),
 			Namespace: pulumi.String(config.Get(ctx, "namespace")),
 			Ledger: &pulumi_dataset_init_stack.StackLedgerArgs{
-				Version:     pulumix.Val(config.Get(ctx, "ledger-version")),
-				GracePeriod: pulumix.Val(config.Get(ctx, "ledger-grace-period")),
-				Upgrade:     pulumix.Val(pulumi_ledger.UpgradeMode(config.Get(ctx, "ledger-upgrade-mode"))),
+				Version:     pulumix.Val(ledgerConfig.Get("version")),
+				GracePeriod: pulumix.Val(ledgerConfig.Get("grace-period")),
+				Upgrade:     pulumix.Val(pulumi_ledger.UpgradeMode(ledgerConfig.Get("upgrade-mode"))),
 			},
+			Connectors: connectors,
 		}
 
-		tracesEnabled := config.GetBool(ctx, "ledger-otel-traces-enabled")
-		metricsEnabled := config.GetBool(ctx, "ledger-otel-metrics-enabled")
+		tracesEnabled := ledgerConfig.GetBool("otel-traces-enabled")
+		metricsEnabled := ledgerConfig.GetBool("otel-metrics-enabled")
 		if tracesEnabled || metricsEnabled {
 			args.Ledger.Otel = &pulumi_ledger.OtelArgs{
 				ResourceAttributes: pulumix.Val(map[string]string{
@@ -35,27 +43,27 @@ func main() {
 
 		if tracesEnabled {
 			args.Ledger.Otel.Traces = &pulumi_ledger.OtelTracesArgs{
-				OtelTracesBatch:                  pulumix.Val(config.GetBool(ctx, "ledger-otel-traces-batch")),
-				OtelTracesExporterFlag:           pulumix.Val(config.Get(ctx, "ledger-otel-traces-exporter")),
-				OtelTracesExporterJaegerEndpoint: pulumix.Val(config.Get(ctx, "ledger-otel-traces-exporter-jaeger-endpoint")),
-				OtelTracesExporterJaegerUser:     pulumix.Val(config.Get(ctx, "ledger-otel-traces-exporter-jaeger-user")),
-				OtelTracesExporterJaegerPassword: pulumix.Val(config.Get(ctx, "ledger-otel-traces-exporter-jaeger-password")),
-				OtelTracesExporterOTLPMode:       pulumix.Val(config.Get(ctx, "ledger-otel-traces-exporter-otlp-mode")),
-				OtelTracesExporterOTLPEndpoint:   pulumix.Val(config.Get(ctx, "ledger-otel-traces-exporter-otlp-endpoint")),
-				OtelTracesExporterOTLPInsecure:   pulumix.Val(config.GetBool(ctx, "ledger-otel-traces-exporter-otlp-insecure")),
+				OtelTracesBatch:                  pulumix.Val(ledgerConfig.GetBool("otel-traces-batch")),
+				OtelTracesExporterFlag:           pulumix.Val(ledgerConfig.Get("otel-traces-exporter")),
+				OtelTracesExporterJaegerEndpoint: pulumix.Val(ledgerConfig.Get("otel-traces-exporter-jaeger-endpoint")),
+				OtelTracesExporterJaegerUser:     pulumix.Val(ledgerConfig.Get("otel-traces-exporter-jaeger-user")),
+				OtelTracesExporterJaegerPassword: pulumix.Val(ledgerConfig.Get("otel-traces-exporter-jaeger-password")),
+				OtelTracesExporterOTLPMode:       pulumix.Val(ledgerConfig.Get("otel-traces-exporter-otlp-mode")),
+				OtelTracesExporterOTLPEndpoint:   pulumix.Val(ledgerConfig.Get("otel-traces-exporter-otlp-endpoint")),
+				OtelTracesExporterOTLPInsecure:   pulumix.Val(ledgerConfig.GetBool("otel-traces-exporter-otlp-insecure")),
 			}
 		}
 
 		if metricsEnabled {
 			args.Ledger.Otel.Metrics = &pulumi_ledger.OtelMetricsArgs{
-				OtelMetricsExporterPushInterval:               pulumix.Val(pointer.For(getDuration(ctx, "ledger-otel-metrics-exporter-push-interval"))),
-				OtelMetricsRuntime:                            pulumix.Val(config.GetBool(ctx, "ledger-otel-metrics-runtime")),
-				OtelMetricsRuntimeMinimumReadMemStatsInterval: pulumix.Val(pointer.For(getDuration(ctx, "ledger-otel-metrics-runtime-minimum-read-mem-stats-interval"))),
-				OtelMetricsExporter:                           pulumix.Val(config.Get(ctx, "ledger-otel-metrics-exporter")),
-				OtelMetricsKeepInMemory:                       pulumix.Val(config.GetBool(ctx, "ledger-otel-metrics-keep-in-memory")),
-				OtelMetricsExporterOTLPMode:                   pulumix.Val(config.Get(ctx, "ledger-otel-metrics-exporter-otlp-mode")),
-				OtelMetricsExporterOTLPEndpoint:               pulumix.Val(config.Get(ctx, "ledger-otel-metrics-exporter-otlp-endpoint")),
-				OtelMetricsExporterOTLPInsecure:               pulumix.Val(config.GetBool(ctx, "ledger-otel-metrics-exporter-otlp-insecure")),
+				OtelMetricsExporterPushInterval:               pulumix.Val(pointer.For(getDuration(ledgerConfig, "otel-metrics-exporter-push-interval"))),
+				OtelMetricsRuntime:                            pulumix.Val(ledgerConfig.GetBool("otel-metrics-runtime")),
+				OtelMetricsRuntimeMinimumReadMemStatsInterval: pulumix.Val(pointer.For(getDuration(ledgerConfig, "otel-metrics-runtime-minimum-read-mem-stats-interval"))),
+				OtelMetricsExporter:                           pulumix.Val(ledgerConfig.Get("otel-metrics-exporter")),
+				OtelMetricsKeepInMemory:                       pulumix.Val(ledgerConfig.GetBool("otel-metrics-keep-in-memory")),
+				OtelMetricsExporterOTLPMode:                   pulumix.Val(ledgerConfig.Get("otel-metrics-exporter-otlp-mode")),
+				OtelMetricsExporterOTLPEndpoint:               pulumix.Val(ledgerConfig.Get("otel-metrics-exporter-otlp-endpoint")),
+				OtelMetricsExporterOTLPInsecure:               pulumix.Val(ledgerConfig.GetBool("otel-metrics-exporter-otlp-insecure")),
 			}
 		}
 
@@ -67,8 +75,8 @@ func main() {
 	})
 }
 
-func getDuration(ctx *pulumi.Context, key string) time.Duration {
-	configValue := config.Get(ctx, key)
+func getDuration(config *config.Config, key string) time.Duration {
+	configValue := config.Get(key)
 
 	ret, _ := time.ParseDuration(configValue)
 

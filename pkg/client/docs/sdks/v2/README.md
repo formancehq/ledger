@@ -28,6 +28,17 @@
 * [ListLogs](#listlogs) - List the logs from a ledger
 * [ImportLogs](#importlogs)
 * [ExportLogs](#exportlogs) - Export logs
+* [ListConnectors](#listconnectors) - List connectors
+* [CreateConnector](#createconnector) - Create connector
+* [GetConnectorState](#getconnectorstate) - Get connector state
+* [DeleteConnector](#deleteconnector) - Delete connector
+* [ListPipelines](#listpipelines) - List pipelines
+* [CreatePipeline](#createpipeline) - Create pipeline
+* [GetPipelineState](#getpipelinestate) - Get pipeline state
+* [DeletePipeline](#deletepipeline) - Delete pipeline
+* [ResetPipeline](#resetpipeline) - Reset pipeline
+* [StartPipeline](#startpipeline) - Start pipeline
+* [StopPipeline](#stoppipeline) - Stop pipeline
 
 ## ListLedgers
 
@@ -1510,3 +1521,611 @@ func main() {
 | Error Object       | Status Code        | Content Type       |
 | ------------------ | ------------------ | ------------------ |
 | sdkerrors.SDKError | 4xx-5xx            | */*                |
+
+## ListConnectors
+
+List connectors
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+
+    ctx := context.Background()
+    res, err := s.Ledger.V2.ListConnectors(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2ListConnectorsResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                | Type                                                     | Required                                                 | Description                                              |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| `ctx`                                                    | [context.Context](https://pkg.go.dev/context#Context)    | :heavy_check_mark:                                       | The context to use for the request.                      |
+| `opts`                                                   | [][operations.Option](../../models/operations/option.md) | :heavy_minus_sign:                                       | The options for this request.                            |
+
+
+### Response
+
+**[*operations.V2ListConnectorsResponse](../../models/operations/v2listconnectorsresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## CreateConnector
+
+Create connector
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := components.V2CreateConnectorRequest{
+        Driver: "<value>",
+        Config: map[string]any{
+            "key": "<value>",
+        },
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.CreateConnector(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2CreateConnectorResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                  | Type                                                                                       | Required                                                                                   | Description                                                                                |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `ctx`                                                                                      | [context.Context](https://pkg.go.dev/context#Context)                                      | :heavy_check_mark:                                                                         | The context to use for the request.                                                        |
+| `request`                                                                                  | [components.V2CreateConnectorRequest](../../models/components/v2createconnectorrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
+| `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
+
+
+### Response
+
+**[*operations.V2CreateConnectorResponse](../../models/operations/v2createconnectorresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## GetConnectorState
+
+Get connector state
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2GetConnectorStateRequest{
+        ConnectorID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.GetConnectorState(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2GetConnectorStateResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                      | Type                                                                                           | Required                                                                                       | Description                                                                                    |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `ctx`                                                                                          | [context.Context](https://pkg.go.dev/context#Context)                                          | :heavy_check_mark:                                                                             | The context to use for the request.                                                            |
+| `request`                                                                                      | [operations.V2GetConnectorStateRequest](../../models/operations/v2getconnectorstaterequest.md) | :heavy_check_mark:                                                                             | The request object to use for the request.                                                     |
+| `opts`                                                                                         | [][operations.Option](../../models/operations/option.md)                                       | :heavy_minus_sign:                                                                             | The options for this request.                                                                  |
+
+
+### Response
+
+**[*operations.V2GetConnectorStateResponse](../../models/operations/v2getconnectorstateresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## DeleteConnector
+
+Delete connector
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2DeleteConnectorRequest{
+        ConnectorID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.DeleteConnector(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                  | Type                                                                                       | Required                                                                                   | Description                                                                                |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `ctx`                                                                                      | [context.Context](https://pkg.go.dev/context#Context)                                      | :heavy_check_mark:                                                                         | The context to use for the request.                                                        |
+| `request`                                                                                  | [operations.V2DeleteConnectorRequest](../../models/operations/v2deleteconnectorrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
+| `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
+
+
+### Response
+
+**[*operations.V2DeleteConnectorResponse](../../models/operations/v2deleteconnectorresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## ListPipelines
+
+List pipelines
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2ListPipelinesRequest{
+        Ledger: "ledger001",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.ListPipelines(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2ListPipelinesResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                              | Type                                                                                   | Required                                                                               | Description                                                                            |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ctx`                                                                                  | [context.Context](https://pkg.go.dev/context#Context)                                  | :heavy_check_mark:                                                                     | The context to use for the request.                                                    |
+| `request`                                                                              | [operations.V2ListPipelinesRequest](../../models/operations/v2listpipelinesrequest.md) | :heavy_check_mark:                                                                     | The request object to use for the request.                                             |
+| `opts`                                                                                 | [][operations.Option](../../models/operations/option.md)                               | :heavy_minus_sign:                                                                     | The options for this request.                                                          |
+
+
+### Response
+
+**[*operations.V2ListPipelinesResponse](../../models/operations/v2listpipelinesresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## CreatePipeline
+
+Create pipeline
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2CreatePipelineRequest{
+        Ledger: "ledger001",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.CreatePipeline(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2CreatePipelineResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                | Type                                                                                     | Required                                                                                 | Description                                                                              |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ctx`                                                                                    | [context.Context](https://pkg.go.dev/context#Context)                                    | :heavy_check_mark:                                                                       | The context to use for the request.                                                      |
+| `request`                                                                                | [operations.V2CreatePipelineRequest](../../models/operations/v2createpipelinerequest.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
+| `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
+
+
+### Response
+
+**[*operations.V2CreatePipelineResponse](../../models/operations/v2createpipelineresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## GetPipelineState
+
+Get pipeline state
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2GetPipelineStateRequest{
+        Ledger: "ledger001",
+        PipelineID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.GetPipelineState(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2GetPipelineStateResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                    | Type                                                                                         | Required                                                                                     | Description                                                                                  |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `ctx`                                                                                        | [context.Context](https://pkg.go.dev/context#Context)                                        | :heavy_check_mark:                                                                           | The context to use for the request.                                                          |
+| `request`                                                                                    | [operations.V2GetPipelineStateRequest](../../models/operations/v2getpipelinestaterequest.md) | :heavy_check_mark:                                                                           | The request object to use for the request.                                                   |
+| `opts`                                                                                       | [][operations.Option](../../models/operations/option.md)                                     | :heavy_minus_sign:                                                                           | The options for this request.                                                                |
+
+
+### Response
+
+**[*operations.V2GetPipelineStateResponse](../../models/operations/v2getpipelinestateresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## DeletePipeline
+
+Delete pipeline
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2DeletePipelineRequest{
+        Ledger: "ledger001",
+        PipelineID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.DeletePipeline(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                | Type                                                                                     | Required                                                                                 | Description                                                                              |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ctx`                                                                                    | [context.Context](https://pkg.go.dev/context#Context)                                    | :heavy_check_mark:                                                                       | The context to use for the request.                                                      |
+| `request`                                                                                | [operations.V2DeletePipelineRequest](../../models/operations/v2deletepipelinerequest.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
+| `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
+
+
+### Response
+
+**[*operations.V2DeletePipelineResponse](../../models/operations/v2deletepipelineresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## ResetPipeline
+
+Reset pipeline
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2ResetPipelineRequest{
+        Ledger: "ledger001",
+        PipelineID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.ResetPipeline(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                              | Type                                                                                   | Required                                                                               | Description                                                                            |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ctx`                                                                                  | [context.Context](https://pkg.go.dev/context#Context)                                  | :heavy_check_mark:                                                                     | The context to use for the request.                                                    |
+| `request`                                                                              | [operations.V2ResetPipelineRequest](../../models/operations/v2resetpipelinerequest.md) | :heavy_check_mark:                                                                     | The request object to use for the request.                                             |
+| `opts`                                                                                 | [][operations.Option](../../models/operations/option.md)                               | :heavy_minus_sign:                                                                     | The options for this request.                                                          |
+
+
+### Response
+
+**[*operations.V2ResetPipelineResponse](../../models/operations/v2resetpipelineresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## StartPipeline
+
+Start pipeline
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2StartPipelineRequest{
+        Ledger: "ledger001",
+        PipelineID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.StartPipeline(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                              | Type                                                                                   | Required                                                                               | Description                                                                            |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ctx`                                                                                  | [context.Context](https://pkg.go.dev/context#Context)                                  | :heavy_check_mark:                                                                     | The context to use for the request.                                                    |
+| `request`                                                                              | [operations.V2StartPipelineRequest](../../models/operations/v2startpipelinerequest.md) | :heavy_check_mark:                                                                     | The request object to use for the request.                                             |
+| `opts`                                                                                 | [][operations.Option](../../models/operations/option.md)                               | :heavy_minus_sign:                                                                     | The options for this request.                                                          |
+
+
+### Response
+
+**[*operations.V2StartPipelineResponse](../../models/operations/v2startpipelineresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+
+## StopPipeline
+
+Stop pipeline
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2StopPipelineRequest{
+        Ledger: "ledger001",
+        PipelineID: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.StopPipeline(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                            | Type                                                                                 | Required                                                                             | Description                                                                          |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `ctx`                                                                                | [context.Context](https://pkg.go.dev/context#Context)                                | :heavy_check_mark:                                                                   | The context to use for the request.                                                  |
+| `request`                                                                            | [operations.V2StopPipelineRequest](../../models/operations/v2stoppipelinerequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
+| `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
+
+
+### Response
+
+**[*operations.V2StopPipelineResponse](../../models/operations/v2stoppipelineresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
