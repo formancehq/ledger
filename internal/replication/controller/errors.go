@@ -2,7 +2,7 @@ package controller
 
 import (
 	"fmt"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 
 	"github.com/formancehq/ledger/internal/replication/runner"
 )
@@ -41,7 +41,7 @@ func NewErrConnectorNotFound(connectorID string) ErrConnectorNotFound {
 
 // ErrPipelineAlreadyExists denotes a pipeline already created
 // The store is in charge of returning this error on a failing call on Store.CreatePipeline
-type ErrPipelineAlreadyExists ingester.PipelineConfiguration
+type ErrPipelineAlreadyExists ledger.PipelineConfiguration
 
 func (e ErrPipelineAlreadyExists) Error() string {
 	return fmt.Sprintf("pipeline '%s/%s' already exists", e.Ledger, e.ConnectorID)
@@ -52,7 +52,7 @@ func (e ErrPipelineAlreadyExists) Is(err error) bool {
 	return ok
 }
 
-func NewErrPipelineAlreadyExists(pipelineConfiguration ingester.PipelineConfiguration) ErrPipelineAlreadyExists {
+func NewErrPipelineAlreadyExists(pipelineConfiguration ledger.PipelineConfiguration) ErrPipelineAlreadyExists {
 	return ErrPipelineAlreadyExists(pipelineConfiguration)
 }
 

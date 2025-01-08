@@ -13,9 +13,4 @@ type Store interface {
 	DeletePipeline(ctx context.Context, id string) error
 	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
 	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
-
-	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
-	CreateConnector(ctx context.Context, connector ledger.Connector) error
-	DeleteConnector(ctx context.Context, id string) error
-	GetConnector(ctx context.Context, id string) (*ledger.Connector, error)
 }

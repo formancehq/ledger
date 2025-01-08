@@ -136,7 +136,7 @@ func (mr *MockSystemStoreMockRecorder) ListEnabledPipelines(ctx any) *gomock.Cal
 }
 
 // StorePipelineState mocks base method.
-func (m *MockSystemStore) StorePipelineState(ctx context.Context, id string, state ledger.State) error {
+func (m *MockSystemStore) StorePipelineState(ctx context.Context, id string, state ledger.PipelineState) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StorePipelineState", ctx, id, state)
 	ret0, _ := ret[0].(error)

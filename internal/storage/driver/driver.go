@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -23,6 +23,8 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
+
+var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
 
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
@@ -50,7 +52,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		}
 
 		if !upToDate {
-			return nil, systemcontroller.ErrBucketOutdated
+			return nil, ErrBucketOutdated
 		}
 	}
 
@@ -63,7 +65,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	if err := d.systemStore.CreateLedger(ctx, l); err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return nil, systemcontroller.ErrLedgerAlreadyExists
+			return nil, systemstore.ErrLedgerAlreadyExists
 		}
 		return nil, postgres.ResolveError(err)
 	}

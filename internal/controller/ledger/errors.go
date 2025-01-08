@@ -20,7 +20,23 @@ type ErrPipelineNotFound = controller.ErrPipelineNotFound
 type ErrPipelineAlreadyExists = controller.ErrPipelineAlreadyExists
 type ErrInvalidStateSwitch = controller.ErrInvalidStateSwitch
 type ErrPipelineAlreadyStarted = controller.ErrAlreadyStarted
-type ErrInUsePipeline = controller.ErrInUsePipeline
+
+// ErrInUsePipeline denotes a pipeline which is actually used
+// The client has to retry later if still relevant
+type ErrInUsePipeline string
+
+func (e ErrInUsePipeline) Error() string {
+	return fmt.Sprintf("pipeline '%s' already in use", string(e))
+}
+
+func (e ErrInUsePipeline) Is(err error) bool {
+	_, ok := err.(ErrInUsePipeline)
+	return ok
+}
+
+func NewErrInUsePipeline(id string) ErrInUsePipeline {
+	return ErrInUsePipeline(id)
+}
 
 type ErrImport struct {
 	err error

@@ -24,9 +24,9 @@ func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration 
 }
 
 type Pipeline struct {
-	CreatedAt time.Time `json:"createdAt"`
-	ID        string    `json:"id"`
-	State     State     `json:"state"`
+	CreatedAt time.Time     `json:"createdAt"`
+	ID        string        `json:"id"`
+	State     PipelineState `json:"state"`
 	PipelineConfiguration
 }
 
@@ -34,7 +34,7 @@ func (p Pipeline) String() string {
 	return fmt.Sprintf("%s (%s): %s", p.ID, p.PipelineConfiguration, p.State)
 }
 
-func NewPipeline(pipelineConfiguration PipelineConfiguration, state State) Pipeline {
+func NewPipeline(pipelineConfiguration PipelineConfiguration, state PipelineState) Pipeline {
 	return Pipeline{
 		ID:                    uuid.NewString(),
 		PipelineConfiguration: pipelineConfiguration,
@@ -43,25 +43,25 @@ func NewPipeline(pipelineConfiguration PipelineConfiguration, state State) Pipel
 	}
 }
 
-type StateLabel string
+type PipelineStateLabel string
 
 const (
-	StateLabelInit  StateLabel = "INIT"
-	StateLabelReady StateLabel = "READY"
-	StateLabelPause StateLabel = "PAUSE"
-	StateLabelStop  StateLabel = "STOP"
+	StateLabelInit  PipelineStateLabel = "INIT"
+	StateLabelReady PipelineStateLabel = "READY"
+	StateLabelPause PipelineStateLabel = "PAUSE"
+	StateLabelStop  PipelineStateLabel = "STOP"
 )
 
-type State struct {
-	Label StateLabel `json:"label"`
+type PipelineState struct {
+	Label PipelineStateLabel `json:"label"`
 	// Cursor can be set only if Label == StateLabelInit
 	LastID int `json:"lastID,omitempty"`
 	// PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
-	PreviousState *State `json:"previousState,omitempty"`
-	Error         string `json:"error,omitempty"`
+	PreviousState *PipelineState `json:"previousState,omitempty"`
+	Error         string         `json:"error,omitempty"`
 }
 
-func (s State) String() string {
+func (s PipelineState) String() string {
 	switch s.Label {
 	case StateLabelInit:
 		return "INIT"
@@ -76,36 +76,36 @@ func (s State) String() string {
 	}
 }
 
-func NewReadyStateWithID(lastID int) State {
-	return State{
+func NewReadyStateWithID(lastID int) PipelineState {
+	return PipelineState{
 		Label:  StateLabelReady,
 		LastID: lastID,
 	}
 }
 
-func NewStopState(previousState State) State {
-	return State{
+func NewStopState(previousState PipelineState) PipelineState {
+	return PipelineState{
 		Label:         StateLabelStop,
 		PreviousState: &previousState,
 	}
 }
 
-func NewReadyState() State {
-	return State{
+func NewReadyState() PipelineState {
+	return PipelineState{
 		Label:  StateLabelReady,
 		LastID: 0,
 	}
 }
 
-func NewPauseState(previousState State) State {
-	return State{
+func NewPauseState(previousState PipelineState) PipelineState {
+	return PipelineState{
 		Label:         StateLabelPause,
 		PreviousState: &previousState,
 	}
 }
 
-func NewInitState() State {
-	return State{
+func NewInitState() PipelineState {
+	return PipelineState{
 		Label: StateLabelInit,
 	}
 }

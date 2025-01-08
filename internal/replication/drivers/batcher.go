@@ -7,21 +7,21 @@ import (
 
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 	"github.com/pkg/errors"
 	"go.vallahaye.net/batcher"
 )
 
 type Batcher struct {
 	Driver
-	batcher  *batcher.Batcher[ingester.LogWithLedger, error]
+	batcher  *batcher.Batcher[replication.LogWithLedger, error]
 	cancel   context.CancelFunc
 	stopped  chan struct{}
 	batching Batching
 	logger   logging.Logger
 }
 
-func (b *Batcher) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
+func (b *Batcher) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
 	itemsErrors := make([]error, len(logs))
 	for ind, log := range logs {
 		b.logger.WithFields(map[string]any{
@@ -42,11 +42,11 @@ func (b *Batcher) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([
 	return itemsErrors, nil
 }
 
-func (b *Batcher) commit(ctx context.Context, logs batcher.Operations[ingester.LogWithLedger, error]) {
+func (b *Batcher) commit(ctx context.Context, logs batcher.Operations[replication.LogWithLedger, error]) {
 	b.logger.WithFields(map[string]any{
 		"len": len(logs),
 	}).Info("commit batch")
-	itemsErrors, err := b.Driver.Accept(ctx, collectionutils.Map(logs, func(from *batcher.Operation[ingester.LogWithLedger, error]) ingester.LogWithLedger {
+	itemsErrors, err := b.Driver.Accept(ctx, collectionutils.Map(logs, func(from *batcher.Operation[replication.LogWithLedger, error]) replication.LogWithLedger {
 		return from.Value
 	})...)
 	if err != nil {
@@ -101,8 +101,8 @@ func newBatcher(connector Driver, batching Batching, logger logging.Logger) *Bat
 	}
 	ret.batcher = batcher.New(
 		ret.commit,
-		batcher.WithTimeout[ingester.LogWithLedger, error](batching.FlushInterval),
-		batcher.WithMaxSize[ingester.LogWithLedger, error](batching.MaxItems),
+		batcher.WithTimeout[replication.LogWithLedger, error](batching.FlushInterval),
+		batcher.WithMaxSize[replication.LogWithLedger, error](batching.MaxItems),
 	)
 	return ret
 }

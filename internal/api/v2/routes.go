@@ -7,7 +7,7 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/controller/system"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -18,7 +18,7 @@ import (
 )
 
 func NewRouter(
-	systemController system.Controller,
+	systemController systemcontroller.Controller,
 	authenticator auth.Authenticator,
 	version string,
 	opts ...RouterOption,
@@ -70,16 +70,16 @@ func NewRouter(
 				router.Get("/stats", readStats)
 
 				router.Route("/pipelines", func(router chi.Router) {
-					router.Get("/", listPipelines())
-					router.Post("/", createPipeline())
+					router.Get("/", listPipelines(systemController))
+					router.Post("/", createPipeline(systemController))
 					router.Route("/{pipelineID}", func(router chi.Router) {
-						router.Get("/", readPipeline())
-						router.Delete("/", deletePipeline())
-						router.Post("/start", startPipeline())
-						router.Post("/stop", stopPipeline())
-						router.Post("/reset", resetPipeline())
-						router.Post("/pause", pausePipeline())
-						router.Post("/resume", resumePipeline())
+						router.Get("/", readPipeline(systemController))
+						router.Delete("/", deletePipeline(systemController))
+						router.Post("/start", startPipeline(systemController))
+						router.Post("/stop", stopPipeline(systemController))
+						router.Post("/reset", resetPipeline(systemController))
+						router.Post("/pause", pausePipeline(systemController))
+						router.Post("/resume", resumePipeline(systemController))
 					})
 				})
 
@@ -159,6 +159,6 @@ var defaultRouterOptions = []RouterOption{
 	}),
 	WithPaginationConfig(common.PaginationConfig{
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
-		MaxPageSize: bunpaginate.MaxPageSize,
+		MaxPageSize:     bunpaginate.MaxPageSize,
 	}),
 }

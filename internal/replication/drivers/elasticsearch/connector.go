@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/formancehq/go-libs/v2/logging"
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/olivere/elastic/v7"
 	"github.com/pkg/errors"
@@ -52,7 +52,7 @@ func (connector *Connector) Client() *elastic.Client {
 	return connector.client
 }
 
-func (connector *Connector) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
+func (connector *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
 
 	bulk := connector.client.Bulk().Refresh("true")
 	for _, log := range logs {

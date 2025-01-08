@@ -3,8 +3,9 @@ package v2
 import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/auth"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"github.com/google/uuid"
 
 	sharedapi "github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -44,13 +44,13 @@ func TestCreatePipeline(t *testing.T) {
 		},
 		{
 			name:                  "connector not available",
-			returnError:           controller.NewErrConnectorNotFound("connector1"),
+			returnError:           systemcontroller.NewErrConnectorNotFound("connector1"),
 			expectErrorStatusCode: http.StatusBadRequest,
 			expectErrorCode:       "VALIDATION",
 		},
 		{
 			name:                  "pipeline actually used",
-			returnError:           controller.NewErrInUsePipeline(""),
+			returnError:           ledgercontroller.NewErrInUsePipeline(""),
 			expectErrorStatusCode: http.StatusBadRequest,
 			expectErrorCode:       "VALIDATION",
 		},
@@ -68,18 +68,23 @@ func TestCreatePipeline(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
-
-			pipelineConfiguration := ingester.PipelineConfiguration{
+			pipelineConfiguration := ledger.PipelineConfiguration{
 				Ledger:      "module1",
 				ConnectorID: uuid.NewString(),
 			}
-			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines", sharedapi.Buffer(t, pipelineConfiguration))
+			req := httptest.NewRequest(http.MethodPost, "/"+pipelineConfiguration.Ledger+"/pipelines", sharedapi.Buffer(t, pipelineConfiguration))
 			req = req.WithContext(ctx)
 			rec := httptest.NewRecorder()
 
-			ledgerController.EXPECT().
+			systemController.EXPECT().
 				CreatePipeline(gomock.Any(), pipelineConfiguration).
 				Return(nil, testCase.returnError)
+
+			ledgerController.EXPECT().
+				Info().
+				Return(ledger.Ledger{
+					Name: pipelineConfiguration.Ledger,
+				})
 
 			router.ServeHTTP(rec, req)
 

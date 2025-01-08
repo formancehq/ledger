@@ -2,7 +2,7 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/auth"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/http/httptest"
@@ -51,16 +51,16 @@ func TestReadPipeline(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			systemController, ledgerController := newTestingSystemController(t, true)
+			systemController, _ := newTestingSystemController(t, true)
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 			
 			connectorID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines/"+connectorID, nil)
 			rec := httptest.NewRecorder()
 
-			ledgerController.EXPECT().
+			systemController.EXPECT().
 				GetPipeline(gomock.Any(), connectorID).
-				Return(&ingester.Pipeline{}, testCase.returnError)
+				Return(&ledger.Pipeline{}, testCase.returnError)
 
 			router.ServeHTTP(rec, req)
 

@@ -1,16 +1,15 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"
 )
 
-func listPipelines() func(w http.ResponseWriter, r *http.Request) {
+func listPipelines(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		l := common.LedgerFromContext(r.Context())
-		pipelines, err := l.ListPipelines(r.Context())
+		pipelines, err := systemController.ListPipelines(r.Context())
 		if err != nil {
 			api.InternalServerError(w, r, err)
 			return

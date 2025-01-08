@@ -50,7 +50,7 @@ func TestElasticSearchConnector(t *testing.T) {
 				Transaction: ledger.NewTransaction(),
 			})
 			log.ID = i
-			itemsErrors, err := connector.Accept(ctx, ingester.NewLogWithLedger(ledgerName, log))
+			itemsErrors, err := connector.Accept(ctx, replication.NewLogWithLedger(ledgerName, log))
 			require.NoError(t, err)
 			require.Len(t, itemsErrors, 1)
 			require.Nil(t, itemsErrors[0])

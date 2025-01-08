@@ -11,7 +11,6 @@ import (
 	sharedapi "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/require"
@@ -22,11 +21,11 @@ func TestResumePipeline(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
-		name             string
-		returnError      error
-		expectSuccess    bool
-		expectErrorCode  string
-		expectCode int
+		name            string
+		returnError     error
+		expectSuccess   bool
+		expectErrorCode string
+		expectCode      int
 	}
 
 	for _, testCase := range []testCase{
@@ -35,42 +34,42 @@ func TestResumePipeline(t *testing.T) {
 			expectSuccess: true,
 		},
 		{
-			name:             "pipeline not in paused state",
-			expectErrorCode:  "VALIDATION",
-			expectCode: http.StatusBadRequest,
-			returnError:      &ledgercontroller.ErrInvalidStateSwitch{},
+			name:            "pipeline not in paused state",
+			expectErrorCode: "VALIDATION",
+			expectCode:      http.StatusBadRequest,
+			returnError:     &ledgercontroller.ErrInvalidStateSwitch{},
 		},
 		{
-			name:             "undefined error",
-			expectErrorCode:  "INTERNAL",
-			expectCode: http.StatusInternalServerError,
-			returnError:      errors.New("unknown error"),
+			name:            "undefined error",
+			expectErrorCode: "INTERNAL",
+			expectCode:      http.StatusInternalServerError,
+			returnError:     errors.New("unknown error"),
 		},
 		{
-			name:             "pipeline not found",
-			expectErrorCode:  "NOT_FOUND",
-			expectCode: http.StatusNotFound,
-			returnError:      ledgercontroller.ErrPipelineNotFound(""),
+			name:            "pipeline not found",
+			expectErrorCode: "NOT_FOUND",
+			expectCode:      http.StatusNotFound,
+			returnError:     ledgercontroller.ErrPipelineNotFound(""),
 		},
 		{
-			name:             "pipeline actually used",
-			returnError:      controller.NewErrInUsePipeline(""),
-			expectCode: http.StatusBadRequest,
-			expectErrorCode:  "VALIDATION",
+			name:            "pipeline actually used",
+			returnError:     ledgercontroller.NewErrInUsePipeline(""),
+			expectCode:      http.StatusBadRequest,
+			expectErrorCode: "VALIDATION",
 		},
 	} {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			systemController, ledgerController := newTestingSystemController(t, true)
+			systemController, _ := newTestingSystemController(t, true)
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
-			
+
 			connectorID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+connectorID+"/resume", nil)
 			rec := httptest.NewRecorder()
 
-			ledgerController.EXPECT().
+			systemController.EXPECT().
 				ResumePipeline(gomock.Any(), connectorID).
 				Return(testCase.returnError)
 

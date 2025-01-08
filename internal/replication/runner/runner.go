@@ -2,7 +2,7 @@ package runner
 
 import (
 	"context"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	"sync"
 	"time"
 
@@ -58,7 +58,7 @@ func (runner *Runner) stopConnector(ctx context.Context, connector drivers.Drive
 	}
 }
 
-func (runner *Runner) StartPipeline(ctx context.Context, pipeline ingester.Pipeline) (*PipelineHandler, error) {
+func (runner *Runner) StartPipeline(ctx context.Context, pipeline ledger.Pipeline) (*PipelineHandler, error) {
 	runner.mu.Lock()
 	defer runner.mu.Unlock()
 
@@ -83,7 +83,7 @@ func (runner *Runner) StartPipeline(ctx context.Context, pipeline ingester.Pipel
 		return nil, err
 	}
 
-	if pipeline.State.Label == ingester.StateLabelStop {
+	if pipeline.State.Label == ledger.StateLabelStop {
 		pipeline.State = *pipeline.State.PreviousState
 	}
 
@@ -121,7 +121,7 @@ func (runner *Runner) StartPipeline(ctx context.Context, pipeline ingester.Pipel
 	return pipelineHandler, nil
 }
 
-func (runner *Runner) listenSubscription(ctx context.Context, pipeline ingester.Pipeline, subscription <-chan ingester.State) func() {
+func (runner *Runner) listenSubscription(ctx context.Context, pipeline ledger.Pipeline, subscription <-chan ledger.PipelineState) func() {
 	return func() {
 		for state := range subscription {
 			if err := runner.systemStore.StorePipelineState(ctx, pipeline.ID, state); err != nil {
@@ -161,15 +161,13 @@ func (runner *Runner) Run(ctx context.Context) error {
 	close(runner.readyChannel)
 
 	runner.logger.Info("Waiting stop or error")
-	select {
-	case signalChannel := <-runner.stopChannel:
-		runner.logger.Debugf("got stop signal")
-		runner.stopPipelines(ctx)
-		runner.pipelinesWaitGroup.Wait()
-		close(signalChannel)
+	signalChannel := <-runner.stopChannel
+	runner.logger.Debugf("got stop signal")
+	runner.stopPipelines(ctx)
+	runner.pipelinesWaitGroup.Wait()
+	close(signalChannel)
 
-		return nil
-	}
+	return nil
 }
 
 func (runner *Runner) GetPipeline(id string) *PipelineHandler {

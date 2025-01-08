@@ -1,4 +1,4 @@
-package ingester
+package replication
 
 import (
 	ledger "github.com/formancehq/ledger/internal"

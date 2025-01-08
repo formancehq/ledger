@@ -11,7 +11,6 @@ import (
 	sharedapi "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -56,7 +55,7 @@ func TestStopPipeline(t *testing.T) {
 		},
 		{
 			name:            "pipeline actually used",
-			returnError:     controller.NewErrInUsePipeline(""),
+			returnError:     ledgercontroller.NewErrInUsePipeline(""),
 			expectCode:      http.StatusBadRequest,
 			expectErrorCode: "VALIDATION",
 		},
@@ -65,7 +64,7 @@ func TestStopPipeline(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			systemController, ledgerController := newTestingSystemController(t, true)
+			systemController, _ := newTestingSystemController(t, true)
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 			connectorID := uuid.NewString()
@@ -73,7 +72,7 @@ func TestStopPipeline(t *testing.T) {
 			req = req.WithContext(ctx)
 			rec := httptest.NewRecorder()
 
-			ledgerController.EXPECT().
+			systemController.EXPECT().
 				StopPipeline(gomock.Any(), connectorID).
 				Return(testCase.returnError)
 

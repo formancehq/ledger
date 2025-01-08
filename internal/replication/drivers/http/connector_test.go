@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"net/http"
 	"net/http/httptest"
@@ -19,9 +19,9 @@ import (
 func TestHTTPConnector(t *testing.T) {
 	t.Parallel()
 
-	messages := make(chan []ingester.LogWithLedger, 1)
+	messages := make(chan []replication.LogWithLedger, 1)
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		newMessages := make([]ingester.LogWithLedger, 0)
+		newMessages := make([]replication.LogWithLedger, 0)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&newMessages))
 
 		messages <- newMessages
@@ -39,9 +39,9 @@ func TestHTTPConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]ingester.LogWithLedger, numberOfLogs)
+	logs := make([]replication.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
-		logs[i] = ingester.NewLogWithLedger(
+		logs[i] = replication.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
 			ledger.NewLog(ledger.CreatedTransaction{
 				Transaction: ledger.NewTransaction(),

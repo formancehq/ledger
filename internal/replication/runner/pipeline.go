@@ -10,20 +10,20 @@ import (
 	"sync"
 	"time"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 var (
-	DefaultPullRetryPeriod    = 10 * time.Second
+	DefaultPollRetryPeriod    = 10 * time.Second
 	DefaultPushRetryPeriod    = 10 * time.Second
 	DefaultStateRetryInterval = 5 * time.Second
 )
 
 type PipelineHandlerConfig struct {
-	ModulePullRetryPeriod    time.Duration
+	PollRetryPeriod          time.Duration
 	ConnectorPushRetryPeriod time.Duration
 	StateRetryInterval       time.Duration
 }
@@ -32,7 +32,7 @@ type PipelineOption func(config *PipelineHandlerConfig)
 
 func WithModulePullPeriod(v time.Duration) PipelineOption {
 	return func(config *PipelineHandlerConfig) {
-		config.ModulePullRetryPeriod = v
+		config.PollRetryPeriod = v
 	}
 }
 
@@ -50,7 +50,7 @@ func WithStateRetryInterval(v time.Duration) PipelineOption {
 
 var (
 	defaultPipelineOptions = []PipelineOption{
-		WithModulePullPeriod(DefaultPullRetryPeriod),
+		WithModulePullPeriod(DefaultPollRetryPeriod),
 		WithStateRetryInterval(DefaultStateRetryInterval),
 		WithConnectorPushRetryPeriod(DefaultPushRetryPeriod),
 	}
@@ -63,8 +63,8 @@ type PipelineHandler struct {
 	stopChannel    chan chan error
 	store          LogFetcher
 	connector      drivers.Driver
-	expectedState  *Signal[ledger.State]
-	activeState    *Signal[ledger.State]
+	expectedState  *Signal[ledger.PipelineState]
+	activeState    *Signal[ledger.PipelineState]
 	pipelineConfig PipelineHandlerConfig
 	stateHandler   *StateHandler
 	logger         logging.Logger
@@ -128,7 +128,7 @@ func (p *PipelineHandler) Stop() error {
 	return nil
 }
 
-func (p *PipelineHandler) switchToState(ctx context.Context, newState ledger.State) bool {
+func (p *PipelineHandler) switchToState(ctx context.Context, newState ledger.PipelineState) bool {
 	if p.activeState.Actual() != nil &&
 		newState.Label == p.activeState.Actual().Label {
 		return true
@@ -138,7 +138,7 @@ func (p *PipelineHandler) switchToState(ctx context.Context, newState ledger.Sta
 	var fn func(ctx context.Context, readyChan chan struct{}) error
 	switch newState.Label {
 	case ledger.StateLabelInit:
-		fn = p.run
+		fn = p.init
 	case ledger.StateLabelReady:
 		fn = p.run
 	case ledger.StateLabelPause:
@@ -189,10 +189,15 @@ func (p *PipelineHandler) Run(ctx context.Context) {
 	}
 }
 
-func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
+func (p *PipelineHandler) init(_ context.Context, ready chan struct{}) error {
 	close(ready)
 
-	p.activeState.Signal(ledger.NewReadyState())
+	p.expectedState.Signal(ledger.NewReadyState())
+	return nil
+}
+
+func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
+	close(ready)
 
 	wg := sync.WaitGroup{}
 	lastID := p.expectedState.Actual().LastID
@@ -210,7 +215,7 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-time.After(p.pipelineConfig.ModulePullRetryPeriod):
+			case <-time.After(p.pipelineConfig.PollRetryPeriod):
 				continue
 			}
 		}
@@ -220,7 +225,7 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 			go func() {
 				defer wg.Done()
 				for {
-					itemsErrors, err := p.connector.Accept(ctx, ingester.LogWithLedger{
+					itemsErrors, err := p.connector.Accept(ctx, replication.LogWithLedger{
 						Log:    log,
 						Ledger: p.pipeline.Ledger,
 					})
@@ -247,7 +252,7 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-time.After(p.pipelineConfig.ModulePullRetryPeriod):
+			case <-time.After(p.pipelineConfig.PollRetryPeriod):
 				continue
 			}
 		}
@@ -260,19 +265,15 @@ func (p *PipelineHandler) run(ctx context.Context, ready chan struct{}) error {
 func (p *PipelineHandler) pause(ctx context.Context, ready chan struct{}) error {
 	close(ready)
 
-	select {
-	case <-ctx.Done():
-		return nil
-	}
+	<-ctx.Done()
+	return nil
 }
 
 func (p *PipelineHandler) stop(ctx context.Context, ready chan struct{}) error {
 	close(ready)
 
-	select {
-	case <-ctx.Done():
-		return nil
-	}
+	<-ctx.Done()
+	return nil
 }
 
 func (p *PipelineHandler) Shutdown(ctx context.Context) error {
@@ -292,7 +293,7 @@ func (p *PipelineHandler) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (p *PipelineHandler) GetActiveState() *Signal[ledger.State] {
+func (p *PipelineHandler) GetActiveState() *Signal[ledger.PipelineState] {
 	if p == nil {
 		return nil
 	}
@@ -317,7 +318,7 @@ func NewPipelineHandler(
 		store:          store,
 		connector:      connector,
 		expectedState:  NewSignal(&pipeline.State),
-		activeState:    NewSignal[ledger.State](nil),
+		activeState:    NewSignal[ledger.PipelineState](nil),
 		pipelineConfig: config,
 		logger: logger.
 			WithField("component", "pipeline").

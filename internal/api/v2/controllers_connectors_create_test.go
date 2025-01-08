@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	sharedapi "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/auth"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	"go.uber.org/mock/gomock"
 	"net/http"
 	"net/http/httptest"
@@ -28,26 +28,26 @@ func TestCreateConnector(t *testing.T) {
 		returnError            error
 		expectErrorStatusCode  int
 		expectErrorCode        string
-		connectorConfiguration ingester.ConnectorConfiguration
+		connectorConfiguration ledger.ConnectorConfiguration
 	}
 	for _, testCase := range []testCase{
 		{
 			name: "nominal",
-			connectorConfiguration: ingester.ConnectorConfiguration{
+			connectorConfiguration: ledger.ConnectorConfiguration{
 				Driver: "connector1",
 				Config: json.RawMessage("{}"),
 			},
 		},
 		{
 			name: "invalid connector configuration",
-			connectorConfiguration: ingester.ConnectorConfiguration{
+			connectorConfiguration: ledger.ConnectorConfiguration{
 				Driver: "connector1",
 				Config: json.RawMessage(`{"batching":{"flushInterval":"-1"}}`),
 			},
 		},
 		{
 			name: "unknown error",
-			connectorConfiguration: ingester.ConnectorConfiguration{
+			connectorConfiguration: ledger.ConnectorConfiguration{
 				Driver: "connector1",
 				Config: json.RawMessage("{}"),
 			},

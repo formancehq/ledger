@@ -43,10 +43,10 @@ func (m *MockPipeline) EXPECT() *MockPipelineMockRecorder {
 }
 
 // GetActiveState mocks base method.
-func (m *MockPipeline) GetActiveState() *runner.Signal[ledger.State] {
+func (m *MockPipeline) GetActiveState() *runner.Signal[ledger.PipelineState] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetActiveState")
-	ret0, _ := ret[0].(*runner.Signal[ledger.State])
+	ret0, _ := ret[0].(*runner.Signal[ledger.PipelineState])
 	return ret0
 }
 

@@ -1,18 +1,17 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/pkg/errors"
 )
 
-func stopPipeline() func(w http.ResponseWriter, r *http.Request) {
+func stopPipeline(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		l := common.LedgerFromContext(r.Context())
-		if err := l.StopPipeline(r.Context(), getPipelineID(r)); err != nil {
+		if err := systemController.StopPipeline(r.Context(), getPipelineID(r)); err != nil {
 			switch {
 			case errors.Is(err, ledgercontroller.ErrPipelineNotFound("")):
 				api.NotFound(w, err)

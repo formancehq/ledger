@@ -15,19 +15,10 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
 
 type Controller interface {
+	Info() ledger.Ledger
 	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error)
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
-
-	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
-	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
-	CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error)
-	DeletePipeline(ctx context.Context, id string) error
-	StartPipeline(ctx context.Context, id string) error
-	PausePipeline(ctx context.Context, id string) error
-	ResumePipeline(ctx context.Context, id string) error
-	ResetPipeline(ctx context.Context, id string) error
-	StopPipeline(ctx context.Context, id string) error
 
 	// IsDatabaseUpToDate check if the ledger store is up to date, including the bucket and the ledger specifics
 	// It returns true if up to date

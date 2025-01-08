@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	sharedapi "github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/pkg/errors"
 
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func TestDeletePipeline(t *testing.T) {
 		},
 		{
 			name:                  "pipeline actually used",
-			returnError:           controller.NewErrInUsePipeline(""),
+			returnError:           ledgercontroller.NewErrInUsePipeline(""),
 			expectErrorStatusCode: http.StatusBadRequest,
 			expectErrorCode:       "VALIDATION",
 		},
@@ -55,14 +54,14 @@ func TestDeletePipeline(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			systemController, ledgerController := newTestingSystemController(t, true)
+			systemController, _ := newTestingSystemController(t, true)
 			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 			connectorID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodDelete, "/xxx/pipelines/"+connectorID, nil)
 			rec := httptest.NewRecorder()
 
-			ledgerController.EXPECT().
+			systemController.EXPECT().
 				DeletePipeline(gomock.Any(), connectorID).
 				Return(testCase.returnError)
 

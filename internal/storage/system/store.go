@@ -15,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -26,6 +25,10 @@ import (
 
 const (
 	SchemaSystem = "_system"
+)
+
+var (
+	ErrLedgerAlreadyExists = errors.New("ledger already exists")
 )
 
 type DefaultStore struct {
@@ -62,7 +65,7 @@ func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error
 		Exec(ctx)
 	if err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return systemcontroller.ErrLedgerAlreadyExists
+			return ErrLedgerAlreadyExists
 		}
 		return postgres.ResolveError(err)
 	}
@@ -277,7 +280,7 @@ func (p *DefaultStore) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipel
 	return collectionutils.Map(ret, Pipeline.ToCore), nil
 }
 
-func (p *DefaultStore) StoreState(ctx context.Context, id string, state ledger.State) error {
+func (p *DefaultStore) StoreState(ctx context.Context, id string, state ledger.PipelineState) error {
 	ret, err := p.db.NewUpdate().
 		Model(&Pipeline{}).
 		Where("id = ?", id).
@@ -297,23 +300,17 @@ func (p *DefaultStore) StoreState(ctx context.Context, id string, state ledger.S
 	return nil
 }
 
-func NewDefaultStore(db *bun.DB) *DefaultStore {
-	return &DefaultStore{
-		db: db,
-	}
-}
-
 var _ controller.Store = (*DefaultStore)(nil)
 var _ drivers.Store = (*DefaultStore)(nil)
 
 type Pipeline struct {
 	bun.BaseModel `bun:"table:pipelines"`
 
-	ID        string       `bun:"id,pk"`
-	CreatedAt time.Time    `bun:"created_at"`
-	State     ledger.State `bun:"state,type:jsonb"`
-	Module    string       `bun:"module"`
-	Connector string       `bun:"connector_id"`
+	ID        string               `bun:"id,pk"`
+	CreatedAt time.Time            `bun:"created_at"`
+	State     ledger.PipelineState `bun:"state,type:jsonb"`
+	Module    string               `bun:"module"`
+	Connector string               `bun:"connector_id"`
 }
 
 type Connector struct {

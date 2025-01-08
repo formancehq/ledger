@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	ledger "github.com/formancehq/ledger/internal"
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -30,9 +30,9 @@ func TestNoOpConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]ingester.LogWithLedger, numberOfLogs)
+	logs := make([]replication.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
-		logs[i] = ingester.NewLogWithLedger(
+		logs[i] = replication.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
 			ledger.NewLog(ledger.CreatedTransaction{
 				Transaction: ledger.NewTransaction(),

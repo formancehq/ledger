@@ -1,8 +1,8 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 
 	"github.com/pkg/errors"
@@ -10,10 +10,9 @@ import (
 	"github.com/formancehq/go-libs/v2/api"
 )
 
-func deletePipeline() func(w http.ResponseWriter, r *http.Request) {
+func deletePipeline(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		l := common.LedgerFromContext(r.Context())
-		if err := l.DeletePipeline(r.Context(), getPipelineID(r)); err != nil {
+		if err := systemController.DeletePipeline(r.Context(), getPipelineID(r)); err != nil {
 			switch {
 			case errors.Is(err, ledgercontroller.ErrPipelineNotFound("")):
 				api.NotFound(w, err)

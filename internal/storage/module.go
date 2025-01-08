@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.uber.org/fx"
 )
 
@@ -13,6 +14,10 @@ const HealthCheckName = `storage-driver-up-to-date`
 
 func NewFXModule(autoUpgrade bool) fx.Option {
 	ret := []fx.Option{
+		systemstore.NewFXModule(),
+		fx.Provide(func(store *systemstore.DefaultStore) driver.SystemStore {
+			return store
+		}),
 		driver.NewFXModule(),
 		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
 			hasReachedMinimalVersion := false

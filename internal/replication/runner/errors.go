@@ -2,7 +2,7 @@ package runner
 
 import (
 	"fmt"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
@@ -24,8 +24,8 @@ func NewErrPipelineNotFound(id string) ErrPipelineNotFound {
 
 type ErrInvalidStateSwitch struct {
 	id        string
-	fromState ingester.StateLabel
-	toState   ingester.StateLabel
+	fromState ledger.PipelineStateLabel
+	toState   ledger.PipelineStateLabel
 }
 
 func (e ErrInvalidStateSwitch) Error() string {
@@ -42,7 +42,7 @@ func (e ErrInvalidStateSwitch) Is(err error) bool {
 	return ok
 }
 
-func NewErrInvalidStateSwitch(id string, fromState, toState ingester.StateLabel) ErrInvalidStateSwitch {
+func NewErrInvalidStateSwitch(id string, fromState, toState ledger.PipelineStateLabel) ErrInvalidStateSwitch {
 	return ErrInvalidStateSwitch{
 		id:        id,
 		fromState: fromState,

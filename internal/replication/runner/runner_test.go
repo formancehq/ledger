@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -108,7 +108,7 @@ func TestRunner(t *testing.T) {
 	require.NoError(t, err)
 
 	connector.EXPECT().
-		Accept(gomock.Any(), ingester.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
+		Accept(gomock.Any(), replication.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
 		Return([]error{nil}, nil)
 
 	require.Eventually(t, func() bool {

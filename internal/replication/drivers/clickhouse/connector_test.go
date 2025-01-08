@@ -40,13 +40,13 @@ func TestClickhouseConnector(t *testing.T) {
 		numberOfLogs    = 50
 		numberOfModules = 2
 	)
-	logs := make([]ingester.LogWithLedger, numberOfLogs)
+	logs := make([]replication.LogWithLedger, numberOfLogs)
 	for i := 0; i < numberOfLogs; i++ {
 		log := ledger.NewLog(ledger.CreatedTransaction{
 			Transaction: ledger.NewTransaction(),
 		})
 		log.ID = i
-		logs[i] = ingester.NewLogWithLedger(
+		logs[i] = replication.NewLogWithLedger(
 			fmt.Sprintf("module%d", i%numberOfModules),
 			log,
 		)

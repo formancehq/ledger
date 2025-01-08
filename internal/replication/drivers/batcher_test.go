@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
@@ -64,7 +64,7 @@ func TestBatcher(t *testing.T) {
 	logger := logging.Testing()
 	ctx := context.TODO()
 
-	log := ingester.NewLogWithLedger("module1", ledger.Log{})
+	log := replication.NewLogWithLedger("module1", ledger.Log{})
 
 	connector.EXPECT().Start(gomock.Any()).Return(nil)
 	connector.EXPECT().Stop(gomock.Any()).Return(nil)

@@ -2,7 +2,7 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/auth"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,19 +16,19 @@ import (
 func TestListPipelines(t *testing.T) {
 	t.Parallel()
 
-	systemController, ledgerController := newTestingSystemController(t, true)
+	systemController, _ := newTestingSystemController(t, true)
 	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines", nil)
 	rec := httptest.NewRecorder()
 
-	pipelines := []ingester.Pipeline{
-		ingester.NewPipeline(ingester.NewPipelineConfiguration("module1", "connector1"), ingester.NewReadyState()),
-		ingester.NewPipeline(ingester.NewPipelineConfiguration("module2", "connector2"), ingester.NewReadyState()),
+	pipelines := []ledger.Pipeline{
+		ledger.NewPipeline(ledger.NewPipelineConfiguration("module1", "connector1"), ledger.NewReadyState()),
+		ledger.NewPipeline(ledger.NewPipelineConfiguration("module2", "connector2"), ledger.NewReadyState()),
 	}
-	ledgerController.EXPECT().
+	systemController.EXPECT().
 		ListPipelines(gomock.Any()).
-		Return(&bunpaginate.Cursor[ingester.Pipeline]{
+		Return(&bunpaginate.Cursor[ledger.Pipeline]{
 			Data: pipelines,
 		}, nil)
 

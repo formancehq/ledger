@@ -22,6 +22,6 @@ type StorageDriver interface {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package runner . SystemStore
 
 type SystemStore interface {
-	StorePipelineState(ctx context.Context, id string, state ledger.State) error
+	StorePipelineState(ctx context.Context, id string, state ledger.PipelineState) error
 	ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error)
 }

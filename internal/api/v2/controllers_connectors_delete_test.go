@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/logging"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/replication/controller"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
@@ -35,13 +35,13 @@ func TestDeleteConnector(t *testing.T) {
 		},
 		{
 			name:                  "not found",
-			returnError:           controller.NewErrConnectorNotFound(""),
+			returnError:           systemcontroller.NewErrConnectorNotFound(""),
 			expectErrorStatusCode: http.StatusNotFound,
 			expectErrorCode:       "NOT_FOUND",
 		},
 		{
 			name:                  "connector used",
-			returnError:           controller.NewErrConnectorUsed(""),
+			returnError:           systemcontroller.NewErrConnectorUsed(""),
 			expectErrorStatusCode: http.StatusBadRequest,
 			expectErrorCode:       "VALIDATION",
 		},

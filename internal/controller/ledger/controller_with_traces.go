@@ -41,6 +41,10 @@ type ControllerWithTraces struct {
 	deleteAccountMetadataHistogram     metric.Int64Histogram
 }
 
+func (c *ControllerWithTraces) Info() ledger.Ledger {
+	return c.underlying.Info()
+}
+
 func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter metric.Meter) *ControllerWithTraces {
 	ret := &ControllerWithTraces{
 		underlying: underlying,

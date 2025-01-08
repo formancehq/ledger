@@ -1,7 +1,7 @@
 package v2
 
 import (
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -12,12 +12,17 @@ import (
 	"github.com/formancehq/go-libs/v2/api"
 )
 
-func createPipeline() func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		common.WithBody[ingester.PipelineConfiguration](w, r, func(req ingester.PipelineConfiguration) {
-			l := common.LedgerFromContext(r.Context())
+type PipelineConfiguration struct {
+	ConnectorID string `json:"connectorID"`
+}
 
-			p, err := l.CreatePipeline(r.Context(), req)
+func createPipeline(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		common.WithBody[PipelineConfiguration](w, r, func(req PipelineConfiguration) {
+			p, err := systemController.CreatePipeline(r.Context(), ledger.PipelineConfiguration{
+				ConnectorID: req.ConnectorID,
+				Ledger:      common.LedgerFromContext(r.Context()).Info().Name,
+			})
 			if err != nil {
 				switch {
 				case errors.Is(err, systemcontroller.ErrConnectorNotFound("")) ||

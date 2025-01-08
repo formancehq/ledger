@@ -2,7 +2,7 @@ package controller
 
 import (
 	"context"
-	ingester "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 
 	"github.com/formancehq/ledger/internal/replication/runner"
 )
@@ -13,13 +13,13 @@ type Pipeline interface {
 	Resume() error
 	Reset() error
 	Stop() error
-	GetActiveState() *runner.Signal[ingester.State]
+	GetActiveState() *runner.Signal[ledger.PipelineState]
 }
 
 //go:generate mockgen -source runner.go -destination runner_generated.go -package controller . Runner
 type Runner interface {
 	GetPipeline(id string) (Pipeline, bool)
-	StartPipeline(ctx context.Context, pipeline ingester.Pipeline) (Pipeline, error)
+	StartPipeline(ctx context.Context, pipeline ledger.Pipeline) (Pipeline, error)
 }
 
 type defaultRunner struct {
@@ -31,7 +31,7 @@ func (d *defaultRunner) GetPipeline(id string) (Pipeline, bool) {
 	return ret, ret != nil
 }
 
-func (d *defaultRunner) StartPipeline(ctx context.Context, pipeline ingester.Pipeline) (Pipeline, error) {
+func (d *defaultRunner) StartPipeline(ctx context.Context, pipeline ledger.Pipeline) (Pipeline, error) {
 	return d.runner.StartPipeline(ctx, pipeline)
 }
 

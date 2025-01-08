@@ -64,11 +64,18 @@ import "github.com/formancehq/ledger/internal"
 - [type Moves](<#Moves>)
   - [func \(m Moves\) ComputePostCommitEffectiveVolumes\(\) PostCommitVolumes](<#Moves.ComputePostCommitEffectiveVolumes>)
 - [type Pipeline](<#Pipeline>)
-  - [func NewPipeline\(pipelineConfiguration PipelineConfiguration, state State\) Pipeline](<#NewPipeline>)
+  - [func NewPipeline\(pipelineConfiguration PipelineConfiguration, state PipelineState\) Pipeline](<#NewPipeline>)
   - [func \(p Pipeline\) String\(\) string](<#Pipeline.String>)
 - [type PipelineConfiguration](<#PipelineConfiguration>)
-  - [func NewPipelineConfiguration\(ledger, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
+  - [func NewPipelineConfiguration\(ledgerID int, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
   - [func \(p PipelineConfiguration\) String\(\) string](<#PipelineConfiguration.String>)
+- [type PipelineState](<#PipelineState>)
+  - [func NewInitState\(\) PipelineState](<#NewInitState>)
+  - [func NewPauseState\(previousState PipelineState\) PipelineState](<#NewPauseState>)
+  - [func NewReadyState\(\) PipelineState](<#NewReadyState>)
+  - [func NewReadyStateWithID\(lastID int\) PipelineState](<#NewReadyStateWithID>)
+  - [func NewStopState\(previousState PipelineState\) PipelineState](<#NewStopState>)
+  - [func \(s PipelineState\) String\(\) string](<#PipelineState.String>)
 - [type PostCommitVolumes](<#PostCommitVolumes>)
   - [func \(a PostCommitVolumes\) AddInput\(account, asset string, input \*big.Int\)](<#PostCommitVolumes.AddInput>)
   - [func \(a PostCommitVolumes\) AddOutput\(account, asset string, output \*big.Int\)](<#PostCommitVolumes.AddOutput>)
@@ -85,13 +92,6 @@ import "github.com/formancehq/ledger/internal"
 - [type SavedMetadata](<#SavedMetadata>)
   - [func \(s SavedMetadata\) Type\(\) LogType](<#SavedMetadata.Type>)
   - [func \(s \*SavedMetadata\) UnmarshalJSON\(data \[\]byte\) error](<#SavedMetadata.UnmarshalJSON>)
-- [type State](<#State>)
-  - [func NewInitState\(\) State](<#NewInitState>)
-  - [func NewPauseState\(previousState State\) State](<#NewPauseState>)
-  - [func NewReadyState\(\) State](<#NewReadyState>)
-  - [func NewReadyStateWithID\(lastID int\) State](<#NewReadyStateWithID>)
-  - [func NewStopState\(previousState State\) State](<#NewStopState>)
-  - [func \(s State\) String\(\) string](<#State.String>)
 - [type StateLabel](<#StateLabel>)
 - [type Transaction](<#Transaction>)
   - [func NewTransaction\(\) Transaction](<#NewTransaction>)
@@ -735,9 +735,9 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes
 
 ```go
 type Pipeline struct {
-    CreatedAt time.Time `json:"createdAt"`
-    ID        string    `json:"id"`
-    State     State     `json:"state"`
+    CreatedAt time.Time     `json:"createdAt"`
+    ID        string        `json:"id"`
+    State     PipelineState `json:"state"`
     PipelineConfiguration
 }
 ```
@@ -746,7 +746,7 @@ type Pipeline struct {
 ### func [NewPipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L37>)
 
 ```go
-func NewPipeline(pipelineConfiguration PipelineConfiguration, state State) Pipeline
+func NewPipeline(pipelineConfiguration PipelineConfiguration, state PipelineState) Pipeline
 ```
 
 
@@ -767,7 +767,7 @@ func (p Pipeline) String() string
 
 ```go
 type PipelineConfiguration struct {
-    Ledger      string `json:"ledger"`
+    Ledger      int    `json:"ledgerID"`
     ConnectorID string `json:"connectorID"`
 }
 ```
@@ -776,7 +776,7 @@ type PipelineConfiguration struct {
 ### func [NewPipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L19>)
 
 ```go
-func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
+func NewPipelineConfiguration(ledgerID int, connectorID string) PipelineConfiguration
 ```
 
 
@@ -786,6 +786,76 @@ func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
 
 ```go
 func (p PipelineConfiguration) String() string
+```
+
+
+
+<a name="PipelineState"></a>
+## type [PipelineState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L55-L62>)
+
+
+
+```go
+type PipelineState struct {
+    Label StateLabel `json:"label"`
+    // Cursor can be set only if Label == StateLabelInit
+    LastID int `json:"lastID,omitempty"`
+    // PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
+    PreviousState *PipelineState `json:"previousState,omitempty"`
+    Error         string         `json:"error,omitempty"`
+}
+```
+
+<a name="NewInitState"></a>
+### func [NewInitState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L107>)
+
+```go
+func NewInitState() PipelineState
+```
+
+
+
+<a name="NewPauseState"></a>
+### func [NewPauseState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L100>)
+
+```go
+func NewPauseState(previousState PipelineState) PipelineState
+```
+
+
+
+<a name="NewReadyState"></a>
+### func [NewReadyState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L93>)
+
+```go
+func NewReadyState() PipelineState
+```
+
+
+
+<a name="NewReadyStateWithID"></a>
+### func [NewReadyStateWithID](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L79>)
+
+```go
+func NewReadyStateWithID(lastID int) PipelineState
+```
+
+
+
+<a name="NewStopState"></a>
+### func [NewStopState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L86>)
+
+```go
+func NewStopState(previousState PipelineState) PipelineState
+```
+
+
+
+<a name="PipelineState.String"></a>
+### func \(PipelineState\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L64>)
+
+```go
+func (s PipelineState) String() string
 ```
 
 
@@ -942,76 +1012,6 @@ func (s SavedMetadata) Type() LogType
 
 ```go
 func (s *SavedMetadata) UnmarshalJSON(data []byte) error
-```
-
-
-
-<a name="State"></a>
-## type [State](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L55-L62>)
-
-
-
-```go
-type State struct {
-    Label StateLabel `json:"label"`
-    // Cursor can be set only if Label == StateLabelInit
-    LastID int `json:"lastID,omitempty"`
-    // PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
-    PreviousState *State `json:"previousState,omitempty"`
-    Error         string `json:"error,omitempty"`
-}
-```
-
-<a name="NewInitState"></a>
-### func [NewInitState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L107>)
-
-```go
-func NewInitState() State
-```
-
-
-
-<a name="NewPauseState"></a>
-### func [NewPauseState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L100>)
-
-```go
-func NewPauseState(previousState State) State
-```
-
-
-
-<a name="NewReadyState"></a>
-### func [NewReadyState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L93>)
-
-```go
-func NewReadyState() State
-```
-
-
-
-<a name="NewReadyStateWithID"></a>
-### func [NewReadyStateWithID](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L79>)
-
-```go
-func NewReadyStateWithID(lastID int) State
-```
-
-
-
-<a name="NewStopState"></a>
-### func [NewStopState](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L86>)
-
-```go
-func NewStopState(previousState State) State
-```
-
-
-
-<a name="State.String"></a>
-### func \(State\) [String](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L64>)
-
-```go
-func (s State) String() string
 ```
 
 

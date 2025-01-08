@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/ledger/internal/replication/drivers"
 
@@ -19,7 +19,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan ledger.State) {
+func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan ledger.PipelineState) {
 	t.Helper()
 
 	handler := NewPipelineHandler(
@@ -82,7 +82,7 @@ func TestPipelineReady(t *testing.T) {
 		})
 
 	connector.EXPECT().
-		Accept(gomock.Any(), ingester.NewLogWithLedger("testing", log)).
+		Accept(gomock.Any(), replication.NewLogWithLedger("testing", log)).
 		Return([]error{nil}, nil)
 
 	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
@@ -105,8 +105,8 @@ func TestPipelinePause(t *testing.T) {
 	logFetcher := NewMockLogFetcher(ctrl)
 	connector := drivers.NewMockDriver(ctrl)
 
-	state := ledger.NewPauseState(ledger.NewReadyState())
 	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
+	state := ledger.NewPauseState(ledger.NewReadyState())
 	pipeline := ledger.NewPipeline(pipelineConfiguration, state)
 
 	_, stateListener := runPipeline(t, ctx, pipeline, logFetcher, connector)

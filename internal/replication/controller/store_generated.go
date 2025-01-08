@@ -42,20 +42,6 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
 }
 
-// CreateConnector mocks base method.
-func (m *MockStore) CreateConnector(ctx context.Context, connector ledger.Connector) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateConnector", ctx, connector)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateConnector indicates an expected call of CreateConnector.
-func (mr *MockStoreMockRecorder) CreateConnector(ctx, connector any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateConnector", reflect.TypeOf((*MockStore)(nil).CreateConnector), ctx, connector)
-}
-
 // CreatePipeline mocks base method.
 func (m *MockStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error {
 	m.ctrl.T.Helper()
@@ -68,20 +54,6 @@ func (m *MockStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipeline
 func (mr *MockStoreMockRecorder) CreatePipeline(ctx, pipeline any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*MockStore)(nil).CreatePipeline), ctx, pipeline)
-}
-
-// DeleteConnector mocks base method.
-func (m *MockStore) DeleteConnector(ctx context.Context, id string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteConnector", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteConnector indicates an expected call of DeleteConnector.
-func (mr *MockStoreMockRecorder) DeleteConnector(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockStore)(nil).DeleteConnector), ctx, id)
 }
 
 // DeletePipeline mocks base method.
@@ -98,21 +70,6 @@ func (mr *MockStoreMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*MockStore)(nil).DeletePipeline), ctx, id)
 }
 
-// GetConnector mocks base method.
-func (m *MockStore) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ledger.Connector)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetConnector indicates an expected call of GetConnector.
-func (mr *MockStoreMockRecorder) GetConnector(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnector", reflect.TypeOf((*MockStore)(nil).GetConnector), ctx, id)
-}
-
 // GetPipeline mocks base method.
 func (m *MockStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
 	m.ctrl.T.Helper()
@@ -126,21 +83,6 @@ func (m *MockStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipelin
 func (mr *MockStoreMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*MockStore)(nil).GetPipeline), ctx, id)
-}
-
-// ListConnectors mocks base method.
-func (m *MockStore) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListConnectors", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Connector])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListConnectors indicates an expected call of ListConnectors.
-func (mr *MockStoreMockRecorder) ListConnectors(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConnectors", reflect.TypeOf((*MockStore)(nil).ListConnectors), ctx)
 }
 
 // ListPipelines mocks base method.

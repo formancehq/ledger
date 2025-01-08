@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	replication "github.com/formancehq/ledger/internal/replication"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,7 +42,7 @@ func (m *MockDriver) EXPECT() *MockDriverMockRecorder {
 }
 
 // Accept mocks base method.
-func (m *MockDriver) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
+func (m *MockDriver) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range logs {

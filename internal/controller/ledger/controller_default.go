@@ -54,49 +54,8 @@ type DefaultController struct {
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
 }
 
-func (ctrl *DefaultController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) DeletePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) StartPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) PausePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) ResumePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) ResetPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (ctrl *DefaultController) StopPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
+func (ctrl *DefaultController) Info() ledger.Ledger {
+	return ctrl.ledger
 }
 
 func (ctrl *DefaultController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {

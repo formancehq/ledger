@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/config"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"time"
@@ -51,7 +51,7 @@ func (c *Connector) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
+func (c *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
 
 	batch, err := c.db.PrepareBatch(ctx, "insert into logs(ledger, id, type, date, data)")
 	if err != nil {

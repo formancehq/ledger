@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -36,7 +36,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 	}()
 }
 
-func (c *DriverFacade) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
+func (c *DriverFacade) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
 	select {
 	case <-c.readyChan:
 		return c.Driver.Accept(ctx, logs...)

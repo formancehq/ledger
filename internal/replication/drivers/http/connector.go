@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	ingester "github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -31,7 +31,7 @@ func (c *Connector) Start(_ context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...ingester.LogWithLedger) ([]error, error) {
+func (c *Connector) Accept(ctx context.Context, logs ...replication.LogWithLedger) ([]error, error) {
 	buffer := bytes.NewBufferString("")
 	err := json.NewEncoder(buffer).Encode(logs)
 	if err != nil {
