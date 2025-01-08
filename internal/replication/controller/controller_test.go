@@ -55,77 +55,77 @@ import (
 //	})
 //}
 
-func TestDeletePipeline(t *testing.T) {
-	t.Parallel()
-	t.Run("with existing pipeline (not running)", func(t *testing.T) {
-		t.Parallel()
-
-		ctrl := gomock.NewController(t)
-		mockStore := NewMockStore(ctrl)
-		mockRunner := NewMockRunner(ctrl)
-		controller := New(mockRunner, mockStore, logging.Testing())
-
-		id := uuid.NewString()
-
-		mockRunner.EXPECT().
-			GetPipeline(id).
-			Return(nil, false)
-
-		mockStore.EXPECT().
-			DeletePipeline(gomock.Any(), id).
-			Return(nil)
-
-		err := controller.DeletePipeline(logging.TestingContext(), id)
-		require.NoError(t, err)
-	})
-	t.Run("with not existing pipeline (not running)", func(t *testing.T) {
-		t.Parallel()
-
-		ctrl := gomock.NewController(t)
-		mockStore := NewMockStore(ctrl)
-		mockRunner := NewMockRunner(ctrl)
-		controller := New(mockRunner, mockStore, logging.Testing())
-
-		id := uuid.NewString()
-
-		mockRunner.EXPECT().
-			GetPipeline(id).
-			Return(nil, false)
-
-		mockStore.EXPECT().
-			DeletePipeline(gomock.Any(), id).
-			Return(sql.ErrNoRows)
-
-		err := controller.DeletePipeline(logging.TestingContext(), id)
-		require.IsType(t, ErrPipelineNotFound(""), err)
-	})
-	t.Run("with existing pipeline (running)", func(t *testing.T) {
-		t.Parallel()
-
-		ctrl := gomock.NewController(t)
-		mockStore := NewMockStore(ctrl)
-		mockRunner := NewMockRunner(ctrl)
-		controller := New(mockRunner, mockStore, logging.Testing())
-
-		id := uuid.NewString()
-
-		mockPipeline := NewMockPipeline(ctrl)
-		mockRunner.EXPECT().
-			GetPipeline(id).
-			Return(mockPipeline, true)
-
-		mockPipeline.EXPECT().
-			Stop().
-			Return(nil)
-
-		mockStore.EXPECT().
-			DeletePipeline(gomock.Any(), id).
-			Return(nil)
-
-		err := controller.DeletePipeline(logging.TestingContext(), id)
-		require.NoError(t, err)
-	})
-}
+//func TestDeletePipeline(t *testing.T) {
+//	t.Parallel()
+//	t.Run("with existing pipeline (not running)", func(t *testing.T) {
+//		t.Parallel()
+//
+//		ctrl := gomock.NewController(t)
+//		mockStore := NewMockStore(ctrl)
+//		mockRunner := NewMockRunner(ctrl)
+//		controller := New(mockRunner, mockStore, logging.Testing())
+//
+//		id := uuid.NewString()
+//
+//		mockRunner.EXPECT().
+//			GetPipeline(id).
+//			Return(nil, false)
+//
+//		mockStore.EXPECT().
+//			DeletePipeline(gomock.Any(), id).
+//			Return(nil)
+//
+//		err := controller.DeletePipeline(logging.TestingContext(), id)
+//		require.NoError(t, err)
+//	})
+//	t.Run("with not existing pipeline (not running)", func(t *testing.T) {
+//		t.Parallel()
+//
+//		ctrl := gomock.NewController(t)
+//		mockStore := NewMockStore(ctrl)
+//		mockRunner := NewMockRunner(ctrl)
+//		controller := New(mockRunner, mockStore, logging.Testing())
+//
+//		id := uuid.NewString()
+//
+//		mockRunner.EXPECT().
+//			GetPipeline(id).
+//			Return(nil, false)
+//
+//		mockStore.EXPECT().
+//			DeletePipeline(gomock.Any(), id).
+//			Return(sql.ErrNoRows)
+//
+//		err := controller.DeletePipeline(logging.TestingContext(), id)
+//		require.IsType(t, ErrPipelineNotFound(""), err)
+//	})
+//	t.Run("with existing pipeline (running)", func(t *testing.T) {
+//		t.Parallel()
+//
+//		ctrl := gomock.NewController(t)
+//		mockStore := NewMockStore(ctrl)
+//		mockRunner := NewMockRunner(ctrl)
+//		controller := New(mockRunner, mockStore, logging.Testing())
+//
+//		id := uuid.NewString()
+//
+//		mockPipeline := NewMockPipeline(ctrl)
+//		mockRunner.EXPECT().
+//			GetPipeline(id).
+//			Return(mockPipeline, true)
+//
+//		mockPipeline.EXPECT().
+//			Stop().
+//			Return(nil)
+//
+//		mockStore.EXPECT().
+//			DeletePipeline(gomock.Any(), id).
+//			Return(nil)
+//
+//		err := controller.DeletePipeline(logging.TestingContext(), id)
+//		require.NoError(t, err)
+//	})
+//}
 
 func TestStartPipeline(t *testing.T) {
 	t.Parallel()

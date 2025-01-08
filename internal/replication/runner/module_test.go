@@ -44,7 +44,7 @@ func TestModule(t *testing.T) {
 		fx.Supply(fx.Annotate(storageDriver, fx.As(new(StorageDriver)))),
 		fx.Supply(fx.Annotate(driversStore, fx.As(new(drivers.Store)))),
 		fx.Provide(fx.Annotate(gochannel.NewGoChannel, fx.As(new(message.Subscriber)))),
-		NewModule(),
+		NewFXModule(),
 		fx.Populate(&runner, &driverFactory),
 	)
 	require.NoError(t, app.Start(ctx))

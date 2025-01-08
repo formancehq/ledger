@@ -48,48 +48,7 @@ func (ctrl *Controller) ResetPipeline(ctx context.Context, id string) error {
 // * ErrPipelineNotFound
 // * ErrInUsePipeline
 func (ctrl *Controller) StopPipeline(ctx context.Context, id string) error {
-	originalError := ctrl.callAndWaitStateOnPipeline(ctx, id, Pipeline.Stop, ledger.StateLabelStop)
-	// The method Controller.callAndWaitStateOnPipeline can return ErrPipelineNotFound because
-	// the pipeline is not running, but the pipeline can exist in database.
-	// So, we check its existence and map error if relevant
-	if originalError != nil {
-		if errors.Is(originalError, ErrPipelineNotFound("")) {
-			pipeline, err := ctrl.store.GetPipeline(ctx, id)
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return originalError
-				}
-				return err
-			}
-			return runner.NewErrInvalidStateSwitch(id, pipeline.State.Label, ledger.StateLabelStop)
-		}
-		return originalError
-	}
-	return nil
-}
-
-// DeletePipeline can return following errors:
-// * ErrPipelineNotFound
-// * ErrInUsePipeline
-// * ErrConnectorUsed
-// The method will stop the pipeline if it is actually running,
-// then it will delete the pair from database
-func (ctrl *Controller) DeletePipeline(ctx context.Context, id string) error {
-	return ctrl.withPipelineLocked(id, func() error {
-		if p, ok := ctrl.runner.GetPipeline(id); ok {
-			if err := p.Stop(); err != nil {
-				return errors.Wrap(err, "stopping pipeline")
-			}
-		}
-
-		if err := ctrl.store.DeletePipeline(ctx, id); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return runner.NewErrPipelineNotFound(id)
-			}
-			return err
-		}
-		return nil
-	})
+	return ctrl.callAndWaitStateOnPipeline(ctx, id, Pipeline.Stop, ledger.StateLabelStop)
 }
 
 // StartPipeline can return following errors:

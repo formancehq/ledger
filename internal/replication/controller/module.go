@@ -4,7 +4,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewModule() fx.Option {
+func NewFXModule() fx.Option {
 	return fx.Options(
 		fx.Provide(New),
 		fx.Provide(NewDefaultRunner),

@@ -7,8 +7,8 @@ import (
 	"go.uber.org/fx"
 )
 
-// NewModule create a new fx module
-func NewModule() fx.Option {
+// NewFXModule create a new fx module
+func NewFXModule() fx.Option {
 	return fx.Options(
 		fx.Provide(drivers.NewRegistry),
 		fx.Provide(func(registry *drivers.Registry) drivers.Factory {
@@ -35,8 +35,4 @@ func NewModule() fx.Option {
 			})
 		}),
 	)
-}
-
-func As[T any](v T) T {
-	return v
 }
