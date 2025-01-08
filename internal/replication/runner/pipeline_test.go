@@ -68,6 +68,8 @@ func TestPipelineReady(t *testing.T) {
 		AnyTimes().
 		DoAndReturn(func(ctx context.Context, paginatedQuery pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			case <-deliver:
 				select {
 				case <-delivered:

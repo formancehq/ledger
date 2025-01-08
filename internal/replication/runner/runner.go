@@ -221,7 +221,7 @@ func (runner *Runner) StartAsync(ctx context.Context) error {
 	go func() {
 		// notes(gfyrag): detach the context from the provided context to allow to properly close the runner instead of relying
 		// on the context cancellation
-		if err := runner.Run(context.Background()); err != nil {
+		if err := runner.Run(context.WithoutCancel(ctx)); err != nil {
 			panic(err)
 		}
 	}()
@@ -256,20 +256,4 @@ func NewRunner(
 		drivers:       map[string]*DriverFacade{},
 		logger:        logger.WithField("component", "runner"),
 	}
-}
-
-func RestorePipelines(ctx context.Context, store SystemStore, runner *Runner) error {
-	runner.logger.Info("restore states from store")
-	states, err := store.ListEnabledPipelines(ctx)
-	if err != nil {
-		return errors.Wrap(err, "reading states from store")
-	}
-
-	for _, state := range states {
-		if _, err := runner.StartPipeline(ctx, state); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

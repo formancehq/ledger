@@ -1,9 +1,9 @@
 package runner
 
 import (
-	"context"
-
 	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/leadership"
+	"github.com/formancehq/ledger/internal/utils"
 	"go.uber.org/fx"
 )
 
@@ -11,6 +11,10 @@ import (
 func NewFXModule() fx.Option {
 	return fx.Options(
 		fx.Provide(drivers.NewRegistry),
+		fx.Provide(NewStarter),
+		fx.Provide(func(leadership *leadership.Leadership) Leadership {
+			return leadership
+		}),
 		fx.Provide(func(registry *drivers.Registry) drivers.Factory {
 			return registry
 		}),
@@ -21,18 +25,6 @@ func NewFXModule() fx.Option {
 			fx.As(new(drivers.Factory)),
 		)),
 		fx.Provide(NewRunner),
-		fx.Invoke(func(lc fx.Lifecycle, runner *Runner) {
-			lc.Append(fx.Hook{
-				OnStart: runner.StartAsync,
-				OnStop:  runner.Stop,
-			})
-		}),
-		fx.Invoke(func(lc fx.Lifecycle, systemStore SystemStore, runner *Runner) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					return RestorePipelines(ctx, systemStore, runner)
-				},
-			})
-		}),
+		fx.Invoke(utils.StartRunner[*Starter]()),
 	)
 }

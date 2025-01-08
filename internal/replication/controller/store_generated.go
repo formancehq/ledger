@@ -13,7 +13,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -42,34 +41,6 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
 }
 
-// CreatePipeline mocks base method.
-func (m *MockStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreatePipeline", ctx, pipeline)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreatePipeline indicates an expected call of CreatePipeline.
-func (mr *MockStoreMockRecorder) CreatePipeline(ctx, pipeline any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*MockStore)(nil).CreatePipeline), ctx, pipeline)
-}
-
-// DeletePipeline mocks base method.
-func (m *MockStore) DeletePipeline(ctx context.Context, id string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeletePipeline", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeletePipeline indicates an expected call of DeletePipeline.
-func (mr *MockStoreMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*MockStore)(nil).DeletePipeline), ctx, id)
-}
-
 // GetPipeline mocks base method.
 func (m *MockStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
 	m.ctrl.T.Helper()
@@ -83,19 +54,4 @@ func (m *MockStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipelin
 func (mr *MockStoreMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*MockStore)(nil).GetPipeline), ctx, id)
-}
-
-// ListPipelines mocks base method.
-func (m *MockStore) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListPipelines indicates an expected call of ListPipelines.
-func (mr *MockStoreMockRecorder) ListPipelines(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPipelines", reflect.TypeOf((*MockStore)(nil).ListPipelines), ctx)
 }

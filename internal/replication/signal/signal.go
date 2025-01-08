@@ -1,4 +1,4 @@
-package runner
+package signal
 
 import (
 	"encoding/json"

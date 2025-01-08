@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	replicationcontroller "github.com/formancehq/ledger/internal/replication/controller"
+	"github.com/formancehq/ledger/internal/replication/leadership"
 	"github.com/formancehq/ledger/internal/leadership"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
@@ -148,6 +149,7 @@ func NewServeCommand() *cobra.Command {
 					)
 				}),
 				replicationcontroller.NewFXModule(),
+				leadership.NewFXModule(),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
 					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(serveConfiguration.bind)))
 				}),

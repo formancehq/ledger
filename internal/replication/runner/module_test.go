@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/ledger/internal/replication/signal"
 	"net/http"
 	"testing"
 	"time"
@@ -30,9 +32,14 @@ func TestModule(t *testing.T) {
 	systemStore.EXPECT().ListEnabledPipelines(gomock.Any()).Return(nil, nil)
 
 	storageDriver := NewMockStorageDriver(ctrl)
+	leadership := NewMockLeadership(ctrl)
+
+	signal := signal.NewSignal(pointer.For(true))
+	leadership.EXPECT().GetLeadership().Return(signal)
 
 	var (
 		runner        *Runner
+		starter       *Starter
 		driverFactory drivers.Factory
 	)
 	app := fxtest.New(t,
@@ -44,8 +51,9 @@ func TestModule(t *testing.T) {
 		fx.Supply(fx.Annotate(storageDriver, fx.As(new(StorageDriver)))),
 		fx.Supply(fx.Annotate(driversStore, fx.As(new(drivers.Store)))),
 		fx.Provide(fx.Annotate(gochannel.NewGoChannel, fx.As(new(message.Subscriber)))),
+		fx.Replace(fx.Annotate(leadership, fx.As(new(Leadership)))),
 		NewFXModule(),
-		fx.Populate(&runner, &driverFactory),
+		fx.Populate(&starter, &runner, &driverFactory),
 	)
 	require.NoError(t, app.Start(ctx))
 	require.Eventually(t, runner.IsReady, time.Second, 20*time.Millisecond)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/replication/signal"
 	"testing"
 	"time"
 
@@ -330,7 +331,7 @@ func TestSwitchStateOnPipeline(t *testing.T) {
 						GetPipeline(id).
 						Return(mockPipeline, true)
 
-					signal := runner.NewSignal(&subTest.initialState)
+					signal := signal.NewSignal(&subTest.initialState)
 					mockPipeline.EXPECT().
 						GetActiveState().
 						Return(signal)

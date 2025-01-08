@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	ledger "github.com/formancehq/ledger/internal"
-	runner "github.com/formancehq/ledger/internal/replication/runner"
+	signal "github.com/formancehq/ledger/internal/replication/signal"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,10 +43,10 @@ func (m *MockPipeline) EXPECT() *MockPipelineMockRecorder {
 }
 
 // GetActiveState mocks base method.
-func (m *MockPipeline) GetActiveState() *runner.Signal[ledger.PipelineState] {
+func (m *MockPipeline) GetActiveState() *signal.Signal[ledger.PipelineState] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetActiveState")
-	ret0, _ := ret[0].(*runner.Signal[ledger.PipelineState])
+	ret0, _ := ret[0].(*signal.Signal[ledger.PipelineState])
 	return ret0
 }
 

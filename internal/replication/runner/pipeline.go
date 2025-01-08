@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/pagination"
+	"github.com/formancehq/ledger/internal/replication/signal"
 	"sync"
 	"time"
 
@@ -63,8 +64,8 @@ type PipelineHandler struct {
 	stopChannel    chan chan error
 	store          LogFetcher
 	connector      drivers.Driver
-	expectedState  *Signal[ledger.PipelineState]
-	activeState    *Signal[ledger.PipelineState]
+	expectedState  *signal.Signal[ledger.PipelineState]
+	activeState    *signal.Signal[ledger.PipelineState]
 	pipelineConfig PipelineHandlerConfig
 	stateHandler   *StateHandler
 	logger         logging.Logger
@@ -293,7 +294,7 @@ func (p *PipelineHandler) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (p *PipelineHandler) GetActiveState() *Signal[ledger.PipelineState] {
+func (p *PipelineHandler) GetActiveState() *signal.Signal[ledger.PipelineState] {
 	if p == nil {
 		return nil
 	}
@@ -317,8 +318,8 @@ func NewPipelineHandler(
 		stopChannel:    make(chan chan error, 1),
 		store:          store,
 		connector:      connector,
-		expectedState:  NewSignal(&pipeline.State),
-		activeState:    NewSignal[ledger.PipelineState](nil),
+		expectedState:  signal.NewSignal(&pipeline.State),
+		activeState:    signal.NewSignal[ledger.PipelineState](nil),
 		pipelineConfig: config,
 		logger: logger.
 			WithField("component", "pipeline").

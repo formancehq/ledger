@@ -17,7 +17,9 @@ tidy:
   @cd {{justfile_directory()}}/deployments/pulumi && go mod tidy
 
 generate:
+  @rm $(find ./internal -name '*_generated_test.go')
   @go generate ./...
+g: generate
 
 export-docs-events:
   @go run . docs events --write-dir docs/events

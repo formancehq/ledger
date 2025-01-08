@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/replication/signal"
 
 	"github.com/formancehq/ledger/internal/replication/runner"
 )
@@ -13,7 +14,7 @@ type Pipeline interface {
 	Resume() error
 	Reset() error
 	Stop() error
-	GetActiveState() *runner.Signal[ledger.PipelineState]
+	GetActiveState() *signal.Signal[ledger.PipelineState]
 }
 
 //go:generate mockgen -source runner.go -destination runner_generated.go -package controller . Runner

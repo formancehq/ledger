@@ -67,7 +67,7 @@ import "github.com/formancehq/ledger/internal"
   - [func NewPipeline\(pipelineConfiguration PipelineConfiguration, state PipelineState\) Pipeline](<#NewPipeline>)
   - [func \(p Pipeline\) String\(\) string](<#Pipeline.String>)
 - [type PipelineConfiguration](<#PipelineConfiguration>)
-  - [func NewPipelineConfiguration\(ledgerID int, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
+  - [func NewPipelineConfiguration\(ledger, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
   - [func \(p PipelineConfiguration\) String\(\) string](<#PipelineConfiguration.String>)
 - [type PipelineState](<#PipelineState>)
   - [func NewInitState\(\) PipelineState](<#NewInitState>)
@@ -76,6 +76,7 @@ import "github.com/formancehq/ledger/internal"
   - [func NewReadyStateWithID\(lastID int\) PipelineState](<#NewReadyStateWithID>)
   - [func NewStopState\(previousState PipelineState\) PipelineState](<#NewStopState>)
   - [func \(s PipelineState\) String\(\) string](<#PipelineState.String>)
+- [type PipelineStateLabel](<#PipelineStateLabel>)
 - [type PostCommitVolumes](<#PostCommitVolumes>)
   - [func \(a PostCommitVolumes\) AddInput\(account, asset string, input \*big.Int\)](<#PostCommitVolumes.AddInput>)
   - [func \(a PostCommitVolumes\) AddOutput\(account, asset string, output \*big.Int\)](<#PostCommitVolumes.AddOutput>)
@@ -92,7 +93,6 @@ import "github.com/formancehq/ledger/internal"
 - [type SavedMetadata](<#SavedMetadata>)
   - [func \(s SavedMetadata\) Type\(\) LogType](<#SavedMetadata.Type>)
   - [func \(s \*SavedMetadata\) UnmarshalJSON\(data \[\]byte\) error](<#SavedMetadata.UnmarshalJSON>)
-- [type StateLabel](<#StateLabel>)
 - [type Transaction](<#Transaction>)
   - [func NewTransaction\(\) Transaction](<#NewTransaction>)
   - [func \(tx Transaction\) InvolvedAccounts\(\) \[\]string](<#Transaction.InvolvedAccounts>)
@@ -767,7 +767,7 @@ func (p Pipeline) String() string
 
 ```go
 type PipelineConfiguration struct {
-    Ledger      int    `json:"ledgerID"`
+    Ledger      string `json:"ledger"`
     ConnectorID string `json:"connectorID"`
 }
 ```
@@ -776,7 +776,7 @@ type PipelineConfiguration struct {
 ### func [NewPipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L19>)
 
 ```go
-func NewPipelineConfiguration(ledgerID int, connectorID string) PipelineConfiguration
+func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
 ```
 
 
@@ -797,7 +797,7 @@ func (p PipelineConfiguration) String() string
 
 ```go
 type PipelineState struct {
-    Label StateLabel `json:"label"`
+    Label PipelineStateLabel `json:"label"`
     // Cursor can be set only if Label == StateLabelInit
     LastID int `json:"lastID,omitempty"`
     // PreviousState can be set only if Label == StateLabelPause or Label == StateLabelStop
@@ -859,6 +859,26 @@ func (s PipelineState) String() string
 ```
 
 
+
+<a name="PipelineStateLabel"></a>
+## type [PipelineStateLabel](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L46>)
+
+
+
+```go
+type PipelineStateLabel string
+```
+
+<a name="StateLabelInit"></a>
+
+```go
+const (
+    StateLabelInit  PipelineStateLabel = "INIT"
+    StateLabelReady PipelineStateLabel = "READY"
+    StateLabelPause PipelineStateLabel = "PAUSE"
+    StateLabelStop  PipelineStateLabel = "STOP"
+)
+```
 
 <a name="PostCommitVolumes"></a>
 ## type [PostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/volumes.go#L118>)
@@ -1015,26 +1035,6 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error
 ```
 
 
-
-<a name="StateLabel"></a>
-## type [StateLabel](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L46>)
-
-
-
-```go
-type StateLabel string
-```
-
-<a name="StateLabelInit"></a>
-
-```go
-const (
-    StateLabelInit  StateLabel = "INIT"
-    StateLabelReady StateLabel = "READY"
-    StateLabelPause StateLabel = "PAUSE"
-    StateLabelStop  StateLabel = "STOP"
-)
-```
 
 <a name="Transaction"></a>
 ## type [Transaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L38-L50>)
