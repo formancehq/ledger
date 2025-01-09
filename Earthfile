@@ -23,7 +23,7 @@ sources:
     SAVE ARTIFACT /src
 
 compile:
-    LOCALLY
+    FROM +sources
     ARG VERSION=latest
     RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
         -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
