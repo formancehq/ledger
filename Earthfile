@@ -3,6 +3,8 @@ PROJECT FormanceHQ/ledger
 
 IMPORT github.com/formancehq/earthly:tags/v0.19.0 AS core
 
+FROM core+base-image
+
 postgres:
     FROM postgres:15-alpine
 
