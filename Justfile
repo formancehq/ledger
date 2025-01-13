@@ -4,6 +4,7 @@ default:
   @just --list
 
 pre-commit: generate tidy lint export-docs-events openapi generate-client
+pc: pre-commit
 
 lint:
   @golangci-lint run --fix --build-tags it --timeout 5m

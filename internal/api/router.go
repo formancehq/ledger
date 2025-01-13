@@ -1,11 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
@@ -36,7 +37,6 @@ func NewRouter(
 
 	mux := chi.NewRouter()
 	mux.Use(
-		middleware.Recoverer,
 		cors.New(cors.Options{
 			AllowOriginFunc: func(r *http.Request, origin string) bool {
 				return true
@@ -44,29 +44,40 @@ func NewRouter(
 			AllowCredentials: true,
 		}).Handler,
 		common.LogID(),
-	)
-
-	commonMiddlewares := []func(http.Handler) http.Handler{
 		middleware.RequestLogger(api.NewLogFormatter()),
-	}
+		service.OTLPMiddleware("ledger", debug),
+		func(next http.Handler) http.Handler {
+			fn := func(w http.ResponseWriter, r *http.Request) {
+				defer func() {
+					if rvr := recover(); rvr != nil {
+						if rvr == http.ErrAbortHandler {
+							// we don't recover http.ErrAbortHandler so the response
+							// to the client is aborted, this should not be logged
+							panic(rvr)
+						}
 
-	if debug {
-		commonMiddlewares = append(commonMiddlewares, func(handler http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				trace.SpanFromContext(r.Context()).
-					SetAttributes(attribute.String("raw-query", r.URL.RawQuery))
+						if debug {
+							middleware.PrintPrettyStack(rvr)
+						}
 
-				handler.ServeHTTP(w, r)
-			})
-		})
-	}
+						trace.SpanFromContext(r.Context()).RecordError(fmt.Errorf("%s", rvr))
+
+						w.WriteHeader(http.StatusInternalServerError)
+					}
+				}()
+
+				next.ServeHTTP(w, r)
+			}
+
+			return http.HandlerFunc(fn)
+		},
+	)
 
 	v2Router := v2.NewRouter(
 		systemController,
 		authenticator,
 		debug,
 		v2.WithTracer(routerOptions.tracer),
-		v2.WithMiddlewares(commonMiddlewares...),
 		v2.WithBulkerFactory(routerOptions.bulkerFactory),
 		v2.WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
 			"application/json": bulking.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
@@ -84,15 +95,14 @@ func NewRouter(
 		version,
 		debug,
 		v1.WithTracer(routerOptions.tracer),
-		v1.WithMiddlewares(commonMiddlewares...),
 	))
 
 	return mux
 }
 
 type routerOptions struct {
-	tracer        trace.Tracer
-	bulkMaxSize   int
+	tracer           trace.Tracer
+	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
 	paginationConfig common.PaginationConfig
 }

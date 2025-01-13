@@ -7,8 +7,6 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/v2/service"
-
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/go-chi/chi/v5"
@@ -32,9 +30,7 @@ func NewRouter(
 	router.Get("/_info", getInfo(systemController, version))
 
 	router.Group(func(router chi.Router) {
-		router.Use(routerOptions.middlewares...)
 		router.Use(auth.Middleware(authenticator))
-		router.Use(service.OTLPMiddleware("ledger", debug))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
@@ -82,8 +78,7 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer      trace.Tracer
-	middlewares []func(handler http.Handler) http.Handler
+	tracer trace.Tracer
 }
 
 type RouterOption func(ro *routerOptions)
@@ -91,12 +86,6 @@ type RouterOption func(ro *routerOptions)
 func WithTracer(tracer trace.Tracer) RouterOption {
 	return func(ro *routerOptions) {
 		ro.tracer = tracer
-	}
-}
-
-func WithMiddlewares(handlers ...func(http.Handler) http.Handler) RouterOption {
-	return func(ro *routerOptions) {
-		ro.middlewares = append(ro.middlewares, handlers...)
 	}
 }
 
