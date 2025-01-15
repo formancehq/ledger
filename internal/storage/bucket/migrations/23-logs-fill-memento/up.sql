@@ -20,7 +20,7 @@ do $$
 				limit _batch_size
 			)
 			update logs
-			set memento = convert_to(data::varchar, 'LATIN1')::bytea
+			set memento = convert_to(data::varchar, 'UTF-8')::bytea
 			from _outdated_logs
 			where logs.seq in (_outdated_logs.seq);
 
