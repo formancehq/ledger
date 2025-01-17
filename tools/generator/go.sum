@@ -14,6 +14,7 @@ github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 h1:TngWCqHvy9oXAN6lEV
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5/go.mod h1:lmUJ/7eu/Q8D7ML55dXQrVaamCz2vxCfdQBasLZfHKk=
 github.com/ThreeDotsLabs/watermill v1.4.1 h1:gjP6yZH+otMPjV0KsV07pl9TeMm9UQV/gqiuiuG5Drs=
 github.com/ThreeDotsLabs/watermill v1.4.1/go.mod h1:lBnrLbxOjeMRgcJbv+UiZr8Ylz8RkJ4m6i/VN/Nk+to=
+github.com/ThreeDotsLabs/watermill v1.4.4/go.mod h1:lBnrLbxOjeMRgcJbv+UiZr8Ylz8RkJ4m6i/VN/Nk+to=
 github.com/ThreeDotsLabs/watermill-http/v2 v2.3.1 h1:M0iYM5HsGcoxtiQqprRlYZNZnGk3w5LsE9RbC2R8myQ=
 github.com/ThreeDotsLabs/watermill-http/v2 v2.3.1/go.mod h1:RwGHEzGsEEXC/rQNLWQqR83+WPlABgOgnv2kTB56Y4Y=
 github.com/ThreeDotsLabs/watermill-kafka/v3 v3.0.5 h1:ud+4txnRgtr3kZXfXZ5+C7kVQEvsLc5HSNUEa0g+X1Q=
@@ -104,6 +105,7 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/go-libs/v2 v2.0.1-0.20250101192540-cfa76c1dedeb h1:v471RK/yxiFFUkJUgZ2CJXGl46KMjOg+Tlr0uMTlQJg=
 github.com/formancehq/go-libs/v2 v2.0.1-0.20250101192540-cfa76c1dedeb/go.mod h1:s2c9ULpCJnof0wJsLout05Aj7EwYGUByGBWVviptqTE=
+github.com/formancehq/go-libs/v2 v2.0.1-0.20250117101936-622f477fe4e2/go.mod h1:ipeQG6jGD2fdXx8KhZr6jNBn+9FL2bprtTqptTIF/uU=
 github.com/formancehq/numscript v0.0.10 h1:ElvYpoayUX5tHtCCR18ihJTjNlHzdkE4M0IqSm9aufg=
 github.com/formancehq/numscript v0.0.10/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
 github.com/gkampitakis/ciinfo v0.3.0 h1:gWZlOC2+RYYttL0hBqcoQhM7h1qNkVqvRCV1fOvpAv8=
@@ -303,6 +305,7 @@ github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc h1:9lRDQMhESg+zvGYm
 github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc/go.mod h1:bciPuU6GHm1iF1pBvUfxfsH0Wmnc2VbpgvbI9ZWuIRs=
 github.com/uptrace/bun v1.2.7 h1:rFjJDW9RM+P08FJkwO5xB+cnYSaQAqsAu9LIQH1iEQY=
 github.com/uptrace/bun v1.2.7/go.mod h1:tYihS32vC8v3sNzGtakjd2Q5Vye0D9hBR+0MjvmbaQE=
+github.com/uptrace/bun v1.2.8/go.mod h1:JBq0uBKsKqNT0Ccce1IAFZY337Wkf08c6F6qlmfOHE8=
 github.com/uptrace/bun/dialect/pgdialect v1.2.7 h1:HvHPbXQ9f9uE7GaNAikb700i67QpJ50kvyyGRmoMDNA=
 github.com/uptrace/bun/dialect/pgdialect v1.2.7/go.mod h1:nUgYSlUrZ5F24XO1df1eSlNzsWk6abB8weKSfmGO7is=
 github.com/uptrace/bun/extra/bundebug v1.2.5 h1:DsI/gl4jvq5tQ84yPqnlRYIQ4U6AouTqxJ8Y5Oijfz4=
@@ -391,6 +394,7 @@ go.uber.org/zap v1.27.0 h1:aJMhYGrd5QSmlpLMr2MftRKl7t8J8PTZPA732ud/XR8=
 go.uber.org/zap v1.27.0/go.mod h1:GB2qFLM7cTU87MWRP2mPIjqfIDnGu+VIO4V/SdhGo2E=
 golang.org/x/crypto v0.31.0 h1:ihbySMvVjLAeSH1IbfcRTkD/iNscyz8rGzjF/E5hV6U=
 golang.org/x/crypto v0.31.0/go.mod h1:kDsLvtWBEx7MV9tJOj9bnXsPbxwJQ6csT/x4KIN4Ssk=
+golang.org/x/crypto v0.32.0/go.mod h1:ZnnJkOaASj8g0AjIduWNlq2NRxL0PlBrbKVyZ6V/Ugc=
 golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 h1:1UoZQm6f0P/ZO0w1Ri+f+ifG/gXhegadRdwBIXEFWDo=
 golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67/go.mod h1:qj5a5QZpwLU2NLQudwIN5koi3beDhSAlJwa67PuM98c=
 golang.org/x/net v0.33.0 h1:74SYHlV8BIgHIFC/LrYkOGIwL19eTYXQ5wc6TBuO36I=
@@ -409,6 +413,7 @@ golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab/go.mod h1:oPkhp1MJrh7nUepCBc
 golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.28.0 h1:Fksou7UEQUWlKvIdsqzJmUmCX3cZuD2+P3XyyzwMhlA=
 golang.org/x/sys v0.28.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.29.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
 golang.org/x/text v0.21.0 h1:zyQAAkrwaneQ066sspRyJaG9VNi/YJ1NfzcGB3hZ/qo=
 golang.org/x/text v0.21.0/go.mod h1:4IBbMaMmOPCJ8SecivzSH54+73PCFmPWxNTLm+vZkEQ=
 golang.org/x/tools v0.28.0 h1:WuB6qZ4RPCQo5aP3WdKZS7i595EdWqWR8vqJTlwTVK8=
