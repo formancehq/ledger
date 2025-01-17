@@ -26,16 +26,17 @@ jobs:
           --postgres-max-idle-conns=100 
           --experimental-features 
           --otel-metrics-keep-in-memory &
+      - uses: extractions/setup-just@v2
       - run: >
-          earthly
-          --allow-privileged
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+run --args="-benchtime 10s --ledger.url=http://localhost:3068 --parallelism=5" --locally=yes
+          just
+          --justfile ./test/performance/justfile
+          --working-directory ./test/performance 
+          run . 5 10s 1 http://localhost:3068
       - run: >
-          earthly
-          --allow-privileged
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+generate-graphs
+          just 
+          --justfile ./test/performance/justfile 
+          --working-directory ./test/performance 
+          graphs
       - run: kill -9 $(ps aux | grep "ledger serve"| grep -v "grep" | awk '{print $2}')
         if: always()
       - uses: actions/upload-artifact@v4

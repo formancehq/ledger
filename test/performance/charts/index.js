@@ -39,13 +39,14 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     let buffer = fs.readFileSync('../report/report.json', 'utf-8');
     let reports = JSON.parse(buffer);
     yield (0, graphs_1.exportTPSGraph)({
-        output: 'tps.png',
+        output: '../report/tps.png',
     }, reports);
-    yield (0, graphs_1.exportLatencyGraph)({
-        output: 'p99.png'
-    }, 'P99', reports);
-    yield (0, graphs_1.exportLatencyGraph)({
-        output: 'p95.png'
-    }, 'P95', reports);
+    yield (0, graphs_1.exportDatabaseStats)('../report/database_connections.png', reports);
+    const ps = ['P99', 'P95', 'P75', 'Avg'];
+    for (let p of ps) {
+        yield (0, graphs_1.exportLatencyGraph)({
+            output: '../report/' + p.toLowerCase() + '.png'
+        }, p, reports);
+    }
 });
 main();
