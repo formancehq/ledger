@@ -39,14 +39,13 @@ jobs:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
           /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
-          develop --impure --command just pre-commit
-      - run: >
-          just
+          develop --impure --command just
           --justfile ./test/performance/justfile
           --working-directory ./test/performance 
           compare ${{ inputs.bench }} ${{ inputs.parallelism }} ${{ inputs.duration }} ${{ inputs.count }}
       - run: >
-          just 
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just 
           --justfile ./test/performance/justfile 
           --working-directory ./test/performance 
           graphs
