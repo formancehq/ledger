@@ -4,6 +4,7 @@ set positional-arguments
 tmpdir := `mktemp -d`
 
 run bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
+    mkdir -p $(dirname {{output}})
     rm -f {{output}}
     go test -run ^$ -tags it,local \
         -report.file ./report/report.json \
