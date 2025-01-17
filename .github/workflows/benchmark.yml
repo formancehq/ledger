@@ -16,22 +16,12 @@ jobs:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
-      - run: go build -o /tmp/ledger ./
-      - run: echo "running actions as ${USER}"
-      - run: >
-          /tmp/ledger serve 
-          --postgres-uri=postgres://formance:formance@127.0.0.1/ledger 
-          --postgres-conn-max-idle-time=120s 
-          --postgres-max-open-conns=500 
-          --postgres-max-idle-conns=100 
-          --experimental-features 
-          --otel-metrics-keep-in-memory &
       - uses: extractions/setup-just@v2
       - run: >
           just
           --justfile ./test/performance/justfile
           --working-directory ./test/performance 
-          run . 5 10s 1 http://localhost:3068
+          run . 5 10s 1
       - run: >
           just 
           --justfile ./test/performance/justfile 

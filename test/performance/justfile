@@ -3,20 +3,19 @@ set positional-arguments
 
 tmpdir := `mktemp -d`
 
-run bench='.' p='1' benchtime='1s' count='1' ledger-url='' output='./report/benchmark-output.txt':
+run bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
     rm -f {{output}}
     go test -run ^$ -tags it,local \
         -report.file ./report/report.json \
         -timeout 60m \
         -bench={{bench}} \
         -count={{count}} \
-        --ledger.url={{ledger-url}} \
         -p {{p}} \
         -test.benchtime {{benchtime}} . | tee -a {{output}}
 
 compare bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
     trap 'rm -rf {{tmpdir}}' EXIT
-    just run {{bench}} {{p}} {{benchtime}} {{count}} '' './report/benchmark-output-local.txt'
+    just run {{bench}} {{p}} {{benchtime}} {{count}} './report/benchmark-output-local.txt'
     git clone --depth 1 -b main https://github.com/formancehq/ledger {{tmpdir}}
     go test -run ^$ -tags it,local -report.file \
         ./report/report.json \
