@@ -51,8 +51,9 @@ var _ = Context("Ledger stress tests", func() {
 				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 					Ledger: ledgerName,
 					V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-						Bucket:   &bucketName,
-						Features: features.MinimalFeatureSet.With(features.FeatureMovesHistory, "ON"),
+						Bucket: &bucketName,
+						Features: features.MinimalFeatureSet.
+							With(features.FeatureMovesHistory, "ON"),
 					},
 				})
 				Expect(err).ShouldNot(HaveOccurred())
@@ -99,9 +100,6 @@ var _ = Context("Ledger stress tests", func() {
 						createdTransactions[ledger] = append(createdTransactions[ledger], createdTx.ID)
 						mu.Unlock()
 					})
-					go func() {
-
-					}()
 				}
 				wp.StopAndWait()
 			})
@@ -113,7 +111,7 @@ var _ = Context("Ledger stress tests", func() {
 			When("trying to revert concurrently all transactions", func() {
 				It("should be handled correctly", func() {
 					const (
-						// We will introduce attempts to duplicate transactions twice.
+						// We will introduce attempts to revert transactions twice.
 						// At the end we will check than the correct number of revert has
 						// succeeded and the correct number has failed.
 						duplicates = 1

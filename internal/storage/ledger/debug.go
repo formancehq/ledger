@@ -14,14 +14,14 @@ func (store *Store) DumpTables(ctx context.Context, tables ...string) {
 		store.DumpQuery(
 			ctx,
 			store.db.NewSelect().
-				ModelTableExpr(store.GetPrefixedRelationName(table)),
+				ModelTableExpr(store.GetPrefixedRelationName(table)).
+				Where("ledger = ?", store.ledger.Name),
 		)
 	}
 }
 
 //nolint:unused
 func (store *Store) DumpQuery(ctx context.Context, query *bun.SelectQuery) {
-	fmt.Println(query)
 	rows, err := query.Rows(ctx)
 	if err != nil {
 		panic(err)
