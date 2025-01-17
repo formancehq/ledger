@@ -1,0 +1,34 @@
+set dotenv-load
+set positional-arguments
+
+tmpdir := `mktemp -d`
+
+run bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
+    mkdir -p $(dirname {{output}})
+    rm -f {{output}}
+    go test -run ^$ -tags it,local \
+        -report.file ./report/report.json \
+        -timeout 600m \
+        -bench={{bench}} \
+        -count={{count}} \
+        -p {{p}} \
+        -test.benchtime {{benchtime}} . | tee -a {{output}}
+
+compare bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
+    trap 'rm -rf {{tmpdir}}' EXIT
+    just run {{bench}} {{p}} {{benchtime}} {{count}} './report/benchmark-output-local.txt'
+    git clone --depth 1 -b main https://github.com/formancehq/ledger {{tmpdir}}
+    go test -run ^$ -tags it,local -report.file \
+        ./report/report.json \
+        -timeout 600m \
+        -bench={{bench}} \
+        -count={{count}} \
+        -p {{p}} \
+        -test.benchtime {{benchtime}} \
+        {{tmpdir}}/test/performance | tee -a ./report/benchmark-output-main.txt
+    benchstat ./report/benchmark-output-main.txt ./report/benchmark-output-local.txt > ./report/benchmark-comparison.txt || true
+
+graphs:
+    cd charts && npm install
+    cd charts && npm run build
+    cd charts && node ./index.js

@@ -10,7 +10,6 @@ import (
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"io"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/pointer"
@@ -44,17 +43,11 @@ var _ Env = (*TestServerEnv)(nil)
 
 type TestServerEnvFactory struct {
 	dockerPool *docker.Pool
-
-	once sync.Once
 }
 
 func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
 
-	f.once.Do(func() {
-		// Configure the environment to run benchmarks locally.
-		// Start a docker connection
-		f.dockerPool = docker.NewPool(b, logging.Testing())
-	})
+	f.dockerPool = docker.NewPool(b, logging.Testing())
 
 	pgServer := pgtesting.CreatePostgresServer(b, f.dockerPool, pgtesting.WithPGCrypto())
 
