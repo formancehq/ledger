@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInsertLog(t *testing.T) {
+func TestLogsInsert(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -138,9 +138,37 @@ func TestInsertLog(t *testing.T) {
 			previous = &chainedLog
 		}
 	})
+
+	t.Run("insert with special characters", func(t *testing.T) {
+
+		type testCase struct {
+			name     string
+			metadata map[string]string
+		}
+
+		testCases := []testCase{
+			{name: "with escaped quotes", metadata: map[string]string{"key": "value with \"quotes\""}},
+			{name: "with utf-8 characters", metadata: map[string]string{"rate": "½"}},
+		}
+
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				t.Parallel()
+
+				log := ledger.NewLog(ledger.CreatedTransaction{
+					Transaction: ledger.NewTransaction().
+						WithPostings(ledger.NewPosting("world", "bank", "USD", big.NewInt(100))).
+						WithMetadata(testCase.metadata),
+				})
+
+				err := store.InsertLog(ctx, &log)
+				require.NoError(t, err)
+			})
+		}
+	})
 }
 
-func TestReadLogWithIdempotencyKey(t *testing.T) {
+func TestLogsReadWithIdempotencyKey(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
