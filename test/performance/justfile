@@ -17,15 +17,9 @@ run bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.t
 compare bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
     trap 'rm -rf {{tmpdir}}' EXIT
     just run {{bench}} {{p}} {{benchtime}} {{count}} './report/benchmark-output-local.txt'
+    rm ./report/benchmark-output-main.txt
     git clone --depth 1 -b main https://github.com/formancehq/ledger {{tmpdir}}
-    go test -run ^$ -tags it,local -report.file \
-        ./report/report.json \
-        -timeout 600m \
-        -bench={{bench}} \
-        -count={{count}} \
-        -p {{p}} \
-        -test.benchtime {{benchtime}} \
-        {{tmpdir}}/test/performance | tee -a ./report/benchmark-output-main.txt
+    cd {{tmpdir}}/test/performance && just run {{bench}} {{p}} {{benchtime}} {{count}} '../../../report/benchmark-output-main.txt'
     benchstat ./report/benchmark-output-main.txt ./report/benchmark-output-local.txt > ./report/benchmark-comparison.txt || true
 
 graphs:
