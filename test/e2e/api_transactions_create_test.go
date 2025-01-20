@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Context("Ledger accounts list API tests", func() {
+var _ = Context("Ledger transactions create API tests", func() {
 	for _, data := range []struct {
 		description      string
 		numscriptRewrite bool
@@ -82,7 +82,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 					BeforeEach(func() {
 						req = operations.V2CreateTransactionRequest{
 							V2PostTransaction: components.V2PostTransaction{
-								Metadata: map[string]string{},
+								Metadata: map[string]string{
+									"add some quotes":           "\" quoted value\"",
+									"add some utf-8 characters": "½",
+								},
 								Postings: []components.V2Posting{
 									{
 										Amount:      big.NewInt(100),
