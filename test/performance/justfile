@@ -19,7 +19,7 @@ compare bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-outp
     just run {{bench}} {{p}} {{benchtime}} {{count}} './report/benchmark-output-local.txt'
     rm -f ./report/benchmark-output-main.txt
     git clone --depth 1 -b main https://github.com/formancehq/ledger {{tmpdir}}
-    cd {{tmpdir}}/test/performance && just run {{bench}} {{p}} {{benchtime}} {{count}} '../../../report/benchmark-output-main.txt'
+    location=$(pwd) && cd {{tmpdir}}/test/performance && just run {{bench}} {{p}} {{benchtime}} {{count}} $location/report/benchmark-output-main.txt
     benchstat ./report/benchmark-output-main.txt ./report/benchmark-output-local.txt > ./report/benchmark-comparison.txt || true
 
 graphs:
