@@ -22,7 +22,7 @@ type Log struct {
 
 	Ledger  string     `bun:"ledger,type:varchar"`
 	Data    RawMessage `bun:"data,type:jsonb"`
-	Memento RawMessage `bun:"memento,type:bytea"`
+	Memento []byte     `bun:"memento,type:bytea"`
 }
 
 func (log Log) ToCore() ledger.Log {
