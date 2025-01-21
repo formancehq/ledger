@@ -8,13 +8,13 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 )
 
-func (store *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) (ledger.PostCommitVolumes, error) {
-	return tracing.TraceWithMetric(
+func (store *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.AccountsVolumes) error {
+	return tracing.SkipResult(tracing.TraceWithMetric(
 		ctx,
 		"UpdateBalances",
 		store.tracer,
 		store.updateBalancesHistogram,
-		func(ctx context.Context) (ledger.PostCommitVolumes, error) {
+		tracing.NoResult(func(ctx context.Context) error {
 
 			type AccountsVolumesWithLedger struct {
 				ledger.AccountsVolumes `bun:",extend"`
@@ -31,27 +31,12 @@ func (store *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.
 			_, err := store.db.NewInsert().
 				Model(&accountsVolumesWithLedger).
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-				On("conflict (ledger, accounts_address, asset) do update").
-				Set("input = accounts_volumes.input + excluded.input").
-				Set("output = accounts_volumes.output + excluded.output").
-				Returning("input, output").
 				Exec(ctx)
 			if err != nil {
-				return nil, postgres.ResolveError(err)
+				return postgres.ResolveError(err)
 			}
 
-			ret := ledger.PostCommitVolumes{}
-			for _, volumes := range accountVolumes {
-				if _, ok := ret[volumes.Account]; !ok {
-					ret[volumes.Account] = map[string]ledger.Volumes{}
-				}
-				ret[volumes.Account][volumes.Asset] = ledger.Volumes{
-					Input:  volumes.Input,
-					Output: volumes.Output,
-				}
-			}
-
-			return ret, err
+			return err
 		},
-	)
+		)))
 }

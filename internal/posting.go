@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/ledger/pkg/accounts"
 	"github.com/formancehq/ledger/pkg/assets"
 	"math/big"
+	"slices"
 
 	"errors"
 )
@@ -61,4 +62,25 @@ func (p Postings) Validate() (int, error) {
 	}
 
 	return 0, nil
+}
+
+func (p Postings) InvolvedVolumes() map[string][]string {
+	ret := make(map[string][]string)
+	for _, posting := range p {
+		if _, ok := ret[posting.Source]; !ok {
+			ret[posting.Source] = []string{}
+		}
+		if _, ok := ret[posting.Destination]; !ok {
+			ret[posting.Destination] = []string{}
+		}
+		ret[posting.Source] = append(ret[posting.Source], posting.Asset)
+		ret[posting.Destination] = append(ret[posting.Destination], posting.Asset)
+	}
+
+	for account, assets := range ret {
+		slices.Sort(assets)
+		ret[account] = slices.Compact(assets)
+	}
+
+	return ret
 }

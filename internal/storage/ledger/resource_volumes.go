@@ -61,11 +61,14 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 	needAddressSegments := query.useFilter("address", isPartialAddress)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = store.db.NewSelect().
-			Column("asset", "input", "output").
-			ColumnExpr("input - output as balance").
+			Column("asset").
+			ColumnExpr("sum(input) as input").
+			ColumnExpr("sum(output) as output").
+			ColumnExpr("sum(input) - sum(output) as balance").
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Where("ledger = ?", store.ledger.Name).
+			Group("accounts_address", "asset").
 			Order("accounts_address", "asset")
 
 		if query.useFilter("metadata") || needAddressSegments {
@@ -77,11 +80,11 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 			if needAddressSegments {
 				subQuery = subQuery.ColumnExpr("address_array as account_array")
-				selectVolumes = selectVolumes.Column("account_array")
+				selectVolumes = selectVolumes.ColumnExpr("(array_agg(account_array))[1] as account_array")
 			}
 			if query.useFilter("metadata") {
 				subQuery = subQuery.ColumnExpr("metadata")
-				selectVolumes = selectVolumes.Column("metadata")
+				selectVolumes = selectVolumes.ColumnExpr("(array_agg(metadata))[1] as metadata")
 			}
 
 			selectVolumes = selectVolumes.
