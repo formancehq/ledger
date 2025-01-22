@@ -852,8 +852,6 @@ func TestTransactionsList(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			store.DumpTables(ctx, "transactions")
-
 			tc.query.Options.Expand = []string{"volumes", "effectiveVolumes"}
 
 			cursor, err := store.Transactions().Paginate(ctx, tc.query)

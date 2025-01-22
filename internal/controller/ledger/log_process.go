@@ -137,7 +137,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) fetchLogWithIK(ctx context.Context, store
 	if err == nil {
 		// notes(gfyrag): idempotency hash should never be empty in this case, but data from previous
 		// ledger version does not have this field and it cannot be recomputed
-		if log.IdempotencyHash != "" {
+		if len(log.IdempotencyHash) > 0 {
 			if computedHash := ledger.ComputeIdempotencyHash(parameters.Input); log.IdempotencyHash != computedHash {
 				return nil, nil, newErrInvalidIdempotencyInputs(log.IdempotencyKey, log.IdempotencyHash, computedHash)
 			}
