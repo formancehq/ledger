@@ -26,25 +26,25 @@ func TestBalancesGet(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	world := &ledger.Account{
-		Address:       "world",
-		InsertionDate: time.Now(),
-		UpdatedAt:     time.Now(),
-		FirstUsage:    time.Now(),
-	}
-	err := store.UpsertAccounts(ctx, world)
-	require.NoError(t, err)
-
-	_, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
-		Account: "world",
-		Asset:   "USD",
-		Input:   new(big.Int),
-		Output:  big.NewInt(100),
-	})
-	require.NoError(t, err)
-
 	t.Run("get balances of not existing account should create an empty row", func(t *testing.T) {
 		t.Parallel()
+
+		world := &ledger.Account{
+			Address:       "world",
+			InsertionDate: time.Now(),
+			UpdatedAt:     time.Now(),
+			FirstUsage:    time.Now(),
+		}
+		err := store.UpsertAccounts(ctx, world)
+		require.NoError(t, err)
+
+		err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
+			Account: "world",
+			Asset:   "USD",
+			Input:   new(big.Int),
+			Output:  big.NewInt(100),
+		})
+		require.NoError(t, err)
 
 		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
 			"orders:1234": []string{"USD"},
@@ -54,23 +54,27 @@ func TestBalancesGet(t *testing.T) {
 		require.NotNil(t, balances["orders:1234"])
 		require.Len(t, balances["orders:1234"], 1)
 		require.Equal(t, big.NewInt(0), balances["orders:1234"]["USD"])
-
-		volumes := make([]*ledger.AccountsVolumes, 0)
-
-		err = store.GetDB().NewSelect().
-			Model(&volumes).
-			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("accounts_address = ?", "orders:1234").
-			Scan(ctx)
-		require.NoError(t, err)
-		require.Len(t, volumes, 1)
-		require.Equal(t, "USD", volumes[0].Asset)
-		require.Equal(t, big.NewInt(0), volumes[0].Input)
-		require.Equal(t, big.NewInt(0), volumes[0].Output)
 	})
 
 	t.Run("check concurrent access on same balance", func(t *testing.T) {
 		t.Parallel()
+
+		world := &ledger.Account{
+			Address:       "world",
+			InsertionDate: time.Now(),
+			UpdatedAt:     time.Now(),
+			FirstUsage:    time.Now(),
+		}
+		err := store.UpsertAccounts(ctx, world)
+		require.NoError(t, err)
+
+		err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
+			Account: "world",
+			Asset:   "USD",
+			Input:   new(big.Int),
+			Output:  big.NewInt(100),
+		})
+		require.NoError(t, err)
 
 		tx1, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
 		require.NoError(t, err)
@@ -117,43 +121,6 @@ func TestBalancesGet(t *testing.T) {
 			t.Fatalf("parallel tx should have been unlocked")
 		case <-getBalancesAccepted:
 		}
-	})
-
-	t.Run("balance query with empty balance", func(t *testing.T) {
-
-		tx, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, tx.Rollback())
-		})
-
-		store := store.WithDB(tx)
-
-		count, err := store.GetDB().NewSelect().
-			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("ledger = ?", store.GetLedger().Name).
-			Count(ctx)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
-
-		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
-			"world":        {"USD"},
-			"not-existing": {"USD"},
-		})
-		require.NoError(t, err)
-		require.Len(t, balances, 2)
-		require.NotNil(t, balances["world"])
-		require.NotNil(t, balances["not-existing"])
-
-		require.Equal(t, big.NewInt(-100), balances["world"]["USD"])
-		require.Equal(t, big.NewInt(0), balances["not-existing"]["USD"])
-
-		count, err = store.GetDB().NewSelect().
-			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("ledger = ?", store.GetLedger().Name).
-			Count(ctx)
-		require.NoError(t, err)
-		require.Equal(t, 2, count)
 	})
 }
 

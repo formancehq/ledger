@@ -25,8 +25,10 @@ const (
 	// FeatureIndexAddressSegments is used to defined it we want to index segments of accounts address.
 	// Without this feature, the ledger will not allow filtering on partial account address.
 	FeatureIndexAddressSegments = "INDEX_ADDRESS_SEGMENTS"
-	// FeatureIndexTransactionAccounts is used to defined it we want to index accounts used in a transaction.
+	// FeatureIndexTransactionAccounts is used to define if we want to index accounts used in a transaction.
 	FeatureIndexTransactionAccounts = "INDEX_TRANSACTION_ACCOUNTS"
+	// FeatureIndexTransactionAccounts is used to define if we want to compute post commit volumes of each transaction
+	FeaturePostCommitVolumes = "POST_COMMIT_VOLUMES"
 )
 
 var (
@@ -38,6 +40,7 @@ var (
 		FeatureTransactionMetadataHistory:             "SYNC",
 		FeatureIndexAddressSegments:                   "ON",
 		FeatureIndexTransactionAccounts:               "ON",
+		FeaturePostCommitVolumes: "ON",
 	}
 	MinimalFeatureSet = FeatureSet{
 		FeatureMovesHistory:                           "OFF",
@@ -47,6 +50,7 @@ var (
 		FeatureTransactionMetadataHistory:             "DISABLED",
 		FeatureIndexAddressSegments:                   "OFF",
 		FeatureIndexTransactionAccounts:               "OFF",
+		FeaturePostCommitVolumes: "OFF",
 	}
 	FeatureConfigurations = map[string][]string{
 		FeatureMovesHistory:                           {"ON", "OFF"},
@@ -56,6 +60,7 @@ var (
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
 		FeatureIndexAddressSegments:                   {"ON", "OFF"},
 		FeatureIndexTransactionAccounts:               {"ON", "OFF"},
+		FeaturePostCommitVolumes: {"ON", "OFF"},
 	}
 )
 

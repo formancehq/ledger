@@ -61,12 +61,12 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 	needAddressSegments := query.useFilter("address", isPartialAddress)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = store.db.NewSelect().
-			Column("asset", "input", "output").
-			ColumnExpr("input - output as balance").
+			Column("asset").
+			ColumnExpr("input").
+			ColumnExpr("output").
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("ledger = ?", store.ledger.Name).
-			Order("accounts_address", "asset")
+			Where("ledger = ?", store.ledger.Name)
 
 		if query.useFilter("metadata") || needAddressSegments {
 			subQuery := store.db.NewSelect().
@@ -80,7 +80,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				selectVolumes = selectVolumes.Column("account_array")
 			}
 			if query.useFilter("metadata") {
-				subQuery = subQuery.ColumnExpr("metadata")
+				subQuery = subQuery.Column("metadata")
 				selectVolumes = selectVolumes.Column("metadata")
 			}
 
@@ -148,7 +148,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 func (h volumesResourceHandler) resolveFilter(
 	store *Store,
-	opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	_ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -160,10 +160,18 @@ func (h volumesResourceHandler) resolveFilter(
 		clauses := make([]string, 0)
 		args := make([]any, 0)
 
-		clauses = append(clauses, "balance "+convertOperatorToSQL(operator)+" ?")
+		selectBalance := store.db.NewSelect().
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("ledger = ?", store.ledger.Name).
+			ColumnExpr("sum(input) - sum(output) as balance").
+			Group("asset").
+			Where("accounts_address = dataset.account").
+			Limit(1)
+		clauses = append(clauses, "("+selectBalance.String()+")"+convertOperatorToSQL(operator)+" ?")
 		args = append(args, value)
 
 		if balanceRegex.MatchString(property) {
+			selectBalance.Where("asset = ?", balanceRegex.FindAllStringSubmatch(property, 2)[0][1])
 			clauses = append(clauses, "asset = ?")
 			args = append(args, balanceRegex.FindAllStringSubmatch(property, 2)[0][1])
 		}
@@ -189,10 +197,15 @@ func (h volumesResourceHandler) project(
 	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
-	selectQuery = selectQuery.DistinctOn("account, asset")
-
+	selectQuery = selectQuery.
+		Column("account", "asset").
+		ColumnExpr("sum(input) as input").
+		ColumnExpr("sum(output) as output").
+		ColumnExpr("sum(input) - sum(output) as balance").
+		Group("account", "asset").
+		Order("account", "asset")
 	if query.Opts.GroupLvl == 0 {
-		return selectQuery.ColumnExpr("*"), nil
+		return selectQuery, nil
 	}
 
 	intermediate := store.db.NewSelect().

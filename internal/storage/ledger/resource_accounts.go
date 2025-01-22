@@ -107,7 +107,8 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 		} else {
 			selectBalance = selectBalance.
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-				ColumnExpr("input - output as balance")
+				Group("asset").
+				ColumnExpr("sum(input) - sum(output) as balance")
 		}
 
 		if balanceRegex.MatchString(property) {
@@ -169,7 +170,8 @@ func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.Reso
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes").
+			ColumnExpr("(sum(input), sum(output))::"+store.GetPrefixedRelationName("volumes")+" as volumes").
+			Group("accounts_address", "asset").
 			Where("ledger = ?", store.ledger.Name)
 	}
 

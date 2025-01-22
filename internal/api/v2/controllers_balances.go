@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"net/http"
 
 	"errors"
@@ -22,7 +23,9 @@ func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balances, err := common.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), *rq)
+	ctx := bundebug.WithDebug(r.Context())
+
+	balances, err := common.LedgerFromContext(r.Context()).GetAggregatedBalances(ctx, *rq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):

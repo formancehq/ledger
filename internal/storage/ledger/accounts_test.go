@@ -150,6 +150,7 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list with effective volumes using PIT", func(t *testing.T) {
 		t.Parallel()
+
 		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
 			Options: ledgercontroller.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
@@ -220,6 +221,7 @@ func TestAccountsList(t *testing.T) {
 	})
 	t.Run("list using filter on balances and PIT", func(t *testing.T) {
 		t.Parallel()
+
 		accounts, err := store.Accounts().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[any]{
 			Options: ledgercontroller.ResourceQuery[any]{
 				Builder: query.Lt("balance", 0),
@@ -317,9 +319,10 @@ func TestAccountsGet(t *testing.T) {
 		},
 	}))
 
+	tx2Timestamp := now.Add(-time.Minute)
 	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),
-	).WithTimestamp(now.Add(-time.Minute)))
+	).WithTimestamp(tx2Timestamp))
 	err = store.CommitTransaction(ctx, tx2)
 	require.NoError(t, err)
 
@@ -334,7 +337,7 @@ func TestAccountsGet(t *testing.T) {
 			Metadata: metadata.Metadata{
 				"category": "gold",
 			},
-			FirstUsage:    now.Add(-time.Minute),
+			FirstUsage:    tx2Timestamp,
 			InsertionDate: tx1.InsertedAt,
 			UpdatedAt:     tx2.InsertedAt,
 		}, *account)
@@ -371,6 +374,7 @@ func TestAccountsGet(t *testing.T) {
 
 	t.Run("find account with volumes", func(t *testing.T) {
 		t.Parallel()
+
 		account, err := store.Accounts().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
 			Builder: query.Match("address", "multi"),
 			Expand:  []string{"volumes"},
@@ -459,13 +463,22 @@ func TestAccountsUpsert(t *testing.T) {
 
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
+	now := time.Now()
 
 	account1 := ledger.Account{
-		Address: "foo",
+		Address:       "foo",
+		InsertionDate: now,
+		UpdatedAt:     now,
+		FirstUsage:    now,
+		Metadata:      metadata.Metadata{},
 	}
 
 	account2 := ledger.Account{
-		Address: "foo2",
+		Address:       "foo2",
+		InsertionDate: now,
+		UpdatedAt:     now,
+		FirstUsage:    now,
+		Metadata:      metadata.Metadata{},
 	}
 
 	// Initial insert
@@ -480,19 +493,48 @@ func TestAccountsUpsert(t *testing.T) {
 	require.NotEmpty(t, account2.InsertionDate)
 	require.NotEmpty(t, account2.UpdatedAt)
 
-	now := time.Now()
-
 	// Reset the account model
-	account1 = ledger.Account{
+	account1WithModificationInFuture := ledger.Account{
 		Address: "foo",
 		// The account will be upserted on the timeline after its initial usage.
 		// The upsert should not modify anything, but, it should retrieve and load the account entity
 		FirstUsage:    now.Add(time.Second),
 		InsertionDate: now.Add(time.Second),
 		UpdatedAt:     now.Add(time.Second),
+		Metadata:      metadata.Metadata{},
 	}
 
 	// Upsert with no modification
-	err = store.UpsertAccounts(ctx, &account1)
+	err = store.UpsertAccounts(ctx, &account1WithModificationInFuture)
 	require.NoError(t, err)
+
+	account1FromDB, err := store.Accounts().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("address", "foo"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, account1, *account1FromDB)
+
+	// Upsert with modification
+	account1WithModification := ledger.Account{
+		Address:       "foo",
+		FirstUsage:    now.Add(-time.Second),
+		InsertionDate: now.Add(time.Second),
+		UpdatedAt:     now.Add(time.Second),
+		Metadata:      metadata.Metadata{},
+	}
+
+	err = store.UpsertAccounts(ctx, &account1WithModification)
+	require.NoError(t, err)
+
+	account1FromDB, err = store.Accounts().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("address", "foo"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, ledger.Account{
+		Address:       "foo",
+		FirstUsage:    now.Add(-time.Second),
+		InsertionDate: now,
+		UpdatedAt:     now.Add(time.Second),
+		Metadata:      metadata.Metadata{},
+	}, *account1FromDB)
 }

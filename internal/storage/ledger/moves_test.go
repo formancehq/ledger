@@ -5,6 +5,7 @@ package ledger_test
 import (
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/metadata"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -28,6 +29,7 @@ func TestMovesInsert(t *testing.T) {
 
 		store := newLedgerStore(t)
 		ctx := logging.TestingContext()
+		now := time.Now()
 
 		tx := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
@@ -35,12 +37,14 @@ func TestMovesInsert(t *testing.T) {
 		require.NoError(t, store.InsertTransaction(ctx, &tx))
 
 		account := &ledger.Account{
-			Address: "world",
+			Address:       "world",
+			InsertionDate: now,
+			UpdatedAt:     now,
+			FirstUsage:    now,
+			Metadata:      make(metadata.Metadata),
 		}
 		err := store.UpsertAccounts(ctx, account)
 		require.NoError(t, err)
-
-		now := time.Now()
 
 		// We will insert 5 moves at five different timestamps and check than pv(c)e evolves correctly
 		// t0 ---------> t1 ---------> t2 ---------> t3 ----------> t4
