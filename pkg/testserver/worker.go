@@ -23,8 +23,11 @@ import (
 )
 
 type WorkerConfiguration struct {
-	LogsHashBlockMaxSize  int
-	LogsHashBlockCRONSpec string
+	LogsHashBlockMaxSize     int
+	LogsHashBlockCRONSpec    string
+	PipelinesSyncPeriod      time.Duration
+	PipelinesPullInterval    time.Duration
+	PipelinesPushRetryPeriod time.Duration
 }
 
 func (cfg WorkerConfiguration) computeFlags() []string {
@@ -36,6 +39,27 @@ func (cfg WorkerConfiguration) computeFlags() []string {
 		args = append(args, "--"+cmd.WorkerAsyncBlockHasherScheduleFlag, cfg.LogsHashBlockCRONSpec)
 	}
 
+	if cfg.PipelinesSyncPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.WorkerPipelinesSyncPeriodFlag,
+			cfg.PipelinesSyncPeriod.String(),
+		)
+	}
+	if cfg.PipelinesPullInterval != 0 {
+		args = append(
+			args,
+			"--"+cmd.WorkerPipelinesPullIntervalFlag,
+			cfg.PipelinesPullInterval.String(),
+		)
+	}
+	if cfg.PipelinesPushRetryPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.WorkerPipelinesPushRetryPeriodFlag,
+			cfg.PipelinesPushRetryPeriod.String(),
+		)
+	}
 	return args
 }
 

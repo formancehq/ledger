@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/stoewer/go-strcase"
 	"github.com/uptrace/bun"
@@ -83,7 +83,7 @@ func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandl
 	return ret, nil
 }
 
-func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h accountsResourceHandler) resolveFilter(store *Store, opts pagination.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
@@ -97,7 +97,7 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 
 		if opts.PIT != nil && !opts.PIT.IsZero() {
 			if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-				return "", nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+				return "", nil, NewErrMissingFeature(features.FeatureMovesHistory)
 			}
 			selectBalance = selectBalance.
 				ModelTableExpr(store.GetPrefixedRelationName("moves")).
@@ -128,23 +128,23 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 			match[0][1]: value,
 		}}, nil
 	default:
-		return "", nil, ledgercontroller.NewErrInvalidQuery("invalid filter property %s", property)
+		return "", nil, NewErrInvalidQuery("invalid filter property %s", property)
 	}
 }
 
-func (h accountsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) project(store *Store, query pagination.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h accountsResourceHandler) expand(store *Store, opts pagination.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	switch property {
 	case "volumes":
 		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return nil, nil, ledgercontroller.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
+			return nil, nil, NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
 		}
 	case "effectiveVolumes":
 		if !store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-			return nil, nil, ledgercontroller.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
+			return nil, nil, NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 		}
 	}
 

@@ -1,11 +1,10 @@
-package bus
+package events
 
 import (
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/publish"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/pkg/events"
 )
 
 type CommittedTransactions struct {
@@ -14,12 +13,12 @@ type CommittedTransactions struct {
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 
-func newEventCommittedTransactions(txs CommittedTransactions) publish.EventMessage {
+func NewEventCommittedTransactions(txs CommittedTransactions) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
-		App:     events.EventApp,
-		Version: events.EventVersion,
-		Type:    events.EventTypeCommittedTransactions,
+		App:     EventApp,
+		Version: EventVersion,
+		Type:    EventTypeCommittedTransactions,
 		Payload: txs,
 	}
 }
@@ -31,12 +30,12 @@ type SavedMetadata struct {
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func newEventSavedMetadata(savedMetadata SavedMetadata) publish.EventMessage {
+func NewEventSavedMetadata(savedMetadata SavedMetadata) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
-		App:     events.EventApp,
-		Version: events.EventVersion,
-		Type:    events.EventTypeSavedMetadata,
+		App:     EventApp,
+		Version: EventVersion,
+		Type:    EventTypeSavedMetadata,
 		Payload: savedMetadata,
 	}
 }
@@ -47,12 +46,12 @@ type RevertedTransaction struct {
 	RevertTransaction   ledger.Transaction `json:"revertTransaction"`
 }
 
-func newEventRevertedTransaction(revertedTransaction RevertedTransaction) publish.EventMessage {
+func NewEventRevertedTransaction(revertedTransaction RevertedTransaction) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
-		App:     events.EventApp,
-		Version: events.EventVersion,
-		Type:    events.EventTypeRevertedTransaction,
+		App:     EventApp,
+		Version: EventVersion,
+		Type:    EventTypeRevertedTransaction,
 		Payload: revertedTransaction,
 	}
 }
@@ -64,12 +63,12 @@ type DeletedMetadata struct {
 	Key        string `json:"key"`
 }
 
-func newEventDeletedMetadata(deletedMetadata DeletedMetadata) publish.EventMessage {
+func NewEventDeletedMetadata(deletedMetadata DeletedMetadata) publish.EventMessage {
 	return publish.EventMessage{
 		Date:    time.Now().Time,
-		App:     events.EventApp,
-		Version: events.EventVersion,
-		Type:    events.EventTypeDeletedMetadata,
+		App:     EventApp,
+		Version: EventVersion,
+		Type:    EventTypeDeletedMetadata,
 		Payload: deletedMetadata,
 	}
 }

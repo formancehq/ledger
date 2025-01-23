@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
@@ -41,7 +42,7 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 	_, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
 		IdempotencyKey: "foo",
 	}, func(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
-		return nil, NewErrIdempotencyKeyConflict("foo")
+		return nil, ledgerstore.NewErrIdempotencyKeyConflict("foo")
 	})
 	require.NoError(t, err)
 }
