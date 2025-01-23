@@ -1,13 +1,13 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/leadership"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
 	"time"
-
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/ledger/internal/api/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 
 	apilib "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/health"
@@ -112,6 +112,7 @@ func NewServeCommand() *cobra.Command {
 				}),
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
+				leadership.NewFXModule(),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
