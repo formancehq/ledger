@@ -3,6 +3,9 @@ package cmd
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/all"
+	"github.com/formancehq/ledger/internal/replication/runner"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
@@ -98,6 +101,8 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				drivers.NewFXModule(),
+				fx.Invoke(all.Register),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      numscriptInterpreter,
 					NumscriptInterpreterFlags: numscriptInterpreterFlags,
@@ -152,7 +157,11 @@ func NewServeCommand() *cobra.Command {
 
 			workerEnabled, _ := cmd.Flags().GetBool(WorkerEnabledFlag)
 			if workerEnabled {
-				options = append(options, newWorkerModule())
+				options = append(options, runner.NewFXModule(runner.ModuleConfig{
+					SyncPeriod:      serveConfiguration.Worker.pipelinesSyncPeriod,
+					PullInterval:    serveConfiguration.Worker.pipelinesPullInterval,
+					PushRetryPeriod: serveConfiguration.Worker.pipelinesPushRetryPeriod,
+				}))
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
@@ -190,6 +199,7 @@ type serveConfiguration struct {
 	numscriptCacheMaxCount uint
 	autoUpgrade            bool
 	bind                   string
+	Worker                 workerConfiguration
 }
 
 func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
@@ -198,6 +208,8 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
 	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
+
+	ret.Worker = discoverWorkerConfiguration(cmd)
 
 	return ret
 }

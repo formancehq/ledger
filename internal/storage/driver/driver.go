@@ -8,15 +8,12 @@ import (
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"time"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
@@ -25,9 +22,11 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
+var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
+
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
-	systemStore        systemstore.Store
+	systemStore        SystemStore
 	bucketFactory      bucket.Factory
 	tracer             trace.Tracer
 	meter              metric.Meter
@@ -41,7 +40,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	if err := d.systemStore.CreateLedger(ctx, l); err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return nil, systemcontroller.ErrLedgerAlreadyExists
+			return nil, systemstore.ErrLedgerAlreadyExists
 		}
 		return nil, postgres.ResolveError(err)
 	}
@@ -58,7 +57,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		}
 
 		if !upToDate {
-			return nil, systemcontroller.ErrBucketOutdated
+			return nil, ErrBucketOutdated
 		}
 
 		if err := b.AddLedger(ctx, *l); err != nil {
@@ -144,7 +143,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return d.systemStore.DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return d.systemStore.ListLedgers(ctx, q)
 }
 
@@ -244,7 +243,7 @@ func (d *Driver) HasReachMinimalVersion(ctx context.Context) (bool, error) {
 
 func New(
 	ledgerStoreFactory ledgerstore.Factory,
-	systemStore systemstore.Store,
+	systemStore SystemStore,
 	bucketFactory bucket.Factory,
 	opts ...Option,
 ) *Driver {

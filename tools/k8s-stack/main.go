@@ -19,6 +19,11 @@ type IngressConfig struct {
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 
+		connectors := make(map[string]map[string]any)
+		if err := config.GetObject(ctx, "connectors", &connectors); err != nil {
+			return err
+		}
+
 		ledgerConfig := config.New(ctx, "ledger")
 
 		ingress := &IngressConfig{}
@@ -45,6 +50,18 @@ func main() {
 					}
 				}(),
 			},
+			Connectors: func() map[string]pulumi.Map {
+				ret := make(map[string]pulumi.Map)
+				for name, rawConfig := range connectors {
+					convertedConfig := pulumi.Map{}
+					for k, v := range rawConfig {
+						convertedConfig[k] = pulumi.Any(v)
+					}
+					ret[name] = convertedConfig
+				}
+
+				return ret
+			}(),
 		}
 
 		tracesEnabled := ledgerConfig.GetBool("otel-traces-enabled")

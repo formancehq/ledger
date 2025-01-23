@@ -1,0 +1,15 @@
+option go_package = "github.com/formancehq/ledger/worker";
+
+package worker;
+
+service Worker {
+  rpc RefreshPipeline(RefreshPipelineRequest) returns (RefreshPipelineResponse) {}
+}
+
+message RefreshPipelineRequest {
+  required string pipeline_id = 1;
+}
+
+message RefreshPipelineResponse {
+  required string pipeline_id = 1;
+}

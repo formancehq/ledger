@@ -1,9 +1,11 @@
 package ledger_stack
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
+	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -27,9 +29,10 @@ type StackLedgerArgs struct {
 }
 
 type StackComponentArgs struct {
-	Debug     pulumix.Input[bool]
-	Namespace pulumix.Input[string]
-	Ledger    *StackLedgerArgs
+	Debug      pulumix.Input[bool]
+	Namespace  pulumix.Input[string]
+	Ledger     *StackLedgerArgs
+	Connectors map[string]pulumi.Map
 }
 
 func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts ...pulumi.ResourceOption) (*StackComponent, error) {
@@ -103,6 +106,53 @@ func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts .
 			cmp.Postgres,
 		}))...,
 	)
+
+	for name, config := range args.Connectors {
+		_, err := batchv1.NewJob(ctx, "initialize-connector-"+name, &batchv1.JobArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+			},
+			Spec: batchv1.JobSpecArgs{
+				Template: corev1.PodTemplateSpecArgs{
+					Spec: corev1.PodSpecArgs{
+						RestartPolicy: pulumi.String("Never"),
+						Containers: corev1.ContainerArray{
+							corev1.ContainerArgs{
+								Name: pulumi.String("generator"),
+								Args: pulumi.StringArray{
+									pulumi.String("sh"),
+									pulumi.String("-c"),
+									pulumi.Sprintf(`
+										curl -X POST \
+											-H "Content-Type: application/json" \
+											-d '%s' \
+											--fail \
+											%s/v2/_system/connectors
+									`, pulumi.All(config).ApplyT(func(m []interface{}) (string, error) {
+										data, err := json.Marshal(map[string]any{
+											"driver": name,
+											"config": m[0],
+										})
+										if err != nil {
+											return "", err
+										}
+
+										return string(data), nil
+									}), cmp.Ledger.ServiceInternalURL),
+								},
+								Image: pulumi.String("alpine/curl"),
+							},
+						},
+					},
+				},
+			},
+		}, pulumi.Parent(cmp), pulumi.DependsOn([]pulumi.Resource{
+			cmp.Ledger,
+		}))
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{}); err != nil {
 		return nil, fmt.Errorf("registering outputs: %w", err)

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"strings"
@@ -54,7 +54,7 @@ func (h volumesResourceHandler) filters() []filter {
 	}
 }
 
-func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
@@ -89,7 +89,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 		}
 	} else {
 		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+			return nil, NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
 		selectVolumes = store.db.NewSelect().
@@ -148,7 +148,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 func (h volumesResourceHandler) resolveFilter(
 	store *Store,
-	opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	opts pagination.ResourceQuery[GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -186,7 +186,7 @@ func (h volumesResourceHandler) resolveFilter(
 
 func (h volumesResourceHandler) project(
 	store *Store,
-	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	query pagination.ResourceQuery[GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -209,8 +209,8 @@ func (h volumesResourceHandler) project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h volumesResourceHandler) expand(_ *Store, _ pagination.ResourceQuery[GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ repositoryHandler[ledgercontroller.GetVolumesOptions] = volumesResourceHandler{}
+var _ repositoryHandler[GetVolumesOptions] = volumesResourceHandler{}

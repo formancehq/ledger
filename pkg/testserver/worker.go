@@ -22,11 +22,34 @@ import (
 )
 
 type WorkerConfiguration struct {
+	PipelinesSyncPeriod          time.Duration
+	PipelinesPullInterval        time.Duration
+	PipelinesPushRetryPeriod     time.Duration
 }
 
 func (cfg WorkerConfiguration) computeFlags() []string {
 	args := make([]string, 0)
-
+	if cfg.PipelinesSyncPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.PipelinesSyncPeriodFlag,
+			cfg.PipelinesSyncPeriod.String(),
+		)
+	}
+	if cfg.PipelinesPullInterval != 0 {
+		args = append(
+			args,
+			"--"+cmd.PipelinesPullIntervalFlag,
+			cfg.PipelinesPullInterval.String(),
+		)
+	}
+	if cfg.PipelinesPushRetryPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.PipelinesPushRetryPeriodFlag,
+			cfg.PipelinesPushRetryPeriod.String(),
+		)
+	}
 	return args
 }
 
