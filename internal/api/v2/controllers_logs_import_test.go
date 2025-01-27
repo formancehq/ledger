@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -73,7 +72,7 @@ func TestLogsImport(t *testing.T) {
 					}
 				})
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			buf := bytes.NewBuffer(nil)
 			require.NoError(t, json.NewEncoder(buf).Encode(log))

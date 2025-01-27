@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -72,7 +71,7 @@ func TestAccountsAddMetadata(t *testing.T) {
 					Return(&ledger.Log{}, nil)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodPost, "/", api.Buffer(t, testCase.body))
 			// httptest.NewRequest check for invalid urls while we want to test invalid urls

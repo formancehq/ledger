@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 
 	"errors"
@@ -72,7 +71,7 @@ func TestAccountsDeleteMetadata(t *testing.T) {
 					Return(&ledger.Log{}, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodDelete, "/", nil)
 			req.URL.Path = "/ledger0/accounts/" + tc.account + "/metadata/foo"
