@@ -6,7 +6,6 @@ import (
 	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -100,7 +99,7 @@ func TestLedgersCreate(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, false)
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			name := uuid.NewString()
 

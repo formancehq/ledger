@@ -76,7 +76,7 @@ func NewRouter(
 	v2Router := v2.NewRouter(
 		systemController,
 		authenticator,
-		debug,
+		version,
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithBulkerFactory(routerOptions.bulkerFactory),
 		v2.WithBulkHandlerFactories(map[string]bulking.HandlerFactory{

@@ -3,7 +3,6 @@ package v2
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -22,7 +21,7 @@ func TestLedgersRead(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, false)
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 	name := uuid.NewString()
 	now := time.Now()
