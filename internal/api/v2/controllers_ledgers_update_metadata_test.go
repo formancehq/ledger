@@ -26,7 +26,7 @@ func TestLedgersUpdateMetadata(t *testing.T) {
 		UpdateLedgerMetadata(gomock.Any(), name, metadata).
 		Return(nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 	req := httptest.NewRequest(http.MethodPut, "/"+name+"/metadata", api.Buffer(t, metadata))
 	req = req.WithContext(ctx)

@@ -64,6 +64,7 @@ func NewRouter(
 	v2Router := v2.NewRouter(
 		systemController,
 		authenticator,
+		version,
 		debug,
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithMiddlewares(commonMiddlewares...),

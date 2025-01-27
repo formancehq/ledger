@@ -22,7 +22,7 @@ func TestLedgersRead(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, false)
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 	name := uuid.NewString()
 	now := time.Now()

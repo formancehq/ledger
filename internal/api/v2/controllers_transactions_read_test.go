@@ -37,7 +37,7 @@ func TestTransactionsRead(t *testing.T) {
 		GetTransaction(gomock.Any(), q).
 		Return(&tx, nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0?pit="+now.Format(time.RFC3339Nano), nil)
 	rec := httptest.NewRecorder()

@@ -93,7 +93,7 @@ func TestAccountsRead(t *testing.T) {
 					Return(&ledger.Account{}, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodGet, "/", bytes.NewBufferString(tc.body))
 			req.URL.Path = "/xxx/accounts/" + tc.account

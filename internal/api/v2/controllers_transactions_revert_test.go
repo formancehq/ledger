@@ -81,7 +81,7 @@ func TestTransactionsRevert(t *testing.T) {
 					RevertTransaction: tc.returnTx,
 				}, tc.returnErr)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
 			if tc.queryParams != nil {

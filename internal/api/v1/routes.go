@@ -29,7 +29,7 @@ func NewRouter(
 
 	router := chi.NewMux()
 
-	router.Get("/_info", getInfo(systemController, version))
+	router.Get("/_info", GetInfo(systemController, version))
 
 	router.Group(func(router chi.Router) {
 		router.Use(routerOptions.middlewares...)

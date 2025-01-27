@@ -32,7 +32,7 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func getInfo(systemController system.Controller, version string) func(w http.ResponseWriter, r *http.Request) {
+func GetInfo(systemController system.Controller, version string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ledgerNames := make([]string, 0)

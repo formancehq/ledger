@@ -99,7 +99,7 @@ func TestTransactionsAddMetadata(t *testing.T) {
 					Return(nil, testCase.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/xxx/transactions/%v/metadata", testCase.id), api.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()

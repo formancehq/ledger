@@ -3,6 +3,7 @@ package v2
 import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/bulking"
+	v1 "github.com/formancehq/ledger/internal/api/v1"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
@@ -21,6 +22,7 @@ import (
 func NewRouter(
 	systemController system.Controller,
 	authenticator auth.Authenticator,
+	version string,
 	debug bool,
 	opts ...RouterOption,
 ) chi.Router {
@@ -35,6 +37,8 @@ func NewRouter(
 		router.Use(routerOptions.middlewares...)
 		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
+
+		router.Get("/_info", v1.GetInfo(systemController, version))
 
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
 		router.Route("/{ledger}", func(router chi.Router) {

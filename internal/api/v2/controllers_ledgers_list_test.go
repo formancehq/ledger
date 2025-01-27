@@ -95,7 +95,7 @@ func TestListLedgers(t *testing.T) {
 					}, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req = req.WithContext(ctx)

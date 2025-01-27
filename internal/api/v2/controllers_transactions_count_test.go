@@ -164,7 +164,7 @@ func TestTransactionsCount(t *testing.T) {
 					Return(10, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(tc.body))
 			rec := httptest.NewRecorder()

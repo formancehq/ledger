@@ -485,7 +485,7 @@ func TestBulk(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			testCase.expectations(ledgerController)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/_bulk", bytes.NewBufferString(testCase.body))
 			req.Header = testCase.headers
