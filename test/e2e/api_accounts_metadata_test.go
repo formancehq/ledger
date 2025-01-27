@@ -98,7 +98,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 			Context("then adding with empty metadata", func() {
 				It("should be OK", func() {
 
-					// The first call created the row in the database,
+					// The first call has created the row in the database,
 					// the second call should not change the metadata, and checks than updates works.
 					err := AddMetadataToAccount(
 						ctx,

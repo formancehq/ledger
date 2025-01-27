@@ -10,7 +10,6 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"math/big"
-	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
@@ -44,9 +43,7 @@ func TestMain(m *testing.M) {
 				require.NoError(t, err)
 
 				bunDB := bun.NewDB(db, pgdialect.New(), bun.WithDiscardUnknownColumns())
-				if os.Getenv("DEBUG") == "true" {
-					bunDB.AddQueryHook(bundebug.NewQueryHook())
-				}
+				bunDB.AddQueryHook(bundebug.NewQueryHook())
 				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))

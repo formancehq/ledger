@@ -291,7 +291,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 		ctx,
 		ColumnPaginatedQuery[any]{
 			PageSize: 100,
-			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		},
 		func(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 			return ctrl.store.Logs().Paginate(ctx, q)
@@ -451,9 +451,18 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 }
 
 func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
+	metadata := parameters.Input.Metadata
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
+
+	now := time.Now()
 	if err := store.UpsertAccounts(ctx, &ledger.Account{
-		Address:  parameters.Input.Address,
-		Metadata: parameters.Input.Metadata,
+		Address:       parameters.Input.Address,
+		Metadata:      metadata,
+		InsertionDate: now,
+		UpdatedAt:     now,
+		FirstUsage:    now,
 	}); err != nil {
 		return nil, err
 	}
