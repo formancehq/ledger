@@ -8,25 +8,31 @@ import (
 
 const leadershipAdvisoryLockKey = 123456789
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source locker.go -destination locker_generated_test.go -package leadership . Locker
+type DBHandle interface {
+	bun.IDB
+	Close() error
+}
+
+// Locker take a lock at process level
+// It returns a bun.IDB which MUST be invalidated when the lock is lost
 type Locker interface {
-	Take(ctx context.Context) (bool, func(), error)
+	Take(ctx context.Context) (DBHandle, error)
 }
 
 type defaultLocker struct {
 	db *bun.DB
 }
 
-func (p *defaultLocker) Take(ctx context.Context) (bool, func(), error) {
+func (p *defaultLocker) Take(ctx context.Context) (DBHandle, error) {
 	conn, err := p.db.Conn(ctx)
 	if err != nil {
-		return false, nil, fmt.Errorf("error opening new connection: %w", err)
+		return nil, fmt.Errorf("error opening new connection: %w", err)
 	}
 
 	ret := conn.QueryRowContext(ctx, "select pg_try_advisory_lock(?)", leadershipAdvisoryLockKey)
 	if ret.Err() != nil {
 		_ = conn.Close()
-		return false, nil, fmt.Errorf("error acquiring lock: %w", ret.Err())
+		return nil, fmt.Errorf("error acquiring lock: %w", ret.Err())
 	}
 
 	var acquired bool
@@ -37,12 +43,10 @@ func (p *defaultLocker) Take(ctx context.Context) (bool, func(), error) {
 
 	if !acquired {
 		_ = conn.Close()
-		return false, nil, nil
+		return nil, nil
 	}
 
-	return true, func() {
-		_ = conn.Close()
-	}, nil
+	return conn, nil
 }
 
 func NewDefaultLocker(db *bun.DB) Locker {

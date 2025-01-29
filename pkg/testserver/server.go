@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/internal/leadership"
+	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/nats-io/nats.go"
 
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
@@ -203,6 +203,7 @@ func (s *Server) Start() error {
 	ctx := logging.TestingContext()
 	ctx = service.ContextWithLifecycle(ctx)
 	ctx = httpserver.ContextWithServerInfo(ctx)
+	ctx = leadership.ContextWithLeadershipInfo(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 
 	go func() {
@@ -322,6 +323,10 @@ func (s *Server) Subscribe() (*nats.Subscription, chan *nats.Msg, error) {
 
 func (s *Server) URL() string {
 	return httpserver.URL(s.ctx)
+}
+
+func (s *Server) IsLeader() bool {
+	return leadership.IsLeader(s.ctx)
 }
 
 func New(t T, configuration Configuration) *Server {
