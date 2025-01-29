@@ -2,6 +2,7 @@ package leadership
 
 import (
 	"context"
+	"sync"
 )
 
 type contextKey string
@@ -17,7 +18,11 @@ func IsLeader(ctx context.Context) bool {
 	if h == nil {
 		return false
 	}
-	return h.(*holder).isLeader
+	holder := h.(*holder)
+	holder.Lock()
+	defer holder.Unlock()
+
+	return holder.isLeader
 }
 
 func setIsLeader(ctx context.Context, isLeader bool) {
@@ -25,9 +30,14 @@ func setIsLeader(ctx context.Context, isLeader bool) {
 	if h == nil {
 		return
 	}
-	h.(*holder).isLeader = isLeader
+	holder := h.(*holder)
+	holder.Lock()
+	defer holder.Unlock()
+
+	holder.isLeader = isLeader
 }
 
 type holder struct {
+	sync.Mutex
 	isLeader bool
 }
