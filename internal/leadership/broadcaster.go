@@ -1,38 +1,36 @@
 package leadership
 
 import (
-	"github.com/formancehq/go-libs/v2/pointer"
 	"sync"
 )
 
 type listener struct {
-	channel chan bool
+	channel chan Leadership
 }
 
-type Signal struct {
+type Broadcaster struct {
 	mu *sync.Mutex
-	t  *bool
+	t  *Leadership
 
 	inner []listener
-	outer chan bool
+	outer chan Leadership
 }
 
-func (h *Signal) Actual() *bool {
+func (h *Broadcaster) Actual() Leadership {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if h.t == nil {
-		return nil
+		return Leadership{}
 	}
-
-	return pointer.For(*h.t)
+	return *h.t
 }
 
-func (h *Signal) Listen() (<-chan bool, func()) {
+func (h *Broadcaster) Subscribe() (<-chan Leadership, func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	newChannel := make(chan bool, 1)
+	newChannel := make(chan Leadership, 1)
 	index := len(h.inner)
 	h.inner = append(h.inner, listener{
 		channel: newChannel,
@@ -53,7 +51,7 @@ func (h *Signal) Listen() (<-chan bool, func()) {
 	}
 }
 
-func (h *Signal) Signal(t bool) {
+func (h *Broadcaster) Broadcast(t Leadership) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -64,7 +62,7 @@ func (h *Signal) Signal(t bool) {
 	}
 }
 
-func (h *Signal) Close() {
+func (h *Broadcaster) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -73,16 +71,16 @@ func (h *Signal) Close() {
 	}
 }
 
-func (h *Signal) CountListeners() int {
+func (h *Broadcaster) CountListeners() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	return len(h.inner)
 }
 
-func NewSignal() *Signal {
-	return &Signal{
-		outer: make(chan bool),
+func NewSignal() *Broadcaster {
+	return &Broadcaster{
+		outer: make(chan Leadership),
 		mu:    &sync.Mutex{},
 	}
 }
