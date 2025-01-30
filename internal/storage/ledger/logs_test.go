@@ -26,11 +26,11 @@ import (
 func TestLogsInsert(t *testing.T) {
 	t.Parallel()
 
-	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
 	t.Run("check hash against core", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
+		store := newLedgerStore(t)
 		log1 := ledger.NewLog(ledger.CreatedTransaction{
 			Transaction:     ledger.NewTransaction(),
 			AccountMetadata: ledger.AccountMetadata{},
@@ -70,6 +70,7 @@ func TestLogsInsert(t *testing.T) {
 
 	t.Run("duplicate IK", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
+		store := newLedgerStore(t)
 		logTx := ledger.NewLog(ledger.CreatedTransaction{
 			Transaction:     ledger.NewTransaction(),
 			AccountMetadata: ledger.AccountMetadata{},
@@ -95,6 +96,7 @@ func TestLogsInsert(t *testing.T) {
 
 	t.Run("hash consistency over high concurrency", func(t *testing.T) {
 		errGroup, _ := errgroup.WithContext(ctx)
+		store := newLedgerStore(t)
 		const countLogs = 50
 		for range countLogs {
 			errGroup.Go(func() error {
@@ -151,6 +153,7 @@ func TestLogsInsert(t *testing.T) {
 			{name: "with utf-8 characters", metadata: map[string]string{"rate": "½"}},
 		}
 
+		store := newLedgerStore(t)
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
 				t.Parallel()

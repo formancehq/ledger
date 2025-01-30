@@ -41,6 +41,8 @@ var _ = Context("Ledger application multiple instance tests", func() {
 						Output:                GinkgoWriter,
 						Debug:                 debug,
 						NatsURL:               natsServer.GetValue().ClientURL(),
+						DisableAutoUpgrade:    true,
+						LeadershipRetryPeriod: 200 * time.Millisecond,
 					})
 				}()
 			}

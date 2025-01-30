@@ -5,13 +5,23 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/ledger/internal/leadership"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/robfig/cron/v3"
+	"github.com/uptrace/bun"
 	"go.uber.org/fx"
 )
 
 const HealthCheckName = `storage-driver-up-to-date`
 
-func NewFXModule(autoUpgrade bool) fx.Option {
+type ModuleConfig struct {
+	CronSpec     string
+	MaxBlockSize int
+	AutoUpgrade  bool
+}
+
+func NewFXModule(config ModuleConfig) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
 		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
@@ -31,8 +41,23 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 				return nil
 			}))
 		}),
+		fx.Provide(
+			fx.Annotate(
+				func(db *bun.DB, logger logging.Logger) (*AsyncBlockRunner, error) {
+					parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+					schedule, err := parser.Parse(config.CronSpec)
+					if err != nil {
+						return nil, err
+					}
+
+					return NewAsyncBlockRunner(systemstore.New(db), logger, schedule, config.MaxBlockSize), nil
+				},
+				fx.ResultTags(`group:"serviceHandlers"`),
+				fx.As(new(leadership.ServiceHandler)),
+			),
+		),
 	}
-	if autoUpgrade {
+	if config.AutoUpgrade {
 		ret = append(ret,
 			fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
 				var (

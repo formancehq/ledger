@@ -97,10 +97,16 @@ func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListL
 		Column("*").
 		Order("added_at asc")
 
-	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
+	if len(q.Options.Options.Features) > 0 {
+		for key, value := range q.Options.Options.Features {
+			query = query.Where("features->>? = ?", key, value)
+		}
+	}
+
+	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgerQueryPayload], ledger.Ledger](
 		ctx,
 		query,
-		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
+		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgerQueryPayload]](q),
 	)
 }
 
