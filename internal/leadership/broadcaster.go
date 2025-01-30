@@ -4,34 +4,35 @@ import (
 	"sync"
 )
 
-type listener struct {
-	channel chan Leadership
+type listener[T any] struct {
+	channel chan T
 }
 
-type Broadcaster struct {
+type Broadcaster[T any] struct {
 	mu sync.Mutex
-	t  *Leadership
+	t  *T
 
-	inner []listener
-	outer chan Leadership
+	inner []listener[T]
+	outer chan T
 }
 
-func (h *Broadcaster) Actual() Leadership {
+func (h *Broadcaster[T]) Actual() T {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if h.t == nil {
-		return Leadership{}
+		var t T
+		return t
 	}
 	return *h.t
 }
 
-func (h *Broadcaster) Subscribe() (<-chan Leadership, func()) {
+func (h *Broadcaster[T]) Subscribe() (<-chan T, func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	newChannel := make(chan Leadership, 1)
-	l := listener{
+	newChannel := make(chan T, 1)
+	l := listener[T]{
 		channel: newChannel,
 	}
 	h.inner = append(h.inner, l)
@@ -43,23 +44,20 @@ func (h *Broadcaster) Subscribe() (<-chan Leadership, func()) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 
-		index := -1
-		for i, listener := range h.inner {
+		for index, listener := range h.inner {
 			if listener == l {
-				index = i
+				if index < len(h.inner)-1 {
+					h.inner = append(h.inner[:index], h.inner[index+1:]...)
+				} else {
+					h.inner = h.inner[:index]
+				}
 				break
 			}
-		}
-
-		if index < len(h.inner)-1 {
-			h.inner = append(h.inner[:index], h.inner[index+1:]...)
-		} else {
-			h.inner = h.inner[:index]
 		}
 	}
 }
 
-func (h *Broadcaster) Broadcast(t Leadership) {
+func (h *Broadcaster[T]) Broadcast(t T) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -70,7 +68,7 @@ func (h *Broadcaster) Broadcast(t Leadership) {
 	}
 }
 
-func (h *Broadcaster) Close() {
+func (h *Broadcaster[T]) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -79,15 +77,8 @@ func (h *Broadcaster) Close() {
 	}
 }
 
-func (h *Broadcaster) CountListeners() int {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	return len(h.inner)
-}
-
-func NewSignal() *Broadcaster {
-	return &Broadcaster{
-		outer: make(chan Leadership),
+func NewBroadcaster[T any]() *Broadcaster[T] {
+	return &Broadcaster[T]{
+		outer: make(chan T),
 	}
 }

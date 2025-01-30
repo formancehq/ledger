@@ -5,20 +5,20 @@ import (
 	"sync"
 )
 
-type Mutex struct {
+type DatabaseHandle struct {
 	*sync.Mutex
 	db DBHandle
 }
 
-func (m *Mutex) Exec(fn func(db bun.IDB)) {
+func (m *DatabaseHandle) Exec(fn func(db bun.IDB)) {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
 
 	fn(m.db)
 }
 
-func NewMutex(db DBHandle) *Mutex {
-	return &Mutex{
+func NewDatabaseHandle(db DBHandle) *DatabaseHandle {
+	return &DatabaseHandle{
 		Mutex: &sync.Mutex{},
 		db:    db,
 	}

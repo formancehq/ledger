@@ -36,7 +36,7 @@ func TestLeaderShip(t *testing.T) {
 	selectedLeader := -1
 	require.Eventually(t, func() bool {
 		for index, manager := range instances {
-			actual := manager.GetSignal().Actual()
+			actual := manager.GetBroadcaster().Actual()
 			if actual.Acquired {
 				selectedLeader = index
 				return true
@@ -46,7 +46,7 @@ func TestLeaderShip(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 	leaderCount := 0
 	for _, manager := range instances {
-		if manager.GetSignal().Actual().Acquired {
+		if manager.GetBroadcaster().Actual().Acquired {
 			leaderCount++
 		}
 	}
@@ -55,7 +55,7 @@ func TestLeaderShip(t *testing.T) {
 
 	// ensure the provided db connection is still functional
 	instances[selectedLeader].
-		GetSignal().
+		GetBroadcaster().
 		Actual().DB.
 		Exec(func(db bun.IDB) {
 			require.NoError(t, db.
@@ -66,11 +66,44 @@ func TestLeaderShip(t *testing.T) {
 			)
 		})
 
+	// Stop the instance to trigger a new leader election
 	require.NoError(t, instances[selectedLeader].Stop(ctx))
 
 	require.Eventually(t, func() bool {
 		for index, manager := range instances {
-			if manager.GetSignal().Actual().Acquired {
+			if manager.GetBroadcaster().Actual().Acquired {
+				selectedLeader = index
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond)
+
+	broadcaster := instances[selectedLeader].GetBroadcaster()
+	subscription, release := broadcaster.Subscribe()
+	t.Cleanup(release)
+
+	// We will receive the leadership on the subscription
+	select {
+	case <-subscription:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for leadership acquirement")
+	}
+
+	// Close the database connection of the actual leader to check the manager is able to detect the connection loss
+	require.NoError(t, instances[selectedLeader].GetBroadcaster().Actual().DB.db.Close())
+
+	select {
+	case leadership := <-subscription:
+		require.Equal(t, Leadership{}, leadership)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for leadership loss")
+	}
+	release()
+
+	require.Eventually(t, func() bool {
+		for index, manager := range instances {
+			if manager.GetBroadcaster().Actual().Acquired {
 				selectedLeader = index
 				return true
 			}

@@ -9,7 +9,7 @@ import (
 
 type Manager struct {
 	locker      Locker
-	changes     *Broadcaster
+	changes     *Broadcaster[Leadership]
 	logger      logging.Logger
 	retryPeriod time.Duration
 	stopChannel chan chan struct{}
@@ -17,7 +17,7 @@ type Manager struct {
 
 func (m *Manager) Run(ctx context.Context) {
 	var (
-		dbMutex   *Mutex
+		dbMutex   *DatabaseHandle
 		nextRetry = time.After(time.Duration(0))
 		nextPing  <-chan time.Time
 	)
@@ -46,7 +46,7 @@ func (m *Manager) Run(ctx context.Context) {
 				continue
 			}
 
-			dbMutex = NewMutex(db)
+			dbMutex = NewDatabaseHandle(db)
 
 			m.changes.Broadcast(Leadership{
 				DB:       dbMutex,
@@ -67,7 +67,7 @@ func (m *Manager) Run(ctx context.Context) {
 					ColumnExpr("1 as v").
 					Count(ctx)
 				if err != nil {
-					m.logger.Error("error pinging db", err)
+					m.logger.Errorf("error pinging db: %s", err)
 					_ = dbMutex.db.Close()
 					dbMutex = nil
 
@@ -87,6 +87,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 	select {
 	// if already closed
 	case <-m.stopChannel:
+		m.changes.Close()
 		return nil
 	default:
 		ch := make(chan struct{})
@@ -100,7 +101,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 	}
 }
 
-func (m *Manager) GetSignal() *Broadcaster {
+func (m *Manager) GetBroadcaster() *Broadcaster[Leadership] {
 	return m.changes
 }
 
@@ -108,7 +109,7 @@ func NewManager(locker Locker, logger logging.Logger, options ...Option) *Manage
 	l := &Manager{
 		locker:      locker,
 		logger:      logger,
-		changes:     NewSignal(),
+		changes:     NewBroadcaster[Leadership](),
 		retryPeriod: 2 * time.Second,
 		stopChannel: make(chan chan struct{}),
 	}
