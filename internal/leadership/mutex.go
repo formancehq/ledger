@@ -1,20 +1,25 @@
 package leadership
 
-import "sync"
+import (
+	"github.com/uptrace/bun"
+	"sync"
+)
 
-type Mutex[T any] struct {
+type Mutex struct {
 	*sync.Mutex
-	t T
+	db DBHandle
 }
 
-func (m *Mutex[T]) Lock() (T, func()) {
+func (m *Mutex) Exec(fn func(db bun.IDB)) {
 	m.Mutex.Lock()
-	return m.t, m.Unlock
+	defer m.Mutex.Unlock()
+
+	fn(m.db)
 }
 
-func NewMutex[T any](t T) *Mutex[T] {
-	return &Mutex[T]{
+func NewMutex(db DBHandle) *Mutex {
+	return &Mutex{
 		Mutex: &sync.Mutex{},
-		t:     t,
+		db:    db,
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 	"testing"
 	"time"
 )
@@ -52,15 +53,18 @@ func TestLeaderShip(t *testing.T) {
 	require.Equal(t, 1, leaderCount)
 	require.GreaterOrEqual(t, selectedLeader, 0)
 
-	// ensure the provided db connection is still functionnal
-	require.NoError(t, instances[selectedLeader].
+	// ensure the provided db connection is still functional
+	instances[selectedLeader].
 		GetSignal().
 		Actual().DB.
-		NewSelect().
-		Model(&map[string]any{}).
-		ColumnExpr("1 as v").
-		Scan(ctx),
-	)
+		Exec(func(db bun.IDB) {
+			require.NoError(t, db.
+				NewSelect().
+				Model(&map[string]any{}).
+				ColumnExpr("1 as v").
+				Scan(ctx),
+			)
+		})
 
 	require.NoError(t, instances[selectedLeader].Stop(ctx))
 
