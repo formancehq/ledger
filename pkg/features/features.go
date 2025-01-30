@@ -48,10 +48,11 @@ var (
 		FeatureIndexAddressSegments:                   "OFF",
 		FeatureIndexTransactionAccounts:               "OFF",
 	}
+	// notes: keep the default value as first option for benchmarks
 	FeatureConfigurations = map[string][]string{
 		FeatureMovesHistory:                           {"ON", "OFF"},
 		FeatureMovesHistoryPostCommitEffectiveVolumes: {"SYNC", "DISABLED"},
-		FeatureHashLogs:                               {"SYNC", "DISABLED"},
+		FeatureHashLogs:                               {"SYNC", "ASYNC", "DISABLED"},
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
 		FeatureIndexAddressSegments:                   {"ON", "OFF"},

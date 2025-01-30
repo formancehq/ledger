@@ -47,6 +47,9 @@ const (
 	NumscriptInterpreterFlag   = "experimental-numscript-interpreter"
 	DefaultPageSizeFlag        = "default-page-size"
 	MaxPageSizeFlag            = "max-page-size"
+	LogsHashBlockMaxSizeFlag   = "logs-hash-block-max-size"
+	LogsHashBlockCRONSpecFlag  = "logs-hash-block-cron-spec"
+	LeadershipRetryPeriodFlag  = "leadership-retry-period"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -95,7 +98,14 @@ func NewServeCommand() *cobra.Command {
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
-				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				leadership.NewFXModule(leadership.ModuleConfig{
+					LeadershipRetryPeriod: serveConfiguration.leadershipRetryPeriod,
+				}),
+				storage.NewFXModule(storage.ModuleConfig{
+					CronSpec:     serveConfiguration.hashLogsBlockCRONSpec,
+					MaxBlockSize: int(serveConfiguration.hashLogsBlockMaxSize),
+					AutoUpgrade:  serveConfiguration.autoUpgrade,
+				}),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter: numscriptInterpreter,
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
@@ -109,7 +119,6 @@ func NewServeCommand() *cobra.Command {
 				}),
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
-				leadership.NewFXModule(),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
@@ -161,6 +170,9 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
+	cmd.Flags().Uint64(LogsHashBlockMaxSizeFlag, 100, "Max size of logs hash block")
+	cmd.Flags().String(LogsHashBlockCRONSpecFlag, "0 * * * * *", "Cron expression for logs hash block interval (every minute by default)")
+	cmd.Flags().Duration(LeadershipRetryPeriodFlag, 5*time.Second, "Leadership retry period")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
@@ -179,7 +191,10 @@ type serveConfiguration struct {
 	ballastSize            uint
 	numscriptCacheMaxCount uint
 	autoUpgrade            bool
+	hashLogsBlockMaxSize   uint64
+	hashLogsBlockCRONSpec  string
 	bind                   string
+	leadershipRetryPeriod  time.Duration
 }
 
 func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
@@ -188,6 +203,9 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
 	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
+	ret.hashLogsBlockCRONSpec, _ = cmd.Flags().GetString(LogsHashBlockCRONSpecFlag)
+	ret.hashLogsBlockMaxSize, _ = cmd.Flags().GetUint64(LogsHashBlockMaxSizeFlag)
+	ret.leadershipRetryPeriod, _ = cmd.Flags().GetDuration(LeadershipRetryPeriodFlag)
 
 	return ret
 }

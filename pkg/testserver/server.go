@@ -51,6 +51,9 @@ type Configuration struct {
 	ExperimentalNumscriptRewrite bool
 	MaxPageSize                  uint64
 	DefaultPageSize              uint64
+	LogsHashBlockMaxSize         int
+	LogsHashBlockCRONSpec        string
+	LeadershipRetryPeriod        time.Duration
 }
 
 type Logger interface {
@@ -85,6 +88,27 @@ func (s *Server) Start() error {
 		args = append(
 			args,
 			"--"+cmd.ExperimentalFeaturesFlag,
+		)
+	}
+	if s.configuration.LeadershipRetryPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.LeadershipRetryPeriodFlag,
+			s.configuration.LeadershipRetryPeriod.String(),
+		)
+	}
+	if s.configuration.LogsHashBlockMaxSize != 0 {
+		args = append(
+			args,
+			"--"+cmd.LogsHashBlockMaxSizeFlag,
+			fmt.Sprint(s.configuration.LogsHashBlockMaxSize),
+		)
+	}
+	if s.configuration.LogsHashBlockCRONSpec != "" {
+		args = append(
+			args,
+			"--"+cmd.LogsHashBlockCRONSpecFlag,
+			s.configuration.LogsHashBlockCRONSpec,
 		)
 	}
 	if s.configuration.BulkMaxSize != 0 {
