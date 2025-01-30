@@ -3,6 +3,7 @@ package leadership
 import (
 	"context"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/uptrace/bun"
 	"time"
 )
 
@@ -16,16 +17,19 @@ type Manager struct {
 
 func (m *Manager) Run(ctx context.Context) {
 	var (
-		db        DBHandle
+		dbMutex   *Mutex
 		nextRetry = time.After(time.Duration(0))
-		err       error
+		nextPing  <-chan time.Time
 	)
 	for {
 		select {
 		case ch := <-m.stopChannel:
-			if db != nil {
+			if dbMutex != nil {
 				m.logger.Info("leadership lost")
-				_ = db.Close()
+				dbMutex.Exec(func(_ bun.IDB) {
+					_ = dbMutex.db.Close()
+				})
+
 				setIsLeader(ctx, false)
 				m.changes.Broadcast(Leadership{})
 			}
@@ -33,7 +37,7 @@ func (m *Manager) Run(ctx context.Context) {
 			close(m.stopChannel)
 			return
 		case <-nextRetry:
-			db, err = m.locker.Take(ctx)
+			db, err := m.locker.Take(ctx)
 			if err != nil || db == nil {
 				if err != nil {
 					m.logger.Error("error acquiring lock", err)
@@ -42,13 +46,39 @@ func (m *Manager) Run(ctx context.Context) {
 				continue
 			}
 
+			dbMutex = NewMutex(db)
+
 			m.changes.Broadcast(Leadership{
-				DB:       db,
+				DB:       dbMutex,
 				Acquired: true,
 			})
 			m.logger.Info("leadership acquired")
 
 			setIsLeader(ctx, true)
+
+			nextPing = time.After(m.retryPeriod)
+
+		// Ping the database to check the connection status
+		// If the connection is lost, signal the listeners about the leadership loss
+		case <-nextPing:
+			dbMutex.Exec(func(db bun.IDB) {
+				_, err := db.
+					NewSelect().
+					ColumnExpr("1 as v").
+					Count(ctx)
+				if err != nil {
+					m.logger.Error("error pinging db", err)
+					_ = dbMutex.db.Close()
+					dbMutex = nil
+
+					setIsLeader(ctx, false)
+					m.changes.Broadcast(Leadership{})
+
+					nextRetry = time.After(m.retryPeriod)
+				} else {
+					nextPing = time.After(m.retryPeriod)
+				}
+			})
 		}
 	}
 }
