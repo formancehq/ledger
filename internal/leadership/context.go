@@ -5,9 +5,9 @@ import (
 	"sync"
 )
 
-type contextKey string
+type contextKey struct{}
 
-var holderContextKey contextKey = "holder"
+var holderContextKey contextKey = struct{}{}
 
 func ContextWithLeadershipInfo(ctx context.Context) context.Context {
 	return context.WithValue(ctx, holderContextKey, &holder{})

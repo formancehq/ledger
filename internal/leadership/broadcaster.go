@@ -9,7 +9,7 @@ type listener struct {
 }
 
 type Broadcaster struct {
-	mu *sync.Mutex
+	mu sync.Mutex
 	t  *Leadership
 
 	inner []listener
@@ -81,6 +81,5 @@ func (h *Broadcaster) CountListeners() int {
 func NewSignal() *Broadcaster {
 	return &Broadcaster{
 		outer: make(chan Leadership),
-		mu:    &sync.Mutex{},
 	}
 }
