@@ -146,8 +146,16 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 	type Temp struct {
 		Balance *big.Int `bun:"balance,type:numeric"`
 	}
+
 	v, err := fetch[*Temp](store, false, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
-		return query.TableExpr("get_account_balance(?, ?, ?) as balance", store.name, address, asset)
+		return query.
+			ModelTableExpr(MovesTableName).
+			ColumnExpr("(post_commit_volumes).inputs - (post_commit_volumes).outputs as balance").
+			Where("account_address = ?", address).
+			Where("asset = ?", asset).
+			Where("ledger = ?", store.name).
+			Order("seq desc").
+			Limit(1)
 	})
 	if err != nil {
 		return nil, err
