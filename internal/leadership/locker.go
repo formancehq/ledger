@@ -38,7 +38,7 @@ func (p *defaultLocker) Take(ctx context.Context) (DBHandle, error) {
 	var acquired bool
 	if err := ret.Scan(&acquired); err != nil {
 		_ = conn.Close()
-		panic(err)
+		return nil, err
 	}
 
 	if !acquired {

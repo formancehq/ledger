@@ -43,6 +43,13 @@ func TestLeaderShip(t *testing.T) {
 		}
 		return false
 	}, 2*time.Second, 10*time.Millisecond)
+	leaderCount := 0
+	for _, manager := range instances {
+		if manager.GetSignal().Actual().Acquired {
+			leaderCount++
+		}
+	}
+	require.Equal(t, 1, leaderCount)
 	require.GreaterOrEqual(t, selectedLeader, 0)
 
 	// ensure the provided db connection is still functionnal
