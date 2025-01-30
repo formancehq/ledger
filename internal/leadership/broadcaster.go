@@ -31,10 +31,10 @@ func (h *Broadcaster) Subscribe() (<-chan Leadership, func()) {
 	defer h.mu.Unlock()
 
 	newChannel := make(chan Leadership, 1)
-	index := len(h.inner)
-	h.inner = append(h.inner, listener{
+	l := listener{
 		channel: newChannel,
-	})
+	}
+	h.inner = append(h.inner, l)
 	if h.t != nil {
 		newChannel <- *h.t
 	}
@@ -42,6 +42,14 @@ func (h *Broadcaster) Subscribe() (<-chan Leadership, func()) {
 	return newChannel, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
+
+		index := -1
+		for i, listener := range h.inner {
+			if listener == l {
+				index = i
+				break
+			}
+		}
 
 		if index < len(h.inner)-1 {
 			h.inner = append(h.inner[:index], h.inner[index+1:]...)
