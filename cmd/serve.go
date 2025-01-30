@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/leadership"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
@@ -108,6 +109,7 @@ func NewServeCommand() *cobra.Command {
 				}),
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
+				leadership.NewFXModule(),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
@@ -122,15 +124,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-					fx.In
+						fx.In
 
-					Handler          chi.Router
-					HealthController *health.HealthController
-					Logger           logging.Logger
+						Handler          chi.Router
+						HealthController *health.HealthController
+						Logger           logging.Logger
 
-					MeterProvider *metric.MeterProvider         `optional:"true"`
-					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-				},
+						MeterProvider *metric.MeterProvider         `optional:"true"`
+						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/internal/leadership"
 	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
@@ -48,8 +49,8 @@ type Configuration struct {
 	DisableAutoUpgrade           bool
 	BulkMaxSize                  int
 	ExperimentalNumscriptRewrite bool
-	MaxPageSize uint64
-	DefaultPageSize uint64
+	MaxPageSize                  uint64
+	DefaultPageSize              uint64
 }
 
 type Logger interface {
@@ -202,6 +203,7 @@ func (s *Server) Start() error {
 	ctx := logging.TestingContext()
 	ctx = service.ContextWithLifecycle(ctx)
 	ctx = httpserver.ContextWithServerInfo(ctx)
+	ctx = leadership.ContextWithLeadershipInfo(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 
 	go func() {
@@ -321,6 +323,10 @@ func (s *Server) Subscribe() (*nats.Subscription, chan *nats.Msg, error) {
 
 func (s *Server) URL() string {
 	return httpserver.URL(s.ctx)
+}
+
+func (s *Server) IsLeader() bool {
+	return leadership.IsLeader(s.ctx)
 }
 
 func New(t T, configuration Configuration) *Server {
