@@ -9,7 +9,7 @@ paths:
   /_/info:
     get:
       tags:
-        - ledger
+        - ledger.v2
       summary: Show server information
       operationId: v2GetInfo
       x-speakeasy-name-override: GetInfo
@@ -38,7 +38,7 @@ paths:
   /_/metrics:
     get:
       tags:
-        - ledger
+        - ledger.v2
       summary: Read in memory metrics
       operationId: getMetrics
       x-speakeasy-name-override: GetMetrics
