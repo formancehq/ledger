@@ -18,6 +18,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetBalances(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
+
+	t.Run("get balance from account not existing", func(t *testing.T) {
+		t.Parallel()
+		balance, err := store.GetBalance(ctx, "account_not_existing", "USD/2")
+		require.NoError(t, err)
+		require.Equal(t, big.NewInt(0), balance)
+	})
+}
+
 func TestGetBalancesAggregated(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
