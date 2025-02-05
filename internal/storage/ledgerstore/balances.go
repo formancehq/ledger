@@ -157,8 +157,11 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 			Order("seq desc").
 			Limit(1)
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, sqlutils.ErrNotFound) {
 		return nil, err
+	}
+	if errors.Is(err, sqlutils.ErrNotFound) {
+		v.Balance = big.NewInt(0)
 	}
 
 	return v.Balance, nil
