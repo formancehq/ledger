@@ -117,7 +117,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 				report.End = time.Now()
 
 				// Fetch otel metrics
-				metrics, err := env.Client().Ledger.GetMetrics(ctx)
+				metrics, err := env.Client().Ledger.V2.GetMetrics(ctx)
 				if err != nil {
 					b.Logf("Unable to fetch ledger metrics: %s", err)
 				} else {

@@ -50,7 +50,7 @@ var _ = Context("Ledger application multiple instance tests", func() {
 
 		It("each service should be up and running", func() {
 			for server := range servers {
-				info, err := server.Client().Ledger.GetInfo(ctx)
+				info, err := server.Client().Ledger.V2.GetInfo(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
 			}

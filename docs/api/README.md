@@ -19,7 +19,7 @@ Base URLs:
 |Scope|Scope Description|
 |---|---|
 
-<h1 id="ledger-api-ledger">ledger</h1>
+<h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
 ## Show server information
 
@@ -105,8 +105,6 @@ Status Code **200**
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:read )
 </aside>
-
-<h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
 ## List ledgers
 
