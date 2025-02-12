@@ -3,6 +3,7 @@ package ledger
 import (
 	"encoding/base64"
 	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"math/big"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestHash(t *testing.T) {
 		{
 			name: "new transaction",
 			log: NewLog(CreatedTransaction{
-				Transaction:     NewTransaction(),
+				Transaction:     NewTransaction().WithID(0),
 				AccountMetadata: make(AccountMetadata),
 			}),
 			expectedHash:      "RjKsuJOuPYeFljGJlXZ5nk4_21apQY_k8daJamyZTVI=",
@@ -86,7 +87,7 @@ func TestHash(t *testing.T) {
 		{
 			name: "new transaction with reference",
 			log: NewLog(CreatedTransaction{
-				Transaction:     NewTransaction().WithReference("foo"),
+				Transaction:     NewTransaction().WithReference("foo").WithID(0),
 				AccountMetadata: make(AccountMetadata),
 			}),
 			expectedHash:      "SZ7XX-W_odawRCRvAmZkF0U_YnHDKY0Ku9zG_oaRgA4=",
@@ -95,7 +96,7 @@ func TestHash(t *testing.T) {
 		{
 			name: "new transaction with nil account metadata",
 			log: NewLog(CreatedTransaction{
-				Transaction:     NewTransaction(),
+				Transaction:     NewTransaction().WithID(0),
 				AccountMetadata: nil,
 			}),
 			expectedHash:      "I4IOKCBxlOWAeTSwj52ZElJAWc88F1UkA63QtJceshw=",
@@ -148,8 +149,8 @@ func TestHash(t *testing.T) {
 		{
 			name: "reverted transaction",
 			log: NewLog(RevertedTransaction{
-				RevertedTransaction: Transaction{ID: 1},
-				RevertTransaction:   NewTransaction().WithTimestamp(refDate),
+				RevertedTransaction: NewTransaction().WithID(1),
+				RevertTransaction:   NewTransaction().WithID(0).WithTimestamp(refDate),
 			}),
 			expectedHash:      "14SSRP9Nf7zxJWPSH7KOz15favZmBhyWZ59V-WQZx18=",
 			expectedHashRetry: "Re0FjRP34EBKzJTp4emmnVC1OKwd9f4mxVzbnTrvPd4=",
@@ -157,6 +158,8 @@ func TestHash(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			tc.log.ID = pointer.For(0)
 
 			chainedLog := tc.log.ChainLog(nil)
 			require.Equal(t, tc.expectedHash, base64.URLEncoding.EncodeToString(chainedLog.Hash))

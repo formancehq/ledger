@@ -77,7 +77,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to insert log: %w", err)
 	}
-	logging.FromContext(ctx).Debugf("log inserted with id %d", log.ID)
+	logging.FromContext(ctx).Debugf("log inserted with id %d", *log.ID)
 
 	return &log, output, err
 }

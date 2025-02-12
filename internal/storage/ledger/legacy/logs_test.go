@@ -39,13 +39,13 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
-	require.EqualValues(t, 3, cursor.Data[0].ID)
+	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
 	cursor, err = store.GetLogs(ctx, ledgerstore.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
-	require.EqualValues(t, 3, cursor.Data[0].ID)
+	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
 	cursor, err = store.GetLogs(ctx, ledgerstore.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).
 		WithQueryBuilder(query.And(
@@ -58,5 +58,5 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 10, cursor.PageSize)
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.
 	require.Len(t, cursor.Data, 1)
-	require.EqualValues(t, 2, cursor.Data[0].ID)
+	require.EqualValues(t, 2, *cursor.Data[0].ID)
 }

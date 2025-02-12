@@ -150,7 +150,7 @@ func TestBalancesGet(t *testing.T) {
 		require.NoError(t, err)
 
 		err = store.InsertMoves(ctx, &ledger.Move{
-			TransactionID:     tx.ID,
+			TransactionID:     *tx.ID,
 			IsSource:          false,
 			Account:           "bank",
 			Amount:            (*bunpaginate.BigInt)(big.NewInt(100)),
