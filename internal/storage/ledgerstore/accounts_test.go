@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/formancehq/go-libs/pointer"
+
 	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/logging"
@@ -155,6 +157,7 @@ func TestGetAccounts(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
 	})
+
 	t.Run("list using filter on multiple address", func(t *testing.T) {
 		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
@@ -183,6 +186,18 @@ func TestGetAccounts(t *testing.T) {
 		require.Len(t, accounts.Data, 2)
 		require.Equal(t, "account:1", accounts.Data[0].Account.Address)
 		require.Equal(t, "bank", accounts.Data[1].Account.Address)
+	})
+	t.Run("list using filter on balances and pit", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
+			PITFilter: PITFilter{
+				PIT: pointer.For(now.Add(100 * time.Millisecond)),
+			},
+		}).
+			WithQueryBuilder(query.Lt("balance[USD]", 0)),
+		))
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 1) // world
 	})
 
 	t.Run("list using filter on exists metadata", func(t *testing.T) {
