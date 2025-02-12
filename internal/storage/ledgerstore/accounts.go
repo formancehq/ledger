@@ -107,21 +107,38 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 		case balanceRegex.Match([]byte(key)):
 			match := balanceRegex.FindAllStringSubmatch(key, 2)
 
+			args := []any{match[0][1], store.name}
+
+			dateFilter := ``
+			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
+				dateFilter = `and insertion_date < ?`
+				args = append(args, q.Options.Options.PIT)
+			}
+			args = append(args, value)
+
 			return fmt.Sprintf(`(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
-				where asset = ? and account_address = accounts.address and ledger = ?
+				where asset = ? and account_address = accounts.address and ledger = ? `+dateFilter+`
 				order by seq desc
 				limit 1
-			) %s ?`, convertOperatorToSQL()), []any{match[0][1], store.name, value}, nil
+			) %s ?`, convertOperatorToSQL()), args, nil
 		case key == "balance":
+			args := []any{store.name}
+			dateFilter := ``
+			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
+				dateFilter = `and insertion_date < ?`
+				args = append(args, q.Options.Options.PIT)
+			}
+			args = append(args, value)
+
 			return fmt.Sprintf(`(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
-				where account_address = accounts.address and ledger = ?
+				where account_address = accounts.address and ledger = ? `+dateFilter+`
 				order by seq desc
 				limit 1
-			) %s ?`, convertOperatorToSQL()), []any{store.name, value}, nil
+			) %s ?`, convertOperatorToSQL()), args, nil
 
 		case key == "metadata":
 			if operator != "$exists" {
