@@ -30,9 +30,6 @@ do $$
 
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || (select count(*) from moves_view));
 
-		-- disable triggers
-		set session_replication_role = replica;
-
 		loop
 			with data as (
 				select transactions_id, volumes
@@ -53,9 +50,6 @@ do $$
 
 			commit;
 		end loop;
-
-		-- enable triggers
-		set session_replication_role = default;
 
 		drop table if exists moves_view;
 
