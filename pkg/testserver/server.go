@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nats-io/nats.go"
 
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
@@ -48,8 +49,8 @@ type Configuration struct {
 	DisableAutoUpgrade           bool
 	BulkMaxSize                  int
 	ExperimentalNumscriptRewrite bool
-	MaxPageSize uint64
-	DefaultPageSize uint64
+	MaxPageSize                  uint64
+	DefaultPageSize              uint64
 }
 
 type Logger interface {
