@@ -20,7 +20,7 @@ type ModuleConfiguration struct {
 	EnableFeatures             bool
 	NumscriptInterpreter       bool
 	// Ignored whenever NumscriptInterpreter is set to false
-	NumscriptInterpreterFlags map[string]struct{}
+	NumscriptInterpreterFlags []string
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
