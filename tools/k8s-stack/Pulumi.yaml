@@ -1,0 +1,6 @@
+name: ledger-testing-platform
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: kubernetes-go
