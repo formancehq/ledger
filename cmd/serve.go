@@ -3,7 +3,6 @@ package cmd
 import (
 	"net/http"
 	"net/http/pprof"
-	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -68,7 +67,7 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
-			numscriptInterpreterFlags, _ := cmd.Flags().GetString(NumscriptInterpreterFlagsToPass)
+			numscriptInterpreterFlags, _ := cmd.Flags().GetStringSlice(NumscriptInterpreterFlagsToPass)
 
 			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
 			if err != nil {
@@ -91,11 +90,8 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			interpreterFlags := make(map[string]struct{})
-			for _, flag := range strings.Split(numscriptInterpreterFlags, ",") {
-				flag = strings.Trim(flag, " ")
-				if flag != "" {
-					interpreterFlags[flag] = struct{}{}
-				}
+			for _, flag := range numscriptInterpreterFlags {
+				interpreterFlags[flag] = struct{}{}
 			}
 
 			options := []fx.Option{
