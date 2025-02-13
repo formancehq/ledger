@@ -170,6 +170,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
+	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 
