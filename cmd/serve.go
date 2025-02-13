@@ -1,12 +1,13 @@
 package cmd
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/ledger/internal/api/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
 	"time"
+
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/ledger/internal/api/common"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 
 	apilib "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/health"
@@ -36,16 +37,17 @@ import (
 )
 
 const (
-	BindFlag                   = "bind"
-	BallastSizeInBytesFlag     = "ballast-size"
-	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
-	AutoUpgradeFlag            = "auto-upgrade"
-	ExperimentalFeaturesFlag   = "experimental-features"
-	BulkMaxSizeFlag            = "bulk-max-size"
-	BulkParallelFlag           = "bulk-parallel"
-	NumscriptInterpreterFlag   = "experimental-numscript-interpreter"
-	DefaultPageSizeFlag        = "default-page-size"
-	MaxPageSizeFlag            = "max-page-size"
+	BindFlag                        = "bind"
+	BallastSizeInBytesFlag          = "ballast-size"
+	NumscriptCacheMaxCountFlag      = "numscript-cache-max-count"
+	AutoUpgradeFlag                 = "auto-upgrade"
+	ExperimentalFeaturesFlag        = "experimental-features"
+	BulkMaxSizeFlag                 = "bulk-max-size"
+	BulkParallelFlag                = "bulk-parallel"
+	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
+	NumscriptInterpreterFlagsToPass = "numscript-interpreter-flags"
+	DefaultPageSizeFlag             = "default-page-size"
+	MaxPageSizeFlag                 = "max-page-size"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -65,6 +67,7 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
+			numscriptInterpreterFlags, _ := cmd.Flags().GetStringSlice(NumscriptInterpreterFlagsToPass)
 
 			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
 			if err != nil {
@@ -96,7 +99,8 @@ func NewServeCommand() *cobra.Command {
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
-					NumscriptInterpreter: numscriptInterpreter,
+					NumscriptInterpreter:      numscriptInterpreter,
+					NumscriptInterpreterFlags: numscriptInterpreterFlags,
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
 						MaxCount: serveConfiguration.numscriptCacheMaxCount,
 					},
@@ -122,15 +126,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-					fx.In
+						fx.In
 
-					Handler          chi.Router
-					HealthController *health.HealthController
-					Logger           logging.Logger
+						Handler          chi.Router
+						HealthController *health.HealthController
+						Logger           logging.Logger
 
-					MeterProvider *metric.MeterProvider         `optional:"true"`
-					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-				},
+						MeterProvider *metric.MeterProvider         `optional:"true"`
+						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
@@ -157,6 +161,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
+	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 

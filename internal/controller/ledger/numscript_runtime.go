@@ -90,17 +90,19 @@ var _ NumscriptRuntime = (*MachineNumscriptRuntimeAdapter)(nil)
 var _ NumscriptRuntime = (*DefaultInterpreterMachineAdapter)(nil)
 
 type DefaultInterpreterMachineAdapter struct {
-	parseResult numscript.ParseResult
+	parseResult  numscript.ParseResult
+	featureFlags map[string]struct{}
 }
 
-func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult) *DefaultInterpreterMachineAdapter {
+func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult, featureFlags map[string]struct{}) *DefaultInterpreterMachineAdapter {
 	return &DefaultInterpreterMachineAdapter{
-		parseResult: parseResult,
+		parseResult:  parseResult,
+		featureFlags: featureFlags,
 	}
 }
 
 func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, store Store, vars map[string]string) (*NumscriptExecutionResult, error) {
-	execResult, err := d.parseResult.Run(ctx, vars, newNumscriptRewriteAdapter(store))
+	execResult, err := d.parseResult.RunWithFeatureFlags(ctx, vars, newNumscriptRewriteAdapter(store), d.featureFlags)
 	if err != nil {
 		return nil, ErrRuntime{
 			Source: d.parseResult.GetSource(),

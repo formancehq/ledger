@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
+	"reflect"
+
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
-	"math/big"
-	"reflect"
 
 	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"go.opentelemetry.io/otel/metric"
@@ -291,7 +292,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 		ctx,
 		ColumnPaginatedQuery[any]{
 			PageSize: 100,
-			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		},
 		func(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 			return ctrl.store.Logs().Paginate(ctx, q)
