@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
@@ -36,11 +37,63 @@ var (
 
 func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
 
-	postCommitVolumes, err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
+	ctx = bundebug.WithDebug(ctx)
+
+	var involvedVolumes map[string][]string
+	if store.ledger.HasFeature(features.FeaturePostCommitVolumes, "ON") {
+		involvedVolumes = tx.Postings.InvolvedVolumes()
+		if err := store.lockVolumes(ctx, involvedVolumes); err != nil {
+			return err
+		}
+	}
+
+	err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
 		return fmt.Errorf("failed to update balances: %w", err)
 	}
-	tx.PostCommitVolumes = postCommitVolumes.Copy()
+
+	if store.ledger.HasFeature(features.FeaturePostCommitVolumes, "ON") {
+		conditions := make([]string, 0)
+		args := make([]any, 0)
+		for account, assets := range involvedVolumes {
+			for _, asset := range assets {
+				conditions = append(conditions, "ledger = ? and accounts_address = ? and asset = ?")
+				args = append(args, store.ledger.Name, account, asset)
+			}
+		}
+
+		selectVolumes := store.db.NewSelect().
+			Column("asset").
+			ColumnExpr("sum(input) as input").
+			ColumnExpr("sum(output) as output").
+			ColumnExpr("accounts_address").
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("("+strings.Join(conditions, ") OR (")+")", args...).
+			Group("accounts_address", "asset").
+			Order("accounts_address", "asset")
+
+		aggregateByAssets := store.db.NewSelect().
+			With("volumes", selectVolumes).
+			Table("volumes").
+			ColumnExpr(`public.aggregate_objects(json_build_object(asset, json_build_object('input', input, 'output', output))::jsonb) as volumes_by_account`).
+			Column("accounts_address").
+			Group("accounts_address")
+
+		finalAggregate := store.db.NewSelect().
+			With("volumes_by_account", aggregateByAssets).
+			Table("volumes_by_account").
+			ColumnExpr("public.aggregate_objects(json_build_object(accounts_address, volumes_by_account)::jsonb) as volumes")
+
+		postCommitVolumesRow := struct {
+			PostCommitVolumes ledger.PostCommitVolumes `bun:"volumes"`
+		}{}
+		err := finalAggregate.Scan(ctx, &postCommitVolumesRow)
+		if err != nil {
+			return fmt.Errorf("failed to aggregate post commit volumes: %w", err)
+		}
+
+		tx.PostCommitVolumes = postCommitVolumesRow.PostCommitVolumes
+	}
 
 	err = store.InsertTransaction(ctx, tx)
 	if err != nil {
@@ -67,28 +120,39 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 		slices.Reverse(postings)
 
 		for _, posting := range postings {
-			moves = append(moves, &ledger.Move{
-				Account:           posting.Destination,
-				Amount:            (*bunpaginate.BigInt)(posting.Amount),
-				Asset:             posting.Asset,
-				InsertionDate:     tx.InsertedAt,
-				EffectiveDate:     tx.Timestamp,
-				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
-				TransactionID:     tx.ID,
-			})
-			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
+			var postCommitVolumes ledger.PostCommitVolumes
+			if tx.PostCommitVolumes != nil {
+				postCommitVolumes = tx.PostCommitVolumes.Copy()
+			}
+			dstMove := &ledger.Move{
+				Account:       posting.Destination,
+				Amount:        (*bunpaginate.BigInt)(posting.Amount),
+				Asset:         posting.Asset,
+				InsertionDate: tx.InsertedAt,
+				EffectiveDate: tx.Timestamp,
+				TransactionID: tx.ID,
+			}
+			if postCommitVolumes != nil {
+				dstMove.PostCommitVolumes = pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy())
+				postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
+			}
+			moves = append(moves, dstMove)
 
-			moves = append(moves, &ledger.Move{
-				IsSource:          true,
-				Account:           posting.Source,
-				Amount:            (*bunpaginate.BigInt)(posting.Amount),
-				Asset:             posting.Asset,
-				InsertionDate:     tx.InsertedAt,
-				EffectiveDate:     tx.Timestamp,
-				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
-				TransactionID:     tx.ID,
-			})
-			postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
+			srcMove := &ledger.Move{
+				IsSource:      true,
+				Account:       posting.Source,
+				Amount:        (*bunpaginate.BigInt)(posting.Amount),
+				Asset:         posting.Asset,
+				InsertionDate: tx.InsertedAt,
+				EffectiveDate: tx.Timestamp,
+				TransactionID: tx.ID,
+			}
+			if postCommitVolumes != nil {
+				srcMove.PostCommitVolumes = pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy())
+				postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
+			}
+
+			moves = append(moves, srcMove)
 		}
 
 		slices.Reverse(moves)
