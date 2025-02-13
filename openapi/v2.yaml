@@ -1606,8 +1606,7 @@ components:
             vars:
               type: object
               properties: {}
-              additionalProperties:
-                type: string
+              additionalProperties: true
               example:
                 user: users:042
           required:
