@@ -33,7 +33,7 @@ func NewDefaultNumscriptParser() *DefaultNumscriptParser {
 
 var _ NumscriptParser = (*DefaultNumscriptParser)(nil)
 
-type InterpreterNumscriptParser struct{}
+type InterpreterNumscriptParser struct{ featureFlags map[string]struct{} }
 
 func (n *InterpreterNumscriptParser) Parse(script string) (NumscriptRuntime, error) {
 	result := numscript.Parse(script)
@@ -44,11 +44,13 @@ func (n *InterpreterNumscriptParser) Parse(script string) (NumscriptRuntime, err
 			Errors: errs,
 		}
 	}
-	return NewDefaultInterpreterMachineAdapter(result), nil
+	return NewDefaultInterpreterMachineAdapter(result, n.featureFlags), nil
 }
 
-func NewInterpreterNumscriptParser() *InterpreterNumscriptParser {
-	return &InterpreterNumscriptParser{}
+func NewInterpreterNumscriptParser(featureFlags map[string]struct{}) *InterpreterNumscriptParser {
+	return &InterpreterNumscriptParser{
+		featureFlags: featureFlags,
+	}
 }
 
 var _ NumscriptParser = (*InterpreterNumscriptParser)(nil)
