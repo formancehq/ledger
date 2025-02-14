@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/ledger/internal/pagination"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -14,6 +15,7 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
 
 type Controller interface {
+	Info() ledger.Ledger
 	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error)
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
@@ -24,15 +26,15 @@ type Controller interface {
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 	GetStats(ctx context.Context) (Stats, error)
 
-	GetAccount(ctx context.Context, query ResourceQuery[any]) (*ledger.Account, error)
-	ListAccounts(ctx context.Context, query OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)
-	CountAccounts(ctx context.Context, query ResourceQuery[any]) (int, error)
-	ListLogs(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)
-	CountTransactions(ctx context.Context, query ResourceQuery[any]) (int, error)
-	ListTransactions(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)
-	GetTransaction(ctx context.Context, query ResourceQuery[any]) (*ledger.Transaction, error)
-	GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
-	GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)
+	GetAccount(ctx context.Context, query pagination.ResourceQuery[any]) (*ledger.Account, error)
+	ListAccounts(ctx context.Context, query pagination.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)
+	CountAccounts(ctx context.Context, query pagination.ResourceQuery[any]) (int, error)
+	ListLogs(ctx context.Context, query pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)
+	CountTransactions(ctx context.Context, query pagination.ResourceQuery[any]) (int, error)
+	ListTransactions(ctx context.Context, query pagination.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)
+	GetTransaction(ctx context.Context, query pagination.ResourceQuery[any]) (*ledger.Transaction, error)
+	GetVolumesWithBalances(ctx context.Context, q pagination.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
+	GetAggregatedBalances(ctx context.Context, q pagination.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)
 
 	// CreateTransaction accept a numscript script and returns a transaction
 	// It can return following errors:

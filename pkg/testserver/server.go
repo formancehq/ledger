@@ -51,6 +51,9 @@ type Configuration struct {
 	ExperimentalNumscriptRewrite bool
 	MaxPageSize                  uint64
 	DefaultPageSize              uint64
+	PipelinesSyncPeriod time.Duration
+	PipelinesPullInterval time.Duration
+	PipelinesPushRetryPeriod time.Duration
 }
 
 type Logger interface {
@@ -80,6 +83,27 @@ func (s *Server) Start() error {
 	}
 	if !s.configuration.DisableAutoUpgrade {
 		args = append(args, "--"+cmd.AutoUpgradeFlag)
+	}
+	if s.configuration.PipelinesSyncPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.PipelinesSyncPeriodFlag,
+			s.configuration.PipelinesSyncPeriod.String(),
+		)
+	}
+	if s.configuration.PipelinesPullInterval != 0 {
+		args = append(
+			args,
+			"--"+cmd.PipelinesPullIntervalFlag,
+			s.configuration.PipelinesPullInterval.String(),
+		)
+	}
+	if s.configuration.PipelinesPushRetryPeriod != 0 {
+		args = append(
+			args,
+			"--"+cmd.PipelinesPushRetryPeriodFlag,
+			s.configuration.PipelinesPushRetryPeriod.String(),
+		)
 	}
 	if s.configuration.ExperimentalFeatures {
 		args = append(

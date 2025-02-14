@@ -4,6 +4,9 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/leadership"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/all"
+	"github.com/formancehq/ledger/internal/replication/runner"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
@@ -37,17 +40,20 @@ import (
 )
 
 const (
-	BindFlag                        = "bind"
-	BallastSizeInBytesFlag          = "ballast-size"
-	NumscriptCacheMaxCountFlag      = "numscript-cache-max-count"
-	AutoUpgradeFlag                 = "auto-upgrade"
-	ExperimentalFeaturesFlag        = "experimental-features"
-	BulkMaxSizeFlag                 = "bulk-max-size"
-	BulkParallelFlag                = "bulk-parallel"
-	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
+	BindFlag                     = "bind"
+	BallastSizeInBytesFlag       = "ballast-size"
+	NumscriptCacheMaxCountFlag   = "numscript-cache-max-count"
+	AutoUpgradeFlag              = "auto-upgrade"
+	ExperimentalFeaturesFlag     = "experimental-features"
+	BulkMaxSizeFlag              = "bulk-max-size"
+	BulkParallelFlag             = "bulk-parallel"
+	NumscriptInterpreterFlag     = "experimental-numscript-interpreter"
 	NumscriptInterpreterFlagsToPass = "numscript-interpreter-flags"
-	DefaultPageSizeFlag             = "default-page-size"
-	MaxPageSizeFlag                 = "max-page-size"
+	DefaultPageSizeFlag          = "default-page-size"
+	MaxPageSizeFlag              = "max-page-size"
+	PipelinesSyncPeriodFlag      = "pipelines-sync-period"
+	PipelinesPullIntervalFlag    = "pipelines-pull-interval"
+	PipelinesPushRetryPeriodFlag = "pipelines-push-retry-period"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -98,6 +104,13 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				runner.NewFXModule(runner.ModuleConfig{
+					SyncPeriod:      serveConfiguration.pipelinesSyncPeriod,
+					PullInterval:    serveConfiguration.pipelinesPullInterval,
+					PushRetryPeriod: serveConfiguration.pipelinesPushRetryPeriod,
+				}),
+				drivers.NewFXModule(),
+				fx.Invoke(all.Register),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      numscriptInterpreter,
 					NumscriptInterpreterFlags: numscriptInterpreterFlags,
@@ -112,7 +125,9 @@ func NewServeCommand() *cobra.Command {
 				}),
 				bus.NewFxModule(),
 				ballast.Module(serveConfiguration.ballastSize),
-				leadership.NewFXModule(),
+				leadership.NewFXModule(leadership.ModuleConfig{
+					LeadershipRetryPeriod: 5 * time.Second,
+				}),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
@@ -165,6 +180,9 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
+	cmd.Flags().Duration(PipelinesSyncPeriodFlag, 5*time.Second, "Pipelines sync period")
+	cmd.Flags().Duration(PipelinesPullIntervalFlag, runner.DefaultPullInterval, "Pipelines pull interval")
+	cmd.Flags().Duration(PipelinesPushRetryPeriodFlag, runner.DefaultPushRetryPeriod, "Pipelines push retry period")
 
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
@@ -180,10 +198,13 @@ func NewServeCommand() *cobra.Command {
 }
 
 type serveConfiguration struct {
-	ballastSize            uint
-	numscriptCacheMaxCount uint
-	autoUpgrade            bool
-	bind                   string
+	ballastSize              uint
+	numscriptCacheMaxCount   uint
+	autoUpgrade              bool
+	bind                     string
+	pipelinesSyncPeriod      time.Duration
+	pipelinesPullInterval    time.Duration
+	pipelinesPushRetryPeriod time.Duration
 }
 
 func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
@@ -192,6 +213,9 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
 	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
+	ret.pipelinesSyncPeriod, _ = cmd.Flags().GetDuration(PipelinesSyncPeriodFlag)
+	ret.pipelinesPullInterval, _ = cmd.Flags().GetDuration(PipelinesPullIntervalFlag)
+	ret.pipelinesPushRetryPeriod, _ = cmd.Flags().GetDuration(PipelinesPushRetryPeriodFlag)
 
 	return ret
 }

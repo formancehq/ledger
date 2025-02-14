@@ -4,6 +4,7 @@ import (
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/stoewer/go-strcase"
 	"github.com/uptrace/bun"
@@ -83,7 +84,7 @@ func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandl
 	return ret, nil
 }
 
-func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h accountsResourceHandler) resolveFilter(store *Store, opts pagination.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
@@ -132,11 +133,11 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 	}
 }
 
-func (h accountsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) project(store *Store, query pagination.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h accountsResourceHandler) expand(store *Store, opts pagination.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	switch property {
 	case "volumes":
 		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {

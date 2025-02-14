@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -10,38 +11,30 @@ import (
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/pagination"
+	"github.com/lib/pq"
 	"github.com/uptrace/bun"
 )
 
-type Store interface {
-	CreateLedger(ctx context.Context, l *ledger.Ledger) error
-	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
-	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
-	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
-	GetDistinctBuckets(ctx context.Context) ([]string, error)
-
-	Migrate(ctx context.Context, options ...migrations.Option) error
-	GetMigrator(options ...migrations.Option) *migrations.Migrator
-	IsUpToDate(ctx context.Context) (bool, error)
-}
-
 const (
 	SchemaSystem = "_system"
+)
+
+var (
+	ErrLedgerAlreadyExists = errors.New("ledger already exists")
 )
 
 type DefaultStore struct {
 	db *bun.DB
 }
 
-func (d *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
-	return d.GetMigrator().IsUpToDate(ctx)
+func (store *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
+	return store.GetMigrator().IsUpToDate(ctx)
 }
 
-func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error) {
+func (store *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error) {
 	var buckets []string
-	err := d.db.NewSelect().
+	err := store.db.NewSelect().
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
 		Column("bucket").
@@ -53,19 +46,19 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 	return buckets, nil
 }
 
-func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
+func (store *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
 
 	if l.Metadata == nil {
 		l.Metadata = metadata.Metadata{}
 	}
 
-	_, err := d.db.NewInsert().
+	_, err := store.db.NewInsert().
 		Model(l).
 		Returning("id, added_at").
 		Exec(ctx)
 	if err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return systemcontroller.ErrLedgerAlreadyExists
+			return ErrLedgerAlreadyExists
 		}
 		return postgres.ResolveError(err)
 	}
@@ -73,8 +66,8 @@ func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error
 	return nil
 }
 
-func (d *DefaultStore) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
-	_, err := d.db.NewUpdate().
+func (store *DefaultStore) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
+	_, err := store.db.NewUpdate().
 		Model(&ledger.Ledger{}).
 		Set("metadata = metadata || ?", m).
 		Where("name = ?", name).
@@ -82,8 +75,8 @@ func (d *DefaultStore) UpdateLedgerMetadata(ctx context.Context, name string, m 
 	return err
 }
 
-func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
-	_, err := d.db.NewUpdate().
+func (store *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
+	_, err := store.db.NewUpdate().
 		Model(&ledger.Ledger{}).
 		Set("metadata = metadata - ?", key).
 		Where("name = ?", name).
@@ -91,22 +84,22 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 	return err
 }
 
-func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	query := d.db.NewSelect().
+func (store *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+	query := store.db.NewSelect().
 		Model(&ledger.Ledger{}).
 		Column("*").
 		Order("added_at asc")
 
-	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
+	return bunpaginate.UsingOffset[pagination.PaginatedQueryOptions[struct{}], ledger.Ledger](
 		ctx,
 		query,
-		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
+		bunpaginate.OffsetPaginatedQuery[pagination.PaginatedQueryOptions[struct{}]](q),
 	)
 }
 
-func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
+func (store *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	ret := &ledger.Ledger{}
-	if err := d.db.NewSelect().
+	if err := store.db.NewSelect().
 		Model(ret).
 		Column("*").
 		Where("name = ?", name).
@@ -117,20 +110,175 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 	return ret, nil
 }
 
-func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option) error {
-	return d.GetMigrator(options...).Up(ctx)
+func (store *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option) error {
+	return store.GetMigrator(options...).Up(ctx)
 }
 
-func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
-	return GetMigrator(d.db, options...)
+func (store *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
+	return GetMigrator(store.db, options...)
 }
 
-func (d *DefaultStore) GetDB() *bun.DB {
-	return d.db
+func (store *DefaultStore) GetDB() *bun.DB {
+	return store.db
 }
 
 func New(db *bun.DB) *DefaultStore {
 	return &DefaultStore{
 		db: db,
 	}
+}
+
+func (store *DefaultStore) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
+	return bunpaginate.UsingOffset[struct{}, ledger.Connector](
+		ctx,
+		store.db.NewSelect(),
+		bunpaginate.OffsetPaginatedQuery[struct{}]{},
+	)
+}
+
+func (store *DefaultStore) CreateConnector(ctx context.Context, connector ledger.Connector) error {
+	_, err := store.db.NewInsert().
+		Model(&connector).
+		Exec(ctx)
+	return err
+}
+
+func (store *DefaultStore) DeleteConnector(ctx context.Context, id string) error {
+	ret, err := store.db.NewDelete().
+		Model(&ledger.Connector{}).
+		Where("id = ?", id).
+		Exec(ctx)
+	if err != nil {
+		switch err := err.(type) {
+		case *pq.Error:
+			if err.Constraint == "pipelines_connector_id_fkey" {
+				return ledger.NewErrConnectorUsed(id)
+			}
+			return err
+		default:
+			return err
+		}
+	}
+
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return err
+}
+
+func (store *DefaultStore) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+	ret := &ledger.Connector{}
+	err := store.db.NewSelect().
+		Model(ret).
+		Where("id = ?", id).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (store *DefaultStore) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	return bunpaginate.UsingOffset[struct{}, ledger.Pipeline](
+		ctx,
+		store.db.NewSelect(),
+		bunpaginate.OffsetPaginatedQuery[struct{}]{},
+	)
+}
+
+func (store *DefaultStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error {
+	_, err := store.db.NewInsert().
+		Model(&pipeline).
+		Exec(ctx)
+	if err != nil {
+		// notes(gfyrag): it is not safe to check errors like that
+		// but *pq.Error does not implement standard go utils for errors
+		// so, we don't have choice
+		err := postgres.ResolveError(err)
+		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
+			return ledger.NewErrPipelineAlreadyExists(pipeline.PipelineConfiguration)
+		}
+
+		return err
+	}
+	return nil
+}
+
+func (store *DefaultStore) UpdatePipeline(ctx context.Context, id string, o map[string]any) error {
+	_, err := store.db.NewUpdate().
+		Table("_system.pipelines").
+		Model(&o).
+		Where("id = ?", id).
+		Exec(ctx)
+	return postgres.ResolveError(err)
+}
+
+func (store *DefaultStore) DeletePipeline(ctx context.Context, id string) error {
+	ret, err := store.db.NewDelete().
+		Model(&ledger.Pipeline{}).
+		Where("id = ?", id).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return err
+}
+
+func (store *DefaultStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	ret := &ledger.Pipeline{}
+	err := store.db.NewSelect().
+		Model(ret).
+		Where("id = ?", id).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (store *DefaultStore) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error) {
+	ret := make([]ledger.Pipeline, 0)
+	if err := store.db.NewSelect().
+		Model(&ret).
+		Where("enabled").
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (store *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLogID int) error {
+	ret, err := store.db.NewUpdate().
+		Model(&ledger.Pipeline{}).
+		Where("id = ?", id).
+		Set("last_log_id = ?", lastLogID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("updating state in database: %w", err)
+	}
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

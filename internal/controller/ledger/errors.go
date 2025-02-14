@@ -3,7 +3,6 @@ package ledger
 import (
 	"encoding/base64"
 	"fmt"
-
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/numscript"
 
@@ -15,6 +14,23 @@ import (
 var ErrNotFound = postgres.ErrNotFound
 
 type ErrTooManyClient = postgres.ErrTooManyClient
+
+// ErrInUsePipeline denotes a pipeline which is actually used
+// The client has to retry later if still relevant
+type ErrInUsePipeline string
+
+func (e ErrInUsePipeline) Error() string {
+	return fmt.Sprintf("pipeline '%s' already in use", string(e))
+}
+
+func (e ErrInUsePipeline) Is(err error) bool {
+	_, ok := err.(ErrInUsePipeline)
+	return ok
+}
+
+func NewErrInUsePipeline(id string) ErrInUsePipeline {
+	return ErrInUsePipeline(id)
+}
 
 type ErrImport struct {
 	err error

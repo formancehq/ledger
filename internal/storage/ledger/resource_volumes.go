@@ -5,6 +5,7 @@ import (
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"strings"
@@ -148,7 +149,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 
 func (h volumesResourceHandler) resolveFilter(
 	store *Store,
-	opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	opts pagination.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -186,7 +187,7 @@ func (h volumesResourceHandler) resolveFilter(
 
 func (h volumesResourceHandler) project(
 	store *Store,
-	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	query pagination.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -209,7 +210,7 @@ func (h volumesResourceHandler) project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h volumesResourceHandler) expand(_ *Store, _ pagination.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 )
@@ -130,7 +131,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store, query pagination.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
@@ -149,13 +150,13 @@ func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store,
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) expand(_ *Store, _ pagination.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) project(
 	store *Store,
-	_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
+	_ pagination.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	sumVolumesForAsset := store.db.NewSelect().

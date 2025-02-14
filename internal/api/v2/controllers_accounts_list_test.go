@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/pagination"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,7 +29,7 @@ func TestAccountsList(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.OffsetPaginatedQuery[any]
+		expectQuery       pagination.OffsetPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -39,9 +40,9 @@ func TestAccountsList(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:    &before,
 					Expand: make([]string, 0),
 				},
@@ -52,9 +53,9 @@ func TestAccountsList(t *testing.T) {
 			name:              "using metadata",
 			body:              `{"$match": { "metadata[roles]": "admin" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:     &before,
 					Builder: query.Match("metadata[roles]", "admin"),
 					Expand:  make([]string, 0),
@@ -65,9 +66,9 @@ func TestAccountsList(t *testing.T) {
 			name:              "using address",
 			body:              `{"$match": { "address": "foo" }}`,
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:     &before,
 					Builder: query.Match("address", "foo"),
 					Expand:  make([]string, 0),
@@ -78,14 +79,14 @@ func TestAccountsList(t *testing.T) {
 			name:              "using empty cursor",
 			expectBackendCall: true,
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.OffsetPaginatedQuery[any]{
+				"cursor": []string{bunpaginate.EncodeCursor(pagination.OffsetPaginatedQuery[any]{
 					PageSize: bunpaginate.QueryDefaultPageSize,
-					Options:  ledgercontroller.ResourceQuery[any]{},
+					Options:  pagination.ResourceQuery[any]{},
 				})},
 			},
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options:  ledgercontroller.ResourceQuery[any]{},
+				Options:  pagination.ResourceQuery[any]{},
 			},
 		},
 		{
@@ -110,9 +111,9 @@ func TestAccountsList(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.MaxPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:    &before,
 					Expand: make([]string, 0),
 				},
@@ -122,9 +123,9 @@ func TestAccountsList(t *testing.T) {
 			name:              "using balance filter",
 			expectBackendCall: true,
 			body:              `{"$lt": { "balance[USD/2]": 100 }}`,
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:     &before,
 					Builder: query.Lt("balance[USD/2]", float64(100)),
 					Expand:  make([]string, 0),
@@ -135,9 +136,9 @@ func TestAccountsList(t *testing.T) {
 			name:              "using exists filter",
 			expectBackendCall: true,
 			body:              `{"$exists": { "metadata": "foo" }}`,
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:     &before,
 					Builder: query.Exists("metadata", "foo"),
 					Expand:  make([]string, 0),
@@ -156,9 +157,9 @@ func TestAccountsList(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:    &before,
 					Expand: make([]string, 0),
 				},
@@ -170,9 +171,9 @@ func TestAccountsList(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:    &before,
 					Expand: make([]string, 0),
 				},
@@ -184,9 +185,9 @@ func TestAccountsList(t *testing.T) {
 			expectedErrorCode: api.ErrorInternal,
 			expectBackendCall: true,
 			returnErr:         errors.New("undefined error"),
-			expectQuery: ledgercontroller.OffsetPaginatedQuery[any]{
+			expectQuery: pagination.OffsetPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					PIT:    &before,
 					Expand: make([]string, 0),
 				},
