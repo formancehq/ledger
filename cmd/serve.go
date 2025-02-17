@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/davecgh/go-spew/spew"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -55,6 +56,7 @@ func NewServeCommand() *cobra.Command {
 		Use:          "serve",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			spew.Dump(cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag))
 			serveConfiguration := discoverServeConfiguration(cmd)
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
