@@ -141,7 +141,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 		}
 
 		// todo(next api version): no reason to return only the transaction...
-		return createTransactionResult.Transaction, log.ID, nil
+		return createTransactionResult.Transaction, *log.ID, nil
 	case ActionAddMetadata:
 		req := data.Data.(AddMetadataRequest)
 
@@ -183,7 +183,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			return nil, 0, err
 		}
 
-		return nil, log.ID, nil
+		return nil, *log.ID, nil
 	case ActionRevertTransaction:
 		req := data.Data.(RevertTransactionRequest)
 
@@ -200,7 +200,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			return nil, 0, err
 		}
 
-		return revertTransactionResult.RevertedTransaction, log.ID, nil
+		return revertTransactionResult.RevertedTransaction, *log.ID, nil
 	case ActionDeleteMetadata:
 		req := data.Data.(DeleteMetadataRequest)
 
@@ -244,7 +244,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			return nil, 0, err
 		}
 
-		return nil, log.ID, nil
+		return nil, *log.ID, nil
 	default:
 		panic("unreachable")
 	}

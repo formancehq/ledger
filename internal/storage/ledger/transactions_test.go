@@ -142,11 +142,11 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update their metadata
-	_, modified, err := store.UpdateTransactionMetadata(ctx, tx1.ID, metadata.Metadata{"foo1": "bar2"})
+	_, modified, err := store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"})
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, tx2.ID, metadata.Metadata{"foo2": "bar2"})
+	_, _, err = store.UpdateTransactionMetadata(ctx, *tx2.ID, metadata.Metadata{"foo2": "bar2"})
 	require.NoError(t, err)
 
 	// Check that the database returns metadata
@@ -165,7 +165,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo2": "bar2"}, "metadata should be equal")
 
 	// Update metadata of a transaction already having those metadata
-	_, modified, err = store.UpdateTransactionMetadata(ctx, tx1.ID, metadata.Metadata{"foo1": "bar2"})
+	_, modified, err = store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"})
 	require.NoError(t, err)
 	require.False(t, modified)
 
@@ -200,7 +200,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"})
 
 	// Delete a metadata
-	tx1, modified, err := store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
+	tx1, modified, err := store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.True(t, modified)
 
@@ -211,7 +211,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{"foo2": "bar2"}, tx.Metadata)
 
 	// Delete a not existing metadata
-	_, modified, err = store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
+	_, modified, err = store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.False(t, modified)
 
@@ -237,7 +237,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx1)
 		require.NoError(t, err)
-		require.Equal(t, 1, tx1.ID)
+		require.Equal(t, 1, *tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:1": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -259,7 +259,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err = store.CommitTransaction(ctx, &tx2)
 		require.NoError(t, err)
-		require.Equal(t, 2, tx2.ID)
+		require.Equal(t, 2, *tx2.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:2": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -285,7 +285,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx3)
 		require.NoError(t, err)
-		require.Equal(t, 1, tx3.ID)
+		require.Equal(t, 1, *tx3.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:x": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -462,7 +462,7 @@ func TestTransactionsCommit(t *testing.T) {
 		slices.Reverse(txs)
 
 		for i := range countTx {
-			require.Equal(t, i+1, txs[i].ID)
+			require.Equal(t, i+1, *txs[i].ID)
 			require.Equalf(t, ledger.PostCommitVolumes{
 				"world": {
 					"USD": {
@@ -558,7 +558,7 @@ func TestTransactionsRevert(t *testing.T) {
 	require.NoError(t, err)
 
 	// Revert the tx
-	revertedTx, reverted, err := store.RevertTransaction(ctx, tx1.ID, time.Time{})
+	revertedTx, reverted, err := store.RevertTransaction(ctx, *tx1.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
@@ -570,7 +570,7 @@ func TestTransactionsRevert(t *testing.T) {
 	require.Equal(t, tx1, *revertedTx)
 
 	// Try to revert again
-	_, reverted, err = store.RevertTransaction(ctx, tx1.ID, time.Time{})
+	_, reverted, err = store.RevertTransaction(ctx, *tx1.ID, time.Time{})
 	require.NoError(t, err)
 	require.False(t, reverted)
 
@@ -701,7 +701,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx3BeforeRevert)
 	require.NoError(t, err)
 
-	_, hasBeenReverted, err := store.RevertTransaction(ctx, tx3BeforeRevert.ID, time.Time{})
+	_, hasBeenReverted, err := store.RevertTransaction(ctx, *tx3BeforeRevert.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
@@ -709,7 +709,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx4)
 	require.NoError(t, err)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, tx3BeforeRevert.ID, metadata.Metadata{
+	_, _, err = store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	})
 	require.NoError(t, err)
