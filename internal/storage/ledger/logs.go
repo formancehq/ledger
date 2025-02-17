@@ -87,7 +87,7 @@ func (store *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 				ModelTableExpr(store.GetPrefixedRelationName("logs")).
 				Returning("*")
 
-			if log.ID == 0 {
+			if log.ID == nil {
 				query = query.Value("id", "nextval(?)", store.GetPrefixedRelationName(fmt.Sprintf(`"log_id_%d"`, store.ledger.ID)))
 			}
 

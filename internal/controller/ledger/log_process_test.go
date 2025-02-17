@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -68,7 +69,10 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).
-		Return(nil)
+		DoAndReturn(func(ctx context.Context, log *ledger.Log) error {
+			log.ID = pointer.For(0)
+			return nil
+		})
 
 	store.EXPECT().
 		Commit().

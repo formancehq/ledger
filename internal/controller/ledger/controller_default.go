@@ -204,7 +204,7 @@ func (ctrl *DefaultController) importLogs(ctx context.Context, store Store, stre
 				return newErrImport(errors.New("concurrent transaction occur" +
 					"red, cannot import the ledger"))
 			}
-			return fmt.Errorf("importing log %d: %w", log.ID, err)
+			return fmt.Errorf("importing log %d: %w", *log.ID, err)
 		}
 	}
 
@@ -216,11 +216,11 @@ func (ctrl *DefaultController) importLogs(ctx context.Context, store Store, stre
 func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log ledger.Log) error {
 	switch payload := log.Data.(type) {
 	case ledger.CreatedTransaction:
-		logging.FromContext(ctx).Debugf("Importing transaction %d", payload.Transaction.ID)
+		logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
 		if err := store.CommitTransaction(ctx, &payload.Transaction); err != nil {
 			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
-		logging.FromContext(ctx).Debugf("Imported transaction %d", payload.Transaction.ID)
+		logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
 
 		if len(payload.AccountMetadata) > 0 {
 			logging.FromContext(ctx).Debugf("Importing metadata of accounts '%s'", Keys(payload.AccountMetadata))
@@ -229,10 +229,10 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 			}
 		}
 	case ledger.RevertedTransaction:
-		logging.FromContext(ctx).Debugf("Reverting transaction %d", payload.RevertedTransaction.ID)
+		logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
 		_, _, err := store.RevertTransaction(
 			ctx,
-			payload.RevertedTransaction.ID,
+			*payload.RevertedTransaction.ID,
 			*payload.RevertedTransaction.RevertedAt,
 		)
 		if err != nil {
@@ -272,14 +272,14 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 	}
 
 	logCopy := log
-	logging.FromContext(ctx).Debugf("Inserting log %d", log.ID)
+	logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
 	if err := store.InsertLog(ctx, &log); err != nil {
 		return fmt.Errorf("failed to insert log: %w", err)
 	}
 
 	if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
 		if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
-			return newErrInvalidHash(log.ID, logCopy.Hash, log.Hash)
+			return newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
 		}
 	}
 

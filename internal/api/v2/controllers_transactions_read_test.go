@@ -28,7 +28,7 @@ func TestTransactionsRead(t *testing.T) {
 
 	q := ledgercontroller.ResourceQuery[any]{
 		PIT:     &now,
-		Builder: query.Match("id", tx.ID),
+		Builder: query.Match("id", 0),
 	}
 	q.PIT = &now
 

@@ -40,7 +40,7 @@ func TestLogsInsert(t *testing.T) {
 		err := store.InsertLog(ctx, &log1)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, log1.ID)
+		require.Equal(t, 1, *log1.ID)
 		require.NotZero(t, log1.Hash)
 		require.NotEmpty(t, log1.Date)
 
@@ -52,13 +52,13 @@ func TestLogsInsert(t *testing.T) {
 		// Insert a new log to test the hash when a previous hash exists
 		// We also addi an idempotency key to check for conflicts
 		log2 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction:     ledger.NewTransaction(),
+			Transaction:     ledger.NewTransaction().WithID(1),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log2Copy := log2
 		err = store.InsertLog(ctx, &log2)
 		require.NoError(t, err)
-		require.Equal(t, 2, log2.ID)
+		require.Equal(t, 2, *log2.ID)
 		require.NotZero(t, log2.Hash)
 		require.NotZero(t, log2.Date)
 
@@ -130,9 +130,9 @@ func TestLogsInsert(t *testing.T) {
 		var previous *ledger.Log
 		for _, log := range logs.Data {
 			expectedHash := log.Hash
-			expectedID := log.ID
+			expectedID := *log.ID
 			log.Hash = nil
-			log.ID = 0
+			log.ID = pointer.For(0)
 			chainedLog := log.ChainLog(previous)
 			require.Equal(t, expectedHash, chainedLog.Hash, "checking log hash %d", expectedID)
 			previous = &chainedLog
@@ -215,7 +215,7 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
-	require.EqualValues(t, 3, cursor.Data[0].ID)
+	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
 	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
 		PageSize: 1,
@@ -223,7 +223,7 @@ func TestLogsList(t *testing.T) {
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
-	require.EqualValues(t, 3, cursor.Data[0].ID)
+	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
 	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
 		PageSize: 10,
@@ -238,5 +238,5 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 10, cursor.PageSize)
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.
 	require.Len(t, cursor.Data, 1)
-	require.EqualValues(t, 2, cursor.Data[0].ID)
+	require.EqualValues(t, 2, *cursor.Data[0].ID)
 }

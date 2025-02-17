@@ -47,7 +47,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 	err = store.newStore.CommitTransaction(ctx, &tx2)
 	require.NoError(t, err)
 
-	tx, err := store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx1.ID).
+	tx, err := store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(*tx1.ID).
 		WithExpandVolumes().
 		WithExpandEffectiveVolumes())
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 		},
 	}, tx.PostCommitVolumes)
 
-	tx, err = store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx2.ID).
+	tx, err = store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(*tx2.ID).
 		WithExpandVolumes().
 		WithExpandEffectiveVolumes())
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestGetTransactions(t *testing.T) {
 	err = store.newStore.CommitTransaction(ctx, &tx3BeforeRevert)
 	require.NoError(t, err)
 
-	_, hasBeenReverted, err := store.newStore.RevertTransaction(ctx, tx3BeforeRevert.ID, time.Time{})
+	_, hasBeenReverted, err := store.newStore.RevertTransaction(ctx, *tx3BeforeRevert.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
@@ -151,7 +151,7 @@ func TestGetTransactions(t *testing.T) {
 	err = store.newStore.CommitTransaction(ctx, &tx4)
 	require.NoError(t, err)
 
-	_, _, err = store.newStore.UpdateTransactionMetadata(ctx, tx3BeforeRevert.ID, metadata.Metadata{
+	_, _, err = store.newStore.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	})
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func TestGetTransactions(t *testing.T) {
 	// refresh tx3
 	// we can't take the result of the call on RevertTransaction nor UpdateTransactionMetadata as the result does not contains pc(e)v
 	tx3 := func() ledger.Transaction {
-		tx3, err := store.Store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx3BeforeRevert.ID).
+		tx3, err := store.Store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(*tx3BeforeRevert.ID).
 			WithExpandVolumes().
 			WithExpandEffectiveVolumes())
 		require.NoError(t, err)

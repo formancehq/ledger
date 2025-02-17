@@ -45,6 +45,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(l Log\) ChainLog\(previous \*Log\) Log](<#Log.ChainLog>)
   - [func \(l \*Log\) ComputeHash\(previous \*Log\)](<#Log.ComputeHash>)
   - [func \(l \*Log\) UnmarshalJSON\(data \[\]byte\) error](<#Log.UnmarshalJSON>)
+  - [func \(l Log\) WithID\(i int\) Log](<#Log.WithID>)
   - [func \(l Log\) WithIdempotencyKey\(key string\) Log](<#Log.WithIdempotencyKey>)
 - [type LogPayload](<#LogPayload>)
   - [func HydrateLog\(\_type LogType, data \[\]byte\) \(LogPayload, error\)](<#HydrateLog>)
@@ -84,6 +85,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(tx Transaction\) MarshalJSON\(\) \(\[\]byte, error\)](<#Transaction.MarshalJSON>)
   - [func \(tx Transaction\) Reverse\(\) Transaction](<#Transaction.Reverse>)
   - [func \(tx Transaction\) VolumeUpdates\(\) \[\]AccountsVolumes](<#Transaction.VolumeUpdates>)
+  - [func \(tx Transaction\) WithID\(id int\) Transaction](<#Transaction.WithID>)
   - [func \(tx Transaction\) WithInsertedAt\(date time.Time\) Transaction](<#Transaction.WithInsertedAt>)
   - [func \(tx Transaction\) WithMetadata\(m metadata.Metadata\) Transaction](<#Transaction.WithMetadata>)
   - [func \(tx Transaction\) WithPostCommitEffectiveVolumes\(volumes PostCommitVolumes\) Transaction](<#Transaction.WithPostCommitEffectiveVolumes>)
@@ -473,7 +475,7 @@ type Log struct {
     // IdempotencyHash is a signature used when using IdempotencyKey.
     // It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
     IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-    ID              int    `json:"id" bun:"id,unique,type:numeric"`
+    ID              *int   `json:"id" bun:"id,unique,type:numeric"`
     Hash            []byte `json:"hash" bun:"hash,type:bytea"`
 }
 ```
@@ -510,6 +512,15 @@ func (l *Log) ComputeHash(previous *Log)
 
 ```go
 func (l *Log) UnmarshalJSON(data []byte) error
+```
+
+
+
+<a name="Log.WithID"></a>
+### func \(Log\) WithID
+
+```go
+func (l Log) WithID(i int) Log
 ```
 
 
@@ -833,7 +844,7 @@ type Transaction struct {
     bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
     TransactionData
-    ID         int        `json:"id" bun:"id,type:numeric"`
+    ID         *int       `json:"id" bun:"id,type:numeric"`
     RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
     // PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
     // Those volumes will never change as those are computed in flight.
@@ -912,6 +923,15 @@ func (tx Transaction) Reverse() Transaction
 
 ```go
 func (tx Transaction) VolumeUpdates() []AccountsVolumes
+```
+
+
+
+<a name="Transaction.WithID"></a>
+### func \(Transaction\) WithID
+
+```go
+func (tx Transaction) WithID(id int) Transaction
 ```
 
 

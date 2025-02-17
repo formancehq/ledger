@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/uptrace/bun"
 	"reflect"
 	"strconv"
@@ -90,7 +91,7 @@ type Log struct {
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-	ID              int    `json:"id" bun:"id,unique,type:numeric"`
+	ID              *int    `json:"id" bun:"id,unique,type:numeric"`
 	Hash            []byte `json:"hash" bun:"hash,type:bytea"`
 }
 
@@ -103,9 +104,9 @@ func (l Log) ChainLog(previous *Log) Log {
 	ret := l
 	ret.ComputeHash(previous)
 	if previous != nil {
-		ret.ID = previous.ID + 1
+		ret.ID = pointer.For(*previous.ID + 1)
 	} else {
-		ret.ID = 1
+		ret.ID = pointer.For(1)
 	}
 	return ret
 }
@@ -158,13 +159,23 @@ func (l *Log) ComputeHash(previous *Log) {
 		Data:           payload,
 		Date:           l.Date,
 		IdempotencyKey: l.IdempotencyKey,
-		ID:             l.ID,
+		ID: func() int {
+			if l.ID == nil {
+				return 0
+			}
+			return *l.ID
+		}(),
 		Hash:           l.Hash,
 	}); err != nil {
 		panic(err)
 	}
 
 	l.Hash = digest.Sum(nil)
+}
+
+func (l Log) WithID(i int) Log {
+	l.ID = pointer.For(i)
+	return l
 }
 
 func NewLog(payload LogPayload) Log {
@@ -203,7 +214,7 @@ func (p CreatedTransaction) GetMemento() any {
 		Metadata  metadata.Metadata `json:"metadata"`
 		Timestamp time.Time         `json:"timestamp"`
 		Reference string            `json:"reference,omitempty"`
-		ID        int               `json:"id"`
+		ID        *int               `json:"id"`
 		Reverted  bool              `json:"reverted"`
 	}
 
@@ -334,7 +345,7 @@ func (r RevertedTransaction) GetMemento() any {
 		Metadata  metadata.Metadata `json:"metadata"`
 		Timestamp time.Time         `json:"timestamp"`
 		Reference string            `json:"reference,omitempty"`
-		ID        int               `json:"id"`
+		ID        *int               `json:"id"`
 		Reverted  bool              `json:"reverted"`
 	}
 
@@ -342,7 +353,7 @@ func (r RevertedTransaction) GetMemento() any {
 		RevertedTransactionID int               `json:"revertedTransactionID"`
 		RevertTransaction     transactionResume `json:"transaction"`
 	}{
-		RevertedTransactionID: r.RevertedTransaction.ID,
+		RevertedTransactionID: *r.RevertedTransaction.ID,
 		RevertTransaction: transactionResume{
 			Postings:  r.RevertTransaction.Postings,
 			Metadata:  r.RevertTransaction.Metadata,

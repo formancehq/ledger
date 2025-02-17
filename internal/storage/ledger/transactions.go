@@ -74,7 +74,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 				InsertionDate:     tx.InsertedAt,
 				EffectiveDate:     tx.Timestamp,
 				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
-				TransactionID:     tx.ID,
+				TransactionID:     *tx.ID,
 			})
 			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
 
@@ -86,7 +86,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 				InsertionDate:     tx.InsertedAt,
 				EffectiveDate:     tx.Timestamp,
 				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
-				TransactionID:     tx.ID,
+				TransactionID:     *tx.ID,
 			})
 			postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
 		}
@@ -118,7 +118,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 				Value("ledger", "?", store.ledger.Name).
 				Returning("id, timestamp, inserted_at")
 
-			if tx.ID == 0 {
+			if tx.ID == nil {
 				query = query.Value("id", "nextval(?)", store.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, store.ledger.ID)))
 			}
 
@@ -139,7 +139,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		},
 		func(ctx context.Context, tx *ledger.Transaction) {
 			trace.SpanFromContext(ctx).SetAttributes(
-				attribute.Int("id", tx.ID),
+				attribute.Int("id", *tx.ID),
 				attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
 			)
 		},

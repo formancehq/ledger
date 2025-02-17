@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"math/big"
 	"testing"
 	libtime "time"
@@ -25,8 +26,8 @@ import (
 func TestAccountsList(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := time.Now()
-	ctx := logging.TestingContext()
+	now := time.Now().Add(-time.Minute)
+	ctx := bundebug.WithDebug(logging.TestingContext())
 
 	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).

@@ -30,8 +30,8 @@ func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.Bala
 			}
 
 			type AccountsVolumesWithLedger struct {
-				ledger.AccountsVolumes `bun:",extend"`
 				Ledger                 string `bun:"ledger,type:varchar"`
+				ledger.AccountsVolumes `bun:",extend"`
 			}
 
 			accountsVolumes := make([]AccountsVolumesWithLedger, 0)
