@@ -58,8 +58,9 @@ func TestCreateTransaction(t *testing.T) {
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.NewLogType
 		})).
-		DoAndReturn(func(_ context.Context, x any) any {
-			return x
+		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
+			log.ID = pointer.For(0)
+			return log
 		})
 
 	_, _, err := l.CreateTransaction(context.Background(), Parameters[RunScript]{
@@ -106,7 +107,11 @@ func TestRevertTransaction(t *testing.T) {
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.RevertedTransactionLogType
 		})).
-		Return(nil)
+		DoAndReturn(func(ctx context.Context, v *ledger.Log) error {
+			v.ID = pointer.For(0)
+
+			return nil
+		})
 
 	_, _, err := l.RevertTransaction(ctx, Parameters[RevertTransaction]{
 		Input: RevertTransaction{
@@ -145,7 +150,11 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.SetMetadataLogType
 		})).
-		Return(nil)
+		DoAndReturn(func(ctx context.Context, log *ledger.Log) error {
+			log.ID = pointer.For(0)
+
+			return nil
+		})
 
 	_, err := l.SaveTransactionMetadata(ctx, Parameters[SaveTransactionMetadata]{
 		Input: SaveTransactionMetadata{
@@ -182,7 +191,11 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
 			return x.(*ledger.Log).Type == ledger.DeleteMetadataLogType
 		})).
-		Return(nil)
+		DoAndReturn(func(ctx context.Context, log *ledger.Log) error {
+			log.ID = pointer.For(0)
+
+			return nil
+		})
 
 	_, err := l.DeleteTransactionMetadata(ctx, Parameters[DeleteTransactionMetadata]{
 		Input: DeleteTransactionMetadata{
