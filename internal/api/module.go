@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
@@ -30,6 +31,7 @@ func Module(cfg Config) fx.Option {
 			backend system.Controller,
 			authenticator auth.Authenticator,
 			tracerProvider trace.TracerProvider,
+			meterProvider metric.MeterProvider,
 		) chi.Router {
 			return NewRouter(
 				backend,
@@ -37,6 +39,7 @@ func Module(cfg Config) fx.Option {
 				"develop",
 				cfg.Debug,
 				WithTracer(tracerProvider.Tracer("api")),
+				WithMeterProvider(meterProvider),
 				WithBulkMaxSize(cfg.Bulk.MaxSize),
 				WithBulkerFactory(bulking.NewDefaultBulkerFactory(
 					bulking.WithParallelism(cfg.Bulk.Parallel),

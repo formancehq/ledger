@@ -160,7 +160,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/riandyrn/otelchi v0.12.1 // indirect
+	github.com/riandyrn/otelchi v0.12.1
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.24.12 // indirect
 	github.com/shomali11/util v0.0.0-20220717175126-f0771b70947f // indirect
