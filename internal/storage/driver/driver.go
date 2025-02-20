@@ -43,6 +43,13 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		l.Metadata = metadata.Metadata{}
 	}
 
+	if err := d.systemStore.CreateLedger(ctx, l); err != nil {
+		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
+			return nil, systemcontroller.ErrLedgerAlreadyExists
+		}
+		return nil, postgres.ResolveError(err)
+	}
+
 	b := d.bucketFactory.Create(l.Bucket)
 	isInitialized, err := b.IsInitialized(ctx)
 	if err != nil {
@@ -57,24 +64,17 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		if !upToDate {
 			return nil, systemcontroller.ErrBucketOutdated
 		}
-	}
 
-	if err := b.Migrate(
-		ctx,
-		migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
-	); err != nil {
-		return nil, fmt.Errorf("migrating bucket: %w", err)
-	}
-
-	if err := d.systemStore.CreateLedger(ctx, l); err != nil {
-		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return nil, systemcontroller.ErrLedgerAlreadyExists
+		if err := b.AddLedger(ctx, *l); err != nil {
+			return nil, fmt.Errorf("adding ledger to bucket: %w", err)
 		}
-		return nil, postgres.ResolveError(err)
-	}
-
-	if err := b.AddLedger(ctx, *l); err != nil {
-		return nil, fmt.Errorf("adding ledger to bucket: %w", err)
+	} else {
+		if err := b.Migrate(
+			ctx,
+			migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
+		); err != nil {
+			return nil, fmt.Errorf("migrating bucket: %w", err)
+		}
 	}
 
 	return d.ledgerStoreFactory.Create(b, *l), nil
