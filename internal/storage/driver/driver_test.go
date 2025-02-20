@@ -212,10 +212,6 @@ func TestLedgersCreate(t *testing.T) {
 		Migrate(gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	bucket.EXPECT().
-		AddLedger(gomock.Any(), *l).
-		Return(nil)
-
 	ledgerStoreFactory.EXPECT().
 		Create(gomock.Any(), *l).
 		Return(&ledgerstore.Store{})
