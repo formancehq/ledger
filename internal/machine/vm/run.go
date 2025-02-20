@@ -35,7 +35,12 @@ func (s ScriptV1) ToCore() Script {
 		case string:
 			s.Script.Vars[k] = v
 		case map[string]any:
-			s.Script.Vars[k] = fmt.Sprintf("%s %v", v["asset"], v["amount"])
+			switch amount := v["amount"].(type) {
+			case string:
+				s.Script.Vars[k] = fmt.Sprintf("%s %s", v["asset"], amount)
+			case float64:
+				s.Script.Vars[k] = fmt.Sprintf("%s %d", v["asset"], int(amount))
+			}
 		default:
 			s.Script.Vars[k] = fmt.Sprint(v)
 		}
