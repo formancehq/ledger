@@ -126,13 +126,18 @@ func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption
 	}
 }
 
+func WithDefaultBulkHandlerFactories(bulkMaxSize int) RouterOption {
+	return WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
+		"application/json": bulking.NewJSONBulkHandlerFactory(bulkMaxSize),
+		"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewTextStreamBulkHandlerFactory(),
+		"application/vnd.formance.ledger.api.v2.bulk+json-stream": bulking.NewJSONStreamBulkHandlerFactory(),
+	})
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
-	WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
-		"application/json": bulking.NewJSONBulkHandlerFactory(100),
-		"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
-	}),
+	WithDefaultBulkHandlerFactories(100),
 	WithPaginationConfig(common.PaginationConfig{
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
 		MaxPageSize: bunpaginate.MaxPageSize,
