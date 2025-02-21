@@ -19,6 +19,8 @@ type ModuleConfiguration struct {
 	DatabaseRetryConfiguration DatabaseRetryConfiguration
 	EnableFeatures             bool
 	NumscriptInterpreter       bool
+	// Ignored whenever NumscriptInterpreter is set to false
+	NumscriptInterpreterFlags []string
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
@@ -34,7 +36,7 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 		) *DefaultController {
 			var parser ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
 			if configuration.NumscriptInterpreter {
-				parser = ledgercontroller.NewInterpreterNumscriptParser()
+				parser = ledgercontroller.NewInterpreterNumscriptParser(configuration.NumscriptInterpreterFlags)
 			}
 
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
@@ -48,8 +50,8 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 				listener,
 				WithParser(parser),
 				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
-				WithMeter(meterProvider.Meter("core")),
-				WithTracer(tracerProvider.Tracer("core")),
+				WithMeterProvider(meterProvider),
+				WithTracerProvider(tracerProvider),
 				WithEnableFeatures(configuration.EnableFeatures),
 			)
 		}),

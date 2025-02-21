@@ -4,10 +4,11 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
+	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"math/big"
 	"os"
 	"testing"
@@ -28,8 +29,9 @@ import (
 )
 
 var (
-	srv   = NewDeferred[*pgtesting.PostgresServer]()
-	bunDB = NewDeferred[*bun.DB]()
+	srv           = NewDeferred[*pgtesting.PostgresServer]()
+	defaultBunDB  = NewDeferred[*bun.DB]()
+	defaultDriver = NewDeferred[*driver.Driver]()
 )
 
 func TestMain(m *testing.M) {
@@ -37,7 +39,7 @@ func TestMain(m *testing.M) {
 		srv.LoadAsync(func() *pgtesting.PostgresServer {
 			ret := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()), pgtesting.WithExtension("pgcrypto"))
 
-			bunDB.LoadAsync(func() *bun.DB {
+			defaultBunDB.LoadAsync(func() *bun.DB {
 				db, err := sql.Open("pgx", ret.GetDSN())
 				require.NoError(t, err)
 
@@ -47,7 +49,12 @@ func TestMain(m *testing.M) {
 				}
 				bunDB.SetMaxOpenConns(100)
 
-				require.NoError(t, driver.Migrate(logging.TestingContext(), bunDB))
+				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
+				defaultDriver.SetValue(driver.New(
+					ledgerstore.NewFactory(bunDB),
+					systemstore.New(bunDB),
+					bucket.NewDefaultFactory(bunDB),
+				))
 
 				return bunDB
 			})
@@ -64,38 +71,20 @@ type T interface {
 	Cleanup(func())
 }
 
-func newDriver(t T) *driver.Driver {
-	t.Helper()
-
-	ctx := logging.TestingContext()
-
-	Wait(srv, bunDB)
-
-	pgDatabase := srv.GetValue().NewDatabase(t)
-
-	hooks := make([]bun.QueryHook, 0)
-	if os.Getenv("DEBUG") == "true" {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
-
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
-	require.NoError(t, err)
-
-	require.NoError(t, driver.Migrate(ctx, db))
-
-	return driver.New(bunDB.GetValue())
-}
-
 func newLedgerStore(t T) *ledgerstore.Store {
 	t.Helper()
 
-	driver := newDriver(t)
+	<-defaultBunDB.Done()
+	<-defaultDriver.Done()
+
 	ledgerName := uuid.NewString()[:8]
 	ctx := logging.TestingContext()
 
 	l := ledger.MustNewWithDefault(ledgerName)
+	err := bucket.GetMigrator(defaultBunDB.GetValue(), "_default").Up(ctx)
+	require.NoError(t, err)
 
-	store, err := driver.CreateLedger(ctx, &l)
+	store, err := defaultDriver.GetValue().CreateLedger(ctx, &l)
 	require.NoError(t, err)
 
 	return store

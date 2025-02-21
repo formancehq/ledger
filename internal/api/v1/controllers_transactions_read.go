@@ -1,14 +1,13 @@
 package v1
 
 import (
+	"github.com/formancehq/go-libs/v2/query"
 	"net/http"
 	"strconv"
 
 	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -17,19 +16,18 @@ func readTransaction(w http.ResponseWriter, r *http.Request) {
 
 	txId, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	query := ledgercontroller.NewGetTransactionQuery(int(txId))
-	if collectionutils.Contains(r.URL.Query()["expand"], "volumes") {
-		query = query.WithExpandVolumes()
+	rq, err := getResourceQuery[any](r)
+	if err != nil {
+		api.BadRequest(w, common.ErrValidation, err)
+		return
 	}
-	if collectionutils.Contains(r.URL.Query()["expand"], "effectiveVolumes") {
-		query = query.WithExpandEffectiveVolumes()
-	}
+	rq.Builder = query.Match("id", txId)
 
-	tx, err := l.GetTransaction(r.Context(), query)
+	tx, err := l.GetTransaction(r.Context(), *rq)
 	if err != nil {
 		switch {
 		case postgres.IsNotFoundError(err):

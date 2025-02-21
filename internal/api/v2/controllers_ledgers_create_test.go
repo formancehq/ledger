@@ -3,9 +3,9 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -55,28 +55,35 @@ func TestLedgersCreate(t *testing.T) {
 			expectedBackendCall: true,
 			returnErr:           system.ErrLedgerAlreadyExists,
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrLedgerAlreadyExists,
+			expectErrorCode:     common.ErrLedgerAlreadyExists,
 		},
 		{
 			name:                "invalid ledger name",
 			expectedBackendCall: true,
 			returnErr:           ledger.ErrInvalidLedgerName{},
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     common.ErrValidation,
 		},
 		{
 			name:                "invalid bucket name",
 			expectedBackendCall: true,
 			returnErr:           ledger.ErrInvalidBucketName{},
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     common.ErrValidation,
 		},
 		{
 			name:                "invalid ledger configuration",
 			expectedBackendCall: true,
 			returnErr:           system.ErrInvalidLedgerConfiguration{},
 			expectStatusCode:    http.StatusBadRequest,
-			expectErrorCode:     ErrValidation,
+			expectErrorCode:     common.ErrValidation,
+		},
+		{
+			name:                "bucket actually outdated",
+			expectedBackendCall: true,
+			returnErr:           system.ErrBucketOutdated,
+			expectStatusCode:    http.StatusBadRequest,
+			expectErrorCode:     common.ErrOutdatedSchema,
 		},
 		{
 			name:                "unexpected error",
@@ -92,7 +99,7 @@ func TestLedgersCreate(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, false)
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			name := uuid.NewString()
 

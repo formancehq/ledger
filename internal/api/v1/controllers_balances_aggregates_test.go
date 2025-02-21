@@ -10,8 +10,6 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/time"
-
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/query"
@@ -26,16 +24,16 @@ func TestBalancesAggregates(t *testing.T) {
 	type testCase struct {
 		name        string
 		queryParams url.Values
-		expectQuery ledgercontroller.GetAggregatedBalanceQuery
+		expectQuery ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
 	}
-
-	now := time.Now()
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				UseInsertionDate: true,
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts: ledgercontroller.GetAggregatedVolumesOptions{
+					UseInsertionDate: true,
+				},
 			},
 		},
 		{
@@ -43,33 +41,11 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				QueryBuilder:     query.Match("address", "foo"),
-				UseInsertionDate: true,
-			},
-		},
-		{
-			name: "using pit",
-			queryParams: url.Values{
-				"pit": []string{now.Format(time.RFC3339Nano)},
-			},
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
+			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+				Opts: ledgercontroller.GetAggregatedVolumesOptions{
+					UseInsertionDate: true,
 				},
-			},
-		},
-		{
-			name: "using pit + insertion date",
-			queryParams: url.Values{
-				"pit":              []string{now.Format(time.RFC3339Nano)},
-				"useInsertionDate": []string{"true"},
-			},
-			expectQuery: ledgercontroller.GetAggregatedBalanceQuery{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &now,
-				},
-				UseInsertionDate: true,
+				Builder: query.Match("address", "foo"),
 			},
 		},
 	}

@@ -65,7 +65,7 @@ func TestGenerator(t *testing.T) {
 }
 
 const script = `
-function next(iteration) {
+function nextElement(iteration) {
 	switch (iteration % 4) {
 	case 0:
 		return {
@@ -119,5 +119,9 @@ set_tx_meta("globalMetadata", "${globalMetadata}")
 			}
 		}
 	}
+}
+
+function next(iteration) {
+	return [nextElement(iteration)]
 }
 `

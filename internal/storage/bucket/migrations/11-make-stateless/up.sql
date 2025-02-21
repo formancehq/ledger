@@ -4,7 +4,7 @@ create or replace function transaction_date() returns timestamp as $$
     declare
         ret timestamp without time zone;
     begin
-        create temporary table if not exists transaction_date on commit drop as
+        create temporary table if not exists transaction_date on commit delete rows as
         select statement_timestamp();
 
         select *
@@ -16,7 +16,7 @@ create or replace function transaction_date() returns timestamp as $$
             ret = statement_timestamp();
 
             insert into transaction_date
-            select ret;
+            select ret at time zone 'utc';
         end if;
 
         return ret at time zone 'utc';
@@ -200,8 +200,6 @@ execute procedure set_compat_on_transactions_metadata();
 
 alter table transactions
 add column post_commit_volumes jsonb,
--- todo: set in subsequent migration `default transaction_date()`,
--- otherwise the function is called for every existing lines
 add column inserted_at timestamp without time zone,
 alter column timestamp set default transaction_date()
 -- todo: we should change the type of this column, but actually it cause a full lock of the table
@@ -363,7 +361,6 @@ from (select row_number() over () as number, v.value
             select null) v) data
 $$ set search_path from current;
 
--- todo(next-minor): remove that on future version when the table will have this default value (need to fill nulls before)
 create or replace function set_transaction_inserted_at() returns trigger
 	security definer
 	language plpgsql
@@ -464,7 +461,7 @@ begin
 			case
 			when previousHash is null
 			then marshalledAsJSON::bytea
-			else '"' || encode(previousHash::bytea, 'base64')::bytea || E'"\n' || convert_to(marshalledAsJSON, 'LATIN1')::bytea
+			else '"' || encode(previousHash::bytea, 'base64')::bytea || E'"\n' || convert_to(marshalledAsJSON, 'UTF-8')::bytea
 			end || E'\n', 'sha256'::text
 		)
 	);

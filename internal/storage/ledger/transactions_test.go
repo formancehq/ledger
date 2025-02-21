@@ -7,9 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
-	"github.com/formancehq/ledger/internal/storage/bucket"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/google/uuid"
 	"math/big"
 	"slices"
 	"testing"
@@ -55,9 +52,10 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx2)
 	require.NoError(t, err)
 
-	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).
-		WithExpandVolumes().
-		WithExpandEffectiveVolumes())
+	tx, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx1.ID),
+		Expand:  []string{"volumes", "effectiveVolumes"},
+	})
 	require.NoError(t, err)
 	require.Equal(t, tx1.Postings, tx.Postings)
 	require.Equal(t, tx1.Reference, tx.Reference)
@@ -78,9 +76,10 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 		},
 	}, tx.PostCommitVolumes)
 
-	tx, err = store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx2.ID).
-		WithExpandVolumes().
-		WithExpandEffectiveVolumes())
+	tx, err = store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx2.ID),
+		Expand:  []string{"volumes", "effectiveVolumes"},
+	})
 	require.NoError(t, err)
 	require.Equal(t, tx2.Postings, tx.Postings)
 	require.Equal(t, tx2.Reference, tx.Reference)
@@ -114,7 +113,7 @@ func TestTransactionsCount(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	count, err := store.CountTransactions(ctx, ledgercontroller.NewListTransactionsQuery(ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{})))
+	count, err := store.Transactions().Count(ctx, ledgercontroller.ResourceQuery[any]{})
 	require.NoError(t, err, "counting transactions should not fail")
 	require.Equal(t, 3, count, "count should be equal")
 }
@@ -143,24 +142,30 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update their metadata
-	_, modified, err := store.UpdateTransactionMetadata(ctx, tx1.ID, metadata.Metadata{"foo1": "bar2"})
+	_, modified, err := store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"})
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, tx2.ID, metadata.Metadata{"foo2": "bar2"})
+	_, _, err = store.UpdateTransactionMetadata(ctx, *tx2.ID, metadata.Metadata{"foo2": "bar2"})
 	require.NoError(t, err)
 
 	// Check that the database returns metadata
-	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx1.ID),
+		Expand:  []string{"volumes", "effectiveVolumes"},
+	})
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar2"}, "metadata should be equal")
 
-	tx, err = store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx, err = store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx2.ID),
+		Expand:  []string{"volumes", "effectiveVolumes"},
+	})
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo2": "bar2"}, "metadata should be equal")
 
 	// Update metadata of a transaction already having those metadata
-	_, modified, err = store.UpdateTransactionMetadata(ctx, tx1.ID, metadata.Metadata{"foo1": "bar2"})
+	_, modified, err = store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"})
 	require.NoError(t, err)
 	require.False(t, modified)
 
@@ -188,21 +193,25 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get from database and check metadata presence
-	tx, err := store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx1.ID))
+	tx, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx1.ID),
+	})
 	require.NoError(t, err)
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"})
 
 	// Delete a metadata
-	tx1, modified, err := store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
+	tx1, modified, err := store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	tx, err = store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx1.ID))
+	tx, err = store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx1.ID),
+	})
 	require.NoError(t, err)
 	require.Equal(t, metadata.Metadata{"foo2": "bar2"}, tx.Metadata)
 
 	// Delete a not existing metadata
-	_, modified, err = store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
+	_, modified, err = store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.False(t, modified)
 
@@ -228,7 +237,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx1)
 		require.NoError(t, err)
-		require.Equal(t, 1, tx1.ID)
+		require.Equal(t, 1, *tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:1": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -250,7 +259,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err = store.CommitTransaction(ctx, &tx2)
 		require.NoError(t, err)
-		require.Equal(t, 2, tx2.ID)
+		require.Equal(t, 2, *tx2.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:2": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -276,7 +285,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx3)
 		require.NoError(t, err)
-		require.Equal(t, 1, tx3.ID)
+		require.Equal(t, 1, *tx3.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:x": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -440,12 +449,12 @@ func TestTransactionsCommit(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		cursor, err := store.ListTransactions(ctx, ledgercontroller.NewListTransactionsQuery(
-			ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				ExpandVolumes: true,
-			}).
-				WithPageSize(countTx)),
-		)
+		cursor, err := store.Transactions().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+			PageSize: countTx,
+			Options: ledgercontroller.ResourceQuery[any]{
+				Expand: []string{"volumes"},
+			},
+		})
 		require.NoError(t, err)
 		require.Len(t, cursor.Data, countTx)
 
@@ -453,7 +462,7 @@ func TestTransactionsCommit(t *testing.T) {
 		slices.Reverse(txs)
 
 		for i := range countTx {
-			require.Equal(t, i+1, txs[i].ID)
+			require.Equal(t, i+1, *txs[i].ID)
 			require.Equalf(t, ledger.PostCommitVolumes{
 				"world": {
 					"USD": {
@@ -509,7 +518,10 @@ func TestInsertTransactionInPast(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx4)
 	require.NoError(t, err)
 
-	tx2FromDatabase, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx2FromDatabase, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("id", tx2.ID),
+		Expand:  []string{"volumes", "effectiveVolumes"},
+	})
 	require.NoError(t, err)
 
 	RequireEqual(t, ledger.PostCommitVolumes{
@@ -521,7 +533,9 @@ func TestInsertTransactionInPast(t *testing.T) {
 		},
 	}, tx2FromDatabase.PostCommitEffectiveVolumes)
 
-	account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("bank"))
+	account, err := store.Accounts().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+		Builder: query.Match("address", "bank"),
+	})
 	require.NoError(t, err)
 	require.Equal(t, tx4.Timestamp, account.FirstUsage)
 }
@@ -544,7 +558,7 @@ func TestTransactionsRevert(t *testing.T) {
 	require.NoError(t, err)
 
 	// Revert the tx
-	revertedTx, reverted, err := store.RevertTransaction(ctx, tx1.ID)
+	revertedTx, reverted, err := store.RevertTransaction(ctx, *tx1.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
@@ -556,15 +570,14 @@ func TestTransactionsRevert(t *testing.T) {
 	require.Equal(t, tx1, *revertedTx)
 
 	// Try to revert again
-	_, reverted, err = store.RevertTransaction(ctx, tx1.ID)
+	_, reverted, err = store.RevertTransaction(ctx, *tx1.ID, time.Time{})
 	require.NoError(t, err)
 	require.False(t, reverted)
 
 	// Revert a not existing transaction
-	revertedTx, reverted, err = store.RevertTransaction(ctx, 2)
+	_, reverted, err = store.RevertTransaction(ctx, 2, time.Time{})
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
 	require.False(t, reverted)
-	require.Nil(t, revertedTx)
 }
 
 func TestTransactionsInsert(t *testing.T) {
@@ -605,84 +618,6 @@ func TestTransactionsInsert(t *testing.T) {
 		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
-	})
-	// todo(next-minor): remove this test
-	t.Run("check reference conflict with minimal store version", func(t *testing.T) {
-		t.Parallel()
-
-		driver := newDriver(t)
-		ledgerName := uuid.NewString()[:8]
-
-		l := ledger.MustNewWithDefault(ledgerName)
-		l.Bucket = ledgerName
-
-		migrator := bucket.GetMigrator(driver.GetDB(), ledgerName)
-		for i := 0; i < bucket.MinimalSchemaVersion; i++ {
-			require.NoError(t, migrator.UpByOne(ctx))
-		}
-
-		b := bucket.New(driver.GetDB(), ledgerName)
-		err := b.AddLedger(ctx, l, driver.GetDB())
-		require.NoError(t, err)
-
-		store := ledgerstore.New(driver.GetDB(), b, l)
-
-		const nbTry = 100
-
-		for i := 0; i < nbTry; i++ {
-			errChan := make(chan error, 2)
-
-			// Create a simple tx
-			tx1 := ledger.Transaction{
-				TransactionData: ledger.TransactionData{
-					Timestamp: now,
-					Reference: fmt.Sprintf("foo:%d", i),
-					Postings: []ledger.Posting{
-						ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-					},
-				},
-			}
-			go func() {
-				errChan <- store.InsertTransaction(ctx, &tx1)
-			}()
-
-			// Create another tx with the same reference
-			tx2 := ledger.Transaction{
-				TransactionData: ledger.TransactionData{
-					Timestamp: now,
-					Reference: fmt.Sprintf("foo:%d", i),
-					Postings: []ledger.Posting{
-						ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-					},
-				},
-			}
-			go func() {
-				errChan <- store.InsertTransaction(ctx, &tx2)
-			}()
-
-			select {
-			case err1 := <-errChan:
-				if err1 != nil {
-					require.True(t, errors.Is(err1, ledgercontroller.ErrTransactionReferenceConflict{}))
-					select {
-					case err2 := <-errChan:
-						require.NoError(t, err2)
-					case <-time.After(time.Second):
-						require.Fail(t, "should have received an error")
-					}
-				} else {
-					select {
-					case err2 := <-errChan:
-						require.Error(t, err2)
-						require.True(t, errors.Is(err2, ledgercontroller.ErrTransactionReferenceConflict{}))
-					case <-time.After(time.Second):
-						require.Fail(t, "should have received an error")
-					}
-				}
-			case <-time.After(time.Second):
-				require.Fail(t, "should have received an error")
-			}
-		}
 	})
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()
@@ -741,6 +676,7 @@ func TestTransactionsList(t *testing.T) {
 	tx1 := ledger.NewTransaction().
 		WithPostings(
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
+			ledger.NewPosting("world", "alice", "EUR", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
 		WithTimestamp(now.Add(-3 * time.Hour))
@@ -765,7 +701,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx3BeforeRevert)
 	require.NoError(t, err)
 
-	_, hasBeenReverted, err := store.RevertTransaction(ctx, tx3BeforeRevert.ID)
+	_, hasBeenReverted, err := store.RevertTransaction(ctx, *tx3BeforeRevert.ID, time.Time{})
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
@@ -773,7 +709,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx4)
 	require.NoError(t, err)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, tx3BeforeRevert.ID, metadata.Metadata{
+	_, _, err = store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	})
 	require.NoError(t, err)
@@ -781,9 +717,10 @@ func TestTransactionsList(t *testing.T) {
 	// refresh tx3
 	// we can't take the result of the call on RevertTransaction nor UpdateTransactionMetadata as the result does not contains pc(e)v
 	tx3 := func() ledger.Transaction {
-		tx3, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx3BeforeRevert.ID).
-			WithExpandVolumes().
-			WithExpandEffectiveVolumes())
+		tx3, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
+			Builder: query.Match("id", tx3BeforeRevert.ID),
+			Expand:  []string{"volumes", "effectiveVolumes"},
+		})
 		require.NoError(t, err)
 		return *tx3
 	}()
@@ -798,87 +735,114 @@ func TestTransactionsList(t *testing.T) {
 
 	type testCase struct {
 		name        string
-		query       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		query       ledgercontroller.ColumnPaginatedQuery[any]
 		expected    []ledger.Transaction
 		expectError error
 	}
 	testCases := []testCase{
 		{
 			name:     "nominal",
-			query:    ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
+			query:    ledgercontroller.ColumnPaginatedQuery[any]{},
 			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("account", "bob")),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("account", "bob"),
+				},
+			},
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "address filter using segments matching two addresses by individual segments",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("account", "users:amazon")),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("account", "users:amazon"),
+				},
+			},
 			expected: []ledger.Transaction{},
 		},
 		{
 			name: "address filter using segment",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("account", "users:")),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("account", "users:"),
+				},
+			},
 			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
 			name: "filter using metadata",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("metadata[category]", "2")),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("metadata[category]", "2"),
+				},
+			},
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "using point in time",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
-			}),
+			},
 			expected: []ledger.Transaction{tx3BeforeRevert, tx2, tx1},
 		},
 		{
 			name: "filter using invalid key",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("invalid", "2")),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("invalid", "2"),
+				},
+			},
 			expectError: ledgercontroller.ErrInvalidQuery{},
 		},
 		{
 			name: "reverted transactions",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("reverted", true)),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("reverted", true),
+				},
+			},
 			expected: []ledger.Transaction{tx3},
 		},
 		{
 			name: "filter using exists metadata",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Exists("metadata", "category")),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Exists("metadata", "category"),
+				},
+			},
 			expected: []ledger.Transaction{tx3, tx2, tx1},
 		},
 		{
 			name: "filter using metadata and pit",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: pointer.For(tx3.Timestamp),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("metadata[category]", "2"),
+					PIT:     pointer.For(tx3.Timestamp),
 				},
-			}).
-				WithQueryBuilder(query.Match("metadata[category]", "2")),
+			},
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "filter using not exists metadata",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Not(query.Exists("metadata", "category"))),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Not(query.Exists("metadata", "category")),
+				},
+			},
 			expected: []ledger.Transaction{tx5, tx4},
 		},
 		{
 			name: "filter using timestamp",
-			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano))),
+			query: ledgercontroller.ColumnPaginatedQuery[any]{
+				Options: ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
+				},
+			},
 			expected: []ledger.Transaction{tx5, tx4},
 		},
 	}
@@ -888,10 +852,9 @@ func TestTransactionsList(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tc.query.Options.ExpandVolumes = true
-			tc.query.Options.ExpandEffectiveVolumes = true
+			tc.query.Options.Expand = []string{"volumes", "effectiveVolumes"}
 
-			cursor, err := store.ListTransactions(ctx, ledgercontroller.NewListTransactionsQuery(tc.query))
+			cursor, err := store.Transactions().Paginate(ctx, tc.query)
 			if tc.expectError != nil {
 				require.True(t, errors.Is(err, tc.expectError))
 			} else {
@@ -899,7 +862,7 @@ func TestTransactionsList(t *testing.T) {
 				require.Len(t, cursor.Data, len(tc.expected))
 				RequireEqual(t, tc.expected, cursor.Data)
 
-				count, err := store.CountTransactions(ctx, ledgercontroller.NewListTransactionsQuery(tc.query))
+				count, err := store.Transactions().Count(ctx, tc.query.Options)
 				require.NoError(t, err)
 
 				require.EqualValues(t, len(tc.expected), count)

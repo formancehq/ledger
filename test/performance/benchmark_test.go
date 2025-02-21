@@ -18,12 +18,12 @@ import (
 )
 
 type ActionProvider interface {
-	Get(iteration int) (*generate.Action, error)
+	Get(globalIteration, iteration int) (*generate.Action, error)
 }
-type ActionProviderFn func(iteration int) (*generate.Action, error)
+type ActionProviderFn func(globalIteration, iteration int) (*generate.Action, error)
 
-func (fn ActionProviderFn) Get(iteration int) (*generate.Action, error) {
-	return fn(iteration)
+func (fn ActionProviderFn) Get(globalIteration, iteration int) (*generate.Action, error) {
+	return fn(globalIteration, iteration)
 }
 
 type ActionProviderFactory interface {
@@ -36,15 +36,17 @@ func (fn ActionProviderFactoryFn) Create() (ActionProvider, error) {
 	return fn()
 }
 
-func NewJSActionProviderFactory(script string) ActionProviderFactoryFn {
+func NewJSActionProviderFactory(rootPath, script string) ActionProviderFactoryFn {
 	return func() (ActionProvider, error) {
-		generator, err := generate.NewGenerator(script)
+		generator, err := generate.NewGenerator(script, generate.WithRootPath(rootPath))
 		if err != nil {
 			return nil, err
 		}
 
-		return ActionProviderFn(func(iteration int) (*generate.Action, error) {
-			return generator.Next(iteration)
+		return ActionProviderFn(func(globalIteration, iteration int) (*generate.Action, error) {
+			return generator.Next(iteration, generate.WithNextGlobals(map[string]any{
+				"iteration": globalIteration,
+			}))
 		}), nil
 	}
 }
@@ -82,7 +84,7 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 					Name:          uuid.NewString()[:8],
 				}
 
-				cpt := atomic.Int64{}
+				globalIteration := atomic.Int64{}
 
 				env := envFactory.Create(ctx, b, l)
 				b.Logf("ledger: %s/%s", l.Bucket, l.Name)
@@ -94,11 +96,13 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 
 					actionProvider, err := benchmark.Scenarios[scenario].Create()
 					require.NoError(b, err)
+					iteration := atomic.Int64{}
 
 					for pb.Next() {
-						iteration := int(cpt.Add(1))
+						globalIteration := int(globalIteration.Add(1))
+						iteration := int(iteration.Add(1))
 
-						action, err := actionProvider.Get(iteration)
+						action, err := actionProvider.Get(globalIteration, iteration)
 						require.NoError(b, err)
 
 						now := time.Now()

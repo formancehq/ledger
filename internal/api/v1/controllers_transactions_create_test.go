@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
@@ -154,7 +155,7 @@ func TestTransactionsCreate(t *testing.T) {
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
 			},
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -169,7 +170,7 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedPreview: true,
-			expectedRunScript: common.TxToScriptData(ledger.NewTransactionData().WithPostings(
+			expectedRunScript: ledgercontroller.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			), false),
 		},
@@ -177,7 +178,7 @@ func TestTransactionsCreate(t *testing.T) {
 			name:               "no postings or script",
 			payload:            CreateTransactionRequest{},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name: "postings and script",
@@ -201,13 +202,13 @@ func TestTransactionsCreate(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 		{
 			name:               "using invalid body",
 			payload:            "not a valid payload",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  ErrValidation,
+			expectedErrorCode:  common.ErrValidation,
 		},
 	}
 
@@ -220,6 +221,7 @@ func TestTransactionsCreate(t *testing.T) {
 			expectedTx := ledger.NewTransaction().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			)
+			expectedTx.ID = pointer.For(0)
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
@@ -229,7 +231,9 @@ func TestTransactionsCreate(t *testing.T) {
 						DryRun: tc.expectedPreview,
 						Input:  tc.expectedRunScript,
 					}).
-					Return(&ledger.Log{}, &ledger.CreatedTransaction{
+					Return(&ledger.Log{
+						ID: pointer.For(0),
+					}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
 					}, nil)
 			}

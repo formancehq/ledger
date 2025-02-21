@@ -2,6 +2,7 @@ package testserver
 
 import (
 	"github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/internal"
@@ -26,7 +27,7 @@ func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 		TransactionData: ledger.TransactionData{
 			Postings:   collectionutils.Map(tx.Postings, ConvertSDKPostingToCorePosting),
 			Timestamp:  time.New(tx.Timestamp),
-			InsertedAt: time.New(tx.InsertedAt),
+			InsertedAt: time.New(*tx.InsertedAt),
 			Metadata:   tx.Metadata,
 			Reference: func() string {
 				if tx.Reference == nil {
@@ -35,7 +36,7 @@ func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 				return *tx.Reference
 			}(),
 		},
-		ID:                         int(tx.ID.Int64()),
+		ID:                         pointer.For(int(tx.ID.Int64())),
 		PostCommitVolumes:          ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitVolumes),
 		PostCommitEffectiveVolumes: ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitEffectiveVolumes),
 	}

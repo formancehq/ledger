@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/v2/query"
 	"net/http"
 	"net/url"
 
@@ -16,25 +17,21 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 
 	param, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
-		api.BadRequestWithDetails(w, ErrValidation, err, err.Error())
+		api.BadRequestWithDetails(w, common.ErrValidation, err, err.Error())
 		return
 	}
 
-	query := ledgercontroller.NewGetAccountQuery(param)
-	if hasExpandVolumes(r) {
-		query = query.WithExpandVolumes()
-	}
-	if hasExpandEffectiveVolumes(r) {
-		query = query.WithExpandEffectiveVolumes()
-	}
-	pitFilter, err := getPITFilter(r)
+	pit, err := getPIT(r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
-	query.PITFilter = *pitFilter
 
-	acc, err := l.GetAccount(r.Context(), query)
+	acc, err := l.GetAccount(r.Context(), ledgercontroller.ResourceQuery[any]{
+		PIT:     pit,
+		Builder: query.Match("address", param),
+		Expand: r.URL.Query()["expand"],
+	})
 	if err != nil {
 		switch {
 		case postgres.IsNotFoundError(err):

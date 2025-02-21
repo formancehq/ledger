@@ -3,7 +3,6 @@ package v2
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/time"
@@ -19,7 +18,7 @@ func TestLedgersInfo(t *testing.T) {
 	t.Parallel()
 
 	systemController, ledgerController := newTestingSystemController(t, false)
-	router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 	migrationInfo := []migrations.Info{
 		{

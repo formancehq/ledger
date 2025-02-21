@@ -3,10 +3,10 @@ package v2
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 
 	"errors"
@@ -28,7 +28,7 @@ func TestTransactionsCount(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes]
+		expectQuery       ledgercontroller.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -39,97 +39,88 @@ func TestTransactionsCount(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("metadata[roles]", "admin")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("metadata[roles]", "admin"),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Gte("date", now.Format(time.DateFormat)),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Gte("date", now.Format(time.DateFormat)),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("account", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("account", "xxx"),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("reference", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("reference", "xxx"),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("destination", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("destination", "xxx"),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}).
-				WithQueryBuilder(query.Match("source", "xxx")),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:     &before,
+				Builder: query.Match("source", "xxx"),
+				Expand:  make([]string, 0),
+			},
 			expectBackendCall: true,
 		},
 		{
 			name: "error from backend",
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 			expectStatusCode:  http.StatusInternalServerError,
 			expectedErrorCode: api.ErrorInternal,
 			expectBackendCall: true,
@@ -138,26 +129,24 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name:              "with invalid query from core point of view",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrInvalidQuery{},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 		},
 		{
 			name:              "with missing feature",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: ErrValidation,
+			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
-			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
-				PITFilter: ledgercontroller.PITFilter{
-					PIT: &before,
-				},
-			}),
+			expectQuery: ledgercontroller.ResourceQuery[any]{
+				PIT:    &before,
+				Expand: make([]string, 0),
+			},
 		},
 	}
 	for _, tc := range testCases {
@@ -170,11 +159,11 @@ func TestTransactionsCount(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
-					CountTransactions(gomock.Any(), ledgercontroller.NewListTransactionsQuery(tc.expectQuery)).
+					CountTransactions(gomock.Any(), tc.expectQuery).
 					Return(10, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(tc.body))
 			rec := httptest.NewRecorder()

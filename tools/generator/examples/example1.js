@@ -16,7 +16,7 @@ send [USD/2 99] (
 )`
 
 function next(iteration) {
-    return {
+    return [{
         action: 'CREATE_TRANSACTION',
         data: {
             script: {
@@ -27,5 +27,5 @@ function next(iteration) {
                 }
             }
         }
-    }
+    }]
 }

@@ -5,6 +5,7 @@ package test_suite
 import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
@@ -23,6 +24,8 @@ var _ = Context("Ledger engine tests", func() {
 			Output:                GinkgoWriter,
 			Debug:                 debug,
 			NatsURL:               natsServer.GetValue().ClientURL(),
+			MaxPageSize:           5,
+			DefaultPageSize:       5,
 		}
 	})
 
@@ -36,9 +39,11 @@ var _ = Context("Ledger engine tests", func() {
 			}
 		})
 		It("should be listable", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{})
+			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{
+				PageSize: pointer.For(int64(100)),
+			})
 			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(10))
+			Expect(ledgers.Data).To(HaveLen(5))
 		})
 	})
 })

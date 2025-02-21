@@ -19,14 +19,7 @@ import (
 	"strings"
 )
 
-var (
-	rootCmd = &cobra.Command{
-		Use:          "generator <ledger-url> <script-location>",
-		Short:        "Generate data for a ledger. WARNING: This is an experimental tool.",
-		RunE:         run,
-		Args:         cobra.ExactArgs(2),
-		SilenceUsage: true,
-	}
+const (
 	parallelFlag           = "parallel"
 	ledgerFlag             = "ledger"
 	ledgerMetadataFlag     = "ledger-metadata"
@@ -37,6 +30,18 @@ var (
 	clientSecretFlag       = "client-secret"
 	authUrlFlag            = "auth-url"
 	insecureSkipVerifyFlag = "insecure-skip-verify"
+	httpClientTimeoutFlag  = "http-client-timeout"
+	debugFlag              = "debug"
+)
+
+var (
+	rootCmd = &cobra.Command{
+		Use:          "generator <ledger-url> <script-location>",
+		Short:        "Generate data for a ledger. WARNING: This is an experimental tool.",
+		RunE:         run,
+		Args:         cobra.ExactArgs(2),
+		SilenceUsage: true,
+	}
 )
 
 func init() {
@@ -50,6 +55,8 @@ func init() {
 	rootCmd.Flags().String(ledgerBucketFlag, "", "Ledger bucket")
 	rootCmd.Flags().StringSlice(ledgerMetadataFlag, []string{}, "Ledger metadata")
 	rootCmd.Flags().StringSlice(ledgerFeatureFlag, []string{}, "Ledger features")
+	rootCmd.Flags().Duration(httpClientTimeoutFlag, 0, "HTTP client timeout (default: no timeout)")
+	rootCmd.Flags().Bool(debugFlag, false, "Enable debug logging")
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
@@ -106,7 +113,21 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get insecureSkipVerify: %w", err)
 	}
 
+	httpClientTimeout, err := cmd.Flags().GetDuration(httpClientTimeoutFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get http client timeout: %w", err)
+	}
+
+	debug, err := cmd.Flags().GetBool(debugFlag)
+	if err != nil {
+		return fmt.Errorf("failed to get debug: %w", err)
+	}
+
+	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), debug, false, false)
+	ctx := logging.ContextWithLogger(cmd.Context(), logger)
+
 	httpClient := &http.Client{
+		Timeout: httpClientTimeout,
 		Transport: &http.Transport{
 			MaxIdleConns:        vus,
 			MaxConnsPerHost:     vus,
@@ -138,7 +159,7 @@ func run(cmd *cobra.Command, args []string) error {
 			TokenURL:     authUrl + "/oauth/token",
 			Scopes:       []string{"ledger:read", "ledger:write"},
 		}).
-			Client(context.WithValue(cmd.Context(), oauth2.HTTPClient, httpClient))
+			Client(context.WithValue(ctx, oauth2.HTTPClient, httpClient))
 	}
 
 	client := ledgerclient.New(
@@ -146,28 +167,36 @@ func run(cmd *cobra.Command, args []string) error {
 		ledgerclient.WithClient(httpClient),
 	)
 
-	logging.FromContext(cmd.Context()).Infof("Creating ledger '%s' if not exists", targetedLedger)
-	_, err = client.Ledger.V2.CreateLedger(cmd.Context(), operations.V2CreateLedgerRequest{
+	logging.FromContext(ctx).Infof("Creating ledger '%s' if not exists", targetedLedger)
+	_, err = client.Ledger.V2.GetLedger(ctx, operations.V2GetLedgerRequest{
 		Ledger: targetedLedger,
-		V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-			Bucket:   &ledgerBucket,
-			Metadata: ledgerMetadata,
-			Features: ledgerFeatures,
-		},
 	})
 	if err != nil {
 		sdkError := &sdkerrors.V2ErrorResponse{}
-		if !errors.As(err, &sdkError) || (sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
-			sdkError.ErrorCode != components.V2ErrorsEnumValidation) {
-			return fmt.Errorf("failed to create ledger: %w", err)
+		if !errors.As(err, &sdkError) || sdkError.ErrorCode != components.V2ErrorsEnumNotFound {
+			return fmt.Errorf("failed to get ledger: %w", err)
+		}
+		_, err = client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+			Ledger: targetedLedger,
+			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+				Bucket:   &ledgerBucket,
+				Metadata: ledgerMetadata,
+				Features: ledgerFeatures,
+			},
+		})
+		if err != nil {
+			if !errors.As(err, &sdkError) || (sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
+				sdkError.ErrorCode != components.V2ErrorsEnumValidation) {
+				return fmt.Errorf("failed to create ledger: %w", err)
+			}
 		}
 	}
 
-	logging.FromContext(cmd.Context()).Infof("Starting to generate data with %d vus", vus)
+	logger.Infof("Starting to generate data with %d vus", vus)
 
 	return generate.
 		NewGeneratorSet(vus, string(fileContent), targetedLedger, client, uint64(untilLogID)).
-		Run(cmd.Context())
+		Run(ctx)
 }
 
 func extractSliceSliceFlag(cmd *cobra.Command, flagName string) (map[string]string, error) {

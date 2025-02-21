@@ -1,43 +1,48 @@
 name: Benchmark
 on:
   workflow_dispatch:
-  pull_request:
-    types: [ assigned, opened, synchronize, reopened, labeled ]
+    inputs:
+      bench:
+        description: 'Benchmarks to run'
+        required: false
+        default: '.'
+      parallelism:
+        description: 'Number of parallel benchmarks to run'
+        required: false
+        default: 5
+      duration:
+        description: 'Duration of each benchmark'
+        required: false
+        default: '10s'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   Benchmark:
     runs-on: "github-001"
-    if: contains(github.event.pull_request.labels.*.name, 'benchmarks') || github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
-      - run: go build -o /tmp/ledger ./
-      - run: echo "running actions as ${USER}"
+      - name: Setup Env
+        uses: ./.github/actions/env
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /tmp/ledger serve 
-          --postgres-uri=postgres://formance:formance@127.0.0.1/ledger 
-          --postgres-conn-max-idle-time=120s 
-          --postgres-max-open-conns=500 
-          --postgres-max-idle-conns=100 
-          --experimental-features 
-          --otel-metrics-keep-in-memory &
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just
+          --justfile ./test/performance/justfile
+          --working-directory ./test/performance 
+          run ${{ inputs.bench }} ${{ inputs.parallelism }} ${{ inputs.duration }} 1
       - run: >
-          earthly
-          --allow-privileged
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+run --args="-benchtime 10s --ledger.url=http://localhost:3068 --parallelism=5" --locally=yes
-      - run: >
-          earthly
-          --allow-privileged
-          ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          ./test/performance+generate-graphs
-      - run: kill -9 $(ps aux | grep "ledger serve"| grep -v "grep" | awk '{print $2}')
-        if: always()
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just 
+          --justfile ./test/performance/justfile 
+          --working-directory ./test/performance 
+          graphs
       - uses: actions/upload-artifact@v4
         with:
           name: graphs

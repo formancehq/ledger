@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"golang.org/x/sync/errgroup"
+	"math/big"
 )
 
 type GeneratorSet struct {
@@ -51,9 +56,54 @@ func (s *GeneratorSet) Run(ctx context.Context) error {
 					}
 					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
 				}
-				if s.untilLogID != 0 && uint64(ret.GetLogID()) >= s.untilLogID {
-					return nil
+
+				if s.untilLogID != 0 {
+					maxLogID := collectionutils.Reduce(ret, func(acc int64, r components.V2BulkElementResult) int64 {
+						var logID int64
+						switch r.Type {
+						case components.V2BulkElementResultTypeCreateTransaction:
+							logID = r.V2BulkElementResultCreateTransaction.LogID
+						case components.V2BulkElementResultTypeAddMetadata:
+							logID = r.V2BulkElementResultAddMetadata.LogID
+						case components.V2BulkElementResultTypeDeleteMetadata:
+							logID = r.V2BulkElementResultDeleteMetadata.LogID
+						case components.V2BulkElementResultTypeRevertTransaction:
+							logID = r.V2BulkElementResultRevertTransaction.LogID
+						case components.V2BulkElementResultTypeError:
+							panic(fmt.Sprintf("unexpected error: %s [%s]", r.V2BulkElementResultError.ErrorDescription, r.V2BulkElementResultError.ErrorCode))
+						default:
+							panic(fmt.Sprintf("unexpected result type: %s", r.Type))
+						}
+
+						if logID > acc {
+							return logID
+						}
+						return acc
+					}, 0)
+
+					if maxLogID == 0 { // version < 2.2.0
+						// notes(gfyrag): avoid list logs for each parallel runner by checking only on the first vu
+						if vu == 0 {
+							logs, err := s.client.Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
+								Ledger:   s.targetedLedger,
+								PageSize: pointer.For(int64(1)),
+							})
+							if err != nil {
+								return fmt.Errorf("failed to list logs: %w", err)
+							}
+							if logs.V2LogsCursorResponse.Cursor.Data[0].ID.Cmp(big.NewInt(int64(s.untilLogID))) > 0 {
+								logging.FromContext(ctx).Infof("Log %s reached, stopping generator", logs.V2LogsCursorResponse.Cursor.Data[0].ID.String())
+								return nil
+							}
+						}
+					} else {
+						if uint64(maxLogID) >= s.untilLogID {
+							logging.FromContext(ctx).Infof("Log %d reached, stopping generator", maxLogID)
+							return nil
+						}
+					}
 				}
+
 				iteration++
 			}
 		})

@@ -131,7 +131,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
         - name: page_size
           x-speakeasy-ignore: true
           in: query
@@ -144,7 +143,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
           deprecated: true
         - name: after
           in: query
@@ -656,7 +654,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
         - name: page_size
           x-speakeasy-ignore: true
           in: query
@@ -669,7 +666,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
           deprecated: true
         - name: after
           in: query
@@ -1055,7 +1051,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
         - name: after
           in: query
           description: >-
@@ -1175,7 +1170,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
         - name: page_size
           x-speakeasy-ignore: true
           in: query
@@ -1188,7 +1182,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
           deprecated: true
         - name: after
           in: query
@@ -1875,8 +1868,7 @@ components:
       type: object
       properties:
         version:
-          type: integer
-          format: int64
+          type: string
           minimum: 0
           example: 11
         name:

@@ -22,3 +22,4 @@
 | `V2ErrorsEnumInterpreterParse`    | INTERPRETER_PARSE                 |
 | `V2ErrorsEnumInterpreterRuntime`  | INTERPRETER_RUNTIME               |
 | `V2ErrorsEnumLedgerAlreadyExists` | LEDGER_ALREADY_EXISTS             |
+| `V2ErrorsEnumOutdatedSchema`      | OUTDATED_SCHEMA                   |

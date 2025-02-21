@@ -1,0 +1,55 @@
+name: Benchmark comparison
+on:
+  workflow_dispatch:
+    inputs:
+      bench:
+        description: 'Benchmarks to run'
+        required: false
+        default: '.'
+      parallelism:
+        description: 'Number of parallel benchmarks to run'
+        required: false
+        default: 5
+      duration:
+        description: 'Duration of each benchmark'
+        required: false
+        default: '10s'
+      count:
+        description: 'Number of times to run each benchmark '
+        required: false
+        default: 1
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened, labeled ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  BenchmarkCompare:
+    runs-on: "github-001"
+    if: contains(github.event.pull_request.labels.*.name, 'benchmarks')
+    steps:
+      - uses: 'actions/checkout@v4'
+        with:
+          fetch-depth: 0
+      - name: Setup Env
+        uses: ./.github/actions/env
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - run: >
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just
+          --justfile ./test/performance/justfile
+          --working-directory ./test/performance 
+          compare ${{ inputs.bench }} ${{ inputs.parallelism }} ${{ inputs.duration }} ${{ inputs.count }}
+      - run: >
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just 
+          --justfile ./test/performance/justfile 
+          --working-directory ./test/performance 
+          graphs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphs
+          path: test/performance/report

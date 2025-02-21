@@ -23,15 +23,15 @@ type NumscriptExecutionResult struct {
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source numscript_runtime.go -destination numscript_runtime_generated_test.go -package ledger . NumscriptRuntime
 type NumscriptRuntime interface {
-	Execute(context.Context, TX, map[string]string) (*NumscriptExecutionResult, error)
+	Execute(context.Context, Store, map[string]string) (*NumscriptExecutionResult, error)
 }
 
 type MachineNumscriptRuntimeAdapter struct {
 	program program.Program
 }
 
-func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*NumscriptExecutionResult, error) {
-	store := newVmStoreAdapter(tx)
+func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, store Store, vars map[string]string) (*NumscriptExecutionResult, error) {
+	storeAdapter := newVmStoreAdapter(store)
 
 	machineInstance := vm.NewMachine(d.program)
 
@@ -44,12 +44,12 @@ func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, tx TX, var
 	if err := machineInstance.SetVarsFromJSON(varsCopy); err != nil {
 		return nil, fmt.Errorf("failed to set vars from JSON: %w", err)
 	}
-	err := machineInstance.ResolveResources(ctx, store)
+	err := machineInstance.ResolveResources(ctx, storeAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve resources: %w", err)
 	}
 
-	if err := machineInstance.ResolveBalances(ctx, store); err != nil {
+	if err := machineInstance.ResolveBalances(ctx, storeAdapter); err != nil {
 		return nil, fmt.Errorf("failed to resolve balances: %w", err)
 	}
 
@@ -90,17 +90,19 @@ var _ NumscriptRuntime = (*MachineNumscriptRuntimeAdapter)(nil)
 var _ NumscriptRuntime = (*DefaultInterpreterMachineAdapter)(nil)
 
 type DefaultInterpreterMachineAdapter struct {
-	parseResult numscript.ParseResult
+	parseResult  numscript.ParseResult
+	featureFlags map[string]struct{}
 }
 
-func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult) *DefaultInterpreterMachineAdapter {
+func NewDefaultInterpreterMachineAdapter(parseResult numscript.ParseResult, featureFlags map[string]struct{}) *DefaultInterpreterMachineAdapter {
 	return &DefaultInterpreterMachineAdapter{
-		parseResult: parseResult,
+		parseResult:  parseResult,
+		featureFlags: featureFlags,
 	}
 }
 
-func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, tx TX, vars map[string]string) (*NumscriptExecutionResult, error) {
-	execResult, err := d.parseResult.Run(ctx, vars, newNumscriptRewriteAdapter(tx))
+func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, store Store, vars map[string]string) (*NumscriptExecutionResult, error) {
+	execResult, err := d.parseResult.RunWithFeatureFlags(ctx, vars, newNumscriptRewriteAdapter(store), d.featureFlags)
 	if err != nil {
 		return nil, ErrRuntime{
 			Source: d.parseResult.GetSource(),

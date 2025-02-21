@@ -498,6 +498,9 @@ Accept: application/json
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
+|continueOnFailure|query|boolean|false|Continue on failure|
+|atomic|query|boolean|false|Make bulk atomic|
+|parallel|query|boolean|false|Process bulk elements in parallel|
 |body|body|[V2Bulk](#schemav2bulk)|false|none|
 
 > Example responses
@@ -594,7 +597,10 @@ Accept: application/json
         }
       }
     }
-  ]
+  ],
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 ```
 
@@ -639,7 +645,6 @@ Accept: application/json
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
-|query|query|string|false|Query string to filter accounts. The query string must be a valid JSON object.|
 |body|body|object|false|none|
 
 > Example responses
@@ -705,7 +710,6 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|query|query|string|false|Query string to filter accounts. The query string must be a valid JSON object.|
 |body|body|object|false|none|
 
 #### Detailed descriptions
@@ -1053,7 +1057,6 @@ Accept: application/json
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
-|query|query|string|false|Query string to filter transactions. The query string must be a valid JSON object.|
 |body|body|object|false|none|
 
 > Example responses
@@ -1115,7 +1118,6 @@ List transactions from a ledger, sorted by id in descending order.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
-|query|query|string|false|Query string to filter transactions. The query string must be a valid JSON object.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
@@ -2633,7 +2635,7 @@ Authorization ( Scopes: ledger:write )
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|insertedAt|string(date-time)|true|none|none|
+|insertedAt|string(date-time)|false|none|none|
 |timestamp|string(date-time)|true|none|none|
 |postings|[[V2Posting](#schemav2posting)]|true|none|none|
 |reference|string|false|none|none|
@@ -2748,6 +2750,7 @@ Authorization ( Scopes: ledger:write )
 |type|NEW_TRANSACTION|
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
+|type|DELETE_METADATA|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -3244,6 +3247,7 @@ Authorization ( Scopes: ledger:write )
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
+|*anonymous*|OUTDATED_SCHEMA|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
 <!-- backwards compatibility -->
@@ -3787,16 +3791,28 @@ and
         }
       }
     }
-  ]
+  ],
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 }
 
 ```
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|true|none|none|
+|*anonymous*|object|false|none|none|
+|» data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2ErrorResponse](#schemav2errorresponse)|false|none|none|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->

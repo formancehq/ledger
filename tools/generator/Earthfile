@@ -1,7 +1,7 @@
 VERSION 0.8
 PROJECT FormanceHQ/ledger
 
-IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
+IMPORT github.com/formancehq/earthly:tags/v0.19.0 AS core
 
 FROM core+base-image
 
@@ -10,31 +10,14 @@ CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
 sources:
     FROM core+builder-image
-
-    COPY ../..+lint/pkg /src/pkg
-    COPY ../..+lint/internal /src/internal
-    COPY ../..+lint/cmd /src/cmd
-    COPY ../..+lint/*.go /src/
-    COPY ../..+tidy/go.mod /src/
-    COPY ../..+tidy/go.sum /src/
-
+    COPY (../..+sources/*) /src
     WORKDIR /src/tools/generator
     COPY --dir cmd examples .
     COPY go.* *.go .
-
     SAVE ARTIFACT /src
 
-tidy:
-    FROM +sources
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    RUN go mod tidy
-
-    SAVE ARTIFACT go.mod AS LOCAL go.mod
-    SAVE ARTIFACT go.sum AS LOCAL go.sum
-
 compile:
-    FROM +tidy
+    FROM +sources
     CACHE --id go-mod-cache /go/pkg/mod
     CACHE --id go-cache /root/.cache/go-build
     RUN go build -o main
@@ -48,18 +31,3 @@ build-image:
     ARG REPOSITORY=ghcr.io
     ARG tag=latest
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger-generator --REPOSITORY=${REPOSITORY} --TAG=$tag
-
-lint:
-    FROM +tidy
-    CACHE --id go-mod-cache /go/pkg/mod
-    CACHE --id go-cache /root/.cache/go-build
-    CACHE --id golangci-cache /root/.cache/golangci-lint
-
-    RUN golangci-lint run --fix --build-tags it --timeout 5m
-
-    SAVE ARTIFACT cmd AS LOCAL cmd
-    SAVE ARTIFACT main.go AS LOCAL main.go
-
-pre-commit:
-    BUILD +tidy
-    BUILD +lint

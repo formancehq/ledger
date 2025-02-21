@@ -16,6 +16,7 @@ const (
 	V2LogTypeNewTransaction      V2LogType = "NEW_TRANSACTION"
 	V2LogTypeSetMetadata         V2LogType = "SET_METADATA"
 	V2LogTypeRevertedTransaction V2LogType = "REVERTED_TRANSACTION"
+	V2LogTypeDeleteMetadata      V2LogType = "DELETE_METADATA"
 )
 
 func (e V2LogType) ToPointer() *V2LogType {
@@ -32,6 +33,8 @@ func (e *V2LogType) UnmarshalJSON(data []byte) error {
 	case "SET_METADATA":
 		fallthrough
 	case "REVERTED_TRANSACTION":
+		fallthrough
+	case "DELETE_METADATA":
 		*e = V2LogType(v)
 		return nil
 	default:

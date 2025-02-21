@@ -17,7 +17,7 @@ func updateLedgerMetadata(systemController systemcontroller.Controller) http.Han
 
 		m := metadata.Metadata{}
 		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-			api.BadRequest(w, ErrValidation, errors.New("invalid format"))
+			api.BadRequest(w, common.ErrValidation, errors.New("invalid format"))
 			return
 		}
 

@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/query"
 	. "github.com/formancehq/go-libs/v2/testing/api"
+	libtime "github.com/formancehq/go-libs/v2/time"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -46,7 +49,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 	)
 	When(fmt.Sprintf("creating %d transactions", txCount), func() {
 		var (
-			timestamp    = time.Now().Round(time.Second).UTC()
+			timestamp    = time.Now()
 			transactions []components.V2Transaction
 		)
 		JustBeforeEach(func() {
@@ -70,6 +73,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 								{
 									Amount:      big.NewInt(100),
 									Asset:       "USD",
+									Source:      "world",
+									Destination: fmt.Sprintf("account:%d", i),
+								},
+								{
+									Amount:      big.NewInt(100),
+									Asset:       "EUR",
 									Source:      "world",
 									Destination: fmt.Sprintf("account:%d", i),
 								},
@@ -193,7 +202,6 @@ var _ = Context("Ledger transactions list API tests", func() {
 							operations.V2ListTransactionsRequest{
 								Cursor: rsp.Previous,
 								Ledger: "default",
-								Expand: pointer.For("volumes,effectiveVolumes"),
 							},
 						)
 						Expect(err).ToNot(HaveOccurred())
@@ -232,21 +240,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			It("Should be ok", func() {
 				Expect(response.Next).NotTo(BeNil())
-				cursor := &bunpaginate.ColumnPaginatedQuery[map[string]any]{}
+				cursor := &ledgercontroller.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
-				Expect(cursor.Options).To(Equal(map[string]any{
-					"qb": map[string]any{
-						"$match": map[string]any{
-							"source": "world",
-						},
-					},
-					"pageSize": float64(10),
-					"options": map[string]any{
-						"pit":              now.Format(time.RFC3339),
-						"oot":              nil,
-						"volumes":          false,
-						"effectiveVolumes": false,
-					},
+				Expect(cursor.PageSize).To(Equal(uint64(10)))
+				Expect(cursor.Options).To(Equal(ledgercontroller.ResourceQuery[any]{
+					Builder: query.Match("source", "world"),
+					PIT:     pointer.For(libtime.New(now)),
 				}))
 			})
 		})
@@ -284,30 +283,15 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			It("Should be ok", func() {
 				Expect(response.Next).NotTo(BeNil())
-				cursor := &bunpaginate.ColumnPaginatedQuery[map[string]any]{}
+				cursor := &ledgercontroller.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
-				Expect(cursor.Options).To(Equal(map[string]any{
-					"qb": map[string]any{
-						"$and": []any{
-							map[string]any{
-								"$match": map[string]any{
-									"source": "world",
-								},
-							},
-							map[string]any{
-								"$match": map[string]any{
-									"destination": "account:",
-								},
-							},
-						},
-					},
-					"pageSize": float64(10),
-					"options": map[string]any{
-						"pit":              now.Format(time.RFC3339),
-						"oot":              nil,
-						"volumes":          false,
-						"effectiveVolumes": false,
-					},
+				Expect(cursor.PageSize).To(Equal(uint64(10)))
+				Expect(cursor.Options).To(Equal(ledgercontroller.ResourceQuery[any]{
+					Builder: query.And(
+						query.Match("source", "world"),
+						query.Match("destination", "account:"),
+					),
+					PIT: pointer.For(libtime.New(now)),
 				}))
 			})
 		})
@@ -331,8 +315,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 				)
 				Expect(err).To(HaveOccurred())
 			})
-			It("Should fail with "+string(components.V2ErrorsEnumInternal)+" error code", func() {
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInternal)))
+			It("Should fail with "+string(components.V2ErrorsEnumValidation)+" error code", func() {
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 			})
 		})
 	})

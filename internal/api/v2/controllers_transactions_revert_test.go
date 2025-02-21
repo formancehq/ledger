@@ -1,11 +1,11 @@
 package v2
 
 import (
+	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -47,13 +47,13 @@ func TestTransactionsRevert(t *testing.T) {
 			name:             "with insufficient fund",
 			returnErr:        &ledgercontroller.ErrInsufficientFunds{},
 			expectStatusCode: http.StatusBadRequest,
-			expectErrorCode:  ErrInsufficientFund,
+			expectErrorCode:  common.ErrInsufficientFund,
 		},
 		{
 			name:             "with already revert",
 			returnErr:        &ledgercontroller.ErrAlreadyReverted{},
 			expectStatusCode: http.StatusBadRequest,
-			expectErrorCode:  ErrAlreadyRevert,
+			expectErrorCode:  common.ErrAlreadyRevert,
 		},
 		{
 			name:             "with transaction not found",
@@ -80,7 +80,7 @@ func TestTransactionsRevert(t *testing.T) {
 					RevertTransaction: tc.returnTx,
 				}, tc.returnErr)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
 			if tc.queryParams != nil {

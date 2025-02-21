@@ -26,7 +26,7 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 
 		if len(data) > 0 {
 			if err := json.Unmarshal(data, &configuration); err != nil {
-				api.BadRequest(w, ErrValidation, err)
+				api.BadRequest(w, common.ErrValidation, err)
 				return
 			}
 		}
@@ -36,9 +36,11 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 			case errors.Is(err, system.ErrInvalidLedgerConfiguration{}) ||
 				errors.Is(err, ledger.ErrInvalidLedgerName{}) ||
 				errors.Is(err, ledger.ErrInvalidBucketName{}):
-				api.BadRequest(w, ErrValidation, err)
+				api.BadRequest(w, common.ErrValidation, err)
+			case errors.Is(err, system.ErrBucketOutdated):
+				api.BadRequest(w, common.ErrOutdatedSchema, err)
 			case errors.Is(err, system.ErrLedgerAlreadyExists):
-				api.BadRequest(w, ErrLedgerAlreadyExists, err)
+				api.BadRequest(w, common.ErrLedgerAlreadyExists, err)
 			default:
 				common.HandleCommonErrors(w, r, err)
 			}

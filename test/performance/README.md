@@ -10,25 +10,25 @@ Scripts can be found in directory [scripts](./scripts).
 ## Run locally
 
 ```shell
-earthly +run
+just run
 ```
 
 You can pass additional arguments (the underlying command is a standard `go test -bench=.`) using the flag `--args`.
 For example:
 ```shell
-earthly +run --args="-benchtime 10s"
+just run "-benchtime 10s"
 ```
 
 ## Run on a remote stack
 
 ```shell
-earthly +run --args="--stack.url=XXX --client.id=XXX --client.secret=XXX"
+just run "--stack.url=XXX --client.id=XXX --client.secret=XXX"
 ```
 
 ## Run on a remote ledger
 
 ```shell
-earthly +run --args="--ledger.url=XXX --auth.url=XXX --client.id=XXX --client.secret=XXX"
+just run "--ledger.url=XXX --auth.url=XXX --client.id=XXX --client.secret=XXX"
 ```
 
 ## Results
@@ -37,7 +37,7 @@ TPS is included as a benchmark metrics.
 
 You can generate some graphs using the command: 
 ```
-earthly +generate-graphs
+just graphs
 ```
 
 See generated files in `report` directory.

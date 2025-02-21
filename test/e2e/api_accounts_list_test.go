@@ -3,7 +3,6 @@
 package test_suite
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
@@ -110,7 +109,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumInternal)))
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 		})
 		It("should be countable on api", func() {
 			response, err := CountAccounts(
@@ -199,60 +198,6 @@ var _ = Context("Ledger accounts list API tests", func() {
 							"address": ":foo",
 						},
 					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			accountsCursorResponse = response.Data
-			Expect(accountsCursorResponse).To(HaveLen(1))
-			Expect(accountsCursorResponse[0]).To(Equal(components.V2Account{
-				Address:  "foo:foo",
-				Metadata: metadata1,
-			}))
-		})
-		It("should be listed on api using address filters on query param", func() {
-
-			filtersAsJSON, err := json.Marshal(map[string]interface{}{
-				"$match": map[string]any{
-					"address": "foo:",
-				},
-			})
-			Expect(err).To(Succeed())
-
-			response, err := ListAccounts(
-				ctx,
-				testServer.GetValue(),
-				operations.V2ListAccountsRequest{
-					Ledger: "default",
-					Query:  pointer.For(string(filtersAsJSON)),
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			accountsCursorResponse := response.Data
-			Expect(accountsCursorResponse).To(HaveLen(2))
-			Expect(accountsCursorResponse[0]).To(Equal(components.V2Account{
-				Address:  "foo:bar",
-				Metadata: metadata2,
-			}))
-			Expect(accountsCursorResponse[1]).To(Equal(components.V2Account{
-				Address:  "foo:foo",
-				Metadata: metadata1,
-			}))
-
-			filtersAsJSON, err = json.Marshal(map[string]interface{}{
-				"$match": map[string]any{
-					"address": ":foo",
-				},
-			})
-			Expect(err).To(Succeed())
-
-			response, err = ListAccounts(
-				ctx,
-				testServer.GetValue(),
-				operations.V2ListAccountsRequest{
-					Ledger: "default",
-					Query:  pointer.For(string(filtersAsJSON)),
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())

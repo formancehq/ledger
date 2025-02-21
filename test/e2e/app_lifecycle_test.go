@@ -5,14 +5,16 @@ package test_suite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
@@ -179,7 +181,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			bunDB, err := bunconnect.OpenSQLDB(ctx, db.GetValue().ConnectionOptions())
 			Expect(err).To(BeNil())
 
-			Expect(driver.Migrate(ctx, bunDB)).To(BeNil())
+			Expect(system.Migrate(ctx, bunDB)).To(BeNil())
 
 			_, err = bunDB.NewInsert().
 				Model(pointer.For(ledger.MustNewWithDefault(ledgerName))).
@@ -274,5 +276,16 @@ var _ = Context("Ledger downgrade tests", func() {
 				Expect(testServer.GetValue().Restart(ctx)).NotTo(BeNil())
 			})
 		})
+	})
+
+	It("should be ok when targeting health check endpoint", func() {
+		ret, err := testServer.GetValue().HTTPClient().Get(testServer.GetValue().ServerURL() + "/_healthcheck")
+		Expect(err).To(BeNil())
+
+		body := make(map[string]interface{})
+		Expect(json.NewDecoder(ret.Body).Decode(&body)).To(BeNil())
+		Expect(body).To(Equal(map[string]any{
+			storage.HealthCheckName: "OK",
+		}))
 	})
 })

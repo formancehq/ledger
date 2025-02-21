@@ -9,28 +9,28 @@ import (
 )
 
 //nolint:unused
-func (s *Store) DumpTables(ctx context.Context, tables ...string) {
+func (store *Store) DumpTables(ctx context.Context, tables ...string) {
 	for _, table := range tables {
-		s.DumpQuery(
+		store.DumpQuery(
 			ctx,
-			s.db.NewSelect().
-				ModelTableExpr(s.GetPrefixedRelationName(table)),
+			store.db.NewSelect().
+				ModelTableExpr(store.GetPrefixedRelationName(table)),
 		)
 	}
 }
 
 //nolint:unused
-func (s *Store) DumpQuery(ctx context.Context, query *bun.SelectQuery) {
+func (store *Store) DumpQuery(ctx context.Context, query *bun.SelectQuery) {
 	fmt.Println(query)
 	rows, err := query.Rows(ctx)
 	if err != nil {
 		panic(err)
 	}
-	s.DumpRows(rows)
+	store.DumpRows(rows)
 }
 
 //nolint:unused
-func (s *Store) DumpRows(rows *sql.Rows) {
+func (store *Store) DumpRows(rows *sql.Rows) {
 	data, err := xsql.Pretty(rows)
 	if err != nil {
 		panic(err)

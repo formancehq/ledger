@@ -2,7 +2,7 @@ package driver
 
 import (
 	"context"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"

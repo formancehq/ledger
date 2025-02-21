@@ -2,6 +2,9 @@ package driver
 
 import (
 	"context"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
@@ -22,12 +25,33 @@ type ModuleConfiguration struct {
 
 func NewFXModule() fx.Option {
 	return fx.Options(
+		fx.Provide(fx.Annotate(func(db *bun.DB, tracerProvider trace.TracerProvider) bucket.Factory {
+			return bucket.NewDefaultFactory(db, bucket.WithTracer(tracerProvider.Tracer("store")))
+		})),
+		fx.Provide(func(db *bun.DB) systemstore.Store {
+			return systemstore.New(db)
+		}),
 		fx.Provide(func(
 			db *bun.DB,
 			tracerProvider trace.TracerProvider,
 			meterProvider metric.MeterProvider,
+		) ledgerstore.Factory {
+			return ledgerstore.NewFactory(db,
+				ledgerstore.WithMeter(meterProvider.Meter("store")),
+				ledgerstore.WithTracer(tracerProvider.Tracer("store")),
+			)
+		}),
+		fx.Provide(func(
+			bucketFactory bucket.Factory,
+			ledgerStoreFactory ledgerstore.Factory,
+			systemStore systemstore.Store,
+			tracerProvider trace.TracerProvider,
+			meterProvider metric.MeterProvider,
 		) (*Driver, error) {
-			return New(db,
+			return New(
+				ledgerStoreFactory,
+				systemStore,
+				bucketFactory,
 				WithMeter(meterProvider.Meter("store")),
 				WithTracer(tracerProvider.Tracer("store")),
 			), nil

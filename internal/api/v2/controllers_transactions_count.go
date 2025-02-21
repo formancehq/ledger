@@ -12,18 +12,17 @@ import (
 
 func countTransactions(w http.ResponseWriter, r *http.Request) {
 
-	options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
+	rq, err := getResourceQuery[any](r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	count, err := common.LedgerFromContext(r.Context()).
-		CountTransactions(r.Context(), ledgercontroller.NewListTransactionsQuery(*options))
+	count, err := common.LedgerFromContext(r.Context()).CountTransactions(r.Context(), *rq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

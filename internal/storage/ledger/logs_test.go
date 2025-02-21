@@ -5,6 +5,7 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
@@ -22,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInsertLog(t *testing.T) {
+func TestLogsInsert(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -39,7 +40,7 @@ func TestInsertLog(t *testing.T) {
 		err := store.InsertLog(ctx, &log1)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, log1.ID)
+		require.Equal(t, 1, *log1.ID)
 		require.NotZero(t, log1.Hash)
 		require.NotEmpty(t, log1.Date)
 
@@ -51,13 +52,13 @@ func TestInsertLog(t *testing.T) {
 		// Insert a new log to test the hash when a previous hash exists
 		// We also addi an idempotency key to check for conflicts
 		log2 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction:     ledger.NewTransaction(),
+			Transaction:     ledger.NewTransaction().WithID(1),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log2Copy := log2
 		err = store.InsertLog(ctx, &log2)
 		require.NoError(t, err)
-		require.Equal(t, 2, log2.ID)
+		require.Equal(t, 2, *log2.ID)
 		require.NotZero(t, log2.Hash)
 		require.NotZero(t, log2.Date)
 
@@ -120,25 +121,54 @@ func TestInsertLog(t *testing.T) {
 		err := errGroup.Wait()
 		require.NoError(t, err)
 
-		logs, err := store.ListLogs(ctx, ledgercontroller.NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
+		logs, err := store.Logs().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
 			PageSize: countLogs,
-		}).WithOrder(bunpaginate.OrderAsc))
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		})
 		require.NoError(t, err)
 
 		var previous *ledger.Log
 		for _, log := range logs.Data {
 			expectedHash := log.Hash
-			expectedID := log.ID
+			expectedID := *log.ID
 			log.Hash = nil
-			log.ID = 0
+			log.ID = pointer.For(0)
 			chainedLog := log.ChainLog(previous)
 			require.Equal(t, expectedHash, chainedLog.Hash, "checking log hash %d", expectedID)
 			previous = &chainedLog
 		}
 	})
+
+	t.Run("insert with special characters", func(t *testing.T) {
+
+		type testCase struct {
+			name     string
+			metadata map[string]string
+		}
+
+		testCases := []testCase{
+			{name: "with escaped quotes", metadata: map[string]string{"key": "value with \"quotes\""}},
+			{name: "with utf-8 characters", metadata: map[string]string{"rate": "½"}},
+		}
+
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				t.Parallel()
+
+				log := ledger.NewLog(ledger.CreatedTransaction{
+					Transaction: ledger.NewTransaction().
+						WithPostings(ledger.NewPosting("world", "bank", "USD", big.NewInt(100))).
+						WithMetadata(testCase.metadata),
+				})
+
+				err := store.InsertLog(ctx, &log)
+				require.NoError(t, err)
+			})
+		}
+	})
 }
 
-func TestReadLogWithIdempotencyKey(t *testing.T) {
+func TestLogsReadWithIdempotencyKey(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -180,29 +210,33 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.ListLogs(context.Background(), ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil)))
+	cursor, err := store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
-	require.EqualValues(t, 3, cursor.Data[0].ID)
+	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.ListLogs(context.Background(), ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
+	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 1,
+	})
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
-	require.EqualValues(t, 3, cursor.Data[0].ID)
+	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.ListLogs(context.Background(), ledgercontroller.NewListLogsQuery(ledgercontroller.NewPaginatedQueryOptions[any](nil).
-		WithQueryBuilder(query.And(
-			query.Gte("date", now.Add(-2*time.Hour)),
-			query.Lt("date", now.Add(-time.Hour)),
-		)).
-		WithPageSize(10),
-	))
+	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 10,
+		Options: ledgercontroller.ResourceQuery[any]{
+			Builder: query.And(
+				query.Gte("date", now.Add(-2*time.Hour)),
+				query.Lt("date", now.Add(-time.Hour)),
+			),
+		},
+	})
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.
 	require.Len(t, cursor.Data, 1)
-	require.EqualValues(t, 2, cursor.Data[0].ID)
+	require.EqualValues(t, 2, *cursor.Data[0].ID)
 }

@@ -6,8 +6,6 @@ import (
 
 	"errors"
 	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
@@ -15,27 +13,23 @@ import (
 func countAccounts(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	query, err := bunpaginate.Extract[ledgercontroller.ListAccountsQuery](r, func() (*ledgercontroller.ListAccountsQuery, error) {
-		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
-		if err != nil {
-			return nil, err
-		}
-		options.QueryBuilder, err = buildAccountsFilterQuery(r)
-		if err != nil {
-			return nil, err
-		}
-		return pointer.For(ledgercontroller.NewListAccountsQuery(*options)), nil
-	})
+	rq, err := getResourceQuery[any](r)
 	if err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	count, err := l.CountAccounts(r.Context(), *query)
+	rq.Builder, err = buildAccountsFilterQuery(r)
+	if err != nil {
+		api.BadRequest(w, common.ErrValidation, err)
+		return
+	}
+
+	count, err := l.CountAccounts(r.Context(), *rq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
-			api.BadRequest(w, ErrValidation, err)
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}
