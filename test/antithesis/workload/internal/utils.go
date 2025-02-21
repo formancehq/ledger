@@ -1,14 +1,19 @@
 package internal
 
 import (
+	"context"
 	"fmt"
+	"math"
+	"math/big"
+	"net/http"
+
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/client/retry"
-	"math/big"
-	"net/http"
 )
 
 type Details map[string]any
@@ -47,4 +52,37 @@ func NewClient() *client.Formance {
 			RetryConnectionErrors: true,
 		}),
 	)
+}
+
+func CreateLedger(ctx context.Context, client *client.Formance, name string) error {
+
+	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+		Ledger: name,
+	})
+
+	if assert.Always(err == nil, "ledger should have been created", Details{
+		"error": fmt.Sprintf("%+v\n", err),
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func RunTx(ctx context.Context, client *client.Formance, amount *big.Int) error {
+	orderID := fmt.Sprint(int64(math.Abs(float64(random.GetRandom()))))
+	dest := fmt.Sprintf("orders:%s", orderID)
+
+	_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+		V2PostTransaction: components.V2PostTransaction{
+			Postings: []components.V2Posting{{
+				Amount:      amount,
+				Asset:       "USD/2",
+				Destination: dest,
+				Source:      "world",
+			}},
+		},
+		Ledger: "default",
+	})
+	return err
 }

@@ -3,24 +3,25 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/big"
+
 	"github.com/alitto/pond"
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 	"go.uber.org/atomic"
-	"math"
-	"math/big"
 )
 
 func main() {
 	ctx := context.Background()
 	client := internal.NewClient()
 
-	err := createLedger(ctx, client)
+	err := internal.CreateLedger(
+		ctx,
+		client,
+		fmt.Sprintf("ledger-%d", internal.RandomBigInt().Int64()),
+	)
 	if err != nil {
 		assert.Always(err == nil, "ledger should have been created", internal.Details{
 			"error": err,
@@ -33,14 +34,14 @@ func main() {
 	hasError := atomic.NewBool(false)
 	totalAmount := big.NewInt(0)
 
-	pool := pond.New(10, 10000)
+	pool := pond.New(10, 10e3)
 
 	for i := 0; i < count; i++ {
 		amount := internal.RandomBigInt()
 		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
 			if !internal.AssertAlwaysErrNil(
-				runTx(ctx, client, amount),
+				internal.RunTx(ctx, client, amount),
 				"creating transaction from @world to $account always return a nil error",
 			) {
 				hasError.CompareAndSwap(false, true)
@@ -78,37 +79,4 @@ func main() {
 			"output": output,
 		},
 	)
-}
-
-func createLedger(ctx context.Context, client *client.Formance) error {
-
-	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
-		Ledger: "default",
-	})
-
-	if assert.Always(err == nil, "ledger should have been created", internal.Details{
-		"error": fmt.Sprintf("%+v\n", err),
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func runTx(ctx context.Context, client *client.Formance, amount *big.Int) error {
-	orderID := fmt.Sprint(int64(math.Abs(float64(random.GetRandom()))))
-	dest := fmt.Sprintf("orders:%s", orderID)
-
-	_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-		V2PostTransaction: components.V2PostTransaction{
-			Postings: []components.V2Posting{{
-				Amount:      amount,
-				Asset:       "USD/2",
-				Destination: dest,
-				Source:      "world",
-			}},
-		},
-		Ledger: "default",
-	})
-	return err
 }

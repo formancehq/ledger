@@ -25,11 +25,8 @@ run:
         }"
 
 requirements-build:
-    ARG --required ANTITHESIS_REPOSITORY
+  ARG --required ANTITHESIS_REPOSITORY
 
-    BUILD --pass-args ./config+build
-    BUILD --pass-args ./image+build
-    BUILD --pass-args ./workload+build
-
-pre-commit:
-    BUILD ./workload+pre-commit
+  BUILD --pass-args ./config+build
+  BUILD --pass-args ./image+build
+  BUILD --pass-args ./workload+build

@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
-	"github.com/formancehq/ledger/test/antithesis/internal"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+	"github.com/formancehq/ledger/test/antithesis/internal"
 )
 
 func main() {
@@ -24,9 +25,7 @@ func main() {
 		break
 	}
 
-	lifecycle.SetupComplete(map[string]any{
-		"Ledger": "Available",
-	})
+	lifecycle.SetupComplete(map[string]any{})
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

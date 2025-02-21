@@ -8,7 +8,7 @@ CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
 CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
 compile:
-    FROM --platform=linux/amd64 golang:1.22.2
+    FROM --platform=linux/amd64 golang:1.23
     CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
     CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
