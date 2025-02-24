@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/spf13/cobra"
 	"github.com/uptrace/bun"
 )
@@ -56,9 +55,9 @@ func getDriver(cmd *cobra.Command) (*driver.Driver, *bun.DB, error) {
 	}
 
 	driver := driver.New(
+		db,
 		ledger.NewFactory(db),
-		systemstore.New(db),
-		bucket.NewDefaultFactory(db),
+		bucket.NewDefaultFactory(),
 	)
 	if err := driver.Initialize(cmd.Context()); err != nil {
 		return nil, nil, err

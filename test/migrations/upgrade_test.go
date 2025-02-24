@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/ory/dockertest/v3"
 	dockerlib "github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/require"
@@ -67,9 +66,9 @@ func TestMigrations(t *testing.T) {
 
 	// Migrate database
 	driver := driver.New(
+		db,
 		ledger.NewFactory(db),
-		systemstore.New(db),
-		bucket.NewDefaultFactory(db),
+		bucket.NewDefaultFactory(),
 		driver.WithParallelBucketMigration(1),
 	)
 	require.NoError(t, driver.Initialize(ctx))

@@ -25,8 +25,8 @@ type ModuleConfiguration struct {
 
 func NewFXModule() fx.Option {
 	return fx.Options(
-		fx.Provide(fx.Annotate(func(db *bun.DB, tracerProvider trace.TracerProvider) bucket.Factory {
-			return bucket.NewDefaultFactory(db, bucket.WithTracer(tracerProvider.Tracer("store")))
+		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
+			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
 		})),
 		fx.Provide(func(db *bun.DB) systemstore.Store {
 			return systemstore.New(db)
@@ -42,15 +42,15 @@ func NewFXModule() fx.Option {
 			)
 		}),
 		fx.Provide(func(
+			db *bun.DB,
 			bucketFactory bucket.Factory,
 			ledgerStoreFactory ledgerstore.Factory,
-			systemStore systemstore.Store,
 			tracerProvider trace.TracerProvider,
 			meterProvider metric.MeterProvider,
 		) (*Driver, error) {
 			return New(
+				db,
 				ledgerStoreFactory,
-				systemStore,
 				bucketFactory,
 				WithMeter(meterProvider.Meter("store")),
 				WithTracer(tracerProvider.Tracer("store")),

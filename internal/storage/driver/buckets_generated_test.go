@@ -14,6 +14,7 @@ import (
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	bucket "github.com/formancehq/ledger/internal/storage/bucket"
+	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -159,29 +160,29 @@ func (m *BucketFactory) EXPECT() *BucketFactoryMockRecorder {
 }
 
 // Create mocks base method.
-func (m *BucketFactory) Create(name string) bucket.Bucket {
+func (m *BucketFactory) Create(name string, db bun.IDB) bucket.Bucket {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", name)
+	ret := m.ctrl.Call(m, "Create", name, db)
 	ret0, _ := ret[0].(bucket.Bucket)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *BucketFactoryMockRecorder) Create(name any) *gomock.Call {
+func (mr *BucketFactoryMockRecorder) Create(name, db any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*BucketFactory)(nil).Create), name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*BucketFactory)(nil).Create), name, db)
 }
 
 // GetMigrator mocks base method.
-func (m *BucketFactory) GetMigrator(b string) *migrations.Migrator {
+func (m *BucketFactory) GetMigrator(b string, db bun.IDB) *migrations.Migrator {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMigrator", b)
+	ret := m.ctrl.Call(m, "GetMigrator", b, db)
 	ret0, _ := ret[0].(*migrations.Migrator)
 	return ret0
 }
 
 // GetMigrator indicates an expected call of GetMigrator.
-func (mr *BucketFactoryMockRecorder) GetMigrator(b any) *gomock.Call {
+func (mr *BucketFactoryMockRecorder) GetMigrator(b, db any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrator", reflect.TypeOf((*BucketFactory)(nil).GetMigrator), b)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrator", reflect.TypeOf((*BucketFactory)(nil).GetMigrator), b, db)
 }
