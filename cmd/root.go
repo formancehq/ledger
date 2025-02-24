@@ -31,14 +31,12 @@ func NewRootCommand() *cobra.Command {
 		Version:           Version,
 	}
 
-	serve := NewServeCommand()
-	version := NewVersion()
+	root.AddCommand(NewServeCommand())
+	root.AddCommand(NewBucketsCommand())
+	root.AddCommand(NewVersionCommand())
+	root.AddCommand(NewWorkerCommand())
+	root.AddCommand(NewDocsCommand())
 
-	buckets := NewBucket()
-
-	root.AddCommand(serve)
-	root.AddCommand(buckets)
-	root.AddCommand(version)
 	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
 		logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 		cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
@@ -54,7 +52,6 @@ func NewRootCommand() *cobra.Command {
 
 		return driver.UpgradeAllBuckets(cmd.Context())
 	}))
-	root.AddCommand(NewDocsCommand())
 
 	return root
 }

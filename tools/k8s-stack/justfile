@@ -1,0 +1,23 @@
+#!/usr/bin/env just --justfile
+set positional-arguments
+
+namespace := `pulumi stack output namespace`
+ledgerDeployment := `pulumi stack output ledger-deployment`
+postgresService := `pulumi stack output postgres-service`
+postgresUsername := `pulumi stack output postgres-username`
+postgresPassword := `pulumi stack output postgres-password`
+
+port-forward-ledger:
+    kubectl port-forward -n {{namespace}} deployment/{{ledgerDeployment}} 8080:8080
+
+port-forward-pg:
+    kubectl port-forward -n {{namespace}} svc/{{postgresService}} 5432:5432
+
+psql:
+    PGPASSWORD={{postgresPassword}} psql -h localhost -p 5432 -U {{postgresUsername}} -d postgres
+
+ledger-restart:
+    kubectl rollout restart -n {{namespace}} deployment/{{ledgerDeployment}}
+
+logs:
+    kubectl logs -n {{namespace}} deployment/{{ledgerDeployment}} -f

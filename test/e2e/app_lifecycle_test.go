@@ -36,10 +36,15 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		db := UseTemplatedDatabase()
 		testServer := NewTestServer(func() Configuration {
 			return Configuration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-				NatsURL:               natsServer.GetValue().ClientURL(),
+				CommonConfiguration: CommonConfiguration{
+					PostgresConfiguration: bunconnect.ConnectionOptions{
+						DatabaseSourceName: db.GetValue().ConnectionOptions().DatabaseSourceName,
+						MaxOpenConns:       100,
+					},
+					Output: GinkgoWriter,
+					Debug:  debug,
+				},
+				NatsURL: natsServer.GetValue().ClientURL(),
 			}
 		})
 		var events chan *nats.Msg
@@ -195,11 +200,13 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		})
 		testServer := NewTestServer(func() Configuration {
 			return Configuration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-				NatsURL:               natsServer.GetValue().ClientURL(),
-				DisableAutoUpgrade:    true,
+				CommonConfiguration: CommonConfiguration{
+					PostgresConfiguration: db.GetValue().ConnectionOptions(),
+					Output:                GinkgoWriter,
+					Debug:                 debug,
+				},
+				NatsURL:            natsServer.GetValue().ClientURL(),
+				DisableAutoUpgrade: true,
 			}
 		})
 		It("should be ok", func() {
@@ -239,10 +246,12 @@ var _ = Context("Ledger downgrade tests", func() {
 
 	testServer := NewTestServer(func() Configuration {
 		return Configuration{
-			PostgresConfiguration: db.GetValue().ConnectionOptions(),
-			Output:                GinkgoWriter,
-			Debug:                 debug,
-			NatsURL:               natsServer.GetValue().ClientURL(),
+			CommonConfiguration: CommonConfiguration{
+				PostgresConfiguration: db.GetValue().ConnectionOptions(),
+				Output:                GinkgoWriter,
+				Debug:                 debug,
+			},
+			NatsURL: natsServer.GetValue().ClientURL(),
 		}
 	})
 

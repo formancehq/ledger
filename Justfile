@@ -17,7 +17,9 @@ tidy:
   @cd {{justfile_directory()}}/deployments/pulumi && go mod tidy
 
 generate:
+  @rm $(find ./internal -name '*_generated_test.go') || true
   @go generate ./...
+g: generate
 
 export-docs-events:
   @go run . docs events --write-dir docs/events
@@ -35,7 +37,7 @@ openapi:
   @yq eval-all '. as $item ireduce ({}; . * $item)' openapi/v1.yaml openapi/v2.yaml openapi/overlay.yaml > openapi.yaml
   @npx -y widdershins {{justfile_directory()}}/openapi/v2.yaml -o {{justfile_directory()}}/docs/api/README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
 
-generate-client:
+generate-client: openapi
   @speakeasy generate sdk -s openapi.yaml -o ./pkg/client -l go
 
 release-local:

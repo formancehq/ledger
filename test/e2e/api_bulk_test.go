@@ -37,11 +37,13 @@ var _ = Context("Ledger engine tests", func() {
 
 	testServer := NewTestServer(func() Configuration {
 		return Configuration{
-			PostgresConfiguration: db.GetValue().ConnectionOptions(),
-			Output:                GinkgoWriter,
-			Debug:                 debug,
-			NatsURL:               natsServer.GetValue().ClientURL(),
-			BulkMaxSize:           bulkMaxSize,
+			CommonConfiguration: CommonConfiguration{
+				PostgresConfiguration: db.GetValue().ConnectionOptions(),
+				Output:                GinkgoWriter,
+				Debug:                 debug,
+			},
+			NatsURL:     natsServer.GetValue().ClientURL(),
+			BulkMaxSize: bulkMaxSize,
 		}
 	})
 	BeforeEach(func() {
