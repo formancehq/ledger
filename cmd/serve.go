@@ -99,7 +99,7 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
-					AutoUpgrade:  serveConfiguration.autoUpgrade,
+					AutoUpgrade: serveConfiguration.autoUpgrade,
 				}),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      numscriptInterpreter,
@@ -129,15 +129,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-						fx.In
+					fx.In
 
-						Handler          chi.Router
-						HealthController *health.HealthController
-						Logger           logging.Logger
+					Handler          chi.Router
+					HealthController *health.HealthController
+					Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-					},
+					MeterProvider *metric.MeterProvider         `optional:"true"`
+					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),

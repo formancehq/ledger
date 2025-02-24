@@ -53,9 +53,7 @@ func NewWorkerCommand() *cobra.Command {
 				otlptraces.FXModuleFromFlags(cmd),
 				otlpmetrics.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
-				storage.NewFXModule(storage.ModuleConfig{
-					// todo
-				}),
+				storage.NewFXModule(storage.ModuleConfig{}),
 				worker.NewFXModule(worker.ModuleConfig{
 					MaxBlockSize: workerConfiguration.hashLogsBlockMaxSize,
 					Schedule: workerConfiguration.hashLogsBlockCRONSpec,
@@ -71,4 +69,8 @@ func NewWorkerCommand() *cobra.Command {
 	otlptraces.AddFlags(cmd.Flags())
 
 	return cmd
+}
+
+func newWorkerModule() fx.Option {
+	return fx.Options()
 }
