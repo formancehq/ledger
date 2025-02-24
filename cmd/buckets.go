@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewBucket() *cobra.Command {
+func NewBucketsCommand() *cobra.Command {
 	ret := &cobra.Command{
 		Use:     "buckets",
 		Aliases: []string{"storage"},

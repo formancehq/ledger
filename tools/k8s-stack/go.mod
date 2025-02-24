@@ -2,7 +2,10 @@ module github.com/formancehq/ledger/tools/k8s-stack
 
 go 1.23.3
 
+replace github.com/formancehq/ledger/deployments/pulumi => ../../deployments/pulumi
+
 require (
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/formancehq/go-libs/v2 v2.0.1-0.20241202204934-bf7e2f5dccef
 	github.com/formancehq/ledger/deployments/pulumi v0.0.0-20241209112902-58145403fdef
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.18.3

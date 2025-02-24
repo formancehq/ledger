@@ -14,6 +14,7 @@ type PostgresComponent struct {
 	Password pulumix.Output[string]
 	Host     pulumix.Output[string]
 	Port     pulumix.Output[int]
+	Service  pulumix.Output[string]
 }
 
 type PostgresComponentArgs struct {
@@ -30,7 +31,7 @@ func NewPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 	username := pulumix.Val("root")
 	password := pulumix.Val("password")
 
-	_, err = helm.NewChart(ctx, "postgres", helm.ChartArgs{
+	release, err := helm.NewRelease(ctx, "postgres", &helm.ReleaseArgs{
 		Chart:     pulumi.String("oci://registry-1.docker.io/bitnamicharts/postgresql"),
 		Version:   pulumi.String("16.4.7"),
 		Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
@@ -44,23 +45,28 @@ func NewPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 				},
 			},
 		},
-	})
+	}, pulumi.Parent(cmp))
 	if err != nil {
 		return nil, err
 	}
 
 	cmp.Username = username
 	cmp.Password = password
-	// todo: dynamically extract the host from the helm chart
-	cmp.Host = pulumix.Apply(pulumi.Sprintf("postgres-postgresql.%s.svc.cluster.local", args.Namespace), func(host string) string {
-		return host
-	})
+	cmp.Host = pulumix.Apply2(
+		release.Status.Name(),
+		release.Status.Namespace(),
+		func(name, namespace *string) string {
+			return fmt.Sprintf("%s-postgresql.%s.svc.cluster.local", *name, *namespace)
+		})
 	cmp.Port = pulumix.Val(5432)
+	cmp.Service = pulumix.Apply(
+		release.Status.Name(),
+		func(name *string) string {
+			return fmt.Sprintf("%s-postgresql", *name)
+		},
+	)
 
-	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{
-		"username": username,
-		"password": password,
-	}); err != nil {
+	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{}); err != nil {
 		return nil, fmt.Errorf("registering outputs: %w", err)
 	}
 
