@@ -104,8 +104,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/go-libs/v2 v2.0.1-0.20250212194833-6c71efac350c h1:wvCzbTbuWmhumY0h31SvExQLUzKlx3WQ7CK/Xwk8Ib0=
 github.com/formancehq/go-libs/v2 v2.0.1-0.20250212194833-6c71efac350c/go.mod h1:U9+fV6R34gG24TfNuOCUMQmfdP3g54nsFlLNlManZ5s=
-github.com/formancehq/numscript v0.0.10 h1:ElvYpoayUX5tHtCCR18ihJTjNlHzdkE4M0IqSm9aufg=
-github.com/formancehq/numscript v0.0.10/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
+github.com/formancehq/numscript v0.0.11 h1:vZDfRfrhOkuInv5fLIXvWZU3ylK+fVgmR4la01dO5to=
+github.com/formancehq/numscript v0.0.11/go.mod h1:btuSv05cYwi9BvLRxVs5zrunU+O1vTgigG1T6UsawcY=
 github.com/gkampitakis/ciinfo v0.3.0 h1:gWZlOC2+RYYttL0hBqcoQhM7h1qNkVqvRCV1fOvpAv8=
 github.com/gkampitakis/ciinfo v0.3.0/go.mod h1:1NIwaOcFChN4fa/B0hEBdAb6npDlFL8Bwx4dfRLRqAo=
 github.com/gkampitakis/go-diff v1.3.2 h1:Qyn0J9XJSDTgnsgHRdz9Zp24RaJeKMUHg2+PDZZdC4M=
