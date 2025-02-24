@@ -11,7 +11,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func GetMigrator(db *bun.DB, options ...migrations.Option) *migrations.Migrator {
+func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator {
 
 	// configuration table has been removed, we keep the model to keep migrations consistent but the table is not used anymore.
 	type configuration struct {

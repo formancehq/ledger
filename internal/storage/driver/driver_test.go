@@ -1,13 +1,12 @@
+//go:build it
+
 package driver_test
 
 import (
-	"context"
-	"errors"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"fmt"
+	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/migrations"
-	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -15,208 +14,55 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
+	"math/rand"
+	"sync"
 	"testing"
-	"time"
 )
-
-func TestUpgradeAllLedgers(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-
-	t.Run("single bucket with no error", func(t *testing.T) {
-		t.Parallel()
-
-		ctrl := gomock.NewController(t)
-		ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-		bucketFactory := driver.NewBucketFactory(ctrl)
-		systemStore := driver.NewSystemStore(ctrl)
-
-		d := driver.New(
-			ledgerStoreFactory,
-			systemStore,
-			bucketFactory,
-		)
-
-		bucket := driver.NewMockBucket(ctrl)
-
-		systemStore.EXPECT().
-			GetDistinctBuckets(gomock.Any()).
-			Return([]string{ledger.DefaultBucket}, nil)
-
-		bucketFactory.EXPECT().
-			Create(ledger.DefaultBucket).
-			AnyTimes().
-			Return(bucket)
-
-		bucket.EXPECT().
-			Migrate(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
-				return nil
-			})
-
-		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		t.Cleanup(cancel)
-
-		require.NoError(t, d.UpgradeAllBuckets(ctx))
-	})
-
-	t.Run("with concurrent buckets", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("and no error", func(t *testing.T) {
-			t.Parallel()
-
-			ctrl := gomock.NewController(t)
-			ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-			bucketFactory := driver.NewBucketFactory(ctrl)
-			systemStore := driver.NewSystemStore(ctrl)
-
-			d := driver.New(
-				ledgerStoreFactory,
-				systemStore,
-				bucketFactory,
-			)
-
-			bucketList := []string{"bucket1", "bucket2", "bucket3"}
-			buckets := make(map[string]bucket.Bucket)
-
-			for _, name := range bucketList {
-				bucket := driver.NewMockBucket(ctrl)
-				buckets[name] = bucket
-
-				bucketFactory.EXPECT().
-					Create(name).
-					Return(bucket)
-
-				bucket.EXPECT().
-					Migrate(gomock.Any(), gomock.Any()).
-					DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
-						return nil
-					})
-			}
-
-			systemStore.EXPECT().
-				GetDistinctBuckets(gomock.Any()).
-				Return(bucketList, nil)
-
-			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			t.Cleanup(cancel)
-
-			require.NoError(t, d.UpgradeAllBuckets(ctx))
-		})
-
-		t.Run("and error", func(t *testing.T) {
-			t.Parallel()
-
-			ctrl := gomock.NewController(t)
-			ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-			bucketFactory := driver.NewBucketFactory(ctrl)
-			systemStore := driver.NewSystemStore(ctrl)
-
-			d := driver.New(ledgerStoreFactory, systemStore, bucketFactory,
-				driver.WithMigrationRetryPeriod(10*time.Millisecond),
-			)
-
-			bucket1 := driver.NewMockBucket(ctrl)
-			bucket2 := driver.NewMockBucket(ctrl)
-			bucketList := []string{"bucket1", "bucket2"}
-
-			bucketFactory.EXPECT().
-				Create(gomock.AnyOf(
-					gomock.Eq("bucket1"),
-					gomock.Eq("bucket2"),
-				)).
-				AnyTimes().
-				DoAndReturn(func(name string) bucket.Bucket {
-					if name == "bucket1" {
-						return bucket1
-					}
-					return bucket2
-				})
-
-			bucket1MigrationStarted := make(chan struct{})
-			bucket1.EXPECT().
-				Migrate(gomock.Any(), gomock.Any()).
-				AnyTimes().
-				DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
-					close(bucket1MigrationStarted)
-
-					return nil
-				})
-
-			firstCall := true
-			bucket2.EXPECT().
-				Migrate(gomock.Any(), gomock.Any()).
-				AnyTimes().
-				DoAndReturn(func(ctx context.Context, opts ...migrations.Option) error {
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-bucket1MigrationStarted:
-						if firstCall {
-							firstCall = false
-							return errors.New("unknown error")
-						}
-						return nil
-					}
-				})
-
-			systemStore.EXPECT().
-				GetDistinctBuckets(gomock.Any()).
-				AnyTimes().
-				Return(bucketList, nil)
-
-			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			t.Cleanup(cancel)
-
-			bucket1MigrationStarted = make(chan struct{})
-			err := d.UpgradeAllBuckets(ctx)
-			require.NoError(t, err)
-		})
-	})
-}
 
 func TestLedgersCreate(t *testing.T) {
 	t.Parallel()
-
 	ctx := logging.TestingContext()
 
-	ctrl := gomock.NewController(t)
-	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
 
-	d := driver.New(
-		ledgerStoreFactory,
-		systemStore,
-		bucketFactory,
-	)
+	buckets := []string{"bucket1", "bucket2"}
+	const countLedgers = 80
 
-	l := pointer.For(ledger.MustNewWithDefault("test"))
+	wg := sync.WaitGroup{}
+	wg.Add(countLedgers)
+	errors := make(chan error, countLedgers)
+	for i := range countLedgers {
+		go func() {
+			defer wg.Done()
 
-	bucket := driver.NewMockBucket(ctrl)
-	bucketFactory.EXPECT().
-		Create(ledger.DefaultBucket).
-		Return(bucket)
+			l, err := ledger.New(fmt.Sprintf("ledger%d", i), ledger.Configuration{
+				Bucket: buckets[rand.Int31n(int32(len(buckets)))],
+			})
+			if err != nil {
+				errors <- err
+				return
+			}
 
-	systemStore.EXPECT().
-		CreateLedger(gomock.Any(), l)
+			_, err = d.CreateLedger(ctx, l)
+			if err != nil {
+				errors <- err
+				return
+			}
+		}()
+	}
+	wg.Wait()
 
-	bucket.EXPECT().
-		IsInitialized(gomock.Any()).
-		Return(false, nil)
+	close(errors)
 
-	bucket.EXPECT().
-		Migrate(gomock.Any(), gomock.Any()).
-		Return(nil)
+	for err := range errors {
+		require.NoError(t, err)
+	}
 
-	ledgerStoreFactory.EXPECT().
-		Create(gomock.Any(), *l).
-		Return(&ledgerstore.Store{})
+	hasReachMinimalVersion, err := d.HasReachMinimalVersion(ctx)
+	require.NoError(t, err)
+	require.True(t, hasReachMinimalVersion)
 
-	_, err := d.CreateLedger(ctx, l)
+	err = d.UpgradeAllBuckets(ctx)
 	require.NoError(t, err)
 }
 
@@ -225,30 +71,36 @@ func TestLedgersList(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	ctrl := gomock.NewController(t)
-	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
 
-	driver := driver.New(
-		ledgerStoreFactory,
-		systemStore,
-		bucketFactory,
-	)
+	bucket := uuid.NewString()[:8]
 
-	query := ledgercontroller.NewListLedgersQuery(15)
-
-	systemStore.EXPECT().
-		ListLedgers(gomock.Any(), query).
-		Return(&bunpaginate.Cursor[ledger.Ledger]{
-			Data: []ledger.Ledger{
-				ledger.MustNewWithDefault("testing"),
-			},
-		}, nil)
-
-	cursor, err := driver.ListLedgers(ctx, query)
+	l1, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: bucket,
+	})
 	require.NoError(t, err)
-	require.Len(t, cursor.Data, 1)
+
+	_, err = d.CreateLedger(ctx, l1)
+	require.NoError(t, err)
+
+	l2, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: bucket,
+	})
+	require.NoError(t, err)
+
+	_, err = d.CreateLedger(ctx, l2)
+	require.NoError(t, err)
+
+	query := ledgercontroller.NewListLedgersQuery(15).WithBucket(bucket)
+
+	cursor, err := d.ListLedgers(ctx, query)
+	require.NoError(t, err)
+
+	ledgers := collectionutils.Filter(cursor.Data, func(l ledger.Ledger) bool {
+		return l.Bucket == bucket
+	})
+
+	require.Len(t, ledgers, 2)
 }
 
 func TestLedgerUpdateMetadata(t *testing.T) {
@@ -256,27 +108,16 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	ctrl := gomock.NewController(t)
-	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
-
-	d := driver.New(
-		ledgerStoreFactory,
-		systemStore,
-		bucketFactory,
-	)
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
 
 	l := ledger.MustNewWithDefault(uuid.NewString())
+	_, err := d.CreateLedger(ctx, &l)
+	require.NoError(t, err)
 
 	addedMetadata := metadata.Metadata{
 		"foo": "bar",
 	}
-	systemStore.EXPECT().
-		UpdateLedgerMetadata(gomock.Any(), l.Name, addedMetadata).
-		Return(nil)
-
-	err := d.UpdateLedgerMetadata(ctx, l.Name, addedMetadata)
+	err = d.UpdateLedgerMetadata(ctx, l.Name, addedMetadata)
 	require.NoError(t, err)
 }
 
@@ -284,25 +125,14 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	ctrl := gomock.NewController(t)
-	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
-	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
-
-	d := driver.New(
-		ledgerStoreFactory,
-		systemStore,
-		bucketFactory,
-	)
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
 
 	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
 		"foo": "bar",
 	})
+	_, err := d.CreateLedger(ctx, &l)
+	require.NoError(t, err)
 
-	systemStore.EXPECT().
-		DeleteLedgerMetadata(gomock.Any(), l.Name, "foo").
-		Return(nil)
-
-	err := d.DeleteLedgerMetadata(ctx, l.Name, "foo")
+	err = d.DeleteLedgerMetadata(ctx, l.Name, "foo")
 	require.NoError(t, err)
 }

@@ -12,19 +12,29 @@ import (
 //go:embed migrations
 var MigrationsFS embed.FS
 
-func GetMigrator(db *bun.DB, name string, options ...migrations.Option) *migrations.Migrator {
+func GetMigrator(db bun.IDB, name string, options ...migrations.Option) *migrations.Migrator {
 	options = append(options, migrations.WithSchema(name))
 	migrator := migrations.NewMigrator(db, options...)
-	migrations, err := migrations.CollectMigrations(MigrationsFS, name)
+
+	_, transactional := db.(bun.Tx)
+
+	collectOptions := make([]migrations.CollectOption, 0)
+	if transactional {
+		collectOptions = append(collectOptions, migrations.WithTemplateVars(map[string]any{
+			"Transactional": true,
+		}))
+	}
+
+	allMigrations, err := migrations.CollectMigrations(MigrationsFS, name, collectOptions...)
 	if err != nil {
 		panic(err)
 	}
-	migrator.RegisterMigrations(migrations...)
+	migrator.RegisterMigrations(allMigrations...)
 
 	return migrator
 }
 
-func migrate(ctx context.Context, tracer trace.Tracer, db *bun.DB, name string, options ...migrations.Option) error {
+func migrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name string, options ...migrations.Option) error {
 	ctx, span := tracer.Start(ctx, "Migrate bucket")
 	defer span.End()
 

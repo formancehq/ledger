@@ -32,7 +32,7 @@ const (
 )
 
 type DefaultStore struct {
-	db *bun.DB
+	db bun.IDB
 }
 
 func (d *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
@@ -97,10 +97,14 @@ func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListL
 		Column("*").
 		Order("added_at asc")
 
-	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[struct{}], ledger.Ledger](
+	if q.Options.Options.Bucket != "" {
+		query = query.Where("bucket = ?", q.Options.Options.Bucket)
+	}
+
+	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload], ledger.Ledger](
 		ctx,
 		query,
-		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[struct{}]](q),
+		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload]](q),
 	)
 }
 
@@ -125,11 +129,7 @@ func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Mig
 	return GetMigrator(d.db, options...)
 }
 
-func (d *DefaultStore) GetDB() *bun.DB {
-	return d.db
-}
-
-func New(db *bun.DB) *DefaultStore {
+func New(db bun.IDB) *DefaultStore {
 	return &DefaultStore{
 		db: db,
 	}
