@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,10 +23,18 @@ import (
 )
 
 type WorkerConfiguration struct {
+	LogsHashBlockMaxSize  int
+	LogsHashBlockCRONSpec string
 }
 
 func (cfg WorkerConfiguration) computeFlags() []string {
 	args := make([]string, 0)
+	if cfg.LogsHashBlockMaxSize > 0 {
+		args = append(args, "--"+cmd.WorkerAsyncBlockHasherMaxBlockSizeFlag, strconv.Itoa(cfg.LogsHashBlockMaxSize))
+	}
+	if cfg.LogsHashBlockCRONSpec != "" {
+		args = append(args, "--"+cmd.WorkerAsyncBlockHasherScheduleFlag, cfg.LogsHashBlockCRONSpec)
+	}
 
 	return args
 }

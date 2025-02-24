@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/worker"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -97,7 +98,9 @@ func NewServeCommand() *cobra.Command {
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
-				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				storage.NewFXModule(storage.ModuleConfig{
+					AutoUpgrade:  serveConfiguration.autoUpgrade,
+				}),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      numscriptInterpreter,
 					NumscriptInterpreterFlags: numscriptInterpreterFlags,
@@ -152,7 +155,10 @@ func NewServeCommand() *cobra.Command {
 
 			workerEnabled, _ := cmd.Flags().GetBool(WorkerEnabledFlag)
 			if workerEnabled {
-				options = append(options, newWorkerModule())
+				options = append(options, worker.NewFXModule(worker.ModuleConfig{
+					Schedule:     serveConfiguration.workerConfiguration.hashLogsBlockCRONSpec,
+					MaxBlockSize: serveConfiguration.workerConfiguration.hashLogsBlockMaxSize,
+				}))
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
@@ -190,6 +196,7 @@ type serveConfiguration struct {
 	numscriptCacheMaxCount uint
 	autoUpgrade            bool
 	bind                   string
+	workerConfiguration    workerConfiguration
 }
 
 func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
@@ -198,6 +205,7 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
 	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
+	ret.workerConfiguration = discoverWorkerConfiguration(cmd)
 
 	return ret
 }
