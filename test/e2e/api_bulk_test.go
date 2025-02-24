@@ -3,12 +3,15 @@
 package test_suite
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
 	"math/big"
+	"net/http"
 	"time"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -191,6 +194,67 @@ var _ = Context("Ledger engine tests", func() {
 			It("should be ok", func() {
 				Expect(err).To(BeNil())
 			})
+		})
+	})
+	When("creating a bulk on a ledger using json stream", func() {
+		var (
+			now   = time.Now().Round(time.Microsecond).UTC()
+			items []components.V2BulkElement
+			err   error
+		)
+		BeforeEach(func() {
+			items = []components.V2BulkElement{
+				components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+					Data: &components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Postings: []components.V2Posting{{
+							Amount:      big.NewInt(100),
+							Asset:       "USD/2",
+							Destination: "bank",
+							Source:      "world",
+						}},
+						Timestamp: &now,
+					},
+				}),
+				components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+					Data: &components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Postings: []components.V2Posting{{
+							Amount:      big.NewInt(100),
+							Asset:       "USD/2",
+							Destination: "bank",
+							Source:      "world",
+						}},
+						Timestamp: &now,
+					},
+				}),
+			}
+		})
+		JustBeforeEach(func() {
+			stream := bytes.NewBuffer(nil)
+			for _, item := range items {
+				data, err := json.Marshal(item)
+				Expect(err).To(Succeed())
+				stream.Write(data)
+			}
+			stream.Write([]byte("\n"))
+
+			req, err := http.NewRequest(http.MethodPost, testServer.GetValue().URL()+"/v2/default/_bulk", stream)
+			req.Header.Set("Content-Type", "application/vnd.formance.ledger.api.v2.bulk+json-stream")
+			Expect(err).To(Succeed())
+
+			rsp, err := http.DefaultClient.Do(req)
+			Expect(err).To(Succeed())
+			Expect(rsp.StatusCode).To(Equal(http.StatusOK))
+		})
+		It("should be ok", func() {
+			Expect(err).To(Succeed())
+
+			txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				Ledger: "default",
+			})
+			Expect(err).To(Succeed())
+			Expect(txs.Data).To(HaveLen(2))
 		})
 	})
 	When("creating a bulk with an error on a ledger", func() {

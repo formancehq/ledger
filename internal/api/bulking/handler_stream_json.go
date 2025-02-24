@@ -1,11 +1,11 @@
 package bulking
 
 import (
-	"bufio"
+	"encoding/json"
 	"net/http"
 )
 
-type ScriptStreamBulkHandler struct {
+type JSONStreamBulkHandler struct {
 	channel    Bulk
 	terminated chan struct{}
 	receive    chan BulkElementResult
@@ -14,7 +14,7 @@ type ScriptStreamBulkHandler struct {
 	err        error
 }
 
-func (h *ScriptStreamBulkHandler) GetChannels(_ http.ResponseWriter, r *http.Request) (Bulk, chan BulkElementResult, bool) {
+func (h *JSONStreamBulkHandler) GetChannels(_ http.ResponseWriter, r *http.Request) (Bulk, chan BulkElementResult, bool) {
 
 	h.channel = make(Bulk)
 	h.receive = make(chan BulkElementResult)
@@ -23,21 +23,17 @@ func (h *ScriptStreamBulkHandler) GetChannels(_ http.ResponseWriter, r *http.Req
 	go func() {
 		defer close(h.channel)
 
-		scanner := bufio.NewScanner(r.Body)
+		dec := json.NewDecoder(r.Body)
 
 		for {
 			select {
 			case <-r.Context().Done():
 				return
 			default:
-				nextElement, err := ParseTextStream(scanner)
+				nextElement := &BulkElement{}
+				err := dec.Decode(nextElement)
 				if err != nil {
 					h.err = err
-					return
-				}
-
-				if nextElement == nil {
-					// stream terminated
 					return
 				}
 
@@ -65,7 +61,7 @@ func (h *ScriptStreamBulkHandler) GetChannels(_ http.ResponseWriter, r *http.Req
 	return h.channel, h.receive, true
 }
 
-func (h *ScriptStreamBulkHandler) Terminate(w http.ResponseWriter, r *http.Request) {
+func (h *JSONStreamBulkHandler) Terminate(w http.ResponseWriter, r *http.Request) {
 	select {
 	case <-h.terminated:
 		writeJSONResponse(w, h.actions, h.results, h.err)
@@ -73,18 +69,18 @@ func (h *ScriptStreamBulkHandler) Terminate(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func NewScriptStreamBulkHandler() *ScriptStreamBulkHandler {
-	return &ScriptStreamBulkHandler{}
+func NewJSONStreamBulkHandler() *JSONStreamBulkHandler {
+	return &JSONStreamBulkHandler{}
 }
 
-type scriptStreamBulkHandlerFactory struct{}
+type JSONStreamBulkHandlerFactory struct{}
 
-func (j scriptStreamBulkHandlerFactory) CreateBulkHandler() Handler {
-	return NewScriptStreamBulkHandler()
+func (j JSONStreamBulkHandlerFactory) CreateBulkHandler() Handler {
+	return NewJSONStreamBulkHandler()
 }
 
-func NewScriptStreamBulkHandlerFactory() HandlerFactory {
-	return &scriptStreamBulkHandlerFactory{}
+func NewJSONStreamBulkHandlerFactory() HandlerFactory {
+	return &JSONStreamBulkHandlerFactory{}
 }
 
-var _ HandlerFactory = (*scriptStreamBulkHandlerFactory)(nil)
+var _ HandlerFactory = (*JSONStreamBulkHandlerFactory)(nil)

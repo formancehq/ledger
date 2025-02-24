@@ -79,10 +79,7 @@ func NewRouter(
 		version,
 		v2.WithTracer(routerOptions.tracer),
 		v2.WithBulkerFactory(routerOptions.bulkerFactory),
-		v2.WithBulkHandlerFactories(map[string]bulking.HandlerFactory{
-			"application/json": bulking.NewJSONBulkHandlerFactory(routerOptions.bulkMaxSize),
-			"application/vnd.formance.ledger.api.v2.bulk+script-stream": bulking.NewScriptStreamBulkHandlerFactory(),
-		}),
+		v2.WithDefaultBulkHandlerFactories(routerOptions.bulkMaxSize),
 		v2.WithPaginationConfig(routerOptions.paginationConfig),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
