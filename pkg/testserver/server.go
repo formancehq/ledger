@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/nats-io/nats.go"
 
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
@@ -39,18 +38,107 @@ type OTLPConfig struct {
 	Metrics    *otlpmetrics.ModuleConfig
 }
 
+type CommonConfiguration struct {
+	PostgresConfiguration bunconnect.ConnectionOptions
+	Output                io.Writer
+	Debug                 bool
+	OTLPConfig            *OTLPConfig
+}
+
+func (cfg CommonConfiguration) computeCommonFlags() []string {
+	args := []string{
+		"--" + bunconnect.PostgresURIFlag, cfg.PostgresConfiguration.DatabaseSourceName,
+	}
+	if cfg.PostgresConfiguration.MaxIdleConns != 0 {
+		args = append(
+			args,
+			"--"+bunconnect.PostgresMaxIdleConnsFlag,
+			fmt.Sprint(cfg.PostgresConfiguration.MaxIdleConns),
+		)
+	}
+	if cfg.PostgresConfiguration.MaxOpenConns != 0 {
+		args = append(
+			args,
+			"--"+bunconnect.PostgresMaxOpenConnsFlag,
+			fmt.Sprint(cfg.PostgresConfiguration.MaxOpenConns),
+		)
+	}
+	if cfg.PostgresConfiguration.ConnMaxIdleTime != 0 {
+		args = append(
+			args,
+			"--"+bunconnect.PostgresConnMaxIdleTimeFlag,
+			fmt.Sprint(cfg.PostgresConfiguration.ConnMaxIdleTime),
+		)
+	}
+	if cfg.OTLPConfig != nil {
+		if cfg.OTLPConfig.Metrics != nil {
+			args = append(
+				args,
+				"--"+otlpmetrics.OtelMetricsExporterFlag, cfg.OTLPConfig.Metrics.Exporter,
+			)
+			if cfg.OTLPConfig.Metrics.KeepInMemory {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsKeepInMemoryFlag,
+				)
+			}
+			if cfg.OTLPConfig.Metrics.OTLPConfig != nil {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsExporterOTLPEndpointFlag, cfg.OTLPConfig.Metrics.OTLPConfig.Endpoint,
+					"--"+otlpmetrics.OtelMetricsExporterOTLPModeFlag, cfg.OTLPConfig.Metrics.OTLPConfig.Mode,
+				)
+				if cfg.OTLPConfig.Metrics.OTLPConfig.Insecure {
+					args = append(args, "--"+otlpmetrics.OtelMetricsExporterOTLPInsecureFlag)
+				}
+			}
+			if cfg.OTLPConfig.Metrics.RuntimeMetrics {
+				args = append(args, "--"+otlpmetrics.OtelMetricsRuntimeFlag)
+			}
+			if cfg.OTLPConfig.Metrics.MinimumReadMemStatsInterval != 0 {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag,
+					cfg.OTLPConfig.Metrics.MinimumReadMemStatsInterval.String(),
+				)
+			}
+			if cfg.OTLPConfig.Metrics.PushInterval != 0 {
+				args = append(
+					args,
+					"--"+otlpmetrics.OtelMetricsExporterPushIntervalFlag,
+					cfg.OTLPConfig.Metrics.PushInterval.String(),
+				)
+			}
+			if len(cfg.OTLPConfig.Metrics.ResourceAttributes) > 0 {
+				args = append(
+					args,
+					"--"+otlp.OtelResourceAttributesFlag,
+					strings.Join(cfg.OTLPConfig.Metrics.ResourceAttributes, ","),
+				)
+			}
+		}
+		if cfg.OTLPConfig.BaseConfig.ServiceName != "" {
+			args = append(args, "--"+otlp.OtelServiceNameFlag, cfg.OTLPConfig.BaseConfig.ServiceName)
+		}
+	}
+	if cfg.Debug {
+		args = append(args, "--"+service.DebugFlag)
+	}
+
+	return args
+}
+
 type Configuration struct {
-	PostgresConfiguration        bunconnect.ConnectionOptions
+	CommonConfiguration
 	NatsURL                      string
-	Output                       io.Writer
-	Debug                        bool
-	OTLPConfig                   *OTLPConfig
 	ExperimentalFeatures         bool
 	DisableAutoUpgrade           bool
 	BulkMaxSize                  int
 	ExperimentalNumscriptRewrite bool
 	MaxPageSize                  uint64
 	DefaultPageSize              uint64
+	WorkerEnabled                bool
+	WorkerConfiguration          *WorkerConfiguration
 }
 
 type Logger interface {
@@ -74,12 +162,16 @@ func (s *Server) Start() error {
 	args := []string{
 		"serve",
 		"--" + cmd.BindFlag, ":0",
-		"--" + bunconnect.PostgresURIFlag, s.configuration.PostgresConfiguration.DatabaseSourceName,
-		"--" + bunconnect.PostgresMaxOpenConnsFlag, fmt.Sprint(s.configuration.PostgresConfiguration.MaxOpenConns),
-		"--" + bunconnect.PostgresConnMaxIdleTimeFlag, fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
 	}
+	args = append(args, s.configuration.computeCommonFlags()...)
 	if !s.configuration.DisableAutoUpgrade {
 		args = append(args, "--"+cmd.AutoUpgradeFlag)
+	}
+	if s.configuration.WorkerEnabled {
+		args = append(args, "--"+cmd.WorkerEnabledFlag)
+		if s.configuration.WorkerConfiguration != nil {
+			args = append(args, s.configuration.WorkerConfiguration.computeFlags()...)
+		}
 	}
 	if s.configuration.ExperimentalFeatures {
 		args = append(
@@ -100,27 +192,6 @@ func (s *Server) Start() error {
 			"--"+cmd.NumscriptInterpreterFlag,
 		)
 	}
-	if s.configuration.PostgresConfiguration.MaxIdleConns != 0 {
-		args = append(
-			args,
-			"--"+bunconnect.PostgresMaxIdleConnsFlag,
-			fmt.Sprint(s.configuration.PostgresConfiguration.MaxIdleConns),
-		)
-	}
-	if s.configuration.PostgresConfiguration.MaxOpenConns != 0 {
-		args = append(
-			args,
-			"--"+bunconnect.PostgresMaxOpenConnsFlag,
-			fmt.Sprint(s.configuration.PostgresConfiguration.MaxOpenConns),
-		)
-	}
-	if s.configuration.PostgresConfiguration.ConnMaxIdleTime != 0 {
-		args = append(
-			args,
-			"--"+bunconnect.PostgresConnMaxIdleTimeFlag,
-			fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
-		)
-	}
 	if s.configuration.NatsURL != "" {
 		args = append(
 			args,
@@ -129,65 +200,11 @@ func (s *Server) Start() error {
 			"--"+publish.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", s.id),
 		)
 	}
-	if s.configuration.OTLPConfig != nil {
-		if s.configuration.OTLPConfig.Metrics != nil {
-			args = append(
-				args,
-				"--"+otlpmetrics.OtelMetricsExporterFlag, s.configuration.OTLPConfig.Metrics.Exporter,
-			)
-			if s.configuration.OTLPConfig.Metrics.KeepInMemory {
-				args = append(
-					args,
-					"--"+otlpmetrics.OtelMetricsKeepInMemoryFlag,
-				)
-			}
-			if s.configuration.OTLPConfig.Metrics.OTLPConfig != nil {
-				args = append(
-					args,
-					"--"+otlpmetrics.OtelMetricsExporterOTLPEndpointFlag, s.configuration.OTLPConfig.Metrics.OTLPConfig.Endpoint,
-					"--"+otlpmetrics.OtelMetricsExporterOTLPModeFlag, s.configuration.OTLPConfig.Metrics.OTLPConfig.Mode,
-				)
-				if s.configuration.OTLPConfig.Metrics.OTLPConfig.Insecure {
-					args = append(args, "--"+otlpmetrics.OtelMetricsExporterOTLPInsecureFlag)
-				}
-			}
-			if s.configuration.OTLPConfig.Metrics.RuntimeMetrics {
-				args = append(args, "--"+otlpmetrics.OtelMetricsRuntimeFlag)
-			}
-			if s.configuration.OTLPConfig.Metrics.MinimumReadMemStatsInterval != 0 {
-				args = append(
-					args,
-					"--"+otlpmetrics.OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag,
-					s.configuration.OTLPConfig.Metrics.MinimumReadMemStatsInterval.String(),
-				)
-			}
-			if s.configuration.OTLPConfig.Metrics.PushInterval != 0 {
-				args = append(
-					args,
-					"--"+otlpmetrics.OtelMetricsExporterPushIntervalFlag,
-					s.configuration.OTLPConfig.Metrics.PushInterval.String(),
-				)
-			}
-			if len(s.configuration.OTLPConfig.Metrics.ResourceAttributes) > 0 {
-				args = append(
-					args,
-					"--"+otlp.OtelResourceAttributesFlag,
-					strings.Join(s.configuration.OTLPConfig.Metrics.ResourceAttributes, ","),
-				)
-			}
-		}
-		if s.configuration.OTLPConfig.BaseConfig.ServiceName != "" {
-			args = append(args, "--"+otlp.OtelServiceNameFlag, s.configuration.OTLPConfig.BaseConfig.ServiceName)
-		}
-	}
 	if s.configuration.MaxPageSize != 0 {
 		args = append(args, "--"+cmd.MaxPageSizeFlag, fmt.Sprint(s.configuration.MaxPageSize))
 	}
 	if s.configuration.DefaultPageSize != 0 {
 		args = append(args, "--"+cmd.DefaultPageSizeFlag, fmt.Sprint(s.configuration.DefaultPageSize))
-	}
-	if s.configuration.Debug {
-		args = append(args, "--"+service.DebugFlag)
 	}
 
 	s.logger.Logf("Starting application with flags: %s", strings.Join(args, " "))

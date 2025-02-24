@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/pagination"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,7 +20,6 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -30,7 +31,7 @@ func TestGetLogs(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.ColumnPaginatedQuery[any]
+		expectQuery       pagination.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -41,11 +42,11 @@ func TestGetLogs(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: pagination.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
 			},
@@ -54,11 +55,11 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using start time",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: pagination.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					Builder: query.Gte("date", now.Format(time.DateFormat)),
 					Expand:  make([]string, 0),
 				},
@@ -68,11 +69,11 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using end time",
 			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: pagination.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					Builder: query.Lt("date", now.Format(time.DateFormat)),
 					Expand:  make([]string, 0),
 				},
@@ -82,13 +83,13 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{
+				"cursor": []string{bunpaginate.EncodeCursor(pagination.ColumnPaginatedQuery[any]{
 					PageSize: bunpaginate.QueryDefaultPageSize,
 					Column:   "id",
 					Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				})},
 			},
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: pagination.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -120,26 +121,26 @@ func TestGetLogs(t *testing.T) {
 		{
 			name:             "with invalid query",
 			expectStatusCode: http.StatusBadRequest,
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: pagination.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
 			},
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         ledgercontroller.ErrInvalidQuery{},
+			returnErr:         ledgerstore.ErrInvalidQuery{},
 		},
 		{
 			name:             "with unexpected error",
 			expectStatusCode: http.StatusInternalServerError,
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: pagination.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: pagination.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
 			},

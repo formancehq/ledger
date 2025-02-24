@@ -42,6 +42,37 @@ services:
     ports:
       - "16686:16686/tcp"
 
+  worker:
+    image: golang:1.23-alpine
+    entrypoint: go run main.go worker
+    volumes:
+      - .:/src
+      - ${GOPATH}:/go
+    working_dir: /src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+      otel:
+        condition: service_started
+    environment:
+      GOWORK: off
+      DEBUG: "${DEBUG:-false}"
+      OTEL_SERVICE_NAME: ledger
+      OTEL_METRICS_EXPORTER: "otlp"
+      OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otel:4317
+      OTEL_METRICS_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_METRICS_KEEP_IN_MEMORY: "true"
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otel:4317
+      OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_TRACES_BATCH: "true"
+      POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+      POSTGRES_MAX_OPEN_CONNS: "40"
+      POSTGRES_MAX_IDLE_CONNS: "40"
+      POSTGRES_CONN_MAX_IDLE_TIME: "5m"
+
   ledger:
     image: golang:1.23-alpine
     entrypoint: go run main.go serve

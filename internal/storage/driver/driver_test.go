@@ -9,10 +9,10 @@ import (
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -31,7 +31,7 @@ func TestUpgradeAllLedgers(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 		bucketFactory := driver.NewBucketFactory(ctrl)
-		systemStore := driver.NewSystemStore(ctrl)
+		systemStore := NewMockSystemStore(ctrl)
 
 		d := driver.New(
 			ledgerStoreFactory,
@@ -71,7 +71,7 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 			bucketFactory := driver.NewBucketFactory(ctrl)
-			systemStore := driver.NewSystemStore(ctrl)
+			systemStore := NewMockSystemStore(ctrl)
 
 			d := driver.New(
 				ledgerStoreFactory,
@@ -113,7 +113,7 @@ func TestUpgradeAllLedgers(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 			bucketFactory := driver.NewBucketFactory(ctrl)
-			systemStore := driver.NewSystemStore(ctrl)
+			systemStore := NewMockSystemStore(ctrl)
 
 			d := driver.New(ledgerStoreFactory, systemStore, bucketFactory,
 				driver.WithMigrationRetryPeriod(10*time.Millisecond),
@@ -186,7 +186,7 @@ func TestLedgersCreate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
+	systemStore := NewMockSystemStore(ctrl)
 
 	d := driver.New(
 		ledgerStoreFactory,
@@ -228,7 +228,7 @@ func TestLedgersList(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
+	systemStore := NewMockSystemStore(ctrl)
 
 	driver := driver.New(
 		ledgerStoreFactory,
@@ -236,7 +236,7 @@ func TestLedgersList(t *testing.T) {
 		bucketFactory,
 	)
 
-	query := ledgercontroller.NewListLedgersQuery(15)
+	query := system.NewListLedgersQuery(15)
 
 	systemStore.EXPECT().
 		ListLedgers(gomock.Any(), query).
@@ -259,7 +259,7 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
+	systemStore := NewMockSystemStore(ctrl)
 
 	d := driver.New(
 		ledgerStoreFactory,
@@ -287,7 +287,7 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ledgerStoreFactory := driver.NewLedgerStoreFactory(ctrl)
 	bucketFactory := driver.NewBucketFactory(ctrl)
-	systemStore := driver.NewSystemStore(ctrl)
+	systemStore := NewMockSystemStore(ctrl)
 
 	d := driver.New(
 		ledgerStoreFactory,

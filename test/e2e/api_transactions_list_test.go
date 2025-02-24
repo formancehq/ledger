@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	libtime "github.com/formancehq/go-libs/v2/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -31,10 +31,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 
 	testServer := NewTestServer(func() Configuration {
 		return Configuration{
-			PostgresConfiguration: db.GetValue().ConnectionOptions(),
-			Output:                GinkgoWriter,
-			Debug:                 debug,
-			NatsURL:               natsServer.GetValue().ClientURL(),
+			CommonConfiguration: CommonConfiguration{
+				PostgresConfiguration: db.GetValue().ConnectionOptions(),
+				Output:                GinkgoWriter,
+				Debug:                 debug,
+			},
+			NatsURL: natsServer.GetValue().ClientURL(),
 		}
 	})
 	JustBeforeEach(func() {
@@ -240,10 +242,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			It("Should be ok", func() {
 				Expect(response.Next).NotTo(BeNil())
-				cursor := &ledgercontroller.ColumnPaginatedQuery[any]{}
+				cursor := &pagination.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
-				Expect(cursor.Options).To(Equal(ledgercontroller.ResourceQuery[any]{
+				Expect(cursor.Options).To(Equal(pagination.ResourceQuery[any]{
 					Builder: query.Match("source", "world"),
 					PIT:     pointer.For(libtime.New(now)),
 				}))
@@ -283,10 +285,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			It("Should be ok", func() {
 				Expect(response.Next).NotTo(BeNil())
-				cursor := &ledgercontroller.ColumnPaginatedQuery[any]{}
+				cursor := &pagination.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
-				Expect(cursor.Options).To(Equal(ledgercontroller.ResourceQuery[any]{
+				Expect(cursor.Options).To(Equal(pagination.ResourceQuery[any]{
 					Builder: query.And(
 						query.Match("source", "world"),
 						query.Match("destination", "account:"),

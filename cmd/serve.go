@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/all"
+	"github.com/formancehq/ledger/internal/replication/runner"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/pprof"
 	"time"
-
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/ledger/internal/api/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 
 	apilib "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/health"
@@ -48,6 +50,7 @@ const (
 	NumscriptInterpreterFlagsToPass = "numscript-interpreter-flags"
 	DefaultPageSizeFlag             = "default-page-size"
 	MaxPageSizeFlag                 = "max-page-size"
+	WorkerEnabledFlag               = "worker"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -98,6 +101,8 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				drivers.NewFXModule(),
+				fx.Invoke(all.Register),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      numscriptInterpreter,
 					NumscriptInterpreterFlags: numscriptInterpreterFlags,
@@ -150,6 +155,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 			}
 
+			workerEnabled, _ := cmd.Flags().GetBool(WorkerEnabledFlag)
+			if workerEnabled {
+				options = append(options, runner.NewFXModule(runner.ModuleConfig{
+					SyncPeriod:      serveConfiguration.Worker.pipelinesSyncPeriod,
+					PullInterval:    serveConfiguration.Worker.pipelinesPullInterval,
+					PushRetryPeriod: serveConfiguration.Worker.pipelinesPushRetryPeriod,
+				}))
+			}
+
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},
 	}
@@ -164,7 +178,9 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
+	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
 
+	addWorkerFlags(cmd)
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
 	otlpmetrics.AddFlags(cmd.Flags())
@@ -183,6 +199,7 @@ type serveConfiguration struct {
 	numscriptCacheMaxCount uint
 	autoUpgrade            bool
 	bind                   string
+	Worker                 workerConfiguration
 }
 
 func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
@@ -191,6 +208,8 @@ func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
 	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
 	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
+
+	ret.Worker = discoverWorkerConfiguration(cmd)
 
 	return ret
 }

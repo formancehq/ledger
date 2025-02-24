@@ -4,7 +4,7 @@ package performance_test
 
 import (
 	. "github.com/formancehq/go-libs/v2/collectionutils"
-	features2 "github.com/formancehq/ledger/pkg/features"
+	"github.com/formancehq/ledger/pkg/features"
 	"sort"
 )
 
@@ -12,19 +12,19 @@ func buildAllPossibleConfigurations() []configuration {
 	possibleConfigurations := make([]configuration, 0)
 	possibleConfigurations = append(possibleConfigurations, configuration{
 		Name:       "MINIMAL",
-		FeatureSet: features2.MinimalFeatureSet,
+		FeatureSet: features.MinimalFeatureSet,
 	})
 
-	fullConfiguration := features2.MinimalFeatureSet
-	features := Keys(features2.FeatureConfigurations)
-	sort.Strings(features)
+	fullConfiguration := features.MinimalFeatureSet
+	allFeatures := Keys(features.FeatureConfigurations)
+	sort.Strings(allFeatures)
 
-	for _, feature := range features {
+	for _, feature := range allFeatures {
 		possibleConfigurations = append(possibleConfigurations, configuration{
 			Name:       feature,
-			FeatureSet: features2.MinimalFeatureSet.With(feature, features2.FeatureConfigurations[feature][0]),
+			FeatureSet: features.MinimalFeatureSet.With(feature, features.FeatureConfigurations[feature][0]),
 		})
-		fullConfiguration = fullConfiguration.With(feature, features2.FeatureConfigurations[feature][0])
+		fullConfiguration = fullConfiguration.With(feature, features.FeatureConfigurations[feature][0])
 	}
 	possibleConfigurations = append(possibleConfigurations, configuration{
 		Name:       "FULL",
@@ -36,7 +36,7 @@ func buildAllPossibleConfigurations() []configuration {
 
 type configuration struct {
 	Name       string
-	FeatureSet features2.FeatureSet
+	FeatureSet features.FeatureSet
 }
 
 func (c configuration) String() string {
