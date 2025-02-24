@@ -39,15 +39,27 @@ type OTLPConfig struct {
 }
 
 type CommonConfiguration struct {
-	PostgresConfiguration bunconnect.ConnectionOptions
-	Output                io.Writer
-	Debug                 bool
-	OTLPConfig            *OTLPConfig
+	PostgresConfiguration        bunconnect.ConnectionOptions
+	Output                       io.Writer
+	Debug                        bool
+	OTLPConfig                   *OTLPConfig
+	ExperimentalFeatures         bool
+	ExperimentalNumscriptRewrite bool
+	ExperimentalConnectors       bool
 }
 
 func (cfg CommonConfiguration) computeCommonFlags() []string {
 	args := []string{
 		"--" + bunconnect.PostgresURIFlag, cfg.PostgresConfiguration.DatabaseSourceName,
+	}
+	if cfg.ExperimentalFeatures {
+		args = append(args, "--"+cmd.ExperimentalFeaturesFlag)
+	}
+	if cfg.ExperimentalNumscriptRewrite {
+		args = append(args, "--"+cmd.NumscriptInterpreterFlag)
+	}
+	if cfg.ExperimentalConnectors {
+		args = append(args, "--"+cmd.ExperimentalConnectors)
 	}
 	if cfg.PostgresConfiguration.MaxIdleConns != 0 {
 		args = append(
@@ -130,15 +142,13 @@ func (cfg CommonConfiguration) computeCommonFlags() []string {
 
 type Configuration struct {
 	CommonConfiguration
-	NatsURL                      string
-	ExperimentalFeatures         bool
-	DisableAutoUpgrade           bool
-	BulkMaxSize                  int
-	ExperimentalNumscriptRewrite bool
-	MaxPageSize                  uint64
-	DefaultPageSize              uint64
-	WorkerEnabled                bool
-	WorkerConfiguration          *WorkerConfiguration
+	NatsURL             string
+	DisableAutoUpgrade  bool
+	BulkMaxSize         int
+	MaxPageSize         uint64
+	DefaultPageSize     uint64
+	WorkerEnabled       bool
+	WorkerConfiguration *WorkerConfiguration
 }
 
 type Logger interface {

@@ -34,9 +34,9 @@ var _ = Context("Logs block async hashing", func() {
 				PostgresConfiguration: db.GetValue().ConnectionOptions(),
 				Output:                GinkgoWriter,
 				Debug:                 debug,
+				ExperimentalFeatures:  true,
 			},
-			NatsURL:              natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures: true,
+			NatsURL: natsServer.GetValue().ClientURL(),
 		}
 	})
 	NewTestWorker(func() WorkerServiceConfiguration {

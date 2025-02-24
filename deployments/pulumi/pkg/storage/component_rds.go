@@ -82,6 +82,8 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 				Untyped().(pulumi.BoolOutput),
 		},
 		pulumi.Parent(cmp),
+		// Ignore these changes to avoid recreating the cluster on stack rename
+		pulumi.IgnoreChanges([]string{"snapshotIdentifier", "clusterIdentifier"}),
 	)
 	if err != nil {
 		return nil, err

@@ -15,7 +15,6 @@ import (
 
 	"errors"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -128,7 +127,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 				switch {
 				case errors.Is(err, postgres.ErrConstraintsFailed{}):
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
-						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
+						return nil, NewErrTransactionReferenceConflict(tx.Reference)
 					}
 				default:
 					return nil, err

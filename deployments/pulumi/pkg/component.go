@@ -16,12 +16,12 @@ import (
 
 type ComponentArgs struct {
 	utils.CommonArgs
-	Timeout        pulumix.Input[int]
-	InstallDevBox  pulumix.Input[bool]
-	Database       storage.DatabaseArgs
-	API            api.Args
-	Worker         worker.Args
-	Ingress        *api.IngressArgs
+	Timeout       pulumix.Input[int]
+	InstallDevBox pulumix.Input[bool]
+	Database      storage.DatabaseArgs
+	API           api.Args
+	Worker        worker.Args
+	Ingress       *api.IngressArgs
 }
 
 func (args *ComponentArgs) SetDefaults() {
@@ -100,6 +100,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		CommonArgs: args.CommonArgs,
 		Args:       args.Worker,
 		Database:   cmp.Storage,
+		API:        cmp.API,
 	}, options...)
 	if err != nil {
 		return nil, err
@@ -113,6 +114,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		cmp.Devbox, err = devbox.NewComponent(ctx, "devbox", devbox.ComponentArgs{
 			CommonArgs: args.CommonArgs,
 			Storage:    cmp.Storage,
+			API:        cmp.API,
 		}, options...)
 		if err != nil {
 			return nil, err

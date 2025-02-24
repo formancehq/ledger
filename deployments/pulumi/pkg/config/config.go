@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/rds"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -247,6 +248,25 @@ func (d API) toInput() api.Args {
 	}
 }
 
+type Worker struct {
+	Connectors map[string]map[string]any `json:"connectors" yaml:"connectors"`
+}
+
+func (w Worker) toInput() worker.Args {
+	connectors := make(map[string]pulumi.Map)
+	for name, rawConfig := range w.Connectors {
+		convertedConfig := pulumi.Map{}
+		for k, v := range rawConfig {
+			convertedConfig[k] = pulumi.Any(v)
+		}
+		connectors[name] = convertedConfig
+	}
+
+	return worker.Args{
+		Connectors: connectors,
+	}
+}
+
 type Monitoring struct {
 	// ResourceAttributes is the resource attributes for OpenTelemetry
 	ResourceAttributes map[string]string `json:"resource-attributes" yaml:"resource-attributes"`
@@ -408,6 +428,9 @@ type Config struct {
 	// API is the API configuration for the ledger
 	API *API `json:"api" yaml:"api"`
 
+	// Worker is the worker configuration for the ledger
+	Worker *Worker `json:"worker" yaml:"worker"`
+
 	// Ingress is the ingress configuration for the ledger
 	Ingress *Ingress `json:"ingress" yaml:"ingress"`
 
@@ -423,6 +446,7 @@ func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 		CommonArgs:    cfg.Common.toInput(),
 		Database:      cfg.Storage.toInput(),
 		API:           cfg.API.toInput(),
+		Worker: cfg.Worker.toInput(),
 		Timeout:       pulumix.Val(cfg.Timeout),
 		Ingress:       cfg.Ingress.toInput(),
 		InstallDevBox: pulumix.Val(cfg.InstallDevBox),
@@ -463,6 +487,13 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
+	worker := &Worker{}
+	if err := config.GetObject(ctx, "worker", worker); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+	}
+
 	otel := &Monitoring{}
 	if err := config.GetObject(ctx, "monitoring", otel); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
@@ -481,6 +512,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		InstallDevBox: config.GetBool(ctx, "install-dev-box"),
 		Storage:       storage,
 		API:           api,
+		Worker: worker,
 		Ingress:       ingress,
 	}, nil
 }
