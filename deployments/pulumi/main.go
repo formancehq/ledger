@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -44,10 +45,11 @@ func deploy(ctx *pulumi.Context) error {
 		Postgres: pulumi_ledger.PostgresArgs{
 			URI: pulumi.String(postgresURI),
 		},
-		Debug:                pulumi.Bool(conf.GetBool("debug")),
-		ReplicaCount:         pulumi.Int(conf.GetInt("replicaCount")),
-		ExperimentalFeatures: pulumi.Bool(conf.GetBool("experimentalFeatures")),
-		Upgrade: pulumix.Val(pulumi_ledger.UpgradeMode(config.Get(ctx, "upgrade-mode"))),
+		Debug: pulumi.Bool(conf.GetBool("debug")),
+		API: pulumi_ledger.APIArgs{
+			ReplicaCount:         pulumix.Val(pointer.For(conf.GetInt("replicaCount"))),
+			ExperimentalFeatures: pulumi.Bool(conf.GetBool("experimentalFeatures")),
+		},
 	})
 
 	return err

@@ -12,7 +12,7 @@ func PrintVersion(_ *cobra.Command, _ []string) {
 	fmt.Printf("Commit: %s \n", Commit)
 }
 
-func NewVersion() *cobra.Command {
+func NewVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Get version",

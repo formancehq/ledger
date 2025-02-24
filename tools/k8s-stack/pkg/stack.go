@@ -14,15 +14,16 @@ import (
 
 type StackComponent struct {
 	pulumi.ResourceState
-	Ledger   *pulumi_ledger.Component
-	Postgres *PostgresComponent
+	Ledger    *pulumi_ledger.Component
+	Postgres  *PostgresComponent
+	Namespace pulumix.Output[string]
 }
 
 type StackLedgerArgs struct {
 	Version     pulumix.Input[string]
 	GracePeriod pulumix.Input[string]
-	Upgrade     pulumix.Input[pulumi_ledger.UpgradeMode]
 	Otel        *pulumi_ledger.OtelArgs
+	Ingress     *pulumi_ledger.IngressArgs
 }
 
 type StackComponentArgs struct {
@@ -42,21 +43,20 @@ func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts .
 		pulumi.Parent(cmp),
 	}
 
-	var namespaceName pulumix.Input[string]
 	if args.Namespace != nil {
-		namespaceName = pulumix.Apply(args.Namespace, func(namespace string) string {
+		cmp.Namespace = pulumix.Apply(args.Namespace, func(namespace string) string {
 			if namespace == "" {
 				return fmt.Sprintf("%s-%s", ctx.Project(), strings.Replace(ctx.Stack(), ".", "-", -1))
 			}
 			return namespace
 		})
 	} else {
-		namespaceName = pulumi.Sprintf("%s-%s", ctx.Project(), strings.Replace(ctx.Stack(), ".", "-", -1))
+		cmp.Namespace = pulumix.Val(fmt.Sprintf("%s-%s", ctx.Project(), strings.Replace(ctx.Stack(), ".", "-", -1)))
 	}
 
 	namespace, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
-			Name: namespaceName.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+			Name: cmp.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 		},
 	}, pulumi.Parent(cmp))
 	if err != nil {
@@ -66,7 +66,7 @@ func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts .
 	resourceOptions = append(resourceOptions, pulumi.DependsOn([]pulumi.Resource{namespace}))
 
 	cmp.Postgres, err = NewPostgresComponent(ctx, "postgres", &PostgresComponentArgs{
-		Namespace: namespaceName,
+		Namespace: cmp.Namespace,
 	}, resourceOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("creating Postgres component: %w", err)
@@ -89,13 +89,15 @@ func NewStack(ctx *pulumi.Context, name string, args *StackComponentArgs, opts .
 			MaxOpenConns:    pulumix.Val(pointer.For(100)),
 			ConnMaxIdleTime: pulumix.Val(pointer.For(time.Minute)),
 		},
-		ExperimentalFeatures: pulumi.Bool(true),
+		API: pulumi_ledger.APIArgs{
+			ExperimentalFeatures: pulumi.Bool(true),
+			GracePeriod:          args.Ledger.GracePeriod,
+			Ingress:              args.Ledger.Ingress,
+		},
 		Namespace: pulumix.Apply(namespace.Metadata.Name().ToOutput(ctx.Context()).Untyped().(pulumi.StringPtrOutput), func(ns *string) string {
 			return *ns
 		}),
-		GracePeriod: args.Ledger.GracePeriod,
-		Upgrade:     args.Ledger.Upgrade,
-		Otel:        args.Ledger.Otel,
+		Otel: args.Ledger.Otel,
 	},
 		append(resourceOptions, pulumi.DependsOn([]pulumi.Resource{
 			cmp.Postgres,
