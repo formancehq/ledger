@@ -6,4 +6,4 @@
 -- We create this index in a dedicated as, as the doc mentions it (https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT)
 -- multi statements queries are automatically wrapped inside transaction block, and it's forbidden
 -- to create index concurrently inside a transaction block.
-create unique index concurrently accounts_ledger2 on "{{.Schema}}".accounts (ledger, address)
+create unique index {{ if not .Transactional }}concurrently{{end}} accounts_ledger2 on "{{.Schema}}".accounts (ledger, address)

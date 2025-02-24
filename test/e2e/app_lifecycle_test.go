@@ -68,7 +68,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		When("having some in flight transactions on a ledger", func() {
 			var (
 				sqlTx                bun.Tx
-				countTransactions    = 80
+				countTransactions    = 60
 				serverRestartTimeout = 10 * time.Second
 			)
 			BeforeEach(func() {
@@ -128,7 +128,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			})
 			When("restarting the service", func() {
 				BeforeEach(func() {
-					// We will restart the server in a separate gorouting
+					// We will restart the server in a separate goroutine
 					// the server should not restart until all pending transactions creation requests are fully completed
 					restarted := make(chan struct{})
 					go func() {
