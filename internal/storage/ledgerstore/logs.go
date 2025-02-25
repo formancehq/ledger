@@ -72,7 +72,7 @@ func (store *Store) logsQueryBuilder(q PaginatedQueryOptions[any]) func(*bun.Sel
 		if q.QueryBuilder != nil {
 			subQuery, args, err := q.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 				switch {
-				case key == "date":
+				case key == "date" || key == "id":
 					return fmt.Sprintf("%s %s ?", key, query.DefaultComparisonOperatorsMapping[operator]), []any{value}, nil
 				default:
 					return "", nil, fmt.Errorf("unknown key '%s' when building query", key)

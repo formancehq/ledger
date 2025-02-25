@@ -289,6 +289,13 @@ func TestGetLogs(t *testing.T) {
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.
 	require.Len(t, cursor.Data, 1)
 	require.Equal(t, big.NewInt(1), cursor.Data[0].ID)
+
+	cursor, err = store.GetLogs(context.Background(), NewGetLogsQuery(NewPaginatedQueryOptions[any](nil).
+		WithQueryBuilder(query.Lt("id", 3)).
+		WithPageSize(10),
+	))
+	require.NoError(t, err)
+	require.Equal(t, 3, len(cursor.Data))
 }
 
 func TestGetBalance(t *testing.T) {
