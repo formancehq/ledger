@@ -239,4 +239,13 @@ func TestLogsList(t *testing.T) {
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.
 	require.Len(t, cursor.Data, 1)
 	require.EqualValues(t, 2, *cursor.Data[0].ID)
+
+	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 10,
+		Options: ledgercontroller.ResourceQuery[any]{
+			Builder: query.Lt("id", 3),
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(cursor.Data))
 }
