@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestBulkHandlerText(t *testing.T) {
+func TestBulkStreamHandlerJSON(t *testing.T) {
 
 	t.Parallel()
 
@@ -28,18 +28,8 @@ func TestBulkHandlerText(t *testing.T) {
 		{
 			name: "nominal",
 			stream: `
-//script
-send [USD 100] (
-	source = @world
-	destination = @alice
-)
-//end
-//script
-send [USD 100] (
-	source = @world
-	destination = @bob
-)
-//end
+{"action": "CREATE_TRANSACTION", "data": {"postings": [{"source": "world", "amount": 100, "asset": "USD", "destination": "bank"}]}}
+{"action": "CREATE_TRANSACTION", "data": {"postings": [{"source": "world", "amount": 200, "asset": "USD", "destination": "bank"}]}}
 `,
 			expectScriptCount: 2,
 		},
@@ -52,7 +42,7 @@ send [USD 100] (
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/", reader)
 
-			h := NewScriptStreamBulkHandler()
+			h := NewJSONStreamBulkHandler()
 			send, receive, ok := h.GetChannels(w, r)
 
 			if testCase.expectedError {
@@ -84,6 +74,11 @@ send [USD 100] (
 			}
 
 			require.NoError(t, writer.Close())
+			select {
+			case <-send:
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("send channel should have been closed")
+			}
 			close(receive)
 
 			h.Terminate(w, r)
