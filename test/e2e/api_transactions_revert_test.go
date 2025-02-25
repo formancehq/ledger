@@ -3,13 +3,14 @@
 package test_suite
 
 import (
+	"math/big"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	"math/big"
-	"time"
 
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/nats-io/nats.go"
@@ -216,6 +217,92 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				})
 				Expect(err).To(BeNil())
 				Expect(tx.Reverted).To(BeFalse())
+			})
+		})
+	})
+	When("creating a transaction through an empty passthrough account", func() {
+		var (
+			timestamp = time.Now().Round(time.Second).UTC()
+			tx        *components.V2Transaction
+			err       error
+		)
+		BeforeEach(func() {
+			tx, err = CreateTransaction(
+				ctx,
+				testServer.GetValue(),
+				operations.V2CreateTransactionRequest{
+					V2PostTransaction: components.V2PostTransaction{
+						Metadata: map[string]string{},
+						Postings: []components.V2Posting{
+							{
+								Amount:      big.NewInt(100),
+								Asset:       "USD",
+								Source:      "world",
+								Destination: "walter",
+							},
+						},
+						Timestamp: &timestamp,
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+		})
+		When("creating the pass-through transaction", func() {
+			BeforeEach(func() {
+				tx, err = CreateTransaction(
+					ctx,
+					testServer.GetValue(),
+					operations.V2CreateTransactionRequest{
+						V2PostTransaction: components.V2PostTransaction{
+							Metadata: map[string]string{},
+							Postings: []components.V2Posting{
+								{
+									Amount:      big.NewInt(10),
+									Asset:       "USD",
+									Source:      "walter",
+									Destination: "wendy",
+								},
+								{
+									Amount:      big.NewInt(10),
+									Asset:       "USD",
+									Source:      "wendy",
+									Destination: "world",
+								},
+							},
+							Timestamp: &timestamp,
+						},
+						Ledger: "default",
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			When("reverting the pass-through transaction", func() {
+				BeforeEach(func() {
+					_, err := RevertTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2RevertTransactionRequest{
+							Ledger:          "default",
+							ID:              tx.ID,
+							AtEffectiveDate: pointer.For(true),
+						},
+					)
+					Expect(err).To(Succeed())
+				})
+				It("should revert the passthrough transaction at date of the original tx", func() {
+					response, err := GetTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2GetTransactionRequest{
+							Ledger: "default",
+							ID:     tx.ID,
+						},
+					)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(response.Reverted).To(BeTrue())
+					Expect(response.Timestamp).To(Equal(tx.Timestamp))
+				})
 			})
 		})
 	})
