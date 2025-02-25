@@ -19,7 +19,7 @@ const MinimalSchemaVersion = 12
 
 type DefaultBucket struct {
 	name string
-	db   *bun.DB
+	db   bun.IDB
 	tracer trace.Tracer
 }
 
@@ -79,7 +79,7 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 	return nil
 }
 
-func NewDefault(db *bun.DB, tracer trace.Tracer, name string) *DefaultBucket {
+func NewDefault(db bun.IDB, tracer trace.Tracer, name string) *DefaultBucket {
 	return &DefaultBucket{
 		db:   db,
 		name: name,
@@ -92,6 +92,9 @@ type ledgerSetup struct {
 	script          string
 }
 
+// notes: Be careful if changing the order of the migration.
+// The actions on tables are organized following the same order used when committing a new transaction.
+// It prevents deadlocks.
 var ledgerSetups = []ledgerSetup{
 	{
 		script: `
@@ -100,96 +103,9 @@ var ledgerSetups = []ledgerSetup{
 		create sequence "{{.Bucket}}"."transaction_id_{{.ID}}" owned by "{{.Bucket}}".transactions.id;
 		select setval('"{{.Bucket}}"."transaction_id_{{.ID}}"', coalesce((
 			select max(id) + 1
-			from "{{.Bucket}}".transactions
+			from "{{.Bucket}}"."transactions"
 			where ledger = '{{ .Name }}'
 		), 1)::bigint, false);
-		`,
-	},
-	{
-		script: `
-		-- create a sequence for logs by ledger instead of a sequence of the table as we want to have contiguous ids
-		-- notes: we can still have "holes" on id since a sql transaction can be reverted after a usage of the sequence
-		create sequence "{{.Bucket}}"."log_id_{{.ID}}" owned by "{{.Bucket}}".logs.id;
-		select setval('"{{.Bucket}}"."log_id_{{.ID}}"', coalesce((
-			select max(id) + 1
-			from "{{.Bucket}}".logs
-			where ledger = '{{ .Name }}'
-		), 1)::bigint, false);
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
-		},
-		script: `
-		create trigger "set_effective_volumes_{{.ID}}"
-		before insert
-		on "{{.Bucket}}"."moves"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".set_effective_volumes();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
-		},
-		script: `
-		create trigger "update_effective_volumes_{{.ID}}"
-		after insert
-		on "{{.Bucket}}"."moves"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".update_effective_volumes();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureHashLogs: "SYNC",
-		},
-		script: `
-		create trigger "set_log_hash_{{.ID}}"
-		before insert
-		on "{{.Bucket}}"."logs"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".set_log_hash();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureAccountMetadataHistory: "SYNC",
-		},
-		script: `
-		create trigger "update_account_metadata_history_{{.ID}}"
-		after update
-		on "{{.Bucket}}"."accounts"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".update_account_metadata_history();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureAccountMetadataHistory: "SYNC",
-		},
-		script: `
-		create trigger "insert_account_metadata_history_{{.ID}}"
-		after insert
-		on "{{.Bucket}}"."accounts"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".insert_account_metadata_history();
 		`,
 	},
 	{
@@ -239,6 +155,52 @@ var ledgerSetups = []ledgerSetup{
 	},
 	{
 		requireFeatures: features.FeatureSet{
+			features.FeatureIndexAddressSegments:     "ON",
+			features.FeatureIndexTransactionAccounts: "ON",
+		},
+		script: `
+		create trigger "transaction_set_addresses_segments_{{.ID}}"
+		before insert
+		on "{{.Bucket}}"."transactions"
+		for each row
+		when (
+			new.ledger = '{{.Name}}'
+		)
+		execute procedure "{{.Bucket}}".set_transaction_addresses_segments();
+		`,
+	},
+	{
+		requireFeatures: features.FeatureSet{
+			features.FeatureAccountMetadataHistory: "SYNC",
+		},
+		script: `
+		create trigger "update_account_metadata_history_{{.ID}}"
+		after update
+		on "{{.Bucket}}"."accounts"
+		for each row
+		when (
+			new.ledger = '{{.Name}}'
+		)
+		execute procedure "{{.Bucket}}".update_account_metadata_history();
+		`,
+	},
+	{
+		requireFeatures: features.FeatureSet{
+			features.FeatureAccountMetadataHistory: "SYNC",
+		},
+		script: `
+		create trigger "insert_account_metadata_history_{{.ID}}"
+		after insert
+		on "{{.Bucket}}"."accounts"
+		for each row
+		when (
+			new.ledger = '{{.Name}}'
+		)
+		execute procedure "{{.Bucket}}".insert_account_metadata_history();
+		`,
+	},
+	{
+		requireFeatures: features.FeatureSet{
 			features.FeatureIndexAddressSegments: "ON",
 		},
 		script: `
@@ -254,18 +216,59 @@ var ledgerSetups = []ledgerSetup{
 	},
 	{
 		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments:     "ON",
-			features.FeatureIndexTransactionAccounts: "ON",
+			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
 		},
 		script: `
-		create trigger "transaction_set_addresses_segments_{{.ID}}"
+		create trigger "set_effective_volumes_{{.ID}}"
 		before insert
-		on "{{.Bucket}}"."transactions"
+		on "{{.Bucket}}"."moves"
 		for each row
 		when (
 			new.ledger = '{{.Name}}'
 		)
-		execute procedure "{{.Bucket}}".set_transaction_addresses_segments();
+		execute procedure "{{.Bucket}}".set_effective_volumes();
+		`,
+	},
+	{
+		requireFeatures: features.FeatureSet{
+			features.FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
+		},
+		script: `
+		create trigger "update_effective_volumes_{{.ID}}"
+		after insert
+		on "{{.Bucket}}"."moves"
+		for each row
+		when (
+			new.ledger = '{{.Name}}'
+		)
+		execute procedure "{{.Bucket}}".update_effective_volumes();
+		`,
+	},
+	{
+		script: `
+		-- create a sequence for logs by ledger instead of a sequence of the table as we want to have contiguous ids
+		-- notes: we can still have "holes" on id since a sql transaction can be reverted after a usage of the sequence
+		create sequence "{{.Bucket}}"."log_id_{{.ID}}" owned by "{{.Bucket}}".logs.id;
+		select setval('"{{.Bucket}}"."log_id_{{.ID}}"', coalesce((
+			select max(id) + 1
+			from "{{.Bucket}}".logs
+			where ledger = '{{ .Name }}'
+		), 1)::bigint, false);
+		`,
+	},
+	{
+		requireFeatures: features.FeatureSet{
+			features.FeatureHashLogs: "SYNC",
+		},
+		script: `
+		create trigger "set_log_hash_{{.ID}}"
+		before insert
+		on "{{.Bucket}}"."logs"
+		for each row
+		when (
+			new.ledger = '{{.Name}}'
+		)
+		execute procedure "{{.Bucket}}".set_log_hash();
 		`,
 	},
 }
