@@ -138,7 +138,17 @@ func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	}
 }
 
-type ListLedgersQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[struct{}]]
+type ListLedgersQueryPayload struct {
+	Bucket string
+}
+
+type ListLedgersQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[ListLedgersQueryPayload]]
+
+func (q ListLedgersQuery) WithBucket(bucket string) ListLedgersQuery {
+	q.Options.Options.Bucket = bucket
+
+	return q
+}
 
 func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 	return ListLedgersQuery{

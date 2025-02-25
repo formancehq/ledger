@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/uptrace/bun"
 
 	"github.com/spf13/cobra"
@@ -43,11 +42,7 @@ func NewRootCommand() *cobra.Command {
 		logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 		cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
 
-		driver := driver.New(
-			ledger.NewFactory(db),
-			systemstore.New(db),
-			bucket.NewDefaultFactory(db),
-		)
+		driver := driver.New(db, ledger.NewFactory(db), bucket.NewDefaultFactory())
 		if err := driver.Initialize(cmd.Context()); err != nil {
 			return err
 		}

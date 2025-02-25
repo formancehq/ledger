@@ -9,10 +9,10 @@ replace github.com/formancehq/ledger => ../..
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v2 v2.0.1-0.20250217160145-75857677eef9
+	github.com/formancehq/go-libs/v2 v2.0.1-0.20250225100718-5e1dfe022817
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/oauth2 v0.24.0
 )
@@ -32,7 +32,7 @@ require (
 	github.com/dop251/goja v0.0.0-20241009100908-5f46f2705ca3 // indirect
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/formancehq/numscript v0.0.10 // indirect
+	github.com/formancehq/numscript v0.0.11 // indirect
 	github.com/go-chi/chi/v5 v5.2.1 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -76,10 +76,10 @@ require (
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

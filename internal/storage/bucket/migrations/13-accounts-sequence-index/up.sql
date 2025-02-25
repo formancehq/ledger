@@ -1,1 +1,1 @@
-create index concurrently accounts_sequences on "{{.Schema}}".accounts (address, seq);
+create index {{ if not .Transactional }}concurrently{{end}} accounts_sequences on "{{.Schema}}".accounts (address, seq);
