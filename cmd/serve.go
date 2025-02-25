@@ -1,13 +1,12 @@
 package cmd
 
 import (
-	"net/http"
-	"net/http/pprof"
-	"time"
-
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"net/http"
+	"net/http/pprof"
+	"time"
 
 	apilib "github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/health"
@@ -48,6 +47,7 @@ const (
 	NumscriptInterpreterFlagsToPass = "numscript-interpreter-flags"
 	DefaultPageSizeFlag             = "default-page-size"
 	MaxPageSizeFlag                 = "max-page-size"
+	WorkerEnabledFlag               = "worker"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -150,6 +150,11 @@ func NewServeCommand() *cobra.Command {
 				}),
 			}
 
+			workerEnabled, _ := cmd.Flags().GetBool(WorkerEnabledFlag)
+			if workerEnabled {
+				options = append(options, newWorkerModule())
+			}
+
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},
 	}
@@ -164,7 +169,9 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
+	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
 
+	addWorkerFlags(cmd)
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
 	otlpmetrics.AddFlags(cmd.Flags())

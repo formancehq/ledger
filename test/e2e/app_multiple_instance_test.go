@@ -35,10 +35,12 @@ var _ = Context("Ledger application multiple instance tests", func() {
 					<-waitStart
 
 					servers <- New(GinkgoT(), Configuration{
-						PostgresConfiguration: db.GetValue().ConnectionOptions(),
-						Output:                GinkgoWriter,
-						Debug:                 debug,
-						NatsURL:               natsServer.GetValue().ClientURL(),
+						CommonConfiguration: CommonConfiguration{
+							PostgresConfiguration: db.GetValue().ConnectionOptions(),
+							Output:                GinkgoWriter,
+							Debug:                 debug,
+						},
+						NatsURL: natsServer.GetValue().ClientURL(),
 					})
 				}()
 			}

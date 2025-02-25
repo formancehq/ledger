@@ -21,10 +21,12 @@ func TestGenerator(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	testServer := New(t, Configuration{
-		PostgresConfiguration: bunconnect.ConnectionOptions{
-			DatabaseSourceName: pgServer.GetDSN(),
+		CommonConfiguration: CommonConfiguration{
+			PostgresConfiguration: bunconnect.ConnectionOptions{
+				DatabaseSourceName: pgServer.GetDSN(),
+			},
+			Debug: os.Getenv("DEBUG") == "true",
 		},
-		Debug: os.Getenv("DEBUG") == "true",
 	})
 	require.NoError(t, testServer.Start())
 	t.Cleanup(func() {
