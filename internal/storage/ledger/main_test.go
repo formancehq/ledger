@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"database/sql"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/go-cmp/cmp"
@@ -44,9 +44,9 @@ func TestMain(m *testing.M) {
 				require.NoError(t, err)
 
 				bunDB := bun.NewDB(db, pgdialect.New(), bun.WithDiscardUnknownColumns())
-				if os.Getenv("DEBUG") == "true" {
-					bunDB.AddQueryHook(bundebug.NewQueryHook())
-				}
+				hook := bundebug.NewQueryHook()
+				hook.Debug = os.Getenv("DEBUG") == "true"
+				bunDB.AddQueryHook(hook)
 				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
