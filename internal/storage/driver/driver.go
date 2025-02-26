@@ -114,6 +114,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 func (d *Driver) detectRollbacks(ctx context.Context) error {
 
 	logging.FromContext(ctx).Debugf("Checking for downgrades on system schema")
+
 	if err := detectDowngrades(d.systemStore.GetMigrator(), ctx); err != nil {
 		return fmt.Errorf("detecting rollbacks of system schema: %w", err)
 	}
