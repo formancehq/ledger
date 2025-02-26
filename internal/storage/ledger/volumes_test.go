@@ -103,6 +103,65 @@ func TestVolumesList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx8)
 	require.NoError(t, err)
 
+	t.Run("Get all volumes with first account usage filter", func(t *testing.T) {
+		t.Parallel()
+		volumes, err := store.Volumes().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+				Builder: query.Lt("first_usage", now.Add(-3*time.Minute)),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2)
+		require.Contains(t, volumes.Data, ledger.VolumesWithBalanceByAssetByAccount{
+			Account: "account:1",
+			Asset:   "USD",
+			VolumesWithBalance: ledger.VolumesWithBalance{
+				Input:   big.NewInt(200),
+				Output:  big.NewInt(50),
+				Balance: big.NewInt(150),
+			},
+		})
+		require.Contains(t, volumes.Data, ledger.VolumesWithBalanceByAssetByAccount{
+			Account: "world",
+			Asset:   "USD",
+			VolumesWithBalance: ledger.VolumesWithBalance{
+				Input:   big.NewInt(0),
+				Output:  big.NewInt(325),
+				Balance: big.NewInt(-325),
+			},
+		})
+	})
+
+	t.Run("Get all volumes with first account usage filter and PIT", func(t *testing.T) {
+		t.Parallel()
+		volumes, err := store.Volumes().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+				Builder: query.Lt("first_usage", now.Add(-3*time.Minute)),
+				PIT:     pointer.For(now.Add(-3 * time.Minute)),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2)
+		require.Contains(t, volumes.Data, ledger.VolumesWithBalanceByAssetByAccount{
+			Account: "account:1",
+			Asset:   "USD",
+			VolumesWithBalance: ledger.VolumesWithBalance{
+				Input:   big.NewInt(200),
+				Output:  big.NewInt(0),
+				Balance: big.NewInt(200),
+			},
+		})
+		require.Contains(t, volumes.Data, ledger.VolumesWithBalanceByAssetByAccount{
+			Account: "world",
+			Asset:   "USD",
+			VolumesWithBalance: ledger.VolumesWithBalance{
+				Input:   big.NewInt(0),
+				Output:  big.NewInt(200),
+				Balance: big.NewInt(-200),
+			},
+		})
+	})
+
 	t.Run("Get all volumes with balance for insertion date", func(t *testing.T) {
 		t.Parallel()
 		volumes, err := store.Volumes().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
