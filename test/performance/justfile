@@ -3,6 +3,7 @@ set positional-arguments
 
 tmpdir := `mktemp -d`
 
+# Run against the local branch
 run bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
     mkdir -p $(dirname {{output}})
     rm -f {{output}}
@@ -11,9 +12,22 @@ run bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.t
         -timeout 600m \
         -bench={{bench}} \
         -count={{count}} \
-        -p {{p}} \
+        -parallelism {{p}} \
         -test.benchtime {{benchtime}} . | tee -a {{output}}
 
+run-remote ledgerURL bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
+    mkdir -p $(dirname {{output}})
+    rm -f {{output}}
+    go test -run ^$ -tags it,local \
+        -report.file ./report/report.json \
+        -ledger.url {{ledgerURL}} \
+        -timeout 600m \
+        -bench={{bench}} \
+        -count={{count}} \
+        -parallelism {{p}} \
+        -test.benchtime {{benchtime}} . | tee -a {{output}}
+
+# Compare against main branch
 compare bench='.' p='1' benchtime='1s' count='1' output='./report/benchmark-output.txt':
     trap 'rm -rf {{tmpdir}}' EXIT
     just run {{bench}} {{p}} {{benchtime}} {{count}} './report/benchmark-output-local.txt'

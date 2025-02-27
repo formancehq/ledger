@@ -22,14 +22,14 @@ import (
 )
 
 type Action struct {
-	elements []bulking.BulkElement
+	Elements []bulking.BulkElement
 }
 
 func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]components.V2BulkElementResult, error) {
 
 	bulkElements := make([]components.V2BulkElement, 0)
 
-	for _, element := range r.elements {
+	for _, element := range r.Elements {
 		var bulkElement components.V2BulkElement
 
 		switch element.Action {
@@ -307,7 +307,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 			}
 
 			return &Action{
-				elements: elements,
+				Elements: elements,
 			}, nil
 		},
 	}, nil
