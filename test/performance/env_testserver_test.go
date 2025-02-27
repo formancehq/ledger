@@ -64,13 +64,15 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 	}
 
 	testServer := testserver.New(b, testserver.Configuration{
-		PostgresConfiguration: connectionOptions,
-		Debug:                 os.Getenv("DEBUG") == "true",
-		Output:                output,
-		OTLPConfig: &testserver.OTLPConfig{
-			Metrics: &otlpmetrics.ModuleConfig{
-				KeepInMemory:   true,
-				RuntimeMetrics: true,
+		CommonConfiguration: testserver.CommonConfiguration{
+			PostgresConfiguration: connectionOptions,
+			Debug:                 os.Getenv("DEBUG") == "true",
+			Output:                output,
+			OTLPConfig: &testserver.OTLPConfig{
+				Metrics: &otlpmetrics.ModuleConfig{
+					KeepInMemory:   true,
+					RuntimeMetrics: true,
+				},
 			},
 		},
 		ExperimentalFeatures: true,

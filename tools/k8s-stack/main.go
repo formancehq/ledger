@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v2/pointer"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
-	pulumi_dataset_init_stack "github.com/formancehq/ledger/tools/k8s-stack/pkg"
+	pulumi_ledger_testing "github.com/formancehq/ledger/tools/k8s-stack/pkg"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
@@ -28,10 +28,10 @@ func main() {
 			}
 		}
 
-		args := &pulumi_dataset_init_stack.StackComponentArgs{
+		args := &pulumi_ledger_testing.StackComponentArgs{
 			Debug:     pulumix.Val(config.GetBool(ctx, "debug")),
 			Namespace: pulumi.String(config.Get(ctx, "namespace")),
-			Ledger: &pulumi_dataset_init_stack.StackLedgerArgs{
+			Ledger: &pulumi_ledger_testing.StackLedgerArgs{
 				Version:     pulumix.Val(ledgerConfig.Get("version")),
 				GracePeriod: pulumix.Val(ledgerConfig.Get("grace-period")),
 				Ingress: func() *pulumi_ledger.IngressArgs {
@@ -83,7 +83,7 @@ func main() {
 			}
 		}
 
-		cmp, err := pulumi_dataset_init_stack.NewStack(ctx, ctx.Stack(), args)
+		cmp, err := pulumi_ledger_testing.NewStack(ctx, ctx.Stack(), args)
 
 		ctx.Export("ledger-url", cmp.Ledger.ServiceInternalURL)
 		ctx.Export("ledger-deployment", cmp.Ledger.ServerDeployment.Metadata.Name())
