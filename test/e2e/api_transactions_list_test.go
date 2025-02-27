@@ -84,6 +84,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 								},
 							},
 							Timestamp: pointer.For(txTimestamp),
+							Reference: pointer.For(fmt.Sprintf("ref-%d", i)),
 						},
 						Ledger: "default",
 					},
@@ -131,10 +132,19 @@ var _ = Context("Ledger transactions list API tests", func() {
 			JustBeforeEach(func() {
 				rsp, err = ListTransactions(ctx, testServer.GetValue(), req)
 				Expect(err).ToNot(HaveOccurred())
-
-				Expect(rsp.HasMore).To(BeTrue())
-				Expect(rsp.Previous).To(BeNil())
-				Expect(rsp.Next).NotTo(BeNil())
+			})
+			Context("with a filter on reference", func() {
+				BeforeEach(func() {
+					req.RequestBody = map[string]any{
+						"$match": map[string]any{
+							"reference": "ref-0",
+						},
+					}
+				})
+				It("Should be ok, and returns transactions with reference 'ref-0'", func() {
+					Expect(rsp.Data).To(HaveLen(1))
+					Expect(rsp.Data[0]).To(Equal(transactions[txCount-1]))
+				})
 			})
 			Context("with effective ordering", func() {
 				BeforeEach(func() {
@@ -155,6 +165,9 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			When("following next cursor", func() {
 				JustBeforeEach(func() {
+					Expect(rsp.HasMore).To(BeTrue())
+					Expect(rsp.Previous).To(BeNil())
+					Expect(rsp.Next).NotTo(BeNil())
 
 					// Create a new transaction to ensure cursor is stable
 					_, err := CreateTransaction(
