@@ -52,10 +52,14 @@ func TestMain(m *testing.M) {
 				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
+
+				err = bucket.GetMigrator(bunDB, "_default").Up(logging.TestingContext())
+				require.NoError(t, err)
+
 				defaultDriver.SetValue(driver.New(
+					bunDB,
 					ledgerstore.NewFactory(bunDB),
-					systemstore.New(bunDB),
-					bucket.NewDefaultFactory(bunDB),
+					bucket.NewDefaultFactory(),
 				))
 
 				return bunDB
