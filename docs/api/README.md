@@ -157,7 +157,12 @@ No other parameters can be set when this parameter is set.
         "bucket": "string",
         "metadata": {
           "admin": "true"
-        }
+        },
+        "features": {
+          "property1": "string",
+          "property2": "string"
+        },
+        "id": 0
       }
     ]
   }
@@ -209,7 +214,12 @@ Accept: application/json
     "bucket": "string",
     "metadata": {
       "admin": "true"
-    }
+    },
+    "features": {
+      "property1": "string",
+      "property2": "string"
+    },
+    "id": 0
   }
 }
 ```
@@ -4309,7 +4319,12 @@ and
   "bucket": "string",
   "metadata": {
     "admin": "true"
-  }
+  },
+  "features": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "id": 0
 }
 
 ```
@@ -4322,6 +4337,9 @@ and
 |addedAt|string(date-time)|true|none|none|
 |bucket|string|true|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|false|none|none|
+|features|object|false|none|none|
+|» **additionalProperties**|string|false|none|none|
+|id|integer|true|none|none|
 
 <h2 id="tocS_V2LedgerListResponse">V2LedgerListResponse</h2>
 <!-- backwards compatibility -->
@@ -4344,7 +4362,12 @@ and
         "bucket": "string",
         "metadata": {
           "admin": "true"
-        }
+        },
+        "features": {
+          "property1": "string",
+          "property2": "string"
+        },
+        "id": 0
       }
     ]
   }
@@ -4396,7 +4419,12 @@ and
     "bucket": "string",
     "metadata": {
       "admin": "true"
-    }
+    },
+    "features": {
+      "property1": "string",
+      "property2": "string"
+    },
+    "id": 0
   }
 }
 
