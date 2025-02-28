@@ -3,7 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/ledger/internal/bus"
+	"github.com/formancehq/ledger/pkg/events"
 	"github.com/invopop/jsonschema"
 	"github.com/spf13/cobra"
 	"os"
@@ -30,10 +30,10 @@ func NewDocEventsCommand() *cobra.Command {
 			}
 
 			for _, o := range []any{
-				bus.CommittedTransactions{},
-				bus.DeletedMetadata{},
-				bus.SavedMetadata{},
-				bus.RevertedTransaction{},
+				events.CommittedTransactions{},
+				events.DeletedMetadata{},
+				events.SavedMetadata{},
+				events.RevertedTransaction{},
 			} {
 				schema := jsonschema.Reflect(o)
 				data, err := json.MarshalIndent(schema, "", "  ")

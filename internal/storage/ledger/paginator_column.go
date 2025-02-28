@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/uptrace/bun"
 	"math/big"
 	"reflect"
@@ -18,7 +18,7 @@ type columnPaginator[ResourceType, OptionsType any] struct {
 }
 
 //nolint:unused
-func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query pagination.ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.defaultPaginationColumn
 	originalOrder := o.defaultOrder
@@ -61,7 +61,7 @@ func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceType, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceType, query pagination.ColumnPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
 
 	paginationColumn := query.Column
 	if paginationColumn == "" {
@@ -102,7 +102,7 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 		}
 	}
 
-	var previous, next *ledgercontroller.ColumnPaginatedQuery[OptionsType]
+	var previous, next *pagination.ColumnPaginatedQuery[OptionsType]
 
 	if query.Reverse {
 		cp := query
@@ -132,13 +132,13 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	return &bunpaginate.Cursor[ResourceType]{
 		PageSize: int(pageSize),
 		HasMore:  next != nil,
-		Previous: encodeCursor[OptionsType, ledgercontroller.ColumnPaginatedQuery[OptionsType]](previous),
-		Next:     encodeCursor[OptionsType, ledgercontroller.ColumnPaginatedQuery[OptionsType]](next),
+		Previous: encodeCursor[OptionsType, pagination.ColumnPaginatedQuery[OptionsType]](previous),
+		Next:     encodeCursor[OptionsType, pagination.ColumnPaginatedQuery[OptionsType]](next),
 		Data:     ret,
 	}, nil
 }
 
-var _ paginator[any, ledgercontroller.ColumnPaginatedQuery[any]] = &columnPaginator[any, any]{}
+var _ paginator[any, pagination.ColumnPaginatedQuery[any]] = &columnPaginator[any, any]{}
 
 //nolint:unused
 func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructField {
@@ -236,7 +236,7 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 }
 
 //nolint:unused
-func encodeCursor[OptionsType any, PaginatedQueryType ledgercontroller.PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
+func encodeCursor[OptionsType any, PaginatedQueryType pagination.PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
 	if v == nil {
 		return ""
 	}

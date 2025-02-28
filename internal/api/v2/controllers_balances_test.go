@@ -2,13 +2,13 @@ package v2
 
 import (
 	"bytes"
+	"github.com/formancehq/ledger/internal/pagination"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/time"
 
@@ -27,7 +27,7 @@ func TestBalancesAggregates(t *testing.T) {
 		name        string
 		queryParams url.Values
 		body        string
-		expectQuery ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
+		expectQuery pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]
 	}
 
 	now := time.Now()
@@ -35,8 +35,8 @@ func TestBalancesAggregates(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts:   ledgercontroller.GetAggregatedVolumesOptions{},
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts:   ledgerstore.GetAggregatedVolumesOptions{},
 				PIT:    &now,
 				Expand: make([]string, 0),
 			},
@@ -44,8 +44,8 @@ func TestBalancesAggregates(t *testing.T) {
 		{
 			name: "using address",
 			body: `{"$match": {"address": "foo"}}`,
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts:    ledgercontroller.GetAggregatedVolumesOptions{},
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts:    ledgerstore.GetAggregatedVolumesOptions{},
 				PIT:     &now,
 				Builder: query.Match("address", "foo"),
 				Expand:  make([]string, 0),
@@ -54,8 +54,8 @@ func TestBalancesAggregates(t *testing.T) {
 		{
 			name: "using exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts:    ledgercontroller.GetAggregatedVolumesOptions{},
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts:    ledgerstore.GetAggregatedVolumesOptions{},
 				PIT:     &now,
 				Builder: query.Exists("metadata", "foo"),
 				Expand:  make([]string, 0),
@@ -66,8 +66,8 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"pit": []string{now.Format(time.RFC3339Nano)},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts:   ledgercontroller.GetAggregatedVolumesOptions{},
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts:   ledgerstore.GetAggregatedVolumesOptions{},
 				PIT:    &now,
 				Expand: make([]string, 0),
 			},
@@ -78,8 +78,8 @@ func TestBalancesAggregates(t *testing.T) {
 				"pit":              []string{now.Format(time.RFC3339Nano)},
 				"useInsertionDate": []string{"true"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts: ledgercontroller.GetAggregatedVolumesOptions{
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts: ledgerstore.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},
 				PIT:    &now,

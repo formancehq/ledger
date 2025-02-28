@@ -3,8 +3,9 @@ package cmd
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/all"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/worker"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -56,7 +57,10 @@ func NewServeCommand() *cobra.Command {
 		Use:          "serve",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			serveConfiguration := discoverServeConfiguration(cmd)
+			serveConfiguration, err := discoverServeConfiguration(cmd)
+			if err != nil {
+				return err
+			}
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 			if err != nil {
@@ -99,8 +103,10 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
-					AutoUpgrade:  serveConfiguration.autoUpgrade,
+					AutoUpgrade: serveConfiguration.autoUpgrade,
 				}),
+				drivers.NewFXModule(),
+				fx.Invoke(all.Register),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      numscriptInterpreter,
 					NumscriptInterpreterFlags: numscriptInterpreterFlags,
@@ -155,10 +161,7 @@ func NewServeCommand() *cobra.Command {
 
 			workerEnabled, _ := cmd.Flags().GetBool(WorkerEnabledFlag)
 			if workerEnabled {
-				options = append(options, worker.NewFXModule(worker.ModuleConfig{
-					Schedule:     serveConfiguration.workerConfiguration.hashLogsBlockCRONSpec,
-					MaxBlockSize: serveConfiguration.workerConfiguration.hashLogsBlockMaxSize,
-				}))
+				options = append(options, newWorkerModule(serveConfiguration.workerConfiguration))
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
@@ -199,15 +202,20 @@ type serveConfiguration struct {
 	workerConfiguration    workerConfiguration
 }
 
-func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
-	ret := serveConfiguration{}
+func discoverServeConfiguration(cmd *cobra.Command) (*serveConfiguration, error) {
+	ret := &serveConfiguration{}
 	ret.ballastSize, _ = cmd.Flags().GetUint(BallastSizeInBytesFlag)
 	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
 	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
 	ret.bind, _ = cmd.Flags().GetString(BindFlag)
-	ret.workerConfiguration = discoverWorkerConfiguration(cmd)
 
-	return ret
+	workerConfiguration, err := discoverWorkerConfiguration(cmd)
+	if err != nil {
+		return nil, err
+	}
+	ret.workerConfiguration = *workerConfiguration
+
+	return ret, nil
 }
 
 func assembleFinalRouter(

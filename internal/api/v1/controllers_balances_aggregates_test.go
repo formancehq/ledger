@@ -1,14 +1,14 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/pagination"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/auth"
@@ -24,14 +24,14 @@ func TestBalancesAggregates(t *testing.T) {
 	type testCase struct {
 		name        string
 		queryParams url.Values
-		expectQuery ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
+		expectQuery pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]
 	}
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts: ledgercontroller.GetAggregatedVolumesOptions{
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts: ledgerstore.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},
 			},
@@ -41,8 +41,8 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-				Opts: ledgercontroller.GetAggregatedVolumesOptions{
+			expectQuery: pagination.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+				Opts: ledgerstore.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},
 				Builder: query.Match("address", "foo"),
