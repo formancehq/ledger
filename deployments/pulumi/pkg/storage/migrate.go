@@ -1,13 +1,27 @@
-package pulumi_ledger
+package storage
 
 import (
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func newMigrationJob(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*batchv1.Job, error) {
+type migrationArgs struct {
+	utils.CommonArgs
+	component *Component
+}
+
+func runMigrateJob(ctx *pulumi.Context, args migrationArgs, opts ...pulumi.ResourceOption) (*batchv1.Job, error) {
+	envVars := corev1.EnvVarArray{
+		corev1.EnvVarArgs{
+			Name:  pulumi.String("DEBUG"),
+			Value: utils.BoolToString(args.Debug).Untyped().(pulumi.StringOutput),
+		},
+	}
+	envVars = append(envVars, args.component.GetEnvVars()...)
+
 	return batchv1.NewJob(ctx, "migrate", &batchv1.JobArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
@@ -22,22 +36,13 @@ func newMigrationJob(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (
 							Args: pulumi.StringArray{
 								pulumi.String("migrate"),
 							},
-							Image:           image(args.Tag),
+							Image:           utils.GetImage(args.Tag),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
-							Env: corev1.EnvVarArray{
-								corev1.EnvVarArgs{
-									Name:  pulumi.String("POSTGRES_URI"),
-									Value: args.Postgres.URI.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
-								},
-								corev1.EnvVarArgs{
-									Name:  pulumi.String("DEBUG"),
-									Value: boolToString(args.Debug).Untyped().(pulumi.StringOutput),
-								},
-							},
+							Env:             envVars,
 						},
 					},
 				},
 			},
 		},
-	}, pulumi.Parent(cmp))
+	}, append(opts, pulumi.DeleteBeforeReplace(true))...)
 }
