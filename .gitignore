@@ -8,3 +8,4 @@ worktrees
 dumps
 .env
 !.envrc
+Pulumi.*.yaml
