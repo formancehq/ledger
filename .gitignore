@@ -6,3 +6,4 @@ dist
 vendor
 worktrees
 dumps
+Pulumi.*.yaml
