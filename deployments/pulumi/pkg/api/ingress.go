@@ -1,13 +1,26 @@
-package pulumi_ledger
+package api
 
 import (
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
-func installIngress(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*networkingv1.Ingress, error) {
+type IngressArgs struct {
+	Host    pulumix.Input[string]
+	Secret  pulumix.Input[*string]
+	Service *corev1.Service
+}
+
+type createIngressArgs struct {
+	utils.CommonArgs
+	IngressArgs
+}
+
+func createIngress(ctx *pulumi.Context, args createIngressArgs, opts ...pulumi.ResourceOption) (*networkingv1.Ingress, error) {
 	return networkingv1.NewIngress(ctx, "ledger", &networkingv1.IngressArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
@@ -15,13 +28,13 @@ func installIngress(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*
 		Spec: &networkingv1.IngressSpecArgs{
 			Rules: networkingv1.IngressRuleArray{
 				networkingv1.IngressRuleArgs{
-					Host: args.API.Ingress.Host.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+					Host: args.Host.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 					Http: networkingv1.HTTPIngressRuleValueArgs{
 						Paths: networkingv1.HTTPIngressPathArray{
 							networkingv1.HTTPIngressPathArgs{
 								Backend: networkingv1.IngressBackendArgs{
 									Service: &networkingv1.IngressServiceBackendArgs{
-										Name: cmp.ServiceName.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+										Name: args.Service.Metadata.Name().ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 										Port: networkingv1.ServiceBackendPortArgs{
 											Name: pulumi.String("http"),
 										},
@@ -34,7 +47,7 @@ func installIngress(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*
 					},
 				},
 			},
-			Tls: pulumix.Apply(args.API.Ingress.Secret, func(secret *string) networkingv1.IngressTLSArrayInput {
+			Tls: pulumix.Apply(args.Secret, func(secret *string) networkingv1.IngressTLSArrayInput {
 				if secret == nil || *secret == "" {
 					return nil
 				}
@@ -42,7 +55,7 @@ func installIngress(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*
 				return networkingv1.IngressTLSArray{
 					networkingv1.IngressTLSArgs{
 						Hosts: pulumi.StringArray{
-							args.API.Ingress.Host.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+							args.Host.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 						},
 						SecretName: pulumi.String(*secret),
 					},
@@ -54,5 +67,5 @@ func installIngress(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*
 				return v.(networkingv1.IngressTLSArrayInput)
 			}).(networkingv1.IngressTLSArrayInput),
 		},
-	}, pulumi.Parent(cmp))
+	}, opts...)
 }

@@ -1,20 +1,20 @@
-package pulumi_ledger
+package api
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+	"time"
 )
 
-type APIArgs struct {
-	Postgres                         PostgresArgs
-	Otel                             *OtelArgs
-	Ingress                          *IngressArgs
+type Args struct {
 	ReplicaCount                     pulumix.Input[*int]
-	GracePeriod                      pulumix.Input[string]
+	GracePeriod                      pulumix.Input[time.Duration]
 	BallastSizeInBytes               pulumix.Input[int]
 	NumscriptCacheMaxCount           pulumix.Input[int]
 	BulkMaxSize                      pulumix.Input[int]
@@ -24,9 +24,9 @@ type APIArgs struct {
 	ExperimentalNumscriptInterpreter pulumix.Input[bool]
 }
 
-func (args *APIArgs) setDefaults() {
+func (args *Args) SetDefaults() {
 	if args.GracePeriod == nil {
-		args.GracePeriod = pulumi.String("0s")
+		args.GracePeriod = pulumix.Val(time.Duration(0))
 	}
 	if args.ExperimentalFeatures == nil {
 		args.ExperimentalFeatures = pulumi.Bool(false)
@@ -54,9 +54,13 @@ func (args *APIArgs) setDefaults() {
 	}
 }
 
-func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*appsv1.Deployment, error) {
-	ledgerImage := pulumi.Sprintf("ghcr.io/formancehq/ledger:%s", args.Tag)
+type createDeploymentArgs struct {
+	utils.CommonArgs
+	Args
+	Database *storage.Component
+}
 
+func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOptions ...pulumi.ResourceOption) (*appsv1.Deployment, error) {
 	envVars := corev1.EnvVarArray{}
 	envVars = append(envVars,
 		corev1.EnvVarArgs{
@@ -65,11 +69,11 @@ func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArg
 		},
 		corev1.EnvVarArgs{
 			Name:  pulumi.String("DEBUG"),
-			Value: boolToString(args.Debug).Untyped().(pulumi.StringOutput),
+			Value: utils.BoolToString(args.Debug).Untyped().(pulumi.StringOutput),
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("BULK_MAX_SIZE"),
-			Value: pulumix.Apply(args.API.BulkMaxSize, func(size int) string {
+			Value: pulumix.Apply(args.BulkMaxSize, func(size int) string {
 				if size == 0 {
 					return ""
 				}
@@ -78,7 +82,7 @@ func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArg
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("BALLAST_SIZE"),
-			Value: pulumix.Apply(args.API.BallastSizeInBytes, func(size int) string {
+			Value: pulumix.Apply(args.BallastSizeInBytes, func(size int) string {
 				if size == 0 {
 					return ""
 				}
@@ -87,7 +91,7 @@ func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArg
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("BULK_PARALLEL"),
-			Value: pulumix.Apply(args.API.BulkParallel, func(size int) string {
+			Value: pulumix.Apply(args.BulkParallel, func(size int) string {
 				if size == 0 {
 					return ""
 				}
@@ -96,7 +100,7 @@ func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArg
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("NUMSCRIPT_CACHE_MAX_COUNT"),
-			Value: pulumix.Apply(args.API.NumscriptCacheMaxCount, func(size int) string {
+			Value: pulumix.Apply(args.NumscriptCacheMaxCount, func(size int) string {
 				if size == 0 {
 					return ""
 				}
@@ -105,49 +109,50 @@ func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArg
 		},
 		corev1.EnvVarArgs{
 			Name:  pulumi.String("EXPERIMENTAL_NUMSCRIPT_INTERPRETER"),
-			Value: boolToString(args.API.ExperimentalNumscriptInterpreter).Untyped().(pulumi.StringOutput),
+			Value: utils.BoolToString(args.ExperimentalNumscriptInterpreter).Untyped().(pulumi.StringOutput),
 		},
 		corev1.EnvVarArgs{
 			Name:  pulumi.String("EXPERIMENTAL_FEATURES"),
-			Value: boolToString(args.API.ExperimentalFeatures).Untyped().(pulumi.StringOutput),
+			Value: utils.BoolToString(args.ExperimentalFeatures).Untyped().(pulumi.StringOutput),
 		},
 		corev1.EnvVarArgs{
-			Name:  pulumi.String("GRACE_PERIOD"),
-			Value: args.API.GracePeriod.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+			Name: pulumi.String("GRACE_PERIOD"),
+			Value: pulumix.Apply(args.GracePeriod, time.Duration.String).
+				Untyped().(pulumi.StringOutput),
 		},
 	)
 
-	envVars = append(envVars, args.Postgres.getEnvVars(ctx.Context())...)
+	envVars = append(envVars, args.Database.GetEnvVars()...)
 	if otel := args.Otel; otel != nil {
-		envVars = append(envVars, args.getOpenTelemetryEnvVars(ctx.Context())...)
+		envVars = append(envVars, args.Otel.GetEnvVars(ctx.Context())...)
 	}
 
-	return appsv1.NewDeployment(ctx, "ledger", &appsv1.DeploymentArgs{
+	return appsv1.NewDeployment(ctx, "ledger-api", &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 			Labels: pulumi.StringMap{
-				"com.formance.stack/app": pulumi.String("ledger"),
+				"com.formance.stack/app": pulumi.String("ledger-api"),
 			},
 		},
 		Spec: appsv1.DeploymentSpecArgs{
-			Replicas: args.API.ReplicaCount.ToOutput(ctx.Context()).Untyped().(pulumi.IntPtrOutput),
+			Replicas: args.ReplicaCount.ToOutput(ctx.Context()).Untyped().(pulumi.IntPtrOutput),
 			Selector: &metav1.LabelSelectorArgs{
 				MatchLabels: pulumi.StringMap{
-					"com.formance.stack/app": pulumi.String("ledger"),
+					"com.formance.stack/app": pulumi.String("ledger-api"),
 				},
 			},
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Labels: pulumi.StringMap{
-						"com.formance.stack/app": pulumi.String("ledger"),
+						"com.formance.stack/app": pulumi.String("ledger-api"),
 					},
 				},
 				Spec: corev1.PodSpecArgs{
-					TerminationGracePeriodSeconds: args.API.TerminationGracePeriodSeconds.ToOutput(ctx.Context()).Untyped().(pulumi.IntPtrOutput),
+					TerminationGracePeriodSeconds: args.TerminationGracePeriodSeconds.ToOutput(ctx.Context()).Untyped().(pulumi.IntPtrOutput),
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
-							Name:            pulumi.String("ledger"),
-							Image:           ledgerImage,
+							Name:            pulumi.String("ledger-api"),
+							Image:           utils.GetImage(args.Tag),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 							Args: pulumi.StringArray{
 								pulumi.String("serve"),
@@ -192,5 +197,5 @@ func createAPIDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArg
 				},
 			},
 		},
-	}, pulumi.Parent(cmp))
+	}, resourceOptions...)
 }

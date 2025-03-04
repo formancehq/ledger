@@ -1,6 +1,9 @@
-package pulumi_ledger
+package worker
 
 import (
+	"fmt"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -8,31 +11,48 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
-type WorkerArgs struct {
+type Args struct {
 	TerminationGracePeriodSeconds pulumix.Input[*int]
 }
 
-func (args *WorkerArgs) setDefaults() {
+func (args *Args) SetDefaults() {
 	if args.TerminationGracePeriodSeconds == nil {
 		args.TerminationGracePeriodSeconds = pulumix.Val((*int)(nil))
 	}
 }
 
-func createWorkerDeployment(ctx *pulumi.Context, cmp *Component, args *ComponentArgs) (*appsv1.Deployment, error) {
-	ledgerImage := pulumi.Sprintf("ghcr.io/formancehq/ledger:%s", args.Tag)
+type Component struct {
+	pulumi.ResourceState
+
+	Deployment *appsv1.Deployment
+	Service    *corev1.Service
+}
+
+type ComponentArgs struct {
+	utils.CommonArgs
+	Args
+	Database *storage.Component
+}
+
+func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
+	cmp := &Component{}
+	err := ctx.RegisterComponentResource("Formance:Ledger:Worker", name, cmp, opts...)
+	if err != nil {
+		return nil, err
+	}
 
 	envVars := corev1.EnvVarArray{}
 	envVars = append(envVars, corev1.EnvVarArgs{
 		Name:  pulumi.String("DEBUG"),
-		Value: boolToString(args.Debug).Untyped().(pulumi.StringOutput),
+		Value: utils.BoolToString(args.Debug).Untyped().(pulumi.StringOutput),
 	})
 
-	envVars = append(envVars, args.Postgres.getEnvVars(ctx.Context())...)
+	envVars = append(envVars, args.Database.GetEnvVars()...)
 	if otel := args.Otel; otel != nil {
-		envVars = append(envVars, args.getOpenTelemetryEnvVars(ctx.Context())...)
+		envVars = append(envVars, args.Otel.GetEnvVars(ctx.Context())...)
 	}
 
-	return appsv1.NewDeployment(ctx, "ledger-worker", &appsv1.DeploymentArgs{
+	cmp.Deployment, err = appsv1.NewDeployment(ctx, "ledger-worker", &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 			Labels: pulumi.StringMap{
@@ -53,11 +73,11 @@ func createWorkerDeployment(ctx *pulumi.Context, cmp *Component, args *Component
 					},
 				},
 				Spec: corev1.PodSpecArgs{
-					TerminationGracePeriodSeconds: args.Worker.TerminationGracePeriodSeconds.ToOutput(ctx.Context()).Untyped().(pulumi.IntPtrOutput),
+					TerminationGracePeriodSeconds: args.TerminationGracePeriodSeconds.ToOutput(ctx.Context()).Untyped().(pulumi.IntPtrOutput),
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:            pulumi.String("worker"),
-							Image:           ledgerImage,
+							Image:           utils.GetImage(args.Tag),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 							Args: pulumi.StringArray{
 								pulumi.String("worker"),
@@ -69,4 +89,13 @@ func createWorkerDeployment(ctx *pulumi.Context, cmp *Component, args *Component
 			},
 		},
 	}, pulumi.Parent(cmp))
+	if err != nil {
+		return nil, fmt.Errorf("creating deployment: %w", err)
+	}
+
+	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{}); err != nil {
+		return nil, fmt.Errorf("registering outputs: %w", err)
+	}
+
+	return cmp, nil
 }

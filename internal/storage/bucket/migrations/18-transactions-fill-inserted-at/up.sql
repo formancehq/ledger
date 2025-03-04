@@ -60,3 +60,18 @@ do $$
 		drop function set_transaction_inserted_at;
 	end
 $$;
+
+do $$
+	declare
+		_ledger record;
+		_vsql text;
+	begin
+		-- cannot disable triggers at session level on Azure Postgres with no superuser privileges.
+		-- so we modify the trigger acting on transaction update to be triggered only if the metadata column is updated.
+		-- by the way, it's a good move to not trigger the update_transaction_metadata_history function on every update if not necessary.
+		for _ledger in select * from _system.ledgers where bucket = current_schema loop
+			_vsql = 'create or replace trigger "update_transaction_metadata_history_' || _ledger.id || '" after update of metadata on "transactions" for each row when (new.ledger = ''' || _ledger.name || ''') execute procedure update_transaction_metadata_history()';
+			execute _vsql;
+		end loop;
+	end
+$$;

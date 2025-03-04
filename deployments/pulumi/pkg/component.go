@@ -1,103 +1,129 @@
-package pulumi_ledger
+package ledger
 
 import (
 	"fmt"
-	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/internals"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
-var ErrPostgresURIRequired = fmt.Errorf("postgresURI is required")
+type ComponentArgs struct {
+	utils.CommonArgs
+	Timeout        pulumix.Input[int]
+	InstallDevBox  pulumix.Input[bool]
+	Database       storage.DatabaseArgs
+	API            api.Args
+	Worker         worker.Args
+	Ingress        *api.IngressArgs
+}
+
+func (args *ComponentArgs) SetDefaults() {
+	args.Database.SetDefaults()
+	args.CommonArgs.SetDefaults()
+	args.API.SetDefaults()
+	args.Worker.SetDefaults()
+}
 
 type Component struct {
 	pulumi.ResourceState
 
-	ServiceName        pulumix.Output[string]
-	ServiceNamespace   pulumix.Output[string]
-	ServicePort        pulumix.Output[int]
-	ServiceInternalURL pulumix.Output[string]
-	ServerDeployment   *appsv1.Deployment
-	WorkerDeployment   *appsv1.Deployment
+	API       *api.Component
+	Worker    *worker.Component
+	Storage   *storage.Component
+	Namespace *corev1.Namespace
+	Devbox    *devbox.Component
 }
 
-func NewComponent(ctx *pulumi.Context, name string, args *ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
+func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
 	cmp := &Component{}
 	err := ctx.RegisterComponentResource("Formance:Ledger", name, cmp, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	if args == nil {
-		args = &ComponentArgs{}
-	}
-	args.setDefaults()
+	args.SetDefaults()
 
-	cmp.ServerDeployment, err = createAPIDeployment(ctx, cmp, args)
+	options := []pulumi.ResourceOption{
+		pulumi.Parent(cmp),
+	}
+
+	cmp.Namespace, err = corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name: args.Namespace.
+				ToOutput(ctx.Context()).
+				Untyped().(pulumi.StringOutput),
+		},
+	}, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	cmp.WorkerDeployment, err = createWorkerDeployment(ctx, cmp, args)
+	options = append(options, pulumi.DependsOn([]pulumi.Resource{
+		cmp.Namespace,
+	}))
+
+	cmp.Storage, err = storage.NewComponent(ctx, "storage", storage.ComponentArgs{
+		CommonArgs:   args.CommonArgs,
+		DatabaseArgs: args.Database,
+	}, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = newMigrationJob(ctx, cmp, args)
+	options = append(options, pulumi.DependsOn([]pulumi.Resource{
+		// don't depend on storage since it includes migrations
+		// we just need the database to be up, migrations will be run in background
+		// we also need to have credentials ready for the API and Worker
+		cmp.Storage.DatabaseComponent,
+		cmp.Storage.Credentials,
+		cmp.Storage.Service,
+	}))
+
+	cmp.API, err = api.NewComponent(ctx, "api", api.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Args:       args.API,
+		Storage:    cmp.Storage,
+		Ingress:    args.Ingress,
+	}, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	service, err := installService(ctx, cmp, *args)
+	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Args:       args.Worker,
+		Database:   cmp.Storage,
+	}, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	cmp.ServiceName = pulumix.Apply(service.Metadata.Name().ToStringPtrOutput(), func(name *string) string {
-		if name == nil {
-			return ""
-		}
-		return *name
-	})
-	cmp.ServiceNamespace = pulumix.Apply(service.Metadata.Namespace().ToStringPtrOutput(), func(namespace *string) string {
-		if namespace == nil {
-			return ""
-		}
-		return *namespace
-	})
-	cmp.ServicePort = pulumix.Val(8080)
-	cmp.ServiceInternalURL = pulumix.Apply(pulumi.Sprintf(
-		"http://%s.%s.svc.cluster.local:%d",
-		cmp.ServiceName,
-		cmp.ServiceNamespace,
-		cmp.ServicePort,
-	), func(url string) string {
-		return url
-	})
-
-	if args.API.Ingress != nil {
-		if _, err := installIngress(ctx, cmp, args); err != nil {
+	installDevBox, err := internals.UnsafeAwaitOutput(ctx.Context(), args.InstallDevBox.ToOutput(ctx.Context()))
+	if err != nil {
+		return nil, err
+	}
+	if installDevBox.Value != nil && installDevBox.Value.(bool) {
+		cmp.Devbox, err = devbox.NewComponent(ctx, "devbox", devbox.ComponentArgs{
+			CommonArgs: args.CommonArgs,
+			Storage:    cmp.Storage,
+		}, options...)
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{
-		"deployment-name":      cmp.ServerDeployment.Metadata.Name(),
-		"service-name":         cmp.ServiceName,
-		"service-namespace":    cmp.ServiceNamespace,
-		"service-port":         cmp.ServicePort,
-		"service-internal-url": cmp.ServiceInternalURL,
+		"deployment-name": cmp.API.Deployment.Metadata.Name(),
 	}); err != nil {
 		return nil, fmt.Errorf("registering resource outputs: %w", err)
 	}
 
 	return cmp, nil
-}
-
-func boolToString(output pulumix.Input[bool]) pulumix.Output[string] {
-	return pulumix.Apply(output, func(v bool) string {
-		if v {
-			return "true"
-		}
-		return "false"
-	})
 }
