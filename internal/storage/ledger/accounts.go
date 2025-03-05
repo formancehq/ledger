@@ -48,12 +48,11 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 			ret, err := store.db.NewInsert().
 				Model(&accounts).
 				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
-				On("CONFLICT (ledger, address) DO UPDATE").
-				Set("metadata = excluded.metadata || accounts.metadata").
+				On("conflict (ledger, address) do update").
+				Set("metadata = accounts.metadata || excluded.metadata").
 				Set("updated_at = excluded.updated_at").
 				Where("not accounts.metadata @> excluded.metadata").
 				Exec(ctx)
-
 			if err != nil {
 				return postgres.ResolveError(err)
 			}
