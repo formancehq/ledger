@@ -10,8 +10,8 @@ import (
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	ledger "github.com/formancehq/ledger/internal"
-	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	internal "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal/controller/ledger"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -39,7 +39,7 @@ func (m *SystemController) EXPECT() *SystemControllerMockRecorder {
 }
 
 // CreateLedger mocks base method.
-func (m *SystemController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
+func (m *SystemController) CreateLedger(ctx context.Context, name string, configuration internal.Configuration) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateLedger", ctx, name, configuration)
 	ret0, _ := ret[0].(error)
@@ -67,10 +67,10 @@ func (mr *SystemControllerMockRecorder) DeleteLedgerMetadata(ctx, param, key any
 }
 
 // GetLedger mocks base method.
-func (m *SystemController) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
+func (m *SystemController) GetLedger(ctx context.Context, name string) (*internal.Ledger, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedger", ctx, name)
-	ret0, _ := ret[0].(*ledger.Ledger)
+	ret0, _ := ret[0].(*internal.Ledger)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -82,10 +82,10 @@ func (mr *SystemControllerMockRecorder) GetLedger(ctx, name any) *gomock.Call {
 }
 
 // GetLedgerController mocks base method.
-func (m *SystemController) GetLedgerController(ctx context.Context, name string) (ledger0.Controller, error) {
+func (m *SystemController) GetLedgerController(ctx context.Context, name string) (ledger.Controller, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerController", ctx, name)
-	ret0, _ := ret[0].(ledger0.Controller)
+	ret0, _ := ret[0].(ledger.Controller)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -97,10 +97,10 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 }
 
 // ListLedgers mocks base method.
-func (m *SystemController) ListLedgers(ctx context.Context, query ledger0.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (m *SystemController) ListLedgers(ctx context.Context, query ledger.ListLedgersQuery) (*bunpaginate.Cursor[internal.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Ledger])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

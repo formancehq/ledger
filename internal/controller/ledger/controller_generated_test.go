@@ -12,7 +12,7 @@ import (
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
-	ledger "github.com/formancehq/ledger/internal"
+	internal "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -99,11 +99,11 @@ func (mr *MockControllerMockRecorder) CountTransactions(ctx, query any) *gomock.
 }
 
 // CreateTransaction mocks base method.
-func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*internal.Log, *internal.CreatedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.CreatedTransaction)
+	ret0, _ := ret[0].(*internal.Log)
+	ret1, _ := ret[1].(*internal.CreatedTransaction)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -115,10 +115,10 @@ func (mr *MockControllerMockRecorder) CreateTransaction(ctx, parameters any) *go
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *MockController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+func (m *MockController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -130,10 +130,10 @@ func (mr *MockControllerMockRecorder) DeleteAccountMetadata(ctx, parameters any)
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *MockController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (m *MockController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -159,10 +159,10 @@ func (mr *MockControllerMockRecorder) Export(ctx, w any) *gomock.Call {
 }
 
 // GetAccount mocks base method.
-func (m *MockController) GetAccount(ctx context.Context, query ResourceQuery[any]) (*ledger.Account, error) {
+func (m *MockController) GetAccount(ctx context.Context, query ResourceQuery[any]) (*internal.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, query)
-	ret0, _ := ret[0].(*ledger.Account)
+	ret0, _ := ret[0].(*internal.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -174,10 +174,10 @@ func (mr *MockControllerMockRecorder) GetAccount(ctx, query any) *gomock.Call {
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *MockController) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (m *MockController) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (internal.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
-	ret0, _ := ret[0].(ledger.BalancesByAssets)
+	ret0, _ := ret[0].(internal.BalancesByAssets)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -219,10 +219,10 @@ func (mr *MockControllerMockRecorder) GetStats(ctx any) *gomock.Call {
 }
 
 // GetTransaction mocks base method.
-func (m *MockController) GetTransaction(ctx context.Context, query ResourceQuery[any]) (*ledger.Transaction, error) {
+func (m *MockController) GetTransaction(ctx context.Context, query ResourceQuery[any]) (*internal.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, query)
-	ret0, _ := ret[0].(*ledger.Transaction)
+	ret0, _ := ret[0].(*internal.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -234,10 +234,10 @@ func (mr *MockControllerMockRecorder) GetTransaction(ctx, query any) *gomock.Cal
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *MockController) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *MockController) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[internal.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.VolumesWithBalanceByAssetByAccount])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -249,7 +249,7 @@ func (mr *MockControllerMockRecorder) GetVolumesWithBalances(ctx, q any) *gomock
 }
 
 // Import mocks base method.
-func (m *MockController) Import(ctx context.Context, stream chan ledger.Log) error {
+func (m *MockController) Import(ctx context.Context, stream chan internal.Log) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Import", ctx, stream)
 	ret0, _ := ret[0].(error)
@@ -278,10 +278,10 @@ func (mr *MockControllerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call {
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, query OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, query OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[internal.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -293,10 +293,10 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, query any) *gomock.Call 
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[internal.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -308,10 +308,10 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, query ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[internal.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -323,11 +323,11 @@ func (mr *MockControllerMockRecorder) ListTransactions(ctx, query any) *gomock.C
 }
 
 // RevertTransaction mocks base method.
-func (m *MockController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (m *MockController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*internal.Log, *internal.RevertedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.RevertedTransaction)
+	ret0, _ := ret[0].(*internal.Log)
+	ret1, _ := ret[1].(*internal.RevertedTransaction)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -353,10 +353,10 @@ func (mr *MockControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 }
 
 // SaveAccountMetadata mocks base method.
-func (m *MockController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+func (m *MockController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveAccountMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -368,10 +368,10 @@ func (mr *MockControllerMockRecorder) SaveAccountMetadata(ctx, parameters any) *
 }
 
 // SaveTransactionMetadata mocks base method.
-func (m *MockController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+func (m *MockController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveTransactionMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -12,7 +12,10 @@ do $$
 		-- so we modify the trigger acting on transaction update to be triggered only if the metadata column is updated.
 		-- by the way, it's a good move to not trigger the update_transaction_metadata_history function on every update if not necessary.
 		for _ledger in select * from _system.ledgers where bucket = current_schema loop
-			_vsql = 'create or replace trigger "update_transaction_metadata_history_' || _ledger.id || '" after update of metadata on "transactions" for each row when (new.ledger = ''' || _ledger.name || ''') execute procedure update_transaction_metadata_history()';
+			_vsql = 'drop trigger if exists "update_transaction_metadata_history_' || _ledger.id || '" on "transactions"';
+			execute _vsql;
+
+			_vsql = 'create trigger "update_transaction_metadata_history_' || _ledger.id || '" after update of metadata on "transactions" for each row when (new.ledger = ''' || _ledger.name || ''') execute procedure update_transaction_metadata_history()';
 			execute _vsql;
 		end loop;
 
