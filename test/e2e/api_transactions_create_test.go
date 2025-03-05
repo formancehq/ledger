@@ -78,6 +78,43 @@ var _ = Context("Ledger transactions create API tests", func() {
 					// Create a transaction
 					rsp, err = CreateTransaction(ctx, testServer.GetValue(), req)
 				})
+				Context("overriding an account metadata", func() {
+					BeforeEach(func() {
+						err := AddMetadataToAccount(ctx, testServer.GetValue(), operations.V2AddMetadataToAccountRequest{
+							Address: "alice",
+							Ledger:  "default",
+							RequestBody: map[string]string{
+								"clientType": "gold",
+							},
+						})
+						Expect(err).ToNot(HaveOccurred())
+
+						req.V2PostTransaction.Script = &components.V2PostTransactionScript{
+							Plain: `
+								send [USD 100] (
+									source = @world
+									destination = @alice
+								)			
+								set_account_meta(@alice, "clientType", "silver")
+							`,
+						}
+					})
+					It("should override account metadata", func() {
+						Expect(err).To(BeNil())
+
+						account, err := GetAccount(ctx, testServer.GetValue(), operations.V2GetAccountRequest{
+							Address: "alice",
+							Ledger:  "default",
+						})
+						Expect(err).ToNot(HaveOccurred())
+						Expect(*account).Should(Equal(components.V2Account{
+							Address: "alice",
+							Metadata: map[string]string{
+								"clientType": "silver",
+							},
+						}))
+					})
+				})
 				Context("with valid data", func() {
 					BeforeEach(func() {
 						req = operations.V2CreateTransactionRequest{

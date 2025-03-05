@@ -13,7 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Context("Ledger accounts list API tests", func() {
+var _ = Context("Ledger accounts metadata API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
@@ -71,6 +71,41 @@ var _ = Context("Ledger accounts list API tests", func() {
 				Address:  "foo",
 				Metadata: metadata,
 			}))
+		})
+		Context("Then updating the metadata", func() {
+			var (
+				newMetadata = map[string]string{
+					"clientType": "silver",
+				}
+			)
+			JustBeforeEach(func() {
+				err := AddMetadataToAccount(
+					ctx,
+					testServer.GetValue(),
+					operations.V2AddMetadataToAccountRequest{
+						RequestBody: newMetadata,
+						Address:     "foo",
+						Ledger:      "default",
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("should update the metadata", func() {
+				response, err := GetAccount(
+					ctx,
+					testServer.GetValue(),
+					operations.V2GetAccountRequest{
+						Address: "foo",
+						Ledger:  "default",
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(*response).Should(Equal(components.V2Account{
+					Address:  "foo",
+					Metadata: newMetadata,
+				}))
+			})
 		})
 		It("should trigger a new event", func() {
 			Eventually(events).Should(Receive(Event(ledgerevents.EventTypeSavedMetadata)))
