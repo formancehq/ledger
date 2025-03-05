@@ -14,7 +14,7 @@ import (
 	metadata "github.com/formancehq/go-libs/v2/metadata"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	time "github.com/formancehq/go-libs/v2/time"
-	ledger "github.com/formancehq/ledger/internal"
+	internal "github.com/formancehq/ledger/internal"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,10 +43,10 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // Accounts mocks base method.
-func (m *MockStore) Accounts() PaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]] {
+func (m *MockStore) Accounts() PaginatedResource[internal.Account, any, OffsetPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Accounts")
-	ret0, _ := ret[0].(PaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]])
+	ret0, _ := ret[0].(PaginatedResource[internal.Account, any, OffsetPaginatedQuery[any]])
 	return ret0
 }
 
@@ -57,10 +57,10 @@ func (mr *MockStoreMockRecorder) Accounts() *gomock.Call {
 }
 
 // AggregatedBalances mocks base method.
-func (m *MockStore) AggregatedBalances() Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
+func (m *MockStore) AggregatedBalances() Resource[internal.AggregatedVolumes, GetAggregatedVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregatedBalances")
-	ret0, _ := ret[0].(Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions])
+	ret0, _ := ret[0].(Resource[internal.AggregatedVolumes, GetAggregatedVolumesOptions])
 	return ret0
 }
 
@@ -100,7 +100,7 @@ func (mr *MockStoreMockRecorder) Commit() *gomock.Call {
 }
 
 // CommitTransaction mocks base method.
-func (m *MockStore) CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error {
+func (m *MockStore) CommitTransaction(ctx context.Context, transaction *internal.Transaction) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CommitTransaction", ctx, transaction)
 	ret0, _ := ret[0].(error)
@@ -128,10 +128,10 @@ func (mr *MockStoreMockRecorder) DeleteAccountMetadata(ctx, address, key any) *g
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error) {
+func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*internal.Transaction, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, transactionID, key)
-	ret0, _ := ret[0].(*ledger.Transaction)
+	ret0, _ := ret[0].(*internal.Transaction)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -188,7 +188,7 @@ func (mr *MockStoreMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call {
 }
 
 // InsertLog mocks base method.
-func (m *MockStore) InsertLog(ctx context.Context, log *ledger.Log) error {
+func (m *MockStore) InsertLog(ctx context.Context, log *internal.Log) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertLog", ctx, log)
 	ret0, _ := ret[0].(error)
@@ -231,10 +231,10 @@ func (mr *MockStoreMockRecorder) LockLedger(ctx any) *gomock.Call {
 }
 
 // Logs mocks base method.
-func (m *MockStore) Logs() PaginatedResource[ledger.Log, any, ColumnPaginatedQuery[any]] {
+func (m *MockStore) Logs() PaginatedResource[internal.Log, any, ColumnPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Logs")
-	ret0, _ := ret[0].(PaginatedResource[ledger.Log, any, ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(PaginatedResource[internal.Log, any, ColumnPaginatedQuery[any]])
 	return ret0
 }
 
@@ -245,10 +245,10 @@ func (mr *MockStoreMockRecorder) Logs() *gomock.Call {
 }
 
 // ReadLogWithIdempotencyKey mocks base method.
-func (m *MockStore) ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error) {
+func (m *MockStore) ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadLogWithIdempotencyKey", ctx, ik)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -260,10 +260,10 @@ func (mr *MockStoreMockRecorder) ReadLogWithIdempotencyKey(ctx, ik any) *gomock.
 }
 
 // RevertTransaction mocks base method.
-func (m *MockStore) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {
+func (m *MockStore) RevertTransaction(ctx context.Context, id int, at time.Time) (*internal.Transaction, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id, at)
-	ret0, _ := ret[0].(*ledger.Transaction)
+	ret0, _ := ret[0].(*internal.Transaction)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -290,10 +290,10 @@ func (mr *MockStoreMockRecorder) Rollback() *gomock.Call {
 }
 
 // Transactions mocks base method.
-func (m *MockStore) Transactions() PaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]] {
+func (m *MockStore) Transactions() PaginatedResource[internal.Transaction, any, ColumnPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Transactions")
-	ret0, _ := ret[0].(PaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(PaginatedResource[internal.Transaction, any, ColumnPaginatedQuery[any]])
 	return ret0
 }
 
@@ -318,10 +318,10 @@ func (mr *MockStoreMockRecorder) UpdateAccountsMetadata(ctx, m any) *gomock.Call
 }
 
 // UpdateTransactionMetadata mocks base method.
-func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error) {
+func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*internal.Transaction, bool, error) {
 	m_2.ctrl.T.Helper()
 	ret := m_2.ctrl.Call(m_2, "UpdateTransactionMetadata", ctx, transactionID, m)
-	ret0, _ := ret[0].(*ledger.Transaction)
+	ret0, _ := ret[0].(*internal.Transaction)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -334,7 +334,7 @@ func (mr *MockStoreMockRecorder) UpdateTransactionMetadata(ctx, transactionID, m
 }
 
 // UpsertAccounts mocks base method.
-func (m *MockStore) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
+func (m *MockStore) UpsertAccounts(ctx context.Context, accounts ...*internal.Account) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range accounts {
@@ -353,10 +353,10 @@ func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomoc
 }
 
 // Volumes mocks base method.
-func (m *MockStore) Volumes() PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, OffsetPaginatedQuery[GetVolumesOptions]] {
+func (m *MockStore) Volumes() PaginatedResource[internal.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, OffsetPaginatedQuery[GetVolumesOptions]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Volumes")
-	ret0, _ := ret[0].(PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, OffsetPaginatedQuery[GetVolumesOptions]])
+	ret0, _ := ret[0].(PaginatedResource[internal.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, OffsetPaginatedQuery[GetVolumesOptions]])
 	return ret0
 }
 

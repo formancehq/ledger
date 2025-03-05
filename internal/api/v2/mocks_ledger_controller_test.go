@@ -12,8 +12,8 @@ import (
 
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
-	ledger "github.com/formancehq/ledger/internal"
-	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	internal "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal/controller/ledger"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,10 +41,10 @@ func (m *LedgerController) EXPECT() *LedgerControllerMockRecorder {
 }
 
 // BeginTX mocks base method.
-func (m *LedgerController) BeginTX(ctx context.Context, options *sql.TxOptions) (ledger0.Controller, error) {
+func (m *LedgerController) BeginTX(ctx context.Context, options *sql.TxOptions) (ledger.Controller, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BeginTX", ctx, options)
-	ret0, _ := ret[0].(ledger0.Controller)
+	ret0, _ := ret[0].(ledger.Controller)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -70,7 +70,7 @@ func (mr *LedgerControllerMockRecorder) Commit(ctx any) *gomock.Call {
 }
 
 // CountAccounts mocks base method.
-func (m *LedgerController) CountAccounts(ctx context.Context, query ledger0.ResourceQuery[any]) (int, error) {
+func (m *LedgerController) CountAccounts(ctx context.Context, query ledger.ResourceQuery[any]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountAccounts", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -85,7 +85,7 @@ func (mr *LedgerControllerMockRecorder) CountAccounts(ctx, query any) *gomock.Ca
 }
 
 // CountTransactions mocks base method.
-func (m *LedgerController) CountTransactions(ctx context.Context, query ledger0.ResourceQuery[any]) (int, error) {
+func (m *LedgerController) CountTransactions(ctx context.Context, query ledger.ResourceQuery[any]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountTransactions", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -100,11 +100,11 @@ func (mr *LedgerControllerMockRecorder) CountTransactions(ctx, query any) *gomoc
 }
 
 // CreateTransaction mocks base method.
-func (m *LedgerController) CreateTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (m *LedgerController) CreateTransaction(ctx context.Context, parameters ledger.Parameters[ledger.RunScript]) (*internal.Log, *internal.CreatedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.CreatedTransaction)
+	ret0, _ := ret[0].(*internal.Log)
+	ret1, _ := ret[1].(*internal.CreatedTransaction)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -116,10 +116,10 @@ func (mr *LedgerControllerMockRecorder) CreateTransaction(ctx, parameters any) *
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *LedgerController) DeleteAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteAccountMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) DeleteAccountMetadata(ctx context.Context, parameters ledger.Parameters[ledger.DeleteAccountMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -131,10 +131,10 @@ func (mr *LedgerControllerMockRecorder) DeleteAccountMetadata(ctx, parameters an
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *LedgerController) DeleteTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) DeleteTransactionMetadata(ctx context.Context, parameters ledger.Parameters[ledger.DeleteTransactionMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -146,7 +146,7 @@ func (mr *LedgerControllerMockRecorder) DeleteTransactionMetadata(ctx, parameter
 }
 
 // Export mocks base method.
-func (m *LedgerController) Export(ctx context.Context, w ledger0.ExportWriter) error {
+func (m *LedgerController) Export(ctx context.Context, w ledger.ExportWriter) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Export", ctx, w)
 	ret0, _ := ret[0].(error)
@@ -160,10 +160,10 @@ func (mr *LedgerControllerMockRecorder) Export(ctx, w any) *gomock.Call {
 }
 
 // GetAccount mocks base method.
-func (m *LedgerController) GetAccount(ctx context.Context, query ledger0.ResourceQuery[any]) (*ledger.Account, error) {
+func (m *LedgerController) GetAccount(ctx context.Context, query ledger.ResourceQuery[any]) (*internal.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, query)
-	ret0, _ := ret[0].(*ledger.Account)
+	ret0, _ := ret[0].(*internal.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -175,10 +175,10 @@ func (mr *LedgerControllerMockRecorder) GetAccount(ctx, query any) *gomock.Call 
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q ledger0.ResourceQuery[ledger0.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q ledger.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (internal.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
-	ret0, _ := ret[0].(ledger.BalancesByAssets)
+	ret0, _ := ret[0].(internal.BalancesByAssets)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -205,10 +205,10 @@ func (mr *LedgerControllerMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call 
 }
 
 // GetStats mocks base method.
-func (m *LedgerController) GetStats(ctx context.Context) (ledger0.Stats, error) {
+func (m *LedgerController) GetStats(ctx context.Context) (ledger.Stats, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetStats", ctx)
-	ret0, _ := ret[0].(ledger0.Stats)
+	ret0, _ := ret[0].(ledger.Stats)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -220,10 +220,10 @@ func (mr *LedgerControllerMockRecorder) GetStats(ctx any) *gomock.Call {
 }
 
 // GetTransaction mocks base method.
-func (m *LedgerController) GetTransaction(ctx context.Context, query ledger0.ResourceQuery[any]) (*ledger.Transaction, error) {
+func (m *LedgerController) GetTransaction(ctx context.Context, query ledger.ResourceQuery[any]) (*internal.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, query)
-	ret0, _ := ret[0].(*ledger.Transaction)
+	ret0, _ := ret[0].(*internal.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -235,10 +235,10 @@ func (mr *LedgerControllerMockRecorder) GetTransaction(ctx, query any) *gomock.C
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q ledger0.OffsetPaginatedQuery[ledger0.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q ledger.OffsetPaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[internal.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.VolumesWithBalanceByAssetByAccount])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -250,7 +250,7 @@ func (mr *LedgerControllerMockRecorder) GetVolumesWithBalances(ctx, q any) *gomo
 }
 
 // Import mocks base method.
-func (m *LedgerController) Import(ctx context.Context, stream chan ledger.Log) error {
+func (m *LedgerController) Import(ctx context.Context, stream chan internal.Log) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Import", ctx, stream)
 	ret0, _ := ret[0].(error)
@@ -279,10 +279,10 @@ func (mr *LedgerControllerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call
 }
 
 // ListAccounts mocks base method.
-func (m *LedgerController) ListAccounts(ctx context.Context, query ledger0.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *LedgerController) ListAccounts(ctx context.Context, query ledger.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[internal.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -294,10 +294,10 @@ func (mr *LedgerControllerMockRecorder) ListAccounts(ctx, query any) *gomock.Cal
 }
 
 // ListLogs mocks base method.
-func (m *LedgerController) ListLogs(ctx context.Context, query ledger0.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *LedgerController) ListLogs(ctx context.Context, query ledger.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[internal.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -309,10 +309,10 @@ func (mr *LedgerControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *LedgerController) ListTransactions(ctx context.Context, query ledger0.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *LedgerController) ListTransactions(ctx context.Context, query ledger.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[internal.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -324,11 +324,11 @@ func (mr *LedgerControllerMockRecorder) ListTransactions(ctx, query any) *gomock
 }
 
 // RevertTransaction mocks base method.
-func (m *LedgerController) RevertTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (m *LedgerController) RevertTransaction(ctx context.Context, parameters ledger.Parameters[ledger.RevertTransaction]) (*internal.Log, *internal.RevertedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.RevertedTransaction)
+	ret0, _ := ret[0].(*internal.Log)
+	ret1, _ := ret[1].(*internal.RevertedTransaction)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -354,10 +354,10 @@ func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 }
 
 // SaveAccountMetadata mocks base method.
-func (m *LedgerController) SaveAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveAccountMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) SaveAccountMetadata(ctx context.Context, parameters ledger.Parameters[ledger.SaveAccountMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveAccountMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -369,10 +369,10 @@ func (mr *LedgerControllerMockRecorder) SaveAccountMetadata(ctx, parameters any)
 }
 
 // SaveTransactionMetadata mocks base method.
-func (m *LedgerController) SaveTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveTransactionMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) SaveTransactionMetadata(ctx context.Context, parameters ledger.Parameters[ledger.SaveTransactionMetadata]) (*internal.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveTransactionMetadata", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
+	ret0, _ := ret[0].(*internal.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
