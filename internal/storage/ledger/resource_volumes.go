@@ -134,8 +134,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("ledger = ?", store.ledger.Name).
-				Where("accounts_metadata.accounts_address = moves.accounts_address").
-				Where("date <= ?", query.PIT)
+				Where("accounts_metadata.accounts_address = moves.accounts_address")
 
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
