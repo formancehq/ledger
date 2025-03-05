@@ -1,0 +1,5 @@
+#!/usr/bin/env just --justfile
+
+update-doc:
+  go run tools/main.go schema > docs/schema.json
+  cat docs/schema.json | docker run --rm -i elisiariocouto/jsonschema-markdown --no-empty-columns - > docs/schema.md
