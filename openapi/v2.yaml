@@ -2017,7 +2017,6 @@ components:
         - name
         - addedAt
         - bucket
-        - id
     V2LedgerListResponse:
       type: object
       required:

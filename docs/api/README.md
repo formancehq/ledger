@@ -4339,7 +4339,7 @@ and
 |metadata|[V2Metadata](#schemav2metadata)|false|none|none|
 |features|object|false|none|none|
 |» **additionalProperties**|string|false|none|none|
-|id|integer|true|none|none|
+|id|integer|false|none|none|
 
 <h2 id="tocS_V2LedgerListResponse">V2LedgerListResponse</h2>
 <!-- backwards compatibility -->

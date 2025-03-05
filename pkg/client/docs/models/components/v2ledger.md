@@ -10,4 +10,4 @@
 | `Bucket`                                  | *string*                                  | :heavy_check_mark:                        | N/A                                       |                                           |
 | `Metadata`                                | map[string]*string*                       | :heavy_minus_sign:                        | N/A                                       | {<br/>"admin": "true"<br/>}               |
 | `Features`                                | map[string]*string*                       | :heavy_minus_sign:                        | N/A                                       |                                           |
-| `ID`                                      | *int64*                                   | :heavy_check_mark:                        | N/A                                       |                                           |
+| `ID`                                      | **int64*                                  | :heavy_minus_sign:                        | N/A                                       |                                           |
