@@ -6,8 +6,8 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"strconv"
 )
@@ -17,7 +17,7 @@ func readVolumes(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := common.LedgerFromContext(r.Context())
 
-		rq, err := getOffsetPaginatedQuery[ledgercontroller.GetVolumesOptions](r, paginationConfig, func(opts *ledgercontroller.GetVolumesOptions) error {
+		rq, err := getOffsetPaginatedQuery[ledgerstore.GetVolumesOptions](r, paginationConfig, func(opts *ledgerstore.GetVolumesOptions) error {
 			groupBy := r.URL.Query().Get("groupBy")
 			if groupBy != "" {
 				v, err := strconv.ParseInt(groupBy, 10, 64)
@@ -55,7 +55,7 @@ func readVolumes(paginationConfig common.PaginationConfig) http.HandlerFunc {
 		cursor, err := l.GetVolumesWithBalances(r.Context(), *rq)
 		if err != nil {
 			switch {
-			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgerstore.ErrMissingFeature{}):
 				api.BadRequest(w, common.ErrValidation, err)
 			default:
 				common.HandleCommonErrors(w, r, err)

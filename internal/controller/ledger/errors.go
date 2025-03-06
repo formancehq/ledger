@@ -15,6 +15,23 @@ var ErrNotFound = postgres.ErrNotFound
 
 type ErrTooManyClient = postgres.ErrTooManyClient
 
+// ErrInUsePipeline denotes a pipeline which is actually used
+// The client has to retry later if still relevant
+type ErrInUsePipeline string
+
+func (e ErrInUsePipeline) Error() string {
+	return fmt.Sprintf("pipeline '%s' already in use", string(e))
+}
+
+func (e ErrInUsePipeline) Is(err error) bool {
+	_, ok := err.(ErrInUsePipeline)
+	return ok
+}
+
+func NewErrInUsePipeline(id string) ErrInUsePipeline {
+	return ErrInUsePipeline(id)
+}
+
 type ErrImport struct {
 	err error
 }
@@ -87,25 +104,6 @@ var _ error = (*ErrAlreadyReverted)(nil)
 func newErrAlreadyReverted(id uint64) ErrAlreadyReverted {
 	return ErrAlreadyReverted{
 		id: id,
-	}
-}
-
-type ErrMissingFeature struct {
-	feature string
-}
-
-func (e ErrMissingFeature) Error() string {
-	return fmt.Sprintf("missing feature %q", e.feature)
-}
-
-func (e ErrMissingFeature) Is(err error) bool {
-	_, ok := err.(ErrMissingFeature)
-	return ok
-}
-
-func NewErrMissingFeature(feature string) ErrMissingFeature {
-	return ErrMissingFeature{
-		feature: feature,
 	}
 }
 
@@ -245,25 +243,5 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		idempotencyKey:          idempotencyKey,
 		expectedIdempotencyHash: expectedIdempotencyHash,
 		computedIdempotencyHash: gotIdempotencyHash,
-	}
-}
-
-// ErrConcurrentTransaction can be raised in case of conflicting between an import and a single transaction
-type ErrConcurrentTransaction struct {
-	id uint64
-}
-
-func (e ErrConcurrentTransaction) Error() string {
-	return fmt.Sprintf("duplicate id insertion %d", e.id)
-}
-
-func (e ErrConcurrentTransaction) Is(err error) bool {
-	_, ok := err.(ErrConcurrentTransaction)
-	return ok
-}
-
-func NewErrConcurrentTransaction(id uint64) ErrConcurrentTransaction {
-	return ErrConcurrentTransaction{
-		id: id,
 	}
 }

@@ -40,6 +40,10 @@
         "experimental-numscript-interpreter": {
           "type": "boolean",
           "description": "ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter"
+        },
+        "experimental-connectors": {
+          "type": "boolean",
+          "description": "ExperimentalConnectors is whether to enable experimental connectors"
         }
       },
       "additionalProperties": false,
@@ -78,6 +82,10 @@
         "worker": {
           "$ref": "#/$defs/Worker",
           "description": "Worker is the worker configuration for the ledger"
+        },
+        "connectors": {
+          "$ref": "#/$defs/Connectors",
+          "description": "Connectors is the connectors configuration for the ledger"
         },
         "ingress": {
           "$ref": "#/$defs/Ingress",
@@ -130,6 +138,25 @@
         }
       },
       "additionalProperties": false,
+      "type": "object"
+    },
+    "Connector": {
+      "properties": {
+        "driver": {
+          "type": "string",
+          "description": "Driver is the driver for the connector"
+        },
+        "config": {
+          "description": "Config is the configuration for the connector"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Connectors": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Connector"
+      },
       "type": "object"
     },
     "Generator": {
@@ -212,6 +239,13 @@
           },
           "type": "object",
           "description": "Features is the features for the ledger"
+        },
+        "connectors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Connectors are the connector to bound to this ledger"
         }
       },
       "additionalProperties": false,

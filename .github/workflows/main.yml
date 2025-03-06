@@ -77,8 +77,6 @@ jobs:
   GoReleaser:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
     if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
-    needs:
-      - Dirty
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
