@@ -3,7 +3,6 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
@@ -48,7 +47,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) Filters() []common.Filter {
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
 		ret := h.store.db.NewSelect().
@@ -58,7 +57,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			Where("ledger = ?", h.store.ledger.Name)
 		if query.Opts.UseInsertionDate {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+				return nil, NewErrMissingFeature(features.FeatureMovesHistory)
 			}
 
 			ret = ret.
@@ -66,7 +65,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Where("insertion_date <= ?", query.PIT)
 		} else {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes)
+				return nil, NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 			}
 
 			ret = ret.
@@ -132,7 +131,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
@@ -151,12 +150,12 @@ func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.Reso
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) Project(
-	_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
+	_ common.ResourceQuery[GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	sumVolumesForAsset := h.store.db.NewSelect().
@@ -170,4 +169,4 @@ func (h aggregatedBalancesResourceRepositoryHandler) Project(
 		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
 }
 
-var _ common.RepositoryHandler[ledgercontroller.GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}
+var _ common.RepositoryHandler[GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}

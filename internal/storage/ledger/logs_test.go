@@ -8,13 +8,12 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
 
 	"errors"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 
@@ -98,7 +97,7 @@ func TestLogsInsert(t *testing.T) {
 			WithIdempotencyKey("foo")
 		err = store.InsertLog(ctx, &logTx)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}))
+		require.True(t, errors.Is(err, ledgerstore.ErrIdempotencyKeyConflict{}))
 	})
 
 	t.Run("hash consistency over high concurrency", func(t *testing.T) {
