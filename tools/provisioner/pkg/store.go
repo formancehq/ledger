@@ -137,3 +137,22 @@ func NewK8SConfigMapStore(namespace, configMapName string) (*K8sConfigMapStore, 
 		configMapName: configMapName,
 	}, nil
 }
+
+type inMemoryStore struct {
+	state State
+}
+
+func (i *inMemoryStore) Read(_ context.Context) (*State, error) {
+	return &i.state, nil
+}
+
+func (i *inMemoryStore) Update(_ context.Context, state State) error {
+	i.state = state
+	return nil
+}
+
+var _ Store = (*inMemoryStore)(nil)
+
+func NewInMemoryStore() *inMemoryStore {
+	return &inMemoryStore{}
+}

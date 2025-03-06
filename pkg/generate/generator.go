@@ -149,7 +149,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 		return nil, fmt.Errorf("creating transaction: %w", err)
 	}
 
-	if response.HTTPMeta.Response.StatusCode == http.StatusBadRequest {
+	if response.HTTPMeta.Response.StatusCode == http.StatusBadRequest && response.V2BulkResponse.ErrorCode != nil {
 		return nil, fmt.Errorf(
 			"unexpected error: %s [%s]",
 			*response.V2BulkResponse.ErrorMessage,

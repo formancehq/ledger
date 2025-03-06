@@ -18,11 +18,12 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
 )
+
+var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
 
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
@@ -43,9 +44,9 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-				return systemcontroller.ErrLedgerAlreadyExists
+				return systemstore.ErrLedgerAlreadyExists
 			}
-			return err
+			return postgres.ResolveError(err)
 		}
 
 		b := d.bucketFactory.Create(l.Bucket)
@@ -60,7 +61,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 
 			if !upToDate {
-				return systemcontroller.ErrBucketOutdated
+				return ErrBucketOutdated
 			}
 
 			if err := b.AddLedger(ctx, tx, *l); err != nil {
@@ -180,7 +181,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return d.systemStoreFactory.Create(d.db).Ledgers().Paginate(ctx, q)
 }
 

@@ -4,6 +4,8 @@ import (
 	"github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	_ "github.com/formancehq/ledger/deployments/pulumi/pkg/connectors/clickhouse"
 )
 
 func main() {

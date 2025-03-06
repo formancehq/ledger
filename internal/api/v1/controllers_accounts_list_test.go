@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,7 +17,6 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -138,7 +138,7 @@ func TestAccountsList(t *testing.T) {
 			name:              "with missing feature",
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: common.ErrValidation,
-			returnErr:         ledgercontroller.ErrMissingFeature{},
+			returnErr:         ledgerstore.ErrMissingFeature{},
 			expectBackendCall: true,
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
