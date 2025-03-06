@@ -227,6 +227,47 @@ func Import(ctx context.Context, srv *Server, request operations.V2ImportLogsReq
 	return mapSDKError(err)
 }
 
+func CreateConnector(ctx context.Context, srv *Server, request components.V2CreateConnectorRequest) (*components.V2CreateConnectorResponse, error) {
+	res, err := srv.Client().Ledger.V2.CreateConnector(ctx, request)
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+	return res.V2CreateConnectorResponse, nil
+}
+
+func DeleteConnector(ctx context.Context, srv *Server, request operations.V2DeleteConnectorRequest) error {
+	_, err := srv.Client().Ledger.V2.DeleteConnector(ctx, request)
+	return mapSDKError(err)
+}
+
+func CreatePipeline(ctx context.Context, srv *Server, request operations.V2CreatePipelineRequest) (*components.V2CreatePipelineResponse, error) {
+	res, err := srv.Client().Ledger.V2.CreatePipeline(ctx, request)
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+	return res.V2CreatePipelineResponse, nil
+}
+
+func DeletePipeline(ctx context.Context, srv *Server, request operations.V2DeletePipelineRequest) error {
+	_, err := srv.Client().Ledger.V2.DeletePipeline(ctx, request)
+	return mapSDKError(err)
+}
+
+func StopPipeline(ctx context.Context, srv *Server, request operations.V2StopPipelineRequest) error {
+	_, err := srv.Client().Ledger.V2.StopPipeline(ctx, request)
+	return mapSDKError(err)
+}
+
+func StartPipeline(ctx context.Context, srv *Server, request operations.V2StartPipelineRequest) error {
+	_, err := srv.Client().Ledger.V2.StartPipeline(ctx, request)
+	return mapSDKError(err)
+}
+
+func ResetPipeline(ctx context.Context, srv *Server, request operations.V2ResetPipelineRequest) error {
+	_, err := srv.Client().Ledger.V2.ResetPipeline(ctx, request)
+	return mapSDKError(err)
+}
+
 func mapSDKError(err error) error {
 	// notes: *sdkerrors.V2ErrorResponse does not implements errors.Is
 	switch err := err.(type) {

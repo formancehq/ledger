@@ -3,10 +3,12 @@ package ledger
 import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/connectors"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -16,14 +18,16 @@ import (
 )
 
 type ComponentArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	Timeout       pulumix.Input[int]
 	InstallDevBox pulumix.Input[bool]
 	Storage       storage.Args
-	API           api.Args
-	Worker        worker.Args
 	Ingress       *api.IngressArgs
+	API           api.Args
+	Connectors    connectors.Args
+	Worker        worker.Args
 	Provision     provision.Args
+	Generator     *generator.Args
 }
 
 func (args *ComponentArgs) SetDefaults() {
@@ -31,17 +35,22 @@ func (args *ComponentArgs) SetDefaults() {
 	args.CommonArgs.SetDefaults()
 	args.API.SetDefaults()
 	args.Worker.SetDefaults()
+	if args.Generator != nil {
+		args.Generator.SetDefaults()
+	}
 }
 
 type Component struct {
 	pulumi.ResourceState
 
-	API       *api.Component
-	Worker    *worker.Component
-	Storage   *storage.Component
-	Namespace *corev1.Namespace
-	Devbox    *devbox.Component
-	Provision *provision.Component
+	API        *api.Component
+	Worker     *worker.Component
+	Storage    *storage.Component
+	Namespace  *corev1.Namespace
+	Devbox     *devbox.Component
+	Connectors *connectors.Component
+	Provision  *provision.Component
+	Generator  *generator.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -99,10 +108,19 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		return nil, err
 	}
 
+	cmp.Connectors, err = connectors.NewComponent(ctx, "connectors", connectors.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Args:       args.Connectors,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
 		CommonArgs: args.CommonArgs,
 		Args:       args.Worker,
 		Database:   cmp.Storage,
+		API:        cmp.API,
 	}, options...)
 	if err != nil {
 		return nil, err
@@ -112,9 +130,23 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		CommonArgs: args.CommonArgs,
 		API:        cmp.API,
 		Args:       args.Provision,
+		Connectors: cmp.Connectors,
 	}, options...)
 	if err != nil {
 		return nil, err
+	}
+
+	if args.Generator != nil {
+		cmp.Generator, err = generator.NewComponent(ctx, "generator", generator.ComponentArgs{
+			CommonArgs: args.CommonArgs,
+			API:        cmp.API,
+			Args:       *args.Generator,
+		}, append(options, pulumi.DependsOn([]pulumi.Resource{
+			cmp.Provision,
+		}))...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	installDevBox, err := internals.UnsafeAwaitOutput(ctx.Context(), args.InstallDevBox.ToOutput(ctx.Context()))
@@ -125,6 +157,8 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		cmp.Devbox, err = devbox.NewComponent(ctx, "devbox", devbox.ComponentArgs{
 			CommonArgs: args.CommonArgs,
 			Storage:    cmp.Storage,
+			API:        cmp.API,
+			Connectors: cmp.Connectors,
 		}, options...)
 		if err != nil {
 			return nil, err

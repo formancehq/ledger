@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	common "github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
@@ -22,6 +23,7 @@ type Args struct {
 	TerminationGracePeriodSeconds    pulumix.Input[*int]
 	ExperimentalFeatures             pulumix.Input[bool]
 	ExperimentalNumscriptInterpreter pulumix.Input[bool]
+	ExperimentalConnectors           pulumix.Input[bool]
 }
 
 func (args *Args) SetDefaults() {
@@ -55,7 +57,7 @@ func (args *Args) SetDefaults() {
 }
 
 type createDeploymentArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	Args
 	Database *storage.Component
 }
@@ -116,6 +118,10 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 			Value: utils.BoolToString(args.ExperimentalFeatures).Untyped().(pulumi.StringOutput),
 		},
 		corev1.EnvVarArgs{
+			Name:  pulumi.String("EXPERIMENTAL_CONNECTORS"),
+			Value: utils.BoolToString(args.ExperimentalConnectors).Untyped().(pulumi.StringOutput),
+		},
+		corev1.EnvVarArgs{
 			Name: pulumi.String("GRACE_PERIOD"),
 			Value: pulumix.Apply(args.GracePeriod, time.Duration.String).
 				Untyped().(pulumi.StringOutput),
@@ -123,8 +129,8 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 	)
 
 	envVars = append(envVars, args.Database.GetEnvVars()...)
-	if otel := args.Otel; otel != nil {
-		envVars = append(envVars, args.Otel.GetEnvVars(ctx.Context())...)
+	if otel := args.Monitoring; otel != nil {
+		envVars = append(envVars, args.Monitoring.GetEnvVars(ctx)...)
 	}
 
 	return appsv1.NewDeployment(ctx, "ledger-api", &appsv1.DeploymentArgs{
