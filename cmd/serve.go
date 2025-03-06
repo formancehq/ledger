@@ -172,6 +172,11 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 
+	// Deprecated flags
+	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
+	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
+	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
+
 	addWorkerFlags(cmd)
 	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
