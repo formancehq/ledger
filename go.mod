@@ -35,7 +35,7 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/stoewer/go-strcase v1.3.0
 	github.com/stretchr/testify v1.10.0
-	github.com/uptrace/bun v1.2.10
+	github.com/uptrace/bun v1.2.11
 	github.com/uptrace/bun/dialect/pgdialect v1.2.10
 	github.com/uptrace/bun/extra/bundebug v1.2.9
 	github.com/xeipuuv/gojsonschema v1.2.0
