@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
@@ -36,19 +37,37 @@ import (
 	"go.uber.org/fx"
 )
 
+type ServeConfig struct {
+	WorkerConfiguration `mapstructure:",squash"`
+
+	Bind                        string   `mapstructure:"bind"`
+	BallastSizeInBytes          uint     `mapstructure:"ballast-size"`
+	NumscriptCacheMaxCount      uint     `mapstructure:"numscript-cache-max-count"`
+	AutoUpgrade                 bool     `mapstructure:"auto-upgrade"`
+	BulkMaxSize                 int      `mapstructure:"bulk-max-size"`
+	BulkParallel                int      `mapstructure:"bulk-parallel"`
+	DefaultPageSize             uint64   `mapstructure:"default-page-size"`
+	MaxPageSize                 uint64   `mapstructure:"max-page-size"`
+	WorkerEnabled               bool     `mapstructure:"worker"`
+	NumscriptInterpreter        bool     `mapstructure:"experimental-numscript-interpreter"`
+	NumscriptInterpreterFlags   []string `mapstructure:"experimental-numscript-interpreter-flags"`
+	ExperimentalFeaturesEnabled bool     `mapstructure:"experimental-features"`
+}
+
 const (
-	BindFlag                        = "bind"
-	BallastSizeInBytesFlag          = "ballast-size"
-	NumscriptCacheMaxCountFlag      = "numscript-cache-max-count"
-	AutoUpgradeFlag                 = "auto-upgrade"
-	ExperimentalFeaturesFlag        = "experimental-features"
-	BulkMaxSizeFlag                 = "bulk-max-size"
-	BulkParallelFlag                = "bulk-parallel"
-	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
-	NumscriptInterpreterFlagsToPass = "numscript-interpreter-flags"
+	BindFlag                   = "bind"
+	BallastSizeInBytesFlag     = "ballast-size"
+	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
+	AutoUpgradeFlag            = "auto-upgrade"
+	BulkMaxSizeFlag            = "bulk-max-size"
+	BulkParallelFlag           = "bulk-parallel"
+
 	DefaultPageSizeFlag             = "default-page-size"
 	MaxPageSizeFlag                 = "max-page-size"
 	WorkerEnabledFlag               = "worker"
+	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
+	NumscriptInterpreterFlagsToPass = "experimental-numscript-interpreter-flags"
+	ExperimentalFeaturesFlag        = "experimental-features"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -56,36 +75,13 @@ func NewServeCommand() *cobra.Command {
 		Use:          "serve",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			serveConfiguration := discoverServeConfiguration(cmd)
+
+			cfg, err := LoadConfig[ServeConfig](cmd)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
-			if err != nil {
-				return err
-			}
-
-			experimentalFeatures, err := cmd.Flags().GetBool(ExperimentalFeaturesFlag)
-			if err != nil {
-				return err
-			}
-			numscriptInterpreter, _ := cmd.Flags().GetBool(NumscriptInterpreterFlag)
-			numscriptInterpreterFlags, _ := cmd.Flags().GetStringSlice(NumscriptInterpreterFlagsToPass)
-
-			bulkMaxSize, err := cmd.Flags().GetInt(BulkMaxSizeFlag)
-			if err != nil {
-				return err
-			}
-
-			bulkParallel, err := cmd.Flags().GetInt(BulkParallelFlag)
-			if err != nil {
-				return err
-			}
-
-			maxPageSize, err := cmd.Flags().GetUint64(MaxPageSizeFlag)
-			if err != nil {
-				return err
-			}
-
-			defaultPageSize, err := cmd.Flags().GetUint64(DefaultPageSizeFlag)
 			if err != nil {
 				return err
 			}
@@ -99,45 +95,45 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
-					AutoUpgrade:  serveConfiguration.autoUpgrade,
+					AutoUpgrade: cfg.AutoUpgrade,
 				}),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
-					NumscriptInterpreter:      numscriptInterpreter,
-					NumscriptInterpreterFlags: numscriptInterpreterFlags,
+					NumscriptInterpreter:      cfg.NumscriptInterpreter,
+					NumscriptInterpreterFlags: cfg.NumscriptInterpreterFlags,
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
-						MaxCount: serveConfiguration.numscriptCacheMaxCount,
+						MaxCount: cfg.NumscriptCacheMaxCount,
 					},
 					DatabaseRetryConfiguration: systemcontroller.DatabaseRetryConfiguration{
 						MaxRetry: 10,
 						Delay:    time.Millisecond * 100,
 					},
-					EnableFeatures: experimentalFeatures,
+					EnableFeatures: cfg.ExperimentalFeaturesEnabled,
 				}),
 				bus.NewFxModule(),
-				ballast.Module(serveConfiguration.ballastSize),
+				ballast.Module(cfg.BallastSizeInBytes),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
 					Bulk: api.BulkConfig{
-						MaxSize:  bulkMaxSize,
-						Parallel: bulkParallel,
+						MaxSize:  cfg.BulkMaxSize,
+						Parallel: cfg.BulkParallel,
 					},
 					Pagination: common.PaginationConfig{
-						MaxPageSize:     maxPageSize,
-						DefaultPageSize: defaultPageSize,
+						MaxPageSize:     cfg.MaxPageSize,
+						DefaultPageSize: cfg.DefaultPageSize,
 					},
 				}),
 				fx.Decorate(func(
 					params struct {
-						fx.In
+					fx.In
 
-						Handler          chi.Router
-						HealthController *health.HealthController
-						Logger           logging.Logger
+					Handler          chi.Router
+					HealthController *health.HealthController
+					Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-					},
+					MeterProvider *metric.MeterProvider         `optional:"true"`
+					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
@@ -149,15 +145,14 @@ func NewServeCommand() *cobra.Command {
 					)
 				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
-					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(serveConfiguration.bind)))
+					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(cfg.Bind)))
 				}),
 			}
 
-			workerEnabled, _ := cmd.Flags().GetBool(WorkerEnabledFlag)
-			if workerEnabled {
+			if cfg.WorkerEnabled {
 				options = append(options, worker.NewFXModule(worker.ModuleConfig{
-					Schedule:     serveConfiguration.workerConfiguration.hashLogsBlockCRONSpec,
-					MaxBlockSize: serveConfiguration.workerConfiguration.hashLogsBlockMaxSize,
+					Schedule:     cfg.WorkerConfiguration.HashLogsBlockCRONSpec,
+					MaxBlockSize: cfg.WorkerConfiguration.HashLogsBlockMaxSize,
 				}))
 			}
 
@@ -168,14 +163,16 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
-	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
-	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
-	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
+
+	// Deprecated flags
+	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
+	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
+	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 
 	addWorkerFlags(cmd)
 	service.AddFlags(cmd.Flags())
@@ -189,25 +186,6 @@ func NewServeCommand() *cobra.Command {
 	iam.AddFlags(cmd.Flags())
 
 	return cmd
-}
-
-type serveConfiguration struct {
-	ballastSize            uint
-	numscriptCacheMaxCount uint
-	autoUpgrade            bool
-	bind                   string
-	workerConfiguration    workerConfiguration
-}
-
-func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
-	ret := serveConfiguration{}
-	ret.ballastSize, _ = cmd.Flags().GetUint(BallastSizeInBytesFlag)
-	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
-	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
-	ret.bind, _ = cmd.Flags().GetString(BindFlag)
-	ret.workerConfiguration = discoverWorkerConfiguration(cmd)
-
-	return ret
 }
 
 func assembleFinalRouter(
