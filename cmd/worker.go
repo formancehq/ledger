@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
@@ -17,17 +18,9 @@ const (
 	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
 )
 
-type workerConfiguration struct {
-	hashLogsBlockMaxSize   int
-	hashLogsBlockCRONSpec  string
-}
-
-func discoverWorkerConfiguration(cmd *cobra.Command) workerConfiguration {
-	ret := workerConfiguration{}
-	ret.hashLogsBlockCRONSpec, _ = cmd.Flags().GetString(WorkerAsyncBlockHasherScheduleFlag)
-	ret.hashLogsBlockMaxSize, _ = cmd.Flags().GetInt(WorkerAsyncBlockHasherMaxBlockSizeFlag)
-
-	return ret
+type WorkerConfiguration struct {
+	HashLogsBlockMaxSize  int    `mapstructure:"worker-async-block-hasher-max-block-size"`
+	HashLogsBlockCRONSpec string `mapstructure:"worker-async-block-hasher-schedule"`
 }
 
 func addWorkerFlags(cmd *cobra.Command) {
@@ -45,7 +38,10 @@ func NewWorkerCommand() *cobra.Command {
 				return err
 			}
 
-			workerConfiguration := discoverWorkerConfiguration(cmd)
+			cfg, err := LoadConfig[WorkerConfiguration](cmd)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 
 			return service.New(cmd.OutOrStdout(),
 				fx.NopLogger,
@@ -53,12 +49,10 @@ func NewWorkerCommand() *cobra.Command {
 				otlptraces.FXModuleFromFlags(cmd),
 				otlpmetrics.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
-				storage.NewFXModule(storage.ModuleConfig{
-					// todo
-				}),
+				storage.NewFXModule(storage.ModuleConfig{}),
 				worker.NewFXModule(worker.ModuleConfig{
-					MaxBlockSize: workerConfiguration.hashLogsBlockMaxSize,
-					Schedule: workerConfiguration.hashLogsBlockCRONSpec,
+					MaxBlockSize: cfg.HashLogsBlockMaxSize,
+					Schedule:     cfg.HashLogsBlockCRONSpec,
 				}),
 			).Run(cmd)
 		},
