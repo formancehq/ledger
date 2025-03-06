@@ -1,6 +1,8 @@
 package system
 
 import (
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -28,9 +30,17 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 		fx.Provide(func(controller *DefaultController) Controller {
 			return controller
 		}),
+		fx.Provide(func(store *systemstore.DefaultStore) Store {
+			return store
+		}),
+		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(Driver)))),
+		fx.Provide(func(driversRegistry *drivers.Registry) ConfigValidator {
+			return driversRegistry
+		}),
 		fx.Provide(func(
-			store Store,
+			driver Driver,
 			listener ledgercontroller.Listener,
+			validator ConfigValidator,
 			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
 		) *DefaultController {
@@ -53,15 +63,7 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 				parser = interpreterParser
 			}
 
-			return NewDefaultController(
-				store,
-				listener,
-				WithParser(parser, machineParser, interpreterParser),
-				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
-				WithMeterProvider(meterProvider),
-				WithTracerProvider(tracerProvider),
-				WithEnableFeatures(configuration.EnableFeatures),
-			)
+			return NewDefaultController(driver, listener, validator, WithParser(parser, machineParser, interpreterParser), WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration), WithMeterProvider(meterProvider), WithTracerProvider(tracerProvider), WithEnableFeatures(configuration.EnableFeatures))
 		}),
 	)
 }

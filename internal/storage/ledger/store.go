@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
@@ -17,7 +17,6 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	"errors"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
 
@@ -47,16 +46,16 @@ type Store struct {
 
 func (store *Store) Volumes() common.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
-	ledgercontroller.GetVolumesOptions,
-	common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
-	return common.NewPaginatedResourceRepository(&volumesResourceHandler{store: store}, common.OffsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
+	GetVolumesOptions,
+	common.OffsetPaginatedQuery[GetVolumesOptions]] {
+	return common.NewPaginatedResourceRepository(&volumesResourceHandler{store: store}, common.OffsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions]{
 		DefaultPaginationColumn: "account",
 		DefaultOrder:            bunpaginate.OrderAsc,
 	})
 }
 
-func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
-	return common.NewResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
+func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
+	return common.NewResourceRepository[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
 		store: store,
 	})
 }
