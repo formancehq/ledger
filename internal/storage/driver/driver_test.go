@@ -8,10 +8,10 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"math/rand"
@@ -91,7 +91,7 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	query := ledgercontroller.NewListLedgersQuery(15).WithBucket(bucket)
+	query := systemstore.NewListLedgersQuery(15).WithBucket(bucket)
 
 	cursor, err := d.ListLedgers(ctx, query)
 	require.NoError(t, err)

@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -41,9 +40,9 @@ var _ = Context("Ledger transactions create API tests", func() {
 						PostgresConfiguration: db.GetValue().ConnectionOptions(),
 						Output:                GinkgoWriter,
 						Debug:                 debug,
+						ExperimentalNumscriptRewrite: data.numscriptRewrite,
 					},
 					NatsURL:                      natsServer.GetValue().ClientURL(),
-					ExperimentalNumscriptRewrite: data.numscriptRewrite,
 				}
 			})
 
@@ -215,7 +214,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							},
 						}))
 						By("should trigger a new event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(ledgerevents.CommittedTransactions{
 								Ledger:          "default",
 								Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(rsp)},
 								AccountMetadata: ledger.AccountMetadata{},

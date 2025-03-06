@@ -1,4 +1,4 @@
-package worker
+package storage
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/robfig/cron/v3"
 	"github.com/uptrace/bun"
+	"go.uber.org/fx"
 	"time"
 )
 
@@ -22,8 +22,8 @@ type AsyncBlockRunnerConfig struct {
 type AsyncBlockRunner struct {
 	stopChannel chan chan struct{}
 	logger      logging.Logger
-	db          *bun.DB
-	cfg         AsyncBlockRunnerConfig
+	db  *bun.DB
+	cfg AsyncBlockRunnerConfig
 }
 
 func (r *AsyncBlockRunner) Name() string {
@@ -67,7 +67,7 @@ func (r *AsyncBlockRunner) Stop(ctx context.Context) error {
 }
 
 func (r *AsyncBlockRunner) run(ctx context.Context) error {
-	initialQuery := ledgercontroller.NewListLedgersQuery(10)
+	initialQuery := systemstore.NewListLedgersQuery(10)
 	initialQuery.Options.Options.Features = map[string]string{
 		features.FeatureHashLogs: "ASYNC",
 	}
@@ -75,7 +75,7 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 	return bunpaginate.Iterate(
 		ctx,
 		initialQuery,
-		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+		func(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 			return systemStore.ListLedgers(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
@@ -105,4 +105,26 @@ func NewAsyncBlockRunner(logger logging.Logger, db *bun.DB, cfg AsyncBlockRunner
 		db:          db,
 		cfg:         cfg,
 	}
+}
+
+func NewAsyncBlockRunnerModule(cfg AsyncBlockRunnerConfig) fx.Option {
+	return fx.Options(
+		fx.Provide(func(logger logging.Logger, db *bun.DB) (*AsyncBlockRunner, error) {
+			return NewAsyncBlockRunner(logger, db, cfg), nil
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, asyncBlockRunner *AsyncBlockRunner) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					go func() {
+						if err := asyncBlockRunner.Run(context.WithoutCancel(ctx)); err != nil {
+							panic(err)
+						}
+					}()
+
+					return nil
+				},
+				OnStop: asyncBlockRunner.Stop,
+			})
+		}),
+	)
 }
