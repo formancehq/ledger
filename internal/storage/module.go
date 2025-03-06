@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v3/health"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
@@ -19,6 +20,10 @@ type ModuleConfig struct {
 
 func NewFXModule(config ModuleConfig) fx.Option {
 	ret := []fx.Option{
+		systemstore.NewFXModule(),
+		fx.Provide(func(store *systemstore.DefaultStore) driver.SystemStore {
+			return store
+		}),
 		driver.NewFXModule(),
 		health.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false

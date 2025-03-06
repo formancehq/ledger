@@ -28,7 +28,7 @@ require (
 	github.com/onsi/gomega v1.36.3
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/pborman/uuid v1.2.1
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
@@ -50,21 +50,34 @@ require (
 )
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0-20250422113236-ec98813a1539
+	github.com/ClickHouse/clickhouse-go/v2 v2.35.0
+	github.com/formancehq/go-libs/v3 v3.0.0-20250521193206-16afb7f06140
+	github.com/lib/pq v1.10.9
+	github.com/mitchellh/mapstructure v1.5.0
+	github.com/olivere/elastic/v7 v7.0.32
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
+	go.vallahaye.net/batcher v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/ClickHouse/ch-go v0.66.0 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-faster/city v1.0.1 // indirect
+	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/google/go-tpm v0.9.3 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/jackc/pgxlisten v0.0.0-20241106001234-1d6f6656415c // indirect
-	github.com/moby/sys/user v0.3.0 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
+	github.com/moby/sys/user v0.4.0 // indirect
+	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.8.0 // indirect
@@ -215,7 +228,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
+	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect

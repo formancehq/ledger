@@ -1,13 +1,10 @@
 package v2
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 
 	"github.com/formancehq/ledger/internal/controller/ledger"
-
-	"errors"
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/metadata"
@@ -24,20 +21,16 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var m metadata.Metadata
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		api.BadRequest(w, common.ErrValidation, errors.New("invalid metadata format"))
-		return
-	}
+	common.WithBody(w, r, func(m metadata.Metadata) {
+		_, err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
+			Address:  address,
+			Metadata: m,
+		}))
+		if err != nil {
+			common.HandleCommonWriteErrors(w, r, err)
+			return
+		}
 
-	_, err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
-		Address:  address,
-		Metadata: m,
-	}))
-	if err != nil {
-		common.HandleCommonWriteErrors(w, r, err)
-		return
-	}
-
-	api.NoContent(w)
+		api.NoContent(w)
+	})
 }

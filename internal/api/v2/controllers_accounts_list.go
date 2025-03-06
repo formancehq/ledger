@@ -4,8 +4,8 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 )
 
@@ -22,7 +22,7 @@ func listAccounts(paginationConfig common.PaginationConfig) http.HandlerFunc {
 		cursor, err := l.ListAccounts(r.Context(), *query)
 		if err != nil {
 			switch {
-			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgerstore.ErrMissingFeature{}):
 				api.BadRequest(w, common.ErrValidation, err)
 			default:
 				common.HandleCommonErrors(w, r, err)

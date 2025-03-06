@@ -3,7 +3,6 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
@@ -62,7 +61,7 @@ func (h volumesResourceHandler) Filters() []common.Filter {
 	}
 }
 
-func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
@@ -101,7 +100,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 		}
 	} else {
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+			return nil, NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
 		selectVolumes = h.store.db.NewSelect().
@@ -163,7 +162,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 }
 
 func (h volumesResourceHandler) ResolveFilter(
-	_ common.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	_ common.ResourceQuery[GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -202,7 +201,7 @@ func (h volumesResourceHandler) ResolveFilter(
 }
 
 func (h volumesResourceHandler) Project(
-	query common.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	query common.ResourceQuery[GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -225,8 +224,8 @@ func (h volumesResourceHandler) Project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) Expand(_ common.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h volumesResourceHandler) Expand(_ common.ResourceQuery[GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ common.RepositoryHandler[ledgercontroller.GetVolumesOptions] = volumesResourceHandler{}
+var _ common.RepositoryHandler[GetVolumesOptions] = volumesResourceHandler{}
