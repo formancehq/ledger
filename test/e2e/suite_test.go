@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/platform/clickhousetesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
@@ -15,6 +16,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/uptrace/bun"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -30,18 +32,20 @@ func Test(t *testing.T) {
 }
 
 var (
-	dockerPool = deferred.New[*docker.Pool]()
-	pgServer   = deferred.New[*PostgresServer]()
-	natsServer = deferred.New[*natstesting.NatsServer]()
-	debug      = os.Getenv("DEBUG") == "true"
-	logger     = logging.NewDefaultLogger(GinkgoWriter, debug, false, false)
+	dockerPool       = deferred.New[*docker.Pool]()
+	pgServer         = deferred.New[*PostgresServer]()
+	natsServer       = deferred.New[*natstesting.NatsServer]()
+	clickhouseServer = deferred.New[*clickhousetesting.Server]()
+	debug            = os.Getenv("DEBUG") == "true"
+	logger           = logging.NewDefaultLogger(GinkgoWriter, debug, false, false)
 
 	DBTemplate = "dbtemplate"
 )
 
 type ParallelExecutionContext struct {
-	PostgresServer *PostgresServer
-	NatsServer     *natstesting.NatsServer
+	PostgresServer   *PostgresServer
+	NatsServer       *natstesting.NatsServer
+	ClickhouseServer *clickhousetesting.Server
 }
 
 var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
@@ -85,13 +89,23 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 		return ret, nil
 	})
 
+	if slices.Contains(enabledReplicationDrivers(), "clickhouse") {
+		clickhouseServer.LoadAsync(func() (*clickhousetesting.Server, error) {
+			By("Initializing clickhouse server")
+			return clickhousetesting.CreateServer(dockerPool.GetValue()), nil
+		})
+	} else {
+		clickhouseServer.SetValue(&clickhousetesting.Server{})
+	}
+
 	By("Waiting services alive")
-	Expect(deferred.WaitContext(specContext, pgServer, natsServer)).To(BeNil())
+	Expect(deferred.WaitContext(specContext, pgServer, natsServer, clickhouseServer)).To(BeNil())
 	By("All services ready.")
 
 	data, err := json.Marshal(ParallelExecutionContext{
-		PostgresServer: pgServer.GetValue(),
-		NatsServer:     natsServer.GetValue(),
+		PostgresServer:   pgServer.GetValue(),
+		NatsServer:       natsServer.GetValue(),
+		ClickhouseServer: clickhouseServer.GetValue(),
 	})
 	Expect(err).To(BeNil())
 
@@ -109,6 +123,7 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 
 	pgServer.SetValue(pec.PostgresServer)
 	natsServer.SetValue(pec.NatsServer)
+	clickhouseServer.SetValue(pec.ClickhouseServer)
 })
 
 func UseTemplatedDatabase() *deferred.Deferred[*Database] {

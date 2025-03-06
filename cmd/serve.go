@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/all"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/worker"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -37,7 +38,8 @@ import (
 	"go.uber.org/fx"
 )
 
-type ServeConfig struct {
+type ServeCommandConfig struct {
+	commonConfig        `mapstructure:",squash"`
 	WorkerConfiguration `mapstructure:",squash"`
 
 	Bind                        string   `mapstructure:"bind"`
@@ -49,9 +51,6 @@ type ServeConfig struct {
 	DefaultPageSize             uint64   `mapstructure:"default-page-size"`
 	MaxPageSize                 uint64   `mapstructure:"max-page-size"`
 	WorkerEnabled               bool     `mapstructure:"worker"`
-	NumscriptInterpreter        bool     `mapstructure:"experimental-numscript-interpreter"`
-	NumscriptInterpreterFlags   []string `mapstructure:"experimental-numscript-interpreter-flags"`
-	ExperimentalFeaturesEnabled bool     `mapstructure:"experimental-features"`
 }
 
 const (
@@ -65,9 +64,6 @@ const (
 	DefaultPageSizeFlag             = "default-page-size"
 	MaxPageSizeFlag                 = "max-page-size"
 	WorkerEnabledFlag               = "worker"
-	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
-	NumscriptInterpreterFlagsToPass = "experimental-numscript-interpreter-flags"
-	ExperimentalFeaturesFlag        = "experimental-features"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -76,7 +72,7 @@ func NewServeCommand() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 
-			cfg, err := LoadConfig[ServeConfig](cmd)
+			cfg, err := LoadConfig[ServeCommandConfig](cmd)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -97,6 +93,8 @@ func NewServeCommand() *cobra.Command {
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
 				}),
+				drivers.NewFXModule(),
+				fx.Invoke(all.Register),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      cfg.NumscriptInterpreter,
 					NumscriptInterpreterFlags: cfg.NumscriptInterpreterFlags,
@@ -122,6 +120,7 @@ func NewServeCommand() *cobra.Command {
 						MaxPageSize:     cfg.MaxPageSize,
 						DefaultPageSize: cfg.DefaultPageSize,
 					},
+					Connectors: cfg.ExperimentalConnectors,
 				}),
 				fx.Decorate(func(
 					params struct {
@@ -150,10 +149,7 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			if cfg.WorkerEnabled {
-				options = append(options, worker.NewFXModule(worker.ModuleConfig{
-					Schedule:     cfg.HashLogsBlockCRONSpec,
-					MaxBlockSize: cfg.HashLogsBlockMaxSize,
-				}))
+				options = append(options, newWorkerModule(cfg.WorkerConfiguration))
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)

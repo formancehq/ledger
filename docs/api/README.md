@@ -2123,7 +2123,828 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
+## List connectors
+
+<a id="opIdv2ListConnectors"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_system/connectors HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_system/connectors`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "cursor": {
+      "pageSize": 15,
+      "hasMore": false,
+      "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+      "next": "",
+      "data": [
+        {
+          "driver": "string",
+          "config": {},
+          "id": "string",
+          "createdAt": "2019-08-24T14:15:22Z"
+        }
+      ]
+    },
+    "data": [
+      {
+        "driver": "string",
+        "config": {},
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z"
+      }
+    ]
+  }
+}
+```
+
+<h3 id="list-connectors-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Connectors list|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-connectors-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» cursor|any|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2ConnectorsCursorResponse](#schemav2connectorscursorresponse)|false|none|none|
+|»»» cursor|object|true|none|none|
+|»»»» pageSize|integer(int64)|true|none|none|
+|»»»» hasMore|boolean|true|none|none|
+|»»»» previous|string|false|none|none|
+|»»»» next|string|false|none|none|
+|»»»» data|[allOf]|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|»»»»»» driver|string|true|none|none|
+|»»»»»» config|object|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|object|false|none|none|
+|»»»»»» id|string|true|none|none|
+|»»»»»» createdAt|string(date-time)|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» data|[allOf]|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create connector
+
+<a id="opIdv2CreateConnector"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/_system/connectors HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/_system/connectors`
+
+> Body parameter
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+```
+
+<h3 id="create-connector-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "data": {
+    "driver": "string",
+    "config": {},
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z"
+  }
+}
+```
+
+<h3 id="create-connector-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created connector|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="create-connector-responseschema">Response Schema</h3>
+
+Status Code **201**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|[V2Connector](#schemav2connector)|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|»»» driver|string|true|none|none|
+|»»» config|object|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get connector state
+
+<a id="opIdv2GetConnectorState"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_system/connectors/{connectorID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_system/connectors/{connectorID}`
+
+<h3 id="get-connector-state-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|connectorID|path|string|true|The connector id|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": {
+    "driver": "string",
+    "config": {},
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z"
+  }
+}
+```
+
+<h3 id="get-connector-state-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Connector information|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="get-connector-state-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|[V2Connector](#schemav2connector)|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|»»» driver|string|true|none|none|
+|»»» config|object|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete connector
+
+<a id="opIdv2DeleteConnector"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/_system/connectors/{connectorID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/_system/connectors/{connectorID}`
+
+<h3 id="delete-connector-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|connectorID|path|string|true|The connector id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="delete-connector-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Connector deleted|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List pipelines
+
+<a id="opIdv2ListPipelines"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/pipelines HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/pipelines`
+
+<h3 id="list-pipelines-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "cursor": {
+      "pageSize": 15,
+      "hasMore": false,
+      "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+      "next": "",
+      "data": [
+        {
+          "id": "string",
+          "createdAt": "2019-08-24T14:15:22Z",
+          "lastLogID": 0,
+          "enabled": true
+        }
+      ]
+    },
+    "data": [
+      {
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z",
+        "lastLogID": 0,
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+<h3 id="list-pipelines-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Pipelines list|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-pipelines-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» cursor|any|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2PipelinesCursorResponse](#schemav2pipelinescursorresponse)|false|none|none|
+|»»» cursor|object|true|none|none|
+|»»»» pageSize|integer(int64)|true|none|none|
+|»»»» hasMore|boolean|true|none|none|
+|»»»» previous|string|false|none|none|
+|»»»» next|string|false|none|none|
+|»»»» data|[allOf]|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|object|false|none|none|
+|»»»»»» ledger|string|true|none|none|
+|»»»»»» connectorID|string|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|object|false|none|none|
+|»»»»»» id|string|true|none|none|
+|»»»»»» createdAt|string(date-time)|true|none|none|
+|»»»»»» lastLogID|integer|false|none|none|
+|»»»»»» enabled|boolean|false|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» data|[allOf]|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create pipeline
+
+<a id="opIdv2CreatePipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines`
+
+> Body parameter
+
+```json
+{
+  "connectorID": "string"
+}
+```
+
+<h3 id="create-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2CreatePipelineRequest](#schemav2createpipelinerequest)|false|none|
+|ledger|path|string|true|Name of the ledger.|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "data": {
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z",
+    "lastLogID": 0,
+    "enabled": true
+  }
+}
+```
+
+<h3 id="create-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created ipeline|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="create-pipeline-responseschema">Response Schema</h3>
+
+Status Code **201**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|any|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» ledger|string|true|none|none|
+|»»» connectorID|string|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+|»»» lastLogID|integer|false|none|none|
+|»»» enabled|boolean|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get pipeline state
+
+<a id="opIdv2GetPipelineState"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/pipelines/{pipelineID}`
+
+<h3 id="get-pipeline-state-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": {
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z",
+    "lastLogID": 0,
+    "enabled": true
+  }
+}
+```
+
+<h3 id="get-pipeline-state-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Pipeline information|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="get-pipeline-state-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|any|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» ledger|string|true|none|none|
+|»»» connectorID|string|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+|»»» lastLogID|integer|false|none|none|
+|»»» enabled|boolean|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete pipeline
+
+<a id="opIdv2DeletePipeline"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/{ledger}/pipelines/{pipelineID}`
+
+<h3 id="delete-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="delete-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Pipeline deleted|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Reset pipeline
+
+<a id="opIdv2ResetPipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/reset HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines/{pipelineID}/reset`
+
+<h3 id="reset-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="reset-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|202|[Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)|Pipeline reset|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Start pipeline
+
+<a id="opIdv2StartPipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/start HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines/{pipelineID}/start`
+
+<h3 id="start-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="start-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|202|[Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)|Pipeline started|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Stop pipeline
+
+<a id="opIdv2StopPipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/stop HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines/{pipelineID}/stop`
+
+<h3 id="stop-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="stop-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|202|[Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)|Pipeline stopped|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 # Schemas
+
+<h2 id="tocS_V2ConnectorsCursorResponse">V2ConnectorsCursorResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2connectorscursorresponse"></a>
+<a id="schema_V2ConnectorsCursorResponse"></a>
+<a id="tocSv2connectorscursorresponse"></a>
+<a id="tocsv2connectorscursorresponse"></a>
+
+```json
+{
+  "cursor": {
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "",
+    "data": [
+      {
+        "driver": "string",
+        "config": {},
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z"
+      }
+    ]
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Connector](#schemav2connector)]|true|none|none|
+
+<h2 id="tocS_V2PipelinesCursorResponse">V2PipelinesCursorResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2pipelinescursorresponse"></a>
+<a id="schema_V2PipelinesCursorResponse"></a>
+<a id="tocSv2pipelinescursorresponse"></a>
+<a id="tocsv2pipelinescursorresponse"></a>
+
+```json
+{
+  "cursor": {
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "",
+    "data": [
+      {
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z",
+        "lastLogID": 0,
+        "enabled": true
+      }
+    ]
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Pipeline](#schemav2pipeline)]|true|none|none|
 
 <h2 id="tocS_V2AccountsCursorResponse">V2AccountsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -4618,4 +5439,155 @@ and
 |---|---|---|---|---|
 |metadata|object|false|none|none|
 |» **additionalProperties**|string|false|none|none|
+
+<h2 id="tocS_V2CreatePipelineRequest">V2CreatePipelineRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2createpipelinerequest"></a>
+<a id="schema_V2CreatePipelineRequest"></a>
+<a id="tocSv2createpipelinerequest"></a>
+<a id="tocsv2createpipelinerequest"></a>
+
+```json
+{
+  "connectorID": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|connectorID|string|true|none|none|
+
+<h2 id="tocS_V2CreateConnectorRequest">V2CreateConnectorRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2createconnectorrequest"></a>
+<a id="schema_V2CreateConnectorRequest"></a>
+<a id="tocSv2createconnectorrequest"></a>
+<a id="tocsv2createconnectorrequest"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+
+```
+
+### Properties
+
+*None*
+
+<h2 id="tocS_V2PipelineConfiguration">V2PipelineConfiguration</h2>
+<!-- backwards compatibility -->
+<a id="schemav2pipelineconfiguration"></a>
+<a id="schema_V2PipelineConfiguration"></a>
+<a id="tocSv2pipelineconfiguration"></a>
+<a id="tocsv2pipelineconfiguration"></a>
+
+```json
+{
+  "ledger": "string",
+  "connectorID": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|ledger|string|true|none|none|
+|connectorID|string|true|none|none|
+
+<h2 id="tocS_V2ConnectorConfiguration">V2ConnectorConfiguration</h2>
+<!-- backwards compatibility -->
+<a id="schemav2connectorconfiguration"></a>
+<a id="schema_V2ConnectorConfiguration"></a>
+<a id="tocSv2connectorconfiguration"></a>
+<a id="tocsv2connectorconfiguration"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|driver|string|true|none|none|
+|config|object|true|none|none|
+
+<h2 id="tocS_V2Connector">V2Connector</h2>
+<!-- backwards compatibility -->
+<a id="schemav2connector"></a>
+<a id="schema_V2Connector"></a>
+<a id="tocSv2connector"></a>
+<a id="tocsv2connector"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {},
+  "id": "string",
+  "createdAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|true|none|none|
+|» createdAt|string(date-time)|true|none|none|
+
+<h2 id="tocS_V2Pipeline">V2Pipeline</h2>
+<!-- backwards compatibility -->
+<a id="schemav2pipeline"></a>
+<a id="schema_V2Pipeline"></a>
+<a id="tocSv2pipeline"></a>
+<a id="tocsv2pipeline"></a>
+
+```json
+{
+  "id": "string",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "lastLogID": 0,
+  "enabled": true
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2PipelineConfiguration](#schemav2pipelineconfiguration)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|true|none|none|
+|» createdAt|string(date-time)|true|none|none|
+|» lastLogID|integer|false|none|none|
+|» enabled|boolean|false|none|none|
 

@@ -28,7 +28,7 @@ require (
 	github.com/onsi/gomega v1.36.3
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/pborman/uuid v1.2.1
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.7
@@ -50,25 +50,38 @@ require (
 )
 
 require (
+	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/formancehq/go-libs/v3 v3.0.0
 	github.com/iancoleman/strcase v0.3.0
+	github.com/lib/pq v1.10.9
+	github.com/mitchellh/mapstructure v1.5.0
+	github.com/olivere/elastic/v7 v7.0.32
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
+	go.vallahaye.net/batcher v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/ClickHouse/ch-go v0.66.1 // indirect
 	github.com/ThreeDotsLabs/watermill-aws v1.0.0 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sns v1.34.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.38.8 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-faster/city v1.0.1 // indirect
+	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/google/go-tpm v0.9.5 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/jackc/pgxlisten v0.0.0-20241106001234-1d6f6656415c // indirect
-	github.com/moby/sys/user v0.3.0 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
+	github.com/moby/sys/user v0.4.0 // indirect
+	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.9.2 // indirect

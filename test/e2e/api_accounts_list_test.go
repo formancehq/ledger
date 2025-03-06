@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"sort"
 	"time"
@@ -31,7 +31,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := ginkgo.DeferTestServer(
+	testServer := DeferTestServer(
 		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),

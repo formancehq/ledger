@@ -17,6 +17,7 @@ import (
 	time "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
+	ledger0 "github.com/formancehq/ledger/internal/storage/ledger"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -60,10 +61,10 @@ func (mr *MockStoreMockRecorder) Accounts() *gomock.Call {
 }
 
 // AggregatedBalances mocks base method.
-func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
+func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger0.GetAggregatedVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregatedBalances")
-	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions])
+	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, ledger0.GetAggregatedVolumesOptions])
 	return ret0
 }
 
@@ -148,10 +149,10 @@ func (mr *MockStoreMockRecorder) DeleteTransactionMetadata(ctx, transactionID, k
 }
 
 // GetBalances mocks base method.
-func (m *MockStore) GetBalances(ctx context.Context, query BalanceQuery) (Balances, error) {
+func (m *MockStore) GetBalances(ctx context.Context, query ledger0.BalanceQuery) (ledger.Balances, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalances", ctx, query)
-	ret0, _ := ret[0].(Balances)
+	ret0, _ := ret[0].(ledger.Balances)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -160,20 +161,6 @@ func (m *MockStore) GetBalances(ctx context.Context, query BalanceQuery) (Balanc
 func (mr *MockStoreMockRecorder) GetBalances(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalances", reflect.TypeOf((*MockStore)(nil).GetBalances), ctx, query)
-}
-
-// GetDB mocks base method.
-func (m *MockStore) GetDB() bun.IDB {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDB")
-	ret0, _ := ret[0].(bun.IDB)
-	return ret0
-}
-
-// GetDB indicates an expected call of GetDB.
-func (mr *MockStoreMockRecorder) GetDB() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDB", reflect.TypeOf((*MockStore)(nil).GetDB))
 }
 
 // GetMigrationsInfo mocks base method.
@@ -360,10 +347,10 @@ func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomoc
 }
 
 // Volumes mocks base method.
-func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions] {
+func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger0.GetVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Volumes")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger0.GetVolumesOptions])
 	return ret0
 }
 

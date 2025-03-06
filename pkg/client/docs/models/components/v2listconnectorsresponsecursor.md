@@ -1,0 +1,9 @@
+# V2ListConnectorsResponseCursor
+
+
+## Fields
+
+| Field                                                                                                              | Type                                                                                                               | Required                                                                                                           | Description                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `Cursor`                                                                                                           | [components.V2ListConnectorsResponseCursorCursor](../../models/components/v2listconnectorsresponsecursorcursor.md) | :heavy_check_mark:                                                                                                 | N/A                                                                                                                |
+| `Data`                                                                                                             | [][components.V2Connector](../../models/components/v2connector.md)                                                 | :heavy_minus_sign:                                                                                                 | N/A                                                                                                                |

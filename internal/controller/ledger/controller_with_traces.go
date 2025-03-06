@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
@@ -41,6 +42,10 @@ type ControllerWithTraces struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	deleteAccountMetadataHistogram     metric.Int64Histogram
 	lockLedgerHistogram                metric.Int64Histogram
+}
+
+func (c *ControllerWithTraces) Info() ledger.Ledger {
+	return c.underlying.Info()
 }
 
 func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter metric.Meter) *ControllerWithTraces {
@@ -283,7 +288,7 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.Resource
 	)
 }
 
-func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAggregatedBalances",
@@ -343,7 +348,7 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",
@@ -459,6 +464,51 @@ func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 			return c.underlying.GetStats(ctx)
 		},
 	)
+}
+
+func (c *ControllerWithTraces) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) DeletePipeline(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) StartPipeline(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) PausePipeline(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) ResumePipeline(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) ResetPipeline(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *ControllerWithTraces) StopPipeline(ctx context.Context, id string) error {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {

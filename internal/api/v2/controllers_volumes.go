@@ -6,8 +6,8 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"strconv"
 )
@@ -49,12 +49,12 @@ func readVolumes(paginationConfig common.PaginationConfig) http.HandlerFunc {
 			}
 		}
 
-		rq, err := getPaginatedQuery[ledgercontroller.GetVolumesOptions](
+		rq, err := getPaginatedQuery[ledgerstore.GetVolumesOptions](
 			r,
 			paginationConfig,
 			"account",
 			bunpaginate.OrderAsc,
-			func(rq *storagecommon.ResourceQuery[ledgercontroller.GetVolumesOptions]) {
+			func(rq *storagecommon.ResourceQuery[ledgerstore.GetVolumesOptions]) {
 				if groupBy > 0 {
 					rq.Opts.GroupLvl = groupBy
 				}

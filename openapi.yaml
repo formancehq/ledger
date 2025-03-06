@@ -2605,6 +2605,260 @@ paths:
       security:
         - Authorization:
             - ledger:write
+  /v2/_system/connectors:
+    get:
+      summary: List connectors
+      operationId: v2ListConnectors
+      x-speakeasy-name-override: ListConnectors
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2ListConnectorsResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    post:
+      summary: Create connector
+      operationId: v2CreateConnector
+      x-speakeasy-name-override: CreateConnector
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreateConnectorRequest'
+      responses:
+        "201":
+          $ref: '#/components/responses/V2CreateConnectorResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/_system/connectors/{connectorID}:
+    parameters:
+      - name: connectorID
+        description: The connector id
+        in: path
+        schema:
+          type: string
+        required: true
+    get:
+      summary: Get connector state
+      operationId: v2GetConnectorState
+      x-speakeasy-name-override: GetConnectorState
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2GetConnectorStateResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    delete:
+      summary: Delete connector
+      operationId: v2DeleteConnector
+      x-speakeasy-name-override: DeleteConnector
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: Connector deleted
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    get:
+      summary: List pipelines
+      operationId: v2ListPipelines
+      x-speakeasy-name-override: ListPipelines
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2ListPipelinesResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    post:
+      summary: Create pipeline
+      operationId: v2CreatePipeline
+      x-speakeasy-name-override: CreatePipeline
+      tags:
+        - ledger.v2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreatePipelineRequest'
+      responses:
+        "201":
+          $ref: '#/components/responses/V2CreatePipelineResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    get:
+      summary: Get pipeline state
+      operationId: v2GetPipelineState
+      x-speakeasy-name-override: GetPipelineState
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2GetPipelineStateResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    delete:
+      summary: Delete pipeline
+      operationId: v2DeletePipeline
+      x-speakeasy-name-override: DeletePipeline
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: Pipeline deleted
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/reset:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Reset pipeline
+      operationId: v2ResetPipeline
+      x-speakeasy-name-override: ResetPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline reset
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/start:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Start pipeline
+      operationId: v2StartPipeline
+      x-speakeasy-name-override: StartPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline started
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/stop:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Stop pipeline
+      operationId: v2StopPipeline
+      x-speakeasy-name-override: StopPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline stopped
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
   x-speakeasy-errors:
     statusCodes:
       - default
@@ -3203,6 +3457,68 @@ components:
           enum:
             - TO DO
             - DONE
+    V2ConnectorsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Connector"
+    V2PipelinesCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Pipeline"
     V2AccountsCursorResponse:
       type: object
       required:
@@ -3987,6 +4303,66 @@ components:
           type: object
           additionalProperties:
             type: string
+    V2CreatePipelineRequest:
+      type: object
+      properties:
+        connectorID:
+          type: string
+      required:
+        - connectorID
+    V2CreateConnectorRequest:
+      $ref: '#/components/schemas/V2ConnectorConfiguration'
+    V2PipelineConfiguration:
+      properties:
+        ledger:
+          type: string
+        connectorID:
+          type: string
+      required:
+        - ledger
+        - connectorID
+    V2ConnectorConfiguration:
+      type: object
+      properties:
+        driver:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+      required:
+        - driver
+        - config
+    V2Connector:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/V2ConnectorConfiguration'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+          required:
+            - id
+            - createdAt
+    V2Pipeline:
+      allOf:
+        - $ref: '#/components/schemas/V2PipelineConfiguration'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+            lastLogID:
+              type: integer
+            enabled:
+              type: boolean
+          required:
+            - id
+            - createdAt
   parameters:
     sort:
       name: sort
@@ -3996,5 +4372,81 @@ components:
       schema:
         type: string
         example: id:desc
+  responses:
+    V2CreatePipelineResponse:
+      description: Created ipeline
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Pipeline'
+            required:
+              - data
+    V2ListPipelinesResponse:
+      description: Pipelines list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              cursor:
+                allOf:
+                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/V2Pipeline'
+    V2GetPipelineStateResponse:
+      description: Pipeline information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Pipeline'
+            required:
+              - data
+    V2CreateConnectorResponse:
+      description: Created connector
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Connector'
+            required:
+              - data
+    V2ListConnectorsResponse:
+      description: Connectors list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              cursor:
+                allOf:
+                  - $ref: '#/components/schemas/V2ConnectorsCursorResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/V2Connector'
+    V2GetConnectorStateResponse:
+      description: Connector information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Connector'
+            required:
+              - data
 servers:
   - url: http://localhost:8080/

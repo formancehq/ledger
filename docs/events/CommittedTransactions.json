@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/formancehq/ledger/internal/bus/committed-transactions",
+  "$id": "https://github.com/formancehq/ledger/pkg/events/committed-transactions",
   "$ref": "#/$defs/CommittedTransactions",
   "$defs": {
     "CommittedTransactions": {

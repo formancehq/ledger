@@ -8,15 +8,14 @@ import (
 	"fmt"
 	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"slices"
 	"testing"
 
+	"errors"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
-	"errors"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -319,7 +318,7 @@ func TestTransactionsCommit(t *testing.T) {
 		t.Cleanup(cancel)
 		go func() {
 			// Simulate a transaction with bounded sources by asking for balances before calling CommitTransaction
-			_, err := storeWithTxWithAccount1AsSource.GetBalances(tx1Context, ledgercontroller.BalanceQuery{
+			_, err := storeWithTxWithAccount1AsSource.GetBalances(tx1Context, ledgerstore.BalanceQuery{
 				"account:1": {"USD"},
 			})
 			require.NoError(t, err)
@@ -358,7 +357,7 @@ func TestTransactionsCommit(t *testing.T) {
 		t.Cleanup(cancel)
 		go func() {
 			// Simulate a transaction with bounded sources by asking for balances before calling CommitTransaction
-			_, err := storeWithTxWithAccount2AsSource.GetBalances(tx2Context, ledgercontroller.BalanceQuery{
+			_, err := storeWithTxWithAccount2AsSource.GetBalances(tx2Context, ledgerstore.BalanceQuery{
 				"account:2": {"USD"},
 			})
 			require.NoError(t, err)
@@ -615,7 +614,7 @@ func TestTransactionsInsert(t *testing.T) {
 		}
 		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
+		require.True(t, errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}))
 	})
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()

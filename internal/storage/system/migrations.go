@@ -248,6 +248,36 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 				})
 			},
 		},
+		migrations.Migration{
+			Name: "add pipelines",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				_, err := db.ExecContext(ctx, `
+					create table _system.connectors (
+					    id varchar,
+					    driver varchar,
+					    config varchar,
+					    created_at timestamp,
+					    
+					    primary key(id)   
+					);
+
+					create table _system.pipelines (
+					    id varchar,
+					    ledger varchar,
+					    connector_id varchar references _system.connectors (id) on delete cascade,
+					    created_at timestamp,
+					    enabled bool,
+					    last_log_id bigint,
+					    error varchar,
+					    version int,
+					    
+					    primary key(id)
+					);
+					create unique index on _system.pipelines (ledger, connector_id);
+				`)
+				return err
+			},
+		},
 	)
 
 	return migrator

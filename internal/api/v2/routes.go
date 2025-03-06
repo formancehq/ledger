@@ -7,7 +7,7 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/controller/system"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -18,7 +18,7 @@ import (
 )
 
 func NewRouter(
-	systemController system.Controller,
+	systemController systemcontroller.Controller,
 	authenticator auth.Authenticator,
 	version string,
 	opts ...RouterOption,
@@ -35,6 +35,16 @@ func NewRouter(
 
 		router.Get("/_info", v1.GetInfo(systemController, version))
 
+		router.Route("/_system", func(router chi.Router) {
+			if routerOptions.connectors {
+				router.Route("/connectors", func(router chi.Router) {
+					router.Get("/", listConnectors(systemController))
+					router.Get("/{connectorID}", getConnector(systemController))
+					router.Delete("/{connectorID}", deleteConnector(systemController))
+					router.Post("/", createConnector(systemController))
+				})
+			}
+		})
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
@@ -58,30 +68,46 @@ func NewRouter(
 					routerOptions.bulkHandlerFactories,
 				))
 
-				// LedgerController
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", readStats)
-				router.Get("/logs", listLogs(routerOptions.paginationConfig))
-				router.Post("/logs/import", importLogs)
-				router.Post("/logs/export", exportLogs)
 
-				// AccountController
-				router.Get("/accounts", listAccounts(routerOptions.paginationConfig))
-				router.Head("/accounts", countAccounts)
-				router.Get("/accounts/{address}", readAccount)
-				router.Post("/accounts/{address}/metadata", addAccountMetadata)
-				router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
+				if routerOptions.connectors {
+					router.Route("/pipelines", func(router chi.Router) {
+						router.Get("/", listPipelines(systemController))
+						router.Post("/", createPipeline(systemController))
+						router.Route("/{pipelineID}", func(router chi.Router) {
+							router.Get("/", readPipeline(systemController))
+							router.Delete("/", deletePipeline(systemController))
+							router.Post("/start", startPipeline(systemController))
+							router.Post("/stop", stopPipeline(systemController))
+							router.Post("/reset", resetPipeline(systemController))
+						})
+					})
+				}
 
-				// TransactionController
-				router.Get("/transactions", listTransactions(routerOptions.paginationConfig))
-				router.Head("/transactions", countTransactions)
+				router.Route("/logs", func(router chi.Router) {
+					router.Get("/", listLogs(routerOptions.paginationConfig))
+					router.Post("/import", importLogs)
+					router.Post("/export", exportLogs)
+				})
 
-				router.Post("/transactions", createTransaction)
+				router.Route("/accounts", func(router chi.Router) {
+					router.Get("/", listAccounts(routerOptions.paginationConfig))
+					router.Head("/", countAccounts)
+					router.Get("/{address}", readAccount)
+					router.Post("/{address}/metadata", addAccountMetadata)
+					router.Delete("/{address}/metadata/{key}", deleteAccountMetadata)
+				})
 
-				router.Get("/transactions/{id}", readTransaction)
-				router.Post("/transactions/{id}/revert", revertTransaction)
-				router.Post("/transactions/{id}/metadata", addTransactionMetadata)
-				router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
+				router.Route("/transactions", func(router chi.Router) {
+					router.Get("/", listTransactions(routerOptions.paginationConfig))
+					router.Head("/", countTransactions)
+					router.Post("/", createTransaction)
+					router.Get("/{id}", readTransaction)
+					router.Post("/{id}/revert", revertTransaction)
+					router.Post("/{id}/metadata", addTransactionMetadata)
+					router.Delete("/{id}/metadata/{key}", deleteTransactionMetadata)
+				})
 
 				router.Get("/aggregate/balances", readBalancesAggregated)
 
@@ -98,6 +124,7 @@ type routerOptions struct {
 	bulkerFactory        bulking.BulkerFactory
 	bulkHandlerFactories map[string]bulking.HandlerFactory
 	paginationConfig     common.PaginationConfig
+	connectors           bool
 }
 
 type RouterOption func(ro *routerOptions)
@@ -123,6 +150,12 @@ func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption {
 	return func(ro *routerOptions) {
 		ro.paginationConfig = paginationConfig
+	}
+}
+
+func WithConnectors(v bool) RouterOption {
+	return func(ro *routerOptions) {
+		ro.connectors = v
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/connectors"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
@@ -23,6 +24,7 @@ type ComponentArgs struct {
 	Storage       storage.Args
 	Ingress       *api.IngressArgs
 	API           api.Args
+	Connectors    connectors.Args
 	Worker        worker.Args
 	Provision     provision.Args
 	Generator     *generator.Args
@@ -41,13 +43,14 @@ func (args *ComponentArgs) SetDefaults() {
 type Component struct {
 	pulumi.ResourceState
 
-	API       *api.Component
+	API        *api.Component
 	Worker     *worker.Component
-	Storage   *storage.Component
-	Namespace *corev1.Namespace
-	Devbox    *devbox.Component
-	Provision *provision.Component
-	Generator *generator.Component
+	Storage    *storage.Component
+	Namespace  *corev1.Namespace
+	Devbox     *devbox.Component
+	Connectors *connectors.Component
+	Provision  *provision.Component
+	Generator  *generator.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -63,6 +66,9 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		pulumi.Parent(cmp),
 	}
 
+	// todo: need to add on options to retains on delete
+	// otherwise, even if the retains on delete option is set on the installed resources,
+	// the pulumi will still delete the resources
 	cmp.Namespace, err = corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name: args.Namespace.
@@ -105,6 +111,16 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		return nil, err
 	}
 
+	if len(args.Connectors.Connectors) > 0 {
+		cmp.Connectors, err = connectors.NewComponent(ctx, "connectors", connectors.ComponentArgs{
+			CommonArgs: args.CommonArgs,
+			Args:       args.Connectors,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
 		CommonArgs: args.CommonArgs,
 		Args:       args.Worker,
@@ -115,11 +131,12 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		return nil, err
 	}
 
-	if len(args.Provision.Ledgers) > 0 {
+	if len(args.Provision.Ledgers) > 0 || cmp.Connectors != nil {
 		cmp.Provision, err = provision.NewComponent(ctx, "provisioner", provision.ComponentArgs{
 			CommonArgs: args.CommonArgs,
 			API:        cmp.API,
 			Args:       args.Provision,
+			Connectors: cmp.Connectors,
 		}, options...)
 		if err != nil {
 			return nil, err
@@ -154,6 +171,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 			CommonArgs: args.CommonArgs,
 			Storage:    cmp.Storage,
 			API:        cmp.API,
+			Connectors: cmp.Connectors,
 		}, options...)
 		if err != nil {
 			return nil, err

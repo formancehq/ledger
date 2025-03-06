@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
@@ -152,7 +151,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Expect(err).To(Succeed())
 			})
 			It("should trigger a new event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(ledgerevents.RevertedTransaction{
 					Ledger: "default",
 					RevertTransaction: ledger.Transaction{
 						ID: pointer.For(newTransaction.V2CreateTransactionResponse.Data.ID.Uint64()),
