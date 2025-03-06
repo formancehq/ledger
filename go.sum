@@ -345,10 +345,10 @@ github.com/tklauser/numcpus v0.9.0 h1:lmyCHtANi8aRUgkckBgoDk1nHCux3n2cgkJLXdQGPD
 github.com/tklauser/numcpus v0.9.0/go.mod h1:SN6Nq1O3VychhC1npsWostA+oW+VOQTxZrS604NSRyI=
 github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc h1:9lRDQMhESg+zvGYmW5DyG0UqvY96Bu5QYsTLvCHdrgo=
 github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc/go.mod h1:bciPuU6GHm1iF1pBvUfxfsH0Wmnc2VbpgvbI9ZWuIRs=
-github.com/uptrace/bun v1.2.10 h1:6TlxUQhGxiiv7MHjzxbV6ZNt/Im0PIQ3S45riAmbnGA=
-github.com/uptrace/bun v1.2.10/go.mod h1:ww5G8h59UrOnCHmZ8O1I/4Djc7M/Z3E+EWFS2KLB6dQ=
-github.com/uptrace/bun/dialect/pgdialect v1.2.10 h1:+PAGCVyWDoAjMuAgn0+ud7fu3It8+Xvk7HQAJ5wCXMQ=
-github.com/uptrace/bun/dialect/pgdialect v1.2.10/go.mod h1:hv0zsoc3PeW5fl3JeBglZT1vl2FoERY+QwvuvKsKATA=
+github.com/uptrace/bun v1.2.11 h1:l9dTymsdZZAoSZ1+Qo3utms0RffgkDbIv+1UGk8N1wQ=
+github.com/uptrace/bun v1.2.11/go.mod h1:ww5G8h59UrOnCHmZ8O1I/4Djc7M/Z3E+EWFS2KLB6dQ=
+github.com/uptrace/bun/dialect/pgdialect v1.2.11 h1:n0VKWm1fL1dwJK5TRxYYLaRKRe14BOg2+AQgpvqzG/M=
+github.com/uptrace/bun/dialect/pgdialect v1.2.11/go.mod h1:NvV1S/zwtwBnW8yhJ3XEKAQEw76SkeH7yUhfrx3W1Eo=
 github.com/uptrace/bun/extra/bundebug v1.2.9 h1:3SU66p+q76XhfeUUzl9XooVu7hVNueZ/2Q3J8S1uzCU=
 github.com/uptrace/bun/extra/bundebug v1.2.9/go.mod h1:/rp83jYAtwZUQIz+L3KwvREXaSd5GQGPJUusqq+Qtis=
 github.com/uptrace/bun/extra/bunotel v1.2.10 h1:Qkg0PrpcnlC9AvqCfqTL3seZHc5t1siKdSFUPCxql+Q=
