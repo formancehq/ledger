@@ -168,8 +168,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
-
-	// Deprecated flags
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
