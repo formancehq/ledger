@@ -1,0 +1,160 @@
+config:
+  namespace: test-upgrades
+  install-dev-box: true
+  debug: true
+  #version: v2.2.19
+  version: 5b4e224c714997ecaf07e67a6575088b7f52baf7
+  monitoring:
+    traces:
+      batch: true
+      exporter: otlp
+      otlp:
+        mode: grpc
+        insecure: true
+        endpoint: opentelemetry-collector.formance-system.svc.cluster.local:4317
+        batch: true
+  storage:
+    connectivity:
+      options:
+        sslmode: disable
+      max-open-conns: 3
+      max-idle-conns: 3
+    rds:
+      create-cluster:
+        performance-insights-enabled: true
+        use-subnet-group-name: staging-eu-west-1-hosting
+        instance-class: db.r7g.4xlarge
+        initialization-snapshot-identifier: ledger-multi-buckets-v2-1
+#      post-migrate-snapshot:
+#        snapshot-identifier: multi-buckets-v2-1
+#        retain-on-delete: true
+#  provision:
+#    provisioner-version: latest
+#    ledgers:
+#      ledger0:
+#        bucket: ledger0
+#      ledger1:
+#        bucket: ledger1
+#      ledger2:
+#        bucket: ledger2
+#      ledger3:
+#        bucket: ledger3
+#      ledger4:
+#        bucket: ledger4
+#      ledger5:
+#        bucket: ledger5
+#      ledger6:
+#        bucket: ledger6
+#      ledger7:
+#        bucket: ledger7
+#      ledger8:
+#        bucket: ledger8
+#      ledger9:
+#        bucket: ledger9
+#      ledger10:
+#        bucket: ledger10
+#      ledger11:
+#        bucket: ledger11
+#      ledger12:
+#        bucket: ledger12
+#      ledger13:
+#        bucket: ledger13
+#      ledger14:
+#        bucket: ledger14
+#      ledger15:
+#        bucket: ledger15
+#      ledger16:
+#        bucket: ledger16
+#      ledger17:
+#        bucket: ledger17
+#      ledger18:
+#        bucket: ledger18
+#      ledger19:
+#        bucket: ledger19
+#      ledger20:
+#        bucket: ledger20
+#      ledger21:
+#        bucket: ledger21
+#      ledger22:
+#        bucket: ledger22
+#      ledger23:
+#        bucket: ledger23
+#      ledger24:
+#        bucket: ledger24
+#      ledger25:
+#        bucket: ledger25
+#      ledger26:
+#        bucket: ledger26
+#      ledger27:
+#        bucket: ledger27
+#      ledger28:
+#        bucket: ledger28
+#      ledger29:
+#        bucket: ledger29
+#  generator:
+#    generator-version: latest
+#    ledgers:
+#      ledger0: &build-test
+#        vus: 2
+#        until-log-id: 10000
+#        script: |
+#          const plain = `vars {
+#            account $order
+#            account $seller
+#          }
+#          send [USD/2 100] (
+#            source = @world
+#            destination = $order
+#          )
+#          send [USD/2 1] (
+#            source = $order
+#            destination = @fees
+#          )
+#          send [USD/2 99] (
+#            source = $order
+#            destination = $seller
+#          )`
+#
+#          function next(iteration) {
+#            return [{
+#              action: 'CREATE_TRANSACTION',
+#              data: {
+#                script: {
+#                  plain,
+#                  vars: {
+#                    order: `orders:${uuid()}`,
+#                    seller: `sellers:${iteration % 5}`
+#                  }
+#                }
+#              }
+#            }]
+#          }
+#      ledger1: *build-test
+#      ledger2: *build-test
+#      ledger3: *build-test
+#      ledger4: *build-test
+#      ledger5: *build-test
+#      ledger6: *build-test
+#      ledger7: *build-test
+#      ledger8: *build-test
+#      ledger9: *build-test
+#      ledger10: *build-test
+#      ledger11: *build-test
+#      ledger12: *build-test
+#      ledger13: *build-test
+#      ledger14: *build-test
+#      ledger15: *build-test
+#      ledger16: *build-test
+#      ledger17: *build-test
+#      ledger18: *build-test
+#      ledger19: *build-test
+#      ledger20: *build-test
+#      ledger21: *build-test
+#      ledger22: *build-test
+#      ledger23: *build-test
+#      ledger24: *build-test
+#      ledger25: *build-test
+#      ledger26: *build-test
+#      ledger27: *build-test
+#      ledger28: *build-test
+#      ledger29: *build-test

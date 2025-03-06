@@ -2,6 +2,8 @@ package v1
 
 import (
 	"github.com/formancehq/ledger/internal/api/common"
+	pagination "github.com/formancehq/ledger/internal/pagination"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/go-libs/v2/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -24,7 +25,7 @@ func TestAccountsCount(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.ResourceQuery[any]
+		expectQuery       pagination.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		returnErr         error
@@ -35,7 +36,7 @@ func TestAccountsCount(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:              "nominal",
-			expectQuery:       ledgercontroller.ResourceQuery[any]{},
+			expectQuery:       pagination.ResourceQuery[any]{},
 			expectBackendCall: true,
 		},
 		{
@@ -44,7 +45,7 @@ func TestAccountsCount(t *testing.T) {
 				"metadata[roles]": []string{"admin"},
 			},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				Builder: query.Match("metadata[roles]", "admin"),
 			},
 		},
@@ -52,7 +53,7 @@ func TestAccountsCount(t *testing.T) {
 			name:              "using address",
 			queryParams:       url.Values{"address": []string{"foo"}},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 			},
 		},
@@ -62,7 +63,7 @@ func TestAccountsCount(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{},
+			expectQuery: pagination.ResourceQuery[any]{},
 		},
 		{
 			name: "using balance filter",
@@ -71,7 +72,7 @@ func TestAccountsCount(t *testing.T) {
 				"balance":         []string{"100"},
 			},
 			expectBackendCall: true,
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: pagination.ResourceQuery[any]{
 				Builder: query.Lt("balance", int64(100)),
 			},
 		},
@@ -80,16 +81,16 @@ func TestAccountsCount(t *testing.T) {
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         ledgercontroller.ErrInvalidQuery{},
-			expectQuery:       ledgercontroller.ResourceQuery[any]{},
+			returnErr:         ledgerstore.ErrInvalidQuery{},
+			expectQuery:       pagination.ResourceQuery[any]{},
 		},
 		{
 			name:              "with missing feature",
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         ledgercontroller.ErrMissingFeature{},
-			expectQuery:       ledgercontroller.ResourceQuery[any]{},
+			returnErr:         ledgerstore.ErrMissingFeature{},
+			expectQuery:       pagination.ResourceQuery[any]{},
 		},
 		{
 			name:              "with unexpected error",
@@ -97,7 +98,7 @@ func TestAccountsCount(t *testing.T) {
 			expectedErrorCode: api.ErrorInternal,
 			expectBackendCall: true,
 			returnErr:         errors.New("undefined error"),
-			expectQuery:       ledgercontroller.ResourceQuery[any]{},
+			expectQuery:       pagination.ResourceQuery[any]{},
 		},
 	}
 	for _, testCase := range testCases {

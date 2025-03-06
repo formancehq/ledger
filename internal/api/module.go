@@ -22,6 +22,7 @@ type Config struct {
 	Debug      bool
 	Bulk       BulkConfig
 	Pagination common.PaginationConfig
+	Connectors bool
 }
 
 func Module(cfg Config) fx.Option {
@@ -43,6 +44,7 @@ func Module(cfg Config) fx.Option {
 					bulking.WithTracer(tracerProvider.Tracer("api.bulking")),
 				)),
 				WithPaginationConfiguration(cfg.Pagination),
+				WithConnectors(cfg.Connectors),
 			)
 		}),
 		health.Module(),
