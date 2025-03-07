@@ -3,7 +3,9 @@ package ledger
 import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/connectors"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/initialize"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
@@ -20,6 +22,7 @@ type ComponentArgs struct {
 	InstallDevBox pulumix.Input[bool]
 	Database      storage.DatabaseArgs
 	API           api.Args
+	Connectors    connectors.Args
 	Worker        worker.Args
 	Ingress       *api.IngressArgs
 }
@@ -34,11 +37,13 @@ func (args *ComponentArgs) SetDefaults() {
 type Component struct {
 	pulumi.ResourceState
 
-	API       *api.Component
-	Worker    *worker.Component
-	Storage   *storage.Component
-	Namespace *corev1.Namespace
-	Devbox    *devbox.Component
+	API        *api.Component
+	Worker     *worker.Component
+	Storage    *storage.Component
+	Namespace  *corev1.Namespace
+	Devbox     *devbox.Component
+	Connectors *connectors.Component
+	Initialize *initialize.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -96,10 +101,27 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		return nil, err
 	}
 
+	cmp.Connectors, err = connectors.NewComponent(ctx, "connectors", connectors.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Args:       args.Connectors,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
 		CommonArgs: args.CommonArgs,
 		Args:       args.Worker,
 		Database:   cmp.Storage,
+		API:        cmp.API,
+	}, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	cmp.Initialize, err = initialize.NewComponent(ctx, "initialize", initialize.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Connectors: cmp.Connectors,
 		API:        cmp.API,
 	}, options...)
 	if err != nil {

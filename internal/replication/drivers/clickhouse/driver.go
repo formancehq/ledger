@@ -31,6 +31,11 @@ func (c *Connector) Start(ctx context.Context) error {
 		return errors.Wrap(err, "opening database")
 	}
 
+	err = c.db.Exec(ctx, `set allow_experimental_dynamic_type = 1;`)
+	if err != nil {
+		return err
+	}
+
 	// Create the logs table
 	// One table is used for the entire stack
 	err = c.db.Exec(ctx, createLogsTable)
@@ -98,11 +103,11 @@ const createLogsTable = `
 		id              Int64,
 		type            String,
 		date            DateTime64,
-		data            String
+		data            Dynamic
 	) 
 	engine = ReplacingMergeTree
 	partition by ledger
-	primary key (ledger, id)
+	primary key (ledger, id);
 `
 
 func OpenDB(logger logging.Logger, dsn string, debug bool) (driver.Conn, error) {
