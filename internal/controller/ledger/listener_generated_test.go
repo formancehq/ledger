@@ -10,7 +10,7 @@ import (
 	reflect "reflect"
 
 	metadata "github.com/formancehq/go-libs/v2/metadata"
-	internal "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -38,7 +38,7 @@ func (m *MockListener) EXPECT() *MockListenerMockRecorder {
 }
 
 // CommittedTransactions mocks base method.
-func (m *MockListener) CommittedTransactions(ctx context.Context, ledger string, res internal.Transaction, accountMetadata internal.AccountMetadata) {
+func (m *MockListener) CommittedTransactions(ctx context.Context, ledger string, res ledger.Transaction, accountMetadata ledger.AccountMetadata) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "CommittedTransactions", ctx, ledger, res, accountMetadata)
 }
@@ -62,7 +62,7 @@ func (mr *MockListenerMockRecorder) DeletedMetadata(ctx, ledger, targetType, tar
 }
 
 // RevertedTransaction mocks base method.
-func (m *MockListener) RevertedTransaction(ctx context.Context, ledger string, reverted, revert internal.Transaction) {
+func (m *MockListener) RevertedTransaction(ctx context.Context, ledger string, reverted, revert ledger.Transaction) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "RevertedTransaction", ctx, ledger, reverted, revert)
 }

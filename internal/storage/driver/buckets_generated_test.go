@@ -10,7 +10,7 @@ import (
 	reflect "reflect"
 
 	migrations "github.com/formancehq/go-libs/v2/migrations"
-	internal "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	bucket "github.com/formancehq/ledger/internal/storage/bucket"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
@@ -40,7 +40,7 @@ func (m *MockBucket) EXPECT() *MockBucketMockRecorder {
 }
 
 // AddLedger mocks base method.
-func (m *MockBucket) AddLedger(ctx context.Context, ledger internal.Ledger) error {
+func (m *MockBucket) AddLedger(ctx context.Context, ledger ledger.Ledger) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddLedger", ctx, ledger)
 	ret0, _ := ret[0].(error)
