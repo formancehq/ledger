@@ -2,6 +2,7 @@ package devbox
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
@@ -18,6 +19,7 @@ type Component struct {
 type ComponentArgs struct {
 	utils.CommonArgs
 	Storage *storage.Component
+	API     *api.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -91,6 +93,13 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 								corev1.EnvVarArgs{
 									Name:  pulumi.String("PGPASSWORD"),
 									Value: pulumi.String("$(POSTGRES_PASSWORD)"),
+								},
+								corev1.EnvVarArgs{
+									Name: pulumi.String("API_URL"),
+									Value: pulumi.Sprintf("http://%s.%s.svc.cluster.local:8080",
+										args.API.Service.Metadata.Name().Elem(),
+										args.API.Service.Metadata.Namespace().Elem(),
+									),
 								},
 							},
 						},

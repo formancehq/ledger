@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
@@ -10,6 +11,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
+
+
 
 type Args struct {
 	TerminationGracePeriodSeconds pulumix.Input[*int]
@@ -32,6 +35,7 @@ type ComponentArgs struct {
 	utils.CommonArgs
 	Args
 	Database *storage.Component
+	API      *api.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {

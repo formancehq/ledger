@@ -165,6 +165,7 @@ func (a RDSDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ..
 				if snapshotIdentifier == "" || migratedUnderVersion == "" {
 					return nil, nil
 				}
+
 				return rds.NewClusterSnapshot(ctx, "snapshot-"+migratedUnderVersion, &rds.ClusterSnapshotArgs{
 					DbClusterIdentifier: clusterIdentifier.
 						ToOutput(ctx.Context()).
