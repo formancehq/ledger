@@ -8,9 +8,9 @@ package driver
 import (
 	reflect "reflect"
 
-	internal "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/internal"
 	bucket "github.com/formancehq/ledger/internal/storage/bucket"
-	ledger "github.com/formancehq/ledger/internal/storage/ledger"
+	ledger0 "github.com/formancehq/ledger/internal/storage/ledger"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -38,10 +38,10 @@ func (m *LedgerStoreFactory) EXPECT() *LedgerStoreFactoryMockRecorder {
 }
 
 // Create mocks base method.
-func (m *LedgerStoreFactory) Create(arg0 bucket.Bucket, arg1 internal.Ledger) *ledger.Store {
+func (m *LedgerStoreFactory) Create(arg0 bucket.Bucket, arg1 ledger.Ledger) *ledger0.Store {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", arg0, arg1)
-	ret0, _ := ret[0].(*ledger.Store)
+	ret0, _ := ret[0].(*ledger0.Store)
 	return ret0
 }
 
