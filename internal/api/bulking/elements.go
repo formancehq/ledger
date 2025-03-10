@@ -98,8 +98,8 @@ type TransactionRequest struct {
 	Postings  ledger.Postings           `json:"postings"`
 	Script    ledgercontroller.ScriptV1 `json:"script"`
 	Timestamp time.Time                 `json:"timestamp"`
-	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+	Reference string                    `json:"reference"`
+	Metadata  metadata.Metadata         `json:"metadata" swaggertype:"object"`
 }
 
 func (req TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {

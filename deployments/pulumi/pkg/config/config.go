@@ -1,16 +1,21 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/connectors"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/rds"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+	"reflect"
 	"time"
 )
 
@@ -231,6 +236,9 @@ type API struct {
 
 	// ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter
 	ExperimentalNumscriptInterpreter bool `json:"experimental-numscript-interpreter" yaml:"experimental-numscript-interpreter"`
+
+	// ExperimentalConnectors is whether to enable experimental connectors
+	ExperimentalConnectors bool `json:"experimental-connectors" yaml:"experimental-connectors"`
 }
 
 func (d API) toInput() api.Args {
@@ -244,7 +252,68 @@ func (d API) toInput() api.Args {
 		TerminationGracePeriodSeconds:    pulumix.Val(d.TerminationGracePeriodSeconds),
 		ExperimentalFeatures:             pulumix.Val(d.ExperimentalFeatures),
 		ExperimentalNumscriptInterpreter: pulumix.Val(d.ExperimentalNumscriptInterpreter),
+		ExperimentalConnectors:           pulumix.Val(d.ExperimentalConnectors),
 	}
+}
+
+type Connector struct {
+	Driver string `json:"driver" yaml:"driver"`
+	Config any    `json:"config" yaml:"config"`
+}
+
+func (c Connector) toInput() connectors.ConnectorArgs {
+	return connectors.ConnectorArgs{
+		Driver: c.Driver,
+		Config: c.Config,
+	}
+}
+
+type Connectors map[string]Connector
+
+func (c *Connectors) UnmarshalJSON(data []byte) error {
+	asMap := make(map[string]json.RawMessage, 0)
+	if err := json.Unmarshal(data, &asMap); err != nil {
+		return fmt.Errorf("error unmarshalling connectors into an array: %w", err)
+	}
+
+	*c = make(map[string]Connector)
+	for id, elem := range asMap {
+		type def struct {
+			Driver string `json:"driver" yaml:"driver"`
+		}
+		d := def{}
+		if err := json.Unmarshal(elem, &d); err != nil {
+			return fmt.Errorf("error unmarshalling connector definition %s: %w", id, err)
+		}
+
+		cfg, err := connectors.GetConnectorConfig(d.Driver)
+		if err != nil {
+			return err
+		}
+
+		if err := json.Unmarshal(elem, cfg); err != nil {
+			return fmt.Errorf("error unmarshalling connector config %s: %w", id, err)
+		}
+
+		(*c)[id] = Connector{
+			Driver: d.Driver,
+			Config: reflect.ValueOf(cfg).Elem().Interface(),
+		}
+	}
+
+	return nil
+}
+
+func (c *Connectors) toInput() connectors.Args {
+	return connectors.Args{
+		Connectors: ConvertMap(*c, Connector.toInput),
+	}
+}
+
+type Worker struct{}
+
+func (w Worker) toInput() worker.Args {
+	return worker.Args{}
 }
 
 type Monitoring struct {
@@ -408,6 +477,12 @@ type Config struct {
 	// API is the API configuration for the ledger
 	API *API `json:"api" yaml:"api"`
 
+	// Worker is the worker configuration for the ledger
+	Worker *Worker `json:"worker" yaml:"worker"`
+
+	// Connectors is the connectors configuration for the ledger
+	Connectors Connectors `json:"connectors" yaml:"connectors"`
+
 	// Ingress is the ingress configuration for the ledger
 	Ingress *Ingress `json:"ingress" yaml:"ingress"`
 
@@ -423,9 +498,11 @@ func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 		CommonArgs:    cfg.Common.toInput(),
 		Database:      cfg.Storage.toInput(),
 		API:           cfg.API.toInput(),
+		Worker:        cfg.Worker.toInput(),
 		Timeout:       pulumix.Val(cfg.Timeout),
 		Ingress:       cfg.Ingress.toInput(),
 		InstallDevBox: pulumix.Val(cfg.InstallDevBox),
+		Connectors:    cfg.Connectors.toInput(),
 	}
 }
 
@@ -463,6 +540,20 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
+	worker := &Worker{}
+	if err := config.GetObject(ctx, "worker", worker); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+	}
+
+	connectors := Connectors{}
+	if err := config.GetObject(ctx, "connectors", &connectors); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+	}
+
 	otel := &Monitoring{}
 	if err := config.GetObject(ctx, "monitoring", otel); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
@@ -481,6 +572,8 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		InstallDevBox: config.GetBool(ctx, "install-dev-box"),
 		Storage:       storage,
 		API:           api,
+		Worker:        worker,
 		Ingress:       ingress,
+		Connectors:    connectors,
 	}, nil
 }

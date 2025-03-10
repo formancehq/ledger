@@ -251,6 +251,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 		if err != nil {
 			return fmt.Errorf("creating migration job: %w", err)
 		}
+
 		job.Status.Succeeded().Elem().ApplyT(func(succeeded int) error {
 			if succeeded == 0 {
 				return errors.New("migration job failed")

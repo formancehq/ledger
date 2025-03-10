@@ -74,8 +74,6 @@ jobs:
   GoReleaser:
     runs-on: "formance-runner"
     if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
-    needs:
-      - Dirty
     steps:
       - uses: earthly/actions-setup@v1
         with:

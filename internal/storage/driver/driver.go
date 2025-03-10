@@ -10,7 +10,6 @@ import (
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
@@ -18,14 +17,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
+
+var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
 
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
@@ -46,9 +45,9 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-				return systemcontroller.ErrLedgerAlreadyExists
+				return systemstore.ErrLedgerAlreadyExists
 			}
-			return err
+			return postgres.ResolveError(err)
 		}
 
 		b := d.bucketFactory.Create(l.Bucket, tx)
@@ -63,7 +62,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 
 			if !upToDate {
-				return systemcontroller.ErrBucketOutdated
+				return ErrBucketOutdated
 			}
 
 			if err := b.AddLedger(ctx, *l); err != nil {
@@ -183,7 +182,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return systemstore.New(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return systemstore.New(d.db).ListLedgers(ctx, q)
 }
 

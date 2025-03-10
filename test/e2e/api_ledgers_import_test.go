@@ -30,9 +30,9 @@ var _ = Context("Ledger engine tests", func() {
 				PostgresConfiguration: db.GetValue().ConnectionOptions(),
 				Output:                GinkgoWriter,
 				Debug:                 debug,
+				ExperimentalFeatures: true,
 			},
 			NatsURL:              natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures: true,
 		}
 	})
 	When("creating a new ledger", func() {
