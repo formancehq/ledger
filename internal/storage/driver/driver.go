@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -14,7 +17,6 @@ import (
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
@@ -131,11 +133,46 @@ func (d *Driver) detectRollbacks(ctx context.Context) error {
 		return nil
 	}
 
+	parallelWorkers := d.parallelBucketMigrations
+	if parallelWorkers <= 0 {
+		parallelWorkers = 100
+	}
+	wp := pond.New(parallelWorkers, len(buckets), pond.Context(ctx))
+	var (
+		mu   sync.Mutex
+		errs []error
+	)
+
 	for _, b := range buckets {
-		logging.FromContext(ctx).Debugf("Checking for downgrades on bucket '%s'", b)
-		if err := detectDowngrades(d.bucketFactory.GetMigrator(b, d.db), ctx); err != nil {
-			return fmt.Errorf("detecting rollbacks on bucket '%s': %w", b, err)
+		wp.Submit(func() {
+			logger := logging.FromContext(ctx).WithFields(map[string]any{
+				"bucket": b,
+			})
+			logger.Debugf("Checking for downgrades on bucket '%s'", b)
+
+			if err := detectDowngrades(d.bucketFactory.GetMigrator(b, d.db), ctx); err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("detecting rollbacks on bucket '%s': %w", b, err))
+				mu.Unlock()
+			}
+		})
+	}
+
+	wp.StopAndWait()
+
+	if len(errs) > 0 {
+		if len(errs) == 1 {
+			return errs[0]
 		}
+		var combinedErr error
+		for _, err := range errs {
+			if combinedErr == nil {
+				combinedErr = err
+			} else {
+				combinedErr = fmt.Errorf("%v; %w", combinedErr, err)
+			}
+		}
+		return combinedErr
 	}
 
 	return nil
