@@ -12,8 +12,8 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	metadata "github.com/formancehq/go-libs/v2/metadata"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
-	internal "github.com/formancehq/ledger/internal"
-	ledger "github.com/formancehq/ledger/internal/controller/ledger"
+	ledger "github.com/formancehq/ledger/internal"
+	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,7 +41,7 @@ func (m *SystemStore) EXPECT() *SystemStoreMockRecorder {
 }
 
 // CreateLedger mocks base method.
-func (m *SystemStore) CreateLedger(ctx context.Context, l *internal.Ledger) error {
+func (m *SystemStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateLedger", ctx, l)
 	ret0, _ := ret[0].(error)
@@ -84,10 +84,10 @@ func (mr *SystemStoreMockRecorder) GetDistinctBuckets(ctx any) *gomock.Call {
 }
 
 // GetLedger mocks base method.
-func (m *SystemStore) GetLedger(ctx context.Context, name string) (*internal.Ledger, error) {
+func (m *SystemStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedger", ctx, name)
-	ret0, _ := ret[0].(*internal.Ledger)
+	ret0, _ := ret[0].(*ledger.Ledger)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -132,10 +132,10 @@ func (mr *SystemStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 }
 
 // ListLedgers mocks base method.
-func (m *SystemStore) ListLedgers(ctx context.Context, q ledger.ListLedgersQuery) (*bunpaginate.Cursor[internal.Ledger], error) {
+func (m *SystemStore) ListLedgers(ctx context.Context, q ledger0.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[internal.Ledger])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
