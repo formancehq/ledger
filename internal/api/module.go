@@ -34,7 +34,7 @@ func Module(cfg Config) fx.Option {
 			return NewRouter(
 				backend,
 				authenticator,
-				"develop",
+				cfg.Version,
 				cfg.Debug,
 				WithTracer(tracerProvider.Tracer("api")),
 				WithBulkMaxSize(cfg.Bulk.MaxSize),
