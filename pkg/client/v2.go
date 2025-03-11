@@ -48,7 +48,7 @@ func (s *V2) DeleteBucket(ctx context.Context, request operations.V2DeleteBucket
 	}
 
 	baseURL := utils.ReplaceParameters(s.sdkConfiguration.GetServerDetails())
-	opURL, err := url.JoinPath(baseURL, "/_system/bucket")
+	opURL, err := url.JoinPath(baseURL, "/v2/_system/bucket")
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}

@@ -115,13 +115,13 @@ Authorization ( Scopes: ledger:read )
 > Code samples
 
 ```http
-DELETE http://localhost:8080/_system/bucket?name=string HTTP/1.1
+DELETE http://localhost:8080/v2/_system/bucket?name=string HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`DELETE /_system/bucket`
+`DELETE /v2/_system/bucket`
 
 <h3 id="delete-a-bucket-and-mark-all-its-ledgers-as-deleted-parameters">Parameters</h3>
 
