@@ -5,11 +5,12 @@ package performance_test
 import (
 	"context"
 	"fmt"
-	. "github.com/formancehq/go-libs/v2/collectionutils"
-	"github.com/formancehq/ledger/pkg/generate"
 	"sort"
 	"sync/atomic"
 	"testing"
+
+	. "github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/ledger/pkg/generate"
 
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"

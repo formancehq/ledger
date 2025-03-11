@@ -7,9 +7,8 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/uptrace/bun"
-
 	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
 )
 
 const (

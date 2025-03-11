@@ -1,6 +1,6 @@
 # V2ErrorResponse
 
-Error
+Bad Request
 
 
 ## Fields

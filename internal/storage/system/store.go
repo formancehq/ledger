@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -21,6 +22,7 @@ type Store interface {
 	ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -95,6 +97,7 @@ func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListL
 	query := d.db.NewSelect().
 		Model(&ledger.Ledger{}).
 		Column("*").
+		Where("deleted_at IS NULL").
 		Order("added_at asc")
 
 	if len(q.Options.Options.Features) > 0 {
@@ -120,6 +123,7 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 		Model(ret).
 		Column("*").
 		Where("name = ?", name).
+		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		return nil, postgres.ResolveError(err)
 	}
@@ -133,6 +137,39 @@ func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option
 
 func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
 	return GetMigrator(d.db, options...)
+}
+
+func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	// Check if bucket name is empty
+	if bucketName == "" {
+		return fmt.Errorf("bucket name cannot be empty")
+	}
+
+	// Check if bucket name format is valid
+	if !ledger.BucketNameFormat().MatchString(bucketName) {
+		return fmt.Errorf("invalid bucket name format: must match '%s'", ledger.BucketNameFormat().String())
+	}
+
+	// Check if bucket name is reserved
+	for _, reserved := range ledger.ReservedBucketNames() {
+		if bucketName == reserved {
+			return fmt.Errorf("cannot delete reserved bucket: %s", bucketName)
+		}
+	}
+
+	// Start a transaction
+	return d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		_, err := tx.NewUpdate().
+			Model(&ledger.Ledger{}).
+			Set("deleted_at = now()").
+			Where("bucket = ?", bucketName).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("error marking bucket as deleted: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func New(db bun.IDB) *DefaultStore {

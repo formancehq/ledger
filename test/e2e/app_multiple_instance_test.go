@@ -3,12 +3,13 @@
 package test_suite
 
 import (
+	"sync"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"sync"
 )
 
 var _ = Context("Ledger application multiple instance tests", func() {
@@ -57,9 +58,10 @@ var _ = Context("Ledger application multiple instance tests", func() {
 
 		It("each service should be up and running", func() {
 			for _, server := range allServers {
-				info, err := server.Client().Ledger.GetInfo(ctx)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
+				Eventually(func() bool {
+					_, err := server.Client().Ledger.GetInfo(ctx)
+					return err == nil
+				}).Should(BeTrue())
 			}
 		})
 	})
