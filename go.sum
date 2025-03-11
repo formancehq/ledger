@@ -12,8 +12,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 h1:TngWCqHvy9oXAN6lEVMRuU21PR1EtLVZJmdB18Gu3Rw=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5/go.mod h1:lmUJ/7eu/Q8D7ML55dXQrVaamCz2vxCfdQBasLZfHKk=
-github.com/ThreeDotsLabs/watermill v1.4.4 h1:aLClMl6EYIOQy4BML9yb2VpTekbynDatvQbXGp7idCU=
-github.com/ThreeDotsLabs/watermill v1.4.4/go.mod h1:lBnrLbxOjeMRgcJbv+UiZr8Ylz8RkJ4m6i/VN/Nk+to=
+github.com/ThreeDotsLabs/watermill v1.4.5 h1:Wo39b1u5OMBiN3PPBBeYnEThzDiCDgtxD1TjcQ75jyE=
+github.com/ThreeDotsLabs/watermill v1.4.5/go.mod h1:lBnrLbxOjeMRgcJbv+UiZr8Ylz8RkJ4m6i/VN/Nk+to=
 github.com/ThreeDotsLabs/watermill-http/v2 v2.3.1 h1:M0iYM5HsGcoxtiQqprRlYZNZnGk3w5LsE9RbC2R8myQ=
 github.com/ThreeDotsLabs/watermill-http/v2 v2.3.1/go.mod h1:RwGHEzGsEEXC/rQNLWQqR83+WPlABgOgnv2kTB56Y4Y=
 github.com/ThreeDotsLabs/watermill-kafka/v3 v3.0.6 h1:xK+VLDjYvBrRZDaFZ7WSqiNmZ9lcDG5RIilFVDZOVyQ=
