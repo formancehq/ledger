@@ -87,6 +87,18 @@ func (r *CleanupDeletedBucketsRunner) run(ctx context.Context) error {
 
 		// Process each bucket within the same transaction
 		for _, bucketName := range bucketsToProcess {
+			// Check if bucket name format is valid
+			if !internal.BucketNameFormat().MatchString(bucketName) {
+				return fmt.Errorf("invalid bucket name format: must match '%s'", internal.BucketNameFormat().String())
+			}
+
+			// Check if bucket name is reserved
+			for _, reserved := range internal.ReservedBucketNames() {
+				if bucketName == reserved {
+					return fmt.Errorf("cannot delete reserved bucket: %s", bucketName)
+				}
+			}
+
 			r.logger.Infof("Processing bucket: %s", bucketName)
 
 			// Get all ledgers in this bucket that need to be deleted
@@ -108,18 +120,6 @@ func (r *CleanupDeletedBucketsRunner) run(ctx context.Context) error {
 			// Process each ledger in the bucket within the same transaction
 			for _, ledger := range ledgersToDelete {
 				r.logger.Infof("Physically deleting ledger: %s", ledger.Name)
-
-				// Check if bucket name format is valid
-				if !internal.BucketNameFormat().MatchString(bucketName) {
-					return fmt.Errorf("invalid bucket name format: must match '%s'", internal.BucketNameFormat().String())
-				}
-
-				// Check if bucket name is reserved
-				for _, reserved := range internal.ReservedBucketNames() {
-					if bucketName == reserved {
-						return fmt.Errorf("cannot delete reserved bucket: %s", bucketName)
-					}
-				}
 
 				// 1. Drop the schema for this ledger
 				_, err := tx.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, ledger.Name))
