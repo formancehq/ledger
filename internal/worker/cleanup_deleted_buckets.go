@@ -35,6 +35,8 @@ func (r *CleanupDeletedBucketsRunner) Run(ctx context.Context) error {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-time.After(next):
 			if err := r.run(ctx); err != nil {
 				r.logger.Errorf("error running cleanup deleted buckets: %v", err)
