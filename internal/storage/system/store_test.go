@@ -151,6 +151,57 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
 }
 
+func TestLedgerDeleteMetadataMultipleKeys(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	store := newStore(t)
+
+	// Create a ledger with multiple metadata keys
+	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
+		"key1": "value1",
+		"key2": "value2",
+		"key3": "value3",
+	})
+
+	err := store.CreateLedger(ctx, &l)
+	require.NoError(t, err)
+
+	// Delete first metadata key
+	err = store.DeleteLedgerMetadata(ctx, l.Name, "key1")
+	require.NoError(t, err)
+
+	// Verify only the specified key was deleted
+	ledgerFromDB, err := store.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{
+		"key2": "value2",
+		"key3": "value3",
+	}, ledgerFromDB.Metadata)
+
+	// Delete second metadata key
+	err = store.DeleteLedgerMetadata(ctx, l.Name, "key2")
+	require.NoError(t, err)
+
+	// Verify only one key remains
+	ledgerFromDB, err = store.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{
+		"key3": "value3",
+	}, ledgerFromDB.Metadata)
+
+	// Try to delete a non-existent key
+	err = store.DeleteLedgerMetadata(ctx, l.Name, "nonexistent")
+	require.NoError(t, err)
+
+	// Verify the remaining metadata is unchanged
+	ledgerFromDB, err = store.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{
+		"key3": "value3",
+	}, ledgerFromDB.Metadata)
+}
+
 func newStore(t docker.T) Store {
 	t.Helper()
 

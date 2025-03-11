@@ -156,3 +156,58 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	err = d.DeleteLedgerMetadata(ctx, l.Name, "foo")
 	require.NoError(t, err)
 }
+
+func TestMarkBucketAsDeleted(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+
+	// Create a unique bucket name
+	bucketName := uuid.NewString()[:8]
+
+	// Create multiple ledgers in the bucket
+	ledgers := make([]*ledger.Ledger, 3)
+	for i := 0; i < 3; i++ {
+		l, err := ledger.New(uuid.NewString(), ledger.Configuration{
+			Bucket: bucketName,
+		})
+		require.NoError(t, err)
+
+		_, err = d.CreateLedger(ctx, l)
+		require.NoError(t, err)
+		ledgers[i] = l
+	}
+
+	// Create a ledger in a different bucket
+	otherBucketName := uuid.NewString()[:8]
+	otherLedger, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: otherBucketName,
+	})
+	require.NoError(t, err)
+	_, err = d.CreateLedger(ctx, otherLedger)
+	require.NoError(t, err)
+
+	// Mark the first bucket as deleted
+	err = d.MarkBucketAsDeleted(ctx, bucketName)
+	require.NoError(t, err)
+
+	// Verify all ledgers in the bucket are marked as deleted
+	for _, l := range ledgers {
+		ledgerFromDB, err := d.GetLedger(ctx, l.Name)
+		require.Error(t, err) // Should return error as ledger is deleted
+		require.Nil(t, ledgerFromDB)
+	}
+
+	// Verify the ledger in the other bucket is still accessible
+	ledgerFromDB, err := d.GetLedger(ctx, otherLedger.Name)
+	require.NoError(t, err)
+	require.NotNil(t, ledgerFromDB)
+	require.Equal(t, otherLedger.Name, ledgerFromDB.Name)
+	require.Equal(t, otherBucketName, ledgerFromDB.Bucket)
+	require.Nil(t, ledgerFromDB.DeletedAt)
+
+	// Try to mark a non-existent bucket as deleted
+	err = d.MarkBucketAsDeleted(ctx, "nonexistent-bucket")
+	require.NoError(t, err) // Should not return error for non-existent bucket
+}
