@@ -188,6 +188,38 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 	return d.systemStoreFactory.Create(d.db).GetLedger(ctx, name)
 }
 
+func (d *Driver) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	// Start a transaction
+	return d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Get all ledgers in the bucket
+		var ledgers []ledger.Ledger
+		err := tx.NewSelect().
+			Model(&ledgers).
+			Where("bucket = ?", bucketName).
+			Where("deleted_at IS NULL").
+			Scan(ctx)
+
+		if err != nil {
+			return fmt.Errorf("error finding ledgers in bucket: %w", err)
+		}
+
+		// Mark each ledger as deleted
+		for _, l := range ledgers {
+			_, err := tx.NewUpdate().
+				Model(&ledger.Ledger{}).
+				Set("deleted_at = now()").
+				Where("name = ?", l.Name).
+				Exec(ctx)
+
+			if err != nil {
+				return fmt.Errorf("error marking ledger %s as deleted: %w", l.Name, err)
+			}
+		}
+
+		return nil
+	})
+}
+
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
 	return d.bucketFactory.Create(name, d.db).Migrate(ctx)
 }

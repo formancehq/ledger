@@ -147,6 +147,20 @@ func (mr *SystemStoreMockRecorder) Ledgers() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ledgers", reflect.TypeOf((*SystemStore)(nil).Ledgers))
 }
 
+// MarkBucketAsDeleted mocks base method.
+func (m *SystemStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkBucketAsDeleted", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkBucketAsDeleted indicates an expected call of MarkBucketAsDeleted.
+func (mr *SystemStoreMockRecorder) MarkBucketAsDeleted(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkBucketAsDeleted", reflect.TypeOf((*SystemStore)(nil).MarkBucketAsDeleted), ctx, bucketName)
+}
+
 // Migrate mocks base method.
 func (m *SystemStore) Migrate(ctx context.Context, options ...migrations.Option) error {
 	m.ctrl.T.Helper()

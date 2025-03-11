@@ -115,6 +115,20 @@ func (mr *SystemControllerMockRecorder) ListLedgers(ctx, query any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*SystemController)(nil).ListLedgers), ctx, query)
 }
 
+// MarkBucketAsDeleted mocks base method.
+func (m *SystemController) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkBucketAsDeleted", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkBucketAsDeleted indicates an expected call of MarkBucketAsDeleted.
+func (mr *SystemControllerMockRecorder) MarkBucketAsDeleted(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkBucketAsDeleted", reflect.TypeOf((*SystemController)(nil).MarkBucketAsDeleted), ctx, bucketName)
+}
+
 // UpdateLedgerMetadata mocks base method.
 func (m_2 *SystemController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
 	m_2.ctrl.T.Helper()

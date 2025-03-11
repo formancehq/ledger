@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
@@ -14,18 +15,24 @@ import (
 )
 
 const (
-	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
-	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
+	WorkerAsyncBlockHasherMaxBlockSizeFlag       = "worker-async-block-hasher-max-block-size"
+	WorkerAsyncBlockHasherScheduleFlag           = "worker-async-block-hasher-schedule"
+	WorkerCleanupDeletedBucketsScheduleFlag      = "worker-cleanup-deleted-buckets-schedule"
+	WorkerCleanupDeletedBucketsRetentionDaysFlag = "worker-cleanup-deleted-buckets-retention-days"
 )
 
 type WorkerConfiguration struct {
 	HashLogsBlockMaxSize  int    `mapstructure:"worker-async-block-hasher-max-block-size"`
 	HashLogsBlockCRONSpec string `mapstructure:"worker-async-block-hasher-schedule"`
+	CleanupSchedule       string `mapstructure:"worker-cleanup-deleted-buckets-schedule"`
+	CleanupRetentionDays  int    `mapstructure:"worker-cleanup-deleted-buckets-retention-days"`
 }
 
 func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(WorkerAsyncBlockHasherMaxBlockSizeFlag, 1000, "Max block size")
 	cmd.Flags().String(WorkerAsyncBlockHasherScheduleFlag, "0 * * * * *", "Schedule")
+	cmd.Flags().String(WorkerCleanupDeletedBucketsScheduleFlag, "0 0 * * * *", "Schedule for cleanup of deleted buckets (default: every hour)")
+	cmd.Flags().Int(WorkerCleanupDeletedBucketsRetentionDaysFlag, 30, "Number of days to retain deleted buckets before physical deletion (default: 30 days)")
 }
 
 func NewWorkerCommand() *cobra.Command {
@@ -51,8 +58,10 @@ func NewWorkerCommand() *cobra.Command {
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
 				worker.NewFXModule(worker.ModuleConfig{
-					MaxBlockSize: cfg.HashLogsBlockMaxSize,
-					Schedule:     cfg.HashLogsBlockCRONSpec,
+					MaxBlockSize:         cfg.HashLogsBlockMaxSize,
+					Schedule:             cfg.HashLogsBlockCRONSpec,
+					CleanupSchedule:      cfg.CleanupSchedule,
+					CleanupRetentionDays: cfg.CleanupRetentionDays,
 				}),
 			).Run(cmd)
 		},

@@ -4,6 +4,11 @@ package driver_test
 
 import (
 	"fmt"
+	"math/rand"
+	"sync"
+	"testing"
+
+	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/query"
@@ -15,9 +20,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"math/rand"
-	"sync"
-	"testing"
 )
 
 func TestLedgersCreate(t *testing.T) {

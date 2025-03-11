@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"database/sql"
+
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
@@ -234,6 +235,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 					_, err := tx.ExecContext(ctx, `
 						alter table _system.ledgers
 						alter column metadata set default '{}'::jsonb;
+					`)
+					return err
+				})
+			},
+		},
+		migrations.Migration{
+			Name: "Add deleted_at column to ledgers",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, `
+						alter table _system.ledgers
+						add column if not exists deleted_at timestamp default null;
 					`)
 					return err
 				})

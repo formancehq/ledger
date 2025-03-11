@@ -2,12 +2,13 @@ package ledger
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
+
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
-	"regexp"
-	"slices"
 )
 
 const (
@@ -19,10 +20,11 @@ type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
 	Configuration
-	ID      int       `json:"id" bun:"id,type:int,scanonly"`
-	Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
-	AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
-	State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
+	ID        int        `json:"id" bun:"id,type:int,scanonly"`
+	Name      string     `json:"name" bun:"name,type:varchar(255),pk"`
+	AddedAt   time.Time  `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+	State     string     `json:"-" bun:"state,type:varchar(255),nullzero"`
+	DeletedAt *time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
@@ -86,6 +88,12 @@ var (
 		"_",
 		"_info",
 		"_healthcheck",
+		"_system",
+	}
+
+	reservedBucketName = []string{
+		"_",
+		"_system",
 	}
 )
 
@@ -126,4 +134,14 @@ func NewDefaultConfiguration() Configuration {
 		Metadata: metadata.Metadata{},
 		Features: features.DefaultFeatures,
 	}
+}
+
+// BucketNameFormat returns the regex pattern for valid bucket names
+func BucketNameFormat() *regexp.Regexp {
+	return bucketNameFormat
+}
+
+// ReservedBucketNames returns the list of reserved bucket names
+func ReservedBucketNames() []string {
+	return reservedBucketName
 }

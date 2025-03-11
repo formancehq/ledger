@@ -10,7 +10,9 @@ import "github.com/formancehq/ledger/internal"
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func BucketNameFormat\(\) \*regexp.Regexp](<#BucketNameFormat>)
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
+- [func ReservedBucketNames\(\) \[\]string](<#ReservedBucketNames>)
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
@@ -157,6 +159,15 @@ const (
 var Zero = big.NewInt(0)
 ```
 
+<a name="BucketNameFormat"></a>
+## func [BucketNameFormat](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L133>)
+
+```go
+func BucketNameFormat() *regexp.Regexp
+```
+
+BucketNameFormat returns the regex pattern for valid bucket names
+
 <a name="ComputeIdempotencyHash"></a>
 ## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L386>)
 
@@ -165,6 +176,15 @@ func ComputeIdempotencyHash(inputs any) string
 ```
 
 
+
+<a name="ReservedBucketNames"></a>
+## func [ReservedBucketNames](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L138>)
+
+```go
+func ReservedBucketNames() []string
+```
+
+ReservedBucketNames returns the list of reserved bucket names
 
 <a name="Account"></a>
 ## type [Account](<https://github.com/formancehq/ledger/blob/main/internal/account.go#L14-L24>)
@@ -408,7 +428,13 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="Ledger"></a>
+<<<<<<< HEAD
 ## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L18-L26>)
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L13-L20>)
+=======
+## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L14-L22>)
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 
 
 
@@ -417,15 +443,32 @@ type Ledger struct {
     bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
     Configuration
+<<<<<<< HEAD
     ID      int       `json:"id" bun:"id,type:int,scanonly"`
     Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
     AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
     State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+    ID      int       `json:"id" bun:"id,type:int,scanonly"`
+    Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
+    AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+=======
+    ID        int        `json:"id" bun:"id,type:int,scanonly"`
+    Name      string     `json:"name" bun:"name,type:varchar(255),pk"`
+    AddedAt   time.Time  `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    DeletedAt *time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 }
 ```
 
 <a name="MustNewWithDefault"></a>
+<<<<<<< HEAD
 ### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L68>)
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L61>)
+=======
+### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L63>)
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 
 ```go
 func MustNewWithDefault(name string) Ledger
@@ -434,7 +477,13 @@ func MustNewWithDefault(name string) Ledger
 
 
 <a name="New"></a>
+<<<<<<< HEAD
 ### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L41>)
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L35>)
+=======
+### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L37>)
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 
 ```go
 func New(name string, configuration Configuration) (*Ledger, error)
@@ -443,7 +492,13 @@ func New(name string, configuration Configuration) (*Ledger, error)
 
 
 <a name="NewWithDefaults"></a>
+<<<<<<< HEAD
 ### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L64>)
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L57>)
+=======
+### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L59>)
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 
 ```go
 func NewWithDefaults(name string) (*Ledger, error)
@@ -452,7 +507,13 @@ func NewWithDefaults(name string) (*Ledger, error)
 
 
 <a name="Ledger.HasFeature"></a>
+<<<<<<< HEAD
 ### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L28>)
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L22>)
+=======
+### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L24>)
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 
 ```go
 func (l Ledger) HasFeature(feature, value string) bool
@@ -461,7 +522,13 @@ func (l Ledger) HasFeature(feature, value string) bool
 
 
 <a name="Ledger.WithMetadata"></a>
+<<<<<<< HEAD
 ### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L36>)
+||||||| parent of 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
+### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L30>)
+=======
+### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L32>)
+>>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
 
 ```go
 func (l Ledger) WithMetadata(m metadata.Metadata) Ledger

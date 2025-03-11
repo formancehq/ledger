@@ -3,10 +3,11 @@ package system
 import (
 	"context"
 	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/pkg/features"
-	"go.opentelemetry.io/otel/attribute"
 	"reflect"
 	"time"
+
+	"github.com/formancehq/ledger/pkg/features"
+	"go.opentelemetry.io/otel/attribute"
 
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
@@ -31,6 +32,7 @@ type Controller interface {
 	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 }
 
 type DefaultController struct {
@@ -138,6 +140,12 @@ func (ctrl *DefaultController) UpdateLedgerMetadata(ctx context.Context, name st
 func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param string, key string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.store.DeleteLedgerMetadata(ctx, param, key)
+	})))
+}
+
+func (ctrl *DefaultController) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "MarkBucketAsDeleted", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.store.MarkBucketAsDeleted(ctx, bucketName)
 	})))
 }
 

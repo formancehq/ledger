@@ -5,6 +5,7 @@
 
 ### Available Operations
 
+* [DeleteBucket](#deletebucket) - Delete a bucket and mark all its ledgers as deleted
 * [ListLedgers](#listledgers) - List ledgers
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a ledger
@@ -30,6 +31,61 @@
 * [ListLogs](#listlogs) - List the logs from a ledger
 * [ImportLogs](#importlogs)
 * [ExportLogs](#exportlogs) - Export logs
+
+## DeleteBucket
+
+Delete a bucket and mark all its ledgers as deleted
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"context"
+	"log"
+)
+
+func main() {
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
+    request := operations.V2DeleteBucketRequest{
+        Name: "<value>",
+    }
+    ctx := context.Background()
+    res, err := s.Ledger.V2.DeleteBucket(ctx, request)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                            | Type                                                                                 | Required                                                                             | Description                                                                          |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `ctx`                                                                                | [context.Context](https://pkg.go.dev/context#Context)                                | :heavy_check_mark:                                                                   | The context to use for the request.                                                  |
+| `request`                                                                            | [operations.V2DeleteBucketRequest](../../models/operations/v2deletebucketrequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
+| `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
+
+
+### Response
+
+**[*operations.V2DeleteBucketResponse](../../models/operations/v2deletebucketresponse.md), error**
+| Error Object              | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
 
 ## ListLedgers
 

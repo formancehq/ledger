@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math/big"
+
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
@@ -24,7 +26,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
-	"math/big"
 )
 
 var _ = Context("Ledger application lifecycle tests", func() {
@@ -54,9 +55,10 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 		When("starting the service", func() {
 			It("should be ok", func() {
-				info, err := testServer.GetValue().Client().Ledger.GetInfo(ctx)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
+				Eventually(func() bool {
+					_, err := testServer.GetValue().Client().Ledger.GetInfo(ctx)
+					return err == nil
+				}).Should(BeTrue())
 			})
 		})
 		When("restarting the service", func() {

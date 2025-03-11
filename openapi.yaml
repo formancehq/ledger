@@ -1296,6 +1296,38 @@ paths:
       security:
         - Authorization:
             - ledger:read
+  /_system/bucket:
+    delete:
+      tags:
+        - ledger.v2
+      summary: Delete a bucket and mark all its ledgers as deleted
+      operationId: v2DeleteBucket
+      x-speakeasy-name-override: DeleteBucket
+      parameters:
+        - name: name
+          in: query
+          description: The name of the bucket to delete
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
   /_/metrics:
     get:
       tags:
