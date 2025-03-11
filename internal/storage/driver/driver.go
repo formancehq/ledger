@@ -225,6 +225,21 @@ func (d *Driver) HasReachMinimalVersion(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
+	buckets, err := systemStore.GetDistinctBuckets(ctx)
+	if err != nil {
+		return false, fmt.Errorf("getting distinct buckets: %w", err)
+	}
+
+	for _, b := range buckets {
+		hasMinimalVersion, err := d.bucketFactory.Create(b, d.db).HasMinimalVersion(ctx)
+		if err != nil {
+			return false, fmt.Errorf("checking if bucket '%s' is up to date: %w", b, err)
+		}
+		if !hasMinimalVersion {
+			return false, nil
+		}
+	}
+
 	return true, nil
 }
 
