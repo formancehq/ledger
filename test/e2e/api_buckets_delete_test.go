@@ -4,7 +4,6 @@ package test_suite
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -56,18 +55,16 @@ var _ = Describe("Bucket management", func() {
 		Expect(err).To(BeNil())
 		Expect(ledger.Bucket).To(Equal(bucketName))
 
-		// Create a direct HTTP request to delete the bucket
-		url := fmt.Sprintf("%s/v2/_system/bucket?name=%s", testServer.GetValue().URL(), bucketName)
-		req, err := http.NewRequest(http.MethodDelete, url, nil)
+		// Use the SDK client to delete the bucket
+		err = DeleteBucket(ctx, testServer.GetValue(), operations.V2DeleteBucketRequest{
+			Name: bucketName,
+		})
 		Expect(err).To(BeNil())
 
-		// Execute the request
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		Expect(err).To(BeNil())
-		defer resp.Body.Close()
-
-		// Check the response status code
-		Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
+		// Verify the ledger is no longer accessible (should be marked as deleted)
+		_, err = GetLedger(ctx, testServer.GetValue(), operations.V2GetLedgerRequest{
+			Ledger: ledgerName,
+		})
+		Expect(err).NotTo(BeNil())
 	})
 })

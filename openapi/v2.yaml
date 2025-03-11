@@ -35,7 +35,7 @@ paths:
       security:
         - Authorization:
             - ledger:read
-  /_system/bucket:
+  /v2/_system/bucket:
     delete:
       tags:
         - ledger.v2
