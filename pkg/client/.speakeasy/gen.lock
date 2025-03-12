@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 158c651daab4c276097bd013fa802844
+  docChecksum: faef2a500712dff5273fee626cd37000
   docVersion: v2
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.6.5
-  configChecksum: 36c021239022189c28583e2d51a513b6
+  releaseVersion: 0.6.9
+  configChecksum: 2d9ee6d181ad5dbe43f7e9bfcdaa88f1
 features:
   go:
     additionalDependencies: 0.1.0
@@ -75,6 +75,7 @@ generatedFiles:
   - /models/operations/getbalances.go
   - /models/operations/getbalancesaggregated.go
   - /models/operations/listlogs.go
+  - /models/operations/v2deletebucket.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2getledger.go
   - /models/operations/v2createledger.go
@@ -214,6 +215,8 @@ generatedFiles:
   - docs/models/operations/getbalancesaggregatedresponse.md
   - docs/models/operations/listlogsrequest.md
   - docs/models/operations/listlogsresponse.md
+  - docs/models/operations/v2deletebucketrequest.md
+  - docs/models/operations/v2deletebucketresponse.md
   - docs/models/operations/v2listledgersrequest.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2getledgerrequest.md

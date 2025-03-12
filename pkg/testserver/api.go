@@ -227,6 +227,11 @@ func Import(ctx context.Context, srv *Server, request operations.V2ImportLogsReq
 	return mapSDKError(err)
 }
 
+func DeleteBucket(ctx context.Context, srv *Server, request operations.V2DeleteBucketRequest) error {
+	_, err := srv.Client().Ledger.V2.DeleteBucket(ctx, request)
+	return mapSDKError(err)
+}
+
 func mapSDKError(err error) error {
 	// notes: *sdkerrors.V2ErrorResponse does not implements errors.Is
 	switch err := err.(type) {

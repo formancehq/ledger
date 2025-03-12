@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -25,6 +26,10 @@ func (d *DefaultStorageDriverAdapter) OpenLedger(ctx context.Context, name strin
 func (d *DefaultStorageDriverAdapter) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
 	_, err := d.Driver.CreateLedger(ctx, l)
 	return err
+}
+
+func (d *DefaultStorageDriverAdapter) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	return d.Driver.MarkBucketAsDeleted(ctx, bucketName)
 }
 
 func NewControllerStorageDriverAdapter(d *Driver) *DefaultStorageDriverAdapter {

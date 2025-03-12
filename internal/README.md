@@ -10,7 +10,9 @@ import "github.com/formancehq/ledger/internal"
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func BucketNameFormat\(\) \*regexp.Regexp](<#BucketNameFormat>)
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
+- [func ReservedBucketNames\(\) \[\]string](<#ReservedBucketNames>)
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
@@ -148,6 +150,15 @@ const (
 var Zero = big.NewInt(0)
 ```
 
+<a name="BucketNameFormat"></a>
+## func [BucketNameFormat](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L133>)
+
+```go
+func BucketNameFormat() *regexp.Regexp
+```
+
+BucketNameFormat returns the regex pattern for valid bucket names
+
 <a name="ComputeIdempotencyHash"></a>
 ## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L391>)
 
@@ -156,6 +167,15 @@ func ComputeIdempotencyHash(inputs any) string
 ```
 
 
+
+<a name="ReservedBucketNames"></a>
+## func [ReservedBucketNames](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L138>)
+
+```go
+func ReservedBucketNames() []string
+```
+
+ReservedBucketNames returns the list of reserved bucket names
 
 <a name="Account"></a>
 ## type [Account](<https://github.com/formancehq/ledger/blob/main/internal/account.go#L14-L24>)
@@ -240,7 +260,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
 
 <a name="Configuration"></a>
-## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L85-L89>)
+## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L93-L97>)
 
 
 
@@ -253,7 +273,7 @@ type Configuration struct {
 ```
 
 <a name="NewDefaultConfiguration"></a>
-### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L116>)
+### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L124>)
 
 ```go
 func NewDefaultConfiguration() Configuration
@@ -262,7 +282,7 @@ func NewDefaultConfiguration() Configuration
 
 
 <a name="Configuration.SetDefaults"></a>
-### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L91>)
+### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L99>)
 
 ```go
 func (c *Configuration) SetDefaults()
@@ -271,7 +291,7 @@ func (c *Configuration) SetDefaults()
 
 
 <a name="Configuration.Validate"></a>
-### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L106>)
+### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L114>)
 
 ```go
 func (c *Configuration) Validate() error
@@ -399,7 +419,7 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="Ledger"></a>
-## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L13-L20>)
+## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L14-L22>)
 
 
 
@@ -408,14 +428,15 @@ type Ledger struct {
     bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
     Configuration
-    ID      int       `json:"id" bun:"id,type:int,scanonly"`
-    Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
-    AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    ID        int        `json:"id" bun:"id,type:int,scanonly"`
+    Name      string     `json:"name" bun:"name,type:varchar(255),pk"`
+    AddedAt   time.Time  `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    DeletedAt *time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
 }
 ```
 
 <a name="MustNewWithDefault"></a>
-### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L61>)
+### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L63>)
 
 ```go
 func MustNewWithDefault(name string) Ledger
@@ -424,7 +445,7 @@ func MustNewWithDefault(name string) Ledger
 
 
 <a name="New"></a>
-### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L35>)
+### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L37>)
 
 ```go
 func New(name string, configuration Configuration) (*Ledger, error)
@@ -433,7 +454,7 @@ func New(name string, configuration Configuration) (*Ledger, error)
 
 
 <a name="NewWithDefaults"></a>
-### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L57>)
+### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L59>)
 
 ```go
 func NewWithDefaults(name string) (*Ledger, error)
@@ -442,7 +463,7 @@ func NewWithDefaults(name string) (*Ledger, error)
 
 
 <a name="Ledger.HasFeature"></a>
-### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L22>)
+### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L24>)
 
 ```go
 func (l Ledger) HasFeature(feature, value string) bool
@@ -451,7 +472,7 @@ func (l Ledger) HasFeature(feature, value string) bool
 
 
 <a name="Ledger.WithMetadata"></a>
-### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L30>)
+### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L32>)
 
 ```go
 func (l Ledger) WithMetadata(m metadata.Metadata) Ledger
