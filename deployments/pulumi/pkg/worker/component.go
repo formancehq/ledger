@@ -77,7 +77,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:            pulumi.String("worker"),
-							Image:           utils.GetImage(args.Tag),
+							Image:           utils.GetMainImage(args.Tag),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 							Args: pulumi.StringArray{
 								pulumi.String("worker"),

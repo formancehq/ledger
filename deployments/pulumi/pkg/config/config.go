@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/rds"
@@ -195,8 +197,8 @@ type Storage struct {
 	DisableUpgrade bool `json:"disable-upgrade" yaml:"disable-upgrade"`
 }
 
-func (s Storage) toInput() storage.DatabaseArgs {
-	return storage.DatabaseArgs{
+func (s Storage) toInput() storage.Args {
+	return storage.Args{
 		Postgres:                 s.Postgres.toInput(),
 		RDS:                      s.RDS.toInput(),
 		ConnectivityDatabaseArgs: s.Connectivity.toInput(),
@@ -399,6 +401,54 @@ func (c Common) toInput() utils.CommonArgs {
 	}
 }
 
+type LedgerConfig struct {
+	// Bucket is the bucket for the ledger
+	Bucket string `json:"bucket" yaml:"bucket"`
+
+	// Metadata is the metadata for the ledger
+	Metadata map[string]string `json:"metadata" yaml:"metadata"`
+
+	// Features is the features for the ledger
+	Features map[string]string `json:"features" yaml:"features"`
+}
+
+func (c LedgerConfig) toInput() provision.LedgerConfigArgs {
+	return provision.LedgerConfigArgs{
+		Bucket:   c.Bucket,
+		Metadata: c.Metadata,
+		Features: c.Features,
+	}
+}
+
+type ProvisionConfig struct {
+	// Ledgers are the ledgers to auto create
+	Ledgers map[string]LedgerConfig `json:"ledgers" yaml:"ledgers"`
+}
+
+func (c ProvisionConfig) toInput() provision.ConfigArgs {
+	if c.Ledgers == nil {
+		return provision.ConfigArgs{}
+	}
+	return provision.ConfigArgs{
+		Ledgers: ConvertMap(c.Ledgers, LedgerConfig.toInput),
+	}
+}
+
+type Provision struct {
+	// ProvisionerVersion is the version of the provisioner (default to the ledger version if not specified)
+	ProvisionerVersion string `json:"provisioner-version" yaml:"provisioner-version"`
+
+	// Config is the configuration for the provisioner
+	Config ProvisionConfig `json:"config" yaml:"config"`
+}
+
+func (i Provision) toInput() provision.Args {
+	return provision.Args{
+		ProvisionerVersion: pulumi.String(i.ProvisionerVersion),
+		Config:             i.Config.toInput(),
+	}
+}
+
 type Config struct {
 	Common
 
@@ -411,6 +461,9 @@ type Config struct {
 	// Ingress is the ingress configuration for the ledger
 	Ingress *Ingress `json:"ingress" yaml:"ingress"`
 
+	// Provision is the initialization configuration for the ledger
+	Provision *Provision `json:"provision" yaml:"provision"`
+
 	// Timeout is the timeout for the ledger
 	Timeout int `json:"timeout" yaml:"timeout"`
 
@@ -421,11 +474,12 @@ type Config struct {
 func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 	return pulumi_ledger.ComponentArgs{
 		CommonArgs:    cfg.Common.toInput(),
-		Database:      cfg.Storage.toInput(),
+		Storage:       cfg.Storage.toInput(),
 		API:           cfg.API.toInput(),
 		Timeout:       pulumix.Val(cfg.Timeout),
 		Ingress:       cfg.Ingress.toInput(),
 		InstallDevBox: pulumix.Val(cfg.InstallDevBox),
+		Provision:     cfg.Provision.toInput(),
 	}
 }
 
@@ -470,11 +524,23 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
+	provision := &Provision{}
+	if err := cfg.TryObject("provision", provision); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+	}
+
+	namespace := config.Get(ctx, "namespace")
+	if namespace == "" {
+		namespace = ctx.Stack()
+	}
+
 	return &Config{
 		Timeout: timeout,
 		Common: Common{
 			Debug:      config.GetBool(ctx, "debug"),
-			Namespace:  config.Get(ctx, "namespace"),
+			Namespace:  namespace,
 			Tag:        config.Get(ctx, "version"),
 			Monitoring: otel,
 		},
@@ -482,5 +548,6 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		Storage:       storage,
 		API:           api,
 		Ingress:       ingress,
+		Provision:     provision,
 	}, nil
 }

@@ -5,8 +5,17 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
-func GetImage(tag pulumix.Input[string]) pulumi.StringOutput {
-	return pulumi.Sprintf("ghcr.io/formancehq/ledger:%s", tag)
+func GetMainImage(tag pulumix.Input[string]) pulumi.StringOutput {
+	return GetImage(pulumi.String("ledger"), tag)
+}
+
+func GetImage(component, tag pulumix.Input[string]) pulumi.StringOutput {
+	return pulumi.Sprintf("ghcr.io/formancehq/%s:%s", component, pulumix.Apply(tag, func(version string) string {
+		if version == "" {
+			return "latest"
+		}
+		return version
+	}))
 }
 
 func BoolToString(output pulumix.Input[bool]) pulumix.Output[string] {
