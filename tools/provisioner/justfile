@@ -1,0 +1,9 @@
+#!/usr/bin/env just --justfile
+
+set positional-arguments
+
+push-image version='latest':
+    docker buildx build . \
+        -t ghcr.io/formancehq/ledger-provisioner:{{ version }} \
+        --push \
+        --platform linux/amd64,linux/arm64

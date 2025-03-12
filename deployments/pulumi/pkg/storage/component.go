@@ -43,14 +43,19 @@ type databaseComponentFactory interface {
 	setup(ctx *pulumi.Context, args factoryArgs, options ...pulumi.ResourceOption) (databaseComponent, error)
 }
 
-type DatabaseArgs struct {
+type Args struct {
 	Postgres                 *PostgresDatabaseArgs
 	RDS                      *RDSDatabaseArgs
 	ConnectivityDatabaseArgs ConnectivityDatabaseArgs
 	DisableUpgrade           pulumix.Output[bool]
 }
 
-func (args *DatabaseArgs) SetDefaults() {
+func (args *Args) SetDefaults() {
+	if args.RDS == nil && args.Postgres == nil {
+		args.Postgres = &PostgresDatabaseArgs{
+			Install: pulumix.Val(true),
+		}
+	}
 	if args.RDS != nil {
 		args.RDS.SetDefaults()
 	}
@@ -61,11 +66,11 @@ func (args *DatabaseArgs) SetDefaults() {
 
 type ComponentArgs struct {
 	CommonArgs CommonArgs
-	DatabaseArgs
+	Args
 }
 
 func (args *ComponentArgs) SetDefaults() {
-	args.DatabaseArgs.SetDefaults()
+	args.Args.SetDefaults()
 }
 
 type Component struct {

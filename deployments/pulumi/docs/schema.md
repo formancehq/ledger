@@ -47,6 +47,7 @@ No description provided for this model.
 | storage | `object` |  | [Storage](#storage) | Storage is the storage configuration for the ledger |
 | api | `object` |  | [API](#api) | API is the API configuration for the ledger |
 | ingress | `object` |  | [Ingress](#ingress) | Ingress is the ingress configuration for the ledger |
+| provision | `object` |  | [Provision](#provision) | Provision is the initialization configuration for the ledger |
 | timeout | `integer` |  | integer | Timeout is the timeout for the ledger |
 | install-dev-box | `boolean` |  | boolean | InstallDevBox is whether to install the dev box |
 
@@ -77,6 +78,20 @@ No description provided for this model.
 | -------- | ---- | -------- | --------------- | ----------- |
 | host | `string` |  | string | Host is the hostname for the ingress |
 | secret | `string` |  | string | Secret is the secret name for the ingress |
+
+## LedgerConfig
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| bucket | `string` |  | string | Bucket is the bucket for the ledger |
+| metadata | `object` |  | object | Metadata is the metadata for the ledger |
+| features | `object` |  | object | Features is the features for the ledger |
 
 ## Monitoring
 
@@ -180,6 +195,31 @@ No description provided for this model.
 | uri | `string` |  | string | URI is the URI for the Postgres database |
 | install | `boolean` |  | boolean | Install is whether to install the Postgres database |
 
+## Provision
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| provisioner-version | `string` |  | string | ProvisionerVersion is the version of the provisioner (default to the ledger version if not specified) |
+| config | `object` |  | [ProvisionConfig](#provisionconfig) | Config is the configuration for the provisioner |
+
+## ProvisionConfig
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| ledgers | `object` |  | [LedgerConfig](#ledgerconfig) | Ledgers are the ledgers to auto create |
+
 ## RDSClusterCreate
 
 No description provided for this model.
@@ -211,6 +251,19 @@ No description provided for this model.
 | -------- | ---- | -------- | --------------- | ----------- |
 | use-cluster | `object` |  | [RDSUseExistingCluster](#rdsuseexistingcluster) | UseCluster is the configuration to use an existing RDS cluster |
 | create-cluster | `object` |  | [RDSClusterCreate](#rdsclustercreate) | CreateCluster is the configuration to create a new RDS cluster |
+| post-migrate-snapshot | `object` |  | [RDSPostMigrateSnapshot](#rdspostmigratesnapshot) | PostMigrateSnapshot is the configuration for a snapshot to create after migrations |
+
+## RDSPostMigrateSnapshot
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| snapshot-identifier | `string` |  | string | SnapshotIdentifier is the snapshot identifier to create after migrations |
 
 ## RDSUseExistingCluster
 

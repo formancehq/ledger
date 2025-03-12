@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
@@ -16,16 +17,17 @@ import (
 
 type ComponentArgs struct {
 	utils.CommonArgs
-	Timeout        pulumix.Input[int]
-	InstallDevBox  pulumix.Input[bool]
-	Database       storage.DatabaseArgs
-	API            api.Args
-	Worker         worker.Args
-	Ingress        *api.IngressArgs
+	Timeout       pulumix.Input[int]
+	InstallDevBox pulumix.Input[bool]
+	Storage       storage.Args
+	API           api.Args
+	Worker        worker.Args
+	Ingress       *api.IngressArgs
+	Provision     provision.Args
 }
 
 func (args *ComponentArgs) SetDefaults() {
-	args.Database.SetDefaults()
+	args.Storage.SetDefaults()
 	args.CommonArgs.SetDefaults()
 	args.API.SetDefaults()
 	args.Worker.SetDefaults()
@@ -39,6 +41,7 @@ type Component struct {
 	Storage   *storage.Component
 	Namespace *corev1.Namespace
 	Devbox    *devbox.Component
+	Provision *provision.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -70,8 +73,8 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 	}))
 
 	cmp.Storage, err = storage.NewComponent(ctx, "storage", storage.ComponentArgs{
-		CommonArgs:   args.CommonArgs,
-		DatabaseArgs: args.Database,
+		CommonArgs: args.CommonArgs,
+		Args:       args.Storage,
 	}, options...)
 	if err != nil {
 		return nil, err
@@ -100,6 +103,15 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		CommonArgs: args.CommonArgs,
 		Args:       args.Worker,
 		Database:   cmp.Storage,
+	}, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	cmp.Provision, err = provision.NewComponent(ctx, "provisioner", provision.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		API:        cmp.API,
+		Args:       args.Provision,
 	}, options...)
 	if err != nil {
 		return nil, err

@@ -47,4 +47,11 @@ func (a PostgresDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, optio
 	}, options...)
 }
 
-func (a *PostgresDatabaseArgs) SetDefaults() {}
+func (a *PostgresDatabaseArgs) SetDefaults() {
+	if a.URI == nil && a.Install == nil {
+		a.Install = pulumix.Val(true)
+	}
+	if a.URI == nil {
+		a.URI = pulumix.Val("")
+	}
+}
