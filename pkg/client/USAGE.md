@@ -7,17 +7,19 @@ import (
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"log"
+	"os"
 )
 
 func main() {
+	ctx := context.Background()
+
 	s := client.New(
 		client.WithSecurity(components.Security{
-			ClientID:     "",
-			ClientSecret: "",
+			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 
-	ctx := context.Background()
 	res, err := s.Ledger.V1.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)

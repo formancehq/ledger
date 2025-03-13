@@ -21,6 +21,7 @@ type securityTag struct {
 	Name    string
 	Type    string
 	SubType string
+	Env     string
 }
 
 func PopulateSecurity(ctx context.Context, req *http.Request, securitySource func(context.Context) (interface{}, error)) error {
@@ -90,6 +91,96 @@ func PopulateSecurity(ctx context.Context, req *http.Request, securitySource fun
 	return nil
 }
 
+func PopulateSecurityFromEnv(security interface{}) bool {
+	securityValType := trueReflectValue(reflect.ValueOf(security))
+	securityStructType := securityValType.Type()
+
+	if securityStructType.Kind() == reflect.Ptr {
+		securityStructType = securityStructType.Elem()
+		securityValType = securityValType.Elem()
+	}
+
+	return populateStructFromEnv(securityStructType, securityValType)
+}
+
+func populateStructFromEnv(structType reflect.Type, structVal reflect.Value) bool {
+	fieldPopulated := false
+	for i := 0; i < structType.NumField(); i++ {
+		fieldType := structType.Field(i)
+		secTag := parseSecurityTag(fieldType)
+		if fieldType.Type.Kind() == reflect.Struct ||
+			(fieldType.Type.Kind() == reflect.Ptr && fieldType.Type.Elem().Kind() == reflect.Struct) {
+			if fieldType.Type.Kind() == reflect.Ptr {
+				if hasEnvVarsForSecurityStruct(fieldType.Type.Elem(), secTag != nil && secTag.Option) {
+					fieldVal := reflect.New(fieldType.Type.Elem())
+					if populateStructFromEnv(fieldType.Type.Elem(), fieldVal.Elem()) {
+						structVal.Field(i).Set(fieldVal)
+						fieldPopulated = true
+					}
+				}
+			} else {
+				fieldVal := structVal.Field(i)
+				if populateStructFromEnv(fieldType.Type.Elem(), fieldVal.Elem()) {
+					fieldPopulated = true
+				}
+			}
+			continue
+		}
+
+		if secTag == nil || secTag.Env == "" {
+			continue
+		}
+
+		envValue := getCaseInsensitiveEnvVar(secTag.Env)
+		if envValue == "" {
+			continue
+		}
+
+		if fieldType.Type.Kind() == reflect.Ptr {
+			fieldVal := reflect.New(fieldType.Type.Elem())
+			if setFieldValue(fieldVal.Elem(), envValue) {
+				structVal.Field(i).Set(fieldVal)
+				fieldPopulated = true
+			}
+		} else {
+			fieldVal := structVal.Field(i)
+			if setFieldValue(fieldVal, envValue) {
+				fieldPopulated = true
+			}
+		}
+	}
+
+	return fieldPopulated
+}
+
+func hasEnvVarsForSecurityStruct(structType reflect.Type, isSecurityOption bool) bool {
+	valid := false
+	for i := 0; i < structType.NumField(); i++ {
+		fieldType := structType.Field(i)
+		secTag := parseSecurityTag(fieldType)
+		if secTag == nil {
+			continue
+		}
+
+		if secTag.Env != "" || getCaseInsensitiveEnvVar(secTag.Env) != "" {
+			valid = true
+		} else if isSecurityOption {
+			return false
+		}
+
+		if fieldType.Type.Kind() == reflect.Struct ||
+			(fieldType.Type.Kind() == reflect.Ptr && fieldType.Type.Elem().Kind() == reflect.Struct) {
+			if hasEnvVarsForSecurityStruct(fieldType.Type, secTag.Option) {
+				valid = true
+			} else if isSecurityOption {
+				return false
+			}
+		}
+	}
+
+	return valid
+}
+
 func handleSecurityOption(headers, queryParams map[string]string, option interface{}) {
 	optionValType := trueReflectValue(reflect.ValueOf(option))
 	optionStructType := optionValType.Type()
@@ -118,9 +209,14 @@ func parseSecurityScheme(headers, queryParams map[string]string, schemeTag *secu
 	}
 
 	if schemeType.Kind() == reflect.Struct {
-		if schemeTag.Type == "http" && schemeTag.SubType == "basic" {
-			handleBasicAuthScheme(headers, schemeVal.Interface())
-			return
+		if schemeTag.Type == "http" {
+			switch schemeTag.SubType {
+			case "basic":
+				handleBasicAuthScheme(headers, schemeVal.Interface())
+				return
+			case "custom":
+				return
+			}
 		}
 
 		for i := 0; i < schemeType.NumField(); i++ {
@@ -170,6 +266,7 @@ func parseSecuritySchemeValue(headers, queryParams map[string]string, schemeTag 
 		switch schemeTag.SubType {
 		case "bearer":
 			headers[secTag.Name] = prefixBearer(valToString(val))
+		case "custom":
 		default:
 			panic("not supported")
 		}
@@ -227,6 +324,7 @@ func parseSecurityTag(field reflect.StructField) *securityTag {
 	name := ""
 	securityType := ""
 	securitySubType := ""
+	env := ""
 
 	options := strings.Split(tag, ",")
 	for _, optionConf := range options {
@@ -246,6 +344,8 @@ func parseSecurityTag(field reflect.StructField) *securityTag {
 			option = true
 		case "scheme":
 			scheme = true
+		case "env":
+			env = parts[1]
 		}
 	}
 
@@ -257,6 +357,7 @@ func parseSecurityTag(field reflect.StructField) *securityTag {
 		Name:    name,
 		Type:    securityType,
 		SubType: securitySubType,
+		Env:     env,
 	}
 }
 

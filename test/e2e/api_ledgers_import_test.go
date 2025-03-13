@@ -41,7 +41,7 @@ var _ = Context("Ledger engine tests", func() {
 		BeforeEach(func() {
 			createLedgerRequest = operations.V2CreateLedgerRequest{
 				Ledger: "foo",
-				V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+				V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 					Features: features.MinimalFeatureSet,
 				},
 			}
@@ -60,8 +60,8 @@ var _ = Context("Ledger engine tests", func() {
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"refunds:4567","destination":"world","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:11:02.413499Z","id":4,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:11:02.434078Z","idempotencyKey":"","id":4,"hash":"Y8TBz5GhxTWW9D/wRXHPcIlrYFPQjroiIBWX1q6SJJo="}`
 
 				return Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
-					Ledger:      createLedgerRequest.Ledger,
-					RequestBody: pointer.For(logs),
+					Ledger:              createLedgerRequest.Ledger,
+					V2ImportLogsRequest: []byte(logs),
 				})
 			}
 
@@ -216,7 +216,7 @@ var _ = Context("Ledger engine tests", func() {
 						ledgerCopyName = createLedgerRequest.Ledger + "-copy"
 						err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 							Ledger: ledgerCopyName,
-							V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+							V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 								Features: features.MinimalFeatureSet,
 							},
 						})
@@ -226,12 +226,9 @@ var _ = Context("Ledger engine tests", func() {
 					importLogs := func() error {
 						GinkgoHelper()
 
-						data, err := io.ReadAll(reader)
-						Expect(err).To(BeNil())
-
 						return Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
-							Ledger:      ledgerCopyName,
-							RequestBody: pointer.For(string(data)),
+							Ledger:              ledgerCopyName,
+							V2ImportLogsRequest: reader,
 						})
 					}
 

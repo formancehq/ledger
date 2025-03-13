@@ -19,10 +19,10 @@ const (
 )
 
 type V2BulkElement struct {
-	V2BulkElementCreateTransaction *V2BulkElementCreateTransaction
-	V2BulkElementAddMetadata       *V2BulkElementAddMetadata
-	V2BulkElementRevertTransaction *V2BulkElementRevertTransaction
-	V2BulkElementDeleteMetadata    *V2BulkElementDeleteMetadata
+	V2BulkElementCreateTransaction *V2BulkElementCreateTransaction `queryParam:"inline"`
+	V2BulkElementAddMetadata       *V2BulkElementAddMetadata       `queryParam:"inline"`
+	V2BulkElementRevertTransaction *V2BulkElementRevertTransaction `queryParam:"inline"`
+	V2BulkElementDeleteMetadata    *V2BulkElementDeleteMetadata    `queryParam:"inline"`
 
 	Type V2BulkElementType
 }

@@ -8,8 +8,9 @@ import (
 
 type V2ImportLogsRequest struct {
 	// Name of the ledger.
-	Ledger      string  `pathParam:"style=simple,explode=false,name=ledger"`
-	RequestBody *string `request:"mediaType=application/octet-stream"`
+	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
+	// This field accepts []byte data or io.Reader implementations, such as *os.File.
+	V2ImportLogsRequest any `request:"mediaType=application/octet-stream"`
 }
 
 func (o *V2ImportLogsRequest) GetLedger() string {
@@ -19,11 +20,11 @@ func (o *V2ImportLogsRequest) GetLedger() string {
 	return o.Ledger
 }
 
-func (o *V2ImportLogsRequest) GetRequestBody() *string {
+func (o *V2ImportLogsRequest) GetV2ImportLogsRequest() any {
 	if o == nil {
 		return nil
 	}
-	return o.RequestBody
+	return o.V2ImportLogsRequest
 }
 
 type V2ImportLogsResponse struct {
