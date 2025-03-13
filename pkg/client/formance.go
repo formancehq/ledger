@@ -41,6 +41,9 @@ func Float32(f float32) *float32 { return &f }
 // Float64 provides a helper function to return a pointer to a float64
 func Float64(f float64) *float64 { return &f }
 
+// Pointer provides a helper function to return a pointer to a type
+func Pointer[T any](v T) *T { return &v }
+
 type sdkConfiguration struct {
 	Client            HTTPClient
 	Security          func(context.Context) (interface{}, error)
@@ -143,14 +146,21 @@ func New(opts ...SDKOption) *Formance {
 		sdkConfiguration: sdkConfiguration{
 			Language:          "go",
 			OpenAPIDocVersion: "v2",
-			SDKVersion:        "0.6.5",
-			GenVersion:        "2.384.1",
-			UserAgent:         "speakeasy-sdk/go 0.6.5 2.384.1 v2 github.com/formancehq/ledger/pkg/client",
+			SDKVersion:        "0.7.16",
+			GenVersion:        "2.548.6",
+			UserAgent:         "speakeasy-sdk/go 0.7.16 2.548.6 v2 github.com/formancehq/ledger/pkg/client",
 			Hooks:             hooks.New(),
 		},
 	}
 	for _, opt := range opts {
 		opt(sdk)
+	}
+
+	if sdk.sdkConfiguration.Security == nil {
+		var envVarSecurity components.Security
+		if utils.PopulateSecurityFromEnv(&envVarSecurity) {
+			sdk.sdkConfiguration.Security = utils.AsSecuritySource(envVarSecurity)
+		}
 	}
 
 	// Use WithClient to override the default client if you would like to customize the timeout

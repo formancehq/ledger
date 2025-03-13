@@ -4,7 +4,6 @@ package operations
 
 import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 )
 
 type V2GetInfoResponse struct {
@@ -12,7 +11,7 @@ type V2GetInfoResponse struct {
 	// OK
 	V2ConfigInfoResponse *components.V2ConfigInfoResponse
 	// Error
-	V2ErrorResponse *sdkerrors.V2ErrorResponse
+	V2ErrorResponse *components.V2ErrorResponse
 }
 
 func (o *V2GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -29,7 +28,7 @@ func (o *V2GetInfoResponse) GetV2ConfigInfoResponse() *components.V2ConfigInfoRe
 	return o.V2ConfigInfoResponse
 }
 
-func (o *V2GetInfoResponse) GetV2ErrorResponse() *sdkerrors.V2ErrorResponse {
+func (o *V2GetInfoResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
 	if o == nil {
 		return nil
 	}

@@ -8,8 +8,8 @@ import (
 
 type V2CreateLedgerRequest struct {
 	// Name of the ledger.
-	Ledger                string                            `pathParam:"style=simple,explode=false,name=ledger"`
-	V2CreateLedgerRequest *components.V2CreateLedgerRequest `request:"mediaType=application/json"`
+	Ledger                string                           `pathParam:"style=simple,explode=false,name=ledger"`
+	V2CreateLedgerRequest components.V2CreateLedgerRequest `request:"mediaType=application/json"`
 }
 
 func (o *V2CreateLedgerRequest) GetLedger() string {
@@ -19,9 +19,9 @@ func (o *V2CreateLedgerRequest) GetLedger() string {
 	return o.Ledger
 }
 
-func (o *V2CreateLedgerRequest) GetV2CreateLedgerRequest() *components.V2CreateLedgerRequest {
+func (o *V2CreateLedgerRequest) GetV2CreateLedgerRequest() components.V2CreateLedgerRequest {
 	if o == nil {
-		return nil
+		return components.V2CreateLedgerRequest{}
 	}
 	return o.V2CreateLedgerRequest
 }

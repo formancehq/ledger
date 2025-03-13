@@ -1,6 +1,8 @@
 # Ledger
 (*Ledger*)
 
+## Overview
+
 ### Available Operations
 
 * [GetInfo](#getinfo) - Show server information
@@ -16,21 +18,23 @@ Show server information
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
-    ctx := context.Background()
     res, err := s.Ledger.GetInfo(ctx)
     if err != nil {
         log.Fatal(err)
@@ -48,14 +52,16 @@ func main() {
 | `ctx`                                                    | [context.Context](https://pkg.go.dev/context#Context)    | :heavy_check_mark:                                       | The context to use for the request.                      |
 | `opts`                                                   | [][operations.Option](../../models/operations/option.md) | :heavy_minus_sign:                                       | The options for this request.                            |
 
-
 ### Response
 
 **[*operations.V2GetInfoResponse](../../models/operations/v2getinforesponse.md), error**
-| Error Object              | Status Code               | Content Type              |
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
 | ------------------------- | ------------------------- | ------------------------- |
 | sdkerrors.V2ErrorResponse | default                   | application/json          |
-| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
 
 ## GetMetrics
 
@@ -67,21 +73,23 @@ Read in memory metrics
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
-    ctx := context.Background()
     res, err := s.Ledger.GetMetrics(ctx)
     if err != nil {
         log.Fatal(err)
@@ -99,11 +107,13 @@ func main() {
 | `ctx`                                                    | [context.Context](https://pkg.go.dev/context#Context)    | :heavy_check_mark:                                       | The context to use for the request.                      |
 | `opts`                                                   | [][operations.Option](../../models/operations/option.md) | :heavy_minus_sign:                                       | The options for this request.                            |
 
-
 ### Response
 
 **[*operations.GetMetricsResponse](../../models/operations/getmetricsresponse.md), error**
-| Error Object              | Status Code               | Content Type              |
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
 | ------------------------- | ------------------------- | ------------------------- |
 | sdkerrors.V2ErrorResponse | default                   | application/json          |
-| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
