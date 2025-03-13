@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alitto/pond"
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -38,51 +39,112 @@ type Driver struct {
 	parallelBucketMigrations int
 }
 
-func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
+/*
+CreateLedger creates a new ledger in the system and sets up all necessary database objects.
 
+The function follows these steps:
+ 1. Create a ledger record in the system store (_system.ledgers table)
+ 2. Get the bucket (database schema) for this ledger
+ 3. Check if the bucket is already initialized:
+    a. If initialized: Verify it's up to date and add ledger-specific objects to it
+    b. If not initialized: Create the bucket schema with all necessary tables
+ 4. Return a ledger store that provides an interface to interact with the ledger
+
+Note: This entire process is wrapped in a database transaction, ensuring atomicity.
+If any step fails, the entire transaction is rolled back, preventing partial state.
+*/
+func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
 	var ret *ledgerstore.Store
+
+	// Run the entire ledger creation process in a transaction for atomicity
+	// This ensures that either all steps succeed or none do (preventing partial state)
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Create a system store that uses the current transaction
 		systemStore := systemstore.New(tx)
 
+		// Step 1: Create the ledger record in the system store
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
+			// Handle the case where the ledger already exists
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
 				return systemcontroller.ErrLedgerAlreadyExists
 			}
 			return err
 		}
 
+		// Step 2: Get a bucket handler for this ledger
+		// The bucket is a database schema where the ledger's data will be stored
 		b := d.bucketFactory.Create(l.Bucket, tx)
+
+		// Step 3: Check if the bucket is already initialized in the database
 		isInitialized, err := b.IsInitialized(ctx)
 		if err != nil {
 			return fmt.Errorf("checking if bucket is initialized: %w", err)
 		}
+
 		if isInitialized {
+			// Step 3a: Bucket exists - check if it's up to date
 			upToDate, err := b.IsUpToDate(ctx)
 			if err != nil {
 				return fmt.Errorf("checking if bucket is up to date: %w", err)
 			}
 
 			if !upToDate {
+				assert.AlwaysOrUnreachable(
+					// @todo: replace this with a proper flag detailing wether we're
+					// operating a new version of the binary or not.
+					// if we are, we are definitely expecting this to happen.
+					// if we're not, this should be unreachable.
+					false,
+					"Bucket is outdated",
+					map[string]any{
+						"bucket": l.Bucket,
+					},
+				)
+
 				return systemcontroller.ErrBucketOutdated
 			}
 
+			// Add ledger-specific objects to the bucket
+			// This creates sequences and other database objects for this ledger
 			if err := b.AddLedger(ctx, *l); err != nil {
+				assert.Unreachable(
+					"Adding ledger to bucket should never fail",
+					map[string]any{
+						"bucket": l.Bucket,
+						"error":  err,
+					},
+				)
+
 				return fmt.Errorf("adding ledger to bucket: %w", err)
 			}
 		} else {
+			// Step 3b: Bucket doesn't exist - create it
+			// This creates the bucket schema and all necessary tables
 			if err := b.Migrate(ctx); err != nil {
+				assert.Unreachable(
+					"Migrating bucket should never fail",
+					map[string]any{
+						"bucket": l.Bucket,
+						"error":  err,
+					},
+				)
+
 				return fmt.Errorf("migrating bucket: %w", err)
 			}
 		}
 
+		// Step 4: Create a store for interacting with the ledger
 		ret = d.ledgerStoreFactory.Create(b, *l)
 
 		return nil
 	})
+
+	// If any error occurred during the transaction, resolve and return it
 	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}
 
+	// Return the created ledger store
 	return ret, nil
 }
 
