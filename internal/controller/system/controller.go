@@ -2,10 +2,11 @@ package system
 
 import (
 	"context"
-	"github.com/formancehq/ledger/pkg/features"
-	"go.opentelemetry.io/otel/attribute"
 	"reflect"
 	"time"
+
+	"github.com/formancehq/ledger/pkg/features"
+	"go.opentelemetry.io/otel/attribute"
 
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"

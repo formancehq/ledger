@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/alitto/pond"
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -14,7 +17,6 @@ import (
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
@@ -37,8 +39,43 @@ type Driver struct {
 	parallelBucketMigrations  int
 }
 
-func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
+/*
+CreateLedger creates a new ledger in the system and sets up all necessary database objects.
 
+The function follows these steps:
+ 1. Create a ledger record in the system store (_system.ledgers table)
+ 2. Get the bucket (database schema) for this ledger
+ 3. Check if the bucket is already initialized:
+    a. If initialized: Verify it's up to date and add ledger-specific objects to it
+    b. If not initialized: Create the bucket schema with all necessary tables
+ 4. Return a ledger store that provides an interface to interact with the ledger
+
+Note: This process is not atomic. If context cancellation occurs between creating
+the ledger record and setting up the bucket, the system could be left in an
+inconsistent state with a ledger record but no corresponding database objects.
+*/
+func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
+	// Track whether we've successfully created the ledger in the system store
+	ledgerCreatedInSystemStore := false
+	bucketSetupComplete := false
+
+	// Defer an assertion check that will run when the function exits
+	defer func() {
+		// The invariant we want to check:
+		// Either (1) both steps completed successfully OR (2) neither step completed
+		// If only the ledger was created but bucket setup failed, that's a problem
+		invariantMaintained := (!ledgerCreatedInSystemStore && !bucketSetupComplete) ||
+			(ledgerCreatedInSystemStore && bucketSetupComplete)
+
+		assert.Always(invariantMaintained, "ledger_creation_atomic", map[string]any{
+			"ledger_name":                    l.Name,
+			"bucket":                         l.Bucket,
+			"ledger_created_in_system_store": ledgerCreatedInSystemStore,
+			"bucket_setup_complete":          bucketSetupComplete,
+		})
+	}()
+
+	// Create ledger record in system store
 	if err := d.systemStore.CreateLedger(ctx, l); err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
 			return nil, systemcontroller.ErrLedgerAlreadyExists
@@ -46,12 +83,18 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, postgres.ResolveError(err)
 	}
 
+	// Mark that we've successfully created the ledger in the system store
+	ledgerCreatedInSystemStore = true
+
+	// Get the bucket for this ledger
 	b := d.bucketFactory.Create(l.Bucket)
 	isInitialized, err := b.IsInitialized(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("checking if bucket is initialized: %w", err)
 	}
+
 	if isInitialized {
+		// Bucket exists - check if it's up to date
 		upToDate, err := b.IsUpToDate(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("checking if bucket is up to date: %w", err)
@@ -61,10 +104,12 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			return nil, systemcontroller.ErrBucketOutdated
 		}
 
+		// Add ledger-specific objects to the bucket
 		if err := b.AddLedger(ctx, *l); err != nil {
 			return nil, fmt.Errorf("adding ledger to bucket: %w", err)
 		}
 	} else {
+		// Bucket doesn't exist - create it
 		if err := b.Migrate(
 			ctx,
 			migrations.WithLockRetryInterval(d.migratorLockRetryInterval),
@@ -73,6 +118,10 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		}
 	}
 
+	// Mark that bucket setup is complete
+	bucketSetupComplete = true
+
+	// Create and return a store for interacting with the ledger
 	return d.ledgerStoreFactory.Create(b, *l), nil
 }
 

@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"math/big"
+
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/antithesis/internal"
-	"math/big"
 )
 
 func main() {

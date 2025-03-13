@@ -30,9 +30,10 @@ func AssertAlways(condition bool, message string, details map[string]any) bool {
 	return condition
 }
 
-func AssertAlwaysErrNil(err error, message string) bool {
+func AssertAlwaysErrNil(err error, message string, details map[string]any) bool {
 	return AssertAlways(err == nil, message, Details{
-		"error": fmt.Sprint(err),
+		"error":   fmt.Sprint(err),
+		"details": details,
 	})
 }
 
@@ -55,21 +56,14 @@ func NewClient() *client.Formance {
 }
 
 func CreateLedger(ctx context.Context, client *client.Formance, name string) error {
-
 	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: name,
 	})
 
-	if assert.Always(err == nil, "ledger should have been created", Details{
-		"error": fmt.Sprintf("%+v\n", err),
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
-func RunTx(ctx context.Context, client *client.Formance, amount *big.Int) error {
+func RunTx(ctx context.Context, client *client.Formance, amount *big.Int, ledger string) error {
 	orderID := fmt.Sprint(int64(math.Abs(float64(random.GetRandom()))))
 	dest := fmt.Sprintf("orders:%s", orderID)
 
@@ -82,7 +76,7 @@ func RunTx(ctx context.Context, client *client.Formance, amount *big.Int) error 
 				Source:      "world",
 			}},
 		},
-		Ledger: "default",
+		Ledger: ledger,
 	})
 	return err
 }

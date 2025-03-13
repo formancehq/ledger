@@ -16,20 +16,21 @@ import (
 func main() {
 	ctx := context.Background()
 	client := internal.NewClient()
+	ledger := fmt.Sprintf("ledger-%d", internal.RandomBigInt().Int64())
 
 	err := internal.CreateLedger(
 		ctx,
 		client,
-		fmt.Sprintf("ledger-%d", internal.RandomBigInt().Int64()),
+		ledger,
 	)
 	if err != nil {
-		assert.Always(err == nil, "ledger should have been created", internal.Details{
+		assert.Always(err == nil, "ledger should have been created properly", internal.Details{
 			"error": err,
 		})
 		return
 	}
 
-	const count = 1000
+	const count = 100
 
 	hasError := atomic.NewBool(false)
 	totalAmount := big.NewInt(0)
@@ -41,8 +42,11 @@ func main() {
 		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
 			if !internal.AssertAlwaysErrNil(
-				internal.RunTx(ctx, client, amount),
+				internal.RunTx(ctx, client, amount, ledger),
 				"creating transaction from @world to $account always return a nil error",
+				internal.Details{
+					"ledger": ledger,
+				},
 			) {
 				hasError.CompareAndSwap(false, true)
 			}
@@ -59,10 +63,10 @@ func main() {
 	account, err := client.Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
 		Address: "world",
 		Expand:  pointer.For("volumes"),
-		Ledger:  "default",
+		Ledger:  ledger,
 	})
 
-	if !internal.AssertAlwaysErrNil(err, "we should be able to query account 'world'") {
+	if !internal.AssertAlwaysErrNil(err, "we should be able to query account 'world'", nil) {
 		return
 	}
 

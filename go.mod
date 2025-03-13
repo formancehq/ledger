@@ -11,6 +11,7 @@ replace google.golang.org/genproto v0.0.0-20200423170343-7949de9c1215 => google.
 require (
 	github.com/ThreeDotsLabs/watermill v1.4.4
 	github.com/alitto/pond v1.9.2
+	github.com/antithesishq/antithesis-sdk-go v0.4.3
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
 	github.com/dop251/goja v0.0.0-20241009100908-5f46f2705ca3
