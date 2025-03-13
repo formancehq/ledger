@@ -107,28 +107,12 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			// Add ledger-specific objects to the bucket
 			// This creates sequences and other database objects for this ledger
 			if err := b.AddLedger(ctx, *l); err != nil {
-				assert.Unreachable(
-					"Adding ledger to bucket should never fail",
-					map[string]any{
-						"bucket": l.Bucket,
-						"error":  err,
-					},
-				)
-
 				return fmt.Errorf("adding ledger to bucket: %w", err)
 			}
 		} else {
 			// Step 3b: Bucket doesn't exist - create it
 			// This creates the bucket schema and all necessary tables
 			if err := b.Migrate(ctx); err != nil {
-				assert.Unreachable(
-					"Migrating bucket should never fail",
-					map[string]any{
-						"bucket": l.Bucket,
-						"error":  err,
-					},
-				)
-
 				return fmt.Errorf("migrating bucket: %w", err)
 			}
 		}
