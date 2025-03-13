@@ -28,7 +28,7 @@ func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledge
 
 	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: ledger.Name,
-		V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+		V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 			Bucket:   &ledger.Bucket,
 			Metadata: ledger.Metadata,
 			Features: ledger.Features,

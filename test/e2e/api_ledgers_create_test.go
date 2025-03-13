@@ -40,7 +40,7 @@ var _ = Context("Ledger engine tests", func() {
 		BeforeEach(func() {
 			createLedgerRequest = operations.V2CreateLedgerRequest{
 				Ledger:                "foo",
-				V2CreateLedgerRequest: &components.V2CreateLedgerRequest{},
+				V2CreateLedgerRequest: components.V2CreateLedgerRequest{},
 			}
 		})
 		JustBeforeEach(func() {
@@ -119,7 +119,7 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("with invalid bucket name", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest = &components.V2CreateLedgerRequest{
+				createLedgerRequest.V2CreateLedgerRequest = components.V2CreateLedgerRequest{
 					Bucket: pointer.For("invalid\\name\\contains\\some\\backslash"),
 				}
 			})
@@ -130,7 +130,7 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("on alternate bucket", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest = &components.V2CreateLedgerRequest{
+				createLedgerRequest.V2CreateLedgerRequest = components.V2CreateLedgerRequest{
 					Bucket: pointer.For("bucket0"),
 				}
 			})

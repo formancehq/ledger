@@ -178,7 +178,7 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 		_, err = client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: targetedLedger,
-			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+			V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 				Bucket:   &ledgerBucket,
 				Metadata: ledgerMetadata,
 				Features: ledgerFeatures,

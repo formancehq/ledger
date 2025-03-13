@@ -921,6 +921,7 @@ paths:
             minimum: 0
             example: 1234
       requestBody:
+        required: true
         description: metadata
         content:
           application/json:

@@ -55,7 +55,7 @@ var _ = Context("Logs block async hashing", func() {
 	JustBeforeEach(func() {
 		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 			Ledger: "default",
-			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+			V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 				Features: features.MinimalFeatureSet.With(features.FeatureHashLogs, "ASYNC"),
 			},
 		})

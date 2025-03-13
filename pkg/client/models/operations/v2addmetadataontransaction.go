@@ -62,7 +62,7 @@ func (o *V2AddMetadataOnTransactionRequest) GetIdempotencyKey() *string {
 
 func (o *V2AddMetadataOnTransactionRequest) GetRequestBody() map[string]string {
 	if o == nil {
-		return nil
+		return map[string]string{}
 	}
 	return o.RequestBody
 }
