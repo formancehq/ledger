@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"database/sql"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	. "github.com/formancehq/go-libs/v2/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/go-cmp/cmp"
@@ -37,23 +37,29 @@ var (
 func TestMain(m *testing.M) {
 	WithTestMain(func(t *TestingTForMain) int {
 		srv.LoadAsync(func() *pgtesting.PostgresServer {
-			ret := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()), pgtesting.WithExtension("pgcrypto"))
+			ret := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()),
+				pgtesting.WithExtension("pgcrypto"),
+			)
 
 			defaultBunDB.LoadAsync(func() *bun.DB {
 				db, err := sql.Open("pgx", ret.GetDSN())
 				require.NoError(t, err)
 
 				bunDB := bun.NewDB(db, pgdialect.New(), bun.WithDiscardUnknownColumns())
-				if os.Getenv("DEBUG") == "true" {
-					bunDB.AddQueryHook(bundebug.NewQueryHook())
-				}
+				hook := bundebug.NewQueryHook()
+				hook.Debug = os.Getenv("DEBUG") == "true"
+				bunDB.AddQueryHook(hook)
 				bunDB.SetMaxOpenConns(100)
 
 				require.NoError(t, systemstore.Migrate(logging.TestingContext(), bunDB))
+
+				err = bucket.GetMigrator(bunDB, "_default").Up(logging.TestingContext())
+				require.NoError(t, err)
+
 				defaultDriver.SetValue(driver.New(
+					bunDB,
 					ledgerstore.NewFactory(bunDB),
-					systemstore.New(bunDB),
-					bucket.NewDefaultFactory(bunDB),
+					bucket.NewDefaultFactory(),
 				))
 
 				return bunDB
@@ -71,7 +77,7 @@ type T interface {
 	Cleanup(func())
 }
 
-func newLedgerStore(t T) *ledgerstore.Store {
+func newLedgerStore(t T, opts ...func(cfg *ledger.Configuration)) *ledgerstore.Store {
 	t.Helper()
 
 	<-defaultBunDB.Done()
@@ -80,11 +86,18 @@ func newLedgerStore(t T) *ledgerstore.Store {
 	ledgerName := uuid.NewString()[:8]
 	ctx := logging.TestingContext()
 
-	l := ledger.MustNewWithDefault(ledgerName)
-	err := bucket.GetMigrator(defaultBunDB.GetValue(), "_default").Up(ctx)
+	ledgerConfiguration := ledger.NewDefaultConfiguration()
+	for _, opt := range opts {
+		opt(&ledgerConfiguration)
+	}
+
+	l, err := ledger.New(ledgerName, ledgerConfiguration)
 	require.NoError(t, err)
 
-	store, err := defaultDriver.GetValue().CreateLedger(ctx, &l)
+	err = bucket.GetMigrator(defaultBunDB.GetValue(), "_default").Up(ctx)
+	require.NoError(t, err)
+
+	store, err := defaultDriver.GetValue().CreateLedger(ctx, l)
 	require.NoError(t, err)
 
 	return store

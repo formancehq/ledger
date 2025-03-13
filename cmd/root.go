@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/uptrace/bun"
 
 	"github.com/spf13/cobra"
@@ -31,30 +30,23 @@ func NewRootCommand() *cobra.Command {
 		Version:           Version,
 	}
 
-	serve := NewServeCommand()
-	version := NewVersion()
+	root.AddCommand(NewServeCommand())
+	root.AddCommand(NewBucketsCommand())
+	root.AddCommand(NewVersionCommand())
+	root.AddCommand(NewWorkerCommand())
+	root.AddCommand(NewDocsCommand())
 
-	buckets := NewBucket()
-
-	root.AddCommand(serve)
-	root.AddCommand(buckets)
-	root.AddCommand(version)
 	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
 		logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 		cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
 
-		driver := driver.New(
-			ledger.NewFactory(db),
-			systemstore.New(db),
-			bucket.NewDefaultFactory(db),
-		)
+		driver := driver.New(db, ledger.NewFactory(db), bucket.NewDefaultFactory())
 		if err := driver.Initialize(cmd.Context()); err != nil {
 			return err
 		}
 
 		return driver.UpgradeAllBuckets(cmd.Context())
 	}))
-	root.AddCommand(NewDocsCommand())
 
 	return root
 }

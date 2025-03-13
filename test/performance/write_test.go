@@ -118,7 +118,6 @@ func BenchmarkWrite(b *testing.B) {
 
 		scripts["provided"] = NewJSActionProviderFactory(rootPath, string(file))
 	}
-
 	if envFactory == nil {
 		b.Errorf("no env selected, you need to specify either --stack.url or --ledger.url\n")
 		b.FailNow()

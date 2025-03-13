@@ -20,9 +20,9 @@ var _ = Context("Ledger application multiple instance tests", func() {
 	const nbServer = 3
 
 	When("starting multiple instances of the service", func() {
-		var servers chan *Server
+		var allServers []*Server
 		BeforeEach(func() {
-			servers = make(chan *Server, nbServer)
+			servers := make(chan *Server, nbServer)
 			wg := sync.WaitGroup{}
 			wg.Add(nbServer)
 			waitStart := make(chan struct{})
@@ -31,14 +31,17 @@ var _ = Context("Ledger application multiple instance tests", func() {
 					defer GinkgoRecover()
 					defer wg.Done()
 
-					// Best effort to start all servers at the same time
+					// Best effort to start all servers at the same time and detect conflict errors
 					<-waitStart
 
 					servers <- New(GinkgoT(), Configuration{
-						PostgresConfiguration: db.GetValue().ConnectionOptions(),
-						Output:                GinkgoWriter,
-						Debug:                 debug,
-						NatsURL:               natsServer.GetValue().ClientURL(),
+						CommonConfiguration: CommonConfiguration{
+							PostgresConfiguration: db.GetValue().ConnectionOptions(),
+							Output:                GinkgoWriter,
+							Debug:                 debug,
+						},
+						NatsURL:            natsServer.GetValue().ClientURL(),
+						DisableAutoUpgrade: true,
 					})
 				}()
 			}
@@ -46,10 +49,14 @@ var _ = Context("Ledger application multiple instance tests", func() {
 			close(waitStart)
 			wg.Wait()
 			close(servers)
+
+			for server := range servers {
+				allServers = append(allServers, server)
+			}
 		})
 
 		It("each service should be up and running", func() {
-			for server := range servers {
+			for _, server := range allServers {
 				info, err := server.Client().Ledger.GetInfo(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))

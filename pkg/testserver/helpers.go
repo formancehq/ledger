@@ -22,6 +22,15 @@ func NewTestServer(configurationProvider func() Configuration) *Deferred[*Server
 	return d
 }
 
+func NewTestWorker(configurationProvider func() WorkerServiceConfiguration) *Deferred[*Worker] {
+	d := NewDeferred[*Worker]()
+	BeforeEach(func() {
+		d.Reset()
+		d.SetValue(NewWorker(GinkgoT(), configurationProvider()))
+	})
+	return d
+}
+
 func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 	return ledger.Transaction{
 		TransactionData: ledger.TransactionData{

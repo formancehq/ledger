@@ -36,10 +36,15 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		db := UseTemplatedDatabase()
 		testServer := NewTestServer(func() Configuration {
 			return Configuration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-				NatsURL:               natsServer.GetValue().ClientURL(),
+				CommonConfiguration: CommonConfiguration{
+					PostgresConfiguration: bunconnect.ConnectionOptions{
+						DatabaseSourceName: db.GetValue().ConnectionOptions().DatabaseSourceName,
+						MaxOpenConns:       100,
+					},
+					Output: GinkgoWriter,
+					Debug:  debug,
+				},
+				NatsURL: natsServer.GetValue().ClientURL(),
 			}
 		})
 		var events chan *nats.Msg
@@ -63,7 +68,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		When("having some in flight transactions on a ledger", func() {
 			var (
 				sqlTx                bun.Tx
-				countTransactions    = 80
+				countTransactions    = 60
 				serverRestartTimeout = 10 * time.Second
 			)
 			BeforeEach(func() {
@@ -123,7 +128,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			})
 			When("restarting the service", func() {
 				BeforeEach(func() {
-					// We will restart the server in a separate gorouting
+					// We will restart the server in a separate goroutine
 					// the server should not restart until all pending transactions creation requests are fully completed
 					restarted := make(chan struct{})
 					go func() {
@@ -195,11 +200,13 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		})
 		testServer := NewTestServer(func() Configuration {
 			return Configuration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-				NatsURL:               natsServer.GetValue().ClientURL(),
-				DisableAutoUpgrade:    true,
+				CommonConfiguration: CommonConfiguration{
+					PostgresConfiguration: db.GetValue().ConnectionOptions(),
+					Output:                GinkgoWriter,
+					Debug:                 debug,
+				},
+				NatsURL:            natsServer.GetValue().ClientURL(),
+				DisableAutoUpgrade: true,
 			}
 		})
 		It("should be ok", func() {
@@ -239,10 +246,12 @@ var _ = Context("Ledger downgrade tests", func() {
 
 	testServer := NewTestServer(func() Configuration {
 		return Configuration{
-			PostgresConfiguration: db.GetValue().ConnectionOptions(),
-			Output:                GinkgoWriter,
-			Debug:                 debug,
-			NatsURL:               natsServer.GetValue().ClientURL(),
+			CommonConfiguration: CommonConfiguration{
+				PostgresConfiguration: db.GetValue().ConnectionOptions(),
+				Output:                GinkgoWriter,
+				Debug:                 debug,
+			},
+			NatsURL: natsServer.GetValue().ClientURL(),
 		}
 	})
 

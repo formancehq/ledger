@@ -62,6 +62,9 @@ func (h transactionsResourceHandler) filters() []filter {
 		{
 			name: "id",
 		},
+		{
+			name: "reference",
+		},
 	}
 }
 

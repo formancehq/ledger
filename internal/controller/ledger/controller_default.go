@@ -406,6 +406,13 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 				balances[posting.Source][posting.Asset],
 				big.NewInt(0).Neg(posting.Amount),
 			)
+			if _, ok := balances[posting.Destination]; ok {
+				// if destination is also a source in some posting, since balances should only contain posting sources
+				balances[posting.Destination][posting.Asset] = balances[posting.Destination][posting.Asset].Add(
+					balances[posting.Destination][posting.Asset],
+					posting.Amount,
+				)
+			}
 		}
 
 		for account, forAccount := range balances {

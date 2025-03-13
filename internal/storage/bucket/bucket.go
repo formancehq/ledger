@@ -19,27 +19,24 @@ type Bucket interface {
 }
 
 type Factory interface {
-	Create(name string) Bucket
-	GetMigrator(b string) *migrations.Migrator
+	Create(name string, db bun.IDB) Bucket
+	GetMigrator(b string, db bun.IDB) *migrations.Migrator
 }
 
 type DefaultFactory struct {
 	tracer trace.Tracer
-	db     *bun.DB
 }
 
-func (f *DefaultFactory) Create(name string) Bucket {
-	return NewDefault(f.db, f.tracer, name)
+func (f *DefaultFactory) Create(name string, db bun.IDB) Bucket {
+	return NewDefault(db, f.tracer, name)
 }
 
-func (f *DefaultFactory) GetMigrator(b string) *migrations.Migrator {
-	return GetMigrator(f.db, b)
+func (f *DefaultFactory) GetMigrator(b string, db bun.IDB) *migrations.Migrator {
+	return GetMigrator(db, b)
 }
 
-func NewDefaultFactory(db *bun.DB, options ...DefaultFactoryOption) *DefaultFactory {
-	ret := &DefaultFactory{
-		db: db,
-	}
+func NewDefaultFactory(options ...DefaultFactoryOption) *DefaultFactory {
+	ret := &DefaultFactory{}
 	for _, option := range append(defaultOptions, options...) {
 		option(ret)
 	}

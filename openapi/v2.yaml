@@ -2007,6 +2007,12 @@ components:
           type: string
         metadata:
           $ref: "#/components/schemas/V2Metadata"
+        features:
+          type: object
+          additionalProperties:
+            type: string
+        id:
+          type: integer
       required:
         - name
         - addedAt

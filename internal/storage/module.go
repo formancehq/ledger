@@ -11,7 +11,11 @@ import (
 
 const HealthCheckName = `storage-driver-up-to-date`
 
-func NewFXModule(autoUpgrade bool) fx.Option {
+type ModuleConfig struct {
+	AutoUpgrade  bool
+}
+
+func NewFXModule(config ModuleConfig) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
 		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
@@ -32,7 +36,7 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 			}))
 		}),
 	}
-	if autoUpgrade {
+	if config.AutoUpgrade {
 		ret = append(ret,
 			fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
 				var (

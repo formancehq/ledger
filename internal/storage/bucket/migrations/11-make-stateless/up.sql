@@ -60,6 +60,7 @@ from (
       group by move.accounts_address, move.asset
 ) data
 $$ set search_path from current;
+
 create or replace function get_aggregated_effective_volumes_for_transaction(_ledger varchar, tx numeric) returns jsonb
     stable
     language sql
@@ -558,4 +559,65 @@ for each row
 when ( new.reference is not null )
 execute procedure enforce_reference_uniqueness();
 
+-- These functions are exactly the same as the one in the initial migration, but we need to recreate them to change the search_path for old databases.
+-- In reality the `set search path` has been added on the initial migration on ledger 2.2.
+-- So databases created before the 2.2 will not have the search path properly configured.
+create or replace function get_transaction(_ledger varchar, _id numeric, _before timestamp default null)
+	returns setof transactions
+	language sql
+	stable
+as
+$$
+select *
+from transactions t
+where (_before is null or t.timestamp <= _before)
+	and t.id = _id
+	and ledger = _ledger
+order by id desc
+limit 1;
+$$ set search_path from current;
 
+create or replace function get_all_assets(_ledger varchar)
+	returns setof varchar
+	language sql
+as
+$$
+with recursive t as (select min(asset) as asset
+         from moves
+         where ledger = _ledger
+         union all
+         select (select min(asset)
+                 from moves
+                 where asset > t.asset
+                     and ledger = _ledger)
+         from t
+         where t.asset is not null)
+select asset
+from t
+where asset is not null
+union all
+select null
+where exists(select 1 from moves where asset is null and ledger = _ledger)
+$$ set search_path from current;
+
+create or replace function get_account_aggregated_effective_volumes(_ledger varchar, _account_address varchar,
+                                                         _before timestamp default null)
+	returns jsonb
+	language sql
+	stable
+as
+$$
+select aggregate_objects(volumes_to_jsonb(volumes_with_asset))
+from get_all_account_effective_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
+$$ set search_path from current;
+
+create or replace function get_account_aggregated_volumes(_ledger varchar, _account_address varchar, _before timestamp default null)
+	returns jsonb
+	language sql
+	stable
+	parallel safe
+as
+$$
+select aggregate_objects(volumes_to_jsonb(volumes_with_asset))
+from get_all_account_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
+$$ set search_path from current;

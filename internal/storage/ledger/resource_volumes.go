@@ -30,6 +30,12 @@ func (h volumesResourceHandler) filters() []filter {
 			},
 		},
 		{
+			name: "first_usage",
+			validators: []propertyValidator{
+				acceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
+			},
+		},
+		{
 			name: "metadata",
 			matchers: []func(string) bool{
 				func(key string) bool {
@@ -68,24 +74,28 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			Where("ledger = ?", store.ledger.Name).
 			Order("accounts_address", "asset")
 
-		if query.useFilter("metadata") || needAddressSegments {
-			subQuery := store.db.NewSelect().
+		if query.useFilter("metadata") || query.useFilter("first_usage") || needAddressSegments {
+			accountsQuery := store.db.NewSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address").
 				Where("ledger = ?", store.ledger.Name).
 				Where("accounts.address = accounts_address")
 
 			if needAddressSegments {
-				subQuery = subQuery.ColumnExpr("address_array as account_array")
+				accountsQuery = accountsQuery.ColumnExpr("address_array as account_array")
 				selectVolumes = selectVolumes.Column("account_array")
 			}
 			if query.useFilter("metadata") {
-				subQuery = subQuery.ColumnExpr("metadata")
+				accountsQuery = accountsQuery.ColumnExpr("metadata")
 				selectVolumes = selectVolumes.Column("metadata")
+			}
+			if query.useFilter("first_usage") {
+				accountsQuery = accountsQuery.Column("first_usage")
+				selectVolumes = selectVolumes.Column("first_usage")
 			}
 
 			selectVolumes = selectVolumes.
-				Join(`join lateral (?) accounts on true`, subQuery)
+				Join(`join lateral (?) accounts on true`, accountsQuery)
 		}
 	} else {
 		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
@@ -116,16 +126,21 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", query.OOT)
 		}
 
-		if needAddressSegments {
-			subQuery := store.db.NewSelect().
+		if needAddressSegments || query.useFilter("first_usage") {
+			accountsQuery := store.db.NewSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
-				Column("address_array").
 				Where("accounts.address = accounts_address").
 				Where("ledger = ?", store.ledger.Name)
 
-			selectVolumes.
-				ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
-				Join(`join lateral (?) accounts on true`, subQuery)
+			if needAddressSegments {
+				accountsQuery = accountsQuery.ColumnExpr("address_array")
+				selectVolumes = selectVolumes.ColumnExpr("(array_agg(accounts.address_array))[1] as account_array")
+			}
+			if query.useFilter("first_usage") {
+				accountsQuery = accountsQuery.ColumnExpr("first_usage")
+				selectVolumes = selectVolumes.ColumnExpr("(array_agg(accounts.first_usage))[1] as first_usage")
+			}
+			selectVolumes = selectVolumes.Join(`join lateral (?) accounts on true`, accountsQuery)
 		}
 
 		if query.useFilter("metadata") {
@@ -134,8 +149,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("ledger = ?", store.ledger.Name).
-				Where("accounts_metadata.accounts_address = moves.accounts_address").
-				Where("date <= ?", query.PIT)
+				Where("accounts_metadata.accounts_address = moves.accounts_address")
 
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
@@ -147,8 +161,8 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 }
 
 func (h volumesResourceHandler) resolveFilter(
-	store *Store,
-	opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	_ *Store,
+	_ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -156,6 +170,8 @@ func (h volumesResourceHandler) resolveFilter(
 	switch {
 	case property == "address" || property == "account":
 		return filterAccountAddress(value.(string), "account"), nil, nil
+	case property == "first_usage":
+		return fmt.Sprintf("first_usage %s ?", convertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 		clauses := make([]string, 0)
 		args := make([]any, 0)
