@@ -181,9 +181,14 @@ release:
 
 generate-client:
     FROM node:20-alpine
-    RUN apk update && apk add yq jq
+    RUN apk update && apk add yq jq curl
     WORKDIR /src
-    COPY (core+sources-speakeasy/speakeasy) /bin/speakeasy
+    ARG TARGETARCH
+    ARG SPEAKEASY_VERSION=v1.517.3
+    RUN curl -fsSL https://github.com/speakeasy-api/speakeasy/releases/download/${SPEAKEASY_VERSION}/speakeasy_linux_$TARGETARCH.zip -o /tmp/speakeasy_linux_$TARGETARCH.zip
+    RUN unzip /tmp/speakeasy_linux_$TARGETARCH.zip speakeasy
+    RUN chmod +x speakeasy
+    RUN mv speakeasy /bin/speakeasy
     COPY (+openapi/openapi.yaml) openapi.yaml
     RUN cat ./openapi.yaml |  yq e -o json > openapi.json
     COPY (core+sources/out --LOCATION=openapi-overlay.json) openapi-overlay.json

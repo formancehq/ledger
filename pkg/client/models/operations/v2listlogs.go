@@ -65,7 +65,7 @@ func (o *V2ListLogsRequest) GetPit() *time.Time {
 
 func (o *V2ListLogsRequest) GetRequestBody() map[string]any {
 	if o == nil {
-		return nil
+		return map[string]any{}
 	}
 	return o.RequestBody
 }
