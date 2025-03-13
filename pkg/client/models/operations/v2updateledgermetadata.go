@@ -4,7 +4,6 @@ package operations
 
 import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 )
 
 type V2UpdateLedgerMetadataRequest struct {
@@ -22,7 +21,7 @@ func (o *V2UpdateLedgerMetadataRequest) GetLedger() string {
 
 func (o *V2UpdateLedgerMetadataRequest) GetRequestBody() map[string]string {
 	if o == nil {
-		return nil
+		return map[string]string{}
 	}
 	return o.RequestBody
 }
@@ -30,7 +29,7 @@ func (o *V2UpdateLedgerMetadataRequest) GetRequestBody() map[string]string {
 type V2UpdateLedgerMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Error
-	V2ErrorResponse *sdkerrors.V2ErrorResponse
+	V2ErrorResponse *components.V2ErrorResponse
 }
 
 func (o *V2UpdateLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -40,7 +39,7 @@ func (o *V2UpdateLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
 	return o.HTTPMeta
 }
 
-func (o *V2UpdateLedgerMetadataResponse) GetV2ErrorResponse() *sdkerrors.V2ErrorResponse {
+func (o *V2UpdateLedgerMetadataResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
 	if o == nil {
 		return nil
 	}

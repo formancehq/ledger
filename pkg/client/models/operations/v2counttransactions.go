@@ -42,7 +42,7 @@ func (o *V2CountTransactionsRequest) GetPit() *time.Time {
 
 func (o *V2CountTransactionsRequest) GetRequestBody() map[string]any {
 	if o == nil {
-		return nil
+		return map[string]any{}
 	}
 	return o.RequestBody
 }

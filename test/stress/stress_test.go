@@ -52,7 +52,7 @@ var _ = Context("Ledger stress tests", func() {
 				ledgerName := fmt.Sprintf("ledger%d", i)
 				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 					Ledger: ledgerName,
-					V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+					V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 						Bucket:   &bucketName,
 						Features: features.MinimalFeatureSet.With(features.FeatureMovesHistory, "ON"),
 					},

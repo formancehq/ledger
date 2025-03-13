@@ -7,9 +7,9 @@ import (
 )
 
 type Security struct {
-	ClientID     string `security:"scheme,type=oauth2,subtype=client_credentials,name=clientID"`
-	ClientSecret string `security:"scheme,type=oauth2,subtype=client_credentials,name=clientSecret"`
-	tokenURL     string `const:"/oauth/token"`
+	ClientID     *string `security:"scheme,type=oauth2,subtype=client_credentials,name=clientID,env=formance_client_id"`
+	ClientSecret *string `security:"scheme,type=oauth2,subtype=client_credentials,name=clientSecret,env=formance_client_secret"`
+	TokenURL     *string `default:"/oauth/token"`
 }
 
 func (s Security) MarshalJSON() ([]byte, error) {
@@ -23,20 +23,23 @@ func (s *Security) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *Security) GetClientID() string {
+func (o *Security) GetClientID() *string {
 	if o == nil {
-		return ""
+		return nil
 	}
 	return o.ClientID
 }
 
-func (o *Security) GetClientSecret() string {
+func (o *Security) GetClientSecret() *string {
 	if o == nil {
-		return ""
+		return nil
 	}
 	return o.ClientSecret
 }
 
-func (o *Security) GetTokenURL() string {
-	return "/oauth/token"
+func (o *Security) GetTokenURL() *string {
+	if o == nil {
+		return nil
+	}
+	return o.TokenURL
 }
