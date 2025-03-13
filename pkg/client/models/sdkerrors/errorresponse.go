@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
-// ErrorResponse - Error
 type ErrorResponse struct {
 	ErrorCode    components.ErrorsEnum `json:"errorCode"`
 	ErrorMessage string                `json:"errorMessage"`

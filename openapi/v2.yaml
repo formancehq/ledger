@@ -145,6 +145,7 @@ paths:
       tags:
         - ledger.v2
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -177,6 +178,7 @@ paths:
       tags:
         - ledger.v2
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -298,6 +300,7 @@ paths:
             type: boolean
             example: true
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -346,6 +349,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -421,6 +425,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -661,6 +666,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -748,6 +754,7 @@ paths:
           schema:
             type: boolean
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -918,6 +925,7 @@ paths:
           schema:
             type: string
       requestBody:
+        required: true
         description: metadata
         content:
           application/json:
@@ -1069,6 +1077,7 @@ paths:
           schema:
             type: boolean
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1157,6 +1166,7 @@ paths:
             minimum: 0
             maximum: 1000
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1225,6 +1235,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1261,10 +1272,11 @@ paths:
             type: string
             example: ledger001
       requestBody:
+        required: true
         content:
           application/octet-stream:
             schema:
-              type: string
+              $ref: "#/components/schemas/V2ImportLogsRequest"
       responses:
         "204":
           description: Import OK
@@ -2057,3 +2069,11 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/V2Ledger"
+    V2ImportLogsRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary

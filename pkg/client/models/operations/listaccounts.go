@@ -4,7 +4,6 @@ package operations
 
 import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 )
 
 type ListAccountsRequest struct {
@@ -34,7 +33,7 @@ type ListAccountsRequest struct {
 	// Deprecated, please use `cursor` instead.
 	//
 	//
-	// Deprecated field: This will be removed in a future release, please migrate away from it as soon as possible.
+	// Deprecated: This will be removed in a future release, please migrate away from it as soon as possible.
 	PaginationToken *string `queryParam:"style=form,explode=true,name=pagination_token"`
 }
 
@@ -99,7 +98,7 @@ type ListAccountsResponse struct {
 	// OK
 	AccountsCursorResponse *components.AccountsCursorResponse
 	// Not found
-	ErrorResponse *sdkerrors.ErrorResponse
+	ErrorResponse *components.ErrorResponse
 }
 
 func (o *ListAccountsResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -116,7 +115,7 @@ func (o *ListAccountsResponse) GetAccountsCursorResponse() *components.AccountsC
 	return o.AccountsCursorResponse
 }
 
-func (o *ListAccountsResponse) GetErrorResponse() *sdkerrors.ErrorResponse {
+func (o *ListAccountsResponse) GetErrorResponse() *components.ErrorResponse {
 	if o == nil {
 		return nil
 	}

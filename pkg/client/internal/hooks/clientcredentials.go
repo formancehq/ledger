@@ -10,10 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/formancehq/ledger/pkg/client/models/components"
+	"golang.org/x/sync/singleflight"
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -37,9 +40,11 @@ type credentials struct {
 }
 
 type clientCredentialsHook struct {
-	baseURL  string
 	client   HTTPClient
-	sessions map[string]*session
+	sessions sync.Map
+
+	// sessionsGroup prevents concurrent token refreshes.
+	sessionsGroup *singleflight.Group
 }
 
 var (
@@ -50,12 +55,11 @@ var (
 
 func NewClientCredentialsHook() *clientCredentialsHook {
 	return &clientCredentialsHook{
-		sessions: make(map[string]*session),
+		sessionsGroup: new(singleflight.Group),
 	}
 }
 
 func (c *clientCredentialsHook) SDKInit(baseURL string, client HTTPClient) (string, HTTPClient) {
-	c.baseURL = baseURL
 	c.client = client
 	return baseURL, client
 }
@@ -66,7 +70,7 @@ func (c *clientCredentialsHook) BeforeRequest(ctx BeforeRequestContext, req *htt
 		return req, nil
 	}
 
-	credentials, err := c.getCredentials(ctx.Context, ctx.SecuritySource)
+	credentials, err := c.getCredentials(ctx.HookContext, ctx.SecuritySource)
 	if err != nil {
 		return nil, &FailEarly{Cause: err}
 	}
@@ -74,19 +78,13 @@ func (c *clientCredentialsHook) BeforeRequest(ctx BeforeRequestContext, req *htt
 		return req, err
 	}
 
-	sessionKey := getSessionKey(credentials.ClientID, credentials.ClientSecret)
-	sess, ok := c.sessions[sessionKey]
-	if !ok || !hasRequiredScopes(sess.Scopes, ctx.OAuth2Scopes) || hasTokenExpired(sess.ExpiresAt) {
-		s, err := c.doTokenRequest(ctx.Context, credentials, getScopes(ctx.OAuth2Scopes, sess))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get token: %w", err)
-		}
+	session, err := c.getSession(ctx, credentials)
 
-		c.sessions[sessionKey] = s
-		sess = s
+	if err != nil {
+		return nil, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sess.Token))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", session.Token))
 
 	return req, nil
 }
@@ -102,7 +100,7 @@ func (c *clientCredentialsHook) AfterError(ctx AfterErrorContext, res *http.Resp
 		return res, err
 	}
 
-	credentials, err := c.getCredentials(ctx.Context, ctx.SecuritySource)
+	credentials, err := c.getCredentials(ctx.HookContext, ctx.SecuritySource)
 	if err != nil {
 		return nil, &FailEarly{Cause: err}
 	}
@@ -112,13 +110,14 @@ func (c *clientCredentialsHook) AfterError(ctx AfterErrorContext, res *http.Resp
 
 	if res != nil && res.StatusCode == http.StatusUnauthorized {
 		sessionKey := getSessionKey(credentials.ClientID, credentials.ClientSecret)
-		delete(c.sessions, sessionKey)
+		c.sessionsGroup.Forget(sessionKey)
+		c.sessions.Delete(sessionKey)
 	}
 
 	return res, err
 }
 
-func (c *clientCredentialsHook) doTokenRequest(ctx context.Context, credentials *credentials, scopes []string) (*session, error) {
+func (c *clientCredentialsHook) doTokenRequest(ctx HookContext, credentials *credentials, scopes []string) (*session, error) {
 	values := url.Values{}
 	values.Set("grant_type", "client_credentials")
 	values.Set("client_id", credentials.ClientID)
@@ -134,13 +133,13 @@ func (c *clientCredentialsHook) doTokenRequest(ctx context.Context, credentials 
 		return nil, fmt.Errorf("failed to parse token URL: %w", err)
 	}
 	if !u.IsAbs() {
-		tokenURL, err = url.JoinPath(c.baseURL, tokenURL)
+		tokenURL, err = url.JoinPath(ctx.BaseURL, tokenURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse token URL: %w", err)
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewBufferString(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx.Context, http.MethodPost, tokenURL, bytes.NewBufferString(values.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token request: %w", err)
 	}
@@ -181,27 +180,84 @@ func (c *clientCredentialsHook) doTokenRequest(ctx context.Context, credentials 
 	}, nil
 }
 
-func (c *clientCredentialsHook) getCredentials(ctx context.Context, source func(ctx context.Context) (interface{}, error)) (*credentials, error) {
+func (c *clientCredentialsHook) getCredentials(ctx HookContext, source func(ctx context.Context) (any, error)) (*credentials, error) {
 	if source == nil {
 		return nil, nil
 	}
 
-	sec, err := source(ctx)
+	sec, err := source(ctx.Context)
 	if err != nil {
 		return nil, err
 	}
 
+	return c.getCredentialsGlobal(sec)
+}
+
+func (c *clientCredentialsHook) getCredentialsGlobal(sec any) (*credentials, error) {
 	security, ok := sec.(components.Security)
 
 	if !ok {
 		return nil, fmt.Errorf("unexpected security type: %T", sec)
 	}
 
+	if security.ClientID == nil || security.ClientSecret == nil {
+		return nil, nil
+	}
+	if security.TokenURL == nil {
+		secType := reflect.TypeOf(security)
+		if secType.Kind() == reflect.Ptr {
+			secType = secType.Elem()
+		}
+		tokenURLField, ok := secType.FieldByName("TokenURL")
+		if !ok {
+			return nil, fmt.Errorf("TokenURL is required for security type %s", secType.Name())
+		}
+		tokenURLDefault := tokenURLField.Tag.Get("default")
+		security.TokenURL = &tokenURLDefault
+	}
+
 	return &credentials{
-		ClientID:     security.ClientID,
-		ClientSecret: security.ClientSecret,
-		TokenURL:     security.GetTokenURL(),
+		ClientID:     *security.ClientID,
+		ClientSecret: *security.ClientSecret,
+		TokenURL:     *security.TokenURL,
 	}, nil
+}
+
+func (c *clientCredentialsHook) getSession(ctx BeforeRequestContext, credentials *credentials) (*session, error) {
+	sessionKey := getSessionKey(credentials.ClientID, credentials.ClientSecret)
+
+	var cachedSession *session
+
+	rawCachedSession, ok := c.sessions.Load(sessionKey)
+
+	if ok {
+		cachedSession = rawCachedSession.(*session)
+
+		if !hasRequiredScopes(cachedSession.Scopes, ctx.OAuth2Scopes) || hasTokenExpired(cachedSession.ExpiresAt) {
+			c.sessionsGroup.Forget(sessionKey)
+			c.sessions.Delete(sessionKey)
+		}
+	}
+
+	rawSession, err, _ := c.sessionsGroup.Do(sessionKey, func() (any, error) {
+		refreshedSession, err := c.doTokenRequest(ctx.HookContext, credentials, getScopes(ctx.OAuth2Scopes, cachedSession))
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to get token: %w", err)
+		}
+
+		c.sessions.Store(sessionKey, refreshedSession)
+
+		return refreshedSession, err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	session := rawSession.(*session)
+
+	return session, nil
 }
 
 func getSessionKey(clientID, clientSecret string) string {
