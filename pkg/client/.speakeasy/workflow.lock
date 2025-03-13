@@ -1,0 +1,24 @@
+speakeasyVersion: 1.517.3
+sources: {}
+targets:
+    formance:
+        source: Formance-OAS
+workflow:
+    workflowVersion: 1.0.0
+    speakeasyVersion: v1.517.3
+    sources:
+        Formance-OAS:
+            inputs:
+                - location: ../../openapi.yaml
+            registry:
+                location: registry.speakeasyapi.dev/formance/gfyrag/formance-oas
+    targets:
+        formance:
+            target: go
+            source: Formance-OAS
+            codeSamples:
+                registry:
+                    location: registry.speakeasyapi.dev/formance/gfyrag/formance-oas-go-code-samples
+                labelOverride:
+                    fixedValue: Go (SDK)
+                blocking: false

@@ -48,7 +48,7 @@ openapi:
     @npx -y widdershins {{justfile_directory()}}/openapi/v2.yaml -o {{justfile_directory()}}/docs/api/README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
 
 generate-client: openapi
-    @speakeasy generate sdk -s openapi.yaml -o ./pkg/client -l go
+    @cd pkg/client && speakeasy run --skip-versioning
 
 release-local:
     @goreleaser release --nightly --skip=publish --clean

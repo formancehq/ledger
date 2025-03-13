@@ -5,8 +5,8 @@ management:
   docVersion: v2
   speakeasyVersion: 1.517.3
   generationVersion: 2.548.6
-  releaseVersion: 0.7.16
-  configChecksum: 7c736d34f8ab326a6c2d62c12f73c5df
+  releaseVersion: 0.8.0
+  configChecksum: 1e3419c5398b20fa22be24c9c224d2dc
 features:
   go:
     additionalDependencies: 0.1.0
@@ -959,5 +959,8 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
+      responses:
+        default:
+          application/octet-stream: "x-file: example.file"
 examplesVersion: 1.0.0
 generatedTests: {}
