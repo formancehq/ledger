@@ -90,6 +90,7 @@
             packages = with pkgs; [
               go
               gotools
+              go-tools
               golangci-lint
               ginkgo
               yq-go
