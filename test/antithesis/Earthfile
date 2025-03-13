@@ -24,6 +24,32 @@ run:
           }
         }"
 
+debugger:
+  FROM curlimages/curl
+
+  ARG ANTITHESIS_USERNAME=formance
+  ARG --required ANTITHESIS_SLACK_REPORT_RECIPIENT
+  ARG --required VTIME
+  ARG --required SESSION_ID
+  ARG --required HASH
+  RUN echo "{
+          \"params\": {
+            \"antithesis.debugging.session_id\": \"${SESSION_ID}\",
+            \"antithesis.debugging.input_hash\": \"${HASH}\",
+            \"antithesis.debugging.vtime\": \"${VTIME}\",
+            \"antithesis.report.recipients\": \"${ANTITHESIS_SLACK_REPORT_RECIPIENT}\"
+          }
+        }" > /tmp/debug_params.json
+
+  # Display the debug parameters for verification
+  RUN cat /tmp/debug_params.json
+  
+  RUN --no-cache --secret ANTITHESIS_PASSWORD curl \
+      --fail \
+      --user "$ANTITHESIS_USERNAME:$ANTITHESIS_PASSWORD" \
+      -X POST https://formance.antithesis.com/api/v1/launch/debugging \
+      -d @/tmp/debug_params.json
+
 requirements-build:
   ARG --required ANTITHESIS_REPOSITORY
 
