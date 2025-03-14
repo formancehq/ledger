@@ -13,6 +13,7 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
+	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,12 +41,13 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // BeginTX mocks base method.
-func (m *MockController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
+func (m *MockController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BeginTX", ctx, options)
 	ret0, _ := ret[0].(Controller)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(*bun.Tx)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // BeginTX indicates an expected call of BeginTX.

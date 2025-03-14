@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"github.com/formancehq/go-libs/v2/query"
+	"github.com/uptrace/bun"
 	"math/big"
 	"testing"
 
@@ -37,7 +38,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		Commit().
@@ -81,7 +82,7 @@ func TestRevertTransaction(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		Commit().
@@ -133,7 +134,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		Commit().
@@ -177,7 +178,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		Commit().

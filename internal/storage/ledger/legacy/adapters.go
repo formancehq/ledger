@@ -312,10 +312,10 @@ func (d *DefaultStoreAdapter) GetMigrationsInfo(ctx context.Context) ([]migratio
 	return d.newStore.GetMigrationsInfo(ctx)
 }
 
-func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) (ledgercontroller.Store, error) {
-	store, err := d.newStore.BeginTX(ctx, opts)
+func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) (ledgercontroller.Store, *bun.Tx, error) {
+	store, tx, err := d.newStore.BeginTX(ctx, opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	legacyStore := d.legacyStore.WithDB(store.GetDB())
@@ -323,7 +323,7 @@ func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) 
 	return &DefaultStoreAdapter{
 		newStore:    store,
 		legacyStore: legacyStore,
-	}, nil
+	}, tx, nil
 }
 
 func (d *DefaultStoreAdapter) Commit() error {

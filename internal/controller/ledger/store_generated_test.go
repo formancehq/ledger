@@ -71,12 +71,13 @@ func (mr *MockStoreMockRecorder) AggregatedBalances() *gomock.Call {
 }
 
 // BeginTX mocks base method.
-func (m *MockStore) BeginTX(ctx context.Context, options *sql.TxOptions) (Store, error) {
+func (m *MockStore) BeginTX(ctx context.Context, options *sql.TxOptions) (Store, *bun.Tx, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BeginTX", ctx, options)
 	ret0, _ := ret[0].(Store)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(*bun.Tx)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // BeginTX indicates an expected call of BeginTX.

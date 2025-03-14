@@ -3,7 +3,6 @@ package ledger
 import (
 	"encoding/base64"
 	"fmt"
-
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/numscript"
 
@@ -31,7 +30,7 @@ func (i ErrImport) Is(err error) bool {
 
 var _ error = (*ErrImport)(nil)
 
-func newErrImport(err error) ErrImport {
+func NewErrImport(err error) ErrImport {
 	return ErrImport{
 		err: err,
 	}
@@ -57,7 +56,7 @@ func (i ErrInvalidHash) Error() string {
 var _ error = (*ErrInvalidHash)(nil)
 
 func newErrInvalidHash(logID int, got, expected []byte) ErrImport {
-	return newErrImport(ErrInvalidHash{
+	return NewErrImport(ErrInvalidHash{
 		expected: expected,
 		got:      got,
 		logID:    logID,
@@ -265,5 +264,25 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		idempotencyKey:          idempotencyKey,
 		expectedIdempotencyHash: expectedIdempotencyHash,
 		computedIdempotencyHash: gotIdempotencyHash,
+	}
+}
+
+// ErrConcurrentTransaction can be raised in case of conflicting between an import and a single transaction
+type ErrConcurrentTransaction struct {
+	id int
+}
+
+func (e ErrConcurrentTransaction) Error() string {
+	return fmt.Sprintf("duplicate id insertion %d", e.id)
+}
+
+func (e ErrConcurrentTransaction) Is(err error) bool {
+	_, ok := err.(ErrConcurrentTransaction)
+	return ok
+}
+
+func NewErrConcurrentTransaction(id int) ErrConcurrentTransaction {
+	return ErrConcurrentTransaction{
+		id: id,
 	}
 }
