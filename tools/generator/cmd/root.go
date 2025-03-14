@@ -5,18 +5,18 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/pkg/generate"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
-	"net/http"
-	"os"
-	"strings"
 )
 
 const (
@@ -168,21 +168,16 @@ func run(cmd *cobra.Command, args []string) error {
 	)
 
 	logging.FromContext(ctx).Infof("Creating ledger '%s' if not exists", targetedLedger)
-	_, err = client.Ledger.V2.GetLedger(ctx, operations.V2GetLedgerRequest{
-		Ledger: targetedLedger,
-	})
+	_, err = client.Ledger.V2.GetLedger(ctx, targetedLedger)
 	if err != nil {
 		sdkError := &sdkerrors.V2ErrorResponse{}
 		if !errors.As(err, &sdkError) || sdkError.ErrorCode != components.V2ErrorsEnumNotFound {
 			return fmt.Errorf("failed to get ledger: %w", err)
 		}
-		_, err = client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
-			Ledger: targetedLedger,
-			V2CreateLedgerRequest: components.V2CreateLedgerRequest{
-				Bucket:   &ledgerBucket,
-				Metadata: ledgerMetadata,
-				Features: ledgerFeatures,
-			},
+		_, err = client.Ledger.V2.CreateLedger(ctx, targetedLedger, &components.V2CreateLedgerRequest{
+			Bucket:   &ledgerBucket,
+			Metadata: ledgerMetadata,
+			Features: ledgerFeatures,
 		})
 		if err != nil {
 			if !errors.As(err, &sdkError) || (sdkError.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
