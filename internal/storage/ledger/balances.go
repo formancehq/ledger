@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"math/big"
+	"slices"
 	"strings"
 
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -48,6 +49,21 @@ func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.Bala
 					})
 				}
 			}
+
+			// prevent deadlocks by sorting the accountsVolumes slice
+			slices.SortStableFunc(accountsVolumes, func(i, j AccountsVolumesWithLedger) int {
+				if i.Account < j.Account {
+					return -1
+				} else if i.Account > j.Account {
+					return 1
+				} else if i.Asset < j.Asset {
+					return -1
+				} else if i.Asset > j.Asset {
+					return 1
+				} else {
+					return 0
+				}
+			})
 
 			err := store.db.NewSelect().
 				With(
