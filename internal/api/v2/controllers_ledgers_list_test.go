@@ -108,6 +108,10 @@ func TestListLedgers(t *testing.T) {
 			if tc.expectedStatusCode == 0 || tc.expectedStatusCode == http.StatusOK {
 				require.Equal(t, http.StatusOK, rec.Code)
 				cursor := api.DecodeCursorResponse[ledger.Ledger](t, rec.Body)
+				for i, data := range cursor.Data {
+					data.State = ledger.StateInitializing
+					cursor.Data[i] = data
+				}
 
 				require.Equal(t, tc.returnData, cursor.Data)
 			} else {

@@ -115,6 +115,15 @@ import "github.com/formancehq/ledger/internal"
 
 ## Constants
 
+<a name="StateInitializing"></a>
+
+```go
+const (
+    StateInitializing = "initializing"
+    StateInUse        = "in-use"
+)
+```
+
 <a name="MetaTargetTypeAccount"></a>
 
 ```go
@@ -411,6 +420,7 @@ type Ledger struct {
     ID      int       `json:"id" bun:"id,type:int,scanonly"`
     Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
     AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
 }
 ```
 

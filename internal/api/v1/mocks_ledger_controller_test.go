@@ -14,6 +14,7 @@ import (
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,12 +42,13 @@ func (m *LedgerController) EXPECT() *LedgerControllerMockRecorder {
 }
 
 // BeginTX mocks base method.
-func (m *LedgerController) BeginTX(ctx context.Context, options *sql.TxOptions) (ledger0.Controller, error) {
+func (m *LedgerController) BeginTX(ctx context.Context, options *sql.TxOptions) (ledger0.Controller, *bun.Tx, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BeginTX", ctx, options)
 	ret0, _ := ret[0].(ledger0.Controller)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(*bun.Tx)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // BeginTX indicates an expected call of BeginTX.
