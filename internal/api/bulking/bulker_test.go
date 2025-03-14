@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/uptrace/bun"
 	"math/big"
 	"testing"
 
@@ -372,7 +373,7 @@ func TestBulk(t *testing.T) {
 			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					BeginTX(gomock.Any(), nil).
-					Return(mockLedger, nil)
+					Return(mockLedger, &bun.Tx{}, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{

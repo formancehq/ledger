@@ -93,7 +93,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			ledgerController = ledgercontroller.NewControllerWithEvents(*l, ledgerController, ctrl.listener)
 		}
 
-		return ledgerController, nil
+		return newLedgerStateTracker(ledgerController, *l), nil
 	})
 }
 
