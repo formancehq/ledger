@@ -1,22 +1,22 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: faef2a500712dff5273fee626cd37000
+  docChecksum: c4cf95f1e84309b3450a2f9d5febf70f
   docVersion: v2
   speakeasyVersion: 1.351.0
   generationVersion: 2.384.1
-  releaseVersion: 0.6.9
-  configChecksum: 2d9ee6d181ad5dbe43f7e9bfcdaa88f1
+  releaseVersion: 0.0.2
+  configChecksum: ef8b5afd688bcfd463b0e6c0ac4bfa58
 features:
   go:
     additionalDependencies: 0.1.0
     core: 3.5.2
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.1
-    devContainers: 2.90.0
     downloadStreams: 0.1.1
     envVarSecurityUsage: 0.2.1
     errors: 2.81.9
+    flattening: 2.81.1
     getRequestBodies: 2.81.1
     globalSecurity: 2.82.9
     globalSecurityCallbacks: 0.1.0
@@ -34,7 +34,7 @@ generatedFiles:
   - v1.go
   - v2.go
   - ledger.go
-  - formance.go
+  - sdk.go
   - go.mod
   - models/sdkerrors/sdkerror.go
   - retry/config.go
@@ -76,6 +76,7 @@ generatedFiles:
   - /models/operations/getbalancesaggregated.go
   - /models/operations/listlogs.go
   - /models/operations/v2deletebucket.go
+  - /models/operations/v2listbuckets.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2getledger.go
   - /models/operations/v2createledger.go
@@ -217,6 +218,9 @@ generatedFiles:
   - docs/models/operations/listlogsresponse.md
   - docs/models/operations/v2deletebucketrequest.md
   - docs/models/operations/v2deletebucketresponse.md
+  - docs/models/operations/data.md
+  - docs/models/operations/v2listbucketsresponsebody.md
+  - docs/models/operations/v2listbucketsresponse.md
   - docs/models/operations/v2listledgersrequest.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2getledgerrequest.md
@@ -366,7 +370,7 @@ generatedFiles:
   - docs/models/components/v2logtype.md
   - docs/models/components/v2log.md
   - docs/models/components/security.md
-  - docs/sdks/formance/README.md
+  - docs/sdks/sdk/README.md
   - docs/models/operations/option.md
   - docs/sdks/ledger/README.md
   - docs/sdks/v1/README.md
@@ -374,9 +378,6 @@ generatedFiles:
   - USAGE.md
   - models/operations/options.go
   - .gitattributes
-  - .devcontainer/README.md
-  - .devcontainer/devcontainer.json
-  - .devcontainer/setup.sh
   - internal/hooks/hooks.go
   - internal/hooks/clientcredentials.go
   - CONTRIBUTING.md

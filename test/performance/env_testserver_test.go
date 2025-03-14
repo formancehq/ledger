@@ -4,13 +4,14 @@ package performance_test
 
 import (
 	"context"
+	"io"
+	"os"
+	"testing"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
-	"io"
-	"os"
-	"testing"
 
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
@@ -27,7 +28,7 @@ type TestServerEnv struct {
 	ledger     ledger.Ledger
 }
 
-func (e *TestServerEnv) Client() *ledgerclient.Formance {
+func (e *TestServerEnv) Client() *ledgerclient.SDK {
 	return e.testServer.Client()
 }
 

@@ -48,7 +48,7 @@ type WorkerServiceConfiguration struct {
 type Worker struct {
 	configuration WorkerServiceConfiguration
 	logger        Logger
-	sdkClient     *ledgerclient.Formance
+	sdkClient     *ledgerclient.SDK
 	cancel        func()
 	ctx           context.Context
 	errorChan     chan error
@@ -142,7 +142,7 @@ func (s *Worker) Stop(ctx context.Context) error {
 	}
 }
 
-func (s *Worker) Client() *ledgerclient.Formance {
+func (s *Worker) Client() *ledgerclient.SDK {
 	return s.sdkClient
 }
 

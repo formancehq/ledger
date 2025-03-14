@@ -32,6 +32,14 @@ func (d *DefaultStorageDriverAdapter) MarkBucketAsDeleted(ctx context.Context, b
 	return d.Driver.MarkBucketAsDeleted(ctx, bucketName)
 }
 
+func (d *DefaultStorageDriverAdapter) GetDistinctBuckets(ctx context.Context) ([]string, error) {
+	return d.Driver.GetDistinctBuckets(ctx)
+}
+
+func (d *DefaultStorageDriverAdapter) GetLedgersByBucket(ctx context.Context, bucketName string) ([]ledger.Ledger, error) {
+	return d.Driver.GetLedgersByBucket(ctx, bucketName)
+}
+
 func NewControllerStorageDriverAdapter(d *Driver) *DefaultStorageDriverAdapter {
 	return &DefaultStorageDriverAdapter{Driver: d}
 }

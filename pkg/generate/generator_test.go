@@ -3,6 +3,9 @@
 package generate
 
 import (
+	"os"
+	"testing"
+
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/docker"
@@ -10,8 +13,6 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
 )
 
 func TestGenerator(t *testing.T) {
@@ -33,9 +34,7 @@ func TestGenerator(t *testing.T) {
 		require.NoError(t, testServer.Stop(ctx))
 	})
 
-	_, err := testServer.Client().Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
-		Ledger: "default",
-	})
+	_, err := testServer.Client().Ledger.V2.CreateLedger(ctx, "default", nil)
 	require.NoError(t, err)
 
 	generator, err := NewGenerator(script, WithGlobals(map[string]interface{}{

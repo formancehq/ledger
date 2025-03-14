@@ -14,6 +14,7 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	system "github.com/formancehq/ledger/internal/controller/system"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -97,6 +98,21 @@ func (m *SystemController) GetLedgerController(ctx context.Context, name string)
 func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerController", reflect.TypeOf((*SystemController)(nil).GetLedgerController), ctx, name)
+}
+
+// ListBuckets mocks base method.
+func (m *SystemController) ListBuckets(ctx context.Context) ([]system.BucketWithLedgers, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBuckets", ctx)
+	ret0, _ := ret[0].([]system.BucketWithLedgers)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBuckets indicates an expected call of ListBuckets.
+func (mr *SystemControllerMockRecorder) ListBuckets(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBuckets", reflect.TypeOf((*SystemController)(nil).ListBuckets), ctx)
 }
 
 // ListLedgers mocks base method.

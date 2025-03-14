@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
+
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
@@ -11,14 +13,13 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"golang.org/x/sync/errgroup"
-	"math/big"
 )
 
 type GeneratorSet struct {
 	vus            int
 	script         string
 	targetedLedger string
-	client         *client.Formance
+	client         *client.SDK
 	untilLogID     uint64
 }
 
@@ -112,7 +113,7 @@ func (s *GeneratorSet) Run(ctx context.Context) error {
 	return errGroup.Wait()
 }
 
-func NewGeneratorSet(vus int, script string, targetedLedger string, client *client.Formance, untilLogID uint64) *GeneratorSet {
+func NewGeneratorSet(vus int, script string, targetedLedger string, client *client.SDK, untilLogID uint64) *GeneratorSet {
 	return &GeneratorSet{
 		vus:            vus,
 		script:         script,
