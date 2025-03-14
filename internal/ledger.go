@@ -10,6 +10,11 @@ import (
 	"slices"
 )
 
+const (
+	StateInitializing = "initializing"
+	StateInUse        = "in-use"
+)
+
 type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
@@ -17,6 +22,7 @@ type Ledger struct {
 	ID      int       `json:"id" bun:"id,type:int,scanonly"`
 	Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
 	AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+	State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
@@ -51,6 +57,7 @@ func New(name string, configuration Configuration) (*Ledger, error) {
 	return &Ledger{
 		Configuration: configuration,
 		Name:          name,
+		State:         StateInitializing,
 	}, nil
 }
 

@@ -31,7 +31,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	parameters Parameters[INPUT],
 	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
-	store, err := store.BeginTX(ctx, nil)
+	store, _, err := store.BeginTX(ctx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to start transaction: %w", err)
 	}

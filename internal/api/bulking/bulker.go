@@ -98,7 +98,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	ctrl := b.ctrl
 	if bulkOptions.Atomic {
 		var err error
-		ctrl, err = ctrl.BeginTX(ctx, nil)
+		ctrl, _, err = ctrl.BeginTX(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("error starting transaction: %s", err)
 		}

@@ -130,6 +130,11 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
 						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
 					}
+					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_ledger" {
+						return nil, ledgercontroller.NewErrConcurrentTransaction(*tx.ID)
+					}
+
+					return nil, err
 				default:
 					return nil, err
 				}
