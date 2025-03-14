@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -14,7 +15,7 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
 
 type Controller interface {
-	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error)
+	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error)
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
 

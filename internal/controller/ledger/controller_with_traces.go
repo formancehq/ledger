@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
@@ -139,14 +140,19 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 	return ret
 }
 
-func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
-	return tracing.TraceWithMetric(
+func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
+	var (
+		ctrl Controller
+		tx   *bun.Tx
+		err  error
+	)
+	ctrl, err = tracing.TraceWithMetric(
 		ctx,
 		"BeginTX",
 		c.tracer,
 		c.beginTxHistogram,
 		func(ctx context.Context) (Controller, error) {
-			ctrl, err := c.underlying.BeginTX(ctx, options)
+			ctrl, tx, err = c.underlying.BeginTX(ctx, options)
 			if err != nil {
 				return nil, err
 			}
@@ -157,6 +163,10 @@ func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptio
 			return &ret, nil
 		},
 	)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ctrl, tx, nil
 }
 
 func (c *ControllerWithTraces) Commit(ctx context.Context) error {

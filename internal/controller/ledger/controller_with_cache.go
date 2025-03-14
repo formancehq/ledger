@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -35,17 +36,17 @@ func (c *ControllerWithCache) IsDatabaseUpToDate(ctx context.Context) (bool, err
 	return upToDate, nil
 }
 
-func (c *ControllerWithCache) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
-	ctrl, err := c.Controller.BeginTX(ctx, options)
+func (c *ControllerWithCache) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
+	ctrl, tx, err := c.Controller.BeginTX(ctx, options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &ControllerWithCache{
 		registry:   c.registry,
 		ledger:     c.ledger,
 		Controller: ctrl,
-	}, nil
+	}, tx, nil
 }
 
 func NewControllerWithCache(ledger ledger.Ledger, underlying Controller, registry *StateRegistry) *ControllerWithCache {

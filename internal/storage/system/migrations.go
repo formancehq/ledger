@@ -216,6 +216,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 			},
 		},
 		migrations.Migration{
+			Name: "Add state column to ledgers",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, `
+					alter table _system.ledgers
+					add column state varchar(255) default 'initializing';
+				`, features.DefaultFeatures)
+					return err
+				})
+			},
+		},
+		migrations.Migration{
 			Name: "set default metadata on ledgers",
 			Up: func(ctx context.Context, db bun.IDB) error {
 				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {

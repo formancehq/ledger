@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/uptrace/bun"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -408,7 +409,7 @@ func TestBulk(t *testing.T) {
 			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					BeginTX(gomock.Any(), nil).
-					Return(mockLedger, nil)
+					Return(mockLedger, &bun.Tx{}, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
