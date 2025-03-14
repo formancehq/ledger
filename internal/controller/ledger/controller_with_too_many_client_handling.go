@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"time"
@@ -118,17 +119,17 @@ func (c *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.
 	return log, err
 }
 
-func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
-	ctrl, err := c.Controller.BeginTX(ctx, options)
+func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
+	ctrl, tx, err := c.Controller.BeginTX(ctx, options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &ControllerWithTooManyClientHandling{
 		Controller:      ctrl,
 		delayCalculator: c.delayCalculator,
 		tracer:          c.tracer,
-	}, nil
+	}, tx, nil
 }
 
 var _ Controller = (*ControllerWithTooManyClientHandling)(nil)

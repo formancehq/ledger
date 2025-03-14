@@ -88,15 +88,15 @@ func (store *Store) Accounts() ledgercontroller.PaginatedResource[
 	})
 }
 
-func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, error) {
+func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {
 	tx, err := store.db.BeginTx(ctx, options)
 	if err != nil {
-		return nil, postgres.ResolveError(err)
+		return nil, nil, postgres.ResolveError(err)
 	}
 	cp := *store
 	cp.db = tx
 
-	return &cp, nil
+	return &cp, &tx, nil
 }
 
 func (store *Store) Commit() error {

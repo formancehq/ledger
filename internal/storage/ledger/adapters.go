@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/uptrace/bun"
 )
 
 type TX struct {
@@ -19,15 +20,15 @@ func (d *DefaultStoreAdapter) IsUpToDate(ctx context.Context) (bool, error) {
 	return d.HasMinimalVersion(ctx)
 }
 
-func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) (ledgercontroller.Store, error) {
-	store, err := d.Store.BeginTX(ctx, opts)
+func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) (ledgercontroller.Store, *bun.Tx, error) {
+	store, tx, err := d.Store.BeginTX(ctx, opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &DefaultStoreAdapter{
 		Store: store,
-	}, nil
+	}, tx, nil
 }
 
 func (d *DefaultStoreAdapter) Commit() error {
