@@ -42,9 +42,7 @@ func listBuckets(systemController system.Controller) http.HandlerFunc {
 			}
 
 			// Get all ledgers for this bucket
-			for _, ledger := range bucket.Ledgers {
-				bucketInfo.Ledgers = append(bucketInfo.Ledgers, ledger)
-			}
+			bucketInfo.Ledgers = append(bucketInfo.Ledgers, bucket.Ledgers...)
 
 			response.Data = append(response.Data, bucketInfo)
 		}
