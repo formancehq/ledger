@@ -154,6 +154,63 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
+## List all buckets with their associated ledgers
+
+<a id="opIdv2ListBuckets"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_system/bucket HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_system/bucket`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": [
+    {
+      "name": "string",
+      "ledgers": [
+        "string"
+      ],
+      "markForDeletion": true
+    }
+  ]
+}
+```
+
+<h3 id="list-all-buckets-with-their-associated-ledgers-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request|[V2ErrorResponse](#schemav2errorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-all-buckets-with-their-associated-ledgers-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|[object]|false|none|none|
+|»» name|string|false|none|The name of the bucket|
+|»» ledgers|[string]|false|none|List of ledger names associated with this bucket|
+|»» markForDeletion|boolean|false|none|Indicates if the bucket is marked for deletion|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
 ## List ledgers
 
 <a id="opIdv2ListLedgers"></a>

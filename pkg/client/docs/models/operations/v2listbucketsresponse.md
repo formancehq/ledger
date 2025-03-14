@@ -1,0 +1,10 @@
+# V2ListBucketsResponse
+
+
+## Fields
+
+| Field                                                                                         | Type                                                                                          | Required                                                                                      | Description                                                                                   |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `HTTPMeta`                                                                                    | [components.HTTPMetadata](../../models/components/httpmetadata.md)                            | :heavy_check_mark:                                                                            | N/A                                                                                           |
+| `Object`                                                                                      | [*operations.V2ListBucketsResponseBody](../../models/operations/v2listbucketsresponsebody.md) | :heavy_minus_sign:                                                                            | OK                                                                                            |
+| `V2ErrorResponse`                                                                             | **sdkerrors.V2ErrorResponse*                                                                  | :heavy_minus_sign:                                                                            | Bad Request                                                                                   |

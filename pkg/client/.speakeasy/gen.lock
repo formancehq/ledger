@@ -1,23 +1,55 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
+<<<<<<< ours
   docChecksum: 2eda230dcb858e207c81e8ba6f80428e
+||||||| base
+  docChecksum: faef2a500712dff5273fee626cd37000
+=======
+  docChecksum: c4cf95f1e84309b3450a2f9d5febf70f
+>>>>>>> theirs
   docVersion: v2
+<<<<<<< ours
   speakeasyVersion: 1.517.3
   generationVersion: 2.548.6
   releaseVersion: 0.8.0
   configChecksum: 1e3419c5398b20fa22be24c9c224d2dc
+||||||| base
+  speakeasyVersion: 1.351.0
+  generationVersion: 2.384.1
+  releaseVersion: 0.6.9
+  configChecksum: 2d9ee6d181ad5dbe43f7e9bfcdaa88f1
+=======
+  speakeasyVersion: 1.351.0
+  generationVersion: 2.384.1
+  releaseVersion: 0.0.2
+  configChecksum: ef8b5afd688bcfd463b0e6c0ac4bfa58
+>>>>>>> theirs
 features:
   go:
     additionalDependencies: 0.1.0
     bigint: 0.0.2
     core: 3.7.2
     defaultEnabledRetries: 0.2.0
+<<<<<<< ours
     deprecations: 2.81.3
     devContainers: 2.90.0
     downloadStreams: 0.1.2
     envVarSecurityUsage: 0.3.2
     errors: 2.83.0
+||||||| base
+    deprecations: 2.81.1
+    devContainers: 2.90.0
+    downloadStreams: 0.1.1
+    envVarSecurityUsage: 0.2.1
+    errors: 2.81.9
+=======
+    deprecations: 2.81.1
+    downloadStreams: 0.1.1
+    envVarSecurityUsage: 0.2.1
+    errors: 2.81.9
+    flattening: 2.81.1
+>>>>>>> theirs
     getRequestBodies: 2.81.1
     globalSecurity: 2.82.11
     globalSecurityCallbacks: 0.1.0
@@ -33,6 +65,7 @@ features:
     unions: 2.85.10
     uploadStreams: 0.1.0
 generatedFiles:
+<<<<<<< ours
   - .devcontainer/README.md
   - .devcontainer/devcontainer.json
   - .devcontainer/setup.sh
@@ -358,6 +391,17 @@ generatedFiles:
   - docs/sdks/v1/README.md
   - docs/sdks/v2/README.md
   - formance.go
+||||||| base
+  - v1.go
+  - v2.go
+  - ledger.go
+  - formance.go
+=======
+  - v1.go
+  - v2.go
+  - ledger.go
+  - sdk.go
+>>>>>>> theirs
   - go.mod
   - internal/hooks/clientcredentials.go
   - internal/hooks/hooks.go
@@ -715,6 +759,7 @@ generatedFiles:
   - /models/operations/getbalancesaggregated.go
   - /models/operations/listlogs.go
   - /models/operations/v2deletebucket.go
+  - /models/operations/v2listbuckets.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2getledger.go
   - /models/operations/v2createledger.go
@@ -856,6 +901,9 @@ generatedFiles:
   - docs/models/operations/listlogsresponse.md
   - docs/models/operations/v2deletebucketrequest.md
   - docs/models/operations/v2deletebucketresponse.md
+  - docs/models/operations/data.md
+  - docs/models/operations/v2listbucketsresponsebody.md
+  - docs/models/operations/v2listbucketsresponse.md
   - docs/models/operations/v2listledgersrequest.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2getledgerrequest.md
@@ -1005,7 +1053,7 @@ generatedFiles:
   - docs/models/components/v2logtype.md
   - docs/models/components/v2log.md
   - docs/models/components/security.md
-  - docs/sdks/formance/README.md
+  - docs/sdks/sdk/README.md
   - docs/models/operations/option.md
   - docs/sdks/ledger/README.md
   - docs/sdks/v1/README.md
@@ -1013,6 +1061,7 @@ generatedFiles:
   - USAGE.md
 >>>>>>> 152e87df (feat: Add bucket deletion endpoint and worker for cleanup)
   - models/operations/options.go
+<<<<<<< ours
   - models/sdkerrors/sdkerror.go
   - retry/config.go
   - types/bigint.go
@@ -1605,3 +1654,17 @@ examples:
           application/octet-stream: "x-file: example.file"
 examplesVersion: 1.0.0
 generatedTests: {}
+||||||| base
+  - .gitattributes
+  - .devcontainer/README.md
+  - .devcontainer/devcontainer.json
+  - .devcontainer/setup.sh
+  - internal/hooks/hooks.go
+  - internal/hooks/clientcredentials.go
+  - CONTRIBUTING.md
+=======
+  - .gitattributes
+  - internal/hooks/hooks.go
+  - internal/hooks/clientcredentials.go
+  - CONTRIBUTING.md
+>>>>>>> theirs

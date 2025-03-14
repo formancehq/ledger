@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/stretchr/testify/require"
 )
 
 type RemoteLedgerEnvFactory struct {
@@ -21,7 +23,14 @@ func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B) Env {
 		ledgerclient.WithServerURL(r.ledgerURL),
 	)
 
-	return NewRemoteLedgerEnv(client, r.ledgerURL)
+	_, err := client.Ledger.V2.CreateLedger(ctx, ledger.Name, &components.V2CreateLedgerRequest{
+		Bucket:   &ledger.Bucket,
+		Metadata: ledger.Metadata,
+		Features: ledger.Features,
+	})
+	require.NoError(b, err)
+
+	return NewRemoteLedgerEnv(client, ledgerURLFlag, ledger)
 }
 
 var _ EnvFactory = (*RemoteLedgerEnvFactory)(nil)
@@ -34,15 +43,17 @@ func NewRemoteLedgerEnvFactory(httpClient *http.Client, ledgerURL string) *Remot
 }
 
 type RemoteLedgerEnv struct {
-	client    *ledgerclient.Formance
-	ledgerURL string
+	url        string
+	client     *ledgerclient.SDK
+	metricsURL string
+	ledger     ledger.Ledger
 }
 
 func (r *RemoteLedgerEnv) URL() string {
-	return r.ledgerURL
+	return r.url
 }
 
-func (r *RemoteLedgerEnv) Client() *ledgerclient.Formance {
+func (r *RemoteLedgerEnv) Client() *ledgerclient.SDK {
 	return r.client
 }
 
@@ -50,10 +61,12 @@ func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 	return nil
 }
 
-func NewRemoteLedgerEnv(client *ledgerclient.Formance, ledgerURL string) *RemoteLedgerEnv {
+func NewRemoteLedgerEnv(client *ledgerclient.SDK, metricsURL string, ledger ledger.Ledger) *RemoteLedgerEnv {
 	return &RemoteLedgerEnv{
-		client:    client,
-		ledgerURL: ledgerURL,
+		client:     client,
+		metricsURL: metricsURL,
+		ledger:     ledger,
+		url:        metricsURL,
 	}
 }
 

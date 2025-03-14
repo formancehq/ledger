@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"reflect"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,9 +16,17 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
+
+// BucketWithLedgers represents a bucket with its associated ledgers
+type BucketWithLedgers struct {
+	Name            string
+	Ledgers         []string
+	MarkForDeletion bool
+}
 
 type Controller interface {
 	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
@@ -33,6 +40,8 @@ type Controller interface {
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
+	// ListBuckets returns all buckets with their associated ledgers and deletion status
+	ListBuckets(ctx context.Context) ([]BucketWithLedgers, error)
 }
 
 type DefaultController struct {
@@ -147,6 +156,47 @@ func (ctrl *DefaultController) MarkBucketAsDeleted(ctx context.Context, bucketNa
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "MarkBucketAsDeleted", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.store.MarkBucketAsDeleted(ctx, bucketName)
 	})))
+}
+
+func (ctrl *DefaultController) ListBuckets(ctx context.Context) ([]BucketWithLedgers, error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListBuckets", func(ctx context.Context) ([]BucketWithLedgers, error) {
+		// Get all distinct buckets
+		bucketNames, err := ctrl.store.GetDistinctBuckets(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		result := make([]BucketWithLedgers, 0, len(bucketNames))
+
+		// For each bucket, get its ledgers
+		for _, bucketName := range bucketNames {
+			ledgers, err := ctrl.store.GetLedgersByBucket(ctx, bucketName)
+			if err != nil {
+				return nil, err
+			}
+
+			// Create bucket info
+			bucketInfo := BucketWithLedgers{
+				Name:            bucketName,
+				Ledgers:         make([]string, 0, len(ledgers)),
+				MarkForDeletion: false,
+			}
+
+			// Check if any ledger in the bucket is marked as deleted
+			for _, l := range ledgers {
+				bucketInfo.Ledgers = append(bucketInfo.Ledgers, l.Name)
+
+				// If any ledger is deleted, consider the bucket as marked for deletion
+				if l.DeletedAt != nil {
+					bucketInfo.MarkForDeletion = true
+				}
+			}
+
+			result = append(result, bucketInfo)
+		}
+
+		return result, nil
+	})
 }
 
 func NewDefaultController(store Store, listener ledgercontroller.Listener, opts ...Option) *DefaultController {

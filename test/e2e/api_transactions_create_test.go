@@ -592,27 +592,26 @@ var _ = Context("Ledger transactions create API tests", func() {
 					v, _ := big.NewInt(0).SetString("1320000000000000000000000000000000000000000000000001", 10)
 					response, err = testServer.GetValue().Client().Ledger.V1.CreateTransaction(
 						ctx,
-						operations.CreateTransactionRequest{
-							PostTransaction: components.PostTransaction{
-								Metadata: map[string]any{},
-								Script: &components.PostTransactionScript{
-									Plain: `vars {
+						"default",
+						components.PostTransaction{
+							Metadata: map[string]any{},
+							Script: &components.PostTransactionScript{
+								Plain: `vars {
 								monetary $amount
 							}
 							send $amount (
 								source = @world
 								destination = @bob
 							)`,
-									Vars: map[string]interface{}{
-										"amount": map[string]any{
-											"asset":  "EUR/12",
-											"amount": v,
-										},
+								Vars: map[string]interface{}{
+									"amount": map[string]any{
+										"asset":  "EUR/12",
+										"amount": v,
 									},
 								},
 							},
-							Ledger: "default",
 						},
+						nil,
 					)
 				})
 				It("should be ok", func() {

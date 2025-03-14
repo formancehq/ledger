@@ -19,4 +19,8 @@ type Store interface {
 	OpenLedger(context.Context, string) (ledgercontroller.Store, *ledger.Ledger, error)
 	CreateLedger(context.Context, *ledger.Ledger) error
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
+	// GetDistinctBuckets returns all distinct bucket names
+	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	// GetLedgersByBucket returns all ledgers for a specific bucket
+	GetLedgersByBucket(ctx context.Context, bucketName string) ([]ledger.Ledger, error)
 }

@@ -36,6 +36,7 @@ func NewRouter(
 
 		router.Get("/_info", v1.GetInfo(systemController, version))
 		router.Delete("/_system/bucket", deleteBucket(systemController))
+		router.Get("/_system/bucket", listBuckets(systemController))
 
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
 		router.Route("/{ledger}", func(router chi.Router) {

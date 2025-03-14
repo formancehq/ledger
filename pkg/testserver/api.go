@@ -14,12 +14,12 @@ import (
 )
 
 func CreateLedger(ctx context.Context, srv *Server, request operations.V2CreateLedgerRequest) error {
-	_, err := srv.Client().Ledger.V2.CreateLedger(ctx, request)
+	_, err := srv.Client().Ledger.V2.CreateLedger(ctx, request.Ledger, request.V2CreateLedgerRequest)
 	return mapSDKError(err)
 }
 
 func GetLedger(ctx context.Context, srv *Server, request operations.V2GetLedgerRequest) (*components.V2Ledger, error) {
-	ret, err := srv.Client().Ledger.V2.GetLedger(ctx, request)
+	ret, err := srv.Client().Ledger.V2.GetLedger(ctx, request.Ledger)
 	if err := mapSDKError(err); err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func GetInfo(ctx context.Context, srv *Server) (*operations.V2GetInfoResponse, e
 }
 
 func GetLedgerInfo(ctx context.Context, srv *Server, request operations.V2GetLedgerInfoRequest) (*operations.V2GetLedgerInfoResponse, error) {
-	return srv.Client().Ledger.V2.GetLedgerInfo(ctx, request)
+	return srv.Client().Ledger.V2.GetLedgerInfo(ctx, request.Ledger)
 }
 
 func CreateTransaction(ctx context.Context, srv *Server, request operations.V2CreateTransactionRequest) (*components.V2Transaction, error) {
@@ -53,7 +53,7 @@ func CreateBulk(ctx context.Context, srv *Server, request operations.V2CreateBul
 }
 
 func GetBalancesAggregated(ctx context.Context, srv *Server, request operations.V2GetBalancesAggregatedRequest) (map[string]*big.Int, error) {
-	response, err := srv.Client().Ledger.V2.GetBalancesAggregated(ctx, request)
+	response, err := srv.Client().Ledger.V2.GetBalancesAggregated(ctx, request.Ledger, request.Pit, request.UseInsertionDate, request.RequestBody)
 	if err != nil {
 		return nil, mapSDKError(err)
 	}
@@ -69,12 +69,12 @@ func GetVolumesWithBalances(ctx context.Context, srv *Server, request operations
 }
 
 func UpdateLedgerMetadata(ctx context.Context, srv *Server, request operations.V2UpdateLedgerMetadataRequest) error {
-	_, err := srv.Client().Ledger.V2.UpdateLedgerMetadata(ctx, request)
+	_, err := srv.Client().Ledger.V2.UpdateLedgerMetadata(ctx, request.Ledger, request.RequestBody)
 	return mapSDKError(err)
 }
 
 func DeleteLedgerMetadata(ctx context.Context, srv *Server, request operations.V2DeleteLedgerMetadataRequest) error {
-	_, err := srv.Client().Ledger.V2.DeleteLedgerMetadata(ctx, request)
+	_, err := srv.Client().Ledger.V2.DeleteLedgerMetadata(ctx, request.Ledger, request.Key)
 	return mapSDKError(err)
 }
 
@@ -89,12 +89,12 @@ func AddMetadataToTransaction(ctx context.Context, srv *Server, request operatio
 }
 
 func DeleteAccountMetadata(ctx context.Context, srv *Server, request operations.V2DeleteAccountMetadataRequest) error {
-	_, err := srv.Client().Ledger.V2.DeleteAccountMetadata(ctx, request)
+	_, err := srv.Client().Ledger.V2.DeleteAccountMetadata(ctx, request.Ledger, request.Address, request.Key)
 	return mapSDKError(err)
 }
 
 func DeleteTransactionMetadata(ctx context.Context, srv *Server, request operations.V2DeleteTransactionMetadataRequest) error {
-	_, err := srv.Client().Ledger.V2.DeleteTransactionMetadata(ctx, request)
+	_, err := srv.Client().Ledger.V2.DeleteTransactionMetadata(ctx, request.Ledger, request.ID, request.Key)
 	return mapSDKError(err)
 }
 
@@ -109,7 +109,7 @@ func RevertTransaction(ctx context.Context, srv *Server, request operations.V2Re
 }
 
 func GetTransaction(ctx context.Context, srv *Server, request operations.V2GetTransactionRequest) (*components.V2Transaction, error) {
-	response, err := srv.Client().Ledger.V2.GetTransaction(ctx, request)
+	response, err := srv.Client().Ledger.V2.GetTransaction(ctx, request.Ledger, request.ID, request.Expand, request.Pit)
 
 	if err != nil {
 		return nil, mapSDKError(err)
@@ -119,7 +119,7 @@ func GetTransaction(ctx context.Context, srv *Server, request operations.V2GetTr
 }
 
 func GetAccount(ctx context.Context, srv *Server, request operations.V2GetAccountRequest) (*components.V2Account, error) {
-	response, err := srv.Client().Ledger.V2.GetAccount(ctx, request)
+	response, err := srv.Client().Ledger.V2.GetAccount(ctx, request.Ledger, request.Address, request.Expand, request.Pit)
 
 	if err != nil {
 		return nil, mapSDKError(err)
@@ -139,7 +139,7 @@ func ListTransactions(ctx context.Context, srv *Server, request operations.V2Lis
 }
 
 func CountTransactions(ctx context.Context, srv *Server, request operations.V2CountTransactionsRequest) (int, error) {
-	response, err := srv.Client().Ledger.V2.CountTransactions(ctx, request)
+	response, err := srv.Client().Ledger.V2.CountTransactions(ctx, request.Ledger, request.Pit, request.RequestBody)
 
 	if err != nil {
 		return 0, mapSDKError(err)
@@ -174,7 +174,7 @@ func ListLogs(ctx context.Context, srv *Server, request operations.V2ListLogsReq
 }
 
 func CountAccounts(ctx context.Context, srv *Server, request operations.V2CountAccountsRequest) (int, error) {
-	response, err := srv.Client().Ledger.V2.CountAccounts(ctx, request)
+	response, err := srv.Client().Ledger.V2.CountAccounts(ctx, request.Ledger, request.Pit, request.RequestBody)
 
 	if err != nil {
 		return 0, mapSDKError(err)
@@ -189,7 +189,7 @@ func CountAccounts(ctx context.Context, srv *Server, request operations.V2CountA
 }
 
 func ListLedgers(ctx context.Context, srv *Server, request operations.V2ListLedgersRequest) (*components.V2LedgerListResponseCursor, error) {
-	response, err := srv.Client().Ledger.V2.ListLedgers(ctx, request)
+	response, err := srv.Client().Ledger.V2.ListLedgers(ctx, request.PageSize, request.Cursor)
 
 	if err != nil {
 		return nil, mapSDKError(err)
@@ -199,7 +199,7 @@ func ListLedgers(ctx context.Context, srv *Server, request operations.V2ListLedg
 }
 
 func GetAggregatedBalances(ctx context.Context, srv *Server, request operations.V2GetBalancesAggregatedRequest) (map[string]*big.Int, error) {
-	response, err := srv.Client().Ledger.V2.GetBalancesAggregated(ctx, request)
+	response, err := srv.Client().Ledger.V2.GetBalancesAggregated(ctx, request.Ledger, request.Pit, request.UseInsertionDate, request.RequestBody)
 
 	if err != nil {
 		return nil, mapSDKError(err)
@@ -209,7 +209,7 @@ func GetAggregatedBalances(ctx context.Context, srv *Server, request operations.
 }
 
 func Export(ctx context.Context, srv *Server, request operations.V2ExportLogsRequest) (io.Reader, error) {
-	response, err := srv.Client().Ledger.V2.ExportLogs(ctx, request)
+	response, err := srv.Client().Ledger.V2.ExportLogs(ctx, request.Ledger)
 	if err != nil {
 		return nil, mapSDKError(err)
 	}
@@ -223,13 +223,21 @@ func Export(ctx context.Context, srv *Server, request operations.V2ExportLogsReq
 }
 
 func Import(ctx context.Context, srv *Server, request operations.V2ImportLogsRequest) error {
-	_, err := srv.Client().Ledger.V2.ImportLogs(ctx, request)
+	_, err := srv.Client().Ledger.V2.ImportLogs(ctx, request.Ledger, request.RequestBody)
 	return mapSDKError(err)
 }
 
 func DeleteBucket(ctx context.Context, srv *Server, request operations.V2DeleteBucketRequest) error {
-	_, err := srv.Client().Ledger.V2.DeleteBucket(ctx, request)
+	_, err := srv.Client().Ledger.V2.DeleteBucket(ctx, request.Name)
 	return mapSDKError(err)
+}
+
+func ListBuckets(ctx context.Context, srv *Server) (*operations.V2ListBucketsResponse, error) {
+	response, err := srv.Client().Ledger.V2.ListBuckets(ctx)
+	if err != nil {
+		return nil, mapSDKError(err)
+	}
+	return response, nil
 }
 
 func mapSDKError(err error) error {

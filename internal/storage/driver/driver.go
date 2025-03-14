@@ -220,6 +220,14 @@ func (d *Driver) MarkBucketAsDeleted(ctx context.Context, bucketName string) err
 	})
 }
 
+func (d *Driver) GetDistinctBuckets(ctx context.Context) ([]string, error) {
+	return systemstore.New(d.db).GetDistinctBuckets(ctx)
+}
+
+func (d *Driver) GetLedgersByBucket(ctx context.Context, bucketName string) ([]ledger.Ledger, error) {
+	return systemstore.New(d.db).GetLedgersByBucket(ctx, bucketName)
+}
+
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
 	return d.bucketFactory.Create(name, d.db).Migrate(ctx)
 }

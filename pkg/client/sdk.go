@@ -67,24 +67,24 @@ func (c *sdkConfiguration) GetServerDetails() (string, map[string]string) {
 	return ServerList[c.ServerIndex], nil
 }
 
-type Formance struct {
+type SDK struct {
 	Ledger *Ledger
 
 	sdkConfiguration sdkConfiguration
 }
 
-type SDKOption func(*Formance)
+type SDKOption func(*SDK)
 
 // WithServerURL allows the overriding of the default server URL
 func WithServerURL(serverURL string) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		sdk.sdkConfiguration.ServerURL = serverURL
 	}
 }
 
 // WithTemplatedServerURL allows the overriding of the default server URL with a templated URL populated with the provided parameters
 func WithTemplatedServerURL(serverURL string, params map[string]string) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		if params != nil {
 			serverURL = utils.ReplaceParameters(serverURL, params)
 		}
@@ -95,7 +95,7 @@ func WithTemplatedServerURL(serverURL string, params map[string]string) SDKOptio
 
 // WithServerIndex allows the overriding of the default server by index
 func WithServerIndex(serverIndex int) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		if serverIndex < 0 || serverIndex >= len(ServerList) {
 			panic(fmt.Errorf("server index %d out of range", serverIndex))
 		}
@@ -106,21 +106,21 @@ func WithServerIndex(serverIndex int) SDKOption {
 
 // WithClient allows the overriding of the default HTTP client used by the SDK
 func WithClient(client HTTPClient) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		sdk.sdkConfiguration.Client = client
 	}
 }
 
 // WithSecurity configures the SDK to use the provided security details
 func WithSecurity(security components.Security) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		sdk.sdkConfiguration.Security = utils.AsSecuritySource(security)
 	}
 }
 
 // WithSecuritySource configures the SDK to invoke the Security Source function on each method call to determine authentication
 func WithSecuritySource(security func(context.Context) (components.Security, error)) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		sdk.sdkConfiguration.Security = func(ctx context.Context) (interface{}, error) {
 			return security(ctx)
 		}
@@ -128,21 +128,21 @@ func WithSecuritySource(security func(context.Context) (components.Security, err
 }
 
 func WithRetryConfig(retryConfig retry.Config) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		sdk.sdkConfiguration.RetryConfig = &retryConfig
 	}
 }
 
 // WithTimeout Optional request timeout applied to each operation
 func WithTimeout(timeout time.Duration) SDKOption {
-	return func(sdk *Formance) {
+	return func(sdk *SDK) {
 		sdk.sdkConfiguration.Timeout = &timeout
 	}
 }
 
 // New creates a new instance of the SDK with the provided options
-func New(opts ...SDKOption) *Formance {
-	sdk := &Formance{
+func New(opts ...SDKOption) *SDK {
+	sdk := &SDK{
 		sdkConfiguration: sdkConfiguration{
 			Language:          "go",
 			OpenAPIDocVersion: "v2",

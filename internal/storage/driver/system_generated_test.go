@@ -100,6 +100,21 @@ func (mr *SystemStoreMockRecorder) GetLedger(ctx, name any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedger", reflect.TypeOf((*SystemStore)(nil).GetLedger), ctx, name)
 }
 
+// GetLedgersByBucket mocks base method.
+func (m *SystemStore) GetLedgersByBucket(ctx context.Context, bucketName string) ([]ledger.Ledger, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLedgersByBucket", ctx, bucketName)
+	ret0, _ := ret[0].([]ledger.Ledger)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLedgersByBucket indicates an expected call of GetLedgersByBucket.
+func (mr *SystemStoreMockRecorder) GetLedgersByBucket(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgersByBucket", reflect.TypeOf((*SystemStore)(nil).GetLedgersByBucket), ctx, bucketName)
+}
+
 // GetMigrator mocks base method.
 func (m *SystemStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
 	m.ctrl.T.Helper()

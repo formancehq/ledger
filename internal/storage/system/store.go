@@ -30,6 +30,7 @@ type Store interface {
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
 	IsUpToDate(ctx context.Context) (bool, error)
+	GetLedgersByBucket(ctx context.Context, bucketName string) ([]ledger.Ledger, error)
 }
 
 const (
@@ -164,6 +165,19 @@ func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName strin
 
 		return nil
 	})
+}
+
+func (d *DefaultStore) GetLedgersByBucket(ctx context.Context, bucketName string) ([]ledger.Ledger, error) {
+	var ledgers []ledger.Ledger
+	err := d.db.NewSelect().
+		Model(&ledgers).
+		Where("bucket = ?", bucketName).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledgers for bucket: %w", postgres.ResolveError(err))
+	}
+
+	return ledgers, nil
 }
 
 func New(db bun.IDB, opts ...Option) *DefaultStore {

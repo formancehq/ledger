@@ -4,12 +4,15 @@ package env
 
 import (
 	"context"
-	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"testing"
+
+	ledgerclient "github.com/formancehq/ledger/pkg/client"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 type Env interface {
-	Client() *ledgerclient.Formance
+	Client() *ledgerclient.SDK
 	URL() string
 	Stop(ctx context.Context) error
 }

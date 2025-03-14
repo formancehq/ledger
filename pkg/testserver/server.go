@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/nats-io/nats.go"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nats-io/nats.go"
 
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
@@ -148,7 +149,7 @@ type Logger interface {
 type Server struct {
 	configuration Configuration
 	logger        Logger
-	sdkClient     *ledgerclient.Formance
+	sdkClient     *ledgerclient.SDK
 	cancel        func()
 	ctx           context.Context
 	errorChan     chan error
@@ -284,7 +285,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 }
 
-func (s *Server) Client() *ledgerclient.Formance {
+func (s *Server) Client() *ledgerclient.SDK {
 	return s.sdkClient
 }
 

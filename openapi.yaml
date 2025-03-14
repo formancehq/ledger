@@ -1328,6 +1328,51 @@ paths:
       security:
         - Authorization:
             - ledger:write
+    get:
+      tags:
+        - ledger.v2
+      summary: List all buckets with their associated ledgers
+      operationId: v2ListBuckets
+      x-speakeasy-name-override: ListBuckets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: The name of the bucket
+                        ledgers:
+                          type: array
+                          items:
+                            type: string
+                          description: List of ledger names associated with this bucket
+                        markForDeletion:
+                          type: boolean
+                          description: Indicates if the bucket is marked for deletion
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
   /_/metrics:
     get:
       tags:

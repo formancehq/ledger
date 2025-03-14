@@ -128,6 +128,7 @@ func main() {
 #### [Ledger.V2](docs/sdks/v2/README.md)
 
 * [DeleteBucket](docs/sdks/v2/README.md#deletebucket) - Delete a bucket and mark all its ledgers as deleted
+* [ListBuckets](docs/sdks/v2/README.md#listbuckets) - List all buckets with their associated ledgers
 * [ListLedgers](docs/sdks/v2/README.md#listledgers) - List ledgers
 * [GetLedger](docs/sdks/v2/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/v2/README.md#createledger) - Create a ledger
