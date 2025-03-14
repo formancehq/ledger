@@ -21,6 +21,10 @@ type PostgresDatabaseComponent struct {
 	Namespace pulumix.Input[string]
 }
 
+func (cmp *PostgresDatabaseComponent) GetDatabase() pulumix.Input[string] {
+	return pulumix.Val("postgres")
+}
+
 func (cmp *PostgresDatabaseComponent) GetService() *corev1.Service {
 	return cmp.Service
 }
@@ -62,6 +66,7 @@ func newPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 
 	username := pulumix.Val("root")
 	password := pulumix.Val("password")
+
 	cmp.Namespace = args.Namespace
 
 	cmp.Chart, err = helm.NewChart(ctx, "postgres", &helm.ChartArgs{

@@ -15,6 +15,7 @@ type PostgresDatabaseArgs struct {
 }
 
 func (a PostgresDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ...pulumi.ResourceOption) (databaseComponent, error) {
+
 	uri, err := internals.UnsafeAwaitOutput(ctx.Context(), a.URI.ToOutput(ctx.Context()))
 	if err != nil {
 		return nil, fmt.Errorf("awaiting URI: %w", err)
@@ -25,12 +26,14 @@ func (a PostgresDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, optio
 		if err != nil {
 			return nil, fmt.Errorf("parsing port: %w", err)
 		}
+
 		return newExternalDatabaseComponent(ctx, "postgres", ExternalDatabaseComponentArgs{
 			Endpoint: pulumix.Val(dsn.GetHost()),
 			Username: pulumix.Val(dsn.GetUser()),
 			Password: pulumix.Val(dsn.GetPassword()),
 			Port:     pulumix.Val(port),
 			Options:  pulumix.Val(dsn.GetParams()),
+			Database: pulumix.Val(dsn.GetPath()),
 		})
 	}
 

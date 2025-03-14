@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -9,7 +9,7 @@ import (
 )
 
 type createServiceArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	Deployment *v1.Deployment
 }
 

@@ -1,9 +1,10 @@
 package api
 
 import (
+	"context"
 	"fmt"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -16,8 +17,30 @@ type Component struct {
 	Service    *corev1.Service
 }
 
+func (cmp *Component) GetDevBoxContainer(_ context.Context) corev1.ContainerInput {
+	return corev1.ContainerArgs{
+		Name:  pulumi.String("api"),
+		Image: pulumi.String("alpine/httpie:3.2.4"),
+		Command: pulumi.StringArray{
+			pulumi.String("sleep"),
+		},
+		Args: pulumi.StringArray{
+			pulumi.String("infinity"),
+		},
+		Env: corev1.EnvVarArray{
+			corev1.EnvVarArgs{
+				Name: pulumi.String("API_URL"),
+				Value: pulumi.Sprintf("http://%s.%s.svc.cluster.local:8080",
+					cmp.Service.Metadata.Name().Elem(),
+					cmp.Service.Metadata.Namespace().Elem(),
+				),
+			},
+		},
+	}
+}
+
 type ComponentArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	Args
 	Storage *storage.Component
 	Ingress *IngressArgs
