@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/formancehq/ledger/test/performance/env"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"net/http"
@@ -30,7 +31,7 @@ var (
 	parallelismFlag int64
 	reportFileFlag  string
 
-	envFactory EnvFactory
+	envFactory env.EnvFactory
 
 	scripts = map[string]ActionProviderFactory{}
 )
@@ -76,11 +77,13 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	envFactory = env.DefaultEnvFactory
+
 	switch {
 	case stackURLFlag != "":
-		envFactory = NewRemoteLedgerEnvFactory(getHttpClient(stackURLFlag+"/api/auth"), stackURLFlag+"/api/ledger")
+		envFactory = env.NewRemoteLedgerEnvFactory(getHttpClient(stackURLFlag+"/api/auth"), stackURLFlag+"/api/ledger")
 	case ledgerURLFlag != "":
-		envFactory = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURLFlag), ledgerURLFlag)
+		envFactory = env.NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURLFlag), ledgerURLFlag)
 	}
 
 	if envFactory == nil {

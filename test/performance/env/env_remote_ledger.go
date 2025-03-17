@@ -1,6 +1,6 @@
 //go:build it
 
-package performance_test
+package env
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledge
 	})
 	require.NoError(b, err)
 
-	return NewRemoteLedgerEnv(client, ledgerURLFlag, ledger)
+	return NewRemoteLedgerEnv(client, r.ledgerURL, ledger)
 }
 
 var _ EnvFactory = (*RemoteLedgerEnvFactory)(nil)
@@ -66,11 +66,11 @@ func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 	return nil
 }
 
-func NewRemoteLedgerEnv(client *ledgerclient.Formance, metricsURL string, ledger ledger.Ledger) *RemoteLedgerEnv {
+func NewRemoteLedgerEnv(client *ledgerclient.Formance, ledgerURL string, ledger ledger.Ledger) *RemoteLedgerEnv {
 	return &RemoteLedgerEnv{
 		client:    client,
 		ledger:    ledger,
-		ledgerURL: metricsURL,
+		ledgerURL: ledgerURL,
 	}
 }
 

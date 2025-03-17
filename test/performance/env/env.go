@@ -1,6 +1,6 @@
 //go:build it
 
-package performance_test
+package env
 
 import (
 	"context"
@@ -19,3 +19,5 @@ type Env interface {
 type EnvFactory interface {
 	Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env
 }
+
+var DefaultEnvFactory EnvFactory = nil

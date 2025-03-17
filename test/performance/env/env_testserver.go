@@ -1,6 +1,6 @@
 //go:build it && local
 
-package performance_test
+package env
 
 import (
 	"context"
@@ -102,5 +102,5 @@ func NewTestServerEnvFactory() *TestServerEnvFactory {
 }
 
 func init() {
-	envFactory = NewTestServerEnvFactory()
+	DefaultEnvFactory = NewTestServerEnvFactory()
 }
