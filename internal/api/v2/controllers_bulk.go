@@ -43,7 +43,7 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 			},
 		)
 		if err != nil {
-			api.InternalServerError(w, r, err)
+			common.InternalServerError(w, r, err)
 			return
 		}
 
