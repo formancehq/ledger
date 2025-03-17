@@ -40,7 +40,7 @@ func LedgerMiddleware(
 				case postgres.IsNotFoundError(err):
 					api.WriteErrorResponse(w, http.StatusNotFound, "LEDGER_NOT_FOUND", err)
 				default:
-					api.InternalServerError(w, r, err)
+					InternalServerError(w, r, err)
 				}
 				return
 			}
@@ -65,7 +65,7 @@ func LedgerMiddleware(
 			if !excluded {
 				isUpToDate, err := l.IsDatabaseUpToDate(ctx)
 				if err != nil {
-					api.InternalServerError(w, r, err)
+					InternalServerError(w, r, err)
 					return
 				}
 				if !isUpToDate {
