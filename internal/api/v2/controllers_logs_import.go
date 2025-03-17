@@ -36,14 +36,14 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 				close(stream)
 				break
 			} else {
-				api.InternalServerError(w, r, err)
+				common.InternalServerError(w, r, err)
 				return
 			}
 		}
 		select {
 		case stream <- l:
 		case <-r.Context().Done():
-			api.InternalServerError(w, r, r.Context().Err())
+			common.InternalServerError(w, r, r.Context().Err())
 			return
 		case err := <-errChan:
 			handleError(err)
@@ -57,7 +57,7 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case <-r.Context().Done():
-		api.InternalServerError(w, r, r.Context().Err())
+		common.InternalServerError(w, r, r.Context().Err())
 		return
 	}
 
