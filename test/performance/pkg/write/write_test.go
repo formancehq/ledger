@@ -1,18 +1,19 @@
 //go:build it
 
-package performance_test
+package write_test
 
 import (
 	"context"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/generate"
-	"github.com/formancehq/ledger/test/performance/env"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"os"
@@ -23,8 +24,20 @@ import (
 	"testing"
 )
 
-//go:embed scripts
-var scriptsDir embed.FS
+func init() {
+	flag.StringVar(&scriptFlag, "script", "", "Script to run")
+	flag.StringVar(&reportFileFlag, "report.file", "", "Location to write report file")
+	flag.Int64Var(&parallelismFlag, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
+}
+
+var (
+	//go:embed scripts
+	scriptsDir      embed.FS
+	scripts         = map[string]ActionProviderFactory{}
+	scriptFlag      string
+	parallelismFlag int64
+	reportFileFlag  string
+)
 
 type ActionProvider interface {
 	Get(globalIteration, iteration int) (*generate.Action, error)
@@ -95,7 +108,7 @@ func (benchmark *writeBenchmark) Run(ctx context.Context) map[string][]Result {
 
 				globalIteration := atomic.Int64{}
 
-				env := envFactory.Create(ctx, b, l)
+				env := env.Factory.Create(ctx, b, l)
 				b.Logf("ledger: %s/%s", l.Bucket, l.Name)
 
 				b.SetParallelism(int(parallelismFlag))
@@ -194,7 +207,7 @@ func BenchmarkWrite(b *testing.B) {
 	}
 
 	// Execute benchmarks
-	reports := newWriteBenchmark(b, envFactory, scripts).Run(logging.TestingContext())
+	reports := newWriteBenchmark(b, env.Factory, scripts).Run(logging.TestingContext())
 
 	// Write report
 	if reportFileFlag != "" {
@@ -206,4 +219,8 @@ func BenchmarkWrite(b *testing.B) {
 		enc.SetIndent("", "  ")
 		require.NoError(b, enc.Encode(reports))
 	}
+}
+
+func TestMain(m *testing.M) {
+	env.Start(m)
 }
