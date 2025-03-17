@@ -85,7 +85,7 @@ func newInvalidHashError(logID *big.Int, got, expected []byte) ImportError {
 }
 
 func (l *Ledger) Import(ctx context.Context, stream chan *ledger.ChainedLog) error {
-	if l.config.LedgerState.State != "initializing" {
+	if l.config.LedgerState.State == "in-use" {
 		return errors.New("ledger must be in initializing state to be imported")
 	}
 	batch := make([]*ledger.ChainedLog, 0)
@@ -108,7 +108,6 @@ func (l *Ledger) Import(ctx context.Context, stream chan *ledger.ChainedLog) err
 		}
 
 		log.ID = nextLogID
-		l.chain.ReplaceLast(log)
 
 		batch = append(batch, log)
 		if len(batch) == 100 { // notes(gfyrag): maybe we could parameterize that, but i don't think it will be useful
@@ -116,6 +115,8 @@ func (l *Ledger) Import(ctx context.Context, stream chan *ledger.ChainedLog) err
 				return err
 			}
 			batch = make([]*ledger.ChainedLog, 0)
+
+			l.chain.ReplaceLast(log)
 		}
 	}
 	if len(batch) > 0 {
@@ -123,6 +124,8 @@ func (l *Ledger) Import(ctx context.Context, stream chan *ledger.ChainedLog) err
 			return err
 		}
 	}
+
+	l.chain.ReplaceLast(batch[len(batch)-1])
 
 	return nil
 }
