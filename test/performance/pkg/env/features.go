@@ -1,6 +1,6 @@
 //go:build it
 
-package performance_test
+package env
 
 import (
 	. "github.com/formancehq/go-libs/v2/collectionutils"
@@ -8,9 +8,9 @@ import (
 	"sort"
 )
 
-func buildAllPossibleConfigurations() []configuration {
-	possibleConfigurations := make([]configuration, 0)
-	possibleConfigurations = append(possibleConfigurations, configuration{
+func BuildAllPossibleConfigurations() []Configuration {
+	possibleConfigurations := make([]Configuration, 0)
+	possibleConfigurations = append(possibleConfigurations, Configuration{
 		Name:       "MINIMAL",
 		FeatureSet: features.MinimalFeatureSet,
 	})
@@ -20,13 +20,13 @@ func buildAllPossibleConfigurations() []configuration {
 	sort.Strings(allFeatures)
 
 	for _, feature := range allFeatures {
-		possibleConfigurations = append(possibleConfigurations, configuration{
+		possibleConfigurations = append(possibleConfigurations, Configuration{
 			Name:       feature,
 			FeatureSet: features.MinimalFeatureSet.With(feature, features.FeatureConfigurations[feature][0]),
 		})
 		fullConfiguration = fullConfiguration.With(feature, features.FeatureConfigurations[feature][0])
 	}
-	possibleConfigurations = append(possibleConfigurations, configuration{
+	possibleConfigurations = append(possibleConfigurations, Configuration{
 		Name:       "FULL",
 		FeatureSet: fullConfiguration,
 	})
@@ -34,11 +34,11 @@ func buildAllPossibleConfigurations() []configuration {
 	return possibleConfigurations
 }
 
-type configuration struct {
+type Configuration struct {
 	Name       string
 	FeatureSet features.FeatureSet
 }
 
-func (c configuration) String() string {
+func (c Configuration) String() string {
 	return c.Name
 }

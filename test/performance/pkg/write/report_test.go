@@ -1,9 +1,10 @@
 //go:build it
 
-package performance_test
+package write_test
 
 import (
 	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"github.com/jamiealquiza/tachymeter"
 	"sync"
 )
@@ -15,7 +16,7 @@ type Result struct {
 	Metrics *tachymeter.Metrics
 
 	Name            string
-	Configuration   configuration
+	Configuration   env.Configuration
 	TPS             float64
 	InternalMetrics map[string]any
 }
@@ -29,7 +30,7 @@ type report struct {
 	Tachymeter *tachymeter.Tachymeter
 
 	Scenario        string
-	Configuration   configuration
+	Configuration   env.Configuration
 	InternalMetrics map[string]any
 }
 
@@ -61,7 +62,7 @@ func (r *report) reset() {
 	r.Tachymeter.Reset()
 }
 
-func newReport(configuration configuration, scenario string) report {
+func newReport(configuration env.Configuration, scenario string) report {
 	ret := report{
 		Scenario:      scenario,
 		Configuration: configuration,

@@ -1,6 +1,6 @@
 //go:build it && local
 
-package performance_test
+package write
 
 import (
 	"context"
@@ -8,23 +8,18 @@ import (
 	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"io"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/time"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/testserver"
-	"github.com/stretchr/testify/require"
 )
 
 type TestServerEnv struct {
 	testServer *testserver.Server
-	ledger     ledger.Ledger
 }
 
 func (e *TestServerEnv) Client() *ledgerclient.Formance {
@@ -39,13 +34,13 @@ func (e *TestServerEnv) Stop(ctx context.Context) error {
 	return e.testServer.Stop(ctx)
 }
 
-var _ Env = (*TestServerEnv)(nil)
+var _ env.Env = (*TestServerEnv)(nil)
 
 type TestServerEnvFactory struct {
 	dockerPool *docker.Pool
 }
 
-func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
+func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env {
 
 	f.dockerPool = docker.NewPool(b, logging.Testing())
 
@@ -78,29 +73,17 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 		ExperimentalFeatures: true,
 	})
 
-	_, err := testServer.Client().Ledger.V2.
-		CreateLedger(ctx, operations.V2CreateLedgerRequest{
-			Ledger: ledger.Name,
-			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-				Bucket:   pointer.For(ledger.Bucket),
-				Metadata: ledger.Metadata,
-				Features: ledger.Features,
-			},
-		})
-	require.NoError(b, err)
-
 	return &TestServerEnv{
 		testServer: testServer,
-		ledger:     ledger,
 	}
 }
 
-var _ EnvFactory = (*TestServerEnvFactory)(nil)
+var _ env.EnvFactory = (*TestServerEnvFactory)(nil)
 
 func NewTestServerEnvFactory() *TestServerEnvFactory {
 	return &TestServerEnvFactory{}
 }
 
 func init() {
-	envFactory = NewTestServerEnvFactory()
+	env.FallbackEnvFactory = NewTestServerEnvFactory()
 }

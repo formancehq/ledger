@@ -1,17 +1,13 @@
 //go:build it
 
-package performance_test
+package env
 
 import (
 	"context"
 	"net/http"
 	"testing"
 
-	ledger "github.com/formancehq/ledger/internal"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/stretchr/testify/require"
 )
 
 type RemoteLedgerEnvFactory struct {
@@ -19,24 +15,13 @@ type RemoteLedgerEnvFactory struct {
 	ledgerURL  string
 }
 
-func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
-
+func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B) Env {
 	client := ledgerclient.New(
 		ledgerclient.WithClient(r.httpClient),
 		ledgerclient.WithServerURL(r.ledgerURL),
 	)
 
-	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
-		Ledger: ledger.Name,
-		V2CreateLedgerRequest: components.V2CreateLedgerRequest{
-			Bucket:   &ledger.Bucket,
-			Metadata: ledger.Metadata,
-			Features: ledger.Features,
-		},
-	})
-	require.NoError(b, err)
-
-	return NewRemoteLedgerEnv(client, ledgerURLFlag, ledger)
+	return NewRemoteLedgerEnv(client, r.ledgerURL)
 }
 
 var _ EnvFactory = (*RemoteLedgerEnvFactory)(nil)
@@ -49,7 +34,6 @@ func NewRemoteLedgerEnvFactory(httpClient *http.Client, ledgerURL string) *Remot
 }
 
 type RemoteLedgerEnv struct {
-	ledger    ledger.Ledger
 	client    *ledgerclient.Formance
 	ledgerURL string
 }
@@ -66,11 +50,10 @@ func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 	return nil
 }
 
-func NewRemoteLedgerEnv(client *ledgerclient.Formance, metricsURL string, ledger ledger.Ledger) *RemoteLedgerEnv {
+func NewRemoteLedgerEnv(client *ledgerclient.Formance, ledgerURL string) *RemoteLedgerEnv {
 	return &RemoteLedgerEnv{
 		client:    client,
-		ledger:    ledger,
-		ledgerURL: metricsURL,
+		ledgerURL: ledgerURL,
 	}
 }
 

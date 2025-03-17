@@ -1,13 +1,11 @@
 //go:build it
 
-package performance_test
+package env
 
 import (
 	"context"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"testing"
-
-	ledger "github.com/formancehq/ledger/internal"
 )
 
 type Env interface {
@@ -17,5 +15,7 @@ type Env interface {
 }
 
 type EnvFactory interface {
-	Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env
+	Create(ctx context.Context, b *testing.B) Env
 }
+
+var FallbackEnvFactory EnvFactory = nil

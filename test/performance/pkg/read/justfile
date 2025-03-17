@@ -1,0 +1,14 @@
+set dotenv-load
+set positional-arguments
+
+tmpdir := `mktemp -d`
+
+run ledger config ledgerURL bench='.' benchtime='1s' count='1':
+    go test -run ^$ -tags it,local \
+        -timeout 600m \
+        -bench={{bench}} \
+        -count={{count}} \
+        -test.benchtime {{benchtime}} ./... \
+            -ledger {{ledger}} \
+            -ledger.url {{ledgerURL}} \
+            -config {{config}}

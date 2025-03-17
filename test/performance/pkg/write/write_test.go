@@ -1,20 +1,44 @@
 //go:build it
 
-package performance_test
+package write_test
 
 import (
 	"context"
+	"embed"
+	"encoding/json"
+	"flag"
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/collectionutils"
-	"github.com/formancehq/ledger/pkg/generate"
-	"sort"
-	"sync/atomic"
-	"testing"
-
+	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/generate"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync/atomic"
+	"testing"
+)
+
+func init() {
+	flag.StringVar(&scriptFlag, "script", "", "Script to run")
+	flag.StringVar(&reportFileFlag, "report.file", "", "Location to write report file")
+	flag.Int64Var(&parallelismFlag, "parallelism", 1, "Parallelism (default 1). Values is multiplied by GOMAXPROCS")
+}
+
+var (
+	//go:embed scripts
+	scriptsDir      embed.FS
+	scripts         = map[string]ActionProviderFactory{}
+	scriptFlag      string
+	parallelismFlag int64
+	reportFileFlag  string
 )
 
 type ActionProvider interface {
@@ -51,21 +75,21 @@ func NewJSActionProviderFactory(rootPath, script string) ActionProviderFactoryFn
 	}
 }
 
-type Benchmark struct {
-	EnvFactory EnvFactory
+type writeBenchmark struct {
+	EnvFactory env.EnvFactory
 	Scenarios  map[string]ActionProviderFactory
 
 	reports map[string]map[string]*report
 	b       *testing.B
 }
 
-func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
+func (benchmark *writeBenchmark) Run(ctx context.Context) map[string][]Result {
 	results := make(map[string][]Result, 0)
 	scenarios := Keys(benchmark.Scenarios)
 	sort.Strings(scenarios)
 
 	for _, scenario := range scenarios {
-		for _, configuration := range buildAllPossibleConfigurations() {
+		for _, configuration := range env.BuildAllPossibleConfigurations() {
 
 			testName := fmt.Sprintf("%s/%s", scenario, configuration)
 
@@ -86,7 +110,18 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 
 				globalIteration := atomic.Int64{}
 
-				env := envFactory.Create(ctx, b, l)
+				env := env.Factory.Create(ctx, b)
+
+				_, err := env.Client().Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+					Ledger: l.Name,
+					V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+						Bucket:   &l.Bucket,
+						Metadata: l.Metadata,
+						Features: l.Features,
+					},
+				})
+				require.NoError(b, err)
+
 				b.Logf("ledger: %s/%s", l.Bucket, l.Name)
 
 				b.SetParallelism(int(parallelismFlag))
@@ -145,11 +180,58 @@ func (benchmark *Benchmark) Run(ctx context.Context) map[string][]Result {
 	return results
 }
 
-func New(b *testing.B, envFactory EnvFactory, scenarios map[string]ActionProviderFactory) *Benchmark {
-	return &Benchmark{
+func newWriteBenchmark(b *testing.B, envFactory env.EnvFactory, scenarios map[string]ActionProviderFactory) *writeBenchmark {
+	return &writeBenchmark{
 		b:          b,
 		EnvFactory: envFactory,
 		Scenarios:  scenarios,
 		reports:    make(map[string]map[string]*report),
+	}
+}
+
+func BenchmarkWrite(b *testing.B) {
+
+	// Load default scripts
+	if scriptFlag == "" {
+		entries, err := scriptsDir.ReadDir("scripts")
+		require.NoError(b, err)
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			script, err := scriptsDir.ReadFile(filepath.Join("scripts", entry.Name()))
+			require.NoError(b, err)
+
+			rootPath, err := filepath.Abs("scripts")
+			require.NoError(b, err)
+
+			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSActionProviderFactory(rootPath, string(script))
+		}
+	} else {
+		file, err := os.ReadFile(scriptFlag)
+		require.NoError(b, err, "reading file "+scriptFlag)
+
+		rootPath, err := filepath.Abs(filepath.Dir(scriptFlag))
+		require.NoError(b, err)
+
+		scripts["provided"] = NewJSActionProviderFactory(rootPath, string(file))
+	}
+
+	env.Start()
+
+	// Execute benchmarks
+	reports := newWriteBenchmark(b, env.Factory, scripts).Run(logging.TestingContext())
+
+	// Write report
+	if reportFileFlag != "" {
+		require.NoError(b, os.MkdirAll(filepath.Dir(reportFileFlag), 0755))
+
+		f, err := os.Create(reportFileFlag)
+		require.NoError(b, err)
+		enc := json.NewEncoder(f)
+		enc.SetIndent("", "  ")
+		require.NoError(b, enc.Encode(reports))
 	}
 }

@@ -5,7 +5,7 @@ The benchmarks also test the minimal set of features and the full set of feature
 
 Refer to [features](../../CONTRIBUTING.md/#features) for more information about features.
 
-Scripts can be found in directory [scripts](./scripts).
+Scripts can be found in directory [scripts](pkg/write/scripts).
 
 ## Run locally
 
