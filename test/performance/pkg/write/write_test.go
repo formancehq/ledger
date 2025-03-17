@@ -12,6 +12,8 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/generate"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"github.com/google/uuid"
@@ -108,7 +110,18 @@ func (benchmark *writeBenchmark) Run(ctx context.Context) map[string][]Result {
 
 				globalIteration := atomic.Int64{}
 
-				env := env.Factory.Create(ctx, b, l)
+				env := env.Factory.Create(ctx, b)
+
+				_, err := env.Client().Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+					Ledger: l.Name,
+					V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+						Bucket:   &l.Bucket,
+						Metadata: l.Metadata,
+						Features: l.Features,
+					},
+				})
+				require.NoError(b, err)
+
 				b.Logf("ledger: %s/%s", l.Bucket, l.Name)
 
 				b.SetParallelism(int(parallelismFlag))
@@ -206,6 +219,8 @@ func BenchmarkWrite(b *testing.B) {
 		scripts["provided"] = NewJSActionProviderFactory(rootPath, string(file))
 	}
 
+	env.Start()
+
 	// Execute benchmarks
 	reports := newWriteBenchmark(b, env.Factory, scripts).Run(logging.TestingContext())
 
@@ -219,8 +234,4 @@ func BenchmarkWrite(b *testing.B) {
 		enc.SetIndent("", "  ")
 		require.NoError(b, enc.Encode(reports))
 	}
-}
-
-func TestMain(m *testing.M) {
-	env.Start(m)
 }

@@ -1,5 +1,4 @@
 //go:build it
-// +build it
 
 package env
 
@@ -8,11 +7,11 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/httpclient"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"net/http"
 	"os"
-	"testing"
 )
 
 var (
@@ -37,7 +36,16 @@ func init() {
 	flag.StringVar(&authIssuerURLFlag, "auth.url", "", "Auth url (ignored if --stack.url is specified)")
 }
 
-func getHttpClient(authUrl string) *http.Client {
+func GetHTTPClient() *http.Client {
+
+	authUrl := ""
+	switch {
+	case stackURLFlag != "":
+		authUrl = stackURLFlag + "/api/auth"
+	case ledgerURLFlag != "":
+		authUrl = authIssuerURLFlag
+	}
+
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns:        100,
@@ -47,6 +55,9 @@ func getHttpClient(authUrl string) *http.Client {
 				InsecureSkipVerify: true,
 			},
 		},
+	}
+	if os.Getenv("DEBUG") == "true" {
+		httpClient.Transport = httpclient.NewDebugHTTPTransport(httpClient.Transport)
 	}
 	if authClientIDFlag != "" {
 		httpClient = (&clientcredentials.Config{
@@ -61,25 +72,25 @@ func getHttpClient(authUrl string) *http.Client {
 	return httpClient
 }
 
-func Start(m *testing.M) {
+func Start() {
+	flag.Parse()
+
 	if stackURLFlag != "" && ledgerURLFlag != "" {
 		_, _ = fmt.Fprintf(os.Stderr, "Cannot specify both --stack.url and --ledger.url\n")
 		os.Exit(1)
 	}
 
-	Factory = DefaultEnvFactory
+	Factory = FallbackEnvFactory
 
 	switch {
 	case stackURLFlag != "":
-		Factory = NewRemoteLedgerEnvFactory(getHttpClient(stackURLFlag+"/api/auth"), stackURLFlag+"/api/ledger")
+		Factory = NewRemoteLedgerEnvFactory(GetHTTPClient(), stackURLFlag+"/api/ledger")
 	case ledgerURLFlag != "":
-		Factory = NewRemoteLedgerEnvFactory(getHttpClient(authIssuerURLFlag), ledgerURLFlag)
+		Factory = NewRemoteLedgerEnvFactory(GetHTTPClient(), ledgerURLFlag)
 	}
 
 	if Factory == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "No env selected, you need to specify either --stack.url or --ledger.url\n")
 		os.Exit(1)
 	}
-
-	os.Exit(m.Run())
 }

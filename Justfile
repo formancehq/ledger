@@ -14,7 +14,6 @@ lint:
         popd; \
     done
     @cd {{justfile_directory()}}/deployments/pulumi && golangci-lint run --fix --build-tags it --timeout 5m
-    @cd {{justfile_directory()}}/test/performance && golangci-lint run --fix --build-tags it --timeout 5m
 
 tidy:
     @for d in $(ls tools); do \
