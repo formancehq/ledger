@@ -81,7 +81,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B, ledger 
 	_, err := testServer.Client().Ledger.V2.
 		CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: ledger.Name,
-			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+			V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 				Bucket:   pointer.For(ledger.Bucket),
 				Metadata: ledger.Metadata,
 				Features: ledger.Features,
