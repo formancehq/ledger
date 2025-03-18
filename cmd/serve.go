@@ -88,7 +88,7 @@ func NewServeCommand() *cobra.Command {
 
 			options := []fx.Option{
 				fx.NopLogger,
-				otlp.FXModuleFromFlags(cmd),
+				otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
 				otlptraces.FXModuleFromFlags(cmd),
 				otlpmetrics.FXModuleFromFlags(cmd),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
