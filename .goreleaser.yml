@@ -35,7 +35,7 @@ builds:
       - amd64
       - arm64
     command: test
-    dir: test/performance
+    dir: test/performance/pkg/write
     no_main_check: true
     tags:
       - it
