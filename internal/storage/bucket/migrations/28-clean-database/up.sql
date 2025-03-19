@@ -111,7 +111,7 @@ begin
 			case
 			when previousHash is null
 			then marshalledAsJSON::bytea
-			else '"' || encode(previousHash::bytea, 'base64')::bytea || E'"\n' || convert_to(marshalledAsJSON, 'UTF-8')::bytea
+			else '"' || encode(previousHash::bytea, 'base64')::bytea || E'"\n' || marshalledAsJSON::bytea
 			end || E'\n', 'sha256'::text
 		)
 	);
