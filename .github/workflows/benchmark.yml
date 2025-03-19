@@ -22,7 +22,6 @@ concurrency:
 jobs:
   Benchmark:
     runs-on: "github-001"
-    if: github.ref == 'refs/heads/main'
     steps:
       - uses: 'actions/checkout@v4'
         with:
