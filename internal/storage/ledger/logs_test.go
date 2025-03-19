@@ -5,6 +5,7 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
+	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"golang.org/x/sync/errgroup"
 	"math/big"
@@ -32,7 +33,10 @@ func TestLogsInsert(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
 		store := newLedgerStore(t)
 		log1 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction:     ledger.NewTransaction(),
+			Transaction: ledger.NewTransaction().WithMetadata(metadata.Metadata{
+				"foo": "<nil>",
+				"bar": "?/\\'>",
+			}),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log1Copy := log1
@@ -52,7 +56,9 @@ func TestLogsInsert(t *testing.T) {
 		// Insert a new log to test the hash when a previous hash exists
 		// We also addi an idempotency key to check for conflicts
 		log2 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction:     ledger.NewTransaction().WithID(1),
+			Transaction: ledger.NewTransaction().WithID(1).WithMetadata(metadata.Metadata{
+				"foo": "<nil>",
+			}),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log2Copy := log2
