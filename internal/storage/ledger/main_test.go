@@ -45,7 +45,9 @@ func TestMain(m *testing.M) {
 
 				bunDB := bun.NewDB(db, pgdialect.New(), bun.WithDiscardUnknownColumns())
 				if os.Getenv("DEBUG") == "true" {
-					bunDB.AddQueryHook(bundebug.NewQueryHook())
+					queryHook := bundebug.NewQueryHook()
+					queryHook.Debug = true
+					bunDB.AddQueryHook(queryHook)
 				}
 				bunDB.SetMaxOpenConns(100)
 
