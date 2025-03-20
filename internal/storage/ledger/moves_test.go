@@ -157,7 +157,7 @@ func TestMovesInsert(t *testing.T) {
 					tx := ledger.NewTransaction().WithPostings(
 						ledger.NewPosting(src, dst, "USD", big.NewInt(1)),
 					)
-					err = storeCP.CommitTransaction(ctx, &tx)
+					err = storeCP.CommitTransaction(ctx, &tx, nil)
 					if errors.Is(err, postgres.ErrDeadlockDetected) {
 						require.NoError(t, sqlTx.Rollback())
 						continue

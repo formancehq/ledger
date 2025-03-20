@@ -104,17 +104,17 @@ func (mr *MockStoreMockRecorder) Commit() *gomock.Call {
 }
 
 // CommitTransaction mocks base method.
-func (m *MockStore) CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error {
+func (m *MockStore) CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CommitTransaction", ctx, transaction)
+	ret := m.ctrl.Call(m, "CommitTransaction", ctx, transaction, accountMetadata)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CommitTransaction indicates an expected call of CommitTransaction.
-func (mr *MockStoreMockRecorder) CommitTransaction(ctx, transaction any) *gomock.Call {
+func (mr *MockStoreMockRecorder) CommitTransaction(ctx, transaction, accountMetadata any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitTransaction", reflect.TypeOf((*MockStore)(nil).CommitTransaction), ctx, transaction)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitTransaction", reflect.TypeOf((*MockStore)(nil).CommitTransaction), ctx, transaction, accountMetadata)
 }
 
 // DeleteAccountMetadata mocks base method.

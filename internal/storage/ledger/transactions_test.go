@@ -40,7 +40,7 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 		).
 		WithReference("tx1").
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -49,7 +49,7 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 		).
 		WithReference("tx2").
 		WithTimestamp(now.Add(-2 * time.Hour))
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	tx, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
@@ -109,7 +109,7 @@ func TestTransactionsCount(t *testing.T) {
 		tx := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", fmt.Sprintf("account%d", i), "USD", big.NewInt(100)),
 		)
-		err := store.CommitTransaction(ctx, &tx)
+		err := store.CommitTransaction(ctx, &tx, nil)
 		require.NoError(t, err)
 	}
 
@@ -130,7 +130,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
 		).
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -138,7 +138,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 			ledger.NewPosting("world", "polo", "USD", big.NewInt(200)),
 		).
 		WithTimestamp(now.Add(-2 * time.Hour))
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	// Update their metadata
@@ -189,7 +189,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"foo1": "bar1", "foo2": "bar2"}).
 		WithTimestamp(now.Add(-3 * time.Hour)))
-	err := store.CommitTransaction(ctx, tx1)
+	err := store.CommitTransaction(ctx, tx1, nil)
 	require.NoError(t, err)
 
 	// Get from database and check metadata presence
@@ -235,7 +235,7 @@ func TestTransactionsCommit(t *testing.T) {
 		tx1 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:1", "account:2", "USD", big.NewInt(100)),
 		)
-		err := store.CommitTransaction(ctx, &tx1)
+		err := store.CommitTransaction(ctx, &tx1, nil)
 		require.NoError(t, err)
 		require.Equal(t, 1, *tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
@@ -257,7 +257,7 @@ func TestTransactionsCommit(t *testing.T) {
 		tx2 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:2", "account:3", "USD", big.NewInt(100)),
 		)
-		err = store.CommitTransaction(ctx, &tx2)
+		err = store.CommitTransaction(ctx, &tx2, nil)
 		require.NoError(t, err)
 		require.Equal(t, 2, *tx2.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
@@ -283,7 +283,7 @@ func TestTransactionsCommit(t *testing.T) {
 		tx3 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:x", "account:x", "USD", big.NewInt(100)),
 		)
-		err := store.CommitTransaction(ctx, &tx3)
+		err := store.CommitTransaction(ctx, &tx3, nil)
 		require.NoError(t, err)
 		require.Equal(t, 1, *tx3.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
@@ -332,6 +332,7 @@ func TestTransactionsCommit(t *testing.T) {
 				pointer.For(ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("account:1", "account:2", "USD", big.NewInt(100)),
 				)),
+				nil,
 			)
 		}()
 
@@ -370,6 +371,7 @@ func TestTransactionsCommit(t *testing.T) {
 				pointer.For(ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("account:2", "account:1", "USD", big.NewInt(100)),
 				)),
+				nil,
 			)
 		}()
 
@@ -427,7 +429,7 @@ func TestTransactionsCommit(t *testing.T) {
 				tx := ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				)
-				err = store.CommitTransaction(ctx, &tx)
+				err = store.CommitTransaction(ctx, &tx, nil)
 				if err != nil {
 					errChan <- err
 					return
@@ -494,28 +496,28 @@ func TestInsertTransactionInPast(t *testing.T) {
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now)
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("bank", "user1", "USD/2", big.NewInt(50)),
 	).WithTimestamp(now.Add(time.Hour))
 
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	// Insert in past must modify pre/post commit volumes of tx2
 	tx3 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("bank", "user2", "USD/2", big.NewInt(50)),
 	).WithTimestamp(now.Add(30 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx3)
+	err = store.CommitTransaction(ctx, &tx3, nil)
 	require.NoError(t, err)
 
 	// Insert before the oldest tx must update first_usage of involved account
 	tx4 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now.Add(-time.Minute))
-	err = store.CommitTransaction(ctx, &tx4)
+	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
 	tx2FromDatabase, err := store.Transactions().GetOne(ctx, ledgercontroller.ResourceQuery[any]{
@@ -554,7 +556,7 @@ func TestTransactionsRevert(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	// Revert the tx
@@ -680,7 +682,7 @@ func TestTransactionsList(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -689,7 +691,7 @@ func TestTransactionsList(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"category": "2"}).
 		WithTimestamp(now.Add(-2 * time.Hour))
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	tx3BeforeRevert := ledger.NewTransaction().
@@ -698,7 +700,7 @@ func TestTransactionsList(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"category": "3"}).
 		WithTimestamp(now.Add(-time.Hour))
-	err = store.CommitTransaction(ctx, &tx3BeforeRevert)
+	err = store.CommitTransaction(ctx, &tx3BeforeRevert, nil)
 	require.NoError(t, err)
 
 	_, hasBeenReverted, err := store.RevertTransaction(ctx, *tx3BeforeRevert.ID, time.Time{})
@@ -706,7 +708,7 @@ func TestTransactionsList(t *testing.T) {
 	require.True(t, hasBeenReverted)
 
 	tx4 := tx3BeforeRevert.Reverse().WithTimestamp(now)
-	err = store.CommitTransaction(ctx, &tx4)
+	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
 	_, _, err = store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
@@ -730,7 +732,7 @@ func TestTransactionsList(t *testing.T) {
 			ledger.NewPosting("users:marley", "sellers:amazon", "USD", big.NewInt(100)),
 		).
 		WithTimestamp(now)
-	err = store.CommitTransaction(ctx, &tx5)
+	err = store.CommitTransaction(ctx, &tx5, nil)
 	require.NoError(t, err)
 
 	type testCase struct {

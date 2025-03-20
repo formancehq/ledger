@@ -51,56 +51,56 @@ func TestVolumesList(t *testing.T) {
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(-4 * time.Minute)).
 		WithInsertedAt(now.Add(4 * time.Minute))
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(-3 * time.Minute)).
 		WithInsertedAt(now.Add(3 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	tx3 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("account:1", "bank", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(-2 * time.Minute)).
 		WithInsertedAt(now.Add(2 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx3)
+	err = store.CommitTransaction(ctx, &tx3, nil)
 	require.NoError(t, err)
 
 	tx4 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(0))).
 		WithTimestamp(now.Add(-time.Minute)).
 		WithInsertedAt(now.Add(time.Minute))
-	err = store.CommitTransaction(ctx, &tx4)
+	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
 	tx5 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:2", "USD", big.NewInt(50))).
 		WithTimestamp(now).
 		WithInsertedAt(now)
-	err = store.CommitTransaction(ctx, &tx5)
+	err = store.CommitTransaction(ctx, &tx5, nil)
 	require.NoError(t, err)
 
 	tx6 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:2", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(1 * time.Minute)).
 		WithInsertedAt(now.Add(-time.Minute))
-	err = store.CommitTransaction(ctx, &tx6)
+	err = store.CommitTransaction(ctx, &tx6, nil)
 	require.NoError(t, err)
 
 	tx7 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("account:2", "bank", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(2 * time.Minute)).
 		WithInsertedAt(now.Add(-2 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx7)
+	err = store.CommitTransaction(ctx, &tx7, nil)
 	require.NoError(t, err)
 
 	tx8 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:2", "USD", big.NewInt(25))).
 		WithTimestamp(now.Add(3 * time.Minute)).
 		WithInsertedAt(now.Add(-3 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx8)
+	err = store.CommitTransaction(ctx, &tx8, nil)
 	require.NoError(t, err)
 
 	t.Run("Get all volumes with first account usage filter", func(t *testing.T) {
@@ -498,43 +498,43 @@ func TestVolumesAggregate(t *testing.T) {
 		WithPostings(ledger.NewPosting("world", "account:1:2", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(-4 * time.Minute)).
 		WithInsertedAt(now)
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1:1", "EUR", big.NewInt(100))).
 		WithTimestamp(now.Add(-3 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	tx3 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1:2", "EUR", big.NewInt(50))).
 		WithTimestamp(now.Add(-2 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx3)
+	err = store.CommitTransaction(ctx, &tx3, nil)
 	require.NoError(t, err)
 
 	tx4 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1:3", "USD", big.NewInt(0))).
 		WithTimestamp(now.Add(-time.Minute))
-	err = store.CommitTransaction(ctx, &tx4)
+	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
 	tx5 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:2:1", "USD", big.NewInt(50))).
 		WithTimestamp(now)
-	err = store.CommitTransaction(ctx, &tx5)
+	err = store.CommitTransaction(ctx, &tx5, nil)
 	require.NoError(t, err)
 
 	tx6 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:2:2", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(1 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx6)
+	err = store.CommitTransaction(ctx, &tx6, nil)
 	require.NoError(t, err)
 
 	tx7 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:2:3", "EUR", big.NewInt(25))).
 		WithTimestamp(now.Add(3 * time.Minute))
-	err = store.CommitTransaction(ctx, &tx7)
+	err = store.CommitTransaction(ctx, &tx7, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
