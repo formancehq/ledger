@@ -52,7 +52,7 @@ func TestCreateTransaction(t *testing.T) {
 		}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any()).
+		CommitTransaction(gomock.Any(), gomock.Any(), nil).
 		Return(nil)
 
 	store.EXPECT().
@@ -101,7 +101,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(map[string]map[string]*big.Int{}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any()).
+		CommitTransaction(gomock.Any(), gomock.Any(), nil).
 		Return(nil)
 
 	store.EXPECT().
