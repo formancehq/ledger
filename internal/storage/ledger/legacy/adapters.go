@@ -264,8 +264,8 @@ func (d *DefaultStoreAdapter) GetBalances(ctx context.Context, query ledgercontr
 	return d.newStore.GetBalances(ctx, query)
 }
 
-func (d *DefaultStoreAdapter) CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error {
-	return d.newStore.CommitTransaction(ctx, transaction)
+func (d *DefaultStoreAdapter) CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
+	return d.newStore.CommitTransaction(ctx, transaction, accountMetadata)
 }
 
 func (d *DefaultStoreAdapter) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {

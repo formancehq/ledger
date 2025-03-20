@@ -199,7 +199,7 @@ func TestBalancesAggregates(t *testing.T) {
 		).
 		WithTimestamp(now).
 		WithInsertedAt(now)
-	err := store.CommitTransaction(ctx, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -210,7 +210,7 @@ func TestBalancesAggregates(t *testing.T) {
 		).
 		WithTimestamp(now.Add(-time.Minute)).
 		WithInsertedAt(now.Add(time.Minute))
-	err = store.CommitTransaction(ctx, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{

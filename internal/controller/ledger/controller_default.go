@@ -4,14 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
+	"reflect"
+
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
-	"math/big"
-	"reflect"
-
-	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -199,17 +198,10 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 	switch payload := log.Data.(type) {
 	case ledger.CreatedTransaction:
 		logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-		if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction); err != nil {
+		if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
 			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
 		logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
-
-		if len(payload.AccountMetadata) > 0 {
-			logging.FromContext(ctx).Debugf("Importing metadata of accounts '%s'", Keys(payload.AccountMetadata))
-			if err := ctrl.store.UpdateAccountsMetadata(ctx, payload.AccountMetadata); err != nil {
-				return fmt.Errorf("updating metadata of accounts '%s': %w", Keys(payload.AccountMetadata), err)
-			}
-		}
 	case ledger.RevertedTransaction:
 		logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
 		_, _, err := ctrl.store.RevertTransaction(
@@ -220,7 +212,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 		if err != nil {
 			return fmt.Errorf("failed to revert transaction: %w", err)
 		}
-		if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction); err != nil {
+		if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
 			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
 	case ledger.SavedMetadata:
@@ -332,15 +324,9 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
 		WithReference(parameters.Input.Reference)
-	err = store.CommitTransaction(ctx, &transaction)
+	err = store.CommitTransaction(ctx, &transaction, result.AccountMetadata)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(result.AccountMetadata) > 0 {
-		if err := store.UpdateAccountsMetadata(ctx, result.AccountMetadata); err != nil {
-			return nil, fmt.Errorf("updating metadata of account '%s': %w", Keys(result.AccountMetadata), err)
-		}
 	}
 
 	return &ledger.CreatedTransaction{
@@ -407,7 +393,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 		}
 	}
 
-	err = store.CommitTransaction(ctx, &reversedTx)
+	err = store.CommitTransaction(ctx, &reversedTx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert transaction: %w", err)
 	}
