@@ -34,7 +34,7 @@ type Store interface {
 
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query BalanceQuery) (Balances, error)
-	CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error
+	CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error
 	// RevertTransaction revert the transaction with identifier id
 	// It returns :
 	//  * the reverted transaction

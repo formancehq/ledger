@@ -32,7 +32,7 @@ func TestAccountsList(t *testing.T) {
 	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now).
-		WithInsertedAt(now)))
+		WithInsertedAt(now)), nil)
 	require.NoError(t, err)
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
@@ -56,19 +56,19 @@ func TestAccountsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(4*time.Minute)).
-		WithInsertedAt(now.Add(100*time.Millisecond))))
+		WithInsertedAt(now.Add(100*time.Millisecond))), nil)
 	require.NoError(t, err)
 
 	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("account:1", "bank", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(3*time.Minute)).
-		WithInsertedAt(now.Add(200*time.Millisecond))))
+		WithInsertedAt(now.Add(200*time.Millisecond))), nil)
 	require.NoError(t, err)
 
 	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(0))).
 		WithTimestamp(now.Add(-time.Minute)).
-		WithInsertedAt(now.Add(200*time.Millisecond))))
+		WithInsertedAt(now.Add(200*time.Millisecond))), nil)
 	require.NoError(t, err)
 
 	t.Run("list all", func(t *testing.T) {
@@ -306,7 +306,7 @@ func TestAccountsGet(t *testing.T) {
 	tx1 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now))
-	err := store.CommitTransaction(ctx, tx1)
+	err := store.CommitTransaction(ctx, tx1, nil)
 	require.NoError(t, err)
 
 	// sleep for at least the time precision to ensure the next transaction is inserted with a different timestamp
@@ -321,7 +321,7 @@ func TestAccountsGet(t *testing.T) {
 	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),
 	).WithTimestamp(now.Add(-time.Minute)))
-	err = store.CommitTransaction(ctx, tx2)
+	err = store.CommitTransaction(ctx, tx2, nil)
 	require.NoError(t, err)
 
 	t.Run("find account", func(t *testing.T) {
@@ -447,7 +447,7 @@ func TestAccountsCount(t *testing.T) {
 
 	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "central_bank", "USD/2", big.NewInt(100)),
-	)))
+	)), nil)
 	require.NoError(t, err)
 
 	countAccounts, err := store.Accounts().Count(ctx, ledgercontroller.ResourceQuery[any]{})

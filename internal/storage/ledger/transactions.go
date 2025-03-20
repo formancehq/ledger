@@ -34,7 +34,10 @@ var (
 	metadataRegex = regexp.MustCompile(`metadata\[(.+)]`)
 )
 
-func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
+func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
+	if accountMetadata == nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+	}
 
 	postCommitVolumes, err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
@@ -51,7 +54,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 		return &ledger.Account{
 			Address:       address,
 			FirstUsage:    tx.Timestamp,
-			Metadata:      make(metadata.Metadata),
+			Metadata:      accountMetadata[address],
 			InsertionDate: tx.InsertedAt,
 			UpdatedAt:     tx.InsertedAt,
 		}
