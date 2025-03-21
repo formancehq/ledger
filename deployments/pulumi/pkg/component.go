@@ -41,13 +41,13 @@ func (args *ComponentArgs) SetDefaults() {
 type Component struct {
 	pulumi.ResourceState
 
-	API        *api.Component
+	API       *api.Component
 	Worker     *worker.Component
-	Storage    *storage.Component
-	Namespace  *corev1.Namespace
-	Devbox     *devbox.Component
-	Provision  *provision.Component
-	Generator  *generator.Component
+	Storage   *storage.Component
+	Namespace *corev1.Namespace
+	Devbox    *devbox.Component
+	Provision *provision.Component
+	Generator *generator.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -126,14 +126,20 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		}
 	}
 
-	if args.Generator != nil {
+	if args.Generator != nil && len(args.Generator.Ledgers) > 0 {
+		dependsOn := append(options, pulumi.DependsOn([]pulumi.Resource{
+			cmp.API,
+		}))
+		if cmp.Provision != nil {
+			dependsOn = append(dependsOn, pulumi.DependsOn([]pulumi.Resource{
+				cmp.Provision,
+			}))
+		}
 		cmp.Generator, err = generator.NewComponent(ctx, "generator", generator.ComponentArgs{
 			CommonArgs: args.CommonArgs,
 			API:        cmp.API,
 			Args:       *args.Generator,
-		}, append(options, pulumi.DependsOn([]pulumi.Resource{
-			cmp.Provision,
-		}))...)
+		}, dependsOn...)
 		if err != nil {
 			return nil, err
 		}
