@@ -254,9 +254,6 @@ type API struct {
 
 	// ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter
 	ExperimentalNumscriptInterpreter bool `json:"experimental-numscript-interpreter" yaml:"experimental-numscript-interpreter"`
-
-	// ExperimentalConnectors is whether to enable experimental connectors
-	ExperimentalConnectors bool `json:"experimental-connectors" yaml:"experimental-connectors"`
 }
 
 func (d API) toInput() api.Args {
@@ -270,7 +267,6 @@ func (d API) toInput() api.Args {
 		TerminationGracePeriodSeconds:    pulumix.Val(d.TerminationGracePeriodSeconds),
 		ExperimentalFeatures:             pulumix.Val(d.ExperimentalFeatures),
 		ExperimentalNumscriptInterpreter: pulumix.Val(d.ExperimentalNumscriptInterpreter),
-		ExperimentalConnectors:           pulumix.Val(d.ExperimentalConnectors),
 	}
 }
 
@@ -514,7 +510,7 @@ func (g GeneratorLedgerConfiguration) toInput() generator.LedgerConfiguration {
 		ScriptFromFile:    pulumix.Val(g.ScriptFromFile),
 		VUs:               pulumix.Val(g.VUs),
 		HTTPClientTimeout: pulumix.Val(g.HTTPClientTimeout),
-		SkipAwait: 	   pulumix.Val(g.SkipAwait),
+		SkipAwait:         pulumix.Val(g.SkipAwait),
 	}
 }
 
@@ -532,8 +528,8 @@ func (g *Generator) toInput() *generator.Args {
 	}
 
 	return &generator.Args{
-		GeneratorVersion:  pulumix.Val(g.GeneratorVersion),
-		Ledgers: ConvertMap(g.Ledgers, GeneratorLedgerConfiguration.toInput),
+		GeneratorVersion: pulumix.Val(g.GeneratorVersion),
+		Ledgers:          ConvertMap(g.Ledgers, GeneratorLedgerConfiguration.toInput),
 	}
 }
 
