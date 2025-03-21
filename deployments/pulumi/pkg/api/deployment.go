@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	common "github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
@@ -55,7 +56,7 @@ func (args *Args) SetDefaults() {
 }
 
 type createDeploymentArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	Args
 	Database *storage.Component
 }
@@ -123,8 +124,8 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 	)
 
 	envVars = append(envVars, args.Database.GetEnvVars()...)
-	if otel := args.Otel; otel != nil {
-		envVars = append(envVars, args.Otel.GetEnvVars(ctx.Context())...)
+	if otel := args.Monitoring; otel != nil {
+		envVars = append(envVars, args.Monitoring.GetEnvVars(ctx)...)
 	}
 
 	return appsv1.NewDeployment(ctx, "ledger-api", &appsv1.DeploymentArgs{
