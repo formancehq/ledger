@@ -3355,6 +3355,7 @@ Authorization ( Scopes: ledger:write )
 |---|---|
 |state|TO DO|
 |state|DONE|
+|state|PROGRESS|
 
 <h2 id="tocS_V2Bulk">V2Bulk</h2>
 <!-- backwards compatibility -->

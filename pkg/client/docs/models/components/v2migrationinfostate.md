@@ -3,7 +3,8 @@
 
 ## Values
 
-| Name                       | Value                      |
-| -------------------------- | -------------------------- |
-| `V2MigrationInfoStateToDo` | TO DO                      |
-| `V2MigrationInfoStateDone` | DONE                       |
+| Name                           | Value                          |
+| ------------------------------ | ------------------------------ |
+| `V2MigrationInfoStateToDo`     | TO DO                          |
+| `V2MigrationInfoStateDone`     | DONE                           |
+| `V2MigrationInfoStateProgress` | PROGRESS                       |
