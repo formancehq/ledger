@@ -46,10 +46,12 @@ No description provided for this model.
 | debug | `boolean` |  | boolean | Debug is whether to enable debug mode |
 | storage | `object` |  | [Storage](#storage) | Storage is the storage configuration for the ledger |
 | api | `object` |  | [API](#api) | API is the API configuration for the ledger |
+| worker | `object` |  | [Worker](#worker) | Worker is the worker configuration for the ledger |
 | ingress | `object` |  | [Ingress](#ingress) | Ingress is the ingress configuration for the ledger |
 | provision | `object` |  | [Provision](#provision) | Provision is the initialization configuration for the ledger |
 | timeout | `integer` |  | integer | Timeout is the timeout for the ledger |
 | install-dev-box | `boolean` |  | boolean | InstallDevBox is whether to install the dev box |
+| generator | `object` |  | [Generator](#generator) | Generator is the generator configuration for the ledger |
 
 ## ConnectivityDatabase
 
@@ -65,6 +67,25 @@ No description provided for this model.
 | max-idle-conns | `integer` |  | integer | MaxIdleConns is the maximum number of idle connections for the database |
 | max-open-conns | `integer` |  | integer | MaxOpenConns is the maximum number of open connections for the database |
 | conn-max-idle-time | `integer` |  | integer | ConnMaxIdleTime is the maximum idle time for a connection |
+| options | `object` |  | object | Options is the options for the Postgres database to pass on the dsn |
+
+## Generator
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| generator-version | `string` |  | string | GeneratorVersion is the version of the generator |
+| until-log-id | `integer` |  | integer | UntilLogID is the log ID to run the generator until |
+| script | `string` |  | string | Script is the script to run |
+| script-from-file | `string` |  | string | ScriptFromFile is the script to run from a file (related to the root directory) |
+| vus | `integer` |  | integer | VUs is the number of virtual users to run |
+| ledger | `string` |  | string | Ledger is the ledger to run the generator against |
+| http-client-timeout | `integer` |  | integer | HTTPClientTimeout is the http client timeout for the generator |
 
 ## Ingress
 
@@ -105,10 +126,10 @@ No description provided for this model.
 | -------- | ---- | -------- | --------------- | ----------- |
 | resource-attributes | `object` |  | object | ResourceAttributes is the resource attributes for OpenTelemetry |
 | service-name | `string` |  | string | ServiceName is the service name for OpenTelemetry |
-| traces | `object` |  | [OtelTraces](#oteltraces) | Traces is the traces configuration for OpenTelemetry |
-| metrics | `object` |  | [OtelMetrics](#otelmetrics) | Metrics is the metrics configuration for OpenTelemetry |
+| traces | `object` |  | [MonitoringTraces](#monitoringtraces) | Traces is the traces configuration for OpenTelemetry |
+| metrics | `object` |  | [MonitoringMetrics](#monitoringmetrics) | Metrics is the metrics configuration for OpenTelemetry |
 
-## OtelMetrics
+## MonitoringMetrics
 
 No description provided for this model.
 
@@ -123,9 +144,9 @@ No description provided for this model.
 | runtime-minimum-read-mem-stats-interval | `integer` |  | integer | RuntimeMinimumReadMemStatsInterval is the minimum read memory stats interval for runtime metrics |
 | exporter | `string` |  | string | Exporter is the exporter for metrics |
 | keep-in-memory | `boolean` |  | boolean | KeepInMemory is whether to keep metrics in memory |
-| otlp | `object` |  | [OtelMetricsOTLP](#otelmetricsotlp) | OTLP is the OTLP configuration for metrics |
+| otlp | `object` |  | [MonitoringMetricsOTLP](#monitoringmetricsotlp) | OTLP is the OTLP configuration for metrics |
 
-## OtelMetricsOTLP
+## MonitoringMetricsOTLP
 
 No description provided for this model.
 
@@ -139,7 +160,7 @@ No description provided for this model.
 | endpoint | `string` |  | string | Endpoint is the endpoint for the OTLP metrics exporter |
 | insecure | `boolean` |  | boolean | Insecure is whether the OTLP metrics exporter is insecure |
 
-## OtelTraces
+## MonitoringTraces
 
 No description provided for this model.
 
@@ -150,11 +171,11 @@ No description provided for this model.
 | Property | Type | Required | Possible values | Description |
 | -------- | ---- | -------- | --------------- | ----------- |
 | batch | `boolean` |  | boolean | Batch is whether to batch traces |
-| exporter-flag | `string` |  | string | ExporterFlag is the exporter flag for traces |
-| jaeger | `object` |  | [OtelTracesJaeger](#oteltracesjaeger) | Jaeger is the Jaeger configuration for traces |
-| otlp | `object` |  | [OtelTracesOTLP](#oteltracesotlp) | OTLP is the OTLP configuration for traces |
+| exporter | `string` |  | string | Exporter is the exporter flag for traces |
+| jaeger | `object` |  | [MonitoringTracesJaeger](#monitoringtracesjaeger) | Jaeger is the Jaeger configuration for traces |
+| otlp | `object` |  | [MonitoringTracesOTLP](#monitoringtracesotlp) | OTLP is the OTLP configuration for traces |
 
-## OtelTracesJaeger
+## MonitoringTracesJaeger
 
 No description provided for this model.
 
@@ -168,7 +189,7 @@ No description provided for this model.
 | user | `string` |  | string | User is the user for the Jaeger exporter |
 | password | `string` |  | string | Password is the password for the Jaeger exporter |
 
-## OtelTracesOTLP
+## MonitoringTracesOTLP
 
 No description provided for this model.
 
@@ -193,7 +214,20 @@ No description provided for this model.
 | Property | Type | Required | Possible values | Description |
 | -------- | ---- | -------- | --------------- | ----------- |
 | uri | `string` |  | string | URI is the URI for the Postgres database |
-| install | `boolean` |  | boolean | Install is whether to install the Postgres database |
+| install | `object` |  | [PostgresInstall](#postgresinstall) | Install is whether to install the Postgres database |
+
+## PostgresInstall
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| username | `string` |  | string | Username is the username for the Postgres database |
+| password | `string` |  | string | Password is the password for the Postgres database |
 
 ## Provision
 
@@ -206,18 +240,6 @@ No description provided for this model.
 | Property | Type | Required | Possible values | Description |
 | -------- | ---- | -------- | --------------- | ----------- |
 | provisioner-version | `string` |  | string | ProvisionerVersion is the version of the provisioner (default to the ledger version if not specified) |
-| config | `object` |  | [ProvisionConfig](#provisionconfig) | Config is the configuration for the provisioner |
-
-## ProvisionConfig
-
-No description provided for this model.
-
-#### Type: `object`
-
-> ⚠️ Additional properties are not allowed.
-
-| Property | Type | Required | Possible values | Description |
-| -------- | ---- | -------- | --------------- | ----------- |
 | ledgers | `object` |  | [LedgerConfig](#ledgerconfig) | Ledgers are the ledgers to auto create |
 
 ## RDSClusterCreate
@@ -252,6 +274,7 @@ No description provided for this model.
 | use-cluster | `object` |  | [RDSUseExistingCluster](#rdsuseexistingcluster) | UseCluster is the configuration to use an existing RDS cluster |
 | create-cluster | `object` |  | [RDSClusterCreate](#rdsclustercreate) | CreateCluster is the configuration to create a new RDS cluster |
 | post-migrate-snapshot | `object` |  | [RDSPostMigrateSnapshot](#rdspostmigratesnapshot) | PostMigrateSnapshot is the configuration for a snapshot to create after migrations |
+| use-db-name | `string` |  | string | UseDBName is the name of the database to use |
 
 ## RDSPostMigrateSnapshot
 
@@ -292,6 +315,14 @@ No description provided for this model.
 | postgres | `object` |  | [PostgresDatabase](#postgresdatabase) | Postgres is the Postgres configuration for the database |
 | connectivity | `object` |  | [ConnectivityDatabase](#connectivitydatabase) | Connectivity is the connectivity configuration for the database |
 | disable-upgrade | `boolean` |  | boolean | DisableUpgrade is whether to disable upgrades for the database |
+
+## Worker
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
 
 
 ---

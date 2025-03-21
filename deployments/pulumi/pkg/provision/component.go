@@ -1,10 +1,9 @@
 package provision
 
 import (
-	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -19,23 +18,19 @@ type Component struct {
 }
 
 type LedgerConfigArgs struct {
-	Bucket   string            `json:"bucket"`
-	Metadata map[string]string `json:"metadata"`
-	Features map[string]string `json:"features"`
-}
-
-type ConfigArgs struct {
-	Ledgers map[string]LedgerConfigArgs `json:"ledgers"`
+	Bucket     string            `json:"bucket"`
+	Metadata   map[string]string `json:"metadata"`
+	Features   map[string]string `json:"features"`
 }
 
 type Args struct {
 	ProvisionerVersion pulumi.String
-	Config             ConfigArgs
+	Ledgers            map[string]LedgerConfigArgs `json:"ledgers"`
 }
 
 type ComponentArgs struct {
-	utils.CommonArgs
-	API *api.Component
+	common.CommonArgs
+	API        *api.Component
 	Args
 }
 
@@ -46,25 +41,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		return nil, err
 	}
 
-	marshalledConfig, err := json.Marshal(args.Config)
-	if err != nil {
-		return nil, err
-	}
-
-	digest := sha256.New()
-	_, err = digest.Write(marshalledConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	configMap, err := corev1.NewConfigMap(ctx, "provisioner", &corev1.ConfigMapArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
-		},
-		Data: pulumi.StringMap{
-			"config.yaml": pulumi.String(marshalledConfig),
-		},
-	}, pulumi.Parent(cmp))
+	configMap, err := createConfigMap(ctx, cmp, args)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +103,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 			Annotations: pulumi.StringMap{
-				"config-hash": pulumi.String(fmt.Sprintf("%x", digest.Sum(nil))),
+				"config-hash": configMap.Metadata.Annotations().MapIndex(pulumi.String("config-hash")),
 			},
 		},
 		Spec: batchv1.JobSpecArgs{

@@ -11,13 +11,17 @@ import (
 
 type RDSComponentArgs struct {
 	CreateCluster *RDSClusterCreateArgs
+	Database      pulumix.Input[string]
 }
 
 type RDSDatabaseComponent struct {
 	pulumi.ResourceState
 
-	Cluster  *rds.Cluster
-	Instance *rds.ClusterInstance
+	Cluster        *rds.Cluster
+	Instance       *rds.ClusterInstance
+	Database       pulumix.Input[string]
+	MasterUsername pulumix.Input[string]
+	MasterPassword pulumix.Input[string]
 }
 
 func (r *RDSDatabaseComponent) GetOptions() pulumix.Input[map[string]string] {
@@ -29,11 +33,15 @@ func (r *RDSDatabaseComponent) GetEndpoint() pulumix.Input[string] {
 }
 
 func (r *RDSDatabaseComponent) GetUsername() pulumix.Input[string] {
-	return r.Cluster.MasterUsername
+	return r.MasterUsername
 }
 
 func (r *RDSDatabaseComponent) GetPassword() pulumix.Input[string] {
-	return r.Cluster.MasterPassword.Elem()
+	return r.MasterPassword
+}
+
+func (r *RDSDatabaseComponent) GetDatabase() pulumix.Input[string] {
+	return r.Database
 }
 
 func (r *RDSDatabaseComponent) GetPort() pulumix.Input[int] {
@@ -47,6 +55,9 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 		return nil, err
 	}
 
+	cmp.Database = args.Database
+	cmp.MasterUsername = args.CreateCluster.MasterUsername
+	cmp.MasterPassword = args.CreateCluster.MasterPassword
 	cmp.Cluster, err = rds.NewCluster(
 		ctx,
 		"cluster",
@@ -59,8 +70,12 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 			}).
 				ToOutput(ctx.Context()).
 				Untyped().(pulumi.StringOutput),
-			Engine:            pulumi.String("aurora-postgresql"),
-			EngineVersion:     pulumi.String("16"),
+			Engine: args.CreateCluster.Engine.
+				ToOutput(ctx.Context()).
+				Untyped().(pulumi.StringOutput),
+			EngineVersion: args.CreateCluster.EngineVersion.
+				ToOutput(ctx.Context()).
+				Untyped().(pulumi.StringOutput),
 			SkipFinalSnapshot: pulumi.Bool(true),
 			SnapshotIdentifier: args.CreateCluster.SnapshotIdentifier.
 				ToOutput(ctx.Context()).
@@ -71,6 +86,7 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 			MasterPassword: args.CreateCluster.MasterPassword.
 				ToOutput(ctx.Context()).
 				Untyped().(pulumi.StringOutput),
+			IamDatabaseAuthenticationEnabled: pulumi.BoolPtr(false),
 			ClusterIdentifier: pulumi.Sprintf(
 				"%s-%s-%s",
 				ctx.Organization(),
@@ -82,6 +98,13 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 				Untyped().(pulumi.BoolOutput),
 		},
 		pulumi.Parent(cmp),
+		// Ignore these changes to avoid recreating the cluster on stack rename
+		pulumi.IgnoreChanges([]string{
+			"snapshotIdentifier",
+			"clusterIdentifier",
+			"masterPassword",
+			"masterUsername",
+		}),
 	)
 	if err != nil {
 		return nil, err
@@ -99,6 +122,9 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 		Tags: pulumi.StringMap{
 			"Name": pulumi.String("primary"),
 		},
+		PerformanceInsightsEnabled: args.CreateCluster.PerformanceInsightsEnabled.
+			ToOutput(ctx.Context()).
+			Untyped().(pulumi.BoolOutput),
 	}, pulumi.Parent(cmp))
 	if err != nil {
 		return nil, fmt.Errorf("creating RDS instance: %w", err)

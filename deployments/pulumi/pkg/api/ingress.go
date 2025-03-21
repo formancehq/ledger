@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
@@ -16,7 +16,7 @@ type IngressArgs struct {
 }
 
 type createIngressArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	IngressArgs
 }
 

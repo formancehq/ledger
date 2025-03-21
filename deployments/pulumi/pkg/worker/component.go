@@ -2,6 +2,8 @@ package worker
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
@@ -29,9 +31,10 @@ type Component struct {
 }
 
 type ComponentArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	Args
 	Database *storage.Component
+	API      *api.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -48,8 +51,8 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 	})
 
 	envVars = append(envVars, args.Database.GetEnvVars()...)
-	if otel := args.Otel; otel != nil {
-		envVars = append(envVars, args.Otel.GetEnvVars(ctx.Context())...)
+	if otel := args.Monitoring; otel != nil {
+		envVars = append(envVars, args.Monitoring.GetEnvVars(ctx)...)
 	}
 
 	cmp.Deployment, err = appsv1.NewDeployment(ctx, "ledger-worker", &appsv1.DeploymentArgs{
