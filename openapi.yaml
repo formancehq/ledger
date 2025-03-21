@@ -3661,6 +3661,7 @@ components:
           enum:
             - TO DO
             - DONE
+            - PROGRESS
     V2Bulk:
       type: array
       items:
