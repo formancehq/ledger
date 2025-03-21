@@ -248,15 +248,6 @@ type API struct {
 
 	// TerminationGracePeriodSeconds is the termination grace period in seconds
 	TerminationGracePeriodSeconds *int `json:"termination-grace-period-seconds" yaml:"termination-grace-period-seconds"`
-
-	// ExperimentalFeatures is whether to enable experimental features
-	ExperimentalFeatures bool `json:"experimental-features" yaml:"experimental-features"`
-
-	// ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter
-	ExperimentalNumscriptInterpreter bool `json:"experimental-numscript-interpreter" yaml:"experimental-numscript-interpreter"`
-
-	// ExperimentalConnectors is whether to enable experimental connectors
-	ExperimentalConnectors bool `json:"experimental-connectors" yaml:"experimental-connectors"`
 }
 
 func (d API) toInput() api.Args {
@@ -268,9 +259,6 @@ func (d API) toInput() api.Args {
 		BulkMaxSize:                      pulumix.Val(d.BulkMaxSize),
 		BulkParallel:                     pulumix.Val(d.BulkParallel),
 		TerminationGracePeriodSeconds:    pulumix.Val(d.TerminationGracePeriodSeconds),
-		ExperimentalFeatures:             pulumix.Val(d.ExperimentalFeatures),
-		ExperimentalNumscriptInterpreter: pulumix.Val(d.ExperimentalNumscriptInterpreter),
-		ExperimentalConnectors:           pulumix.Val(d.ExperimentalConnectors),
 	}
 }
 

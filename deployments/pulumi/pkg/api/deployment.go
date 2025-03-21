@@ -21,20 +21,11 @@ type Args struct {
 	BulkMaxSize                      pulumix.Input[int]
 	BulkParallel                     pulumix.Input[int]
 	TerminationGracePeriodSeconds    pulumix.Input[*int]
-	ExperimentalFeatures             pulumix.Input[bool]
-	ExperimentalNumscriptInterpreter pulumix.Input[bool]
-	ExperimentalConnectors           pulumix.Input[bool]
 }
 
 func (args *Args) SetDefaults() {
 	if args.GracePeriod == nil {
 		args.GracePeriod = pulumix.Val(time.Duration(0))
-	}
-	if args.ExperimentalFeatures == nil {
-		args.ExperimentalFeatures = pulumi.Bool(false)
-	}
-	if args.ExperimentalNumscriptInterpreter == nil {
-		args.ExperimentalNumscriptInterpreter = pulumi.Bool(false)
 	}
 	if args.NumscriptCacheMaxCount == nil {
 		args.NumscriptCacheMaxCount = pulumi.Int(0)
@@ -108,18 +99,6 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 				}
 				return fmt.Sprint(size)
 			}).Untyped().(pulumi.StringOutput),
-		},
-		corev1.EnvVarArgs{
-			Name:  pulumi.String("EXPERIMENTAL_NUMSCRIPT_INTERPRETER"),
-			Value: utils.BoolToString(args.ExperimentalNumscriptInterpreter).Untyped().(pulumi.StringOutput),
-		},
-		corev1.EnvVarArgs{
-			Name:  pulumi.String("EXPERIMENTAL_FEATURES"),
-			Value: utils.BoolToString(args.ExperimentalFeatures).Untyped().(pulumi.StringOutput),
-		},
-		corev1.EnvVarArgs{
-			Name:  pulumi.String("EXPERIMENTAL_CONNECTORS"),
-			Value: utils.BoolToString(args.ExperimentalConnectors).Untyped().(pulumi.StringOutput),
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("GRACE_PERIOD"),
