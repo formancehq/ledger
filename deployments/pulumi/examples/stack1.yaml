@@ -1,0 +1,51 @@
+config:
+  version: "v2.1.6"
+  storage:
+    connectivity:
+      options:
+        sslmode: "disable"
+  provision:
+    provisioner-version: latest
+    ledgers:
+      ledger1: {}
+      ledger2: {}
+  generator:
+    generator-version: latest
+    ledgers:
+      ledger1: &build-test
+        vus: 50
+        until-log-id: 1000
+        script: | 
+          const plain = `vars {
+            account $order
+            account $seller
+          }
+          send [USD/2 100] (
+            source = @world
+            destination = $order
+          )
+          send [USD/2 1] (
+            source = $order
+            destination = @fees
+          )
+          send [USD/2 99] (
+            source = $order
+            destination = $seller
+          )`
+            
+          function next(iteration) {
+            return [{
+              action: 'CREATE_TRANSACTION',
+              data: {
+                script: {
+                  plain,
+                  vars: {
+                    order: `orders:${uuid()}`,
+                    seller: `sellers:${iteration % 5}`
+                  }
+                }
+              }
+            }]
+          }
+      ledger2: *build-test
+

@@ -487,10 +487,7 @@ func (i Provision) toInput() provision.Args {
 	}
 }
 
-type Generator struct {
-	// GeneratorVersion is the version of the generator
-	GeneratorVersion string `json:"generator-version" yaml:"generator-version"`
-
+type GeneratorLedgerConfiguration struct {
 	// UntilLogID is the log ID to run the generator until
 	UntilLogID uint `json:"until-log-id" yaml:"until-log-id"`
 
@@ -503,11 +500,30 @@ type Generator struct {
 	// VUs is the number of virtual users to run
 	VUs int `json:"vus" yaml:"vus"`
 
-	// Ledger is the ledger to run the generator against
-	Ledger string `json:"ledger" yaml:"ledger"`
-
 	// HTTPClientTimeout is the http client timeout for the generator
 	HTTPClientTimeout time.Duration `json:"http-client-timeout" yaml:"http-client-timeout"`
+
+	// SkipAwait is whether to skip the await for the generator
+	SkipAwait bool `json:"skip-await" yaml:"skip-await"`
+}
+
+func (g GeneratorLedgerConfiguration) toInput() generator.LedgerConfiguration {
+	return generator.LedgerConfiguration{
+		UntilLogID:        pulumix.Val(g.UntilLogID),
+		Script:            pulumix.Val(g.Script),
+		ScriptFromFile:    pulumix.Val(g.ScriptFromFile),
+		VUs:               pulumix.Val(g.VUs),
+		HTTPClientTimeout: pulumix.Val(g.HTTPClientTimeout),
+		SkipAwait: 	   pulumix.Val(g.SkipAwait),
+	}
+}
+
+type Generator struct {
+	// GeneratorVersion is the version of the generator
+	GeneratorVersion string `json:"generator-version" yaml:"generator-version"`
+
+	// Ledgers are the ledgers to run the generator against
+	Ledgers map[string]GeneratorLedgerConfiguration `json:"ledgers" yaml:"ledgers"`
 }
 
 func (g *Generator) toInput() *generator.Args {
@@ -517,12 +533,7 @@ func (g *Generator) toInput() *generator.Args {
 
 	return &generator.Args{
 		GeneratorVersion:  pulumix.Val(g.GeneratorVersion),
-		UntilLogID:        pulumix.Val(g.UntilLogID),
-		Script:            pulumix.Val(g.Script),
-		ScriptFromFile:    pulumix.Val(g.ScriptFromFile),
-		VUs:               pulumix.Val(g.VUs),
-		Ledger:            pulumix.Val(g.Ledger),
-		HTTPClientTimeout: pulumix.Val(g.HTTPClientTimeout),
+		Ledgers: ConvertMap(g.Ledgers, GeneratorLedgerConfiguration.toInput),
 	}
 }
 

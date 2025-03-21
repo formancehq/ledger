@@ -18,9 +18,9 @@ type Component struct {
 }
 
 type LedgerConfigArgs struct {
-	Bucket     string            `json:"bucket"`
-	Metadata   map[string]string `json:"metadata"`
-	Features   map[string]string `json:"features"`
+	Bucket   string            `json:"bucket"`
+	Metadata map[string]string `json:"metadata"`
+	Features map[string]string `json:"features"`
 }
 
 type Args struct {
@@ -30,7 +30,7 @@ type Args struct {
 
 type ComponentArgs struct {
 	common.CommonArgs
-	API        *api.Component
+	API *api.Component
 	Args
 }
 
