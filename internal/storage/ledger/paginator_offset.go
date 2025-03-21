@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/uptrace/bun"
 	"math"
 )
@@ -14,7 +14,7 @@ type offsetPaginator[ResourceType, OptionsType any] struct {
 }
 
 //nolint:unused
-func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query pagination.OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.defaultPaginationColumn
 	originalOrder := o.defaultOrder
@@ -40,9 +40,9 @@ func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceType, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceType, query pagination.OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
 
-	var previous, next *ledgercontroller.OffsetPaginatedQuery[OptionsType]
+	var previous, next *pagination.OffsetPaginatedQuery[OptionsType]
 
 	// Page with transactions before
 	if query.Offset > 0 {
@@ -70,10 +70,10 @@ func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	return &bunpaginate.Cursor[ResourceType]{
 		PageSize: int(query.PageSize),
 		HasMore:  next != nil,
-		Previous: encodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](previous),
-		Next:     encodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](next),
+		Previous: encodeCursor[OptionsType, pagination.OffsetPaginatedQuery[OptionsType]](previous),
+		Next:     encodeCursor[OptionsType, pagination.OffsetPaginatedQuery[OptionsType]](next),
 		Data:     ret,
 	}, nil
 }
 
-var _ paginator[any, ledgercontroller.OffsetPaginatedQuery[any]] = &offsetPaginator[any, any]{}
+var _ paginator[any, pagination.OffsetPaginatedQuery[any]] = &offsetPaginator[any, any]{}

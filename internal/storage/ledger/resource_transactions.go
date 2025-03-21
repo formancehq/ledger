@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/pagination"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"slices"
@@ -122,7 +122,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 	return ret, nil
 }
 
-func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h transactionsResourceHandler) resolveFilter(store *Store, opts pagination.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", convertOperatorToSQL(operator)), []any{value}, nil
@@ -154,11 +154,11 @@ func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercont
 	}
 }
 
-func (h transactionsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) project(store *Store, query pagination.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h transactionsResourceHandler) expand(store *Store, opts pagination.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}

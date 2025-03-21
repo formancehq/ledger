@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
 	"math/big"
@@ -316,7 +315,7 @@ var _ = Context("Ledger engine tests", func() {
 			})
 
 			By("Should have sent one event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(ledgerevents.CommittedTransactions{
 					Ledger:          "default",
 					Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&bulkResponse[0].V2BulkElementResultCreateTransaction.Data)},
 					AccountMetadata: ledger.AccountMetadata{},
