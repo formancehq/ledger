@@ -10,8 +10,8 @@ import (
 )
 
 type RDSComponentArgs struct {
-	CreateCluster *RDSClusterCreateArgs
-	Database      pulumix.Input[string]
+	CreateCluster   *RDSClusterCreateArgs
+	Database        pulumix.Input[string]
 }
 
 type RDSDatabaseComponent struct {
@@ -105,6 +105,7 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 			"masterPassword",
 			"masterUsername",
 		}),
+		pulumi.RetainOnDelete(args.CreateCluster.RetainsOnDelete),
 	)
 	if err != nil {
 		return nil, err
