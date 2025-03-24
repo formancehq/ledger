@@ -7,9 +7,8 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/uptrace/bun"
-
 	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
 )
 
 const (
@@ -47,6 +46,8 @@ func NewRootCommand() *cobra.Command {
 
 		return driver.UpgradeAllBuckets(cmd.Context())
 	}))
+	root.AddCommand(NewDocsCommand())
+	service.AddFlags(root.PersistentFlags())
 
 	return root
 }
