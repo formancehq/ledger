@@ -16,6 +16,7 @@ type RDSClusterCreateArgs struct {
 	InstanceClass              pulumix.Input[rds.InstanceType]
 	Engine                     pulumix.Input[string]
 	EngineVersion              pulumix.Input[string]
+	RetainsOnDelete            bool
 }
 
 func (a *RDSClusterCreateArgs) SetDefaults() {
@@ -89,6 +90,7 @@ func (a *RDSUseExistingClusterArgs) SetDefaults() {
 
 type RDSPostMigrateSnapshotArgs struct {
 	SnapshotIdentifier pulumix.Input[string]
+	RetainsOnDelete    bool
 }
 
 type RDSDatabaseArgs struct {
@@ -177,7 +179,7 @@ func (a RDSDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ..
 						ToOutput(ctx.Context()).
 						Untyped().(pulumi.StringOutput),
 					DbClusterSnapshotIdentifier: pulumi.String(snapshotIdentifier),
-				}, options...)
+				}, append(options, pulumi.RetainOnDelete(a.PostMigrateSnapshot.RetainsOnDelete))...)
 			},
 		)
 	}
