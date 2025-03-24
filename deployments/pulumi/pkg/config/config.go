@@ -59,6 +59,9 @@ func (a *RDSUseExistingCluster) toInput() *storage.RDSUseExistingClusterArgs {
 type RDSPostMigrateSnapshot struct {
 	// SnapshotIdentifier is the snapshot identifier to create after migrations
 	SnapshotIdentifier string `json:"snapshot-identifier" yaml:"snapshot-identifier"`
+
+	// RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted)
+	RetainsOnDelete bool `json:"retains-on-delete" yaml:"retains-on-delete"`
 }
 
 func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
@@ -67,6 +70,7 @@ func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
 	}
 	return &storage.RDSPostMigrateSnapshotArgs{
 		SnapshotIdentifier: pulumi.String(a.SnapshotIdentifier),
+		RetainsOnDelete: a.RetainsOnDelete,
 	}
 }
 
@@ -121,6 +125,9 @@ type RDSClusterCreate struct {
 
 	// EngineVersion is the engine version for the RDS cluster
 	EngineVersion string `json:"engine-version" yaml:"engine-version"`
+
+	// RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted)
+	RetainsOnDelete bool `json:"retains-on-delete" yaml:"retains-on-delete"`
 }
 
 func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
@@ -133,6 +140,7 @@ func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
 		InstanceClass:              pulumix.Val(rds.InstanceType(a.InstanceClass)),
 		Engine:                     pulumi.String(a.Engine),
 		EngineVersion:              pulumi.String(a.EngineVersion),
+		RetainsOnDelete: a.RetainsOnDelete,
 	}
 }
 
