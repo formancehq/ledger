@@ -100,6 +100,10 @@ func (args *Args) GetEnvVars(ctx *pulumi.Context) corev1.EnvVarArray {
 		}).Untyped().(pulumi.StringOutput),
 	})
 	if traces := args.Traces; traces != nil {
+		envVars = append(envVars, corev1.EnvVarArgs{
+			Name:  pulumi.String("OTEL_TRACES"),
+			Value: pulumi.String("true"),
+		})
 		if traces.Batch != nil {
 			envVars = append(envVars, corev1.EnvVarArgs{
 				Name:  pulumi.String("OTEL_TRACES_BATCH"),
@@ -156,6 +160,10 @@ func (args *Args) GetEnvVars(ctx *pulumi.Context) corev1.EnvVarArray {
 	}
 
 	if metrics := args.Metrics; metrics != nil {
+		envVars = append(envVars, corev1.EnvVarArgs{
+			Name:  pulumi.String("OTEL_METRICS"),
+			Value: pulumi.String("true"),
+		})
 		if metrics.PushInterval != nil {
 			envVars = append(envVars, corev1.EnvVarArgs{
 				Name: pulumi.String("OTEL_METRICS_EXPORTER_PUSH_INTERVAL"),
