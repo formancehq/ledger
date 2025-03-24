@@ -25,7 +25,7 @@ require (
 	github.com/jamiealquiza/tachymeter v2.0.0+incompatible
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/nats-io/nats.go v1.39.1
-	github.com/onsi/ginkgo/v2 v2.22.1
+	github.com/onsi/ginkgo/v2 v2.23.3
 	github.com/onsi/gomega v1.36.2
 	github.com/ory/dockertest/v3 v3.11.0
 	github.com/pborman/uuid v1.2.1
