@@ -39,7 +39,7 @@ func (b *DefaultBucket) IsUpToDate(ctx context.Context) (bool, error) {
 }
 
 func (b *DefaultBucket) Migrate(ctx context.Context, options ...migrations.Option) error {
-	return migrate(ctx, b.tracer, b.db, b.name, options...)
+	return runMigrate(ctx, b.tracer, b.db, b.name, options...)
 }
 
 func (b *DefaultBucket) HasMinimalVersion(ctx context.Context) (bool, error) {

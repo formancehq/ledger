@@ -9,12 +9,12 @@ replace github.com/formancehq/ledger => ../..
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v2 v2.0.1-0.20250305100934-f2795dbc6bbe
+	github.com/formancehq/go-libs/v2 v2.2.3-0.20250324165303-4a3b874e1f09
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.26.0
 )
 
 require (
@@ -66,13 +66,12 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240816141633-0a40785b4f41 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/otel v1.34.0 // indirect
+	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/log v0.9.0 // indirect
-	go.opentelemetry.io/otel/metric v1.34.0 // indirect
-	go.opentelemetry.io/otel/trace v1.34.0 // indirect
-	go.uber.org/dig v1.18.0 // indirect
+	go.opentelemetry.io/otel/metric v1.35.0 // indirect
+	go.opentelemetry.io/otel/trace v1.35.0 // indirect
+	go.uber.org/dig v1.18.1 // indirect
 	go.uber.org/fx v1.23.0 // indirect
-	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
