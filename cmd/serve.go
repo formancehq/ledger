@@ -160,7 +160,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 
-	service.AddFlags(cmd.Flags())
 	bunconnect.AddFlags(cmd.Flags())
 	otlpmetrics.AddFlags(cmd.Flags())
 	otlptraces.AddFlags(cmd.Flags())
