@@ -80,12 +80,24 @@ No description provided for this model.
 | Property | Type | Required | Possible values | Description |
 | -------- | ---- | -------- | --------------- | ----------- |
 | generator-version | `string` |  | string | GeneratorVersion is the version of the generator |
+| ledgers | `object` |  | [GeneratorLedgerConfiguration](#generatorledgerconfiguration) | Ledgers are the ledgers to run the generator against |
+
+## GeneratorLedgerConfiguration
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
 | until-log-id | `integer` |  | integer | UntilLogID is the log ID to run the generator until |
 | script | `string` |  | string | Script is the script to run |
 | script-from-file | `string` |  | string | ScriptFromFile is the script to run from a file (related to the root directory) |
 | vus | `integer` |  | integer | VUs is the number of virtual users to run |
-| ledger | `string` |  | string | Ledger is the ledger to run the generator against |
 | http-client-timeout | `integer` |  | integer | HTTPClientTimeout is the http client timeout for the generator |
+| skip-await | `boolean` |  | boolean | SkipAwait is whether to skip the await for the generator |
 
 ## Ingress
 
@@ -260,6 +272,7 @@ No description provided for this model.
 | instance-class | `string` |  | string | InstanceClass is the instance class for the RDS cluster |
 | engine | `string` |  | string | Engine is the engine for the RDS cluster |
 | engine-version | `string` |  | string | EngineVersion is the engine version for the RDS cluster |
+| retains-on-delete | `boolean` |  | boolean | RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted) |
 
 ## RDSDatabase
 
@@ -287,6 +300,7 @@ No description provided for this model.
 | Property | Type | Required | Possible values | Description |
 | -------- | ---- | -------- | --------------- | ----------- |
 | snapshot-identifier | `string` |  | string | SnapshotIdentifier is the snapshot identifier to create after migrations |
+| retains-on-delete | `boolean` |  | boolean | RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted) |
 
 ## RDSUseExistingCluster
 

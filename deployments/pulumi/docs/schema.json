@@ -138,6 +138,19 @@
           "type": "string",
           "description": "GeneratorVersion is the version of the generator"
         },
+        "ledgers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/GeneratorLedgerConfiguration"
+          },
+          "type": "object",
+          "description": "Ledgers are the ledgers to run the generator against"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "GeneratorLedgerConfiguration": {
+      "properties": {
         "until-log-id": {
           "type": "integer",
           "description": "UntilLogID is the log ID to run the generator until"
@@ -154,13 +167,13 @@
           "type": "integer",
           "description": "VUs is the number of virtual users to run"
         },
-        "ledger": {
-          "type": "string",
-          "description": "Ledger is the ledger to run the generator against"
-        },
         "http-client-timeout": {
           "type": "integer",
           "description": "HTTPClientTimeout is the http client timeout for the generator"
+        },
+        "skip-await": {
+          "type": "boolean",
+          "description": "SkipAwait is whether to skip the await for the generator"
         }
       },
       "additionalProperties": false,
@@ -413,6 +426,10 @@
         "engine-version": {
           "type": "string",
           "description": "EngineVersion is the engine version for the RDS cluster"
+        },
+        "retains-on-delete": {
+          "type": "boolean",
+          "description": "RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted)"
         }
       },
       "additionalProperties": false,
@@ -459,6 +476,10 @@
         "snapshot-identifier": {
           "type": "string",
           "description": "SnapshotIdentifier is the snapshot identifier to create after migrations"
+        },
+        "retains-on-delete": {
+          "type": "boolean",
+          "description": "RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted)"
         }
       },
       "additionalProperties": false,
