@@ -3,10 +3,12 @@
 package bucket_test
 
 import (
+	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/system"
@@ -14,6 +16,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/extra/bundebug"
+	"io/fs"
 	"testing"
 )
 
@@ -41,6 +44,39 @@ func TestMigrations(t *testing.T) {
 		require.NoError(t, system.New(db).CreateLedger(ctx, l))
 	}
 
-	err = migrations.TestMigrations(ctx, bucket.MigrationsFS, migrator)
+	_, err = bucket.WalkMigrations(bucket.MigrationsFS, func(entry fs.DirEntry) (*struct{}, error) {
+		before, err := bucket.TemplateSQLFile(bucket.MigrationsFS, migrator.GetSchema(), entry.Name(), "up_tests_before.sql", nil)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		if err == nil {
+			_, err = db.ExecContext(ctx, before)
+			if err != nil {
+				return nil, fmt.Errorf("executing pre migration script: %s", entry.Name())
+			}
+		}
+
+		if err := migrator.UpByOne(ctx); err != nil {
+			switch {
+			case errors.Is(err, migrations.ErrAlreadyUpToDate):
+				return nil, nil
+			default:
+				return nil, err
+			}
+		}
+
+		after, err := bucket.TemplateSQLFile(bucket.MigrationsFS, migrator.GetSchema(), entry.Name(), "up_tests_after.sql", nil)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		if err == nil {
+			_, err = db.ExecContext(ctx, after)
+			if err != nil {
+				return nil, fmt.Errorf("executing post migration script: %s", entry.Name())
+			}
+		}
+
+		return pointer.For(struct{}{}), nil
+	})
 	require.NoError(t, err)
 }
