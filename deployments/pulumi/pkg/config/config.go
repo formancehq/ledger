@@ -216,6 +216,17 @@ type StorageSource struct {
 	Postgres *PostgresDatabase `json:"postgres" yaml:"postgres" jsonschema:"oneof_required=postgres"`
 }
 
+type StorageService struct {
+	// Annotations is the annotations for the service
+	Annotations map[string]string `json:"annotations" yaml:"annotations"`
+}
+
+func (s StorageService) toInput() storage.Service {
+	return storage.Service{
+		Annotations: pulumix.Val(s.Annotations),
+	}
+}
+
 type Storage struct {
 	StorageSource
 
@@ -224,6 +235,9 @@ type Storage struct {
 
 	// DisableUpgrade is whether to disable upgrades for the database
 	DisableUpgrade bool `json:"disable-upgrade" yaml:"disable-upgrade"`
+
+	// Service is the service configuration for the database
+	Service StorageService `json:"service" yaml:"service"`
 }
 
 func (s Storage) toInput() storage.Args {
@@ -232,6 +246,7 @@ func (s Storage) toInput() storage.Args {
 		RDS:                      s.RDS.toInput(),
 		ConnectivityDatabaseArgs: s.Connectivity.toInput(),
 		DisableUpgrade:           pulumix.Val(s.DisableUpgrade),
+		Service: 				s.Service.toInput(),
 	}
 }
 
