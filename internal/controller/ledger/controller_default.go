@@ -195,69 +195,72 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 }
 
 func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) error {
-	switch payload := log.Data.(type) {
-	case ledger.CreatedTransaction:
-		logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-		if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
-			return fmt.Errorf("failed to commit transaction: %w", err)
-		}
-		logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
-	case ledger.RevertedTransaction:
-		logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
-		_, _, err := ctrl.store.RevertTransaction(
-			ctx,
-			*payload.RevertedTransaction.ID,
-			*payload.RevertedTransaction.RevertedAt,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to revert transaction: %w", err)
-		}
-		if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
-			return fmt.Errorf("failed to commit transaction: %w", err)
-		}
-	case ledger.SavedMetadata:
-		switch payload.TargetType {
-		case ledger.MetaTargetTypeTransaction:
-			logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
-			if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
-				return fmt.Errorf("failed to update transaction metadata: %w", err)
+	_, err := tracing.Trace(ctx, ctrl.tracer, "ImportLog", func(ctx context.Context) (any, error) {
+		switch payload := log.Data.(type) {
+		case ledger.CreatedTransaction:
+			logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
+			if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
+				return nil, fmt.Errorf("failed to commit transaction: %w", err)
 			}
-		case ledger.MetaTargetTypeAccount:
-			logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
-			if err := ctrl.store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
-				payload.TargetID.(string): payload.Metadata,
-			}); err != nil {
-				return fmt.Errorf("failed to update account metadata: %w", err)
+			logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
+		case ledger.RevertedTransaction:
+			logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
+			_, _, err := ctrl.store.RevertTransaction(
+				ctx,
+				*payload.RevertedTransaction.ID,
+				*payload.RevertedTransaction.RevertedAt,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to revert transaction: %w", err)
+			}
+			if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
+				return nil, fmt.Errorf("failed to commit transaction: %w", err)
+			}
+		case ledger.SavedMetadata:
+			switch payload.TargetType {
+			case ledger.MetaTargetTypeTransaction:
+				logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
+				if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
+					return nil, fmt.Errorf("failed to update transaction metadata: %w", err)
+				}
+			case ledger.MetaTargetTypeAccount:
+				logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
+				if err := ctrl.store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
+					payload.TargetID.(string): payload.Metadata,
+				}); err != nil {
+					return nil, fmt.Errorf("failed to update account metadata: %w", err)
+				}
+			}
+		case ledger.DeletedMetadata:
+			switch payload.TargetType {
+			case ledger.MetaTargetTypeTransaction:
+				logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
+				if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
+					return nil, fmt.Errorf("failed to delete transaction metadata: %w", err)
+				}
+			case ledger.MetaTargetTypeAccount:
+				logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
+				if err := ctrl.store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
+					return nil, fmt.Errorf("failed to delete account metadata: %w", err)
+				}
 			}
 		}
-	case ledger.DeletedMetadata:
-		switch payload.TargetType {
-		case ledger.MetaTargetTypeTransaction:
-			logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
-			if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
-				return fmt.Errorf("failed to delete transaction metadata: %w", err)
-			}
-		case ledger.MetaTargetTypeAccount:
-			logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
-			if err := ctrl.store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
-				return fmt.Errorf("failed to delete account metadata: %w", err)
-			}
-		}
-	}
 
-	logCopy := log
-	logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
-	if err := ctrl.store.InsertLog(ctx, &log); err != nil {
-		return fmt.Errorf("failed to insert log: %w", err)
-	}
-
-	if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
-		if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
-			return newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+		logCopy := log
+		logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
+		if err := ctrl.store.InsertLog(ctx, &log); err != nil {
+			return nil, fmt.Errorf("failed to insert log: %w", err)
 		}
-	}
 
-	return nil
+		if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
+			if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
+				return nil, newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+			}
+		}
+
+		return nil, nil
+	})
+	return err
 }
 
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
