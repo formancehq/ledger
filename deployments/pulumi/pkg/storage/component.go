@@ -48,11 +48,16 @@ type databaseComponentFactory interface {
 	setup(ctx *pulumi.Context, args factoryArgs, options ...pulumi.ResourceOption) (databaseComponent, error)
 }
 
+type Service struct {
+	Annotations pulumix.Input[map[string]string]
+}
+
 type Args struct {
 	Postgres                 *PostgresDatabaseArgs
 	RDS                      *RDSDatabaseArgs
 	ConnectivityDatabaseArgs ConnectivityDatabaseArgs
-	DisableUpgrade           pulumix.Output[bool]
+	DisableUpgrade           pulumix.Input[bool]
+	Service                  Service
 }
 
 func (args *Args) SetDefaults() {
@@ -109,8 +114,9 @@ func (cmp *Component) GetEnvVars() corev1.EnvVarArray {
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("POSTGRES_URI"),
-			Value: pulumi.Sprintf("postgres://$(POSTGRES_USERNAME):$(POSTGRES_PASSWORD)@%s:%d/%s?%s",
-				cmp.DatabaseComponent.GetEndpoint(),
+			Value: pulumi.Sprintf("postgres://$(POSTGRES_USERNAME):$(POSTGRES_PASSWORD)@%s.%s.svc.cluster.local:%d/%s?%s",
+				cmp.Service.Metadata.Name().Elem(),
+				cmp.Service.Metadata.Namespace().Elem(),
 				cmp.DatabaseComponent.GetPort(),
 				cmp.DatabaseComponent.GetDatabase(),
 				pulumix.Apply2(
@@ -280,7 +286,6 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 			"username": cmp.DatabaseComponent.GetUsername().ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 			"password": pulumix.Apply(cmp.DatabaseComponent.GetPassword(), func(password string) string {
 				return url.QueryEscape(password)
-				//cmp.DatabaseComponent.GetPassword().ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput)
 			}).Untyped().(pulumi.StringOutput),
 		},
 	}, pulumi.Parent(cmp))
@@ -297,6 +302,9 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 				Namespace: args.CommonArgs.Namespace.
 					ToOutput(ctx.Context()).
 					Untyped().(pulumi.StringOutput),
+				Annotations: args.Service.Annotations.
+					ToOutput(ctx.Context()).
+					Untyped().(pulumi.StringMapOutput),
 			},
 			Spec: &corev1.ServiceSpecArgs{
 				Type: pulumi.String("ExternalName"),
@@ -311,7 +319,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 		}
 	}
 
-	args.DisableUpgrade.ApplyT(func(disableUpgrade bool) error {
+	args.DisableUpgrade.ToOutput(ctx.Context()).ApplyT(func(disableUpgrade bool) error {
 		if disableUpgrade {
 			return nil
 		}
