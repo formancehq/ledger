@@ -10,11 +10,14 @@ do $$
 		create temp table moves_view as
 		select transactions_id::numeric, public.aggregate_objects(json_build_object(accounts_address, json_build_object(asset, json_build_object('input', (post_commit_volumes).inputs, 'output', (post_commit_volumes).outputs)))::jsonb) as volumes
 		from (
-			SELECT DISTINCT ON (moves.transactions_id, accounts_address, asset) moves.transactions_id, accounts_address, asset,
-						first_value(post_commit_volumes) OVER (
+			SELECT DISTINCT ON (moves.transactions_id, accounts_address, asset)
+				moves.transactions_id,
+				accounts_address,
+				asset,
+				first_value(post_commit_volumes) OVER (
 					PARTITION BY moves.transactions_id, accounts_address, asset
 					ORDER BY seq DESC
-					) AS post_commit_volumes
+				) AS post_commit_volumes
 			FROM moves
 			where insertion_date < (
 				select tstamp from goose_db_version where version_id = 12
@@ -52,10 +55,5 @@ do $$
 		end loop;
 
 		drop table if exists moves_view;
-
- 		alter table transactions
- 		add constraint post_commit_volumes_not_null
- 		check (post_commit_volumes is not null)
- 		not valid;
 	end
 $$;
