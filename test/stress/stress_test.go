@@ -33,8 +33,8 @@ var _ = Context("Ledger stress tests", func() {
 				PostgresConfiguration: db.GetValue().ConnectionOptions(),
 				Output:                GinkgoWriter,
 				Debug:                 debug,
+				ExperimentalFeatures:  true,
 			},
-			ExperimentalFeatures: true,
 		}
 	})
 
