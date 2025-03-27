@@ -52,7 +52,7 @@ require (
 
 require (
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/spf13/viper v1.20.0
+	github.com/spf13/viper v1.20.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
