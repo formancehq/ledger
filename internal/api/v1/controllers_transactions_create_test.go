@@ -227,9 +227,11 @@ func TestTransactionsCreate(t *testing.T) {
 			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
 				tc.expectedRunScript.Timestamp = time.Time{}
 				ledgerController.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 						DryRun: tc.expectedPreview,
-						Input:  tc.expectedRunScript,
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: tc.expectedRunScript,
+						},
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(0),

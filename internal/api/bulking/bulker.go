@@ -126,12 +126,12 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 
 	switch data.Action {
 	case ActionCreateTransaction:
-		rs, err := data.Data.(TransactionRequest).ToRunScript(false)
+		rs, err := data.Data.(TransactionRequest).ToCore(false)
 		if err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
-		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
+		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input:          *rs,

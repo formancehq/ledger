@@ -43,7 +43,7 @@ type Controller interface {
 	//  * ErrTransactionReferenceConflict
 	//  * ErrIdempotencyKeyConflict
 	//  * ErrInsufficientFunds
-	CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error)
+	CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error)
 	// RevertTransaction allow to revert a transaction.
 	// It can return following errors:
 	//  * ErrInsufficientFunds
@@ -79,6 +79,11 @@ type Controller interface {
 type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
+
+type CreateTransaction struct {
+	RunScript
+	AccountMetadata map[string]metadata.Metadata
+}
 
 type RevertTransaction struct {
 	Force           bool

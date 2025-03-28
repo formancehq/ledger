@@ -401,9 +401,11 @@ func TestTransactionCreate(t *testing.T) {
 			if testCase.expectControllerCall {
 				testCase.expectedRunScript.Timestamp = time.Time{}
 				expect := ledgerController.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 						DryRun: tc.expectedDryRun,
-						Input:  testCase.expectedRunScript,
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: testCase.expectedRunScript,
+						},
 					})
 
 				if tc.returnError == nil {

@@ -46,7 +46,7 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 	return ctrl.Commit(ctx)
 }
 
-func (c *controllerFacade) CreateTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *controllerFacade) CreateTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	var (
 		log *ledger.Log
 		ret *ledger.CreatedTransaction

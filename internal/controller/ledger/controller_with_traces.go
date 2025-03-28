@@ -349,7 +349,7 @@ func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q Off
 	)
 }
 
-func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	var (
 		createdTransaction *ledger.CreatedTransaction
 		log                *ledger.Log

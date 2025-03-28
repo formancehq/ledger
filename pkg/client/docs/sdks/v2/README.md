@@ -1028,6 +1028,14 @@ func main() {
             Metadata: map[string]string{
                 "admin": "true",
             },
+            AccountMetadata: map[string]map[string]string{
+                "key": map[string]string{
+                    "admin": "true",
+                },
+                "key1": map[string]string{
+                    "admin": "true",
+                },
+            },
         },
     })
     if err != nil {

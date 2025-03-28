@@ -1629,6 +1629,10 @@ components:
           example: ref:001
         metadata:
           $ref: "#/components/schemas/V2Metadata"
+        accountMetadata:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/V2Metadata"
     V2Stats:
       type: object
       properties:

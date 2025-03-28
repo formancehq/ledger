@@ -117,6 +117,50 @@ var _ = Context("Ledger transactions create API tests", func() {
 						}))
 					})
 				})
+				Context("with account metadata", func() {
+					BeforeEach(func() {
+						req = operations.V2CreateTransactionRequest{
+							V2PostTransaction: components.V2PostTransaction{
+								Postings: []components.V2Posting{
+									{
+										Amount:      big.NewInt(100),
+										Asset:       "USD",
+										Source:      "world",
+										Destination: "alice",
+									},
+								},
+								AccountMetadata: map[string]map[string]string{
+									"world": {
+										"foo": "bar",
+									},
+									"alice": {
+										"foo": "baz",
+									},
+								},
+							},
+							Ledger: "default",
+						}
+					})
+					It("should be ok", func() {
+						alice, err := GetAccount(ctx, testServer.GetValue(), operations.V2GetAccountRequest{
+							Address: "alice",
+							Ledger:  "default",
+						})
+						Expect(err).To(BeNil())
+						Expect(alice.Metadata).To(Equal(map[string]string{
+							"foo": "baz",
+						}))
+
+						world, err := GetAccount(ctx, testServer.GetValue(), operations.V2GetAccountRequest{
+							Address: "world",
+							Ledger:  "default",
+						})
+						Expect(err).To(BeNil())
+						Expect(world.Metadata).To(Equal(map[string]string{
+							"foo": "bar",
+						}))
+					})
+				})
 				Context("with valid data", func() {
 					BeforeEach(func() {
 						req = operations.V2CreateTransactionRequest{

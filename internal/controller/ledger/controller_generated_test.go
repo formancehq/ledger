@@ -104,7 +104,7 @@ func (mr *MockControllerMockRecorder) CountTransactions(ctx, query any) *gomock.
 }
 
 // CreateTransaction mocks base method.
-func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (m *MockController) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)

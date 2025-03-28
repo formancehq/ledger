@@ -23,7 +23,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		delayCalculator := NewMockDelayCalculator(ctrl)
 		ctx := logging.TestingContext()
 
-		parameters := Parameters[RunScript]{}
+		parameters := Parameters[CreateTransaction]{}
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).
@@ -57,7 +57,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		delayCalculator := NewMockDelayCalculator(ctrl)
 		ctx := logging.TestingContext()
 
-		parameters := Parameters[RunScript]{}
+		parameters := Parameters[CreateTransaction]{}
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).
