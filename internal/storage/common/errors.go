@@ -1,4 +1,4 @@
-package resources
+package common
 
 import "fmt"
 

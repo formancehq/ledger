@@ -14,7 +14,7 @@ import (
 	metadata "github.com/formancehq/go-libs/v2/metadata"
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	ledger "github.com/formancehq/ledger/internal"
-	resources "github.com/formancehq/ledger/internal/storage/resources"
+	common "github.com/formancehq/ledger/internal/storage/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -134,10 +134,10 @@ func (mr *SystemStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 }
 
 // Ledgers mocks base method.
-func (m *SystemStore) Ledgers() resources.PaginatedResource[ledger.Ledger, any, resources.ColumnPaginatedQuery[any]] {
+func (m *SystemStore) Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ledgers")
-	ret0, _ := ret[0].(resources.PaginatedResource[ledger.Ledger, any, resources.ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]])
 	return ret0
 }
 

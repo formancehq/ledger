@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
 )
 
@@ -18,7 +18,7 @@ type Store interface {
 	CreateLedger(ctx context.Context, l *ledger.Ledger) error
 	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	Ledgers() resources.PaginatedResource[ledger.Ledger, any, resources.ColumnPaginatedQuery[any]]
+	Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 
@@ -91,11 +91,11 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 	return err
 }
 
-func (d *DefaultStore) Ledgers() resources.PaginatedResource[
+func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	ledger.Ledger,
 	any,
-	resources.ColumnPaginatedQuery[any]] {
-	return resources.NewPaginatedResourceRepository(&ledgersResourceHandler{store: d}, resources.ColumnPaginator[ledger.Ledger, any]{
+	common.ColumnPaginatedQuery[any]] {
+	return common.NewPaginatedResourceRepository(&ledgersResourceHandler{store: d}, common.ColumnPaginator[ledger.Ledger, any]{
 		DefaultPaginationColumn: "id",
 		DefaultOrder:            bunpaginate.OrderAsc,
 	})

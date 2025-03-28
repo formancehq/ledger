@@ -16,7 +16,7 @@ import (
 	migrations "github.com/formancehq/go-libs/v2/migrations"
 	time "github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
-	resources "github.com/formancehq/ledger/internal/storage/resources"
+	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -46,10 +46,10 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // Accounts mocks base method.
-func (m *MockStore) Accounts() resources.PaginatedResource[ledger.Account, any, resources.OffsetPaginatedQuery[any]] {
+func (m *MockStore) Accounts() common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Accounts")
-	ret0, _ := ret[0].(resources.PaginatedResource[ledger.Account, any, resources.OffsetPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]])
 	return ret0
 }
 
@@ -60,10 +60,10 @@ func (mr *MockStoreMockRecorder) Accounts() *gomock.Call {
 }
 
 // AggregatedBalances mocks base method.
-func (m *MockStore) AggregatedBalances() resources.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
+func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregatedBalances")
-	ret0, _ := ret[0].(resources.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions])
+	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions])
 	return ret0
 }
 
@@ -235,10 +235,10 @@ func (mr *MockStoreMockRecorder) LockLedger(ctx any) *gomock.Call {
 }
 
 // Logs mocks base method.
-func (m *MockStore) Logs() resources.PaginatedResource[ledger.Log, any, resources.ColumnPaginatedQuery[any]] {
+func (m *MockStore) Logs() common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Logs")
-	ret0, _ := ret[0].(resources.PaginatedResource[ledger.Log, any, resources.ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]])
 	return ret0
 }
 
@@ -294,10 +294,10 @@ func (mr *MockStoreMockRecorder) Rollback() *gomock.Call {
 }
 
 // Transactions mocks base method.
-func (m *MockStore) Transactions() resources.PaginatedResource[ledger.Transaction, any, resources.ColumnPaginatedQuery[any]] {
+func (m *MockStore) Transactions() common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Transactions")
-	ret0, _ := ret[0].(resources.PaginatedResource[ledger.Transaction, any, resources.ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]])
 	return ret0
 }
 
@@ -357,10 +357,10 @@ func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomoc
 }
 
 // Volumes mocks base method.
-func (m *MockStore) Volumes() resources.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, resources.OffsetPaginatedQuery[GetVolumesOptions]] {
+func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Volumes")
-	ret0, _ := ret[0].(resources.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, resources.OffsetPaginatedQuery[GetVolumesOptions]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]])
 	return ret0
 }
 

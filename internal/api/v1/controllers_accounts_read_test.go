@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,7 +26,7 @@ func TestAccountsRead(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       resources.ResourceQuery[any]
+		expectQuery       storagecommon.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -38,7 +38,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "nominal",
 			account: "foo",
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},
@@ -47,7 +47,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "with expand volumes",
 			account: "foo",
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},
@@ -65,7 +65,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "with not existing account",
 			account: "foo",
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},

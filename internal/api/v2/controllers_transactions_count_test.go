@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,7 +29,7 @@ func TestTransactionsCount(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       resources.ResourceQuery[any]
+		expectQuery       storagecommon.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -40,7 +40,7 @@ func TestTransactionsCount(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},
@@ -49,7 +49,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("metadata[roles]", "admin"),
 				Expand:  make([]string, 0),
@@ -59,7 +59,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Gte("date", now.Format(time.DateFormat)),
 				Expand:  make([]string, 0),
@@ -69,7 +69,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Gte("date", now.Format(time.DateFormat)),
 				Expand:  make([]string, 0),
@@ -79,7 +79,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("account", "xxx"),
 				Expand:  make([]string, 0),
@@ -89,7 +89,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("reference", "xxx"),
 				Expand:  make([]string, 0),
@@ -99,7 +99,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("destination", "xxx"),
 				Expand:  make([]string, 0),
@@ -109,7 +109,7 @@ func TestTransactionsCount(t *testing.T) {
 		{
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
 				Builder: query.Match("source", "xxx"),
 				Expand:  make([]string, 0),
@@ -118,7 +118,7 @@ func TestTransactionsCount(t *testing.T) {
 		},
 		{
 			name: "error from backend",
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},
@@ -132,8 +132,8 @@ func TestTransactionsCount(t *testing.T) {
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         resources.ErrInvalidQuery{},
-			expectQuery: resources.ResourceQuery[any]{
+			returnErr:         storagecommon.ErrInvalidQuery{},
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},
@@ -144,7 +144,7 @@ func TestTransactionsCount(t *testing.T) {
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
 			returnErr:         ledgercontroller.ErrMissingFeature{},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:    &before,
 				Expand: make([]string, 0),
 			},

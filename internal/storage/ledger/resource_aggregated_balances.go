@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 )
@@ -13,12 +13,12 @@ type aggregatedBalancesResourceRepositoryHandler struct {
 	store *Store
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Filters() []resources.Filter {
-	return []resources.Filter{
+func (h aggregatedBalancesResourceRepositoryHandler) Filters() []common.Filter {
+	return []common.Filter{
 		{
 			Name: "address",
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
@@ -27,11 +27,11 @@ func (h aggregatedBalancesResourceRepositoryHandler) Filters() []resources.Filte
 			Name: "metadata",
 			Matchers: []func(string) bool{
 				func(key string) bool {
-					return key == "metadata" || metadataRegex.Match([]byte(key))
+					return key == "metadata" || common.MetadataRegex.Match([]byte(key))
 				},
 			},
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					if key == "metadata" {
 						if operator != "$exists" {
 							return fmt.Errorf("unsupported operator %s for metadata", operator)
@@ -48,7 +48,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) Filters() []resources.Filte
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query resources.RepositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
 		ret := h.store.db.NewSelect().
@@ -132,31 +132,31 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query resource
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
-	case metadataRegex.Match([]byte(property)) || property == "metadata":
+	case common.MetadataRegex.Match([]byte(property)) || property == "metadata":
 		if property == "metadata" {
 			return "metadata -> ? is not null", []any{value}, nil
 		} else {
-			match := metadataRegex.FindAllStringSubmatch(property, 3)
+			match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 
 			return "metadata @> ?", []any{map[string]any{
 				match[0][1]: value,
 			}}, nil
 		}
 	default:
-		return "", nil, resources.NewErrInvalidQuery("unknown key '%s' when building query", property)
+		return "", nil, common.NewErrInvalidQuery("unknown key '%s' when building query", property)
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) Project(
-	_ resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
+	_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	sumVolumesForAsset := h.store.db.NewSelect().
@@ -170,4 +170,4 @@ func (h aggregatedBalancesResourceRepositoryHandler) Project(
 		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
 }
 
-var _ resources.RepositoryHandler[ledgercontroller.GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}
+var _ common.RepositoryHandler[ledgercontroller.GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}

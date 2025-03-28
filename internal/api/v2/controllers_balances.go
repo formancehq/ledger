@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 
 	"errors"
@@ -26,7 +26,7 @@ func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 	balances, err := common.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), *rq)
 	if err != nil {
 		switch {
-		case errors.Is(err, resources.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+		case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -29,7 +29,7 @@ func TestTransactionsList(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       resources.ColumnPaginatedQuery[any]
+		expectQuery       storagecommon.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -38,11 +38,11 @@ func TestTransactionsList(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:    &now,
 					Expand: make([]string, 0),
 				},
@@ -51,11 +51,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Match("metadata[roles]", "admin"),
 					Expand:  make([]string, 0),
@@ -65,11 +65,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"start_time": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Gte("start_time", now.Format(time.DateFormat)),
 					Expand:  make([]string, 0),
@@ -79,11 +79,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$lte": {"end_time": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Lte("end_time", now.Format(time.DateFormat)),
 					Expand:  make([]string, 0),
@@ -93,11 +93,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Match("account", "xxx"),
 					Expand:  make([]string, 0),
@@ -107,11 +107,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Match("reference", "xxx"),
 					Expand:  make([]string, 0),
@@ -121,11 +121,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Expand:  make([]string, 0),
 					Builder: query.Match("destination", "xxx"),
@@ -135,11 +135,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Match("source", "xxx"),
 					Expand:  make([]string, 0),
@@ -149,9 +149,9 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(resources.ColumnPaginatedQuery[any]{})},
+				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{})},
 			},
-			expectQuery: resources.ColumnPaginatedQuery[any]{},
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{},
 		},
 		{
 			name: "using invalid cursor",
@@ -174,11 +174,11 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.MaxPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:    &now,
 					Expand: make([]string, 0),
 				},
@@ -188,21 +188,21 @@ func TestTransactionsList(t *testing.T) {
 			name: "using cursor",
 			queryParams: url.Values{
 				"cursor": []string{func() string {
-					return bunpaginate.EncodeCursor(resources.ColumnPaginatedQuery[any]{
+					return bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
 						PageSize: bunpaginate.QueryDefaultPageSize,
 						Column:   "id",
 						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-						Options: resources.ResourceQuery[any]{
+						Options: storagecommon.ResourceQuery[any]{
 							PIT: &now,
 						},
 					})
 				}()},
 			},
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT: &now,
 				},
 			},
@@ -210,11 +210,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using $exists metadata filter",
 			body: `{"$exists": {"metadata": "foo"}}`,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
 					Builder: query.Exists("metadata", "foo"),
 					Expand:  make([]string, 0),
@@ -224,11 +224,11 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name:        "paginate using effective order",
 			queryParams: map[string][]string{"order": {"effective"}},
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "timestamp",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					PIT:    &now,
 					Expand: make([]string, 0),
 				},

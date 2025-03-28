@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -25,13 +25,13 @@ func TestBalancesAggregates(t *testing.T) {
 	type testCase struct {
 		name        string
 		queryParams url.Values
-		expectQuery resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
+		expectQuery storagecommon.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
 	}
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			expectQuery: storagecommon.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 				Opts: ledgercontroller.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},
@@ -42,7 +42,7 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			expectQuery: storagecommon.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 				Opts: ledgercontroller.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},

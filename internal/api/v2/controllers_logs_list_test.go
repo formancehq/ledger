@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -30,7 +30,7 @@ func TestGetLogs(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       resources.ColumnPaginatedQuery[any]
+		expectQuery       storagecommon.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -41,11 +41,11 @@ func TestGetLogs(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
 			},
@@ -54,11 +54,11 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using start time",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Builder: query.Gte("date", now.Format(time.DateFormat)),
 					Expand:  make([]string, 0),
 				},
@@ -68,11 +68,11 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using end time",
 			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Builder: query.Lt("date", now.Format(time.DateFormat)),
 					Expand:  make([]string, 0),
 				},
@@ -82,13 +82,13 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(resources.ColumnPaginatedQuery[any]{
+				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
 					PageSize: bunpaginate.QueryDefaultPageSize,
 					Column:   "id",
 					Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				})},
 			},
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -120,26 +120,26 @@ func TestGetLogs(t *testing.T) {
 		{
 			name:             "with invalid query",
 			expectStatusCode: http.StatusBadRequest,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
 			},
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         resources.ErrInvalidQuery{},
+			returnErr:         storagecommon.ErrInvalidQuery{},
 		},
 		{
 			name:             "with unexpected error",
 			expectStatusCode: http.StatusInternalServerError,
-			expectQuery: resources.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: resources.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
 			},

@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,7 +22,7 @@ func TestCountTransactions(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       resources.ResourceQuery[any]
+		expectQuery       storagecommon.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -31,14 +31,14 @@ func TestCountTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: resources.ResourceQuery[any]{},
+			expectQuery: storagecommon.ResourceQuery[any]{},
 		},
 		{
 			name: "using metadata",
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("metadata[roles]", "admin"),
 			},
 		},
@@ -47,7 +47,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Gte("date", now.Format(time.DateFormat)),
 			},
 		},
@@ -56,7 +56,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Lt("date", now.Format(time.DateFormat)),
 			},
 		},
@@ -65,7 +65,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("account", "xxx"),
 			},
 		},
@@ -74,7 +74,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("reference", "xxx"),
 			},
 		},
@@ -83,7 +83,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("destination", "xxx"),
 			},
 		},
@@ -92,7 +92,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: resources.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("source", "xxx"),
 			},
 		},

@@ -2,7 +2,7 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +25,7 @@ func TestTransactionsRead(t *testing.T) {
 		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 	)
 
-	q := resources.ResourceQuery[any]{
+	q := storagecommon.ResourceQuery[any]{
 		PIT:     &now,
 		Builder: query.Match("id", 0),
 	}

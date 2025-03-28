@@ -2,7 +2,7 @@ package v1
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +25,7 @@ func TestTransactionsRead(t *testing.T) {
 
 	systemController, ledgerController := newTestingSystemController(t, true)
 	ledgerController.EXPECT().
-		GetTransaction(gomock.Any(), resources.ResourceQuery[any]{
+		GetTransaction(gomock.Any(), storagecommon.ResourceQuery[any]{
 			Builder: query.Match("id", int64(0)),
 		}).
 		Return(&tx, nil)

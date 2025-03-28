@@ -2,7 +2,7 @@ package v1
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/url"
 
@@ -23,7 +23,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc, err := l.GetAccount(r.Context(), resources.ResourceQuery[any]{
+	acc, err := l.GetAccount(r.Context(), storagecommon.ResourceQuery[any]{
 		Builder: query.Match("address", address),
 		Expand:  []string{"volumes"},
 	})

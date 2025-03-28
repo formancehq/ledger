@@ -3,7 +3,7 @@ package v2
 import (
 	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"io"
 	"net/http"
 	"strings"
@@ -62,8 +62,8 @@ func getExpand(r *http.Request) []string {
 	)
 }
 
-func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, modifiers ...func(*v) error) (*resources.OffsetPaginatedQuery[v], error) {
-	return bunpaginate.Extract[resources.OffsetPaginatedQuery[v]](r, func() (*resources.OffsetPaginatedQuery[v], error) {
+func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, modifiers ...func(*v) error) (*storagecommon.OffsetPaginatedQuery[v], error) {
+	return bunpaginate.Extract[storagecommon.OffsetPaginatedQuery[v]](r, func() (*storagecommon.OffsetPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
 		if err != nil {
 			return nil, err
@@ -78,15 +78,15 @@ func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.Pag
 			return nil, err
 		}
 
-		return &resources.OffsetPaginatedQuery[v]{
+		return &storagecommon.OffsetPaginatedQuery[v]{
 			PageSize: pageSize,
 			Options:  *rq,
 		}, nil
 	})
 }
 
-func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*resources.ColumnPaginatedQuery[v], error) {
-	return bunpaginate.Extract[resources.ColumnPaginatedQuery[v]](r, func() (*resources.ColumnPaginatedQuery[v], error) {
+func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*storagecommon.ColumnPaginatedQuery[v], error) {
+	return bunpaginate.Extract[storagecommon.ColumnPaginatedQuery[v]](r, func() (*storagecommon.ColumnPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
 		if err != nil {
 			return nil, err
@@ -101,7 +101,7 @@ func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.Pag
 			return nil, err
 		}
 
-		return &resources.ColumnPaginatedQuery[v]{
+		return &storagecommon.ColumnPaginatedQuery[v]{
 			PageSize: pageSize,
 			Column:   defaultPaginationColumn,
 			Order:    pointer.For(order),
@@ -110,7 +110,7 @@ func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.Pag
 	})
 }
 
-func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*resources.ResourceQuery[v], error) {
+func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*storagecommon.ResourceQuery[v], error) {
 	pit, err := getPIT(r)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*res
 		}
 	}
 
-	return &resources.ResourceQuery[v]{
+	return &storagecommon.ResourceQuery[v]{
 		PIT:     pit,
 		OOT:     oot,
 		Builder: builder,

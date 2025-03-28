@@ -2,7 +2,7 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"strconv"
 
@@ -27,7 +27,7 @@ func readTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.GetTransaction(r.Context(), resources.ResourceQuery[any]{
+	tx, err := l.GetTransaction(r.Context(), storagecommon.ResourceQuery[any]{
 		PIT:     pit,
 		Builder: query.Match("id", int(txId)),
 		Expand:  r.URL.Query()["expand"],
