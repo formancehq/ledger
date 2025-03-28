@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -26,7 +26,7 @@ func TestAccountsRead(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.ResourceQuery[any]
+		expectQuery       resources.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -38,7 +38,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "nominal",
 			account: "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},
@@ -47,7 +47,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "with expand volumes",
 			account: "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},
@@ -65,7 +65,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "with not existing account",
 			account: "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},

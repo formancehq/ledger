@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/go-libs/v2/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -22,7 +22,7 @@ func TestCountTransactions(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.ResourceQuery[any]
+		expectQuery       resources.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -31,14 +31,14 @@ func TestCountTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: ledgercontroller.ResourceQuery[any]{},
+			expectQuery: resources.ResourceQuery[any]{},
 		},
 		{
 			name: "using metadata",
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("metadata[roles]", "admin"),
 			},
 		},
@@ -47,7 +47,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Gte("date", now.Format(time.DateFormat)),
 			},
 		},
@@ -56,7 +56,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Lt("date", now.Format(time.DateFormat)),
 			},
 		},
@@ -65,7 +65,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("account", "xxx"),
 			},
 		},
@@ -74,7 +74,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("reference", "xxx"),
 			},
 		},
@@ -83,7 +83,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("destination", "xxx"),
 			},
 		},
@@ -92,7 +92,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: resources.ResourceQuery[any]{
 				Builder: query.Match("source", "xxx"),
 			},
 		},

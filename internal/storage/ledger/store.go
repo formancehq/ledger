@@ -45,37 +45,37 @@ type Store struct {
 	getVolumesWithBalancesHistogram    metric.Int64Histogram
 }
 
-func (store *Store) Volumes() ledgercontroller.PaginatedResource[
+func (store *Store) Volumes() resources.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
 	ledgercontroller.GetVolumesOptions,
-	ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
-	return resources.NewPaginatedResourceRepository(store.ledger, &volumesResourceHandler{ store: store}, resources.OffsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
+	resources.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
+	return resources.NewPaginatedResourceRepository(&volumesResourceHandler{ store: store}, resources.OffsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
 		DefaultPaginationColumn: "account",
 		DefaultOrder:            bunpaginate.OrderAsc,
 	})
 }
 
-func (store *Store) AggregatedVolumes() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
-	return resources.NewResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](store.ledger, &aggregatedBalancesResourceRepositoryHandler{
+func (store *Store) AggregatedVolumes() resources.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
+	return resources.NewResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
 		store: store,
 	})
 }
 
-func (store *Store) Transactions() ledgercontroller.PaginatedResource[
+func (store *Store) Transactions() resources.PaginatedResource[
 	ledger.Transaction,
 	any,
-	ledgercontroller.ColumnPaginatedQuery[any]] {
-	return resources.NewPaginatedResourceRepository(store.ledger, &transactionsResourceHandler{ store: store }, resources.ColumnPaginator[ledger.Transaction, any]{
+	resources.ColumnPaginatedQuery[any]] {
+	return resources.NewPaginatedResourceRepository(&transactionsResourceHandler{ store: store }, resources.ColumnPaginator[ledger.Transaction, any]{
 		DefaultPaginationColumn: "id",
 		DefaultOrder:            bunpaginate.OrderDesc,
 	})
 }
 
-func (store *Store) Logs() ledgercontroller.PaginatedResource[
+func (store *Store) Logs() resources.PaginatedResource[
 	ledger.Log,
 	any,
-	ledgercontroller.ColumnPaginatedQuery[any]] {
-	return resources.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any, ledgercontroller.ColumnPaginatedQuery[any]](store.ledger, &logsResourceHandler{
+	resources.ColumnPaginatedQuery[any]] {
+	return resources.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any, resources.ColumnPaginatedQuery[any]](&logsResourceHandler{
 		store: store,
 	}, resources.ColumnPaginator[Log, any]{
 		DefaultPaginationColumn: "id",
@@ -83,11 +83,11 @@ func (store *Store) Logs() ledgercontroller.PaginatedResource[
 	})
 }
 
-func (store *Store) Accounts() ledgercontroller.PaginatedResource[
+func (store *Store) Accounts() resources.PaginatedResource[
 	ledger.Account,
 	any,
-	ledgercontroller.OffsetPaginatedQuery[any]] {
-	return resources.NewPaginatedResourceRepository(store.ledger, &accountsResourceHandler{
+	resources.OffsetPaginatedQuery[any]] {
+	return resources.NewPaginatedResourceRepository(&accountsResourceHandler{
 		store: store,
 	}, resources.OffsetPaginator[ledger.Account, any]{
 		DefaultPaginationColumn: "address",

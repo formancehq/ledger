@@ -2,8 +2,6 @@ package ledger
 
 import (
 	"fmt"
-	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/resources"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
@@ -25,24 +23,24 @@ func (h transactionsResourceHandler) Filters() []resources.Filter {
 		{
 			Name: "account",
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
 		{
 			Name: "source",
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
 		{
 			Name: "destination",
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
@@ -125,7 +123,7 @@ func (h transactionsResourceHandler) BuildDataset(opts resources.RepositoryHandl
 	return ret, nil
 }
 
-func (h transactionsResourceHandler) ResolveFilter(opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h transactionsResourceHandler) ResolveFilter(opts resources.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", resources.ConvertOperatorToSQL(operator)), []any{value}, nil
@@ -157,11 +155,11 @@ func (h transactionsResourceHandler) ResolveFilter(opts ledgercontroller.Resourc
 	}
 }
 
-func (h transactionsResourceHandler) Project(query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) Project(query resources.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) Expand(opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h transactionsResourceHandler) Expand(opts resources.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}

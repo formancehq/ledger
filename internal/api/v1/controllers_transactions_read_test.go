@@ -2,6 +2,7 @@ package v1
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/auth"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -25,7 +25,7 @@ func TestTransactionsRead(t *testing.T) {
 
 	systemController, ledgerController := newTestingSystemController(t, true)
 	ledgerController.EXPECT().
-		GetTransaction(gomock.Any(), ledgercontroller.ResourceQuery[any]{
+		GetTransaction(gomock.Any(), resources.ResourceQuery[any]{
 			Builder: query.Match("id", int64(0)),
 		}).
 		Return(&tx, nil)

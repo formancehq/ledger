@@ -91,7 +91,7 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	query := ledgercontroller.NewListLedgersQuery(15).WithBucket(bucket)
+	query := ledgercontroller.NewListLedgersQuery(15)
 
 	cursor, err := d.ListLedgers(ctx, query)
 	require.NoError(t, err)

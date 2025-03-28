@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"database/sql"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"math/big"
 	"testing"
 
@@ -214,7 +215,7 @@ func TestBalancesAggregates(t *testing.T) {
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{})
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{})
 		require.NoError(t, err)
 		RequireEqual(t, ledger.AggregatedVolumes{
 			Aggregated: ledger.VolumesByAssets{
@@ -238,7 +239,7 @@ func TestBalancesAggregates(t *testing.T) {
 	t.Run("filter on address", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.Match("address", "users:"),
 		})
 		require.NoError(t, err)
@@ -256,7 +257,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using pit on effective date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.Match("address", "users:"),
 			PIT:     pointer.For(now.Add(-time.Second)),
 		})
@@ -275,7 +276,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using pit on insertion date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.Match("address", "users:"),
 			PIT:     pointer.For(now),
 			Opts: ledgercontroller.GetAggregatedVolumesOptions{
@@ -297,7 +298,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using a metadata and pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			PIT:     pointer.For(now.Add(time.Minute)),
 			Builder: query.Match("metadata[category]", "premium"),
 		})
@@ -316,7 +317,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.Match("metadata[category]", "premium"),
 		})
 		require.NoError(t, err)
@@ -332,7 +333,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("when no matching", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.Match("metadata[category]", "guest"),
 		})
 		require.NoError(t, err)
@@ -343,7 +344,7 @@ func TestBalancesAggregates(t *testing.T) {
 
 	t.Run("using a filter exist on metadata", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.Exists("metadata", "category"),
 		})
 		require.NoError(t, err)
@@ -362,7 +363,7 @@ func TestBalancesAggregates(t *testing.T) {
 
 	t.Run("using a filter on metadata and on address", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Builder: query.And(
 				query.Match("address", "users:"),
 				query.Match("metadata[category]", "premium"),

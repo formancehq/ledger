@@ -2,6 +2,7 @@ package v2
 
 import (
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"net/http"
 
 	"errors"
@@ -15,7 +16,7 @@ import (
 func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		query, err := bunpaginate.Extract[ledgercontroller.ListLedgersQuery](r, func() (*ledgercontroller.ListLedgersQuery, error) {
+		query, err := bunpaginate.Extract[resources.ColumnPaginatedQuery[any]](r, func() (*resources.ColumnPaginatedQuery[any], error) {
 			pageSize, err := bunpaginate.GetPageSize(r,
 				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
 				bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
@@ -34,7 +35,7 @@ func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) 
 		ledgers, err := b.ListLedgers(r.Context(), *query)
 		if err != nil {
 			switch {
-			case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+			case errors.Is(err, resources.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 				api.BadRequest(w, common.ErrValidation, err)
 			default:
 				common.HandleCommonErrors(w, r, err)

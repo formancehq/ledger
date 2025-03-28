@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/logging"
@@ -15,13 +16,13 @@ func TestStats(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, ColumnPaginatedQuery[any]](ctrl)
-	accounts := NewMockPaginatedResource[ledger.Account, any, OffsetPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any, resources.ColumnPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any, resources.OffsetPaginatedQuery[any]](ctrl)
 
 	store.EXPECT().Transactions().Return(transactions)
-	transactions.EXPECT().Count(ctx, ResourceQuery[any]{}).Return(10, nil)
+	transactions.EXPECT().Count(ctx, resources.ResourceQuery[any]{}).Return(10, nil)
 	store.EXPECT().Accounts().Return(accounts)
-	accounts.EXPECT().Count(ctx, ResourceQuery[any]{}).Return(10, nil)
+	accounts.EXPECT().Count(ctx, resources.ResourceQuery[any]{}).Return(10, nil)
 
 	ledgerController := NewDefaultController(
 		ledger.MustNewWithDefault("foo"),

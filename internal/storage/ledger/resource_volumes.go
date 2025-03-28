@@ -3,7 +3,6 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/resources"
 	"github.com/formancehq/ledger/pkg/features"
@@ -21,8 +20,8 @@ func (h volumesResourceHandler) Filters() []resources.Filter {
 			Name:    "address",
 			Aliases: []string{"account"},
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
@@ -46,7 +45,7 @@ func (h volumesResourceHandler) Filters() []resources.Filter {
 				},
 			},
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					if key == "metadata" {
 						if operator != "$exists" {
 							return fmt.Errorf("unsupported operator %s for metadata", operator)
@@ -164,7 +163,7 @@ func (h volumesResourceHandler) BuildDataset(query resources.RepositoryHandlerBu
 }
 
 func (h volumesResourceHandler) ResolveFilter(
-	_ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	_ resources.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -203,7 +202,7 @@ func (h volumesResourceHandler) ResolveFilter(
 }
 
 func (h volumesResourceHandler) Project(
-	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	query resources.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -226,7 +225,7 @@ func (h volumesResourceHandler) Project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) Expand(_ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h volumesResourceHandler) Expand(_ resources.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 

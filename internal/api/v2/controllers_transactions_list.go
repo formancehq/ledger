@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"net/http"
 )
 
@@ -27,7 +28,7 @@ func listTransactions(paginationConfig common.PaginationConfig) http.HandlerFunc
 		cursor, err := l.ListTransactions(r.Context(), *rq)
 		if err != nil {
 			switch {
-			case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+			case errors.Is(err, resources.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 				api.BadRequest(w, common.ErrValidation, err)
 			default:
 				common.HandleCommonErrors(w, r, err)

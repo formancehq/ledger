@@ -2,6 +2,7 @@ package v1
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"net/http"
 	"net/url"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -23,9 +23,9 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc, err := l.GetAccount(r.Context(), ledgercontroller.ResourceQuery[any]{
+	acc, err := l.GetAccount(r.Context(), resources.ResourceQuery[any]{
 		Builder: query.Match("address", address),
-		Expand: []string{"volumes"},
+		Expand:  []string{"volumes"},
 	})
 	if err != nil {
 		switch {

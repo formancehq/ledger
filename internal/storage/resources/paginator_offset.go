@@ -3,7 +3,6 @@ package resources
 import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
 	"math"
 )
@@ -14,7 +13,7 @@ type OffsetPaginator[ResourceType, OptionsType any] struct {
 }
 
 //nolint:unused
-func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.DefaultPaginationColumn
 	originalOrder := o.DefaultOrder
@@ -40,9 +39,9 @@ func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType, query OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
 
-	var previous, next *ledgercontroller.OffsetPaginatedQuery[OptionsType]
+	var previous, next *OffsetPaginatedQuery[OptionsType]
 
 	// Page with transactions before
 	if query.Offset > 0 {
@@ -70,10 +69,10 @@ func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	return &bunpaginate.Cursor[ResourceType]{
 		PageSize: int(query.PageSize),
 		HasMore:  next != nil,
-		Previous: encodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](previous),
-		Next:     encodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](next),
+		Previous: encodeCursor[OptionsType, OffsetPaginatedQuery[OptionsType]](previous),
+		Next:     encodeCursor[OptionsType, OffsetPaginatedQuery[OptionsType]](next),
 		Data:     ret,
 	}, nil
 }
 
-var _ Paginator[any, ledgercontroller.OffsetPaginatedQuery[any]] = &OffsetPaginator[any, any]{}
+var _ Paginator[any, OffsetPaginatedQuery[any]] = &OffsetPaginator[any, any]{}

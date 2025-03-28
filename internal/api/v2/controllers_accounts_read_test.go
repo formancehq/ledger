@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -25,7 +25,7 @@ func TestAccountsRead(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.ResourceQuery[any]
+		expectQuery       resources.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -36,21 +36,21 @@ func TestAccountsRead(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name:              "nominal",
-			account:           "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
-				PIT:    &before,
+			name:    "nominal",
+			account: "foo",
+			expectQuery: resources.ResourceQuery[any]{
+				PIT:     &before,
 				Builder: query.Match("address", "foo"),
 			},
 			expectBackendCall: true,
 		},
 		{
-			name:              "with expand volumes",
-			account:           "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
-				PIT:    &before,
+			name:    "with expand volumes",
+			account: "foo",
+			expectQuery: resources.ResourceQuery[any]{
+				PIT:     &before,
 				Builder: query.Match("address", "foo"),
-				Expand: []string{"volumes"},
+				Expand:  []string{"volumes"},
 			},
 			expectBackendCall: true,
 			queryParams: url.Values{
@@ -58,12 +58,12 @@ func TestAccountsRead(t *testing.T) {
 			},
 		},
 		{
-			name:              "with expand effective volumes",
-			account:           "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
-				PIT:    &before,
+			name:    "with expand effective volumes",
+			account: "foo",
+			expectQuery: resources.ResourceQuery[any]{
+				PIT:     &before,
 				Builder: query.Match("address", "foo"),
-				Expand: []string{"effectiveVolumes"},
+				Expand:  []string{"effectiveVolumes"},
 			},
 			expectBackendCall: true,
 			queryParams: url.Values{

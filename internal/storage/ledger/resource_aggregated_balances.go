@@ -3,14 +3,13 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/resources"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 )
 
-type aggregatedBalancesResourceRepositoryHandler struct{
+type aggregatedBalancesResourceRepositoryHandler struct {
 	store *Store
 }
 
@@ -19,8 +18,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) Filters() []resources.Filte
 		{
 			Name: "address",
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
@@ -32,7 +31,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) Filters() []resources.Filte
 				},
 			},
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					if key == "metadata" {
 						if operator != "$exists" {
 							return fmt.Errorf("unsupported operator %s for metadata", operator)
@@ -133,7 +132,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query resource
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
@@ -148,16 +147,16 @@ func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ ledgercontr
 			}}, nil
 		}
 	default:
-		return "", nil, ledgercontroller.NewErrInvalidQuery("unknown key '%s' when building query", property)
+		return "", nil, resources.NewErrInvalidQuery("unknown key '%s' when building query", property)
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) Project(
-	_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
+	_ resources.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	sumVolumesForAsset := h.store.db.NewSelect().

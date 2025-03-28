@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"fmt"
-	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/resources"
 	"github.com/formancehq/ledger/pkg/features"
@@ -10,7 +9,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type accountsResourceHandler struct{
+type accountsResourceHandler struct {
 	store *Store
 }
 
@@ -19,8 +18,8 @@ func (h accountsResourceHandler) Filters() []resources.Filter {
 		{
 			Name: "address",
 			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(l ledger.Ledger, operator string, key string, value any) error {
-					return validateAddressFilter(l, operator, value)
+				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
@@ -86,7 +85,7 @@ func (h accountsResourceHandler) BuildDataset(opts resources.RepositoryHandlerBu
 	return ret, nil
 }
 
-func (h accountsResourceHandler) ResolveFilter(opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h accountsResourceHandler) ResolveFilter(opts resources.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
@@ -131,23 +130,23 @@ func (h accountsResourceHandler) ResolveFilter(opts ledgercontroller.ResourceQue
 			match[0][1]: value,
 		}}, nil
 	default:
-		return "", nil, ledgercontroller.NewErrInvalidQuery("invalid filter property %s", property)
+		return "", nil, resources.NewErrInvalidQuery("invalid filter property %s", property)
 	}
 }
 
-func (h accountsResourceHandler) Project(query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) Project(query resources.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h accountsResourceHandler) Expand(opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h accountsResourceHandler) Expand(opts resources.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
 	switch property {
 	case "volumes":
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return nil, nil, ledgercontroller.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
+			return nil, nil, resources.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
 		}
 	case "effectiveVolumes":
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-			return nil, nil, ledgercontroller.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
+			return nil, nil, resources.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 		}
 	}
 
@@ -182,9 +181,9 @@ func (h accountsResourceHandler) Expand(opts ledgercontroller.ResourceQuery[any]
 			Column("accounts_address").
 			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
 			Group("accounts_address"), &resources.JoinCondition{
-				Left:  "address",
-				Right: "accounts_address",
-			}, nil
+			Left:  "address",
+			Right: "accounts_address",
+		}, nil
 }
 
 var _ resources.RepositoryHandler[any] = accountsResourceHandler{}

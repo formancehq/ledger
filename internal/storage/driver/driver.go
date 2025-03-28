@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/internal/storage/resources"
 	"sync"
 	"time"
 
@@ -17,8 +18,6 @@ import (
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
@@ -183,8 +182,8 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return systemstore.New(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	return systemstore.New(d.db).ListLedgers(ctx, q)
+func (d *Driver) ListLedgers(ctx context.Context, q resources.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+	return systemstore.New(d.db).Ledgers().Paginate(ctx, q)
 }
 
 func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
