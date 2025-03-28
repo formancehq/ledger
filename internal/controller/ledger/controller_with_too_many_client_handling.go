@@ -40,7 +40,7 @@ func NewControllerWithTooManyClientHandling(
 	}
 }
 
-func (c *ControllerWithTooManyClientHandling) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithTooManyClientHandling) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	var (
 		log                *ledger.Log
 		createdTransaction *ledger.CreatedTransaction

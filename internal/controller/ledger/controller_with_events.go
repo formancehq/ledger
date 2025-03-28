@@ -38,7 +38,7 @@ func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
 	c.atCommit = append(c.atCommit, fn)
 }
 
-func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	log, ret, err := c.Controller.CreateTransaction(ctx, parameters)
 	if err != nil {
 		return nil, nil, err

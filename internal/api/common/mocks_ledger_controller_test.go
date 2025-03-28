@@ -105,7 +105,7 @@ func (mr *LedgerControllerMockRecorder) CountTransactions(ctx, query any) *gomoc
 }
 
 // CreateTransaction mocks base method.
-func (m *LedgerController) CreateTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (m *LedgerController) CreateTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)

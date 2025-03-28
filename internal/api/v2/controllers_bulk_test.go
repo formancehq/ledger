@@ -64,11 +64,13 @@ func TestBulk(t *testing.T) {
 					Asset:       "USD/2",
 				}}
 				mockLedger.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
-						Input: ledgercontroller.TxToScriptData(ledger.TransactionData{
-							Postings:  postings,
-							Timestamp: now,
-						}, false),
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: ledgercontroller.TxToScriptData(ledger.TransactionData{
+								Postings:  postings,
+								Timestamp: now,
+							}, false),
+						},
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(0),
@@ -472,11 +474,13 @@ func TestBulk(t *testing.T) {
 					Asset:       "USD/2",
 				}}
 				mockLedger.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
-						Input: ledgercontroller.TxToScriptData(ledger.TransactionData{
-							Postings:  postings,
-							Timestamp: now,
-						}, false),
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: ledgercontroller.TxToScriptData(ledger.TransactionData{
+								Postings:  postings,
+								Timestamp: now,
+							}, false),
+						},
 					}).
 					Return(&ledger.Log{ID: pointer.For(0)}, &ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{

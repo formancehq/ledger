@@ -44,7 +44,7 @@ type DefaultController struct {
 	executeMachineHistogram metric.Int64Histogram
 	deadLockCounter         metric.Int64Counter
 
-	createTransactionLp         *logProcessor[RunScript, ledger.CreatedTransaction]
+	createTransactionLp         *logProcessor[CreateTransaction, ledger.CreatedTransaction]
 	revertTransactionLp         *logProcessor[RevertTransaction, ledger.RevertedTransaction]
 	saveTransactionMetadataLp   *logProcessor[SaveTransactionMetadata, ledger.SavedMetadata]
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
@@ -100,7 +100,7 @@ func NewDefaultController(
 		panic(err)
 	}
 
-	ret.createTransactionLp = newLogProcessor[RunScript, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
+	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
 	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter)
 	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter)
 	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
@@ -284,7 +284,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
-func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
@@ -322,23 +322,38 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		finalMetadata[k] = v
 	}
 
+	accountMetadata := result.AccountMetadata
+	if accountMetadata == nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+	}
+	if parameters.Input.AccountMetadata != nil {
+		for account, values := range parameters.Input.AccountMetadata {
+			if accountMetadata[account] == nil {
+				accountMetadata[account] = metadata.Metadata{}
+			}
+			for k, v := range values {
+				accountMetadata[account][k] = v
+			}
+		}
+	}
+
 	transaction := ledger.NewTransaction().
 		WithPostings(result.Postings...).
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
 		WithReference(parameters.Input.Reference)
-	err = store.CommitTransaction(ctx, &transaction, result.AccountMetadata)
+	err = store.CommitTransaction(ctx, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ledger.CreatedTransaction{
 		Transaction:     transaction,
-		AccountMetadata: result.AccountMetadata,
+		AccountMetadata: accountMetadata,
 	}, err
 }
 
-func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 

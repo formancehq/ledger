@@ -52,7 +52,7 @@ func TestCreateTransaction(t *testing.T) {
 		}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any(), nil).
+		CommitTransaction(gomock.Any(), gomock.Any(), map[string]metadata.Metadata{}).
 		Return(nil)
 
 	store.EXPECT().
@@ -64,8 +64,10 @@ func TestCreateTransaction(t *testing.T) {
 			return log
 		})
 
-	_, _, err := l.CreateTransaction(context.Background(), Parameters[RunScript]{
-		Input: runScript,
+	_, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+		Input: CreateTransaction{
+			RunScript: runScript,
+		},
 	})
 	require.NoError(t, err)
 }

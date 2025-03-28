@@ -32,13 +32,13 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		api.BadRequest(w, common.ErrNoPostings, errors.New("you need to pass either a posting array or a numscript script"))
 		return
 	}
-	runScript, err := payload.ToRunScript(api.QueryParamBool(r, "force"))
+	createTransaction, err := payload.ToCore(api.QueryParamBool(r, "force"))
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *runScript))
+	_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):

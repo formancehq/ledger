@@ -497,6 +497,14 @@ Accept: application/json
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
+      },
+      "accountMetadata": {
+        "property1": {
+          "admin": "true"
+        },
+        "property2": {
+          "admin": "true"
+        }
       }
     }
   }
@@ -1302,6 +1310,14 @@ Idempotency-Key: string
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
+  },
+  "accountMetadata": {
+    "property1": {
+      "admin": "true"
+    },
+    "property2": {
+      "admin": "true"
+    }
   }
 }
 ```
@@ -2685,6 +2701,14 @@ Authorization ( Scopes: ledger:write )
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
+  },
+  "accountMetadata": {
+    "property1": {
+      "admin": "true"
+    },
+    "property2": {
+      "admin": "true"
+    }
   }
 }
 
@@ -2702,6 +2726,8 @@ Authorization ( Scopes: ledger:write )
 |»» **additionalProperties**|string|false|none|none|
 |reference|string|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+|accountMetadata|object|false|none|none|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -3388,6 +3414,14 @@ Authorization ( Scopes: ledger:write )
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
+      },
+      "accountMetadata": {
+        "property1": {
+          "admin": "true"
+        },
+        "property2": {
+          "admin": "true"
+        }
       }
     }
   }
@@ -3453,6 +3487,14 @@ Authorization ( Scopes: ledger:write )
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
+    },
+    "accountMetadata": {
+      "property1": {
+        "admin": "true"
+      },
+      "property2": {
+        "admin": "true"
+      }
     }
   }
 }
@@ -3515,6 +3557,14 @@ xor
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
+    },
+    "accountMetadata": {
+      "property1": {
+        "admin": "true"
+      },
+      "property2": {
+        "admin": "true"
+      }
     }
   }
 }

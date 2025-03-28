@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -100,14 +99,16 @@ type TransactionRequest struct {
 	Timestamp time.Time                 `json:"timestamp"`
 	Reference string            `json:"reference"`
 	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 
-func (req TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledgercontroller.RunScript, error) {
+func (req TransactionRequest) ToCore(allowUnboundedOverdrafts bool) (*ledgercontroller.CreateTransaction, error) {
 
 	if _, err := req.Postings.Validate(); err != nil {
 		return nil, err
 	}
 
+	var runScript ledgercontroller.RunScript
 	if len(req.Postings) > 0 {
 		txData := ledger.TransactionData{
 			Postings:  req.Postings,
@@ -116,13 +117,18 @@ func (req TransactionRequest) ToRunScript(allowUnboundedOverdrafts bool) (*ledge
 			Metadata:  req.Metadata,
 		}
 
-		return pointer.For(ledgercontroller.TxToScriptData(txData, allowUnboundedOverdrafts)), nil
+		runScript = ledgercontroller.TxToScriptData(txData, allowUnboundedOverdrafts)
+	} else {
+		runScript = ledgercontroller.RunScript{
+			Script:    req.Script.ToCore(),
+			Timestamp: req.Timestamp,
+			Reference: req.Reference,
+			Metadata:  req.Metadata,
+		}
 	}
 
-	return &ledgercontroller.RunScript{
-		Script:    req.Script.ToCore(),
-		Timestamp: req.Timestamp,
-		Reference: req.Reference,
-		Metadata:  req.Metadata,
+	return &ledgercontroller.CreateTransaction{
+		RunScript:       runScript,
+		AccountMetadata: req.AccountMetadata,
 	}, nil
 }
