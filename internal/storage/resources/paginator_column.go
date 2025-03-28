@@ -1,4 +1,4 @@
-package ledger
+package resources
 
 import (
 	"fmt"
@@ -12,16 +12,16 @@ import (
 	libtime "time"
 )
 
-type columnPaginator[ResourceType, OptionsType any] struct {
-	defaultPaginationColumn string
-	defaultOrder            bunpaginate.Order
+type ColumnPaginator[ResourceType, OptionsType any] struct {
+	DefaultPaginationColumn string
+	DefaultOrder            bunpaginate.Order
 }
 
 //nolint:unused
-func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o ColumnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
-	paginationColumn := o.defaultPaginationColumn
-	originalOrder := o.defaultOrder
+	paginationColumn := o.DefaultPaginationColumn
+	originalOrder := o.DefaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order
 	}
@@ -61,11 +61,11 @@ func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceType, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o ColumnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
 
 	paginationColumn := query.Column
 	if paginationColumn == "" {
-		paginationColumn = o.defaultPaginationColumn
+		paginationColumn = o.DefaultPaginationColumn
 	}
 
 	pageSize := query.PageSize
@@ -73,7 +73,7 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 		pageSize = bunpaginate.QueryDefaultPageSize
 	}
 
-	order := o.defaultOrder
+	order := o.DefaultOrder
 	if query.Order != nil {
 		order = *query.Order
 	}
@@ -138,7 +138,7 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	}, nil
 }
 
-var _ paginator[any, ledgercontroller.ColumnPaginatedQuery[any]] = &columnPaginator[any, any]{}
+var _ Paginator[any, ledgercontroller.ColumnPaginatedQuery[any]] = &ColumnPaginator[any, any]{}
 
 //nolint:unused
 func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructField {

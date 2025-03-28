@@ -92,24 +92,24 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 }
 
 func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	query := d.db.NewSelect().
+	sqlQuery := d.db.NewSelect().
 		Model(&ledger.Ledger{}).
 		Column("*").
 		Order("added_at asc")
 
 	if len(q.Options.Options.Features) > 0 {
 		for key, value := range q.Options.Options.Features {
-			query = query.Where("features->>? = ?", key, value)
+			sqlQuery = sqlQuery.Where("features->>? = ?", key, value)
 		}
 	}
 
 	if q.Options.Options.Bucket != "" {
-		query = query.Where("bucket = ?", q.Options.Options.Bucket)
+		sqlQuery = sqlQuery.Where("bucket = ?", q.Options.Options.Bucket)
 	}
 
 	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload], ledger.Ledger](
 		ctx,
-		query,
+		sqlQuery,
 		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload]](q),
 	)
 }

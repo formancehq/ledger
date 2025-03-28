@@ -1,4 +1,4 @@
-package ledger
+package resources
 
 import (
 	"fmt"
@@ -8,16 +8,16 @@ import (
 	"math"
 )
 
-type offsetPaginator[ResourceType, OptionsType any] struct {
-	defaultPaginationColumn string
-	defaultOrder            bunpaginate.Order
+type OffsetPaginator[ResourceType, OptionsType any] struct {
+	DefaultPaginationColumn string
+	DefaultOrder            bunpaginate.Order
 }
 
 //nolint:unused
-func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
-	paginationColumn := o.defaultPaginationColumn
-	originalOrder := o.defaultOrder
+	paginationColumn := o.DefaultPaginationColumn
+	originalOrder := o.DefaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order
 	}
@@ -40,7 +40,7 @@ func (o offsetPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceType, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType, query ledgercontroller.OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
 
 	var previous, next *ledgercontroller.OffsetPaginatedQuery[OptionsType]
 
@@ -76,4 +76,4 @@ func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	}, nil
 }
 
-var _ paginator[any, ledgercontroller.OffsetPaginatedQuery[any]] = &offsetPaginator[any, any]{}
+var _ Paginator[any, ledgercontroller.OffsetPaginatedQuery[any]] = &OffsetPaginator[any, any]{}
