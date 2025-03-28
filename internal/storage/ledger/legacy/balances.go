@@ -131,7 +131,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 						Group("moves.asset"),
 				).
 				TableExpr("data").
-				ColumnExpr("aggregate_objects(data.aggregated) as aggregated")
+				ColumnExpr("public.aggregate_objects(data.aggregated) as aggregated")
 
 			return finalQuery
 		})
