@@ -4,48 +4,48 @@ import (
 	"errors"
 	"fmt"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"strings"
 )
 
-type volumesResourceHandler struct{
+type volumesResourceHandler struct {
 	store *Store
 }
 
-func (h volumesResourceHandler) Filters() []resources.Filter {
-	return []resources.Filter{
+func (h volumesResourceHandler) Filters() []common.Filter {
+	return []common.Filter{
 		{
 			Name:    "address",
 			Aliases: []string{"account"},
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
 		{
 			Name: `balance(\[.*])?`,
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
 			},
 		},
 		{
 			Name: "first_usage",
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
 			},
 		},
 		{
 			Name: "metadata",
 			Matchers: []func(string) bool{
 				func(key string) bool {
-					return key == "metadata" || metadataRegex.Match([]byte(key))
+					return key == "metadata" || common.MetadataRegex.Match([]byte(key))
 				},
 			},
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					if key == "metadata" {
 						if operator != "$exists" {
 							return fmt.Errorf("unsupported operator %s for metadata", operator)
@@ -62,7 +62,7 @@ func (h volumesResourceHandler) Filters() []resources.Filter {
 	}
 }
 
-func (h volumesResourceHandler) BuildDataset(query resources.RepositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
@@ -163,7 +163,7 @@ func (h volumesResourceHandler) BuildDataset(query resources.RepositoryHandlerBu
 }
 
 func (h volumesResourceHandler) ResolveFilter(
-	_ resources.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	_ common.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -172,12 +172,12 @@ func (h volumesResourceHandler) ResolveFilter(
 	case property == "address" || property == "account":
 		return filterAccountAddress(value.(string), "account"), nil, nil
 	case property == "first_usage":
-		return fmt.Sprintf("first_usage %s ?", resources.ConvertOperatorToSQL(operator)), []any{value}, nil
+		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 		clauses := make([]string, 0)
 		args := make([]any, 0)
 
-		clauses = append(clauses, "balance "+resources.ConvertOperatorToSQL(operator)+" ?")
+		clauses = append(clauses, "balance "+common.ConvertOperatorToSQL(operator)+" ?")
 		args = append(args, value)
 
 		if balanceRegex.MatchString(property) {
@@ -186,11 +186,11 @@ func (h volumesResourceHandler) ResolveFilter(
 		}
 
 		return "(" + strings.Join(clauses, ") and (") + ")", args, nil
-	case metadataRegex.Match([]byte(property)) || property == "metadata":
+	case common.MetadataRegex.Match([]byte(property)) || property == "metadata":
 		if property == "metadata" {
 			return "metadata -> ? is not null", []any{value}, nil
 		} else {
-			match := metadataRegex.FindAllStringSubmatch(property, 3)
+			match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 
 			return "metadata @> ?", []any{map[string]any{
 				match[0][1]: value,
@@ -202,7 +202,7 @@ func (h volumesResourceHandler) ResolveFilter(
 }
 
 func (h volumesResourceHandler) Project(
-	query resources.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	query common.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -225,8 +225,8 @@ func (h volumesResourceHandler) Project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) Expand(_ resources.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h volumesResourceHandler) Expand(_ common.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ resources.RepositoryHandler[ledgercontroller.GetVolumesOptions] = volumesResourceHandler{}
+var _ common.RepositoryHandler[ledgercontroller.GetVolumesOptions] = volumesResourceHandler{}

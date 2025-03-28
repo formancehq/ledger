@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/robfig/cron/v3"
@@ -75,7 +75,7 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 	return bunpaginate.Iterate(
 		ctx,
 		initialQuery,
-		func(ctx context.Context, q resources.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+		func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 			return systemStore.Ledgers().Paginate(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {

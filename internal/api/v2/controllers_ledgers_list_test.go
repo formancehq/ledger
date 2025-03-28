@@ -3,7 +3,7 @@ package v2
 import (
 	"encoding/json"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,7 +28,7 @@ func TestListLedgers(t *testing.T) {
 
 	type testCase struct {
 		name               string
-		expectQuery        resources.ColumnPaginatedQuery[any]
+		expectQuery        storagecommon.ColumnPaginatedQuery[any]
 		queryParams        url.Values
 		returnData         []ledger.Ledger
 		returnErr          error
@@ -70,7 +70,7 @@ func TestListLedgers(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
-			returnErr:          resources.ErrInvalidQuery{},
+			returnErr:          storagecommon.ErrInvalidQuery{},
 			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 		{

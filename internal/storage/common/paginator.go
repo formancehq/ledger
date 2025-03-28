@@ -1,4 +1,4 @@
-package resources
+package common
 
 import (
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"

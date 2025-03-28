@@ -3,7 +3,9 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -56,11 +58,11 @@ type Store interface {
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 
-	Accounts() resources.PaginatedResource[ledger.Account, any, resources.OffsetPaginatedQuery[any]]
-	Logs() resources.PaginatedResource[ledger.Log, any, resources.ColumnPaginatedQuery[any]]
-	Transactions() resources.PaginatedResource[ledger.Transaction, any, resources.ColumnPaginatedQuery[any]]
-	AggregatedBalances() resources.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions]
-	Volumes() resources.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, resources.OffsetPaginatedQuery[GetVolumesOptions]]
+	Accounts() common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]]
+	Logs() common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]]
+	Transactions() common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]]
+	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]]
 }
 
 type vmStoreAdapter struct {
@@ -68,7 +70,7 @@ type vmStoreAdapter struct {
 }
 
 func (v *vmStoreAdapter) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
-	account, err := v.Store.Accounts().GetOne(ctx, resources.ResourceQuery[any]{
+	account, err := v.Store.Accounts().GetOne(ctx, common.ResourceQuery[any]{
 		Builder: query.Match("address", address),
 	})
 	if err != nil {
@@ -85,10 +87,14 @@ func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	}
 }
 
-func NewListLedgersQuery(pageSize uint64) resources.ColumnPaginatedQuery[any] {
-	return resources.ColumnPaginatedQuery[any]{
+func NewListLedgersQuery(pageSize uint64) common.ColumnPaginatedQuery[any] {
+	return common.ColumnPaginatedQuery[any]{
 		PageSize: pageSize,
 		Column:   "id",
+		Order:    (*bunpaginate.Order)(pointer.For(bunpaginate.OrderAsc)),
+		Options: common.ResourceQuery[any]{
+			Expand: make([]string, 0),
+		},
 	}
 }
 
@@ -120,7 +126,7 @@ func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q num
 
 	// we ignore the needed metadata values and just return all of them
 	for address := range q {
-		v, err := s.Store.Accounts().GetOne(ctx, resources.ResourceQuery[any]{
+		v, err := s.Store.Accounts().GetOne(ctx, common.ResourceQuery[any]{
 			Builder: query.Match("address", address),
 		})
 		if err != nil {

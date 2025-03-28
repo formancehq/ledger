@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/stoewer/go-strcase"
 	"github.com/uptrace/bun"
@@ -13,44 +13,44 @@ type accountsResourceHandler struct {
 	store *Store
 }
 
-func (h accountsResourceHandler) Filters() []resources.Filter {
-	return []resources.Filter{
+func (h accountsResourceHandler) Filters() []common.Filter {
+	return []common.Filter{
 		{
 			Name: "address",
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
 		{
 			Name: "first_usage",
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
 			},
 		},
 		{
 			Name: `balance(\[.*])?`,
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
 			},
 		},
 		{
 			Name: "metadata",
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$exists"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$exists"),
 			},
 		},
 		{
 			Name: `metadata\[.*]`,
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match"),
 			},
 		},
 	}
 }
 
-func (h accountsResourceHandler) BuildDataset(opts resources.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := h.store.db.NewSelect()
 
 	// Build the query
@@ -85,12 +85,12 @@ func (h accountsResourceHandler) BuildDataset(opts resources.RepositoryHandlerBu
 	return ret, nil
 }
 
-func (h accountsResourceHandler) ResolveFilter(opts resources.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
 	case property == "first_usage":
-		return fmt.Sprintf("first_usage %s ?", resources.ConvertOperatorToSQL(operator)), []any{value}, nil
+		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 
 		selectBalance := h.store.db.NewSelect().
@@ -118,35 +118,35 @@ func (h accountsResourceHandler) ResolveFilter(opts resources.ResourceQuery[any]
 
 		return h.store.db.NewSelect().
 			TableExpr("(?) balance", selectBalance).
-			ColumnExpr(fmt.Sprintf("balance %s ?", resources.ConvertOperatorToSQL(operator)), value).
+			ColumnExpr(fmt.Sprintf("balance %s ?", common.ConvertOperatorToSQL(operator)), value).
 			String(), nil, nil
 	case property == "metadata":
 		return "metadata -> ? is not null", []any{value}, nil
 
-	case metadataRegex.Match([]byte(property)):
-		match := metadataRegex.FindAllStringSubmatch(property, 3)
+	case common.MetadataRegex.Match([]byte(property)):
+		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 
 		return "metadata @> ?", []any{map[string]any{
 			match[0][1]: value,
 		}}, nil
 	default:
-		return "", nil, resources.NewErrInvalidQuery("invalid filter property %s", property)
+		return "", nil, common.NewErrInvalidQuery("invalid filter property %s", property)
 	}
 }
 
-func (h accountsResourceHandler) Project(query resources.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) Project(query common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h accountsResourceHandler) Expand(opts resources.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	switch property {
 	case "volumes":
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return nil, nil, resources.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
+			return nil, nil, common.NewErrInvalidQuery("feature %s must be 'ON' to use volumes", features.FeatureMovesHistory)
 		}
 	case "effectiveVolumes":
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
-			return nil, nil, resources.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
+			return nil, nil, common.NewErrInvalidQuery("feature %s must be 'SYNC' to use effectiveVolumes", features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 		}
 	}
 
@@ -180,10 +180,10 @@ func (h accountsResourceHandler) Expand(opts resources.ResourceQuery[any], prope
 			ModelTableExpr("rows").
 			Column("accounts_address").
 			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
-			Group("accounts_address"), &resources.JoinCondition{
+			Group("accounts_address"), &common.JoinCondition{
 			Left:  "address",
 			Right: "accounts_address",
 		}, nil
 }
 
-var _ resources.RepositoryHandler[any] = accountsResourceHandler{}
+var _ common.RepositoryHandler[any] = accountsResourceHandler{}

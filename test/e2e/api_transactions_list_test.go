@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/query"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	libtime "github.com/formancehq/go-libs/v2/time"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -255,10 +255,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			It("Should be ok", func() {
 				Expect(response.Next).NotTo(BeNil())
-				cursor := &resources.ColumnPaginatedQuery[any]{}
+				cursor := &common.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
-				Expect(cursor.Options).To(Equal(resources.ResourceQuery[any]{
+				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
 					Builder: query.Match("source", "world"),
 					PIT:     pointer.For(libtime.New(now)),
 				}))
@@ -298,10 +298,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			It("Should be ok", func() {
 				Expect(response.Next).NotTo(BeNil())
-				cursor := &resources.ColumnPaginatedQuery[any]{}
+				cursor := &common.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
-				Expect(cursor.Options).To(Equal(resources.ResourceQuery[any]{
+				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
 					Builder: query.And(
 						query.Match("source", "world"),
 						query.Match("destination", "account:"),

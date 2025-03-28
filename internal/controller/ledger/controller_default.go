@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"reflect"
 
@@ -119,31 +119,31 @@ func (ctrl *DefaultController) GetMigrationsInfo(ctx context.Context) ([]migrati
 	return ctrl.store.GetMigrationsInfo(ctx)
 }
 
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, q resources.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	return ctrl.store.Transactions().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) CountTransactions(ctx context.Context, q resources.ResourceQuery[any]) (int, error) {
+func (ctrl *DefaultController) CountTransactions(ctx context.Context, q common.ResourceQuery[any]) (int, error) {
 	return ctrl.store.Transactions().Count(ctx, q)
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, q resources.ResourceQuery[any]) (*ledger.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Transaction, error) {
 	return ctrl.store.Transactions().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) CountAccounts(ctx context.Context, q resources.ResourceQuery[any]) (int, error) {
+func (ctrl *DefaultController) CountAccounts(ctx context.Context, q common.ResourceQuery[any]) (int, error) {
 	return ctrl.store.Accounts().Count(ctx, q)
 }
 
-func (ctrl *DefaultController) ListAccounts(ctx context.Context, q resources.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (ctrl *DefaultController) ListAccounts(ctx context.Context, q common.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	return ctrl.store.Accounts().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, q resources.ResourceQuery[any]) (*ledger.Account, error) {
+func (ctrl *DefaultController) GetAccount(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Account, error) {
 	return ctrl.store.Accounts().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q resources.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	ret, err := ctrl.store.AggregatedBalances().GetOne(ctx, q)
 	if err != nil {
 		return nil, err
@@ -151,11 +151,11 @@ func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q reso
 	return ret.Aggregated.Balances(), nil
 }
 
-func (ctrl *DefaultController) ListLogs(ctx context.Context, q resources.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (ctrl *DefaultController) ListLogs(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	return ctrl.store.Logs().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q resources.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q common.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
@@ -164,7 +164,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 	var lastLogID *int
 
 	// We can import only if the ledger is empty.
-	logs, err := ctrl.store.Logs().Paginate(ctx, resources.ColumnPaginatedQuery[any]{
+	logs, err := ctrl.store.Logs().Paginate(ctx, common.ColumnPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	if err != nil {
@@ -267,11 +267,11 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
 	return bunpaginate.Iterate(
 		ctx,
-		resources.ColumnPaginatedQuery[any]{
+		common.ColumnPaginatedQuery[any]{
 			PageSize: 100,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		},
-		func(ctx context.Context, q resources.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+		func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 			return ctrl.store.Logs().Paginate(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Log]) error {

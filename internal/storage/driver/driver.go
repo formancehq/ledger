@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"sync"
 	"time"
 
@@ -182,7 +182,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return systemstore.New(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q resources.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return systemstore.New(d.db).Ledgers().Paginate(ctx, q)
 }
 

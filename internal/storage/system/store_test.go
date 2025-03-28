@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
@@ -98,7 +98,7 @@ func TestLedgersList(t *testing.T) {
 	require.Equal(t, ledgers[:pageSize], cursor.Data)
 
 	for i := pageSize; i < count; i += pageSize {
-		query := resources.ColumnPaginatedQuery[any]{}
+		query := common.ColumnPaginatedQuery[any]{}
 		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
 
 		cursor, err = store.Ledgers().Paginate(ctx, query)

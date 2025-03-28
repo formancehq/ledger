@@ -2,44 +2,44 @@ package ledger
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"slices"
 )
 
-type transactionsResourceHandler struct{
+type transactionsResourceHandler struct {
 	store *Store
 }
 
-func (h transactionsResourceHandler) Filters() []resources.Filter {
-	return []resources.Filter{
+func (h transactionsResourceHandler) Filters() []common.Filter {
+	return []common.Filter{
 		{
 			Name: "reverted",
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match"),
 			},
 		},
 		{
 			Name: "account",
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
 		{
 			Name: "source",
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
 		},
 		{
 			Name: "destination",
-			Validators: []resources.PropertyValidator{
-				resources.PropertyValidatorFunc(func(operator string, key string, value any) error {
+			Validators: []common.PropertyValidator{
+				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
 					return validateAddressFilter(h.store.ledger, operator, value)
 				}),
 			},
@@ -50,14 +50,14 @@ func (h transactionsResourceHandler) Filters() []resources.Filter {
 		},
 		{
 			Name: "metadata",
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$exists"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$exists"),
 			},
 		},
 		{
 			Name: `metadata\[.*]`,
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match"),
 			},
 		},
 		{
@@ -69,7 +69,7 @@ func (h transactionsResourceHandler) Filters() []resources.Filter {
 	}
 }
 
-func (h transactionsResourceHandler) BuildDataset(opts resources.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := h.store.db.NewSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("transactions")).
 		Column(
@@ -123,12 +123,12 @@ func (h transactionsResourceHandler) BuildDataset(opts resources.RepositoryHandl
 	return ret, nil
 }
 
-func (h transactionsResourceHandler) ResolveFilter(opts resources.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h transactionsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "id":
-		return fmt.Sprintf("id %s ?", resources.ConvertOperatorToSQL(operator)), []any{value}, nil
+		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reference" || property == "timestamp":
-		return fmt.Sprintf("%s %s ?", property, resources.ConvertOperatorToSQL(operator)), []any{value}, nil
+		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
 		ret := "reverted_at is"
 		if value.(bool) {
@@ -141,8 +141,8 @@ func (h transactionsResourceHandler) ResolveFilter(opts resources.ResourceQuery[
 		return filterAccountAddressOnTransactions(value.(string), true, false), nil, nil
 	case property == "destination":
 		return filterAccountAddressOnTransactions(value.(string), false, true), nil, nil
-	case metadataRegex.Match([]byte(property)):
-		match := metadataRegex.FindAllStringSubmatch(property, 3)
+	case common.MetadataRegex.Match([]byte(property)):
+		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 
 		return "metadata @> ?", []any{map[string]any{
 			match[0][1]: value,
@@ -155,11 +155,11 @@ func (h transactionsResourceHandler) ResolveFilter(opts resources.ResourceQuery[
 	}
 }
 
-func (h transactionsResourceHandler) Project(query resources.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) Project(query common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) Expand(opts resources.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h transactionsResourceHandler) Expand(opts common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}
@@ -167,7 +167,7 @@ func (h transactionsResourceHandler) Expand(opts resources.ResourceQuery[any], p
 	ret := h.store.db.NewSelect().
 		TableExpr(
 			"(?) data",
-		h.store.db.NewSelect().
+			h.store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
 					h.store.db.NewSelect().
@@ -186,10 +186,10 @@ func (h transactionsResourceHandler) Expand(opts resources.ResourceQuery[any], p
 		ColumnExpr("public.aggregate_objects(json_build_object(accounts_address, post_commit_effective_volumes)::jsonb) AS post_commit_effective_volumes").
 		Group("transactions_id")
 
-	return ret, &resources.JoinCondition{
+	return ret, &common.JoinCondition{
 		Left:  "id",
 		Right: "transactions_id",
 	}, nil
 }
 
-var _ resources.RepositoryHandler[any] = transactionsResourceHandler{}
+var _ common.RepositoryHandler[any] = transactionsResourceHandler{}

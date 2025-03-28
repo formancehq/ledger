@@ -1,4 +1,4 @@
-package resources
+package common
 
 import (
 	"context"
@@ -27,6 +27,7 @@ func ConvertOperatorToSQL(operator string) string {
 		return "<="
 	case "$gte":
 		return ">="
+	case "$like": return "like"
 	}
 	panic("unreachable")
 }

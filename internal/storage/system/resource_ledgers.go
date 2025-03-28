@@ -3,7 +3,7 @@ package system
 import (
 	"errors"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/resources"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
 	"regexp"
 )
@@ -16,30 +16,42 @@ type ledgersResourceHandler struct {
 	store *DefaultStore
 }
 
-func (h ledgersResourceHandler) Filters() []resources.Filter {
-	return []resources.Filter{
+func (h ledgersResourceHandler) Filters() []common.Filter {
+	return []common.Filter{
 		{
 			Name: "bucket",
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match"),
 			},
 		},
 		{
 			Name: `features\[.*]`,
-			Validators: []resources.PropertyValidator{
-				resources.AcceptOperators("$match"),
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match"),
+			},
+		},
+		{
+			Name: `metadata\[.*]`,
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match"),
+			},
+		},
+		{
+			Name: `name`,
+			Validators: []common.PropertyValidator{
+				common.AcceptOperators("$match", "$like"),
 			},
 		},
 	}
 }
 
-func (h ledgersResourceHandler) BuildDataset(opts resources.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h ledgersResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	return h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
 		Column("*"), nil
 }
 
-func (h ledgersResourceHandler) ResolveFilter(opts resources.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h ledgersResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "bucket":
 		return "bucket = ?", []any{value}, nil
@@ -49,17 +61,28 @@ func (h ledgersResourceHandler) ResolveFilter(opts resources.ResourceQuery[any],
 		return "features @> ?", []any{map[string]any{
 			match[0][1]: value,
 		}}, nil
+	case common.MetadataRegex.Match([]byte(property)):
+		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
+
+		return "metadata @> ?", []any{map[string]any{
+			match[0][1]: value,
+		}}, nil
+
+	case property == "metadata":
+		return "metadata -> ? is not null", []any{value}, nil
+	case property == "name":
+		return "name " + common.ConvertOperatorToSQL(operator) + " ?", []any{value}, nil
 	default:
-		return "", nil, resources.NewErrInvalidQuery("invalid filter property %s", property)
+		return "", nil, common.NewErrInvalidQuery("invalid filter property %s", property)
 	}
 }
 
-func (h ledgersResourceHandler) Project(query resources.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h ledgersResourceHandler) Project(query common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h ledgersResourceHandler) Expand(opts resources.ResourceQuery[any], property string) (*bun.SelectQuery, *resources.JoinCondition, error) {
+func (h ledgersResourceHandler) Expand(opts common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ resources.RepositoryHandler[any] = ledgersResourceHandler{}
+var _ common.RepositoryHandler[any] = ledgersResourceHandler{}
