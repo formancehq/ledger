@@ -117,11 +117,18 @@ Authorization ( Scopes: ledger:read )
 ```http
 GET http://localhost:8080/v2 HTTP/1.1
 Host: localhost:8080
+Content-Type: application/json
 Accept: application/json
 
 ```
 
 `GET /v2`
+
+> Body parameter
+
+```json
+{}
+```
 
 <h3 id="list-ledgers-parameters">Parameters</h3>
 
@@ -129,6 +136,7 @@ Accept: application/json
 |---|---|---|---|---|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|body|body|object|true|none|
 
 #### Detailed descriptions
 

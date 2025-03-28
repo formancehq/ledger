@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -37,7 +38,7 @@ func GetInfo(systemController system.Controller, version string) func(w http.Res
 
 		ledgerNames := make([]string, 0)
 		if err := bunpaginate.Iterate(r.Context(), ledgercontroller.NewListLedgersQuery(100),
-			func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+			func(ctx context.Context, q storagecommon.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 				return systemController.ListLedgers(ctx, q)
 			},
 			func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {

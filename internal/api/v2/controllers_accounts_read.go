@@ -2,13 +2,13 @@ package v2
 
 import (
 	"github.com/formancehq/go-libs/v2/query"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/url"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -27,10 +27,10 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc, err := l.GetAccount(r.Context(), ledgercontroller.ResourceQuery[any]{
+	acc, err := l.GetAccount(r.Context(), storagecommon.ResourceQuery[any]{
 		PIT:     pit,
 		Builder: query.Match("address", param),
-		Expand: r.URL.Query()["expand"],
+		Expand:  r.URL.Query()["expand"],
 	})
 	if err != nil {
 		switch {

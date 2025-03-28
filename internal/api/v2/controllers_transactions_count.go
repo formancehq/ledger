@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 
 	"errors"
@@ -21,7 +22,7 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 	count, err := common.LedgerFromContext(r.Context()).CountTransactions(r.Context(), *rq)
 	if err != nil {
 		switch {
-		case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+		case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)

@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 62f470db7468dcd28bf9c32f9d3873d1
+  docChecksum: 2eda230dcb858e207c81e8ba6f80428e
   docVersion: v2
   speakeasyVersion: 1.517.3
   generationVersion: 2.548.6
@@ -649,6 +649,8 @@ examples:
         query:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+      requestBody:
+        application/json: {"key": "<value>"}
       responses:
         "200":
           application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"name": "<value>", "addedAt": "2025-08-18T14:16:25.795Z", "bucket": "<value>", "metadata": {"admin": "true"}}]}}

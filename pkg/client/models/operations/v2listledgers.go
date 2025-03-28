@@ -15,7 +15,8 @@ type V2ListLedgersRequest struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor *string `queryParam:"style=form,explode=true,name=cursor"`
+	Cursor      *string        `queryParam:"style=form,explode=true,name=cursor"`
+	RequestBody map[string]any `request:"mediaType=application/json"`
 }
 
 func (o *V2ListLedgersRequest) GetPageSize() *int64 {
@@ -30,6 +31,13 @@ func (o *V2ListLedgersRequest) GetCursor() *string {
 		return nil
 	}
 	return o.Cursor
+}
+
+func (o *V2ListLedgersRequest) GetRequestBody() map[string]any {
+	if o == nil {
+		return map[string]any{}
+	}
+	return o.RequestBody
 }
 
 type V2ListLedgersResponse struct {

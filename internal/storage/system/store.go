@@ -9,8 +9,8 @@ import (
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
 )
 
@@ -18,7 +18,7 @@ type Store interface {
 	CreateLedger(ctx context.Context, l *ledger.Ledger) error
 	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
+	Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 
@@ -91,27 +91,14 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 	return err
 }
 
-func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	query := d.db.NewSelect().
-		Model(&ledger.Ledger{}).
-		Column("*").
-		Order("added_at asc")
-
-	if len(q.Options.Options.Features) > 0 {
-		for key, value := range q.Options.Options.Features {
-			query = query.Where("features->>? = ?", key, value)
-		}
-	}
-
-	if q.Options.Options.Bucket != "" {
-		query = query.Where("bucket = ?", q.Options.Options.Bucket)
-	}
-
-	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload], ledger.Ledger](
-		ctx,
-		query,
-		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload]](q),
-	)
+func (d *DefaultStore) Ledgers() common.PaginatedResource[
+	ledger.Ledger,
+	any,
+	common.ColumnPaginatedQuery[any]] {
+	return common.NewPaginatedResourceRepository(&ledgersResourceHandler{store: d}, common.ColumnPaginator[ledger.Ledger, any]{
+		DefaultPaginationColumn: "id",
+		DefaultOrder:            bunpaginate.OrderAsc,
+	})
 }
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
