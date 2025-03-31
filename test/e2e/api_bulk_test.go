@@ -243,6 +243,7 @@ var _ = Context("Ledger engine tests", func() {
 			}
 			stream.Write([]byte("\n"))
 
+			fmt.Println("server url", testServer.GetValue().URL())
 			req, err := http.NewRequest(http.MethodPost, testServer.GetValue().URL()+"/v2/default/_bulk", stream)
 			req.Header.Set("Content-Type", "application/vnd.formance.ledger.api.v2.bulk+json-stream")
 			Expect(err).To(Succeed())
