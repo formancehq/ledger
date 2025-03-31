@@ -5,11 +5,13 @@ package test_suite
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
+        "io"
 	"math/big"
 	"net/http"
 	"time"
@@ -247,6 +249,9 @@ var _ = Context("Ledger engine tests", func() {
 
 			rsp, err := http.DefaultClient.Do(req)
 			Expect(err).To(Succeed())
+			data, _ := io.ReadAll(rsp.Body)
+			fmt.Println(string(data))
+
 			Expect(rsp.StatusCode).To(Equal(http.StatusOK))
 		})
 		It("should be ok", func() {
