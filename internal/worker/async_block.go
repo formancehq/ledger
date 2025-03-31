@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/query"
 	"github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/robfig/cron/v3"
@@ -68,15 +70,13 @@ func (r *AsyncBlockRunner) Stop(ctx context.Context) error {
 
 func (r *AsyncBlockRunner) run(ctx context.Context) error {
 	initialQuery := ledgercontroller.NewListLedgersQuery(10)
-	initialQuery.Options.Options.Features = map[string]string{
-		features.FeatureHashLogs: "ASYNC",
-	}
+	initialQuery.Options.Builder = query.Match(fmt.Sprintf("features[%s]", features.FeatureHashLogs), "ASYNC")
 	systemStore := systemstore.New(r.db)
 	return bunpaginate.Iterate(
 		ctx,
 		initialQuery,
-		func(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-			return systemStore.ListLedgers(ctx, q)
+		func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+			return systemStore.Ledgers().Paginate(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
 			for _, l := range cursor.Data {

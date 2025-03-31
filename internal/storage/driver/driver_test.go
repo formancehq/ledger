@@ -4,9 +4,9 @@ package driver_test
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -91,16 +91,13 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	query := ledgercontroller.NewListLedgersQuery(15).WithBucket(bucket)
+	q := ledgercontroller.NewListLedgersQuery(15)
+	q.Options.Builder = query.Match("bucket", bucket)
 
-	cursor, err := d.ListLedgers(ctx, query)
+	cursor, err := d.ListLedgers(ctx, q)
 	require.NoError(t, err)
 
-	ledgers := collectionutils.Filter(cursor.Data, func(l ledger.Ledger) bool {
-		return l.Bucket == bucket
-	})
-
-	require.Len(t, ledgers, 2)
+	require.Len(t, cursor.Data, 2)
 }
 
 func TestLedgerUpdateMetadata(t *testing.T) {

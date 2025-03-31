@@ -2,12 +2,12 @@ package v2
 
 import (
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 
 	"errors"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/pointer"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/controller/system"
 )
@@ -15,26 +15,16 @@ import (
 func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		query, err := bunpaginate.Extract[ledgercontroller.ListLedgersQuery](r, func() (*ledgercontroller.ListLedgersQuery, error) {
-			pageSize, err := bunpaginate.GetPageSize(r,
-				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
-				bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			return pointer.For(ledgercontroller.NewListLedgersQuery(pageSize)), nil
-		})
+		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, "id", bunpaginate.OrderAsc)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
-		ledgers, err := b.ListLedgers(r.Context(), *query)
+		ledgers, err := b.ListLedgers(r.Context(), *rq)
 		if err != nil {
 			switch {
-			case errors.Is(err, ledgercontroller.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
+			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
 				api.BadRequest(w, common.ErrValidation, err)
 			default:
 				common.HandleCommonErrors(w, r, err)

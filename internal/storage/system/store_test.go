@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
@@ -91,16 +92,16 @@ func TestLedgersList(t *testing.T) {
 		ledgers = append(ledgers, l)
 	}
 
-	cursor, err := store.ListLedgers(ctx, ledgercontroller.NewListLedgersQuery(pageSize))
+	cursor, err := store.Ledgers().Paginate(ctx, ledgercontroller.NewListLedgersQuery(pageSize))
 	require.NoError(t, err)
 	require.Len(t, cursor.Data, int(pageSize))
 	require.Equal(t, ledgers[:pageSize], cursor.Data)
 
 	for i := pageSize; i < count; i += pageSize {
-		query := ledgercontroller.ListLedgersQuery{}
+		query := common.ColumnPaginatedQuery[any]{}
 		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
 
-		cursor, err = store.ListLedgers(ctx, query)
+		cursor, err = store.Ledgers().Paginate(ctx, query)
 		require.NoError(t, err)
 		require.Len(t, cursor.Data, 2)
 		require.Equal(t, ledgers[i:i+pageSize], cursor.Data)
@@ -156,9 +157,9 @@ func newStore(t docker.T) Store {
 	pgDatabase := srv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	if os.Getenv("DEBUG") == "true" {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
+	debugHook := bundebug.NewQueryHook()
+	debugHook.Debug = os.Getenv("DEBUG") == "true"
+	hooks = append(hooks, debugHook)
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 

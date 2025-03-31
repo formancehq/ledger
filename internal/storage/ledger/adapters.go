@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
 )
 
@@ -39,7 +40,7 @@ func (d *DefaultStoreAdapter) Rollback() error {
 	return d.Store.Rollback()
 }
 
-func (d *DefaultStoreAdapter) AggregatedBalances() ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
+func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
 	return d.AggregatedVolumes()
 }
 
