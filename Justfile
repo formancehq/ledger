@@ -34,7 +34,7 @@ export-docs-events:
     go run . docs events --write-dir docs/events
 
 tests:
-    DEBUG=true go test -v -race -covermode=atomic \
+    go test -race -covermode=atomic \
         -coverpkg=github.com/formancehq/ledger/internal/...,github.com/formancehq/ledger/pkg/events/...,github.com/formancehq/ledger/pkg/accounts/...,github.com/formancehq/ledger/pkg/assets/...,github.com/formancehq/ledger/cmd/... \
         -coverprofile coverage.txt \
         -tags it \
