@@ -22,6 +22,7 @@ func runMigrateJob(ctx *pulumi.Context, args migrationArgs, opts ...pulumi.Resou
 		},
 	}
 	envVars = append(envVars, args.component.GetEnvVars()...)
+	envVars = append(envVars, args.Monitoring.GetEnvVars(ctx)...)
 
 	return batchv1.NewJob(ctx, "migrate", &batchv1.JobArgs{
 		Metadata: &metav1.ObjectMetaArgs{
