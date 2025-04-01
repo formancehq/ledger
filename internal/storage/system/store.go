@@ -11,7 +11,10 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type Store interface {
@@ -32,7 +35,8 @@ const (
 )
 
 type DefaultStore struct {
-	db bun.IDB
+	db     bun.IDB
+	tracer trace.Tracer
 }
 
 func (d *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
@@ -122,15 +126,37 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 }
 
 func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option) error {
-	return d.GetMigrator(options...).Up(ctx)
+	_, err := tracing.Trace(ctx, d.tracer, "MigrateSystemStore", func(ctx context.Context) (any, error) {
+		return nil, d.GetMigrator(options...).Up(ctx)
+	})
+	return err
+
 }
 
 func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
-	return GetMigrator(d.db, options...)
+	return GetMigrator(d.db, append(options, migrations.WithTracer(d.tracer))...)
 }
 
-func New(db bun.IDB) *DefaultStore {
-	return &DefaultStore{
+func New(db bun.IDB, opts ...Option) *DefaultStore {
+	ret := &DefaultStore{
 		db: db,
 	}
+
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(ret)
+	}
+
+	return ret
+}
+
+type Option func(*DefaultStore)
+
+func WithTracer(tracer trace.Tracer) Option {
+	return func(d *DefaultStore) {
+		d.tracer = tracer
+	}
+}
+
+var defaultOptions = []Option{
+	WithTracer(noop.Tracer{}),
 }

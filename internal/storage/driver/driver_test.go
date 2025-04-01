@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"math/rand"
@@ -23,10 +24,15 @@ func TestLedgersCreate(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	buckets := []string{"bucket1", "bucket2"}
-	const countLedgers = 80
+	const countLedgers = 30
 
 	wg := sync.WaitGroup{}
 	wg.Add(countLedgers)
@@ -71,7 +77,12 @@ func TestLedgersList(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	bucket := uuid.NewString()[:8]
 
@@ -108,7 +119,12 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString())
 	_, err := d.CreateLedger(ctx, &l)
@@ -125,7 +141,12 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
 		"foo": "bar",

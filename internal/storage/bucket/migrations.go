@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v3"
@@ -55,6 +56,8 @@ func runMigrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name strin
 			if errors.Is(err, migrations.ErrAlreadyUpToDate) {
 				return nil
 			}
+			otlp.RecordError(ctx, err)
+
 			return err
 		}
 	}

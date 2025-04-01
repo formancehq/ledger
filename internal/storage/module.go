@@ -6,6 +6,8 @@ import (
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/tracing"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
@@ -14,21 +16,24 @@ const HealthCheckName = `storage-driver-up-to-date`
 func NewFXModule(autoUpgrade bool) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
-		health.ProvideHealthCheck(func(driver *driver.Driver) health.NamedCheck {
+		health.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
-				if hasReachedMinimalVersion {
+				_, err := tracing.Trace(ctx, tracer.Tracer("HealthCheck"), "HealthCheckStorage", tracing.NoResult(func(ctx context.Context) error {
+					if hasReachedMinimalVersion {
+						return nil
+					}
+					var err error
+					hasReachedMinimalVersion, err = driver.HasReachMinimalVersion(ctx)
+					if err != nil {
+						return err
+					}
+					if !hasReachedMinimalVersion {
+						return errors.New("storage driver is not up to date")
+					}
 					return nil
-				}
-				var err error
-				hasReachedMinimalVersion, err = driver.HasReachMinimalVersion(ctx)
-				if err != nil {
-					return err
-				}
-				if !hasReachedMinimalVersion {
-					return errors.New("storage driver is not up to date")
-				}
-				return nil
+				}))
+				return err
 			}))
 		}),
 	}

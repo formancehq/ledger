@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/otlp"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
@@ -56,7 +57,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 				ret, logID, err := b.processElement(ctx, ctrl, element)
 				if err != nil {
 					hasError.Store(true)
-					span.RecordError(err)
+					otlp.RecordError(ctx, err)
 
 					result <- BulkElementResult{
 						Error: err,
