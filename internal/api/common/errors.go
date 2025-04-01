@@ -4,8 +4,8 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"go.opentelemetry.io/otel/trace"
 	"net/http"
 )
 
@@ -38,10 +38,7 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
-	span := trace.SpanFromContext(r.Context())
-	if span != nil {
-		span.RecordError(err)
-	}
+	otlp.RecordError(r.Context(), err)
 	logging.FromContext(r.Context()).Error(err)
 	api.WriteErrorResponse(w, http.StatusInternalServerError, api.ErrorInternal, errors.New("Internal error. Consult logs/traces to have more details."))
 }

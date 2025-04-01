@@ -28,32 +28,36 @@ func NewFXModule() fx.Option {
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
 		})),
-		fx.Provide(func(db *bun.DB) systemstore.Store {
-			return systemstore.New(db)
-		}),
-		fx.Provide(func(
-			db *bun.DB,
-			tracerProvider trace.TracerProvider,
-			meterProvider metric.MeterProvider,
-		) ledgerstore.Factory {
-			return ledgerstore.NewFactory(db,
-				ledgerstore.WithMeter(meterProvider.Meter("store")),
-				ledgerstore.WithTracer(tracerProvider.Tracer("store")),
-			)
+		fx.Provide(func(params struct {
+			fx.In
+
+			DB             *bun.DB
+			TracerProvider trace.TracerProvider `optional:"true"`
+			MeterProvider  metric.MeterProvider `optional:"true"`
+		}) ledgerstore.Factory {
+			options := make([]ledgerstore.Option, 0)
+			if params.TracerProvider != nil {
+				options = append(options, ledgerstore.WithTracer(params.TracerProvider.Tracer("store")))
+			}
+			if params.MeterProvider != nil {
+				options = append(options, ledgerstore.WithMeter(params.MeterProvider.Meter("store")))
+			}
+			return ledgerstore.NewFactory(params.DB, options...)
 		}),
 		fx.Provide(func(
 			db *bun.DB,
 			bucketFactory bucket.Factory,
 			ledgerStoreFactory ledgerstore.Factory,
 			tracerProvider trace.TracerProvider,
-			meterProvider metric.MeterProvider,
 		) (*Driver, error) {
 			return New(
 				db,
 				ledgerStoreFactory,
 				bucketFactory,
-				WithMeter(meterProvider.Meter("store")),
-				WithTracer(tracerProvider.Tracer("store")),
+				systemstore.NewStoreFactory(systemstore.WithTracer(
+					tracerProvider.Tracer("SystemStore"),
+				)),
+				WithTracer(tracerProvider.Tracer("StorageDriver")),
 			), nil
 		}),
 		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(systemcontroller.Store)))),

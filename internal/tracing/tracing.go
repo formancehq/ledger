@@ -2,6 +2,7 @@ package tracing
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/time"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -23,7 +24,7 @@ func TraceWithMetric[RET any](
 		now := time.Now()
 		ret, err := fn(ctx)
 		if err != nil {
-			trace.SpanFromContext(ctx).RecordError(err)
+			otlp.RecordError(ctx, err)
 			return zeroRet, err
 		}
 
@@ -40,10 +41,16 @@ func TraceWithMetric[RET any](
 }
 
 func Trace[RET any](ctx context.Context, tracer trace.Tracer, name string, fn func(ctx context.Context) (RET, error)) (RET, error) {
-	ctx, trace := tracer.Start(ctx, name)
-	defer trace.End()
+	ctx, span := tracer.Start(ctx, name)
+	defer span.End()
 
-	return fn(ctx)
+	ret, err := fn(ctx)
+	if err != nil {
+		otlp.RecordError(ctx, err)
+		return ret, err
+	}
+
+	return ret, nil
 }
 
 func NoResult(fn func(ctx context.Context) error) func(ctx context.Context) (any, error) {

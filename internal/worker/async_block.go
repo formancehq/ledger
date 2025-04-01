@@ -13,6 +13,9 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/robfig/cron/v3"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"time"
 )
 
@@ -26,6 +29,7 @@ type AsyncBlockRunner struct {
 	logger      logging.Logger
 	db          *bun.DB
 	cfg         AsyncBlockRunnerConfig
+	tracer      trace.Tracer
 }
 
 func (r *AsyncBlockRunner) Name() string {
@@ -69,6 +73,10 @@ func (r *AsyncBlockRunner) Stop(ctx context.Context) error {
 }
 
 func (r *AsyncBlockRunner) run(ctx context.Context) error {
+
+	ctx, span := r.tracer.Start(ctx, "Run")
+	defer span.End()
+
 	initialQuery := ledgercontroller.NewListLedgersQuery(10)
 	initialQuery.Options.Builder = query.Match(fmt.Sprintf("features[%s]", features.FeatureHashLogs), "ASYNC")
 	systemStore := systemstore.New(r.db)
@@ -90,6 +98,11 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 }
 
 func (r *AsyncBlockRunner) processLedger(ctx context.Context, l ledger.Ledger) error {
+	ctx, span := r.tracer.Start(ctx, "RunForLedger")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("ledger", l.Name))
+
 	var err error
 	_, err = r.db.NewRaw(fmt.Sprintf(`
 			call "%s".create_blocks(?, ?)
@@ -98,11 +111,29 @@ func (r *AsyncBlockRunner) processLedger(ctx context.Context, l ledger.Ledger) e
 	return err
 }
 
-func NewAsyncBlockRunner(logger logging.Logger, db *bun.DB, cfg AsyncBlockRunnerConfig) *AsyncBlockRunner {
-	return &AsyncBlockRunner{
+func NewAsyncBlockRunner(logger logging.Logger, db *bun.DB, cfg AsyncBlockRunnerConfig, opts ...Option) *AsyncBlockRunner {
+	ret := &AsyncBlockRunner{
 		stopChannel: make(chan chan struct{}),
 		logger:      logger,
 		db:          db,
 		cfg:         cfg,
 	}
+
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(ret)
+	}
+
+	return ret
+}
+
+type Option func(*AsyncBlockRunner)
+
+func WithTracer(tracer trace.Tracer) Option {
+	return func(r *AsyncBlockRunner) {
+		r.tracer = tracer
+	}
+}
+
+var defaultOptions = []Option{
+	WithTracer(noop.Tracer{}),
 }
