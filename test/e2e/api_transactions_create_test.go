@@ -96,6 +96,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 									destination = @alice
 								)			
 								set_account_meta(@alice, "clientType", "silver")
+								set_account_meta(@foo, "status", "pending")
 							`,
 						}
 					})
@@ -111,6 +112,18 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Address: "alice",
 							Metadata: map[string]string{
 								"clientType": "silver",
+							},
+						}))
+
+						account, err = GetAccount(ctx, testServer.GetValue(), operations.V2GetAccountRequest{
+							Address: "foo",
+							Ledger:  "default",
+						})
+						Expect(err).ToNot(HaveOccurred())
+						Expect(*account).Should(Equal(components.V2Account{
+							Address: "foo",
+							Metadata: map[string]string{
+								"status": "pending",
 							},
 						}))
 					})
