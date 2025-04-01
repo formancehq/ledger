@@ -60,6 +60,7 @@ func TestMain(m *testing.M) {
 					bunDB,
 					ledgerstore.NewFactory(bunDB),
 					bucket.NewDefaultFactory(),
+					systemstore.NewStoreFactory(),
 				))
 
 				return bunDB

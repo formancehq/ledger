@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -60,7 +61,7 @@ func NewRouter(
 							middleware.PrintPrettyStack(rvr)
 						}
 
-						trace.SpanFromContext(r.Context()).RecordError(fmt.Errorf("%s", rvr))
+						otlp.RecordError(r.Context(), fmt.Errorf("%s", rvr))
 
 						w.WriteHeader(http.StatusInternalServerError)
 					}

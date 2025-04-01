@@ -174,6 +174,7 @@ func NewServeCommand() *cobra.Command {
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
+	otlp.AddFlags(cmd.Flags())
 	otlpmetrics.AddFlags(cmd.Flags())
 	otlptraces.AddFlags(cmd.Flags())
 	auth.AddFlags(cmd.Flags())
