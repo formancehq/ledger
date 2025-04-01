@@ -1,11 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
@@ -44,21 +45,35 @@ func NewRouter(
 			AllowCredentials: true,
 		}).Handler,
 		common.LogID(),
+		func(next http.Handler) http.Handler {
+			fn := func(w http.ResponseWriter, r *http.Request) {
+				defer func() {
+					if rvr := recover(); rvr != nil {
+						if rvr == http.ErrAbortHandler {
+							// we don't recover http.ErrAbortHandler so the response
+							// to the client is aborted, this should not be logged
+							panic(rvr)
+						}
+
+						if debug {
+							middleware.PrintPrettyStack(rvr)
+						}
+
+						otlp.RecordError(r.Context(), fmt.Errorf("%s", rvr))
+
+						w.WriteHeader(http.StatusInternalServerError)
+					}
+				}()
+
+				next.ServeHTTP(w, r)
+			}
+
+			return http.HandlerFunc(fn)
+		},
 	)
 
 	commonMiddlewares := []func(http.Handler) http.Handler{
 		middleware.RequestLogger(api.NewLogFormatter()),
-	}
-
-	if debug {
-		commonMiddlewares = append(commonMiddlewares, func(handler http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				trace.SpanFromContext(r.Context()).
-					SetAttributes(attribute.String("raw-query", r.URL.RawQuery))
-
-				handler.ServeHTTP(w, r)
-			})
-		})
 	}
 
 	v2Router := v2.NewRouter(
@@ -92,8 +107,8 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer        trace.Tracer
-	bulkMaxSize   int
+	tracer           trace.Tracer
+	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
 	paginationConfig common.PaginationConfig
 }

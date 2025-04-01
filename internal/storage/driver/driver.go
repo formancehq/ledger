@@ -4,35 +4,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/tracing"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"sync"
 	"time"
 
 	"github.com/alitto/pond"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/metric"
-	noopmetrics "go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/trace"
-	nooptracer "go.opentelemetry.io/otel/trace/noop"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v2/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/uptrace/bun"
 )
 
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
 	db                 *bun.DB
 	bucketFactory      bucket.Factory
+	systemStoreFactory systemstore.StoreFactory
 	tracer             trace.Tracer
-	meter              metric.Meter
 
 	migrationRetryPeriod     time.Duration
 	parallelBucketMigrations int
@@ -46,7 +43,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		systemStore := systemstore.New(tx)
+		systemStore := d.systemStoreFactory.Create(d.db)
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
@@ -92,7 +89,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
 	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
-	ret, err := systemstore.New(d.db).GetLedger(ctx, name)
+	ret, err := d.systemStoreFactory.Create(d.db).GetLedger(ctx, name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -109,7 +106,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		return fmt.Errorf("detecting rollbacks: %w", err)
 	}
 
-	err = systemstore.New(d.db).Migrate(ctx)
+	err = d.systemStoreFactory.Create(d.db).Migrate(ctx)
 	if err != nil {
 		return fmt.Errorf("migrating system store: %w", err)
 	}
@@ -119,7 +116,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 
 func (d *Driver) detectRollbacks(ctx context.Context) error {
 
-	systemStore := systemstore.New(d.db)
+	systemStore := d.systemStoreFactory.Create(d.db)
 	logging.FromContext(ctx).Debugf("Checking for downgrades on system schema")
 	if err := detectDowngrades(systemStore.GetMigrator(), ctx); err != nil {
 		return fmt.Errorf("detecting rollbacks of system schema: %w", err)
@@ -179,19 +176,19 @@ func (d *Driver) detectRollbacks(ctx context.Context) error {
 }
 
 func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
-	return systemstore.New(d.db).UpdateLedgerMetadata(ctx, name, m)
+	return d.systemStoreFactory.Create(d.db).UpdateLedgerMetadata(ctx, name, m)
 }
 
 func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
-	return systemstore.New(d.db).DeleteLedgerMetadata(ctx, name, key)
+	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
 func (d *Driver) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	return systemstore.New(d.db).ListLedgers(ctx, q)
+	return d.systemStoreFactory.Create(d.db).ListLedgers(ctx, q)
 }
 
 func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
-	return systemstore.New(d.db).GetLedger(ctx, name)
+	return d.systemStoreFactory.Create(d.db).GetLedger(ctx, name)
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
@@ -199,60 +196,68 @@ func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
 }
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
+	_, err := tracing.Trace(ctx, d.tracer, "UpgradeAllBuckets", tracing.NoResult(func(ctx context.Context) error {
+		buckets, err := d.systemStoreFactory.Create(d.db).GetDistinctBuckets(ctx)
+		if err != nil {
+			return fmt.Errorf("getting distinct buckets: %w", err)
+		}
 
-	buckets, err := systemstore.New(d.db).GetDistinctBuckets(ctx)
-	if err != nil {
-		return fmt.Errorf("getting distinct buckets: %w", err)
-	}
+		wp := pond.New(d.parallelBucketMigrations, len(buckets), pond.Context(ctx))
 
-	wp := pond.New(d.parallelBucketMigrations, len(buckets), pond.Context(ctx))
-
-	for _, bucketName := range buckets {
-		wp.Submit(func() {
-			logger := logging.FromContext(ctx).WithFields(map[string]any{
-				"bucket": bucketName,
-			})
-			b := d.bucketFactory.Create(bucketName, d.db)
-
-		l:
-			for {
-				errChan := make(chan error, 1)
-				go func() {
-					logger.Infof("Upgrading...")
-					errChan <- b.Migrate(logging.ContextWithLogger(ctx, logger))
-				}()
-
+		for _, bucketName := range buckets {
+			wp.Submit(func() {
+				logger := logging.FromContext(ctx).WithFields(map[string]any{
+					"bucket": bucketName,
+				})
+			l:
 				for {
-					logger.Infof("Waiting termination")
-					select {
-					case <-ctx.Done():
-						return
-					case err := <-errChan:
-						if err != nil {
-							logger.Errorf("Error upgrading: %s", err)
-							select {
-							case <-time.After(d.migrationRetryPeriod):
-								continue l
-							case <-ctx.Done():
-								return
-							}
+					if err := d.upgradeBucket(ctx, logger, bucketName); err != nil {
+						logger.Errorf("Error upgrading: %s", err)
+						select {
+						case <-time.After(d.migrationRetryPeriod):
+							continue l
+						case <-ctx.Done():
+							return
 						}
-
-						logger.Info("Upgrade terminated")
-						return
 					}
+					logger.Info("Upgrade terminated")
+					break
 				}
-			}
-		})
-	}
+			})
+		}
 
-	wp.StopAndWait()
+		wp.StopAndWait()
+
+		return nil
+	}))
+
+	return err
+}
+
+func (d *Driver) upgradeBucket(ctx context.Context, logger logging.Logger, bucketName string) error {
+	ctx, span := d.tracer.Start(ctx, "UpgradeBucket",
+		trace.WithNewRoot(),
+		trace.WithLinks(
+			trace.Link{
+				SpanContext: trace.SpanFromContext(ctx).SpanContext(),
+			},
+		),
+	)
+	defer span.End()
+
+	logger.Infof("Upgrading...")
+	b := d.bucketFactory.Create(bucketName, d.db)
+
+	err := b.Migrate(logging.ContextWithLogger(ctx, logger))
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func (d *Driver) HasReachMinimalVersion(ctx context.Context) (bool, error) {
-	systemStore := systemstore.New(d.db)
+	systemStore := d.systemStoreFactory.Create(d.db)
 
 	isUpToDate, err := systemStore.IsUpToDate(ctx)
 	if err != nil {
@@ -284,12 +289,14 @@ func New(
 	db *bun.DB,
 	ledgerStoreFactory ledgerstore.Factory,
 	bucketFactory bucket.Factory,
+	systemStoreFactory systemstore.StoreFactory,
 	opts ...Option,
 ) *Driver {
 	ret := &Driver{
 		db:                 db,
 		ledgerStoreFactory: ledgerStoreFactory,
 		bucketFactory:      bucketFactory,
+		systemStoreFactory: systemStoreFactory,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -298,18 +305,6 @@ func New(
 }
 
 type Option func(d *Driver)
-
-func WithMeter(m metric.Meter) Option {
-	return func(d *Driver) {
-		d.meter = m
-	}
-}
-
-func WithTracer(tracer trace.Tracer) Option {
-	return func(d *Driver) {
-		d.tracer = tracer
-	}
-}
 
 func WithParallelBucketMigration(p int) Option {
 	return func(d *Driver) {
@@ -323,9 +318,14 @@ func WithMigrationRetryPeriod(p time.Duration) Option {
 	}
 }
 
+func WithTracer(tracer trace.Tracer) Option {
+	return func(d *Driver) {
+		d.tracer = tracer
+	}
+}
+
 var defaultOptions = []Option{
-	WithMeter(noopmetrics.Meter{}),
-	WithTracer(nooptracer.Tracer{}),
 	WithParallelBucketMigration(10),
 	WithMigrationRetryPeriod(5 * time.Second),
+	WithTracer(noop.Tracer{}),
 }
