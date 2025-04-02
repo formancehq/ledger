@@ -25,7 +25,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   Dirty:
-    runs-on: "shipfox-4vcpu-ubuntu-2404"
+    runs-on: "shipfox-2vcpu-ubuntu-2404"
     steps:
       - uses: 'actions/checkout@v4'
         with:
@@ -57,7 +57,7 @@ jobs:
           fi
 
   Tests:
-    runs-on: "shipfox-8vcpu-ubuntu-2404"
+    runs-on: "shipfox-2vcpu-ubuntu-2404"
     steps:
       - uses: 'actions/checkout@v4'
         with:
