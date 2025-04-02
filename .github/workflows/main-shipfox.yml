@@ -24,15 +24,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  Debug:
-    runs-on: "shipfox-2vcpu-ubuntu-2404"
-    steps:
-      - run: |
-          echo ${GOPATH}
-          echo ${GOROOT}
-
   Dirty:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
+    env:
+      GOPATH: ~/go
     steps:
       - uses: 'actions/checkout@v4'
         with:
@@ -59,6 +54,8 @@ jobs:
 
   Tests:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
+    env:
+      GOPATH: ~/go
     steps:
       - uses: 'actions/checkout@v4'
         with:
