@@ -24,6 +24,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  Debug:
+    runs-on: "shipfox-2vcpu-ubuntu-2404"
+    steps:
+      - run: env |grep GOPATH
+
   Dirty:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
     steps:
