@@ -1,0 +1,23 @@
+name: Setup Env
+description: Setup Env for Linux x64
+inputs:
+  token:
+    description: 'A Github PAT'
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@v16
+    - name: Cache dependencies
+      uses: DeterminateSystems/magic-nix-cache-action@v9
+    - name: Load dependencies
+      shell: bash
+      run: nix develop --install
+    - name: Cache
+      uses: actions/cache@v4
+      with:
+        key: ${{ runner.os }}-golang
+        path: |
+          /tmp/golangci-lint
+          /tmp/go
