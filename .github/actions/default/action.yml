@@ -23,5 +23,5 @@ runs:
       with:
         key: ${{ runner.os }}-golang
         path: |
-          ~/.cache/golangci-lint
+          /tmp/golangci-lint
           /tmp/go
