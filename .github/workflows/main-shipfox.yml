@@ -27,7 +27,9 @@ jobs:
   Debug:
     runs-on: "shipfox-2vcpu-ubuntu-2404"
     steps:
-      - run: env |grep GOPATH
+      - run: |
+          echo ${GOPATH}
+          echo ${GOROOT}
 
   Dirty:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
