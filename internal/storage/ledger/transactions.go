@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"slices"
@@ -45,7 +45,13 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
-	err = store.UpsertAccounts(ctx, collectionutils.Map(tx.InvolvedAccounts(), func(address string) *ledger.Account {
+	accountsToUpsert := tx.InvolvedAccounts()
+	accountsToUpsert = append(accountsToUpsert, Keys(accountMetadata)...)
+
+	slices.Sort(accountsToUpsert)
+	accountsToUpsert = slices.Compact(accountsToUpsert)
+
+	err = store.UpsertAccounts(ctx, Map(accountsToUpsert, func(address string) *ledger.Account {
 		return &ledger.Account{
 			Address:       address,
 			FirstUsage:    tx.Timestamp,
