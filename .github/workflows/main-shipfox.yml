@@ -27,7 +27,7 @@ jobs:
   Dirty:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
     env:
-      GOPATH: ~/go
+      GOPATH: /tmp/go
     steps:
       - uses: 'actions/checkout@v4'
         with:
@@ -55,7 +55,7 @@ jobs:
   Tests:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
     env:
-      GOPATH: ~/go
+      GOPATH: /tmp/go
     steps:
       - uses: 'actions/checkout@v4'
         with:
