@@ -14,10 +14,6 @@ runs:
     - name: Load dependencies
       shell: bash
       run: nix develop --install
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
     - name: Cache
       uses: actions/cache@v4
       with:
