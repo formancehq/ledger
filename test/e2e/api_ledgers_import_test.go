@@ -7,6 +7,9 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
@@ -20,17 +23,21 @@ import (
 
 var _ = Context("Ledger engine tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
+		db                = UseTemplatedDatabase()
+		ctx               = logging.TestingContext()
+		connectionOptions = deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions)
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures:  true,
-		}
-	})
+	testServer := DeferTestServer(
+		connectionOptions,
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			ExperimentalFeaturesInstrumentation(),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
 	When("creating a new ledger", func() {
 		var (
 			createLedgerRequest operations.V2CreateLedgerRequest
@@ -331,7 +338,7 @@ var _ = Context("Ledger engine tests", func() {
 						// we take a lock on the ledgers table to force the process to wait
 						// while we will make a concurrent request
 						JustBeforeEach(func() {
-							db = ConnectToDatabase(ctx, GinkgoT(), testServer.GetValue())
+							db = ConnectToDatabase(ctx, GinkgoT(), connectionOptions)
 							sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 							Expect(err).To(BeNil())
 

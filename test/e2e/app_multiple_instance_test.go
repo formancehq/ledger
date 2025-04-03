@@ -4,6 +4,7 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/cmd"
@@ -22,9 +23,9 @@ var _ = Context("Ledger application multiple instance tests", func() {
 	const nbServer = 3
 
 	When("starting multiple instances of the service", func() {
-		var allServers []*Server
+		var allServers []*testservice.Service
 		BeforeEach(func() {
-			servers := make(chan *Server, nbServer)
+			servers := make(chan *testservice.Service, nbServer)
 			wg := sync.WaitGroup{}
 			wg.Add(nbServer)
 			waitStart := make(chan struct{})
@@ -38,19 +39,10 @@ var _ = Context("Ledger application multiple instance tests", func() {
 
 					testServer := testservice.New(
 						cmd.NewRootCommand,
-						testservice.Configuration[ServeConfiguration]{
-							CommonConfiguration: testservice.CommonConfiguration{
-								Debug:  debug,
-								Output: GinkgoWriter,
-							},
-							Configuration: ServeConfiguration{
-								PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-								NatsURL:               natsServer.GetValue().ClientURL(),
-								DisableAutoUpgrade:    true,
-							},
-						},
+						GetTestServerOptions(deferred.Map(db, (*pgtesting.Database).ConnectionOptions)),
 						testservice.WithInstruments(
-							testservice.HTTPServerInstrumentation(),
+							testservice.DebugInstrumentation(debug),
+							testservice.OutputInstrumentation(GinkgoWriter),
 						),
 					)
 					Expect(testServer.Start(ctx)).To(Succeed())

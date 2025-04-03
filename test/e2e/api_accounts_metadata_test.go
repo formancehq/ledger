@@ -4,6 +4,10 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
@@ -17,17 +21,21 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
+		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(natsURL),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
 	var events chan *nats.Msg
 	BeforeEach(func() {
-		_, events = Subscribe(GinkgoT(), testServer.GetValue())
+		_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
 	})
 
 	BeforeEach(func() {

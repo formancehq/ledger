@@ -6,6 +6,10 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
@@ -17,17 +21,22 @@ import (
 
 var _ = Context("Ledger engine tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
+		db      = UseTemplatedDatabase()
+		ctx     = logging.TestingContext()
+		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures:  true,
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(natsURL),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			ExperimentalFeaturesInstrumentation(),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
 	When("creating a new ledger", func() {
 		var (
 			createLedgerRequest operations.V2CreateLedgerRequest

@@ -5,8 +5,8 @@ import (
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 )
 
-func Client(srv *testservice.Service[ServeConfiguration]) *ledgerclient.Formance {
+func Client(srv *testservice.Service) *ledgerclient.Formance {
 	return ledgerclient.New(
-		ledgerclient.WithServerURL(testservice.GetServerURL(srv)),
+		ledgerclient.WithServerURL(testservice.GetServerURL(srv).String()),
 	)
 }

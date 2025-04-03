@@ -1,28 +1,22 @@
 package testserver
 
 import (
+	"context"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/cmd"
 	"strconv"
 )
 
-type WorkerConfiguration struct {
-	PostgresConfiguration PostgresConfiguration
-	LogsHashBlockMaxSize  int
-	LogsHashBlockCRONSpec string
+func LogsHashBlockMaxSizeInstrumentation(size int) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerAsyncBlockHasherMaxBlockSizeFlag, strconv.Itoa(size))
+		return nil
+	}
 }
 
-func (cfg WorkerConfiguration) GetArgs(_ string) []string {
-	args := []string{"worker"}
-	args = append(args, cfg.PostgresConfiguration.GetArgs()...)
-	if cfg.LogsHashBlockMaxSize > 0 {
-		args = append(args, "--"+cmd.WorkerAsyncBlockHasherMaxBlockSizeFlag, strconv.Itoa(cfg.LogsHashBlockMaxSize))
+func LogsHashBlockCRONSpecInstrumentation(spec string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerAsyncBlockHasherScheduleFlag, spec)
+		return nil
 	}
-	if cfg.LogsHashBlockCRONSpec != "" {
-		args = append(args, "--"+cmd.WorkerAsyncBlockHasherScheduleFlag, cfg.LogsHashBlockCRONSpec)
-	}
-
-	return args
 }
-
-type Worker = testservice.Service[WorkerConfiguration]

@@ -14,7 +14,7 @@ require (
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
 	github.com/dop251/goja v0.0.0-20241009100908-5f46f2705ca3
-	github.com/formancehq/go-libs/v2 v2.2.3-0.20250403104105-55a4f9b367d6
+	github.com/formancehq/go-libs/v2 v2.2.3-0.20250404084034-ca6bcdb75003
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-chi/cors v1.2.1
@@ -24,7 +24,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/jamiealquiza/tachymeter v2.0.0+incompatible
 	github.com/logrusorgru/aurora v2.0.3+incompatible
-	github.com/nats-io/nats.go v1.40.1
+	github.com/nats-io/nats.go v1.41.0
 	github.com/onsi/ginkgo/v2 v2.22.1
 	github.com/onsi/gomega v1.36.2
 	github.com/ory/dockertest/v3 v3.11.0

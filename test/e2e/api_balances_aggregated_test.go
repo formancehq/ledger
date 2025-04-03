@@ -5,6 +5,9 @@ package test_suite
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -21,12 +24,14 @@ var _ = Context("Ledger engine tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
 	now := time.Now().UTC().Round(time.Second)
 	When("creating two transactions on a ledger with custom metadata", func() {
 		var firstTransactionsInsertedAt time.Time

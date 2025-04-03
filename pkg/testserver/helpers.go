@@ -5,6 +5,8 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/go-libs/v2/time"
 	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -59,11 +61,11 @@ func ConvertSDKPostingToCorePosting(p components.V2Posting) ledger.Posting {
 	}
 }
 
-func ConnectToDatabase(ctx context.Context, t interface{
+func ConnectToDatabase(ctx context.Context, t interface {
 	require.TestingT
 	Cleanup(func())
-}, testServer *Server) *bun.DB {
-	db, err := bunconnect.OpenSQLDB(ctx, bunconnect.ConnectionOptions(testServer.GetConfiguration().Configuration.PostgresConfiguration))
+}, dbOptions *deferred.Deferred[bunconnect.ConnectionOptions]) *bun.DB {
+	db, err := bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -72,12 +74,12 @@ func ConnectToDatabase(ctx context.Context, t interface{
 	return db
 }
 
-func Subscribe(t require.TestingT, server *Server) (*nats.Subscription, chan *nats.Msg) {
+func Subscribe(t require.TestingT, srv *testservice.Service, natsURL *deferred.Deferred[string]) (*nats.Subscription, chan *nats.Msg) {
 	ret := make(chan *nats.Msg)
-	conn, err := nats.Connect(server.GetConfiguration().Configuration.NatsURL)
+	conn, err := nats.Connect(natsURL.GetValue())
 	require.NoError(t, err)
 
-	subscription, err := conn.Subscribe(server.GetID(), func(msg *nats.Msg) {
+	subscription, err := conn.Subscribe(srv.GetID(), func(msg *nats.Msg) {
 		ret <- msg
 	})
 	require.NoError(t, err)

@@ -9,6 +9,8 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/go-libs/v2/time"
@@ -36,18 +38,26 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 	Context("Pending transaction should be fully processed before stopping or restarting the server", func() {
 		db := UseTemplatedDatabase()
-		testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-			return ServeConfiguration{
-				PostgresConfiguration: PostgresConfiguration(bunconnect.ConnectionOptions{
-					DatabaseSourceName: db.GetValue().ConnectionOptions().DatabaseSourceName,
-					MaxOpenConns:       100,
-				}),
-				NatsURL: natsServer.GetValue().ClientURL(),
+		connectionOptions := deferred.DeferMap(db, func(from *pgtesting.Database) bunconnect.ConnectionOptions {
+			return bunconnect.ConnectionOptions{
+				DatabaseSourceName: from.ConnectionOptions().DatabaseSourceName,
+				MaxOpenConns:       100,
 			}
 		})
+		natsURL := deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		testServer := DeferTestServer(
+			connectionOptions,
+			testservice.WithInstruments(
+				testservice.NatsInstrumentation(natsURL),
+				testservice.DebugInstrumentation(debug),
+				testservice.OutputInstrumentation(GinkgoWriter),
+			),
+			testservice.WithLogger(GinkgoT()),
+		)
+
 		var events chan *nats.Msg
 		BeforeEach(func() {
-			_, events = Subscribe(GinkgoT(), testServer.GetValue())
+			_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
 		})
 
 		When("starting the service", func() {
@@ -78,7 +88,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				// lock logs table to block transactions creation requests
 				// the first tx will block on the log insertion
 				// the next transaction will block earlier on advisory lock acquirement for accounts
-				db := ConnectToDatabase(ctx, GinkgoT(), testServer.GetValue())
+				db := ConnectToDatabase(ctx, GinkgoT(), connectionOptions)
 				sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 				Expect(err).To(BeNil())
 				DeferCleanup(func() {
@@ -197,13 +207,15 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				Expect(migrator.UpByOne(ctx)).To(BeNil())
 			}
 		})
-		testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-			return ServeConfiguration{
-				PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-				NatsURL:               natsServer.GetValue().ClientURL(),
-				DisableAutoUpgrade:    true,
-			}
-		})
+		testServer := DeferTestServer(
+			deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+			testservice.WithInstruments(
+				testservice.NatsInstrumentation(deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
+				testservice.DebugInstrumentation(debug),
+				testservice.OutputInstrumentation(GinkgoWriter),
+			),
+		)
+
 		It("should be ok", func() {
 			By("we should be able to create a new transaction", func() {
 				_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
@@ -235,16 +247,19 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 var _ = Context("Ledger downgrade tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
+		db                = UseTemplatedDatabase()
+		connectionOptions = deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions)
+		ctx               = logging.TestingContext()
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := DeferTestServer(
+		connectionOptions,
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
 
 	When("inserting new migrations into the database", func() {
 		BeforeEach(func() {
@@ -261,7 +276,7 @@ var _ = Context("Ledger downgrade tests", func() {
 			Expect(err).To(BeNil())
 
 			// Insert a fake migration into the database to simulate a downgrade
-			_, err = ConnectToDatabase(ctx, GinkgoT(), testServer.GetValue()).
+			_, err = ConnectToDatabase(ctx, GinkgoT(), connectionOptions).
 				NewInsert().
 				ModelTableExpr(ledger.DefaultBucket + ".goose_db_version").
 				Model(&map[string]any{
@@ -279,7 +294,7 @@ var _ = Context("Ledger downgrade tests", func() {
 	})
 
 	It("should be ok when targeting health check endpoint", func() {
-		ret, err := http.DefaultClient.Get(testservice.GetServerURL(testServer.GetValue()) + "/_healthcheck")
+		ret, err := http.DefaultClient.Get(testservice.GetServerURL(testServer.GetValue()).String() + "/_healthcheck")
 		Expect(err).To(BeNil())
 
 		body := make(map[string]interface{})

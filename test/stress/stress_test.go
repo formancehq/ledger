@@ -4,6 +4,8 @@ package test_suite
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"math/rand"
@@ -27,12 +29,12 @@ var _ = Context("Ledger stress tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			ExperimentalFeatures:  true,
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			ExperimentalFeaturesInstrumentation(),
+		),
+	)
 
 	const (
 		countLedgers      = 6

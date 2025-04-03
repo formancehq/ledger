@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/formancehq/go-libs/v2/publish"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/google/go-cmp/cmp"
 	"github.com/invopop/jsonschema"
@@ -21,9 +22,9 @@ import (
 type HaveCoherentStateMatcher struct{}
 
 func (h HaveCoherentStateMatcher) Match(actual interface{}) (success bool, err error) {
-	srv, ok := actual.(*Server)
+	srv, ok := actual.(*testservice.Service)
 	if !ok {
-		return false, fmt.Errorf("expect type %T", new(Server))
+		return false, fmt.Errorf("expect type %T", new(testservice.Service))
 	}
 	ctx := context.Background()
 

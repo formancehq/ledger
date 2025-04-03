@@ -5,6 +5,9 @@ package test_suite
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -21,12 +24,15 @@ var _ = Context("Ledger accounts list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
 	BeforeEach(func() {
 		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 			Ledger: "default",

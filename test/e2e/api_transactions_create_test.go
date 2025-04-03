@@ -3,6 +3,10 @@
 package test_suite
 
 import (
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"math/big"
 	"time"
 
@@ -32,16 +36,23 @@ var _ = Context("Ledger transactions create API tests", func() {
 	} {
 		Context(data.description, func() {
 			var (
-				db  = UseTemplatedDatabase()
-				ctx = logging.TestingContext()
+				db      = UseTemplatedDatabase()
+				ctx     = logging.TestingContext()
+				natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 			)
-			testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-				return ServeConfiguration{
-					PostgresConfiguration:        PostgresConfiguration(db.GetValue().ConnectionOptions()),
-					NatsURL:                      natsServer.GetValue().ClientURL(),
-					ExperimentalNumscriptRewrite: data.numscriptRewrite,
-				}
-			})
+			instruments := []testservice.Instrumentation{
+				testservice.NatsInstrumentation(natsURL),
+				testservice.DebugInstrumentation(debug),
+				testservice.OutputInstrumentation(GinkgoWriter),
+			}
+			if data.numscriptRewrite {
+				instruments = append(instruments, ExperimentalNumscriptRewriteInstrumentation())
+			}
+			testServer := DeferTestServer(
+				deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+				testservice.WithInstruments(instruments...),
+				testservice.WithLogger(GinkgoT()),
+			)
 
 			BeforeEach(func() {
 				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
@@ -64,7 +75,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 					err       error
 				)
 				BeforeEach(func() {
-					_, events = Subscribe(GinkgoT(), testServer.GetValue())
+					_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
 					req = operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Timestamp: &timestamp,

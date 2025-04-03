@@ -5,6 +5,7 @@ package generate
 import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
@@ -21,16 +22,15 @@ func TestGenerator(t *testing.T) {
 	pgServer := pgtesting.CreatePostgresServer(t, dockerPool)
 	ctx := logging.TestingContext()
 
-	testServer := NewTestServer(testservice.Configuration[ServeConfiguration]{
-		CommonConfiguration: testservice.CommonConfiguration{
-			Debug: os.Getenv("DEBUG") == "true",
-		},
-		Configuration: ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(bunconnect.ConnectionOptions{
-				DatabaseSourceName: pgServer.GetDSN(),
-			}),
-		},
-	}, testservice.WithLogger(t))
+	testServer := NewTestServer(
+		deferred.FromValue(bunconnect.ConnectionOptions{
+			DatabaseSourceName: pgServer.GetDSN(),
+		}),
+		testservice.WithLogger(t),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(os.Getenv("DEBUG") == "true"),
+		),
+	)
 	require.NoError(t, testServer.Start(ctx))
 	t.Cleanup(func() {
 		require.NoError(t, testServer.Stop(ctx))

@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
@@ -34,21 +37,25 @@ var _ = Context("Ledger engine tests", func() {
 		events       chan *nats.Msg
 		bulkResponse []components.V2BulkElementResult
 		bulkMaxSize  = 100
+		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-			BulkMaxSize:           bulkMaxSize,
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(natsURL),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
 	BeforeEach(func() {
 		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
-		_, events = Subscribe(GinkgoT(), testServer.GetValue())
+		_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
 	})
 	When("creating a bulk on a ledger", func() {
 		var (
@@ -238,7 +245,7 @@ var _ = Context("Ledger engine tests", func() {
 			}
 			stream.Write([]byte("\n"))
 
-			req, err := http.NewRequest(http.MethodPost, testservice.GetServerURL(testServer.GetValue())+"/v2/default/_bulk", stream)
+			req, err := http.NewRequest(http.MethodPost, testservice.GetServerURL(testServer.GetValue()).String()+"/v2/default/_bulk", stream)
 			req.Header.Set("Content-Type", "application/vnd.formance.ledger.api.v2.bulk+json-stream")
 			Expect(err).To(Succeed())
 

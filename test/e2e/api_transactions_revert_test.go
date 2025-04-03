@@ -3,6 +3,10 @@
 package test_suite
 
 import (
+	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"math/big"
 	"time"
 
@@ -24,14 +28,19 @@ var _ = Context("Ledger revert transactions API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
+		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
-		return ServeConfiguration{
-			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
-			NatsURL:               natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := DeferTestServer(
+		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(natsURL),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
 	BeforeEach(func() {
 		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 			Ledger: "default",
@@ -46,7 +55,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			err       error
 		)
 		BeforeEach(func() {
-			_, events = Subscribe(GinkgoT(), testServer.GetValue())
+			_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
 			tx, err = CreateTransaction(
 				ctx,
 				testServer.GetValue(),
