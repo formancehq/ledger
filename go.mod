@@ -1,8 +1,7 @@
 module github.com/formancehq/ledger
 
 go 1.23
-
-toolchain go1.23.2
+toolchain go1.24.1
 
 replace github.com/formancehq/ledger/pkg/client => ./pkg/client
 
@@ -25,8 +24,8 @@ require (
 	github.com/jamiealquiza/tachymeter v2.0.0+incompatible
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/nats-io/nats.go v1.39.1
-	github.com/onsi/ginkgo/v2 v2.22.1
-	github.com/onsi/gomega v1.36.2
+	github.com/onsi/ginkgo/v2 v2.23.3
+	github.com/onsi/gomega v1.37.0
 	github.com/ory/dockertest/v3 v3.11.0
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1 // indirect
@@ -47,7 +46,7 @@ require (
 	go.uber.org/fx v1.23.0
 	go.uber.org/mock v0.5.0
 	golang.org/x/oauth2 v0.26.0
-	golang.org/x/sync v0.11.0
+	golang.org/x/sync v0.12.0
 )
 
 require (
@@ -210,11 +209,11 @@ require (
 	go.uber.org/dig v1.18.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.33.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/net v0.37.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	golang.org/x/tools v0.30.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250218202821-56aae31c358a // indirect
