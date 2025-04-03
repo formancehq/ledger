@@ -35,13 +35,9 @@ var _ = Context("Ledger transactions create API tests", func() {
 				db  = UseTemplatedDatabase()
 				ctx = logging.TestingContext()
 			)
-			testServer := NewTestServer(func() Configuration {
-				return Configuration{
-					CommonConfiguration: CommonConfiguration{
-						PostgresConfiguration: db.GetValue().ConnectionOptions(),
-						Output:                GinkgoWriter,
-						Debug:                 debug,
-					},
+			testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
+				return ServeConfiguration{
+					PostgresConfiguration:        PostgresConfiguration(db.GetValue().ConnectionOptions()),
 					NatsURL:                      natsServer.GetValue().ClientURL(),
 					ExperimentalNumscriptRewrite: data.numscriptRewrite,
 				}
@@ -68,7 +64,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 					err       error
 				)
 				BeforeEach(func() {
-					events = Subscribe(GinkgoT(), testServer.GetValue())
+					_, events = Subscribe(GinkgoT(), testServer.GetValue())
 					req = operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Timestamp: &timestamp,
@@ -590,7 +586,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 				)
 				BeforeEach(func() {
 					v, _ := big.NewInt(0).SetString("1320000000000000000000000000000000000000000000000001", 10)
-					response, err = testServer.GetValue().Client().Ledger.V1.CreateTransaction(
+					response, err = Client(testServer.GetValue()).Ledger.V1.CreateTransaction(
 						ctx,
 						operations.CreateTransactionRequest{
 							PostTransaction: components.PostTransaction{

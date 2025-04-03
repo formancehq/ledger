@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/docker"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/stretchr/testify/require"
@@ -20,20 +21,22 @@ func TestGenerator(t *testing.T) {
 	pgServer := pgtesting.CreatePostgresServer(t, dockerPool)
 	ctx := logging.TestingContext()
 
-	testServer := New(t, Configuration{
-		CommonConfiguration: CommonConfiguration{
-			PostgresConfiguration: bunconnect.ConnectionOptions{
-				DatabaseSourceName: pgServer.GetDSN(),
-			},
+	testServer := NewTestServer(testservice.Configuration[ServeConfiguration]{
+		CommonConfiguration: testservice.CommonConfiguration{
 			Debug: os.Getenv("DEBUG") == "true",
 		},
-	})
-	require.NoError(t, testServer.Start())
+		Configuration: ServeConfiguration{
+			PostgresConfiguration: PostgresConfiguration(bunconnect.ConnectionOptions{
+				DatabaseSourceName: pgServer.GetDSN(),
+			}),
+		},
+	}, testservice.WithLogger(t))
+	require.NoError(t, testServer.Start(ctx))
 	t.Cleanup(func() {
 		require.NoError(t, testServer.Stop(ctx))
 	})
 
-	_, err := testServer.Client().Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+	_, err := Client(testServer).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: "default",
 	})
 	require.NoError(t, err)
@@ -49,7 +52,7 @@ func TestGenerator(t *testing.T) {
 		action, err := generator.Next(i)
 		require.NoError(t, err)
 
-		_, err = action.Apply(ctx, testServer.Client().Ledger.V2, ledgerName)
+		_, err = action.Apply(ctx, Client(testServer).Ledger.V2, ledgerName)
 		require.NoError(t, err)
 	}
 

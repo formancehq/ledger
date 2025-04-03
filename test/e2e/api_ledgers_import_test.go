@@ -24,15 +24,11 @@ var _ = Context("Ledger engine tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL:              natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures: true,
+	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
+		return ServeConfiguration{
+			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
+			NatsURL:               natsServer.GetValue().ClientURL(),
+			ExperimentalFeatures:  true,
 		}
 	})
 	When("creating a new ledger", func() {
@@ -335,7 +331,7 @@ var _ = Context("Ledger engine tests", func() {
 						// we take a lock on the ledgers table to force the process to wait
 						// while we will make a concurrent request
 						JustBeforeEach(func() {
-							db = ConnectToDatabase(GinkgoT(), testServer.GetValue())
+							db = ConnectToDatabase(ctx, GinkgoT(), testServer.GetValue())
 							sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 							Expect(err).To(BeNil())
 

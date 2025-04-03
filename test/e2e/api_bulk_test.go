@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
@@ -35,15 +36,11 @@ var _ = Context("Ledger engine tests", func() {
 		bulkMaxSize  = 100
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL:     natsServer.GetValue().ClientURL(),
-			BulkMaxSize: bulkMaxSize,
+	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
+		return ServeConfiguration{
+			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
+			NatsURL:               natsServer.GetValue().ClientURL(),
+			BulkMaxSize:           bulkMaxSize,
 		}
 	})
 	BeforeEach(func() {
@@ -51,7 +48,7 @@ var _ = Context("Ledger engine tests", func() {
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
-		events = Subscribe(GinkgoT(), testServer.GetValue())
+		_, events = Subscribe(GinkgoT(), testServer.GetValue())
 	})
 	When("creating a bulk on a ledger", func() {
 		var (
@@ -241,7 +238,7 @@ var _ = Context("Ledger engine tests", func() {
 			}
 			stream.Write([]byte("\n"))
 
-			req, err := http.NewRequest(http.MethodPost, testServer.GetValue().URL()+"/v2/default/_bulk", stream)
+			req, err := http.NewRequest(http.MethodPost, testservice.GetServerURL(testServer.GetValue())+"/v2/default/_bulk", stream)
 			req.Header.Set("Content-Type", "application/vnd.formance.ledger.api.v2.bulk+json-stream")
 			Expect(err).To(Succeed())
 

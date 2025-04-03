@@ -31,14 +31,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL: natsServer.GetValue().ClientURL(),
+	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
+		return ServeConfiguration{
+			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
+			NatsURL:               natsServer.GetValue().ClientURL(),
 		}
 	})
 

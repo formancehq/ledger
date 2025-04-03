@@ -5,6 +5,8 @@ package test_suite
 import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
+	"github.com/formancehq/ledger/cmd"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,15 +36,26 @@ var _ = Context("Ledger application multiple instance tests", func() {
 					// Best effort to start all servers at the same time and detect conflict errors
 					<-waitStart
 
-					servers <- New(GinkgoT(), Configuration{
-						CommonConfiguration: CommonConfiguration{
-							PostgresConfiguration: db.GetValue().ConnectionOptions(),
-							Output:                GinkgoWriter,
-							Debug:                 debug,
+					testServer := testservice.New(
+						cmd.NewRootCommand,
+						testservice.Configuration[ServeConfiguration]{
+							CommonConfiguration: testservice.CommonConfiguration{
+								Debug:  debug,
+								Output: GinkgoWriter,
+							},
+							Configuration: ServeConfiguration{
+								PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
+								NatsURL:               natsServer.GetValue().ClientURL(),
+								DisableAutoUpgrade:    true,
+							},
 						},
-						NatsURL:            natsServer.GetValue().ClientURL(),
-						DisableAutoUpgrade: true,
-					})
+						testservice.WithInstruments(
+							testservice.HTTPServerInstrumentation(),
+						),
+					)
+					Expect(testServer.Start(ctx)).To(Succeed())
+
+					servers <- testServer
 				}()
 			}
 
@@ -57,7 +70,7 @@ var _ = Context("Ledger application multiple instance tests", func() {
 
 		It("each service should be up and running", func() {
 			for _, server := range allServers {
-				info, err := server.Client().Ledger.GetInfo(ctx)
+				info, err := Client(server).Ledger.GetInfo(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
 			}

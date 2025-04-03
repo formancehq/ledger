@@ -28,28 +28,18 @@ var _ = Context("Logs block async hashing", func() {
 		txCount   = blockSize * nbBlock
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL:              natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures: true,
+	testServer := DeferTestServer(debug, GinkgoWriter, func() ServeConfiguration {
+		return ServeConfiguration{
+			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
+			NatsURL:               natsServer.GetValue().ClientURL(),
+			ExperimentalFeatures:  true,
 		}
 	})
-	NewTestWorker(func() WorkerServiceConfiguration {
-		return WorkerServiceConfiguration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			WorkerConfiguration: WorkerConfiguration{
-				LogsHashBlockMaxSize:  blockSize,
-				LogsHashBlockCRONSpec: "* * * * * *", // every second
-			},
+	DeferTestWorker(debug, GinkgoWriter, func() WorkerConfiguration {
+		return WorkerConfiguration{
+			PostgresConfiguration: PostgresConfiguration(db.GetValue().ConnectionOptions()),
+			LogsHashBlockMaxSize:  blockSize,
+			LogsHashBlockCRONSpec: "* * * * * *", // every second
 		}
 	})
 	JustBeforeEach(func() {
@@ -90,11 +80,10 @@ var _ = Context("Logs block async hashing", func() {
 		})
 		It(fmt.Sprintf("should generate %d blocks", nbBlock), func() {
 			Eventually(func(g Gomega) bool {
-				db, err := testServer.GetValue().Database()
-				g.Expect(err).To(BeNil())
+				db := ConnectToDatabase(ctx, GinkgoT(), testServer.GetValue())
 
 				ret := make([]map[string]any, 0)
-				err = db.NewSelect().
+				err := db.NewSelect().
 					Model(&ret).
 					ModelTableExpr("_default.logs_blocks").
 					Scan(ctx)

@@ -58,7 +58,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 		output = io.Discard
 	}
 
-	testServer := testserver.New(b, testserver.Configuration{
+	testServer := testserver.New(b, testserver.ServeConfiguration{
 		CommonConfiguration: testserver.CommonConfiguration{
 			PostgresConfiguration: connectionOptions,
 			Debug:                 os.Getenv("DEBUG") == "true",
