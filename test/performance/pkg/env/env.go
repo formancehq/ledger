@@ -10,7 +10,6 @@ import (
 
 type Env interface {
 	Client() *ledgerclient.Formance
-	URL() string
 	Stop(ctx context.Context) error
 }
 
