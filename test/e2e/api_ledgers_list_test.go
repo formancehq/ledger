@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -22,8 +23,8 @@ var _ = Context("Ledger engine tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := DeferTestServer(
-		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.DebugInstrumentation(debug),
 			testservice.OutputInstrumentation(GinkgoWriter),
@@ -34,9 +35,9 @@ var _ = Context("Ledger engine tests", func() {
 	)
 
 	When("creating 20 ledger", func() {
-		BeforeEach(func() {
+		BeforeEach(func(specContext SpecContext) {
 			for i := range 20 {
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: fmt.Sprintf("ledger%d", i),
 					V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 						Bucket: pointer.For(fmt.Sprintf("bucket%d", i%2)),
@@ -48,15 +49,15 @@ var _ = Context("Ledger engine tests", func() {
 				Expect(err).To(BeNil())
 			}
 		})
-		It("should be listable without filter", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{
+		It("should be listable without filter", func(specContext SpecContext) {
+			ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 				PageSize: pointer.For(int64(100)),
 			})
 			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(15))
+			Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(15))
 		})
-		It("filtering on bucket should return 5 ledgers", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{
+		It("filtering on bucket should return 5 ledgers", func(specContext SpecContext) {
+			ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 				PageSize: pointer.For(int64(100)),
 				RequestBody: map[string]any{
 					"$match": map[string]any{
@@ -65,10 +66,10 @@ var _ = Context("Ledger engine tests", func() {
 				},
 			})
 			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(10))
+			Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(10))
 		})
-		It("filtering on metadata[foo] = 0 should return 7 ledgers", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{
+		It("filtering on metadata[foo] = 0 should return 7 ledgers", func(specContext SpecContext) {
+			ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 				PageSize: pointer.For(int64(100)),
 				RequestBody: map[string]any{
 					"$match": map[string]any{
@@ -77,10 +78,10 @@ var _ = Context("Ledger engine tests", func() {
 				},
 			})
 			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(7))
+			Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(7))
 		})
-		It("filtering on name = ledger0 should return 1 ledger", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{
+		It("filtering on name = ledger0 should return 1 ledger", func(specContext SpecContext) {
+			ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 				PageSize: pointer.For(int64(100)),
 				RequestBody: map[string]any{
 					"$match": map[string]any{
@@ -89,10 +90,10 @@ var _ = Context("Ledger engine tests", func() {
 				},
 			})
 			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(1))
+			Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(1))
 		})
-		It("filtering on name starting with ledger1 should return 11 ledger", func() {
-			ledgers, err := ListLedgers(ctx, testServer.GetValue(), operations.V2ListLedgersRequest{
+		It("filtering on name starting with ledger1 should return 11 ledger", func(specContext SpecContext) {
+			ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 				PageSize: pointer.For(int64(100)),
 				RequestBody: map[string]any{
 					"$like": map[string]any{
@@ -101,7 +102,7 @@ var _ = Context("Ledger engine tests", func() {
 				},
 			})
 			Expect(err).To(BeNil())
-			Expect(ledgers.Data).To(HaveLen(11))
+			Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(11))
 		})
 	})
 })

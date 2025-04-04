@@ -3,10 +3,12 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
@@ -26,13 +28,13 @@ import (
 
 var _ = Context("Ledger revert transactions API tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
-		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		db      = UseTemplatedDatabase()
+		ctx     = logging.TestingContext()
+		natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
@@ -41,8 +43,8 @@ var _ = Context("Ledger revert transactions API tests", func() {
 		testservice.WithLogger(GinkgoT()),
 	)
 
-	BeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	BeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
@@ -50,15 +52,14 @@ var _ = Context("Ledger revert transactions API tests", func() {
 	When("creating a transaction on a ledger", func() {
 		var (
 			timestamp = time.Now().Round(time.Second).UTC()
-			tx        *components.V2Transaction
+			tx        *operations.V2CreateTransactionResponse
 			events    chan *nats.Msg
 			err       error
 		)
-		BeforeEach(func() {
-			_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
-			tx, err = CreateTransaction(
+		BeforeEach(func(specContext SpecContext) {
+			_, events = Subscribe(specContext, testServer, natsURL)
+			tx, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -78,10 +79,9 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		When("transferring funds from destination to another account", func() {
-			BeforeEach(func() {
-				_, err := CreateTransaction(
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Metadata: map[string]string{},
@@ -105,13 +105,12 @@ var _ = Context("Ledger revert transactions API tests", func() {
 					force bool
 					err   error
 				)
-				revertTx := func() {
-					_, err = RevertTransaction(
+				revertTx := func(specContext SpecContext) {
+					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 						ctx,
-						testServer.GetValue(),
 						operations.V2RevertTransactionRequest{
 							Force:  pointer.For(force),
-							ID:     tx.ID,
+							ID:     tx.V2CreateTransactionResponse.Data.ID,
 							Ledger: "default",
 						},
 					)
@@ -132,13 +131,12 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 		When("reverting it", func() {
-			BeforeEach(func() {
-				_, err := RevertTransaction(
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2RevertTransactionRequest{
 						Ledger: "default",
-						ID:     tx.ID,
+						ID:     tx.V2CreateTransactionResponse.Data.ID,
 					},
 				)
 				Expect(err).To(Succeed())
@@ -146,27 +144,25 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			It("should trigger a new event", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction)))
 			})
-			It("should revert the original transaction", func() {
-				response, err := GetTransaction(
+			It("should revert the original transaction", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2GetTransactionRequest{
 						Ledger: "default",
-						ID:     tx.ID,
+						ID:     tx.V2CreateTransactionResponse.Data.ID,
 					},
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				Expect(response.Reverted).To(BeTrue())
+				Expect(response.V2GetTransactionResponse.Data.Reverted).To(BeTrue())
 			})
 			When("trying to revert again", func() {
-				It("should be rejected", func() {
-					_, err := RevertTransaction(
+				It("should be rejected", func(specContext SpecContext) {
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 						ctx,
-						testServer.GetValue(),
 						operations.V2RevertTransactionRequest{
 							Ledger: "default",
-							ID:     tx.ID,
+							ID:     tx.V2CreateTransactionResponse.Data.ID,
 						},
 					)
 					Expect(err).NotTo(BeNil())
@@ -175,66 +171,62 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 		When("reverting it at effective date", func() {
-			BeforeEach(func() {
-				_, err := RevertTransaction(
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2RevertTransactionRequest{
 						Ledger:          "default",
-						ID:              tx.ID,
+						ID:              tx.V2CreateTransactionResponse.Data.ID,
 						AtEffectiveDate: pointer.For(true),
 					},
 				)
 				Expect(err).To(Succeed())
 			})
-			It("should revert the original transaction at date of the original tx", func() {
-				response, err := GetTransaction(
+			It("should revert the original transaction at date of the original tx", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2GetTransactionRequest{
 						Ledger: "default",
-						ID:     tx.ID,
+						ID:     tx.V2CreateTransactionResponse.Data.ID,
 					},
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				Expect(response.Reverted).To(BeTrue())
-				Expect(response.Timestamp).To(Equal(tx.Timestamp))
+				Expect(response.V2GetTransactionResponse.Data.Reverted).To(BeTrue())
+				Expect(response.V2GetTransactionResponse.Data.Timestamp).To(Equal(tx.V2CreateTransactionResponse.Data.Timestamp))
 			})
 		})
 		When("reverting with dryRun", func() {
-			BeforeEach(func() {
-				_, err := RevertTransaction(
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2RevertTransactionRequest{
 						Ledger: "default",
-						ID:     tx.ID,
+						ID:     tx.V2CreateTransactionResponse.Data.ID,
 						DryRun: pointer.For(true),
 					},
 				)
 				Expect(err).To(Succeed())
 			})
-			It("should not revert the transaction", func() {
-				tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
+			It("should not revert the transaction", func(specContext SpecContext) {
+				tx, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(ctx, operations.V2GetTransactionRequest{
 					Ledger: "default",
-					ID:     tx.ID,
+					ID:     tx.V2CreateTransactionResponse.Data.ID,
 				})
 				Expect(err).To(BeNil())
-				Expect(tx.Reverted).To(BeFalse())
+				Expect(tx.V2GetTransactionResponse.Data.Reverted).To(BeFalse())
 			})
 		})
 	})
 	When("creating a transaction through an empty passthrough account", func() {
 		var (
 			timestamp = time.Now().Round(time.Second).UTC()
-			tx        *components.V2Transaction
+			tx        *operations.V2CreateTransactionResponse
 			err       error
 		)
-		BeforeEach(func() {
-			tx, err = CreateTransaction(
+		BeforeEach(func(specContext SpecContext) {
+			tx, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -254,10 +246,9 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		When("creating the pass-through transaction", func() {
-			BeforeEach(func() {
-				tx, err = CreateTransaction(
+			BeforeEach(func(specContext SpecContext) {
+				tx, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Metadata: map[string]string{},
@@ -283,30 +274,28 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 			When("reverting the pass-through transaction", func() {
-				BeforeEach(func() {
-					_, err := RevertTransaction(
+				BeforeEach(func(specContext SpecContext) {
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 						ctx,
-						testServer.GetValue(),
 						operations.V2RevertTransactionRequest{
 							Ledger:          "default",
-							ID:              tx.ID,
+							ID:              tx.V2CreateTransactionResponse.Data.ID,
 							AtEffectiveDate: pointer.For(true),
 						},
 					)
 					Expect(err).To(Succeed())
 				})
-				It("should revert the passthrough transaction at date of the original tx", func() {
-					response, err := GetTransaction(
+				It("should revert the passthrough transaction at date of the original tx", func(specContext SpecContext) {
+					response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 						ctx,
-						testServer.GetValue(),
 						operations.V2GetTransactionRequest{
 							Ledger: "default",
-							ID:     tx.ID,
+							ID:     tx.V2CreateTransactionResponse.Data.ID,
 						},
 					)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(response.Reverted).To(BeTrue())
-					Expect(response.Timestamp).To(Equal(tx.Timestamp))
+					Expect(response.V2GetTransactionResponse.Data.Reverted).To(BeTrue())
+					Expect(response.V2GetTransactionResponse.Data.Timestamp).To(Equal(tx.V2CreateTransactionResponse.Data.Timestamp))
 				})
 			})
 		})

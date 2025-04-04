@@ -8,9 +8,12 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/testing/deferred"
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v2/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/system"
+	"github.com/nats-io/nats.go"
+	"github.com/uptrace/bun"
 	"os"
 	"testing"
 
@@ -110,4 +113,30 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 
 func UseTemplatedDatabase() *deferred.Deferred[*Database] {
 	return UsePostgresDatabase(pgServer, CreateWithTemplate(DBTemplate))
+}
+
+func ConnectToDatabase(ctx context.Context, dbOptions *deferred.Deferred[bunconnect.ConnectionOptions]) *bun.DB {
+	db, err := bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
+	Expect(err).To(BeNil())
+
+	DeferCleanup(db.Close)
+
+	return db
+}
+
+func Subscribe(ctx context.Context, d *deferred.Deferred[*testservice.Service], natsURL *deferred.Deferred[string]) (*nats.Subscription, chan *nats.Msg) {
+
+	srv, err := d.Wait(ctx)
+	Expect(err).To(BeNil())
+
+	ret := make(chan *nats.Msg)
+	conn, err := nats.Connect(natsURL.GetValue())
+	Expect(err).To(BeNil())
+
+	subscription, err := conn.Subscribe(srv.GetID(), func(msg *nats.Msg) {
+		ret <- msg
+	})
+	Expect(err).To(BeNil())
+
+	return subscription, ret
 }

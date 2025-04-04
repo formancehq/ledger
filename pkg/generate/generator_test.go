@@ -56,17 +56,17 @@ func TestGenerator(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	txs, err := ListTransactions(ctx, testServer, operations.V2ListTransactionsRequest{
+	txs, err := Client(testServer).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 		Ledger: ledgerName,
 	})
 	require.NoError(t, err)
-	require.Len(t, txs.Data, 2)
-	require.True(t, txs.Data[1].Reverted)
-	require.False(t, txs.Data[0].Reverted)
+	require.Len(t, txs.V2TransactionsCursorResponse.Cursor.Data, 2)
+	require.True(t, txs.V2TransactionsCursorResponse.Cursor.Data[1].Reverted)
+	require.False(t, txs.V2TransactionsCursorResponse.Cursor.Data[0].Reverted)
 	require.Equal(t, map[string]string{
 		"foo":            "bar",
 		"globalMetadata": "test",
-	}, txs.Data[1].Metadata)
+	}, txs.V2TransactionsCursorResponse.Cursor.Data[1].Metadata)
 }
 
 const script = `

@@ -4,9 +4,10 @@ package test_suite
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/features"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"math/rand"
 	"sync"
@@ -30,7 +31,7 @@ var _ = Context("Ledger stress tests", func() {
 	)
 
 	testServer := DeferTestServer(
-		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			ExperimentalFeaturesInstrumentation(),
 		),
@@ -44,11 +45,11 @@ var _ = Context("Ledger stress tests", func() {
 	)
 
 	When(fmt.Sprintf("creating %d ledgers dispatched on %d buckets", countLedgers, countLedgers/10), func() {
-		BeforeEach(func() {
+		BeforeEach(func(ctx SpecContext) {
 			for i := range countLedgers {
 				bucketName := fmt.Sprintf("bucket%d", i/countBuckets)
 				ledgerName := fmt.Sprintf("ledger%d", i)
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+				_, err := Wait(ctx, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: ledgerName,
 					V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 						Bucket:   &bucketName,
@@ -71,7 +72,7 @@ var _ = Context("Ledger stress tests", func() {
 						defer GinkgoRecover()
 
 						ledger := fmt.Sprintf("ledger%d", rand.Intn(countLedgers))
-						createdTx, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+						createdTx, err := Wait(ctx, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 							Ledger: ledger,
 							V2PostTransaction: components.V2PostTransaction{
 								Postings: []components.V2Posting{
@@ -96,7 +97,7 @@ var _ = Context("Ledger stress tests", func() {
 						if createdTransactions[ledger] == nil {
 							createdTransactions[ledger] = []*big.Int{}
 						}
-						createdTransactions[ledger] = append(createdTransactions[ledger], createdTx.ID)
+						createdTransactions[ledger] = append(createdTransactions[ledger], createdTx.V2CreateTransactionResponse.Data.ID)
 						mu.Unlock()
 					})
 					go func() {
@@ -107,7 +108,7 @@ var _ = Context("Ledger stress tests", func() {
 			})
 			When("getting aggregated volumes with no parameters", func() {
 				It("should be zero", func() {
-					Expect(testServer.GetValue()).To(HaveCoherentState())
+					Expect(testServer).To(HaveCoherentState())
 				})
 			})
 			When("trying to revert concurrently all transactions", func() {
@@ -129,7 +130,7 @@ var _ = Context("Ledger stress tests", func() {
 								wp.Submit(func() {
 									defer GinkgoRecover()
 
-									_, err := RevertTransaction(ctx, testServer.GetValue(), operations.V2RevertTransactionRequest{
+									_, err := Wait(ctx, DeferClient(testServer)).Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
 										Ledger: ledger,
 										ID:     id,
 										Force:  pointer.For(true),
@@ -149,7 +150,7 @@ var _ = Context("Ledger stress tests", func() {
 						Expect(failures.Load()).To(Equal(int64(duplicates * countTransactions)))
 					})
 					By("we should still have the aggregated balances to 0", func() {
-						Expect(testServer.GetValue()).To(HaveCoherentState())
+						Expect(testServer).To(HaveCoherentState())
 					})
 				})
 			})

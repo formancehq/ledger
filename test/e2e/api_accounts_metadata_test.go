@@ -4,7 +4,8 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	"github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
@@ -12,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,13 +21,13 @@ import (
 
 var _ = Context("Ledger accounts metadata API tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
-		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		db      = UseTemplatedDatabase()
+		ctx     = logging.TestingContext()
+		natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
@@ -34,12 +36,12 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 		testservice.WithLogger(GinkgoT()),
 	)
 	var events chan *nats.Msg
-	BeforeEach(func() {
-		_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
+	BeforeEach(func(specContext SpecContext) {
+		_, events = Subscribe(specContext, testServer, natsURL)
 	})
 
-	BeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	BeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
@@ -50,10 +52,9 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				"clientType": "gold",
 			}
 		)
-		JustBeforeEach(func() {
-			err := AddMetadataToAccount(
+		JustBeforeEach(func(specContext SpecContext) {
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataToAccount(
 				ctx,
-				testServer.GetValue(),
 				operations.V2AddMetadataToAccountRequest{
 					RequestBody: metadata,
 					Address:     "foo",
@@ -62,10 +63,9 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		It("should be available on api", func() {
-			response, err := GetAccount(
+		It("should be available on api", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetAccountRequest{
 					Address: "foo",
 					Ledger:  "default",
@@ -73,7 +73,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(*response).Should(Equal(components.V2Account{
+			Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
 				Address:  "foo",
 				Metadata: metadata,
 			}))
@@ -84,10 +84,9 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					"clientType": "silver",
 				}
 			)
-			JustBeforeEach(func() {
-				err := AddMetadataToAccount(
+			JustBeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataToAccount(
 					ctx,
-					testServer.GetValue(),
 					operations.V2AddMetadataToAccountRequest{
 						RequestBody: newMetadata,
 						Address:     "foo",
@@ -96,10 +95,9 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 			})
-			It("should update the metadata", func() {
-				response, err := GetAccount(
+			It("should update the metadata", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(
 					ctx,
-					testServer.GetValue(),
 					operations.V2GetAccountRequest{
 						Address: "foo",
 						Ledger:  "default",
@@ -107,7 +105,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(*response).Should(Equal(components.V2Account{
+				Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
 					Address:  "foo",
 					Metadata: newMetadata,
 				}))
@@ -120,10 +118,9 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			BeforeEach(func() {
 				metadata = nil
 			})
-			It("should be OK", func() {
-				response, err := GetAccount(
+			It("should be OK", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(
 					ctx,
-					testServer.GetValue(),
 					operations.V2GetAccountRequest{
 						Address: "foo",
 						Ledger:  "default",
@@ -131,19 +128,18 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(*response).Should(Equal(components.V2Account{
+				Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
 					Address:  "foo",
 					Metadata: map[string]string{},
 				}))
 			})
 			Context("then adding with empty metadata", func() {
-				It("should be OK", func() {
+				It("should be OK", func(specContext SpecContext) {
 
 					// The first call created the row in the database,
 					// the second call should not change the metadata, and checks than updates works.
-					err := AddMetadataToAccount(
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataToAccount(
 						ctx,
-						testServer.GetValue(),
 						operations.V2AddMetadataToAccountRequest{
 							RequestBody: metadata,
 							Address:     "foo",
@@ -152,9 +148,8 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					)
 					Expect(err).ToNot(HaveOccurred())
 
-					response, err := GetAccount(
+					response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(
 						ctx,
-						testServer.GetValue(),
 						operations.V2GetAccountRequest{
 							Address: "foo",
 							Ledger:  "default",
@@ -162,7 +157,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					)
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(*response).Should(Equal(components.V2Account{
+					Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
 						Address:  "foo",
 						Metadata: map[string]string{},
 					}))

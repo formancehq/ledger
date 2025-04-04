@@ -3,9 +3,28 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/testing/deferred"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/cmd"
 )
+
+func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions]) testservice.Option {
+	return testservice.WithInstruments(
+		testservice.AppendArgsInstrumentation("serve", "--"+cmd.BindFlag, ":0"),
+		testservice.PostgresInstrumentation(postgresConnectionOptions),
+		testservice.HTTPServerInstrumentation(),
+	)
+}
+
+func NewTestServer(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions], options ...testservice.Option) *testservice.Service {
+	return testservice.New(
+		cmd.NewRootCommand,
+		append([]testservice.Option{
+			GetTestServerOptions(postgresConnectionOptions),
+		}, options...)...,
+	)
+}
 
 func ExperimentalFeaturesInstrumentation() testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {

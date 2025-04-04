@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
@@ -38,13 +39,13 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 	Context("Pending transaction should be fully processed before stopping or restarting the server", func() {
 		db := UseTemplatedDatabase()
-		connectionOptions := deferred.DeferMap(db, func(from *pgtesting.Database) bunconnect.ConnectionOptions {
+		connectionOptions := DeferMap(db, func(from *pgtesting.Database) bunconnect.ConnectionOptions {
 			return bunconnect.ConnectionOptions{
 				DatabaseSourceName: from.ConnectionOptions().DatabaseSourceName,
 				MaxOpenConns:       100,
 			}
 		})
-		natsURL := deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL := DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 		testServer := DeferTestServer(
 			connectionOptions,
 			testservice.WithInstruments(
@@ -56,20 +57,26 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		)
 
 		var events chan *nats.Msg
-		BeforeEach(func() {
-			_, events = Subscribe(GinkgoT(), testServer.GetValue(), natsURL)
+		BeforeEach(func(specContext SpecContext) {
+			_, events = Subscribe(specContext, testServer, natsURL)
 		})
 
 		When("starting the service", func() {
-			It("should be ok", func() {
-				info, err := Client(testServer.GetValue()).Ledger.GetInfo(ctx)
+			It("should be ok", func(specContext SpecContext) {
+				testServer, err := testServer.Wait(specContext)
+				Expect(err).To(BeNil())
+
+				info, err := Client(testServer).Ledger.GetInfo(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
 			})
 		})
 		When("restarting the service", func() {
 			BeforeEach(func(ctx context.Context) {
-				Expect(testServer.GetValue().Restart(ctx)).To(BeNil())
+				testServer, err := testServer.Wait(ctx)
+				Expect(err).To(BeNil())
+
+				Expect(testServer.Restart(ctx)).To(BeNil())
 			})
 			It("should be ok", func() {})
 		})
@@ -79,8 +86,8 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				countTransactions    = 60
 				serverRestartTimeout = 10 * time.Second
 			)
-			BeforeEach(func() {
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: "foo",
 				})
 				Expect(err).ToNot(HaveOccurred())
@@ -88,7 +95,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				// lock logs table to block transactions creation requests
 				// the first tx will block on the log insertion
 				// the next transaction will block earlier on advisory lock acquirement for accounts
-				db := ConnectToDatabase(ctx, GinkgoT(), connectionOptions)
+				db := ConnectToDatabase(ctx, connectionOptions)
 				sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 				Expect(err).To(BeNil())
 				DeferCleanup(func() {
@@ -103,7 +110,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 					go func() {
 						defer GinkgoRecover()
 
-						_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 							Ledger: "foo",
 							V2PostTransaction: components.V2PostTransaction{
 								Postings: []components.V2Posting{{
@@ -131,11 +138,11 @@ var _ = Context("Ledger application lifecycle tests", func() {
 					WithTimeout(10 * time.Second).
 					// Once all the transactions are in pending state, we should have one lock
 					// for the first tx, trying to write a new log.
-					// And, we should also have countTransactions-1 pending lock for the 'bank' account
+					// And, we should also have CountTransactions-1 pending lock for the 'bank' account
 					Should(BeNumerically("==", countTransactions-1)) // -1 for the first one
 			})
 			When("restarting the service", func() {
-				BeforeEach(func() {
+				BeforeEach(func(specContext SpecContext) {
 					// We will restart the server in a separate goroutine
 					// the server should not restart until all pending transactions creation requests are fully completed
 					restarted := make(chan struct{})
@@ -148,14 +155,17 @@ var _ = Context("Ledger application lifecycle tests", func() {
 							stopContext, cancel := context.WithTimeout(ctx, serverRestartTimeout)
 							DeferCleanup(cancel)
 
-							Expect(testServer.GetValue().Stop(stopContext)).To(BeNil())
-							Expect(testServer.GetValue().Start(ctx)).To(BeNil())
+							testServer, err := testServer.Wait(specContext)
+							Expect(err).To(BeNil())
+
+							Expect(testServer.Stop(stopContext)).To(BeNil())
+							Expect(testServer.Start(ctx)).To(BeNil())
 						})
 					}()
 
 					// Once the server is restarting, it should not accept any new connection
 					Eventually(func() error {
-						_, err := GetInfo(ctx, testServer.GetValue())
+						_, err := Wait(specContext, DeferClient(testServer)).Ledger.GetInfo(ctx)
 						return err
 					}).ShouldNot(BeNil())
 
@@ -168,13 +178,13 @@ var _ = Context("Ledger application lifecycle tests", func() {
 						WithTimeout(serverRestartTimeout).
 						Should(BeClosed())
 				})
-				It("in flight transactions should be correctly terminated before", func() {
-					transactions, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				It("in flight transactions should be correctly terminated before", func(specContext SpecContext) {
+					transactions, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 						Ledger:   "foo",
 						PageSize: pointer.For(int64(countTransactions)),
 					})
 					Expect(err).To(BeNil())
-					Expect(transactions.Data).To(HaveLen(countTransactions))
+					Expect(transactions.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(countTransactions))
 
 					By("all events should have been properly sent", func() {
 						for range countTransactions {
@@ -208,17 +218,17 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			}
 		})
 		testServer := DeferTestServer(
-			deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+			DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 			testservice.WithInstruments(
-				testservice.NatsInstrumentation(deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
+				testservice.NatsInstrumentation(DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
 			),
 		)
 
-		It("should be ok", func() {
+		It("should be ok", func(specContext SpecContext) {
 			By("we should be able to create a new transaction", func() {
-				_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 					Ledger: ledgerName,
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -235,11 +245,11 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				Expect(err).To(BeNil())
 			})
 			By("we should be able to list transactions", func() {
-				transactions, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				transactions, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				Expect(err).To(BeNil())
-				Expect(transactions.Data).To(HaveLen(1))
+				Expect(transactions.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(1))
 			})
 		})
 	})
@@ -248,7 +258,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 var _ = Context("Ledger downgrade tests", func() {
 	var (
 		db                = UseTemplatedDatabase()
-		connectionOptions = deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions)
+		connectionOptions = DeferMap(db, (*pgtesting.Database).ConnectionOptions)
 		ctx               = logging.TestingContext()
 	)
 
@@ -262,21 +272,21 @@ var _ = Context("Ledger downgrade tests", func() {
 	)
 
 	When("inserting new migrations into the database", func() {
-		BeforeEach(func() {
+		BeforeEach(func(specContext SpecContext) {
 			ledgerName := uuid.NewString()[:8]
 
-			err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(BeNil())
 
-			info, err := GetLedgerInfo(ctx, testServer.GetValue(), operations.V2GetLedgerInfoRequest{
+			info, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetLedgerInfo(ctx, operations.V2GetLedgerInfoRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(BeNil())
 
 			// Insert a fake migration into the database to simulate a downgrade
-			_, err = ConnectToDatabase(ctx, GinkgoT(), connectionOptions).
+			_, err = ConnectToDatabase(ctx, connectionOptions).
 				NewInsert().
 				ModelTableExpr(ledger.DefaultBucket + ".goose_db_version").
 				Model(&map[string]any{
@@ -287,14 +297,20 @@ var _ = Context("Ledger downgrade tests", func() {
 			Expect(err).To(BeNil())
 		})
 		Context("then when restarting the service", func() {
-			It("Should fail", func() {
-				Expect(testServer.GetValue().Restart(ctx)).NotTo(BeNil())
+			It("Should fail", func(specContext SpecContext) {
+				testServer, err := testServer.Wait(specContext)
+				Expect(err).To(BeNil())
+
+				Expect(testServer.Restart(ctx)).NotTo(BeNil())
 			})
 		})
 	})
 
-	It("should be ok when targeting health check endpoint", func() {
-		ret, err := http.DefaultClient.Get(testservice.GetServerURL(testServer.GetValue()).String() + "/_healthcheck")
+	It("should be ok when targeting health check endpoint", func(specContext SpecContext) {
+		testServer, err := testServer.Wait(specContext)
+		Expect(err).To(BeNil())
+
+		ret, err := http.DefaultClient.Get(testservice.GetServerURL(testServer).String() + "/_healthcheck")
 		Expect(err).To(BeNil())
 
 		body := make(map[string]interface{})

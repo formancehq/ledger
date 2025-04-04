@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"strings"
@@ -23,11 +24,11 @@ var _ = Context("Ledger engine tests", func() {
 	var (
 		db      = UseTemplatedDatabase()
 		ctx     = logging.TestingContext()
-		natsURL = deferred.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := DeferTestServer(
-		deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
@@ -48,8 +49,8 @@ var _ = Context("Ledger engine tests", func() {
 				V2CreateLedgerRequest: components.V2CreateLedgerRequest{},
 			}
 		})
-		JustBeforeEach(func() {
-			err = CreateLedger(ctx, testServer.GetValue(), createLedgerRequest)
+		JustBeforeEach(func(specContext SpecContext) {
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, createLedgerRequest)
 		})
 		It("should be ok", func() {
 			Expect(err).To(BeNil())
@@ -82,8 +83,8 @@ var _ = Context("Ledger engine tests", func() {
 			})
 		})
 		Context("trying to create another ledger with the same name", func() {
-			JustBeforeEach(func() {
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+			JustBeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).NotTo(BeNil())
@@ -105,12 +106,12 @@ var _ = Context("Ledger engine tests", func() {
 					"foo": "bar",
 				}
 			})
-			It("Should be ok", func() {
-				ledger, err := GetLedger(ctx, testServer.GetValue(), operations.V2GetLedgerRequest{
+			It("Should be ok", func(specContext SpecContext) {
+				ledger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetLedger(ctx, operations.V2GetLedgerRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(BeNil())
-				Expect(ledger.Metadata).To(Equal(createLedgerRequest.V2CreateLedgerRequest.Metadata))
+				Expect(ledger.V2GetLedgerResponse.Data.Metadata).To(Equal(createLedgerRequest.V2CreateLedgerRequest.Metadata))
 			})
 		})
 		Context("with invalid ledger name", func() {

@@ -7,17 +7,17 @@ import (
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
-	"io"
 	"math/big"
 )
 
@@ -25,7 +25,7 @@ var _ = Context("Ledger engine tests", func() {
 	var (
 		db                = UseTemplatedDatabase()
 		ctx               = logging.TestingContext()
-		connectionOptions = deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions)
+		connectionOptions = DeferMap(db, (*pgtesting.Database).ConnectionOptions)
 	)
 
 	testServer := DeferTestServer(
@@ -51,37 +51,39 @@ var _ = Context("Ledger engine tests", func() {
 				},
 			}
 		})
-		JustBeforeEach(func() {
-			err = CreateLedger(ctx, testServer.GetValue(), createLedgerRequest)
+		JustBeforeEach(func(specContext SpecContext) {
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, createLedgerRequest)
 		})
 		When("importing data in two steps", func() {
-			It("should be ok", func() {
+			It("should be ok", func(specContext SpecContext) {
 				firstBatch := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"world","destination":"payments:1234","amount":10000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:07:41.522336Z","id":0,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:07:41.534898Z","idempotencyKey":"","id":0,"hash":"g489GFReBqquboEjkB95X3OU6mheMzgiu63PdSTfMuM="}
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"payments:1234","destination":"platform","amount":1500,"asset":"EUR/2"},{"source":"payments:1234","destination":"merchants:777","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:07:55.145802Z","id":1,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:07:55.170731Z","idempotencyKey":"","id":1,"hash":"T+2SGiCeC8tagt1tf5E/L7r98wB8tm6EbNd+OJ7ZvCI="}`
 
-				Expect(Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 					Ledger:              createLedgerRequest.Ledger,
 					V2ImportLogsRequest: []byte(firstBatch),
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
 				secondBatch := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"merchants:777","destination":"payouts:987","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:24.955784Z","id":2,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:24.985834Z","idempotencyKey":"","id":2,"hash":"WgOIXsh8x0pGSi//jHjQ78RF9YnFRslsbp2aOHiG43U="}
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"platform","destination":"refunds:4567","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:39.301709Z","id":3,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:39.330919Z","idempotencyKey":"","id":3,"hash":"JblhzL91s+DTcd53YTV2laC4QBRe5oDDoz9CzsX5Pro="}
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"refunds:4567","destination":"world","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:11:02.413499Z","id":4,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:11:02.434078Z","idempotencyKey":"","id":4,"hash":"Y8TBz5GhxTWW9D/wRXHPcIlrYFPQjroiIBWX1q6SJJo="}`
 
-				Expect(Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 					Ledger:              createLedgerRequest.Ledger,
 					V2ImportLogsRequest: []byte(secondBatch),
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
-				logsFromOriginalLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+				logsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
-				Expect(logsFromOriginalLedger.Data).To(HaveLen(5))
+				Expect(logsFromOriginalLedger.V2LogsCursorResponse.Cursor.Data).To(HaveLen(5))
 			})
 		})
 		When("importing data from 2.1", func() {
-			importLogs := func() error {
+			importLogs := func(specContext SpecContext) error {
 				GinkgoHelper()
 
 				logs := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"world","destination":"payments:1234","amount":10000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:07:41.522336Z","id":0,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:07:41.534898Z","idempotencyKey":"","id":0,"hash":"g489GFReBqquboEjkB95X3OU6mheMzgiu63PdSTfMuM="}
@@ -90,57 +92,58 @@ var _ = Context("Ledger engine tests", func() {
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"platform","destination":"refunds:4567","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:39.301709Z","id":3,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:39.330919Z","idempotencyKey":"","id":3,"hash":"JblhzL91s+DTcd53YTV2laC4QBRe5oDDoz9CzsX5Pro="}
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"refunds:4567","destination":"world","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:11:02.413499Z","id":4,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:11:02.434078Z","idempotencyKey":"","id":4,"hash":"Y8TBz5GhxTWW9D/wRXHPcIlrYFPQjroiIBWX1q6SJJo="}`
 
-				return Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 					Ledger:              createLedgerRequest.Ledger,
 					V2ImportLogsRequest: []byte(logs),
 				})
+				return err
 			}
 
-			It("should be ok", func() {
-				Expect(importLogs()).To(Succeed())
+			It("should be ok", func(specContext SpecContext) {
+				Expect(importLogs(specContext)).To(Succeed())
 
-				logsFromOriginalLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+				logsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
 
-				logsFromNewLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+				logsFromNewLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
 
-				Expect(logsFromOriginalLedger.Data).To(Equal(logsFromNewLedger.Data))
+				Expect(logsFromOriginalLedger.V2LogsCursorResponse.Cursor.Data).To(Equal(logsFromNewLedger.V2LogsCursorResponse.Cursor.Data))
 
-				transactionsFromOriginalLedger, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				transactionsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
 
-				transactionsFromNewLedger, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				transactionsFromNewLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
 
-				Expect(transactionsFromOriginalLedger.Data).To(Equal(transactionsFromNewLedger.Data))
+				Expect(transactionsFromOriginalLedger.V2TransactionsCursorResponse.Cursor.Data).To(Equal(transactionsFromNewLedger.V2TransactionsCursorResponse.Cursor.Data))
 
-				accountsFromOriginalLedger, err := ListAccounts(ctx, testServer.GetValue(), operations.V2ListAccountsRequest{
+				accountsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(ctx, operations.V2ListAccountsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
 
-				accountsFromNewLedger, err := ListAccounts(ctx, testServer.GetValue(), operations.V2ListAccountsRequest{
+				accountsFromNewLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(ctx, operations.V2ListAccountsRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(Succeed())
 
-				Expect(accountsFromOriginalLedger.Data).To(Equal(accountsFromNewLedger.Data))
+				Expect(accountsFromOriginalLedger.V2AccountsCursorResponse.Cursor.Data).To(Equal(accountsFromNewLedger.V2AccountsCursorResponse.Cursor.Data))
 			})
 		})
 		Context("with a set of all possible actions", func() {
-			JustBeforeEach(func() {
+			JustBeforeEach(func(specContext SpecContext) {
 				Expect(err).To(BeNil())
 
-				firstTX, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+				firstTX, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
@@ -156,7 +159,7 @@ var _ = Context("Ledger engine tests", func() {
 				Expect(err).To(BeNil())
 
 				// add a tx with a dry run to trigger a hole in ids
-				_, err = CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
 					DryRun: pointer.For(true),
 					V2PostTransaction: components.V2PostTransaction{
@@ -172,7 +175,7 @@ var _ = Context("Ledger engine tests", func() {
 				})
 				Expect(err).To(BeNil())
 
-				thirdTx, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+				thirdTx, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
@@ -187,55 +190,60 @@ var _ = Context("Ledger engine tests", func() {
 				})
 				Expect(err).To(BeNil())
 
-				Expect(AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataOnTransaction(ctx, operations.V2AddMetadataOnTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     firstTX.ID,
+					ID:     firstTX.V2CreateTransactionResponse.Data.ID,
 					RequestBody: map[string]string{
 						"foo": "bar",
 					},
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
-				Expect(AddMetadataToTransaction(ctx, testServer.GetValue(), operations.V2AddMetadataOnTransactionRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataOnTransaction(ctx, operations.V2AddMetadataOnTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     thirdTx.ID,
+					ID:     thirdTx.V2CreateTransactionResponse.Data.ID,
 					RequestBody: map[string]string{
 						"foo": "baz",
 					},
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
-				Expect(AddMetadataToAccount(ctx, testServer.GetValue(), operations.V2AddMetadataToAccountRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataToAccount(ctx, operations.V2AddMetadataToAccountRequest{
 					Ledger:  createLedgerRequest.Ledger,
 					Address: "bank",
 					RequestBody: map[string]string{
 						"foo": "bar",
 					},
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
-				Expect(DeleteTransactionMetadata(ctx, testServer.GetValue(), operations.V2DeleteTransactionMetadataRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteTransactionMetadata(ctx, operations.V2DeleteTransactionMetadataRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     firstTX.ID,
+					ID:     firstTX.V2CreateTransactionResponse.Data.ID,
 					Key:    "foo",
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
-				Expect(DeleteAccountMetadata(ctx, testServer.GetValue(), operations.V2DeleteAccountMetadataRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteAccountMetadata(ctx, operations.V2DeleteAccountMetadataRequest{
 					Ledger:  createLedgerRequest.Ledger,
 					Address: "world",
 					Key:     "foo",
-				})).To(BeNil())
+				})
+				Expect(err).To(BeNil())
 
-				_, err = RevertTransaction(ctx, testServer.GetValue(), operations.V2RevertTransactionRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
 					Ledger: createLedgerRequest.Ledger,
-					ID:     firstTX.ID,
+					ID:     firstTX.V2CreateTransactionResponse.Data.ID,
 				})
 				Expect(err).To(BeNil())
 			})
 			When("exporting the logs", func() {
 				var (
-					reader io.Reader
-					err    error
+					response *operations.V2ExportLogsResponse
+					err      error
 				)
-				JustBeforeEach(func() {
-					reader, err = Export(ctx, testServer.GetValue(), operations.V2ExportLogsRequest{
+				JustBeforeEach(func(specContext SpecContext) {
+					response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ExportLogs(ctx, operations.V2ExportLogsRequest{
 						Ledger: createLedgerRequest.Ledger,
 					})
 					Expect(err).To(BeNil())
@@ -243,9 +251,9 @@ var _ = Context("Ledger engine tests", func() {
 				It("should be ok", func() {})
 				When("then create a new ledger", func() {
 					var ledgerCopyName string
-					JustBeforeEach(func() {
+					JustBeforeEach(func(specContext SpecContext) {
 						ledgerCopyName = createLedgerRequest.Ledger + "-copy"
-						err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 							Ledger: ledgerCopyName,
 							V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 								Features: features.MinimalFeatureSet,
@@ -254,59 +262,60 @@ var _ = Context("Ledger engine tests", func() {
 						Expect(err).To(BeNil())
 					})
 
-					importLogs := func() error {
+					importLogs := func(specContext SpecContext) error {
 						GinkgoHelper()
 
-						return Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
+						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 							Ledger:              ledgerCopyName,
-							V2ImportLogsRequest: reader,
+							V2ImportLogsRequest: response.HTTPMeta.Response.Body,
 						})
+						return err
 					}
 
 					When("importing data", func() {
-						It("should be ok", func() {
-							Expect(importLogs()).To(Succeed())
+						It("should be ok", func(specContext SpecContext) {
+							Expect(importLogs(specContext)).To(Succeed())
 
-							logsFromOriginalLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+							logsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
 								Ledger: createLedgerRequest.Ledger,
 							})
 							Expect(err).To(Succeed())
 
-							logsFromNewLedger, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+							logsFromNewLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
 								Ledger: ledgerCopyName,
 							})
 							Expect(err).To(Succeed())
 
-							Expect(logsFromOriginalLedger.Data).To(Equal(logsFromNewLedger.Data))
+							Expect(logsFromOriginalLedger.V2LogsCursorResponse.Cursor.Data).To(Equal(logsFromNewLedger.V2LogsCursorResponse.Cursor.Data))
 
-							transactionsFromOriginalLedger, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+							transactionsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 								Ledger: createLedgerRequest.Ledger,
 							})
 							Expect(err).To(Succeed())
 
-							transactionsFromNewLedger, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+							transactionsFromNewLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 								Ledger: ledgerCopyName,
 							})
 							Expect(err).To(Succeed())
 
-							Expect(transactionsFromOriginalLedger.Data).To(Equal(transactionsFromNewLedger.Data))
+							Expect(transactionsFromOriginalLedger.V2TransactionsCursorResponse.Cursor.Data).To(Equal(transactionsFromNewLedger.V2TransactionsCursorResponse.Cursor.Data))
 
-							accountsFromOriginalLedger, err := ListAccounts(ctx, testServer.GetValue(), operations.V2ListAccountsRequest{
+							accountsFromOriginalLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(ctx, operations.V2ListAccountsRequest{
 								Ledger: createLedgerRequest.Ledger,
 							})
 							Expect(err).To(Succeed())
 
-							accountsFromNewLedger, err := ListAccounts(ctx, testServer.GetValue(), operations.V2ListAccountsRequest{
+							accountsFromNewLedger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(ctx, operations.V2ListAccountsRequest{
 								Ledger: ledgerCopyName,
 							})
 							Expect(err).To(Succeed())
 
-							Expect(accountsFromOriginalLedger.Data).To(Equal(accountsFromNewLedger.Data))
+							Expect(accountsFromOriginalLedger.V2AccountsCursorResponse.Cursor.Data).To(Equal(accountsFromNewLedger.V2AccountsCursorResponse.Cursor.Data))
 						})
 					})
 					Context("with state to 'in-use'", func() {
-						JustBeforeEach(func() {
-							_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+						JustBeforeEach(func(specContext SpecContext) {
+							_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 								Ledger: ledgerCopyName,
 								V2PostTransaction: components.V2PostTransaction{
 									Postings: []components.V2Posting{{
@@ -320,8 +329,8 @@ var _ = Context("Ledger engine tests", func() {
 							Expect(err).To(BeNil())
 						})
 						When("importing data", func() {
-							It("Should fail with IMPORT code", func() {
-								err := importLogs()
+							It("Should fail with IMPORT code", func(specContext SpecContext) {
+								err := importLogs(specContext)
 								Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumImport)))
 							})
 						})
@@ -334,11 +343,11 @@ var _ = Context("Ledger engine tests", func() {
 						)
 						// the import process is relying on the ledger state
 						// it the ledger already has some logs, it is considered as in use and import must fails.
-						// as the sdk does not allow to control the stream passed to the Import function
+						// as the sdk does not allow to control the stream passed to the ImportLogs function
 						// we take a lock on the ledgers table to force the process to wait
 						// while we will make a concurrent request
-						JustBeforeEach(func() {
-							db = ConnectToDatabase(ctx, GinkgoT(), connectionOptions)
+						JustBeforeEach(func(specContext SpecContext) {
+							db = ConnectToDatabase(ctx, connectionOptions)
 							sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 							Expect(err).To(BeNil())
 
@@ -353,7 +362,7 @@ var _ = Context("Ledger engine tests", func() {
 								defer GinkgoRecover()
 
 								// should block
-								_, err := CreateTransaction(ctx, testServer.GetValue(), operations.V2CreateTransactionRequest{
+								_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 									Ledger: ledgerCopyName,
 									Force:  pointer.For(true),
 									V2PostTransaction: components.V2PostTransaction{
@@ -386,8 +395,8 @@ var _ = Context("Ledger engine tests", func() {
 							go func() {
 								defer GinkgoRecover()
 
-								// the call on importLogs() should block too since the logs table is locked
-								importErrChan <- importLogs()
+								// the call on ImportLogs() should block too since the logs table is locked
+								importErrChan <- importLogs(specContext)
 							}()
 
 							Eventually(func(g Gomega) int {

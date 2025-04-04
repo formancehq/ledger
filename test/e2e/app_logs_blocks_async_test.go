@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
+	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"math/big"
@@ -22,7 +23,7 @@ import (
 var _ = Context("Logs block async hashing", func() {
 	var (
 		db                = UseTemplatedDatabase()
-		connectionOptions = deferred.DeferMap(db, (*pgtesting.Database).ConnectionOptions)
+		connectionOptions = DeferMap(db, (*pgtesting.Database).ConnectionOptions)
 		ctx               = logging.TestingContext()
 	)
 
@@ -32,7 +33,7 @@ var _ = Context("Logs block async hashing", func() {
 		txCount   = blockSize * nbBlock
 	)
 
-	testServer := DeferTestServer(
+	testServer := ginkgo.DeferTestServer(
 		connectionOptions,
 		testservice.WithInstruments(
 			testservice.DebugInstrumentation(debug),
@@ -42,13 +43,13 @@ var _ = Context("Logs block async hashing", func() {
 		testservice.WithLogger(GinkgoT()),
 	)
 
-	DeferTestWorker(connectionOptions, testservice.WithInstruments(
+	ginkgo.DeferTestWorker(connectionOptions, testservice.WithInstruments(
 		LogsHashBlockCRONSpecInstrumentation("* * * * * *"),
 		LogsHashBlockMaxSizeInstrumentation(blockSize),
 	))
 
-	JustBeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	JustBeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 			V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 				Features: features.MinimalFeatureSet.With(features.FeatureHashLogs, "ASYNC"),
@@ -58,7 +59,7 @@ var _ = Context("Logs block async hashing", func() {
 	})
 
 	When(fmt.Sprintf("creating %d transactions", txCount), func() {
-		JustBeforeEach(func() {
+		JustBeforeEach(func(specContext SpecContext) {
 			requestBody := make([]components.V2BulkElement, 0, txCount)
 			for i := 0; i < txCount; i++ {
 				requestBody = append(requestBody, components.CreateV2BulkElementCreateTransaction(
@@ -76,7 +77,7 @@ var _ = Context("Logs block async hashing", func() {
 				))
 			}
 
-			_, err := CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
 				Ledger:      "default",
 				RequestBody: requestBody,
 				Atomic:      pointer.For(true),
@@ -84,7 +85,7 @@ var _ = Context("Logs block async hashing", func() {
 			Expect(err).To(BeNil())
 		})
 		It(fmt.Sprintf("should generate %d blocks", nbBlock), func() {
-			db := ConnectToDatabase(ctx, GinkgoT(), connectionOptions)
+			db := ConnectToDatabase(ctx, connectionOptions)
 			Eventually(func(g Gomega) bool {
 				ret := make([]map[string]any, 0)
 				err := db.NewSelect().
