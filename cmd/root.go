@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/spf13/cobra"
 	"github.com/uptrace/bun"
 )

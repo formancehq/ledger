@@ -108,6 +108,109 @@ Authorization ( Scopes: ledger:read )
 
 <h1 id="ledger-api-ledger-v2">ledger.v2</h1>
 
+## Delete a bucket and mark all its ledgers as deleted
+
+<a id="opIdv2DeleteBucket"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/_system/bucket?name=string HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/_system/bucket`
+
+<h3 id="delete-a-bucket-and-mark-all-its-ledgers-as-deleted-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|name|query|string|true|The name of the bucket to delete|
+
+> Example responses
+
+> 400 Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="delete-a-bucket-and-mark-all-its-ledgers-as-deleted-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request|[V2ErrorResponse](#schemav2errorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
+</aside>
+
+## List all buckets with their associated ledgers
+
+<a id="opIdv2ListBuckets"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_system/bucket HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_system/bucket`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": [
+    {
+      "name": "string",
+      "ledgers": [
+        "string"
+      ],
+      "markForDeletion": true
+    }
+  ]
+}
+```
+
+<h3 id="list-all-buckets-with-their-associated-ledgers-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request|[V2ErrorResponse](#schemav2errorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-all-buckets-with-their-associated-ledgers-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|[object]|false|none|none|
+|»» name|string|false|none|The name of the bucket|
+|»» ledgers|[string]|false|none|List of ledger names associated with this bucket|
+|»» markForDeletion|boolean|false|none|Indicates if the bucket is marked for deletion|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
 ## List ledgers
 
 <a id="opIdv2ListLedgers"></a>

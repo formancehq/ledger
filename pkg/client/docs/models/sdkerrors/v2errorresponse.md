@@ -1,6 +1,7 @@
 # V2ErrorResponse
 
 
+
 ## Fields
 
 | Field                                                                                        | Type                                                                                         | Required                                                                                     | Description                                                                                  | Example                                                                                      |

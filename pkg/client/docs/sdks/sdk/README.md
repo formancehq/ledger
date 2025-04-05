@@ -1,4 +1,4 @@
-# Formance SDK
+# SDK
 
 ## Overview
 

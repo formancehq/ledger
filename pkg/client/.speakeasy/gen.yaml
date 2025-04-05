@@ -1,9 +1,6 @@
 configVersion: 2.0.0
 generation:
-  devContainers:
-    enabled: true
-    schemaPath: openapi/v2.yaml
-  sdkClassName: Formance
+  sdkClassName: SDK
   maintainOpenAPIOrder: true
   usageSnippets:
     optionalPropertyRendering: withExample
@@ -34,7 +31,7 @@ go:
       shared: models/components
       webhooks: models/webhooks
   inputModelSuffix: input
-  maxMethodParams: 0
+  maxMethodParams: 4
   methodArguments: require-security-and-request
   outputModelSuffix: output
   packageName: github.com/formancehq/ledger/pkg/client

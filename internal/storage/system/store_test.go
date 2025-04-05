@@ -5,6 +5,11 @@ package system
 import (
 	"context"
 	"fmt"
+	"os"
+	"slices"
+	"testing"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -16,10 +21,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
-	"os"
-	"slices"
-	"testing"
-	"time"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
@@ -150,6 +151,57 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
 }
 
+func TestLedgerDeleteMetadataMultipleKeys(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	store := newStore(t)
+
+	// Create a ledger with multiple metadata keys
+	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
+		"key1": "value1",
+		"key2": "value2",
+		"key3": "value3",
+	})
+
+	err := store.CreateLedger(ctx, &l)
+	require.NoError(t, err)
+
+	// Delete first metadata key
+	err = store.DeleteLedgerMetadata(ctx, l.Name, "key1")
+	require.NoError(t, err)
+
+	// Verify only the specified key was deleted
+	ledgerFromDB, err := store.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{
+		"key2": "value2",
+		"key3": "value3",
+	}, ledgerFromDB.Metadata)
+
+	// Delete second metadata key
+	err = store.DeleteLedgerMetadata(ctx, l.Name, "key2")
+	require.NoError(t, err)
+
+	// Verify only one key remains
+	ledgerFromDB, err = store.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{
+		"key3": "value3",
+	}, ledgerFromDB.Metadata)
+
+	// Try to delete a non-existent key
+	err = store.DeleteLedgerMetadata(ctx, l.Name, "nonexistent")
+	require.NoError(t, err)
+
+	// Verify the remaining metadata is unchanged
+	ledgerFromDB, err = store.GetLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Metadata{
+		"key3": "value3",
+	}, ledgerFromDB.Metadata)
+}
+
 func newStore(t docker.T) Store {
 	t.Helper()
 
@@ -167,4 +219,86 @@ func newStore(t docker.T) Store {
 	require.NoError(t, ret.Migrate(ctx))
 
 	return ret
+}
+
+func TestMarkBucketAsDeleted(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	t.Run("success", func(t *testing.T) {
+		// Create a test store
+		store := newStore(t)
+
+		// Create a test bucket with ledgers
+		bucketName := fmt.Sprintf("test-bucket-%d", time.Now().UnixNano())
+		ledgerName := fmt.Sprintf("test-ledger-%d", time.Now().UnixNano())
+
+		// Create a test ledger in the bucket
+		l := &ledger.Ledger{
+			Name: ledgerName,
+			Configuration: ledger.Configuration{
+				Bucket: bucketName,
+			},
+		}
+		err := store.CreateLedger(context.Background(), l)
+		require.NoError(t, err)
+
+		// Verify the ledger was created
+		query := ledgercontroller.ListLedgersQuery{}
+		query = query.WithBucket(bucketName)
+		cursor, err := store.ListLedgers(context.Background(), query)
+		require.NoError(t, err)
+		require.Len(t, cursor.Data, 1, "Ledger should have been created")
+
+		// Mark the bucket as deleted
+		err = store.MarkBucketAsDeleted(context.Background(), bucketName)
+		require.NoError(t, err)
+
+		// Verify the ledgers in the bucket are marked as deleted
+		// by querying the database directly
+		var ledgers []ledger.Ledger
+		err = store.(*DefaultStore).db.NewSelect().
+			Model(&ledgers).
+			Where("bucket = ?", bucketName).
+			Scan(context.Background())
+		require.NoError(t, err)
+		require.Len(t, ledgers, 1, "Should find one ledger in the bucket")
+		require.NotNil(t, ledgers[0].DeletedAt, "Ledger should be marked as deleted")
+	})
+
+	t.Run("empty bucket name", func(t *testing.T) {
+		// Create a test store
+		store := newStore(t)
+
+		// Call the method with an empty bucket name
+		err := store.MarkBucketAsDeleted(context.Background(), "")
+
+		// Verify an error occurred
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "bucket name cannot be empty")
+	})
+
+	t.Run("reserved bucket name", func(t *testing.T) {
+		// Create a test store
+		store := newStore(t)
+
+		// Call the method with the reserved bucket name "_"
+		err := store.MarkBucketAsDeleted(context.Background(), "_system")
+
+		// Verify an error occurred
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot delete reserved bucket")
+	})
+
+	t.Run("non-existent bucket", func(t *testing.T) {
+		// Create a test store
+		store := newStore(t)
+
+		// Call the method with a non-existent bucket
+		err := store.MarkBucketAsDeleted(context.Background(), "non-existent-bucket")
+
+		// This should not return an error, as it's a no-op
+		require.NoError(t, err)
+	})
 }

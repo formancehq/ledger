@@ -15,6 +15,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
+	system "github.com/formancehq/ledger/internal/controller/system"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -100,6 +101,21 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerController", reflect.TypeOf((*SystemController)(nil).GetLedgerController), ctx, name)
 }
 
+// ListBuckets mocks base method.
+func (m *SystemController) ListBuckets(ctx context.Context) ([]system.BucketWithLedgers, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBuckets", ctx)
+	ret0, _ := ret[0].([]system.BucketWithLedgers)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBuckets indicates an expected call of ListBuckets.
+func (mr *SystemControllerMockRecorder) ListBuckets(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBuckets", reflect.TypeOf((*SystemController)(nil).ListBuckets), ctx)
+}
+
 // ListLedgers mocks base method.
 func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
@@ -113,6 +129,20 @@ func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnP
 func (mr *SystemControllerMockRecorder) ListLedgers(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*SystemController)(nil).ListLedgers), ctx, query)
+}
+
+// MarkBucketAsDeleted mocks base method.
+func (m *SystemController) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkBucketAsDeleted", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkBucketAsDeleted indicates an expected call of MarkBucketAsDeleted.
+func (mr *SystemControllerMockRecorder) MarkBucketAsDeleted(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkBucketAsDeleted", reflect.TypeOf((*SystemController)(nil).MarkBucketAsDeleted), ctx, bucketName)
 }
 
 // UpdateLedgerMetadata mocks base method.
