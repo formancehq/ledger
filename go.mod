@@ -1,8 +1,7 @@
 module github.com/formancehq/ledger
 
 go 1.23
-
-toolchain go1.23.2
+toolchain go1.24.1
 
 replace github.com/formancehq/ledger/pkg/client => ./pkg/client
 
@@ -47,7 +46,7 @@ require (
 	go.uber.org/fx v1.23.0
 	go.uber.org/mock v0.5.0
 	golang.org/x/oauth2 v0.26.0
-	golang.org/x/sync v0.11.0
+	golang.org/x/sync v0.13.0
 )
 
 require (
