@@ -8,9 +8,12 @@ runs:
   using: composite
   steps:
     - name: Install Nix
-      uses: DeterminateSystems/nix-installer-action@v16
+      uses: cachix/install-nix-action@v31
     - name: Cache dependencies
-      uses: DeterminateSystems/magic-nix-cache-action@v9
+      uses: nix-community/cache-nix-action@v6
+      with:
+        primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.nix', '**/flake.lock') }}
+        restore-prefixes-first-match: nix-${{ runner.os }}-
     - name: Load dependencies
       shell: bash
       run: nix develop --install
