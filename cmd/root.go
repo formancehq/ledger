@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	"github.com/formancehq/go-libs/v2/bun/bunmigrate"
-	"github.com/formancehq/go-libs/v2/otlp"
-	"github.com/formancehq/go-libs/v2/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v2/service"
+	"github.com/formancehq/go-libs/v3/bun/bunmigrate"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/spf13/cobra"
 	"github.com/uptrace/bun"

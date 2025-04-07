@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	. "github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
@@ -70,7 +70,7 @@ func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
 	}
 	return &storage.RDSPostMigrateSnapshotArgs{
 		SnapshotIdentifier: pulumi.String(a.SnapshotIdentifier),
-		RetainsOnDelete: a.RetainsOnDelete,
+		RetainsOnDelete:    a.RetainsOnDelete,
 	}
 }
 
@@ -140,7 +140,7 @@ func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
 		InstanceClass:              pulumix.Val(rds.InstanceType(a.InstanceClass)),
 		Engine:                     pulumi.String(a.Engine),
 		EngineVersion:              pulumi.String(a.EngineVersion),
-		RetainsOnDelete: a.RetainsOnDelete,
+		RetainsOnDelete:            a.RetainsOnDelete,
 	}
 }
 
@@ -247,7 +247,7 @@ func (s Storage) toInput() storage.Args {
 		RDS:                      s.RDS.toInput(),
 		ConnectivityDatabaseArgs: s.Connectivity.toInput(),
 		DisableUpgrade:           pulumix.Val(s.DisableUpgrade),
-		Service: 				s.Service.toInput(),
+		Service:                  s.Service.toInput(),
 	}
 }
 
@@ -540,7 +540,7 @@ func (g GeneratorLedgerConfiguration) toInput() generator.LedgerConfiguration {
 		ScriptFromFile:    pulumix.Val(g.ScriptFromFile),
 		VUs:               pulumix.Val(g.VUs),
 		HTTPClientTimeout: pulumix.Val(g.HTTPClientTimeout),
-		SkipAwait: 	   pulumix.Val(g.SkipAwait),
+		SkipAwait:         pulumix.Val(g.SkipAwait),
 	}
 }
 
@@ -558,8 +558,8 @@ func (g *Generator) toInput() *generator.Args {
 	}
 
 	return &generator.Args{
-		GeneratorVersion:  pulumix.Val(g.GeneratorVersion),
-		Ledgers: ConvertMap(g.Ledgers, GeneratorLedgerConfiguration.toInput),
+		GeneratorVersion: pulumix.Val(g.GeneratorVersion),
+		Ledgers:          ConvertMap(g.Ledgers, GeneratorLedgerConfiguration.toInput),
 	}
 }
 

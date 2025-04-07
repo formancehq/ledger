@@ -2,14 +2,14 @@ package ledger
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/invopop/jsonschema"
 	"github.com/uptrace/bun"
 	"math/big"
 	"slices"
 	"sort"
 
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type Transactions struct {
@@ -39,7 +39,7 @@ type Transaction struct {
 	bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
 	TransactionData
-	ID         *int        `json:"id" bun:"id,type:numeric"`
+	ID         *int       `json:"id" bun:"id,type:numeric"`
 	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.

@@ -8,8 +8,8 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
@@ -17,18 +17,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 
 	"errors"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/google/uuid"
 
 	ledger "github.com/formancehq/ledger/internal"

@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"

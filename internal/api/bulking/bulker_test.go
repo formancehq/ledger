@@ -2,18 +2,18 @@ package bulking
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/uptrace/bun"
 	"math/big"
 	"testing"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

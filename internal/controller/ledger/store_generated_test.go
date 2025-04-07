@@ -12,9 +12,9 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	metadata "github.com/formancehq/go-libs/v2/metadata"
-	migrations "github.com/formancehq/go-libs/v2/migrations"
-	time "github.com/formancehq/go-libs/v2/time"
+	metadata "github.com/formancehq/go-libs/v3/metadata"
+	migrations "github.com/formancehq/go-libs/v3/migrations"
+	time "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"

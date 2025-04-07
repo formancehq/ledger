@@ -14,7 +14,6 @@ require (
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
 	github.com/dop251/goja v0.0.0-20241009100908-5f46f2705ca3
-	github.com/formancehq/go-libs/v2 v2.2.3-0.20250404150347-dfce43bb3362
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-chi/cors v1.2.1
@@ -51,6 +50,7 @@ require (
 )
 
 require (
+	github.com/formancehq/go-libs/v3 v3.0.0-20250408113106-7b3525e0b25b
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
 	gopkg.in/yaml.v3 v3.0.1

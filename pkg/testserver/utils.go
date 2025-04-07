@@ -1,9 +1,9 @@
 package testserver
 
 import (
-	"github.com/formancehq/go-libs/v2/collectionutils"
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )

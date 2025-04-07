@@ -2,9 +2,9 @@ package ledger
 
 import (
 	"errors"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"

@@ -2,7 +2,7 @@ package testserver
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v2/testing/testservice"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/cmd"
 	"strconv"
 )

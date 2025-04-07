@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/go-chi/chi/v5"
 )

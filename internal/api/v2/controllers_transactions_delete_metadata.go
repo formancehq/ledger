@@ -11,7 +11,7 @@ import (
 	"errors"
 	"github.com/formancehq/ledger/internal/api/common"
 
-	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v3/api"
 )
 
 func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {

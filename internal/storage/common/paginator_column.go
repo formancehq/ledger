@@ -2,8 +2,8 @@ package common
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/uptrace/bun"
 	"math/big"
 	"reflect"

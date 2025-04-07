@@ -4,11 +4,11 @@ package write
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v2/testing/docker"
-	"github.com/formancehq/go-libs/v2/testing/testservice"
-	. "github.com/formancehq/go-libs/v2/testing/utils"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	. "github.com/formancehq/go-libs/v3/testing/utils"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"io"
@@ -16,8 +16,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/pkg/testserver"
 )
 

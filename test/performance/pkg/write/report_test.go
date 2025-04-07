@@ -3,7 +3,7 @@
 package write_test
 
 import (
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"github.com/jamiealquiza/tachymeter"
 	"sync"

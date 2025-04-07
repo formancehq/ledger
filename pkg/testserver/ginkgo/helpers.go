@@ -1,10 +1,10 @@
 package ginkgo
 
 import (
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
-	"github.com/formancehq/go-libs/v2/testing/testservice"
-	. "github.com/formancehq/go-libs/v2/testing/testservice/ginkgo"
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	. "github.com/formancehq/go-libs/v3/testing/testservice/ginkgo"
 	"github.com/formancehq/ledger/cmd"
 	"github.com/formancehq/ledger/pkg/testserver"
 )

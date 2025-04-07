@@ -4,9 +4,9 @@ package driver_test
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"

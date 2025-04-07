@@ -4,14 +4,14 @@ package test_suite
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/query"
-	. "github.com/formancehq/go-libs/v2/testing/api"
-	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v2/testing/testservice"
-	libtime "github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/query"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -23,8 +23,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 var _ = Context("Ledger transactions list API tests", func() {

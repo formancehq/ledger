@@ -2,7 +2,7 @@ package features
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	"slices"
 	"strings"
 )

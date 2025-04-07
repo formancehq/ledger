@@ -4,9 +4,9 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bundebug"
-	"github.com/formancehq/go-libs/v2/testing/deferred"
-	. "github.com/formancehq/go-libs/v2/testing/utils"
+	"github.com/formancehq/go-libs/v3/bun/bundebug"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	. "github.com/formancehq/go-libs/v3/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -15,7 +15,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/go-cmp/cmp"
 
@@ -23,8 +23,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

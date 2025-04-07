@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	metadata "github.com/formancehq/go-libs/v2/metadata"
+	metadata "github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )

@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/robfig/cron/v3"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"

@@ -1,18 +1,18 @@
 package v2
 
 import (
-	. "github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/query"
 )
 
 func getDate(r *http.Request, key string) (*time.Time, error) {

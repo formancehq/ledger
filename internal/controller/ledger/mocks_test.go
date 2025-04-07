@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"

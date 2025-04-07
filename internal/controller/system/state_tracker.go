@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/logging"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )

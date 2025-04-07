@@ -3,8 +3,8 @@ package bulking
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"reflect"
@@ -94,11 +94,11 @@ type DeleteMetadataRequest struct {
 }
 
 type TransactionRequest struct {
-	Postings  ledger.Postings           `json:"postings"`
-	Script    ledgercontroller.ScriptV1 `json:"script"`
-	Timestamp time.Time                 `json:"timestamp"`
-	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+	Postings        ledger.Postings              `json:"postings"`
+	Script          ledgercontroller.ScriptV1    `json:"script"`
+	Timestamp       time.Time                    `json:"timestamp"`
+	Reference       string                       `json:"reference"`
+	Metadata        metadata.Metadata            `json:"metadata" swaggertype:"object"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 

@@ -8,16 +8,16 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
 
 	libtime "time"
 
-	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 )

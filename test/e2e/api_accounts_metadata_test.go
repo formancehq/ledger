@@ -3,12 +3,12 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
-	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v2/testing/testservice"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"

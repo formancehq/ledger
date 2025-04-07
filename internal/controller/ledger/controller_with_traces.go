@@ -3,14 +3,14 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 )
 

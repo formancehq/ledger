@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"

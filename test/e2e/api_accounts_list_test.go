@@ -4,12 +4,12 @@ package test_suite
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/logging"
-	. "github.com/formancehq/go-libs/v2/testing/api"
-	. "github.com/formancehq/go-libs/v2/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v2/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v2/testing/testservice"
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -18,9 +18,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

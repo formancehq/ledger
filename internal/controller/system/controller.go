@@ -15,7 +15,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/tracing"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
