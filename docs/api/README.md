@@ -597,8 +597,7 @@ Accept: application/json
     }
   ],
   "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param"
 }
 ```
 
@@ -3791,26 +3790,18 @@ and
     }
   ],
   "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param"
 }
 
 ```
 
 ### Properties
 
-allOf
-
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
-
-and
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[V2ErrorResponse](#schemav2errorresponse)|false|none|none|
+|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
+|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|false|none|none|
+|errorMessage|string|false|none|none|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->
