@@ -55,6 +55,12 @@ func TestAccountsList(t *testing.T) {
 
 	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
+		WithTimestamp(now).
+		WithInsertedAt(now)), nil)
+	require.NoError(t, err)
+
+	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(4*time.Minute)).
 		WithInsertedAt(now.Add(100*time.Millisecond))), nil)
 	require.NoError(t, err)
@@ -112,7 +118,7 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
-			"USD": ledger.NewVolumesInt64(200, 50),
+			"USD": ledger.NewVolumesInt64(300, 50),
 		}, accounts.Data[0].Volumes)
 	})
 
@@ -129,7 +135,7 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
-			"USD": ledger.NewVolumesInt64(100, 0),
+			"USD": ledger.NewVolumesInt64(200, 0),
 		}, accounts.Data[0].Volumes)
 	})
 
@@ -145,7 +151,7 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
-			"USD": ledger.NewVolumesInt64(200, 50),
+			"USD": ledger.NewVolumesInt64(300, 50),
 		}, accounts.Data[0].EffectiveVolumes)
 	})
 
@@ -161,7 +167,7 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
 		require.Equal(t, ledger.VolumesByAssets{
-			"USD": ledger.NewVolumesInt64(100, 0),
+			"USD": ledger.NewVolumesInt64(200, 0),
 		}, accounts.Data[0].EffectiveVolumes)
 	})
 
