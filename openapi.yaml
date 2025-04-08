@@ -3777,16 +3777,17 @@ components:
                 - targetType
                 - key
     V2BulkResponse:
-      allOf:
-        - properties:
-            data:
-              type: array
-              items:
-                $ref: "#/components/schemas/V2BulkElementResult"
-        - $ref: "#/components/schemas/V2ErrorResponse"
       type: object
-      required:
-        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2BulkElementResult"
+        errorCode:
+          $ref: "#/components/schemas/V2ErrorsEnum"
+        errorMessage:
+          type: string
+          example: "[VALIDATION] invalid 'cursor' query param"
     V2BulkElementResult:
       type: object
       oneOf:
