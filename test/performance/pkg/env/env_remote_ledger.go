@@ -15,13 +15,11 @@ type RemoteLedgerEnvFactory struct {
 	ledgerURL  string
 }
 
-func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B) Env {
-	client := ledgerclient.New(
+func (r *RemoteLedgerEnvFactory) Create(_ context.Context, _ *testing.B) Env {
+	return NewRemoteLedgerEnv(ledgerclient.New(
 		ledgerclient.WithClient(r.httpClient),
 		ledgerclient.WithServerURL(r.ledgerURL),
-	)
-
-	return NewRemoteLedgerEnv(client, r.ledgerURL)
+	))
 }
 
 var _ EnvFactory = (*RemoteLedgerEnvFactory)(nil)
@@ -35,11 +33,6 @@ func NewRemoteLedgerEnvFactory(httpClient *http.Client, ledgerURL string) *Remot
 
 type RemoteLedgerEnv struct {
 	client    *ledgerclient.Formance
-	ledgerURL string
-}
-
-func (r *RemoteLedgerEnv) URL() string {
-	return r.ledgerURL
 }
 
 func (r *RemoteLedgerEnv) Client() *ledgerclient.Formance {
@@ -50,10 +43,9 @@ func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 	return nil
 }
 
-func NewRemoteLedgerEnv(client *ledgerclient.Formance, ledgerURL string) *RemoteLedgerEnv {
+func NewRemoteLedgerEnv(client *ledgerclient.Formance) *RemoteLedgerEnv {
 	return &RemoteLedgerEnv{
 		client:    client,
-		ledgerURL: ledgerURL,
 	}
 }
 

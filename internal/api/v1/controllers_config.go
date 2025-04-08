@@ -10,12 +10,12 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 
-	"github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/formancehq/go-libs/v3/collectionutils"
 
-	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v3/api"
 )
 
 type ConfigInfo struct {

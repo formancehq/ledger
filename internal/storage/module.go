@@ -3,8 +3,8 @@ package storage
 import (
 	"context"
 	"errors"
-	"github.com/formancehq/go-libs/v2/health"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/health"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"

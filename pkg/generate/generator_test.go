@@ -3,10 +3,12 @@
 package generate
 
 import (
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/docker"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/stretchr/testify/require"
@@ -20,20 +22,21 @@ func TestGenerator(t *testing.T) {
 	pgServer := pgtesting.CreatePostgresServer(t, dockerPool)
 	ctx := logging.TestingContext()
 
-	testServer := New(t, Configuration{
-		CommonConfiguration: CommonConfiguration{
-			PostgresConfiguration: bunconnect.ConnectionOptions{
-				DatabaseSourceName: pgServer.GetDSN(),
-			},
-			Debug: os.Getenv("DEBUG") == "true",
-		},
-	})
-	require.NoError(t, testServer.Start())
+	testServer := NewTestServer(
+		deferred.FromValue(bunconnect.ConnectionOptions{
+			DatabaseSourceName: pgServer.GetDSN(),
+		}),
+		testservice.WithLogger(t),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(os.Getenv("DEBUG") == "true"),
+		),
+	)
+	require.NoError(t, testServer.Start(ctx))
 	t.Cleanup(func() {
 		require.NoError(t, testServer.Stop(ctx))
 	})
 
-	_, err := testServer.Client().Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+	_, err := Client(testServer).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: "default",
 	})
 	require.NoError(t, err)
@@ -49,21 +52,21 @@ func TestGenerator(t *testing.T) {
 		action, err := generator.Next(i)
 		require.NoError(t, err)
 
-		_, err = action.Apply(ctx, testServer.Client().Ledger.V2, ledgerName)
+		_, err = action.Apply(ctx, Client(testServer).Ledger.V2, ledgerName)
 		require.NoError(t, err)
 	}
 
-	txs, err := ListTransactions(ctx, testServer, operations.V2ListTransactionsRequest{
+	txs, err := Client(testServer).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 		Ledger: ledgerName,
 	})
 	require.NoError(t, err)
-	require.Len(t, txs.Data, 2)
-	require.True(t, txs.Data[1].Reverted)
-	require.False(t, txs.Data[0].Reverted)
+	require.Len(t, txs.V2TransactionsCursorResponse.Cursor.Data, 2)
+	require.True(t, txs.V2TransactionsCursorResponse.Cursor.Data[1].Reverted)
+	require.False(t, txs.V2TransactionsCursorResponse.Cursor.Data[0].Reverted)
 	require.Equal(t, map[string]string{
 		"foo":            "bar",
 		"globalMetadata": "test",
-	}, txs.Data[1].Metadata)
+	}, txs.V2TransactionsCursorResponse.Cursor.Data[1].Metadata)
 }
 
 const script = `

@@ -5,7 +5,7 @@ go 1.23.1
 toolchain go1.23.3
 
 require (
-	github.com/formancehq/go-libs/v2 v2.2.2
+	github.com/formancehq/go-libs/v3 v3.0.0-20250407102820-68fa020e67bb
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/kos-v/dsnparser v1.1.0

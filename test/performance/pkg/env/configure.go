@@ -7,7 +7,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/httpclient"
+	"github.com/formancehq/go-libs/v3/httpclient"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"net/http"

@@ -4,23 +4,27 @@ package test_suite
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/query"
-	. "github.com/formancehq/go-libs/v2/testing/api"
-	libtime "github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/query"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"math/big"
 	"sort"
 	"time"
 
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 var _ = Context("Ledger transactions list API tests", func() {
@@ -29,18 +33,17 @@ var _ = Context("Ledger transactions list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL: natsServer.GetValue().ClientURL(),
-		}
-	})
-	JustBeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
+	JustBeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
@@ -54,7 +57,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 			timestamp    = time.Now()
 			transactions []components.V2Transaction
 		)
-		JustBeforeEach(func() {
+		JustBeforeEach(func(specContext SpecContext) {
 			for i := 0; i < int(txCount); i++ {
 				offset := time.Duration(int(txCount)-i) * time.Minute
 				// 1 transaction of 2 is backdated to test pagination using effective date
@@ -65,9 +68,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 				}
 				txTimestamp := timestamp.Add(-offset)
 
-				response, err := CreateTransaction(
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Metadata: map[string]string{},
@@ -94,7 +96,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				transactions = append([]components.V2Transaction{
-					*response,
+					response.V2CreateTransactionResponse.Data,
 				}, transactions...)
 			}
 		})
@@ -103,7 +105,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 		})
 		When(fmt.Sprintf("listing transactions using page size of %d", pageSize), func() {
 			var (
-				rsp *components.V2TransactionsCursorResponseCursor
+				rsp *operations.V2ListTransactionsResponse
 				req operations.V2ListTransactionsRequest
 				err error
 			)
@@ -131,8 +133,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 					},
 				}
 			})
-			JustBeforeEach(func() {
-				rsp, err = ListTransactions(ctx, testServer.GetValue(), req)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, req)
 				Expect(err).ToNot(HaveOccurred())
 			})
 			Context("with a filter on reference", func() {
@@ -144,8 +146,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 					}
 				})
 				It("Should be ok, and returns transactions with reference 'ref-0'", func() {
-					Expect(rsp.Data).To(HaveLen(1))
-					Expect(rsp.Data[0]).To(Equal(transactions[txCount-1]))
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(1))
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data[0]).To(Equal(transactions[txCount-1]))
 				})
 			})
 			Context("with effective ordering", func() {
@@ -153,28 +155,27 @@ var _ = Context("Ledger transactions list API tests", func() {
 					req.Order = pointer.For(operations.OrderEffective)
 				})
 				It("Should be ok, and returns transactions ordered by effective timestamp", func() {
-					Expect(rsp.PageSize).To(Equal(pageSize))
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
 					sorted := transactions[:pageSize]
 					sort.SliceStable(sorted, func(i, j int) bool {
 						return sorted[i].Timestamp.After(sorted[j].Timestamp)
 					})
-					Expect(rsp.Data).To(Equal(sorted))
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(sorted))
 				})
 			})
 			It("Should be ok", func() {
-				Expect(rsp.PageSize).To(Equal(pageSize))
-				Expect(rsp.Data).To(Equal(transactions[:pageSize]))
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(transactions[:pageSize]))
 			})
 			When("following next cursor", func() {
-				JustBeforeEach(func() {
-					Expect(rsp.HasMore).To(BeTrue())
-					Expect(rsp.Previous).To(BeNil())
-					Expect(rsp.Next).NotTo(BeNil())
+				JustBeforeEach(func(specContext SpecContext) {
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.HasMore).To(BeTrue())
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Previous).To(BeNil())
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
 
 					// Create a new transaction to ensure cursor is stable
-					_, err := CreateTransaction(
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 						ctx,
-						testServer.GetValue(),
 						operations.V2CreateTransactionRequest{
 							V2PostTransaction: components.V2PostTransaction{
 								Metadata: map[string]string{},
@@ -193,38 +194,36 @@ var _ = Context("Ledger transactions list API tests", func() {
 					)
 					Expect(err).ToNot(HaveOccurred())
 
-					rsp, err = ListTransactions(
+					rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 						ctx,
-						testServer.GetValue(),
 						operations.V2ListTransactionsRequest{
-							Cursor: rsp.Next,
+							Cursor: rsp.V2TransactionsCursorResponse.Cursor.Next,
 							Ledger: "default",
 						},
 					)
 					Expect(err).ToNot(HaveOccurred())
 				})
 				It("should return next page", func() {
-					Expect(rsp.PageSize).To(Equal(pageSize))
-					Expect(rsp.Data).To(Equal(transactions[pageSize : 2*pageSize]))
-					Expect(rsp.Next).To(BeNil())
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(transactions[pageSize : 2*pageSize]))
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Next).To(BeNil())
 				})
 				When("following previous cursor", func() {
-					JustBeforeEach(func() {
+					JustBeforeEach(func(specContext SpecContext) {
 						var err error
-						rsp, err = ListTransactions(
+						rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 							ctx,
-							testServer.GetValue(),
 							operations.V2ListTransactionsRequest{
-								Cursor: rsp.Previous,
+								Cursor: rsp.V2TransactionsCursorResponse.Cursor.Previous,
 								Ledger: "default",
 							},
 						)
 						Expect(err).ToNot(HaveOccurred())
 					})
 					It("should return first page", func() {
-						Expect(rsp.PageSize).To(Equal(pageSize))
-						Expect(rsp.Data).To(Equal(transactions[:pageSize]))
-						Expect(rsp.Previous).To(BeNil())
+						Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+						Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(transactions[:pageSize]))
+						Expect(rsp.V2TransactionsCursorResponse.Cursor.Previous).To(BeNil())
 					})
 				})
 			})
@@ -233,13 +232,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 		When("listing transactions using filter on a single match", func() {
 			var (
 				err      error
-				response *components.V2TransactionsCursorResponseCursor
+				response *operations.V2ListTransactionsResponse
 				now      = time.Now().Round(time.Second).UTC()
 			)
-			JustBeforeEach(func() {
-				response, err = ListTransactions(
+			JustBeforeEach(func(specContext SpecContext) {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 					ctx,
-					testServer.GetValue(),
 					operations.V2ListTransactionsRequest{
 						RequestBody: map[string]interface{}{
 							"$match": map[string]any{
@@ -254,9 +252,9 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(err).To(BeNil())
 			})
 			It("Should be ok", func() {
-				Expect(response.Next).NotTo(BeNil())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
 				cursor := &common.ColumnPaginatedQuery[any]{}
-				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
+				Expect(bunpaginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
 				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
 					Builder: query.Match("source", "world"),
@@ -267,13 +265,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 		When("listing transactions using filter on a single match", func() {
 			var (
 				err      error
-				response *components.V2TransactionsCursorResponseCursor
+				response *operations.V2ListTransactionsResponse
 				now      = time.Now().Round(time.Second).UTC()
 			)
-			JustBeforeEach(func() {
-				response, err = ListTransactions(
+			JustBeforeEach(func(specContext SpecContext) {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 					ctx,
-					testServer.GetValue(),
 					operations.V2ListTransactionsRequest{
 						RequestBody: map[string]interface{}{
 							"$and": []map[string]any{
@@ -297,9 +294,9 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(err).To(BeNil())
 			})
 			It("Should be ok", func() {
-				Expect(response.Next).NotTo(BeNil())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
 				cursor := &common.ColumnPaginatedQuery[any]{}
-				Expect(bunpaginate.UnmarshalCursor(*response.Next, cursor)).To(BeNil())
+				Expect(bunpaginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
 				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
 					Builder: query.And(
@@ -314,10 +311,9 @@ var _ = Context("Ledger transactions list API tests", func() {
 			var (
 				err error
 			)
-			JustBeforeEach(func() {
-				_, err = ListTransactions(
+			JustBeforeEach(func(specContext SpecContext) {
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 					ctx,
-					testServer.GetValue(),
 					operations.V2ListTransactionsRequest{
 						RequestBody: map[string]interface{}{
 							"$match": map[string]any{
@@ -346,16 +342,15 @@ var _ = Context("Ledger transactions list API tests", func() {
 	)
 
 	var (
-		t1  *components.V2Transaction
-		t2  *components.V2Transaction
-		t3  *components.V2Transaction
+		t1  *operations.V2CreateTransactionResponse
+		t2  *operations.V2CreateTransactionResponse
+		t3  *operations.V2CreateTransactionResponse
 		err error
 	)
 	When("creating transactions", func() {
-		JustBeforeEach(func() {
-			t1, err = CreateTransaction(
+		JustBeforeEach(func(specContext SpecContext) {
+			t1, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: m1,
@@ -374,9 +369,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			t2, err = CreateTransaction(
+			t2, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: m1,
@@ -395,9 +389,8 @@ var _ = Context("Ledger transactions list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			t3, err = CreateTransaction(
+			t3, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -416,20 +409,18 @@ var _ = Context("Ledger transactions list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		It("should be countable on api", func() {
-			response, err := CountTransactions(
+		It("should be countable on api", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(3))
+			Expect(response.Headers["Count"]).To(Equal([]string{"3"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -440,11 +431,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(3))
+			Expect(response.Headers["Count"]).To(Equal([]string{"3"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -455,11 +445,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -470,11 +459,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(1))
+			Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -485,11 +473,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -500,11 +487,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -515,11 +501,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(3))
+			Expect(response.Headers["Count"]).To(Equal([]string{"3"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -530,11 +515,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(2))
+			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -545,11 +529,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -560,11 +543,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(2))
+			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -575,11 +557,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(1))
+			Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -590,11 +571,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -605,11 +585,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(2))
+			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -620,11 +599,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(1))
+			Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
 
-			response, err = CountTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -635,26 +613,24 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 		})
-		It("should be listed on api", func() {
-			response, err := ListTransactions(
+		It("should be listed on api", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(3))
-			Expect(response.Data[0]).Should(Equal(*t3))
-			Expect(response.Data[1]).Should(Equal(*t2))
-			Expect(response.Data[2]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(3))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t3.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t2.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[2]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -666,14 +642,13 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(3))
-			Expect(response.Data[0]).Should(Equal(*t3))
-			Expect(response.Data[1]).Should(Equal(*t2))
-			Expect(response.Data[2]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(3))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t3.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t2.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[2]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -685,11 +660,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -701,14 +675,13 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(3))
-			Expect(response.Data[0]).Should(Equal(*t3))
-			Expect(response.Data[1]).Should(Equal(*t2))
-			Expect(response.Data[2]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(3))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t3.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t2.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[2]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -720,11 +693,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -736,11 +708,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -752,14 +723,13 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(3))
-			Expect(response.Data[0]).Should(Equal(*t3))
-			Expect(response.Data[1]).Should(Equal(*t2))
-			Expect(response.Data[2]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(3))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t3.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t2.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[2]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -771,13 +741,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(2))
-			Expect(response.Data[0]).Should(Equal(*t2))
-			Expect(response.Data[1]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t2.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					RequestBody: map[string]interface{}{
@@ -789,11 +758,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -805,13 +773,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(2))
-			Expect(response.Data[0]).Should(Equal(*t3))
-			Expect(response.Data[1]).Should(Equal(*t2))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t3.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t2.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -823,12 +790,11 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(1))
-			Expect(response.Data[0]).Should(Equal(*t3))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t3.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -840,11 +806,10 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -856,13 +821,12 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(2))
-			Expect(response.Data[0]).Should(Equal(*t2))
-			Expect(response.Data[1]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t2.V2CreateTransactionResponse.Data))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[1]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -874,12 +838,11 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(1))
-			Expect(response.Data[0]).Should(Equal(*t1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(1))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data[0]).Should(Equal(t1.V2CreateTransactionResponse.Data))
 
-			response, err = ListTransactions(
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 					Expand: pointer.For("volumes,effectiveVolumes"),
@@ -891,12 +854,11 @@ var _ = Context("Ledger transactions list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).Should(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
 
 			By("using $not operator on account 'world'", func() {
-				response, err = ListTransactions(
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 					ctx,
-					testServer.GetValue(),
 					operations.V2ListTransactionsRequest{
 						Ledger: "default",
 						Expand: pointer.For("volumes,effectiveVolumes"),
@@ -910,46 +872,42 @@ var _ = Context("Ledger transactions list API tests", func() {
 					},
 				)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(response.Data).Should(HaveLen(2))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
 			})
 		})
-		It("should be gettable on api", func() {
-			_, err := GetTransaction(
+		It("should be gettable on api", func(specContext SpecContext) {
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetTransactionRequest{
 					Ledger: "default",
-					ID:     t1.ID,
+					ID:     t1.V2CreateTransactionResponse.Data.ID,
 					Expand: pointer.For("volumes,effectiveVolumes"),
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, err = GetTransaction(
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetTransactionRequest{
 					Ledger: "default",
-					ID:     t2.ID,
+					ID:     t2.V2CreateTransactionResponse.Data.ID,
 					Expand: pointer.For("volumes,effectiveVolumes"),
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, err = GetTransaction(
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetTransactionRequest{
 					Ledger: "default",
-					ID:     t3.ID,
+					ID:     t3.V2CreateTransactionResponse.Data.ID,
 					Expand: pointer.For("volumes,effectiveVolumes"),
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, err = GetTransaction(
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetTransactionRequest{
 					Ledger: "default",
 					ID:     big.NewInt(666),
@@ -961,27 +919,25 @@ var _ = Context("Ledger transactions list API tests", func() {
 	})
 
 	When("counting and listing transactions empty", func() {
-		It("should be countable on api even if empty", func() {
-			response, err := CountTransactions(
+		It("should be countable on api even if empty", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CountTransactionsRequest{
 					Ledger: "default",
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response).To(Equal(0))
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 		})
-		It("should be listed on api even if empty", func() {
-			response, err := ListTransactions(
+		It("should be listed on api even if empty", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
 				ctx,
-				testServer.GetValue(),
 				operations.V2ListTransactionsRequest{
 					Ledger: "default",
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(0))
+			Expect(response.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 		})
 	})
 })

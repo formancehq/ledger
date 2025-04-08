@@ -3,11 +3,15 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
@@ -31,16 +35,14 @@ var _ = Context("Ledger accounts list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL: natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
 
 	transactions := []Transaction{
 		{Amount: 100, Asset: "USD", Source: "world", Destination: "account:user1", EffectiveDate: now.Add(-4 * time.Hour)},        //user1:100, world:-100
@@ -52,16 +54,15 @@ var _ = Context("Ledger accounts list API tests", func() {
 		{Amount: 150, Asset: "USD", Source: "account:user1", Destination: "bank", EffectiveDate: now.Add(2 * time.Hour)},          //user1:150, user2:50, world:-400, bank:200
 	}
 
-	BeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	BeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
 
 		for _, transaction := range transactions {
-			_, err := CreateTransaction(
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -83,10 +84,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 	})
 
 	When("Get current Volumes and Balances From origin of time till now (insertion-date)", func() {
-		It("should be ok", func() {
-			response, err := GetVolumesWithBalances(
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					InsertionDate: pointer.For(true),
 					Ledger:        "default",
@@ -94,8 +94,8 @@ var _ = Context("Ledger accounts list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(len(response.Data)).To(Equal(4))
-			for _, volume := range response.Data {
+			Expect(len(response.V2VolumesWithBalanceCursorResponse.Cursor.Data)).To(Equal(4))
+			for _, volume := range response.V2VolumesWithBalanceCursorResponse.Cursor.Data {
 				if volume.Account == "account:user1" {
 					Expect(volume.Balance).To(Equal(big.NewInt(150)))
 				}
@@ -113,11 +113,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 	})
 
 	When("Get Volumes and Balances From oot til oot+2 hours (effectiveDate) ", func() {
-		It("should be ok", func() {
+		It("should be ok", func(specContext SpecContext) {
 
-			response, err := GetVolumesWithBalances(
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					StartTime: pointer.For(now.Add(-4 * time.Hour)),
 					EndTime:   pointer.For(now.Add(-2 * time.Hour)),
@@ -126,8 +125,8 @@ var _ = Context("Ledger accounts list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(len(response.Data)).To(Equal(3))
-			for _, volume := range response.Data {
+			Expect(len(response.V2VolumesWithBalanceCursorResponse.Cursor.Data)).To(Equal(3))
+			for _, volume := range response.V2VolumesWithBalanceCursorResponse.Cursor.Data {
 				if volume.Account == "account:user1" {
 					Expect(volume.Balance).To(Equal(big.NewInt(25)))
 				}
@@ -142,10 +141,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 	})
 
 	When("Get Volumes and Balances Filter by address account", func() {
-		It("should be ok", func() {
-			response, err := GetVolumesWithBalances(
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					InsertionDate: pointer.For(true),
 					RequestBody: map[string]interface{}{
@@ -157,8 +155,8 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(2))
-			for _, volume := range response.Data {
+			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(2))
+			for _, volume := range response.V2VolumesWithBalanceCursorResponse.Cursor.Data {
 				if volume.Account == "account:user1" {
 					Expect(volume.Balance).To(Equal(big.NewInt(150)))
 				}
@@ -170,10 +168,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 	})
 
 	When("Get Volumes and Balances Filter by address account a,d and end-time now effective", func() {
-		It("should be ok", func() {
-			response, err := GetVolumesWithBalances(
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					RequestBody: map[string]interface{}{
 						"$match": map[string]any{
@@ -185,9 +182,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(2))
+			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(2))
 
-			for _, volume := range response.Data {
+			for _, volume := range response.V2VolumesWithBalanceCursorResponse.Cursor.Data {
 				if volume.Account == "account:user1" {
 					Expect(volume.Balance).To(Equal(big.NewInt(200)))
 				}
@@ -199,10 +196,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 	})
 
 	When("Get Volumes and Balances Filter by address account which doesn't exist", func() {
-		It("should be ok", func() {
-			response, err := GetVolumesWithBalances(
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					RequestBody: map[string]interface{}{
 						"$match": map[string]any{
@@ -213,15 +209,14 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Data).To(HaveLen(0))
+			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(0))
 		})
 	})
 
 	When("Get Volumes and Balances Filter With futures dates empty", func() {
-		It("should be ok", func() {
-			response, err := GetVolumesWithBalances(
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					StartTime: pointer.For(time.Now().Add(8 * time.Hour)),
 					EndTime:   pointer.For(time.Now().Add(12 * time.Hour)),
@@ -229,15 +224,14 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(len(response.Data)).To(Equal(0))
+			Expect(len(response.V2VolumesWithBalanceCursorResponse.Cursor.Data)).To(Equal(0))
 		})
 	})
 
 	When("Get Volumes and Balances Filter by address account aggregation by level 1", func() {
-		It("should be ok", func() {
-			response, err := GetVolumesWithBalances(
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetVolumesWithBalancesRequest{
 					InsertionDate: pointer.For(true),
 					RequestBody: map[string]interface{}{
@@ -250,8 +244,8 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(len(response.Data)).To(Equal(1))
-			for _, volume := range response.Data {
+			Expect(len(response.V2VolumesWithBalanceCursorResponse.Cursor.Data)).To(Equal(1))
+			for _, volume := range response.V2VolumesWithBalanceCursorResponse.Cursor.Data {
 				if volume.Account == "account" {
 					Expect(volume.Balance).To(Equal(big.NewInt(200)))
 				}

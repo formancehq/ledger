@@ -3,7 +3,7 @@
 package env
 
 import (
-	. "github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/pkg/features"
 	"sort"
 )

@@ -5,22 +5,28 @@ package test_suite
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"github.com/nats-io/nats.go"
 	"math/big"
 	"net/http"
 	"time"
 
-	"github.com/formancehq/go-libs/v2/logging"
-	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -31,27 +37,27 @@ var _ = Context("Ledger engine tests", func() {
 		db           = UseTemplatedDatabase()
 		ctx          = logging.TestingContext()
 		events       chan *nats.Msg
-		bulkResponse []components.V2BulkElementResult
+		bulkResponse *operations.V2CreateBulkResponse
 		bulkMaxSize  = 100
+		natsURL      = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL:     natsServer.GetValue().ClientURL(),
-			BulkMaxSize: bulkMaxSize,
-		}
-	})
-	BeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	testServer := DeferTestServer(
+		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(natsURL),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
+	BeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
-		events = Subscribe(GinkgoT(), testServer.GetValue())
+		_, events = Subscribe(specContext, testServer, natsURL)
 	})
 	When("creating a bulk on a ledger", func() {
 		var (
@@ -100,29 +106,29 @@ var _ = Context("Ledger engine tests", func() {
 				}),
 			}
 		})
-		JustBeforeEach(func() {
-			bulkResponse, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+		JustBeforeEach(func(specContext SpecContext) {
+			bulkResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
 				Atomic:      pointer.For(atomic),
 				Parallel:    pointer.For(parallel),
 				RequestBody: items,
 				Ledger:      "default",
 			})
 		})
-		shouldBeOk := func() {
+		shouldBeOk := func(specContext SpecContext) {
 			Expect(err).To(Succeed())
 
-			tx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
+			tx, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(ctx, operations.V2GetTransactionRequest{
 				ID:     big.NewInt(1),
 				Ledger: "default",
 			})
 			Expect(err).To(Succeed())
-			reversedTx, err := GetTransaction(ctx, testServer.GetValue(), operations.V2GetTransactionRequest{
+			reversedTx, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(ctx, operations.V2GetTransactionRequest{
 				ID:     big.NewInt(2),
 				Ledger: "default",
 			})
 			Expect(err).To(Succeed())
 
-			Expect(*tx).To(Equal(components.V2Transaction{
+			Expect(tx.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
 				ID: big.NewInt(1),
 				Metadata: metadata.Metadata{
 					"role": "admin",
@@ -134,9 +140,9 @@ var _ = Context("Ledger engine tests", func() {
 					Source:      "world",
 				}},
 				Reverted:   true,
-				RevertedAt: &reversedTx.Timestamp,
+				RevertedAt: &reversedTx.V2GetTransactionResponse.Data.Timestamp,
 				Timestamp:  now,
-				InsertedAt: tx.InsertedAt,
+				InsertedAt: tx.V2GetTransactionResponse.Data.InsertedAt,
 			}))
 			By("It should send events", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions)))
@@ -232,7 +238,7 @@ var _ = Context("Ledger engine tests", func() {
 				}),
 			}
 		})
-		JustBeforeEach(func() {
+		JustBeforeEach(func(specContext SpecContext) {
 			stream := bytes.NewBuffer(nil)
 			for _, item := range items {
 				data, err := json.Marshal(item)
@@ -241,7 +247,10 @@ var _ = Context("Ledger engine tests", func() {
 			}
 			stream.Write([]byte("\n"))
 
-			req, err := http.NewRequest(http.MethodPost, testServer.GetValue().URL()+"/v2/default/_bulk", stream)
+			testServer, err := testServer.Wait(specContext)
+			Expect(err).To(BeNil())
+
+			req, err := http.NewRequest(http.MethodPost, testservice.GetServerURL(testServer).String()+"/v2/default/_bulk", stream)
 			req.Header.Set("Content-Type", "application/vnd.formance.ledger.api.v2.bulk+json-stream")
 			Expect(err).To(Succeed())
 
@@ -249,14 +258,14 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(err).To(Succeed())
 			Expect(rsp.StatusCode).To(Equal(http.StatusOK))
 		})
-		It("should be ok", func() {
+		It("should be ok", func(specContext SpecContext) {
 			Expect(err).To(Succeed())
 
-			txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+			txs, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 				Ledger: "default",
 			})
 			Expect(err).To(Succeed())
-			Expect(txs.Data).To(HaveLen(2))
+			Expect(txs.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(2))
 		})
 	})
 	When("creating a bulk with an error on a ledger", func() {
@@ -265,8 +274,8 @@ var _ = Context("Ledger engine tests", func() {
 			err    error
 			atomic bool
 		)
-		JustBeforeEach(func() {
-			bulkResponse, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+		JustBeforeEach(func(specContext SpecContext) {
+			bulkResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
 				Atomic: pointer.For(atomic),
 				RequestBody: []components.V2BulkElement{
 					components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
@@ -301,24 +310,24 @@ var _ = Context("Ledger engine tests", func() {
 		shouldRespondWithAnError := func() {
 			GinkgoHelper()
 
-			Expect(bulkResponse[1].Type).To(Equal(components.V2BulkElementResultType("ERROR")))
-			Expect(bulkResponse[1].V2BulkElementResultError.ErrorCode).To(Equal("INSUFFICIENT_FUND"))
+			Expect(bulkResponse.V2BulkResponse.Data[1].Type).To(Equal(components.V2BulkElementResultType("ERROR")))
+			Expect(bulkResponse.V2BulkResponse.Data[1].V2BulkElementResultError.ErrorCode).To(Equal("INSUFFICIENT_FUND"))
 		}
-		It("should respond with an error", func() {
+		It("should respond with an error", func(specContext SpecContext) {
 			shouldRespondWithAnError()
 
 			By("should have created the first item", func() {
-				txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				txs, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 					Ledger: "default",
 				})
 				Expect(err).To(Succeed())
-				Expect(txs.Data).To(HaveLen(1))
+				Expect(txs.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(1))
 			})
 
 			By("Should have sent one event", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
 					Ledger:          "default",
-					Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&bulkResponse[0].V2BulkElementResultCreateTransaction.Data)},
+					Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultCreateTransaction.Data)},
 					AccountMetadata: ledger.AccountMetadata{},
 				}))))
 				Eventually(events).ShouldNot(Receive())
@@ -328,14 +337,14 @@ var _ = Context("Ledger engine tests", func() {
 			BeforeEach(func() {
 				atomic = true
 			})
-			It("should not commit anything", func() {
+			It("should not commit anything", func(specContext SpecContext) {
 				shouldRespondWithAnError()
 
-				txs, err := ListTransactions(ctx, testServer.GetValue(), operations.V2ListTransactionsRequest{
+				txs, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 					Ledger: "default",
 				})
 				Expect(err).To(Succeed())
-				Expect(txs.Data).To(HaveLen(0))
+				Expect(txs.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 
 				By("Should not have sent any event", func() {
 					Eventually(events).ShouldNot(Receive())

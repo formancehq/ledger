@@ -3,7 +3,7 @@ package ledger
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/internal/machine"

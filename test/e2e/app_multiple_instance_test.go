@@ -3,8 +3,11 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/ledger/cmd"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -20,9 +23,9 @@ var _ = Context("Ledger application multiple instance tests", func() {
 	const nbServer = 3
 
 	When("starting multiple instances of the service", func() {
-		var allServers []*Server
+		var allServers []*testservice.Service
 		BeforeEach(func() {
-			servers := make(chan *Server, nbServer)
+			servers := make(chan *testservice.Service, nbServer)
 			wg := sync.WaitGroup{}
 			wg.Add(nbServer)
 			waitStart := make(chan struct{})
@@ -34,15 +37,17 @@ var _ = Context("Ledger application multiple instance tests", func() {
 					// Best effort to start all servers at the same time and detect conflict errors
 					<-waitStart
 
-					servers <- New(GinkgoT(), Configuration{
-						CommonConfiguration: CommonConfiguration{
-							PostgresConfiguration: db.GetValue().ConnectionOptions(),
-							Output:                GinkgoWriter,
-							Debug:                 debug,
-						},
-						NatsURL:            natsServer.GetValue().ClientURL(),
-						DisableAutoUpgrade: true,
-					})
+					testServer := testservice.New(
+						cmd.NewRootCommand,
+						GetTestServerOptions(deferred.Map(db, (*pgtesting.Database).ConnectionOptions)),
+						testservice.WithInstruments(
+							testservice.DebugInstrumentation(debug),
+							testservice.OutputInstrumentation(GinkgoWriter),
+						),
+					)
+					Expect(testServer.Start(ctx)).To(Succeed())
+
+					servers <- testServer
 				}()
 			}
 
@@ -57,7 +62,7 @@ var _ = Context("Ledger application multiple instance tests", func() {
 
 		It("each service should be up and running", func() {
 			for _, server := range allServers {
-				info, err := server.Client().Ledger.GetInfo(ctx)
+				info, err := Client(server).Ledger.GetInfo(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(info.V2ConfigInfoResponse.Version).To(Equal("develop"))
 			}

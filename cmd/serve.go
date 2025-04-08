@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/worker"
@@ -10,29 +10,29 @@ import (
 	"net/http/pprof"
 	"time"
 
-	apilib "github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/health"
-	"github.com/formancehq/go-libs/v2/httpserver"
-	"github.com/formancehq/go-libs/v2/otlp"
+	apilib "github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/health"
+	"github.com/formancehq/go-libs/v3/httpserver"
+	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/formancehq/ledger/internal/bus"
 
-	"github.com/formancehq/go-libs/v2/auth"
-	"github.com/formancehq/go-libs/v2/aws/iam"
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v2/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v2/publish"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/aws/iam"
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v3/publish"
 	"github.com/formancehq/ledger/internal/api"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage"
 
-	"github.com/formancehq/go-libs/v2/ballast"
-	"github.com/formancehq/go-libs/v2/service"
+	"github.com/formancehq/go-libs/v3/ballast"
+	"github.com/formancehq/go-libs/v3/service"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
@@ -125,15 +125,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-					fx.In
+						fx.In
 
-					Handler          chi.Router
-					HealthController *health.HealthController
-					Logger           logging.Logger
+						Handler          chi.Router
+						HealthController *health.HealthController
+						Logger           logging.Logger
 
-					MeterProvider *metric.MeterProvider         `optional:"true"`
-					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-				},
+						MeterProvider *metric.MeterProvider         `optional:"true"`
+						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),

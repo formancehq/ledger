@@ -4,11 +4,15 @@ package test_suite
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
@@ -22,18 +26,16 @@ var _ = Context("Ledger accounts list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL: natsServer.GetValue().ClientURL(),
-		}
-	})
-	BeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+	BeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
@@ -46,11 +48,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 		var (
 			timestamp = time.Now().Round(time.Second).UTC()
 		)
-		BeforeEach(func() {
+		BeforeEach(func(specContext SpecContext) {
 			for i := 0; i < int(txCount); i++ {
-				_, err := CreateTransaction(
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Metadata: map[string]string{},
@@ -73,10 +74,12 @@ var _ = Context("Ledger accounts list API tests", func() {
 		When("Listing balances using v1 endpoint", func() {
 			var (
 				rsp *operations.GetBalancesResponse
-				err error
 			)
-			BeforeEach(func() {
-				rsp, err = testServer.GetValue().Client().Ledger.V1.GetBalances(
+			BeforeEach(func(specContext SpecContext) {
+				testServer, err := testServer.Wait(specContext)
+				Expect(err).ToNot(HaveOccurred())
+
+				rsp, err = Client(testServer).Ledger.V1.GetBalances(
 					ctx,
 					operations.GetBalancesRequest{
 						Ledger:  "default",

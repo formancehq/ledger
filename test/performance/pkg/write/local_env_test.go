@@ -4,30 +4,33 @@ package write
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v2/testing/docker"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	. "github.com/formancehq/go-libs/v3/testing/utils"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"io"
+	"net/url"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/pkg/testserver"
 )
 
 type TestServerEnv struct {
-	testServer *testserver.Server
+	testServer *testservice.Service
 }
 
 func (e *TestServerEnv) Client() *ledgerclient.Formance {
-	return e.testServer.Client()
+	return testserver.Client(e.testServer)
 }
 
-func (e *TestServerEnv) URL() string {
-	return e.testServer.URL()
+func (e *TestServerEnv) URL() *url.URL {
+	return testservice.GetServerURL(e.testServer)
 }
 
 func (e *TestServerEnv) Stop(ctx context.Context) error {
@@ -58,20 +61,20 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 		output = io.Discard
 	}
 
-	testServer := testserver.New(b, testserver.Configuration{
-		CommonConfiguration: testserver.CommonConfiguration{
-			PostgresConfiguration: connectionOptions,
-			Debug:                 os.Getenv("DEBUG") == "true",
-			Output:                output,
-			OTLPConfig: &testserver.OTLPConfig{
+	testServer := testserver.NewTestServer(
+		NewValuedDeferred(connectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(os.Getenv("DEBUG") == "true"),
+			testservice.OutputInstrumentation(output),
+			testservice.OTLPInstrumentation(NewValuedDeferred(testservice.OTLPConfig{
 				Metrics: &otlpmetrics.ModuleConfig{
 					KeepInMemory:   true,
 					RuntimeMetrics: true,
 				},
-			},
-		},
-		ExperimentalFeatures: true,
-	})
+			})),
+			testserver.ExperimentalFeaturesInstrumentation(),
+		),
+	)
 
 	return &TestServerEnv{
 		testServer: testServer,

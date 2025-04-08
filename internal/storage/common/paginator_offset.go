@@ -2,7 +2,7 @@ package common
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/uptrace/bun"
 	"math"
 )

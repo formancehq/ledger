@@ -1,35 +1,12 @@
 package testserver
 
 import (
-	"github.com/formancehq/go-libs/v2/collectionutils"
-	"github.com/formancehq/go-libs/v2/pointer"
-	. "github.com/formancehq/go-libs/v2/testing/utils"
-	"github.com/formancehq/go-libs/v2/time"
-	"github.com/formancehq/ledger/internal"
+	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/nats-io/nats.go"
-	. "github.com/onsi/ginkgo/v2"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
 )
-
-func NewTestServer(configurationProvider func() Configuration) *Deferred[*Server] {
-	d := NewDeferred[*Server]()
-	BeforeEach(func() {
-		d.Reset()
-		d.SetValue(New(GinkgoT(), configurationProvider()))
-	})
-	return d
-}
-
-func NewTestWorker(configurationProvider func() WorkerServiceConfiguration) *Deferred[*Worker] {
-	d := NewDeferred[*Worker]()
-	BeforeEach(func() {
-		d.Reset()
-		d.SetValue(NewWorker(GinkgoT(), configurationProvider()))
-	})
-	return d
-}
 
 func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 	return ledger.Transaction{
@@ -75,24 +52,4 @@ func ConvertSDKPostingToCorePosting(p components.V2Posting) ledger.Posting {
 		Asset:       p.Asset,
 		Amount:      p.Amount,
 	}
-}
-
-func Subscribe(t T, testServer *Server) chan *nats.Msg {
-	subscription, ch, err := testServer.Subscribe()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		require.NoError(t, subscription.Unsubscribe())
-	})
-
-	return ch
-}
-
-func ConnectToDatabase(t T, testServer *Server) *bun.DB {
-	db, err := testServer.Database()
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-	return db
 }

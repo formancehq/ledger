@@ -1,13 +1,16 @@
-package testserver
+package ginkgo
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/publish"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/publish"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/testserver"
 	"github.com/google/go-cmp/cmp"
 	"github.com/invopop/jsonschema"
 	"github.com/nats-io/nats.go"
@@ -21,35 +24,41 @@ import (
 type HaveCoherentStateMatcher struct{}
 
 func (h HaveCoherentStateMatcher) Match(actual interface{}) (success bool, err error) {
-	srv, ok := actual.(*Server)
+	d, ok := actual.(*deferred.Deferred[*testservice.Service])
 	if !ok {
-		return false, fmt.Errorf("expect type %T", new(Server))
+		return false, fmt.Errorf("expect type %T", new(testservice.Service))
 	}
 	ctx := context.Background()
 
-	ledgers, err := ListLedgers(ctx, srv, operations.V2ListLedgersRequest{
+	testServer, err := d.Wait(context.Background())
+	if err != nil {
+		return false, err
+	}
+	client := testserver.Client(testServer).Ledger.V2
+
+	ledgers, err := client.ListLedgers(ctx, operations.V2ListLedgersRequest{
 		PageSize: pointer.For(int64(100)),
 	})
 	if err != nil {
 		return false, err
 	}
 
-	for _, ledger := range ledgers.Data {
-		aggregatedBalances, err := GetAggregatedBalances(ctx, srv, operations.V2GetBalancesAggregatedRequest{
+	for _, ledger := range ledgers.V2LedgerListResponse.Cursor.Data {
+		aggregatedBalances, err := client.GetBalancesAggregated(ctx, operations.V2GetBalancesAggregatedRequest{
 			Ledger:           ledger.Name,
 			UseInsertionDate: pointer.For(true),
 		})
 		Expect(err).To(BeNil())
-		if len(aggregatedBalances) == 0 { // it's random, a ledger could not have been targeted
+		if len(aggregatedBalances.V2AggregateBalancesResponse.Data) == 0 { // it's random, a ledger could not have been targeted
 			// just in case, check if the ledger has transactions
-			txs, err := ListTransactions(ctx, srv, operations.V2ListTransactionsRequest{
+			txs, err := client.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 				Ledger: ledger.Name,
 			})
 			Expect(err).To(BeNil())
-			Expect(txs.Data).To(HaveLen(0))
+			Expect(txs.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 		} else {
-			Expect(aggregatedBalances).To(HaveLen(1))
-			Expect(aggregatedBalances["USD"]).To(Equal(big.NewInt(0)))
+			Expect(aggregatedBalances.V2AggregateBalancesResponse.Data).To(HaveLen(1))
+			Expect(aggregatedBalances.V2AggregateBalancesResponse.Data["USD"]).To(Equal(big.NewInt(0)))
 		}
 	}
 
