@@ -162,7 +162,7 @@ func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.Reso
 				Where("insertion_date <= ?", opts.PIT)
 		} else {
 			selectRowsQuery = selectRowsQuery.
-				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by effective_date desc) as volumes").
+				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as volumes").
 				Where("effective_date <= ?", opts.PIT)
 		}
 	} else {
