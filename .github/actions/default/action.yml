@@ -17,10 +17,12 @@ runs:
     - name: Load dependencies
       shell: bash
       run: nix develop --install
-    - name: Cache
-      uses: actions/cache@v4
+    - uses: actions/cache@v4
       with:
-        key: ${{ runner.os }}-golang
         path: |
-          /tmp/golangci-lint
-          /tmp/go
+          ~/.cache/go-build
+          ~/go/pkg/mod
+          /tmp/go/pkg/mod/
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
