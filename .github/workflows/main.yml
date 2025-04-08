@@ -102,31 +102,3 @@ jobs:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-
-  Deploy:
-    runs-on: "formance-runner"
-    if: github.ref == 'refs/heads/main'
-    environment: staging
-    needs:
-      - GoReleaser
-      - Tests
-    steps:
-      - uses: earthly/actions-setup@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "latest"
-      - uses: 'actions/checkout@v4'
-        with:
-          fetch-depth: 0
-      - name: "Deploy in staging"
-        env:
-          TAG: ${{ github.sha }}
-          COMPONENT: ledger
-          ARGOCD_REGION_AUTH_TOKEN: ${{ secrets.ARGOCD_REGION_AUTH_TOKEN }}
-        run: >
-          earthly  
-          --no-output 
-          --secret AUTH_TOKEN=$ARGOCD_REGION_AUTH_TOKEN
-          +deploy-staging
-          --TAG=$TAG
-          --COMPONENT=$COMPONENT
