@@ -368,6 +368,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 	} else {
 		reversedTx = reversedTx.WithTimestamp(*originalTransaction.RevertedAt)
 	}
+	reversedTx.Metadata = ledger.MarkReverts(metadata.Metadata{}, *originalTransaction.ID)
 
 	// Check balances after the revert, all balances must be greater than 0
 	if !parameters.Input.Force {
