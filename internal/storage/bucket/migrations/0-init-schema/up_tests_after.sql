@@ -47,3 +47,47 @@ select
 	'}')::jsonb,
 	'invalid-hash'
 from generate_series(0, 100) as seq;
+
+insert into logs(seq, ledger, id, type, date, data, hash)
+select
+	seq,
+	'ledger' || seq % 5,
+	(seq/5) + (seq % 5),
+	'REVERTED_TRANSACTION',
+	now(),
+	('{'
+		'"transaction": {'
+			'"id": ' || (seq/5) + (seq % 5) || ','
+			'"timestamp": "' || now() || '",'
+			'"postings": ['
+				'{'
+					'"source": "sellers:' || (seq % 5) || '",'
+					'"destination": "orders:' || (seq-100) || '",'
+					'"asset": "USD",'
+					'"amount": 99'
+				'},'
+				'{'
+					'"source": "fees",'
+					'"destination": "orders:' || (seq-100) || '",'
+					'"asset": "USD",'
+					'"amount": 1'
+				'},'
+				'{'
+					'"destination": "world",'
+					'"source": "orders:' || (seq-100) || '",'
+					'"asset": "USD",'
+					'"amount": 100'
+				'},'
+				'{'
+					'"source": "sellers:' || (seq % 5) || '",'
+		            '"destination": "world",'
+		            '"asset": "SELL",'
+		            '"amount": 1'
+		        '}'
+	        '],'
+	        '"metadata": { "tax": "1%" }'
+		'},'
+		'"revertedTransactionID": "' || ((seq-100)/5) + ((seq-100) % 5) || '"'
+	'}')::jsonb,
+	'invalid-hash'
+from generate_series(101, 110) as seq;
