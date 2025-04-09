@@ -11,6 +11,11 @@ import "github.com/formancehq/ledger/internal"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
+- [func ComputeMetadata\(key, value string\) metadata.Metadata](<#ComputeMetadata>)
+- [func MarkReverts\(m metadata.Metadata, txID int\) metadata.Metadata](<#MarkReverts>)
+- [func RevertMetadata\(txID int\) metadata.Metadata](<#RevertMetadata>)
+- [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
+- [func SpecMetadata\(name string\) string](<#SpecMetadata>)
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
@@ -162,6 +167,51 @@ var Zero = big.NewInt(0)
 
 ```go
 func ComputeIdempotencyHash(inputs any) string
+```
+
+
+
+<a name="ComputeMetadata"></a>
+## func [ComputeMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L28>)
+
+```go
+func ComputeMetadata(key, value string) metadata.Metadata
+```
+
+
+
+<a name="MarkReverts"></a>
+## func [MarkReverts](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L20>)
+
+```go
+func MarkReverts(m metadata.Metadata, txID int) metadata.Metadata
+```
+
+
+
+<a name="RevertMetadata"></a>
+## func [RevertMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L34>)
+
+```go
+func RevertMetadata(txID int) metadata.Metadata
+```
+
+
+
+<a name="RevertMetadataSpecKey"></a>
+## func [RevertMetadataSpecKey](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L24>)
+
+```go
+func RevertMetadataSpecKey() string
+```
+
+
+
+<a name="SpecMetadata"></a>
+## func [SpecMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L16>)
+
+```go
+func SpecMetadata(name string) string
 ```
 
 

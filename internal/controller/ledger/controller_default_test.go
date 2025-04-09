@@ -91,7 +91,9 @@ func TestRevertTransaction(t *testing.T) {
 		Commit().
 		Return(nil)
 
-	txToRevert := ledger.Transaction{}
+	txToRevert := ledger.Transaction{
+		ID: pointer.For(0),
+	}
 	store.EXPECT().
 		RevertTransaction(gomock.Any(), 1, time.Time{}).
 		DoAndReturn(func(_ context.Context, _ int, _ time.Time) (*ledger.Transaction, bool, error) {

@@ -131,8 +131,9 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 		When("reverting it", func() {
+			var newTransaction *operations.V2RevertTransactionResponse
 			BeforeEach(func(specContext SpecContext) {
-				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
+				newTransaction, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 					ctx,
 					operations.V2RevertTransactionRequest{
 						Ledger: "default",
@@ -155,6 +156,20 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(response.V2GetTransactionResponse.Data.Reverted).To(BeTrue())
+
+				By("The newly created transaction should have correct metadata applied", func() {
+					response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
+						ctx,
+						operations.V2GetTransactionRequest{
+							Ledger: "default",
+							ID:     newTransaction.V2RevertTransactionResponse.Data.ID,
+						},
+					)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(response.V2GetTransactionResponse.Data.Metadata).To(Equal(map[string]string{
+						"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
+					}))
+				})
 			})
 			When("trying to revert again", func() {
 				It("should be rejected", func(specContext SpecContext) {
