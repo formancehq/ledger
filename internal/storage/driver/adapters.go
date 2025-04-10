@@ -20,7 +20,7 @@ func (d *DefaultStorageDriverAdapter) OpenLedger(ctx context.Context, name strin
 		return nil, nil, err
 	}
 
-	isUpToDate, err := store.GetBucket().IsUpToDate(ctx)
+	isUpToDate, err := store.GetBucket().IsUpToDate(ctx, d.db)
 	if err != nil {
 		return nil, nil, fmt.Errorf("checking if bucket is up to date: %w", err)
 	}

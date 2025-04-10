@@ -16,13 +16,6 @@ import (
 	"go.uber.org/fx"
 )
 
-type PostgresConfig struct {
-	ConnString string
-}
-
-type ModuleConfiguration struct {
-}
-
 func NewFXModule() fx.Option {
 	return fx.Options(
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {

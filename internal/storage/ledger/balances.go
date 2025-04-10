@@ -15,7 +15,7 @@ import (
 )
 
 func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
-	isUpToDate, err := store.bucket.IsUpToDate(ctx)
+	isUpToDate, err := store.bucket.IsUpToDate(ctx, store.db)
 	if err != nil {
 		return nil, err
 	}
