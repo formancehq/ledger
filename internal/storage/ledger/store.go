@@ -248,11 +248,11 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 }
 
 func (store *Store) HasMinimalVersion(ctx context.Context) (bool, error) {
-	return store.bucket.HasMinimalVersion(ctx)
+	return store.bucket.HasMinimalVersion(ctx, store.db)
 }
 
 func (store *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return store.bucket.GetMigrationsInfo(ctx)
+	return store.bucket.GetMigrationsInfo(ctx, store.db)
 }
 
 func (store *Store) WithDB(db bun.IDB) *Store {
