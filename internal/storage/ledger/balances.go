@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"github.com/formancehq/ledger/internal/storage/bucket"
 	"math/big"
 	"slices"
 	"strings"
@@ -16,8 +15,7 @@ import (
 )
 
 func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
-	isUpToDate, err := bucket.NewDefault(store.db, store.tracer, store.ledger.Bucket).
-		IsUpToDate(ctx)
+	isUpToDate, err := store.bucket.IsUpToDate(ctx)
 	if err != nil {
 		return nil, err
 	}

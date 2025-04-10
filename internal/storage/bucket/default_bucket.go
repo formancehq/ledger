@@ -79,6 +79,11 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 	return nil
 }
 
+func (b *DefaultBucket) WithDB(db bun.IDB) Bucket {
+	b.db = db
+	return b
+}
+
 func NewDefault(db bun.IDB, tracer trace.Tracer, name string) *DefaultBucket {
 	return &DefaultBucket{
 		db:   db,
