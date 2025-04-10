@@ -11,16 +11,15 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
+func (store *Store) GetBalances(ctx context.Context, query BalanceQuery) (ledger.Balances, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetBalances",
 		store.tracer,
 		store.getBalancesHistogram,
-		func(ctx context.Context) (ledgercontroller.Balances, error) {
+		func(ctx context.Context) (ledger.Balances, error) {
 			conditions := make([]string, 0)
 			args := make([]any, 0)
 			for account, assets := range query {
@@ -88,7 +87,7 @@ func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.Bala
 				return nil, postgres.ResolveError(err)
 			}
 
-			ret := ledgercontroller.Balances{}
+			ret := ledger.Balances{}
 			for _, volumes := range accountsVolumes {
 				if _, ok := ret[volumes.Account]; !ok {
 					ret[volumes.Account] = map[string]*big.Int{}

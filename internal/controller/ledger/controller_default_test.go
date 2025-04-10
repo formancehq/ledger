@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
 	"math/big"
 	"testing"
@@ -355,14 +356,14 @@ func TestGetAggregatedBalances(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](ctrl)
+	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions](ctrl)
 
 	store.EXPECT().AggregatedBalances().Return(aggregatedBalances)
-	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[GetAggregatedVolumesOptions]{}).
+	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{}).
 		Return(&ledger.AggregatedVolumes{}, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[GetAggregatedVolumesOptions]{})
+	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{})
 	require.NoError(t, err)
 	require.Equal(t, ledger.BalancesByAssets{}, ret)
 }
@@ -401,17 +402,17 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]](ctrl)
+	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions, common.OffsetPaginatedQuery[ledgerstore.GetVolumesOptions]](ctrl)
 
 	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
 	store.EXPECT().Volumes().Return(volumes)
-	volumes.EXPECT().Paginate(gomock.Any(), common.OffsetPaginatedQuery[GetVolumesOptions]{
+	volumes.EXPECT().Paginate(gomock.Any(), common.OffsetPaginatedQuery[ledgerstore.GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser)
-	ret, err := l.GetVolumesWithBalances(ctx, common.OffsetPaginatedQuery[GetVolumesOptions]{
+	ret, err := l.GetVolumesWithBalances(ctx, common.OffsetPaginatedQuery[ledgerstore.GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})

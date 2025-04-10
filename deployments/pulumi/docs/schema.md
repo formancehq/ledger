@@ -28,6 +28,7 @@ No description provided for this model.
 | termination-grace-period-seconds | `integer` |  | integer | TerminationGracePeriodSeconds is the termination grace period in seconds |
 | experimental-features | `boolean` |  | boolean | ExperimentalFeatures is whether to enable experimental features |
 | experimental-numscript-interpreter | `boolean` |  | boolean | ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter |
+| experimental-connectors | `boolean` |  | boolean | ExperimentalConnectors is whether to enable experimental connectors |
 
 ## Config
 
@@ -47,6 +48,7 @@ No description provided for this model.
 | storage | `object` |  | [Storage](#storage) | Storage is the storage configuration for the ledger |
 | api | `object` |  | [API](#api) | API is the API configuration for the ledger |
 | worker | `object` |  | [Worker](#worker) | Worker is the worker configuration for the ledger |
+| connectors | `object` |  | [Connectors](#connectors) | Connectors is the connectors configuration for the ledger |
 | ingress | `object` |  | [Ingress](#ingress) | Ingress is the ingress configuration for the ledger |
 | provision | `object` |  | [Provision](#provision) | Provision is the initialization configuration for the ledger |
 | timeout | `integer` |  | integer | Timeout is the timeout for the ledger |
@@ -68,6 +70,25 @@ No description provided for this model.
 | max-open-conns | `integer` |  | integer | MaxOpenConns is the maximum number of open connections for the database |
 | conn-max-idle-time | `integer` |  | integer | ConnMaxIdleTime is the maximum idle time for a connection |
 | options | `object` |  | object | Options is the options for the Postgres database to pass on the dsn |
+
+## Connector
+
+No description provided for this model.
+
+#### Type: `object`
+
+> ⚠️ Additional properties are not allowed.
+
+| Property | Type | Required | Possible values | Description |
+| -------- | ---- | -------- | --------------- | ----------- |
+| driver | `string` |  | string | Driver is the driver for the connector |
+| config | `None` |  | None | Config is the configuration for the connector |
+
+## Connectors
+
+No description provided for this model.
+
+#### Type: `object`
 
 ## Generator
 
@@ -125,6 +146,7 @@ No description provided for this model.
 | bucket | `string` |  | string | Bucket is the bucket for the ledger |
 | metadata | `object` |  | object | Metadata is the metadata for the ledger |
 | features | `object` |  | object | Features is the features for the ledger |
+| connectors | `array` |  | string | Connectors are the connector to bound to this ledger |
 
 ## Monitoring
 

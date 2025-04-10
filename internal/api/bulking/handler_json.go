@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"slices"
 )
@@ -103,7 +104,7 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 				errorCode = common.ErrMetadataOverride
 			case errors.Is(result.Error, ledgercontroller.ErrNoPostings):
 				errorCode = common.ErrNoPostings
-			case errors.Is(result.Error, ledgercontroller.ErrTransactionReferenceConflict{}):
+			case errors.Is(result.Error, ledgerstore.ErrTransactionReferenceConflict{}):
 				errorCode = common.ErrConflict
 			case errors.Is(result.Error, ledgercontroller.ErrParsing{}):
 				errorCode = common.ErrInterpreterParse

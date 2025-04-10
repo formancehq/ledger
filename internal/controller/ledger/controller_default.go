@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"reflect"
 
@@ -51,6 +52,10 @@ type DefaultController struct {
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
 	deleteTransactionMetadataLp *logProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
+}
+
+func (ctrl *DefaultController) Info() ledger.Ledger {
+	return ctrl.ledger
 }
 
 func (ctrl *DefaultController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
@@ -143,7 +148,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, q common.Resource
 	return ctrl.store.Accounts().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	ret, err := ctrl.store.AggregatedBalances().GetOne(ctx, q)
 	if err != nil {
 		return nil, err
@@ -155,7 +160,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, q common.ColumnPagi
 	return ctrl.store.Logs().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q common.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q common.OffsetPaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
@@ -184,7 +189,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 		if err := ctrl.importLog(ctx, log); err != nil {
 			switch {
 			case errors.Is(err, postgres.ErrSerialization) ||
-				errors.Is(err, ErrConcurrentTransaction{}):
+				errors.Is(err, ledgerstore.ErrConcurrentTransaction{}):
 				return NewErrImport(errors.New("concurrent transaction occur" +
 					"red, cannot import the ledger"))
 			}

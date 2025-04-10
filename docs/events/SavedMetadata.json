@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/formancehq/ledger/internal/bus/saved-metadata",
+  "$id": "https://github.com/formancehq/ledger/pkg/events/saved-metadata",
   "$ref": "#/$defs/SavedMetadata",
   "$defs": {
     "Metadata": {

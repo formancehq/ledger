@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/deferred"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/cmd"
+	"time"
 )
 
 func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions]) testservice.Option {
@@ -33,6 +34,20 @@ func ExperimentalFeaturesInstrumentation() testservice.InstrumentationFunc {
 	}
 }
 
+func ExperimentalConnectorsInstrumentation() testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--" + cmd.ExperimentalConnectors)
+		return nil
+	}
+}
+
+func ExperimentalEnableWorker() testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--" + cmd.WorkerEnabledFlag)
+		return nil
+	}
+}
+
 func ExperimentalNumscriptRewriteInstrumentation() testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
 		runConfiguration.AppendArgs("--" + cmd.NumscriptInterpreterFlag)
@@ -50,6 +65,27 @@ func MaxPageSizeInstrumentation(size uint64) testservice.InstrumentationFunc {
 func DefaultPageSizeInstrumentation(size uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
 		runConfiguration.AppendArgs("--"+cmd.DefaultPageSizeFlag, fmt.Sprint(size))
+		return nil
+	}
+}
+
+func ExperimentalPipelinesSyncPeriodInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesSyncPeriodFlag, fmt.Sprint(duration))
+		return nil
+	}
+}
+
+func ExperimentalPipelinesPushRetryPeriodInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesPushRetryPeriodFlag, fmt.Sprint(duration))
+		return nil
+	}
+}
+
+func ExperimentalPipelinesPullIntervalInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesPullIntervalFlag, fmt.Sprint(duration))
 		return nil
 	}
 }
