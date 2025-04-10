@@ -63,7 +63,7 @@ func (c *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters
 				ctx,
 				c.ledger.Name,
 				ret.RevertedTransaction,
-				ret.RevertedTransaction,
+				ret.RevertTransaction,
 			)
 		})
 	}

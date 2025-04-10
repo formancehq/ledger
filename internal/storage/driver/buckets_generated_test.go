@@ -40,83 +40,83 @@ func (m *MockBucket) EXPECT() *MockBucketMockRecorder {
 }
 
 // AddLedger mocks base method.
-func (m *MockBucket) AddLedger(ctx context.Context, ledger ledger.Ledger) error {
+func (m *MockBucket) AddLedger(ctx context.Context, db bun.IDB, ledger ledger.Ledger) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddLedger", ctx, ledger)
+	ret := m.ctrl.Call(m, "AddLedger", ctx, db, ledger)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AddLedger indicates an expected call of AddLedger.
-func (mr *MockBucketMockRecorder) AddLedger(ctx, ledger any) *gomock.Call {
+func (mr *MockBucketMockRecorder) AddLedger(ctx, db, ledger any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLedger", reflect.TypeOf((*MockBucket)(nil).AddLedger), ctx, ledger)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLedger", reflect.TypeOf((*MockBucket)(nil).AddLedger), ctx, db, ledger)
 }
 
 // GetMigrationsInfo mocks base method.
-func (m *MockBucket) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
+func (m *MockBucket) GetMigrationsInfo(ctx context.Context, db bun.IDB) ([]migrations.Info, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMigrationsInfo", ctx)
+	ret := m.ctrl.Call(m, "GetMigrationsInfo", ctx, db)
 	ret0, _ := ret[0].([]migrations.Info)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetMigrationsInfo indicates an expected call of GetMigrationsInfo.
-func (mr *MockBucketMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call {
+func (mr *MockBucketMockRecorder) GetMigrationsInfo(ctx, db any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*MockBucket)(nil).GetMigrationsInfo), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*MockBucket)(nil).GetMigrationsInfo), ctx, db)
 }
 
 // HasMinimalVersion mocks base method.
-func (m *MockBucket) HasMinimalVersion(ctx context.Context) (bool, error) {
+func (m *MockBucket) HasMinimalVersion(ctx context.Context, db bun.IDB) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasMinimalVersion", ctx)
+	ret := m.ctrl.Call(m, "HasMinimalVersion", ctx, db)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // HasMinimalVersion indicates an expected call of HasMinimalVersion.
-func (mr *MockBucketMockRecorder) HasMinimalVersion(ctx any) *gomock.Call {
+func (mr *MockBucketMockRecorder) HasMinimalVersion(ctx, db any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasMinimalVersion", reflect.TypeOf((*MockBucket)(nil).HasMinimalVersion), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasMinimalVersion", reflect.TypeOf((*MockBucket)(nil).HasMinimalVersion), ctx, db)
 }
 
 // IsInitialized mocks base method.
-func (m *MockBucket) IsInitialized(arg0 context.Context) (bool, error) {
+func (m *MockBucket) IsInitialized(arg0 context.Context, arg1 bun.IDB) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsInitialized", arg0)
+	ret := m.ctrl.Call(m, "IsInitialized", arg0, arg1)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // IsInitialized indicates an expected call of IsInitialized.
-func (mr *MockBucketMockRecorder) IsInitialized(arg0 any) *gomock.Call {
+func (mr *MockBucketMockRecorder) IsInitialized(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsInitialized", reflect.TypeOf((*MockBucket)(nil).IsInitialized), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsInitialized", reflect.TypeOf((*MockBucket)(nil).IsInitialized), arg0, arg1)
 }
 
 // IsUpToDate mocks base method.
-func (m *MockBucket) IsUpToDate(ctx context.Context) (bool, error) {
+func (m *MockBucket) IsUpToDate(ctx context.Context, db bun.IDB) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsUpToDate", ctx)
+	ret := m.ctrl.Call(m, "IsUpToDate", ctx, db)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // IsUpToDate indicates an expected call of IsUpToDate.
-func (mr *MockBucketMockRecorder) IsUpToDate(ctx any) *gomock.Call {
+func (mr *MockBucketMockRecorder) IsUpToDate(ctx, db any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUpToDate", reflect.TypeOf((*MockBucket)(nil).IsUpToDate), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUpToDate", reflect.TypeOf((*MockBucket)(nil).IsUpToDate), ctx, db)
 }
 
 // Migrate mocks base method.
-func (m *MockBucket) Migrate(ctx context.Context, opts ...migrations.Option) error {
+func (m *MockBucket) Migrate(ctx context.Context, db bun.IDB, opts ...migrations.Option) error {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
+	varargs := []any{ctx, db}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
@@ -126,24 +126,10 @@ func (m *MockBucket) Migrate(ctx context.Context, opts ...migrations.Option) err
 }
 
 // Migrate indicates an expected call of Migrate.
-func (mr *MockBucketMockRecorder) Migrate(ctx any, opts ...any) *gomock.Call {
+func (mr *MockBucketMockRecorder) Migrate(ctx, db any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, opts...)
+	varargs := append([]any{ctx, db}, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Migrate", reflect.TypeOf((*MockBucket)(nil).Migrate), varargs...)
-}
-
-// WithDB mocks base method.
-func (m *MockBucket) WithDB(arg0 bun.IDB) bucket.Bucket {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WithDB", arg0)
-	ret0, _ := ret[0].(bucket.Bucket)
-	return ret0
-}
-
-// WithDB indicates an expected call of WithDB.
-func (mr *MockBucketMockRecorder) WithDB(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithDB", reflect.TypeOf((*MockBucket)(nil).WithDB), arg0)
 }
 
 // BucketFactory is a mock of Factory interface.
@@ -170,17 +156,17 @@ func (m *BucketFactory) EXPECT() *BucketFactoryMockRecorder {
 }
 
 // Create mocks base method.
-func (m *BucketFactory) Create(name string, db bun.IDB) bucket.Bucket {
+func (m *BucketFactory) Create(name string) bucket.Bucket {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", name, db)
+	ret := m.ctrl.Call(m, "Create", name)
 	ret0, _ := ret[0].(bucket.Bucket)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *BucketFactoryMockRecorder) Create(name, db any) *gomock.Call {
+func (mr *BucketFactoryMockRecorder) Create(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*BucketFactory)(nil).Create), name, db)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*BucketFactory)(nil).Create), name)
 }
 
 // GetMigrator mocks base method.

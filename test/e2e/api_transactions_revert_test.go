@@ -3,6 +3,9 @@
 package test_suite
 
 import (
+	libtime "github.com/formancehq/go-libs/v2/time"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/bus"
 	"math/big"
 	"time"
 
@@ -138,7 +141,76 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Expect(err).To(Succeed())
 			})
 			It("should trigger a new event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction)))
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
+					Ledger: "default",
+					RevertTransaction: ledger.Transaction{
+						ID: pointer.For(int(newTransaction.ID.Int64())),
+						TransactionData: ledger.TransactionData{
+							Metadata: map[string]string{
+								"com.formance.spec/state/reverts": tx.ID.String(),
+							},
+							Postings: []ledger.Posting{
+								ledger.NewPosting("alice", "world", "USD", big.NewInt(100)),
+							},
+							InsertedAt: libtime.New(*newTransaction.InsertedAt),
+							Timestamp:  libtime.New(newTransaction.Timestamp),
+						},
+						PostCommitVolumes: map[string]ledger.VolumesByAssets{
+							"world": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+							"alice": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+						},
+						PostCommitEffectiveVolumes: map[string]ledger.VolumesByAssets{
+							"world": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+							"alice": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+						},
+					},
+					RevertedTransaction: ledger.Transaction{
+						ID: pointer.For(int(tx.ID.Int64())),
+						TransactionData: ledger.TransactionData{
+							Metadata: map[string]string{},
+							Postings: []ledger.Posting{
+								ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
+							},
+							InsertedAt: libtime.New(*tx.InsertedAt),
+							Timestamp:  libtime.New(tx.Timestamp),
+						},
+						RevertedAt: pointer.For(libtime.New(newTransaction.Timestamp)),
+						PostCommitVolumes: map[string]ledger.VolumesByAssets{
+							"world": {
+								"USD": {
+									Input:  new(big.Int),
+									Output: big.NewInt(100),
+								},
+							},
+							"alice": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: new(big.Int),
+								},
+							},
+						},
+					},
+				}))))
 			})
 			It("should revert the original transaction", func() {
 				response, err := GetTransaction(
