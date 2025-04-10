@@ -143,7 +143,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			It("should trigger a new event", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
 					Ledger: "default",
-					RevertTransaction: ledger.Transaction{
+					RevertedTransaction: ledger.Transaction{
 						ID: pointer.For(int(newTransaction.ID.Int64())),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{
@@ -184,7 +184,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							},
 						},
 					},
-					RevertedTransaction: ledger.Transaction{
+					RevertTransaction: ledger.Transaction{
 						ID: pointer.For(int(tx.ID.Int64())),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{},
