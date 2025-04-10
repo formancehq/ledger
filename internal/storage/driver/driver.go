@@ -76,7 +76,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 		}
 
-		ret = d.ledgerStoreFactory.Create(b, *l)
+		ret = d.ledgerStoreFactory.Create(b.WithDB(d.db), *l)
 
 		return nil
 	})

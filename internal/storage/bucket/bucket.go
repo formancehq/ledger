@@ -16,6 +16,7 @@ type Bucket interface {
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 	IsInitialized(context.Context) (bool, error)
+	WithDB(bun.IDB) Bucket
 }
 
 type Factory interface {
