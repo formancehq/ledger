@@ -68,9 +68,9 @@ func newLedgerStore(t T) *testStore {
 
 	l := ledger.MustNewWithDefault(ledgerName)
 
-	b := bucket.NewDefault(db, noop.Tracer{}, ledger.DefaultBucket)
-	require.NoError(t, b.Migrate(ctx))
-	require.NoError(t, b.AddLedger(ctx, l))
+	b := bucket.NewDefault(noop.Tracer{}, ledger.DefaultBucket)
+	require.NoError(t, b.Migrate(ctx, db))
+	require.NoError(t, b.AddLedger(ctx, db, l))
 
 	return &testStore{
 		Store:    legacy.New(db, ledger.DefaultBucket, l.Name),

@@ -52,13 +52,13 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			return err
 		}
 
-		b := d.bucketFactory.Create(l.Bucket, tx)
-		isInitialized, err := b.IsInitialized(ctx)
+		b := d.bucketFactory.Create(l.Bucket)
+		isInitialized, err := b.IsInitialized(ctx, tx)
 		if err != nil {
 			return fmt.Errorf("checking if bucket is initialized: %w", err)
 		}
 		if isInitialized {
-			upToDate, err := b.IsUpToDate(ctx)
+			upToDate, err := b.IsUpToDate(ctx, tx)
 			if err != nil {
 				return fmt.Errorf("checking if bucket is up to date: %w", err)
 			}
@@ -67,16 +67,16 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 				return systemcontroller.ErrBucketOutdated
 			}
 
-			if err := b.AddLedger(ctx, *l); err != nil {
+			if err := b.AddLedger(ctx, tx, *l); err != nil {
 				return fmt.Errorf("adding ledger to bucket: %w", err)
 			}
 		} else {
-			if err := b.Migrate(ctx); err != nil {
+			if err := b.Migrate(ctx, tx); err != nil {
 				return fmt.Errorf("migrating bucket: %w", err)
 			}
 		}
 
-		ret = d.ledgerStoreFactory.Create(b.WithDB(d.db), *l)
+		ret = d.ledgerStoreFactory.Create(b, *l)
 
 		return nil
 	})
@@ -94,7 +94,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		return nil, nil, err
 	}
 
-	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket, d.db), *ret)
+	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 
 	return store, ret, err
 }
@@ -192,7 +192,7 @@ func (d *Driver) GetLedger(ctx context.Context, name string) (*ledger.Ledger, er
 }
 
 func (d *Driver) UpgradeBucket(ctx context.Context, name string) error {
-	return d.bucketFactory.Create(name, d.db).Migrate(ctx)
+	return d.bucketFactory.Create(name).Migrate(ctx, d.db)
 }
 
 func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
@@ -246,9 +246,9 @@ func (d *Driver) upgradeBucket(ctx context.Context, logger logging.Logger, bucke
 	defer span.End()
 
 	logger.Infof("Upgrading...")
-	b := d.bucketFactory.Create(bucketName, d.db)
+	b := d.bucketFactory.Create(bucketName)
 
-	err := b.Migrate(logging.ContextWithLogger(ctx, logger))
+	err := b.Migrate(logging.ContextWithLogger(ctx, logger), d.db)
 	if err != nil {
 		return err
 	}
@@ -273,7 +273,7 @@ func (d *Driver) HasReachMinimalVersion(ctx context.Context) (bool, error) {
 	}
 
 	for _, b := range buckets {
-		hasMinimalVersion, err := d.bucketFactory.Create(b, d.db).HasMinimalVersion(ctx)
+		hasMinimalVersion, err := d.bucketFactory.Create(b).HasMinimalVersion(ctx, d.db)
 		if err != nil {
 			return false, fmt.Errorf("checking if bucket '%s' is up to date: %w", b, err)
 		}
