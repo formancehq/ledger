@@ -8,6 +8,9 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+	libtime "github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
@@ -143,7 +146,76 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Expect(err).To(Succeed())
 			})
 			It("should trigger a new event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction)))
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
+					Ledger: "default",
+					RevertTransaction: ledger.Transaction{
+						ID: pointer.For(int(newTransaction.V2RevertTransactionResponse.Data.ID.Int64())),
+						TransactionData: ledger.TransactionData{
+							Metadata: map[string]string{
+								"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
+							},
+							Postings: []ledger.Posting{
+								ledger.NewPosting("alice", "world", "USD", big.NewInt(100)),
+							},
+							InsertedAt: libtime.New(*newTransaction.V2RevertTransactionResponse.Data.InsertedAt),
+							Timestamp:  libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp),
+						},
+						PostCommitVolumes: map[string]ledger.VolumesByAssets{
+							"world": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+							"alice": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+						},
+						PostCommitEffectiveVolumes: map[string]ledger.VolumesByAssets{
+							"world": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+							"alice": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: big.NewInt(100),
+								},
+							},
+						},
+					},
+					RevertedTransaction: ledger.Transaction{
+						ID: pointer.For(int(tx.V2CreateTransactionResponse.Data.ID.Int64())),
+						TransactionData: ledger.TransactionData{
+							Metadata: map[string]string{},
+							Postings: []ledger.Posting{
+								ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
+							},
+							InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
+							Timestamp:  libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
+						},
+						RevertedAt: pointer.For(libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp)),
+						PostCommitVolumes: map[string]ledger.VolumesByAssets{
+							"world": {
+								"USD": {
+									Input:  new(big.Int),
+									Output: big.NewInt(100),
+								},
+							},
+							"alice": {
+								"USD": {
+									Input:  big.NewInt(100),
+									Output: new(big.Int),
+								},
+							},
+						},
+					},
+				}))))
 			})
 			It("should revert the original transaction", func(specContext SpecContext) {
 				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
