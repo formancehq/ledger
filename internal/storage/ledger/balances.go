@@ -21,13 +21,13 @@ func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.Bala
 	}
 
 	if isUpToDate {
-		return store.getBalancesAfterUpgrade(ctx, query)
+		return store.GetBalancesAfterUpgrade(ctx, query)
 	} else {
-		return store.getBalancesWhenUpgrading(ctx, query)
+		return store.GetBalancesWhenUpgrading(ctx, query)
 	}
 }
 
-func (store *Store) getBalancesWhenUpgrading(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
+func (store *Store) GetBalancesWhenUpgrading(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetBalances",
@@ -46,12 +46,13 @@ func (store *Store) getBalancesWhenUpgrading(ctx context.Context, query ledgerco
 			type AccountsVolumesWithLedger struct {
 				Ledger                 string `bun:"ledger,type:varchar"`
 				ledger.AccountsVolumes `bun:",extend"`
+				Priority               int `bun:"priority"` // for ordering (keep at 0)
 			}
 
-			accountsVolumes := make([]AccountsVolumesWithLedger, 0)
+			defaultAccountsVolumes := make([]AccountsVolumesWithLedger, 0)
 			for account, assets := range query {
 				for _, asset := range assets {
-					accountsVolumes = append(accountsVolumes, AccountsVolumesWithLedger{
+					defaultAccountsVolumes = append(defaultAccountsVolumes, AccountsVolumesWithLedger{
 						Ledger: store.ledger.Name,
 						AccountsVolumes: ledger.AccountsVolumes{
 							Account: account,
@@ -64,7 +65,7 @@ func (store *Store) getBalancesWhenUpgrading(ctx context.Context, query ledgerco
 			}
 
 			// prevent deadlocks by sorting the accountsVolumes slice
-			slices.SortStableFunc(accountsVolumes, func(i, j AccountsVolumesWithLedger) int {
+			slices.SortStableFunc(defaultAccountsVolumes, func(i, j AccountsVolumesWithLedger) int {
 				if i.Account < j.Account {
 					return -1
 				} else if i.Account > j.Account {
@@ -94,18 +95,22 @@ func (store *Store) getBalancesWhenUpgrading(ctx context.Context, query ledgerco
 				Column("ledger", "accounts_address", "asset").
 				ColumnExpr("(post_commit_volumes).inputs as input").
 				ColumnExpr("(post_commit_volumes).outputs as output").
+				ColumnExpr("1 as priority").
 				UnionAll(
 					store.db.NewSelect().
 						TableExpr(
 							"(?) data",
-							store.db.NewSelect().NewValues(&accountsVolumes),
+							store.db.NewSelect().
+								NewValues(&defaultAccountsVolumes),
 						).
 						Column("*"),
 				)
 
 			zeroValueOrMoves := store.db.NewSelect().
 				TableExpr("(?) data", zeroValuesAndMoves).
-				Column("ledger", "accounts_address", "asset", "input", "output").
+				Column("ledger", "accounts_address", "asset").
+				ColumnExpr("first_value(input) over (partition by ledger, accounts_address, asset order by priority desc) as input").
+				ColumnExpr("first_value(output) over (partition by ledger, accounts_address, asset order by priority desc) as output").
 				DistinctOn("ledger, accounts_address, asset")
 
 			insertDefaultValue := store.db.NewInsert().
@@ -122,6 +127,7 @@ func (store *Store) getBalancesWhenUpgrading(ctx context.Context, query ledgerco
 				// notes(gfyrag): Keep order, it ensures consistent locking order and limit deadlocks
 				Order("accounts_address", "asset")
 
+			accountsVolumes := make([]ledger.AccountsVolumes, 0)
 			finalQuery := store.db.NewSelect().
 				With("inserted", insertDefaultValue).
 				With("existing", selectExistingValues).
@@ -163,7 +169,7 @@ func (store *Store) getBalancesWhenUpgrading(ctx context.Context, query ledgerco
 	)
 }
 
-func (store *Store) getBalancesAfterUpgrade(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
+func (store *Store) GetBalancesAfterUpgrade(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetBalances",

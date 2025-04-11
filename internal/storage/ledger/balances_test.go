@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"database/sql"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"math/big"
 	"testing"
 
@@ -128,6 +129,134 @@ func TestBalancesGet(t *testing.T) {
 			Count(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
+	})
+
+	t.Run("with balance from move", func(t *testing.T) {
+		t.Parallel()
+
+		tx := ledger.NewTransaction().WithPostings(
+			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+			ledger.NewPosting("world", "bank", "EUR", big.NewInt(200)),
+		)
+		err := store.InsertTransaction(ctx, &tx)
+		require.NoError(t, err)
+
+		err = store.UpsertAccounts(ctx,
+			&ledger.Account{
+				Address: "world",
+			},
+			&ledger.Account{
+				Address: "bank",
+			},
+			&ledger.Account{
+				Address: "not-existing",
+			},
+		)
+		require.NoError(t, err)
+
+		err = store.InsertMoves(ctx, &ledger.Move{
+			TransactionID:     *tx.ID,
+			IsSource:          true,
+			Account:           "world",
+			Amount:            (*bunpaginate.BigInt)(big.NewInt(100)),
+			Asset:             "USD",
+			InsertionDate:     tx.InsertedAt,
+			EffectiveDate:     tx.InsertedAt,
+			PostCommitVolumes: pointer.For(ledger.NewVolumesInt64(0, 100)),
+		})
+		require.NoError(t, err)
+
+		err = store.InsertMoves(ctx, &ledger.Move{
+			TransactionID:     *tx.ID,
+			IsSource:          false,
+			Account:           "bank",
+			Amount:            (*bunpaginate.BigInt)(big.NewInt(100)),
+			Asset:             "USD",
+			InsertionDate:     tx.InsertedAt,
+			EffectiveDate:     tx.InsertedAt,
+			PostCommitVolumes: pointer.For(ledger.NewVolumesInt64(100, 0)),
+		})
+		require.NoError(t, err)
+
+		err = store.InsertMoves(ctx, &ledger.Move{
+			TransactionID:     *tx.ID,
+			IsSource:          true,
+			Account:           "world",
+			Amount:            (*bunpaginate.BigInt)(big.NewInt(200)),
+			Asset:             "EUR",
+			InsertionDate:     tx.InsertedAt,
+			EffectiveDate:     tx.InsertedAt,
+			PostCommitVolumes: pointer.For(ledger.NewVolumesInt64(0, 200)),
+		})
+		require.NoError(t, err)
+
+		err = store.InsertMoves(ctx, &ledger.Move{
+			TransactionID:     *tx.ID,
+			IsSource:          false,
+			Account:           "bank",
+			Amount:            (*bunpaginate.BigInt)(big.NewInt(200)),
+			Asset:             "EUR",
+			InsertionDate:     tx.InsertedAt,
+			EffectiveDate:     tx.InsertedAt,
+			PostCommitVolumes: pointer.For(ledger.NewVolumesInt64(200, 0)),
+		})
+		require.NoError(t, err)
+
+		balances, err := store.GetBalancesWhenUpgrading(ctx, ledgercontroller.BalanceQuery{
+			"bank":         {"USD"},
+			"world":        {"USD"},
+			"not-existing": {"USD"},
+		})
+		require.NoError(t, err)
+
+		require.NotNil(t, balances["bank"])
+		RequireEqual(t, big.NewInt(100), balances["bank"]["USD"])
+		RequireEqual(t, big.NewInt(-100), balances["world"]["USD"])
+		RequireEqual(t, big.NewInt(0), balances["not-existing"]["USD"])
+
+		// Check a new line has been inserted into accounts_volumes table
+		volumes := &ledger.AccountsVolumes{}
+		err = store.GetDB().NewSelect().
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("accounts_address = ? and ledger = ? and asset = 'USD'", "bank", store.GetLedger().Name).
+			Scan(ctx, volumes)
+		require.NoError(t, err)
+
+		RequireEqual(t, big.NewInt(100), volumes.Input)
+		RequireEqual(t, big.NewInt(0), volumes.Output)
+
+		err = store.GetDB().NewSelect().
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("accounts_address = ? and ledger = ? and asset = 'USD'", "world", store.GetLedger().Name).
+			Scan(ctx, volumes)
+		require.NoError(t, err)
+
+		RequireEqual(t, big.NewInt(0), volumes.Input)
+		RequireEqual(t, big.NewInt(100), volumes.Output)
+
+		err = store.GetDB().NewSelect().
+			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
+			Where("accounts_address = ? and ledger = ? and asset = 'USD'", "not-existing", store.GetLedger().Name).
+			Scan(ctx, volumes)
+		require.NoError(t, err)
+
+		RequireEqual(t, big.NewInt(0), volumes.Input)
+		RequireEqual(t, big.NewInt(0), volumes.Output)
+
+		balances, err = store.GetBalancesWhenUpgrading(ctx, ledgercontroller.BalanceQuery{
+			"bank":         {"USD", "EUR"},
+			"world":        {"USD", "EUR"},
+			"not-existing": {"USD", "EUR"},
+		})
+		require.NoError(t, err)
+
+		require.NotNil(t, balances["bank"])
+		RequireEqual(t, big.NewInt(100), balances["bank"]["USD"])
+		RequireEqual(t, big.NewInt(200), balances["bank"]["EUR"])
+		RequireEqual(t, big.NewInt(-100), balances["world"]["USD"])
+		RequireEqual(t, big.NewInt(-200), balances["world"]["EUR"])
+		RequireEqual(t, big.NewInt(0), balances["not-existing"]["USD"])
+		RequireEqual(t, big.NewInt(0), balances["not-existing"]["EUR"])
 	})
 }
 
