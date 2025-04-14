@@ -11,8 +11,8 @@ do $$
 		with reversed as (
 			select
 				ledger,
-				(data -> 'transaction' ->> 'id')::numeric   as reversedTransactionID,
-				(data ->> 'revertedTransactionID')::numeric as revertedTransactionID
+				(convert_from(memento, 'UTF-8')::jsonb -> 'transaction' ->> 'id')::numeric   as reversedTransactionID,
+				(convert_from(memento, 'UTF-8')::jsonb ->> 'revertedTransactionID')::numeric as revertedTransactionID
 			from logs
 			where type = 'REVERTED_TRANSACTION'
 		)
