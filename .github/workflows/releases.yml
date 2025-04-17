@@ -8,15 +8,19 @@ permissions:
 
 jobs:
   GoReleaser:
-    runs-on: "formance-runner"
+    runs-on: "shipfox-4vcpu-ubuntu-2404"
     steps:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
       - name: Setup Env
-        uses: ./.github/actions/env
+        uses: ./.github/actions/default
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -24,8 +28,7 @@ jobs:
           username: "NumaryBot"
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" 
-          develop --impure --command just release
+          nix develop --impure --command just release
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
