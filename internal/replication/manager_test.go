@@ -1,4 +1,4 @@
-package runner
+package replication
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func startRunner(t *testing.T, ctx context.Context, storageDriver Storage, connectorFactory drivers.Factory) *Runner {
+func startRunner(t *testing.T, ctx context.Context, storageDriver Storage, connectorFactory drivers.Factory) *Manager {
 	t.Helper()
 
-	runner := NewRunner(
+	runner := NewManager(
 		storageDriver,
 		connectorFactory,
 		logging.Testing(),
@@ -105,7 +105,7 @@ func TestRunner(t *testing.T) {
 		Return(nil)
 
 	runner := startRunner(t, ctx, storage, connectorFactory)
-	_, err := runner.StartPipeline(ctx, pipeline.ID)
+	err := runner.StartPipeline(ctx, pipeline.ID)
 	require.NoError(t, err)
 
 	connector.EXPECT().
@@ -113,11 +113,11 @@ func TestRunner(t *testing.T) {
 		Return([]error{nil}, nil)
 
 	require.Eventually(t, func() bool {
-		return runner.GetConnector("connector") != nil
+		return runner.GetDriver("connector") != nil
 	}, 5*time.Second, 10*time.Millisecond)
 
 	select {
-	case <-runner.GetConnector("connector").Ready():
+	case <-runner.GetDriver("connector").Ready():
 	case <-time.After(time.Second):
 		require.Fail(t, "connector should be ready")
 	}
