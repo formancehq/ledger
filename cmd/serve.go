@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/all"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/worker"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -42,15 +46,16 @@ type ServeCommandConfig struct {
 	commonConfig        `mapstructure:",squash"`
 	WorkerConfiguration `mapstructure:",squash"`
 
-	Bind                        string   `mapstructure:"bind"`
-	BallastSizeInBytes          uint     `mapstructure:"ballast-size"`
-	NumscriptCacheMaxCount      uint     `mapstructure:"numscript-cache-max-count"`
-	AutoUpgrade                 bool     `mapstructure:"auto-upgrade"`
-	BulkMaxSize                 int      `mapstructure:"bulk-max-size"`
-	BulkParallel                int      `mapstructure:"bulk-parallel"`
-	DefaultPageSize             uint64   `mapstructure:"default-page-size"`
-	MaxPageSize                 uint64   `mapstructure:"max-page-size"`
-	WorkerEnabled               bool     `mapstructure:"worker"`
+	Bind                   string `mapstructure:"bind"`
+	BallastSizeInBytes     uint   `mapstructure:"ballast-size"`
+	NumscriptCacheMaxCount uint   `mapstructure:"numscript-cache-max-count"`
+	AutoUpgrade            bool   `mapstructure:"auto-upgrade"`
+	BulkMaxSize            int    `mapstructure:"bulk-max-size"`
+	BulkParallel           int    `mapstructure:"bulk-parallel"`
+	DefaultPageSize        uint64 `mapstructure:"default-page-size"`
+	MaxPageSize            uint64 `mapstructure:"max-page-size"`
+	WorkerEnabled          bool   `mapstructure:"worker"`
+	WorkerAddress          string `mapstructure:"worker-grpc-address"`
 }
 
 const (
@@ -61,9 +66,9 @@ const (
 	BulkMaxSizeFlag            = "bulk-max-size"
 	BulkParallelFlag           = "bulk-parallel"
 
-	DefaultPageSizeFlag             = "default-page-size"
-	MaxPageSizeFlag                 = "max-page-size"
-	WorkerEnabledFlag               = "worker"
+	DefaultPageSizeFlag = "default-page-size"
+	MaxPageSizeFlag     = "max-page-size"
+	WorkerEnabledFlag   = "worker"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -149,7 +154,18 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			if cfg.WorkerEnabled {
-				options = append(options, newWorkerModule(cfg.WorkerConfiguration))
+				options = append(options,
+					newWorkerModule(cfg.WorkerConfiguration),
+					replication.NewFXEmbeddedClientModule(),
+				)
+			} else {
+				options = append(options,
+					worker.NewGRPCClientFxModule(
+						cfg.WorkerAddress,
+						grpc.WithTransportCredentials(insecure.NewCredentials()),
+					),
+					replication.NewFXGRPCClientModule(),
+				)
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
@@ -167,6 +183,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
+	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())

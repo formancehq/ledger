@@ -19,6 +19,190 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockReplicationBackend is a mock of ReplicationBackend interface.
+type MockReplicationBackend struct {
+	ctrl     *gomock.Controller
+	recorder *MockReplicationBackendMockRecorder
+	isgomock struct{}
+}
+
+// MockReplicationBackendMockRecorder is the mock recorder for MockReplicationBackend.
+type MockReplicationBackendMockRecorder struct {
+	mock *MockReplicationBackend
+}
+
+// NewMockReplicationBackend creates a new mock instance.
+func NewMockReplicationBackend(ctrl *gomock.Controller) *MockReplicationBackend {
+	mock := &MockReplicationBackend{ctrl: ctrl}
+	mock.recorder = &MockReplicationBackendMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockReplicationBackend) EXPECT() *MockReplicationBackendMockRecorder {
+	return m.recorder
+}
+
+// CreateConnector mocks base method.
+func (m *MockReplicationBackend) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateConnector", ctx, configuration)
+	ret0, _ := ret[0].(*ledger.Connector)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateConnector indicates an expected call of CreateConnector.
+func (mr *MockReplicationBackendMockRecorder) CreateConnector(ctx, configuration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateConnector", reflect.TypeOf((*MockReplicationBackend)(nil).CreateConnector), ctx, configuration)
+}
+
+// CreatePipeline mocks base method.
+func (m *MockReplicationBackend) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePipeline", ctx, pipelineConfiguration)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePipeline indicates an expected call of CreatePipeline.
+func (mr *MockReplicationBackendMockRecorder) CreatePipeline(ctx, pipelineConfiguration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*MockReplicationBackend)(nil).CreatePipeline), ctx, pipelineConfiguration)
+}
+
+// DeleteConnector mocks base method.
+func (m *MockReplicationBackend) DeleteConnector(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteConnector", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteConnector indicates an expected call of DeleteConnector.
+func (mr *MockReplicationBackendMockRecorder) DeleteConnector(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockReplicationBackend)(nil).DeleteConnector), ctx, id)
+}
+
+// DeletePipeline mocks base method.
+func (m *MockReplicationBackend) DeletePipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePipeline indicates an expected call of DeletePipeline.
+func (mr *MockReplicationBackendMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*MockReplicationBackend)(nil).DeletePipeline), ctx, id)
+}
+
+// GetConnector mocks base method.
+func (m *MockReplicationBackend) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
+	ret0, _ := ret[0].(*ledger.Connector)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetConnector indicates an expected call of GetConnector.
+func (mr *MockReplicationBackendMockRecorder) GetConnector(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnector", reflect.TypeOf((*MockReplicationBackend)(nil).GetConnector), ctx, id)
+}
+
+// GetPipeline mocks base method.
+func (m *MockReplicationBackend) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPipeline", ctx, id)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPipeline indicates an expected call of GetPipeline.
+func (mr *MockReplicationBackendMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).GetPipeline), ctx, id)
+}
+
+// ListConnectors mocks base method.
+func (m *MockReplicationBackend) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListConnectors", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Connector])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListConnectors indicates an expected call of ListConnectors.
+func (mr *MockReplicationBackendMockRecorder) ListConnectors(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConnectors", reflect.TypeOf((*MockReplicationBackend)(nil).ListConnectors), ctx)
+}
+
+// ListPipelines mocks base method.
+func (m *MockReplicationBackend) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPipelines", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPipelines indicates an expected call of ListPipelines.
+func (mr *MockReplicationBackendMockRecorder) ListPipelines(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPipelines", reflect.TypeOf((*MockReplicationBackend)(nil).ListPipelines), ctx)
+}
+
+// ResetPipeline mocks base method.
+func (m *MockReplicationBackend) ResetPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetPipeline indicates an expected call of ResetPipeline.
+func (mr *MockReplicationBackendMockRecorder) ResetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).ResetPipeline), ctx, id)
+}
+
+// StartPipeline mocks base method.
+func (m *MockReplicationBackend) StartPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartPipeline indicates an expected call of StartPipeline.
+func (mr *MockReplicationBackendMockRecorder) StartPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).StartPipeline), ctx, id)
+}
+
+// StopPipeline mocks base method.
+func (m *MockReplicationBackend) StopPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StopPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StopPipeline indicates an expected call of StopPipeline.
+func (mr *MockReplicationBackendMockRecorder) StopPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).StopPipeline), ctx, id)
+}
+
 // SystemController is a mock of Controller interface.
 type SystemController struct {
 	ctrl     *gomock.Controller
