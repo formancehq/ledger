@@ -9,6 +9,7 @@ replace github.com/formancehq/ledger/pkg/client => ./pkg/client
 replace google.golang.org/genproto v0.0.0-20200423170343-7949de9c1215 => google.golang.org/genproto v0.0.0-20240903143218-8af14fe29dc1
 
 require (
+	github.com/ClickHouse/clickhouse-go/v2 v2.33.1
 	github.com/ThreeDotsLabs/watermill v1.4.6
 	github.com/alitto/pond v1.9.2
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
@@ -23,12 +24,14 @@ require (
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/jamiealquiza/tachymeter v2.0.0+incompatible
 	github.com/logrusorgru/aurora v2.0.3+incompatible
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nats-io/nats.go v1.41.0
+	github.com/olivere/elastic/v7 v7.0.32
 	github.com/onsi/ginkgo/v2 v2.22.1
 	github.com/onsi/gomega v1.36.2
 	github.com/ory/dockertest/v3 v3.11.0
 	github.com/pborman/uuid v1.2.1
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
@@ -45,23 +48,33 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0
 	go.uber.org/fx v1.23.0
 	go.uber.org/mock v0.5.0
+	go.vallahaye.net/batcher v0.6.0
 	golang.org/x/oauth2 v0.28.0
 	golang.org/x/sync v0.12.0
 )
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0-20250408113106-7b3525e0b25b
+	github.com/formancehq/go-libs/v3 v3.0.0-20250418095726-ff9fb8f19b49
+	github.com/lib/pq v1.10.9
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/ClickHouse/ch-go v0.65.1 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
+	github.com/go-faster/city v1.0.1 // indirect
+	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/jackc/pgxlisten v0.0.0-20241106001234-1d6f6656415c // indirect
+	github.com/josharian/intern v1.0.0 // indirect
+	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
@@ -104,7 +117,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dnwe/otelsarama v0.0.0-20240308230250-9388d9d40bc0 // indirect
 	github.com/docker/cli v27.3.1+incompatible // indirect
-	github.com/docker/docker v27.5.1+incompatible // indirect
+	github.com/docker/docker v28.0.1+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
