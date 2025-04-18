@@ -11,12 +11,13 @@ do $$
 		with reversed as (
 			select
 				ledger,
-				(data -> 'transaction' ->> 'id')::numeric   as reversedTransactionID,
-				(data ->> 'revertedTransactionID')::numeric as revertedTransactionID
+				(convert_from(memento, 'UTF-8')::jsonb -> 'transaction' ->> 'id')::numeric   as reversedTransactionID,
+				(convert_from(memento, 'UTF-8')::jsonb ->> 'revertedTransactionID')::numeric as revertedTransactionID,
+				date as revertedAt
 			from logs
 			where type = 'REVERTED_TRANSACTION'
 		)
-		select reversed.ledger, reversed.reversedTransactionID, reversed.revertedTransactionID
+		select reversed.ledger, reversed.reversedTransactionID, reversed.revertedTransactionID, reversed.revertedAt
 		from transactions
 		join reversed on
 			reversed.reversedTransactionID = transactions.id and
@@ -34,14 +35,16 @@ do $$
 
 		loop
 			with data as (
-				select ledger, reversedTransactionID, revertedTransactionID
+				select ledger, reversedTransactionID, revertedTransactionID, revertedAt
 				from txs_view
 				order by ledger, reversedTransactionID, revertedTransactionID
 				offset _offset
 				limit _batch_size
 			)
 			update transactions
-			set metadata = metadata || ('{"com.formance.spec/state/reverts": "' || data.revertedTransactionID || '"}')::jsonb
+			set
+				metadata = metadata || ('{"com.formance.spec/state/reverts": "' || data.revertedTransactionID || '"}')::jsonb,
+				updated_at = data.revertedAt
 			from data
 			where transactions.id = data.reversedTransactionID and
 			      transactions.ledger = data.ledger;
