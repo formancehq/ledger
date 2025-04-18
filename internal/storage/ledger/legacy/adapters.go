@@ -272,12 +272,12 @@ func (d *DefaultStoreAdapter) RevertTransaction(ctx context.Context, id int, at 
 	return d.newStore.RevertTransaction(ctx, id, at)
 }
 
-func (d *DefaultStoreAdapter) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error) {
-	return d.newStore.UpdateTransactionMetadata(ctx, transactionID, m)
+func (d *DefaultStoreAdapter) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error) {
+	return d.newStore.UpdateTransactionMetadata(ctx, transactionID, m, at)
 }
 
-func (d *DefaultStoreAdapter) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error) {
-	return d.newStore.DeleteTransactionMetadata(ctx, transactionID, key)
+func (d *DefaultStoreAdapter) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string, at time.Time) (*ledger.Transaction, bool, error) {
+	return d.newStore.DeleteTransactionMetadata(ctx, transactionID, key, at)
 }
 
 func (d *DefaultStoreAdapter) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
