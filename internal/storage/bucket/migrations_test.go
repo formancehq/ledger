@@ -52,7 +52,7 @@ func TestMigrations(t *testing.T) {
 		if err == nil {
 			_, err = db.ExecContext(ctx, before)
 			if err != nil {
-				return nil, fmt.Errorf("executing pre migration script: %s", entry.Name())
+				return nil, fmt.Errorf("executing pre migration script (%s): %w", entry.Name(), err)
 			}
 		}
 
@@ -72,7 +72,7 @@ func TestMigrations(t *testing.T) {
 		if err == nil {
 			_, err = db.ExecContext(ctx, after)
 			if err != nil {
-				return nil, fmt.Errorf("executing post migration script: %s", entry.Name())
+				return nil, fmt.Errorf("executing post migration script (%s): %w", entry.Name(), err)
 			}
 		}
 

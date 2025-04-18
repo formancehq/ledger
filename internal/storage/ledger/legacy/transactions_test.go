@@ -153,7 +153,7 @@ func TestGetTransactions(t *testing.T) {
 
 	_, _, err = store.newStore.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
-	})
+	}, time.Time{})
 	require.NoError(t, err)
 
 	// refresh tx3
