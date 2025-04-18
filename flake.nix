@@ -103,6 +103,9 @@
               nodejs_22
               self.packages.${system}.speakeasy
               goperf
+              protobuf_27
+              protoc-gen-go-grpc
+              protoc-gen-go
             ];
           };
         }

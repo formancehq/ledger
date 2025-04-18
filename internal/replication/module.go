@@ -1,28 +1,32 @@
-package runner
+package replication
 
 import (
 	"context"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/replication/drivers"
+	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
 	"time"
 )
 
-type ModuleConfig struct {
+type WorkerModuleConfig struct {
 	SyncPeriod      time.Duration
 	PushRetryPeriod time.Duration
 	PullInterval    time.Duration
 }
 
-// NewFXModule create a new fx module
-func NewFXModule(cfg ModuleConfig) fx.Option {
+// NewWorkerFXModule create a new fx module
+func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 	return fx.Options(
 		fx.Provide(fx.Annotate(NewStorageAdapter, fx.As(new(Storage)))),
 		fx.Provide(func(
 			storageDriver Storage,
 			connectorFactory drivers.Factory,
+			connectorsConfigValidator ConfigValidator,
 			logger logging.Logger,
-		) *Runner {
+		) *Manager {
 			options := make([]Option, 0)
 			if cfg.SyncPeriod > 0 {
 				options = append(options, WithSyncPeriod(cfg.SyncPeriod))
@@ -37,10 +41,11 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 					WithPullPeriod(cfg.PullInterval),
 				))
 			}
-			return NewRunner(
+			return NewManager(
 				storageDriver,
 				connectorFactory,
 				logger,
+				connectorsConfigValidator,
 				options...,
 			)
 		}),
@@ -53,7 +58,11 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 			drivers.NewWithBatchingConnectorFactory,
 			fx.As(new(drivers.Factory)),
 		)),
-		fx.Invoke(func(lc fx.Lifecycle, runner *Runner) {
+		fx.Provide(fx.Annotate(NewReplicationServiceImpl, fx.As(new(innergrpc.ReplicationServer)))),
+		fx.Provide(func(driversRegistry *drivers.Registry) ConfigValidator {
+			return driversRegistry
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, runner *Manager) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					go runner.Run(context.WithoutCancel(ctx))
@@ -63,6 +72,23 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 					return runner.Stop(ctx)
 				},
 			})
+		}),
+	)
+}
+
+func NewFXGRPCClientModule() fx.Option {
+	return fx.Options(
+		fx.Provide(func(conn *grpc.ClientConn) innergrpc.ReplicationClient {
+			return innergrpc.NewReplicationClient(conn)
+		}),
+		fx.Provide(fx.Annotate(NewThroughGRPCReplicationBackend, fx.As(new(system.ReplicationBackend)))),
+	)
+}
+
+func NewFXEmbeddedClientModule() fx.Option {
+	return fx.Options(
+		fx.Provide(func(manager *Manager) system.ReplicationBackend {
+			return manager
 		}),
 	)
 }
