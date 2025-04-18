@@ -32,6 +32,7 @@ type Pipeline struct {
 	ID        string    `json:"id" bun:"id,pk"`
 	Version   int       `json:"-" bun:"version"`
 	Enabled   bool      `json:"enabled" bun:"enabled"`
+	// todo: use uint64
 	LastLogID int       `json:"lastLogID,omitempty" bun:"last_log_id"`
 	Error     string    `json:"error,omitempty" bun:"error"`
 }

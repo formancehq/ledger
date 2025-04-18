@@ -2,11 +2,10 @@ package system
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"time"
 
-	"database/sql"
-	"errors"
 	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/features"
@@ -24,18 +23,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
-type Controller interface {
-	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
-	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
-	ListLedgers(ctx context.Context, query common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error)
-	// CreateLedger can return following errors:
-	//  * ErrLedgerAlreadyExists
-	//  * ledger.ErrInvalidLedgerName
-	// It create the ledger in system store and the underlying storage
-	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
-	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
-	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
-
+type ReplicationBackend interface {
 	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
 	CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error)
 	DeleteConnector(ctx context.Context, id string) error
@@ -50,6 +38,20 @@ type Controller interface {
 	StopPipeline(ctx context.Context, id string) error
 }
 
+type Controller interface {
+	ReplicationBackend
+	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
+	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
+	ListLedgers(ctx context.Context, query common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error)
+	// CreateLedger can return following errors:
+	//  * ErrLedgerAlreadyExists
+	//  * ledger.ErrInvalidLedgerName
+	// It create the ledger in system store and the underlying storage
+	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
+	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
+	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+}
+
 type DefaultController struct {
 	driver   Driver
 	listener ledgercontroller.Listener
@@ -61,7 +63,7 @@ type DefaultController struct {
 	interpreterParser          ledgercontroller.NumscriptParser
 	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
-	connectorsConfigValidator  ConfigValidator
+	replicationBackend         ReplicationBackend
 
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
@@ -69,125 +71,57 @@ type DefaultController struct {
 }
 
 func (ctrl *DefaultController) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	return ctrl.driver.GetSystemStore().ListConnectors(ctx)
+	return ctrl.replicationBackend.ListConnectors(ctx)
 }
 
 // CreateConnector can return following errors:
 // * ErrInvalidDriverConfiguration
 func (ctrl *DefaultController) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
-
-	if err := ctrl.connectorsConfigValidator.ValidateConfig(configuration.Driver, configuration.Config); err != nil {
-		return nil, NewErrInvalidDriverConfiguration(configuration.Driver, err)
+	ret, err := ctrl.replicationBackend.CreateConnector(ctx, configuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connector: %w", err)
 	}
-
-	connector := ledger.NewConnector(configuration)
-	if err := ctrl.driver.GetSystemStore().CreateConnector(ctx, connector); err != nil {
-		return nil, err
-	}
-	return &connector, nil
+	return ret, nil
 }
 
 // DeleteConnector can return following errors:
 // ErrConnectorNotFound
 func (ctrl *DefaultController) DeleteConnector(ctx context.Context, id string) error {
-	if err := ctrl.driver.GetSystemStore().DeleteConnector(ctx, id); err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return NewErrConnectorNotFound(id)
-		default:
-			return err
-		}
-	}
-	return nil
+	return ctrl.replicationBackend.DeleteConnector(ctx, id)
 }
 
 // GetConnector can return following errors:
 // ErrConnectorNotFound
 func (ctrl *DefaultController) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
-	connector, err := ctrl.driver.GetSystemStore().GetConnector(ctx, id)
-	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return nil, NewErrConnectorNotFound(id)
-		default:
-			return nil, err
-		}
-	}
-	return connector, nil
+	return ctrl.replicationBackend.GetConnector(ctx, id)
 }
 
 func (ctrl *DefaultController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
-	return ctrl.driver.GetSystemStore().ListPipelines(ctx)
+	return ctrl.replicationBackend.ListPipelines(ctx)
 }
 
 func (ctrl *DefaultController) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
-	pipeline, err := ctrl.driver.GetSystemStore().GetPipeline(ctx, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ledger.NewErrPipelineNotFound(id)
-		}
-		return nil, err
-	}
-
-	return pipeline, nil
+	return ctrl.replicationBackend.GetPipeline(ctx, id)
 }
 
 func (ctrl *DefaultController) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
-	pipeline := ledger.NewPipeline(pipelineConfiguration)
-
-	err := ctrl.driver.GetSystemStore().CreatePipeline(ctx, pipeline)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pipeline, nil
+	return ctrl.replicationBackend.CreatePipeline(ctx, pipelineConfiguration)
 }
 
 func (ctrl *DefaultController) DeletePipeline(ctx context.Context, id string) error {
-	if err := ctrl.driver.GetSystemStore().DeletePipeline(ctx, id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ledger.NewErrPipelineNotFound(id)
-		}
-		return err
-	}
-	return nil
+	return ctrl.replicationBackend.DeletePipeline(ctx, id)
 }
 
 func (ctrl *DefaultController) StartPipeline(ctx context.Context, id string) error {
-	if err := ctrl.driver.GetSystemStore().UpdatePipeline(ctx, id, map[string]any{
-		"enabled": true,
-	}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ledger.NewErrPipelineNotFound(id)
-		}
-		return err
-	}
-	return nil
+	return ctrl.replicationBackend.StartPipeline(ctx, id)
 }
 
 func (ctrl *DefaultController) ResetPipeline(ctx context.Context, id string) error {
-	if err := ctrl.driver.GetSystemStore().UpdatePipeline(ctx, id, map[string]any{
-		"enabled":     true,
-		"last_log_id": nil,
-	}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ledger.NewErrPipelineNotFound(id)
-		}
-		return err
-	}
-	return nil
+	return ctrl.replicationBackend.ResetPipeline(ctx, id)
 }
 
 func (ctrl *DefaultController) StopPipeline(ctx context.Context, id string) error {
-	if err := ctrl.driver.GetSystemStore().UpdatePipeline(ctx, id, map[string]any{
-		"enabled": false,
-	}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ledger.NewErrPipelineNotFound(id)
-		}
-		return err
-	}
-	return nil
+	return ctrl.replicationBackend.StopPipeline(ctx, id)
 }
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
@@ -288,13 +222,18 @@ func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param s
 	})))
 }
 
-func NewDefaultController(store Driver, listener ledgercontroller.Listener, validator ConfigValidator, opts ...Option) *DefaultController {
+func NewDefaultController(
+	store Driver,
+	listener ledgercontroller.Listener,
+	replicationBackend ReplicationBackend,
+	opts ...Option,
+) *DefaultController {
 	ret := &DefaultController{
-		connectorsConfigValidator: validator,
-		driver:                    store,
-		listener:                  listener,
-		registry:                  ledgercontroller.NewStateRegistry(),
-		defaultParser:             ledgercontroller.NewDefaultNumscriptParser(),
+		driver:             store,
+		listener:           listener,
+		registry:           ledgercontroller.NewStateRegistry(),
+		defaultParser:      ledgercontroller.NewDefaultNumscriptParser(),
+		replicationBackend: replicationBackend,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)

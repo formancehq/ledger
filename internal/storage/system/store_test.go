@@ -264,9 +264,10 @@ func TestUpdatePipeline(t *testing.T) {
 	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
 
 	// Try to create the same pipeline again
-	require.NoError(t, store.UpdatePipeline(ctx, alivePipeline.ID, map[string]any{
+	_, err := store.UpdatePipeline(ctx, alivePipeline.ID, map[string]any{
 		"enabled": false,
-	}))
+	})
+	require.NoError(t, err)
 
 	pipelineFromDB, err := store.GetPipeline(ctx, alivePipeline.ID)
 	require.NoError(t, err)
