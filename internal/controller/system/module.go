@@ -1,7 +1,6 @@
 package system
 
 import (
-	"github.com/formancehq/ledger/internal/replication/drivers"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"time"
 
@@ -34,15 +33,12 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 			return store
 		}),
 		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(Driver)))),
-		fx.Provide(func(driversRegistry *drivers.Registry) ConfigValidator {
-			return driversRegistry
-		}),
 		fx.Provide(func(
 			driver Driver,
 			listener ledgercontroller.Listener,
-			validator ConfigValidator,
 			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
+			replicationBackend ReplicationBackend,
 		) *DefaultController {
 			var (
 				machineParser     ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
@@ -63,7 +59,16 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 				parser = interpreterParser
 			}
 
-			return NewDefaultController(driver, listener, validator, WithParser(parser, machineParser, interpreterParser), WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration), WithMeterProvider(meterProvider), WithTracerProvider(tracerProvider), WithEnableFeatures(configuration.EnableFeatures))
+			return NewDefaultController(
+				driver,
+				listener,
+				replicationBackend,
+				WithParser(parser, machineParser, interpreterParser),
+				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
+				WithMeterProvider(meterProvider),
+				WithTracerProvider(tracerProvider),
+				WithEnableFeatures(configuration.EnableFeatures),
+			)
 		}),
 	)
 }

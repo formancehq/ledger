@@ -237,7 +237,7 @@ func (d *DefaultStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipel
 	return nil
 }
 
-func (d *DefaultStore) UpdatePipeline(ctx context.Context, id string, o map[string]any) error {
+func (d *DefaultStore) UpdatePipeline(ctx context.Context, id string, o map[string]any) (*ledger.Pipeline, error) {
 	updateQuery := d.db.NewUpdate().
 		Table("_system.pipelines")
 	for k, v := range o {
@@ -245,10 +245,15 @@ func (d *DefaultStore) UpdatePipeline(ctx context.Context, id string, o map[stri
 	}
 	updateQuery = updateQuery.
 		Set("version = version + 1").
-		Where("id = ?", id)
+		Where("id = ?", id).
+		Returning("*")
 
-	_, err := updateQuery.Exec(ctx)
-	return postgres.ResolveError(err)
+	ret := &ledger.Pipeline{}
+	_, err := updateQuery.Exec(ctx, ret)
+	if err != nil {
+		return nil, postgres.ResolveError(err)
+	}
+	return ret, nil
 }
 
 func (d *DefaultStore) DeletePipeline(ctx context.Context, id string) error {

@@ -1,4 +1,4 @@
-package runner
+package replication
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package runner . LogFetcher
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package replication . LogFetcher
 
 type LogFetcher interface {
 	ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)
@@ -21,22 +21,32 @@ func (fn LogFetcherFn) ListLogs(ctx context.Context, query common.PaginatedQuery
 	return fn(ctx, query)
 }
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package runner . StorageDriver
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package replication . StorageDriver
 
 type Storage interface {
 	OpenLedger(context.Context, string) (LogFetcher, *ledger.Ledger, error)
 	StorePipelineState(ctx context.Context, id string, lastLogID int) error
+
+	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
+	CreateConnector(ctx context.Context, connector ledger.Connector) error
+	DeleteConnector(ctx context.Context, id string) error
+	GetConnector(ctx context.Context, id string) (*ledger.Connector, error)
+
+	CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error
+	DeletePipeline(ctx context.Context, id string) error
+	UpdatePipeline(ctx context.Context, id string, o map[string]any) (*ledger.Pipeline, error)
+	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
 	ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error)
 	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
 }
 
 type storageAdapter struct {
+	*systemstore.DefaultStore
 	storageDriver *driver.Driver
-	systemStore   *systemstore.DefaultStore
 }
 
 func (s *storageAdapter) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
-	return s.systemStore.GetPipeline(ctx, id)
+	return s.DefaultStore.GetPipeline(ctx, id)
 }
 
 func (s *storageAdapter) OpenLedger(ctx context.Context, name string) (LogFetcher, *ledger.Ledger, error) {
@@ -48,17 +58,17 @@ func (s *storageAdapter) OpenLedger(ctx context.Context, name string) (LogFetche
 }
 
 func (s *storageAdapter) StorePipelineState(ctx context.Context, id string, lastLogID int) error {
-	return s.systemStore.StorePipelineState(ctx, id, lastLogID)
+	return s.DefaultStore.StorePipelineState(ctx, id, lastLogID)
 }
 
 func (s *storageAdapter) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error) {
-	return s.systemStore.ListEnabledPipelines(ctx)
+	return s.DefaultStore.ListEnabledPipelines(ctx)
 }
 
 func NewStorageAdapter(storageDriver *driver.Driver, systemStore *systemstore.DefaultStore) Storage {
 	return &storageAdapter{
 		storageDriver: storageDriver,
-		systemStore:   systemStore,
+		DefaultStore:  systemStore,
 	}
 }
 

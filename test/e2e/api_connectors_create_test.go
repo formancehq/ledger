@@ -30,6 +30,7 @@ var _ = Context("Connectors API tests", func() {
 			testservice.OutputInstrumentation(GinkgoWriter),
 			ExperimentalFeaturesInstrumentation(),
 			ExperimentalConnectorsInstrumentation(),
+			ExperimentalEnableWorker(),
 		),
 		testservice.WithLogger(GinkgoT()),
 	)

@@ -15,6 +15,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"time"
 )
 
@@ -25,7 +27,13 @@ const (
 
 	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
 	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
+
+	WorkerGRPCAddressFlag = "worker-grpc-address"
 )
+
+type WorkerGRPCConfig struct {
+	Address string `mapstructure:"worker-grpc-address"`
+}
 
 type WorkerConfiguration struct {
 	HashLogsBlockMaxSize  int           `mapstructure:"worker-async-block-hasher-max-block-size"`
@@ -39,6 +47,7 @@ type WorkerConfiguration struct {
 type WorkerCommandConfiguration struct {
 	WorkerConfiguration `mapstructure:",squash"`
 	commonConfig        `mapstructure:",squash"`
+	WorkerGRPCConfig    `mapstructure:",squash"`
 }
 
 func addWorkerFlags(cmd *cobra.Command) {
@@ -74,9 +83,17 @@ func NewWorkerCommand() *cobra.Command {
 				drivers.NewFXModule(),
 				fx.Invoke(all.Register),
 				newWorkerModule(cfg.WorkerConfiguration),
+				worker.NewGRPCServerFXModule(worker.GRPCServerModuleConfig{
+					Address: cfg.Address,
+					ServerOptions: []grpc.ServerOption{
+						grpc.Creds(insecure.NewCredentials()),
+					},
+				}),
 			).Run(cmd)
 		},
 	}
+
+	cmd.Flags().String(WorkerGRPCAddressFlag, ":8081", "GRPC address")
 
 	addWorkerFlags(cmd)
 	service.AddFlags(cmd.Flags())
@@ -93,7 +110,7 @@ func newWorkerModule(configuration WorkerConfiguration) fx.Option {
 			MaxBlockSize: configuration.HashLogsBlockMaxSize,
 			Schedule:     configuration.HashLogsBlockCRONSpec,
 		},
-		ReplicationConfig: runner.ModuleConfig{
+		ReplicationConfig: replication.WorkerModuleConfig{
 			SyncPeriod:      configuration.SyncPeriod,
 			PushRetryPeriod: configuration.PushRetryPeriod,
 			PullInterval:    configuration.PullInterval,

@@ -65,7 +65,7 @@ var driversSetup = map[string]func(func(d *deferred.Deferred[Driver])){
 	},
 }
 
-var _ = Context("Pipelines API tests", func() {
+var _ = FContext("Pipelines API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()

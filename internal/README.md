@@ -978,7 +978,7 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes
 
 
 <a name="Pipeline"></a>
-## type [Pipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L27-L37>)
+## type [Pipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L27-L38>)
 
 
 
@@ -991,13 +991,14 @@ type Pipeline struct {
     ID        string    `json:"id" bun:"id,pk"`
     Version   int       `json:"-" bun:"version"`
     Enabled   bool      `json:"enabled" bun:"enabled"`
-    LastLogID int       `json:"lastLogID,omitempty" bun:"last_log_id"`
-    Error     string    `json:"error,omitempty" bun:"error"`
+    // todo: use uint64
+    LastLogID int    `json:"lastLogID,omitempty" bun:"last_log_id"`
+    Error     string `json:"error,omitempty" bun:"error"`
 }
 ```
 
 <a name="NewPipeline"></a>
-### func [NewPipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L39>)
+### func [NewPipeline](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L40>)
 
 ```go
 func NewPipeline(pipelineConfiguration PipelineConfiguration) Pipeline
