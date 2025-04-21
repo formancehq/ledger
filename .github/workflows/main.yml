@@ -70,7 +70,7 @@ jobs:
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Upload coverage reports to Codecov with GitHub Action
-        uses: codecov/codecov-action@v5.1.2
+        uses: codecov/codecov-action@v5.4.2
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
