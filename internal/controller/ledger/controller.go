@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"database/sql"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -81,9 +82,17 @@ type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
 
+type RuntimeType string
+
+const (
+	RuntimeInterpreter RuntimeType = "interpreter"
+	RuntimeMachine     RuntimeType = "machine"
+)
+
 type CreateTransaction struct {
 	RunScript
 	AccountMetadata map[string]metadata.Metadata
+	Runtime         RuntimeType
 }
 
 type RevertTransaction struct {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"reflect"
+
+	"github.com/formancehq/ledger/internal/storage/common"
 
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
@@ -285,12 +286,24 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
+func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
+	switch tx.Runtime {
+	case RuntimeInterpreter:
+		return NewDefaultNumscriptParser()
+	case RuntimeMachine:
+		// TODO pass feature flags
+		return NewInterpreterNumscriptParser(nil)
+	default:
+		return ctrl.parser
+	}
+}
+
 func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	m, err := ctrl.parser.Parse(parameters.Input.Plain)
+	m, err := ctrl.getParser(parameters.Input).Parse(parameters.Input.Plain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}
