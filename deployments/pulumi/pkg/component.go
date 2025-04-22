@@ -101,11 +101,21 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		cmp.Storage.Service,
 	}))
 
+	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Args:       args.Worker,
+		Database:   cmp.Storage,
+	}, options...)
+	if err != nil {
+		return nil, err
+	}
+
 	cmp.API, err = api.NewComponent(ctx, "api", api.ComponentArgs{
 		CommonArgs: args.CommonArgs,
 		Args:       args.API,
 		Storage:    cmp.Storage,
 		Ingress:    args.Ingress,
+		Worker: cmp.Worker,
 	}, options...)
 	if err != nil {
 		return nil, err
@@ -119,16 +129,6 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
-		CommonArgs: args.CommonArgs,
-		Args:       args.Worker,
-		Database:   cmp.Storage,
-		API:        cmp.API,
-	}, options...)
-	if err != nil {
-		return nil, err
 	}
 
 	if len(args.Provision.Ledgers) > 0 || cmp.Connectors != nil {

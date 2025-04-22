@@ -54,10 +54,11 @@ require (
 )
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0-20250418095726-ff9fb8f19b49
+	github.com/formancehq/go-libs/v3 v3.0.0-20250422121250-0689c5e8027f
 	github.com/lib/pq v1.10.9
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -232,8 +233,8 @@ require (
 	golang.org/x/tools v0.31.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250324211829-b45e905df463 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463 // indirect
-	google.golang.org/grpc v1.71.1 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/grpc v1.71.1
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

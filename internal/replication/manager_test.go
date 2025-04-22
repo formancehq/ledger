@@ -16,13 +16,20 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func startRunner(t *testing.T, ctx context.Context, storageDriver Storage, connectorFactory drivers.Factory) *Manager {
+func startRunner(
+	t *testing.T,
+	ctx context.Context,
+	storageDriver Storage,
+	connectorFactory drivers.Factory,
+	connectorsConfigValidator ConfigValidator,
+) *Manager {
 	t.Helper()
 
 	runner := NewManager(
 		storageDriver,
 		connectorFactory,
 		logging.Testing(),
+		connectorsConfigValidator,
 	)
 	go runner.Run(ctx)
 	t.Cleanup(func() {
@@ -42,6 +49,7 @@ func TestRunner(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	storage := NewMockStorage(ctrl)
 	logFetcher := NewMockLogFetcher(ctrl)
+	connectorConfigValidator := NewMockConfigValidator(ctrl)
 	connectorFactory := drivers.NewMockFactory(ctrl)
 	connector := drivers.NewMockDriver(ctrl)
 
@@ -104,7 +112,13 @@ func TestRunner(t *testing.T) {
 		StorePipelineState(gomock.Any(), pipeline.ID, 1).
 		Return(nil)
 
-	runner := startRunner(t, ctx, storage, connectorFactory)
+	runner := startRunner(
+		t,
+		ctx,
+		storage,
+		connectorFactory,
+		connectorConfigValidator,
+	)
 	err := runner.StartPipeline(ctx, pipeline.ID)
 	require.NoError(t, err)
 

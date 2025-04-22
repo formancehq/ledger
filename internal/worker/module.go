@@ -1,15 +1,16 @@
 package worker
 
 import (
-	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/grpcserver"
+	"github.com/formancehq/go-libs/v3/serverport"
 	"github.com/formancehq/ledger/internal/replication"
 	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
 	"github.com/formancehq/ledger/internal/storage"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
-	"net"
 )
 
 type GRPCServerModuleConfig struct {
@@ -33,35 +34,18 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 
 func NewGRPCServerFXModule(cfg GRPCServerModuleConfig) fx.Option {
 	return fx.Options(
-		fx.Invoke(func(lc fx.Lifecycle, replicationServer innergrpc.ReplicationServer) {
-			var grpcServer *grpc.Server
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					logging.FromContext(ctx).Infof("starting grpc server on %s", cfg.Address)
-					lis, err := net.Listen("tcp", cfg.Address)
-					if err != nil {
-						return fmt.Errorf("failed to listen: %v", err)
-					}
-					grpcServer = grpc.NewServer(cfg.ServerOptions...)
-					// todo: add auto discovery
-					innergrpc.RegisterReplicationServer(grpcServer, replicationServer)
-					go func() {
-						if err := grpcServer.Serve(lis); err != nil {
-							logging.FromContext(ctx).Errorf("failed to serve: %v", err)
-						}
-					}()
-
-					return nil
-				},
-				OnStop: func(ctx context.Context) error {
-					if grpcServer == nil {
-						return nil
-					}
-					grpcServer.GracefulStop()
-
-					return nil
-				},
-			})
+		fx.Invoke(func(lc fx.Lifecycle, replicationServer innergrpc.ReplicationServer, traceProvider trace.TracerProvider) {
+			lc.Append(grpcserver.NewHook(
+				grpcserver.WithServerPortOptions(
+					serverport.WithAddress(cfg.Address),
+				),
+				grpcserver.WithGRPCSetupOptions(func(server *grpc.Server) {
+					innergrpc.RegisterReplicationServer(server, replicationServer)
+				}),
+				grpcserver.WithGRPCServerOptions(
+					grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(traceProvider))),
+				),
+			))
 		}),
 	)
 }
@@ -71,8 +55,11 @@ func NewGRPCClientFxModule(
 	options ...grpc.DialOption,
 ) fx.Option {
 	return fx.Options(
-		fx.Provide(func() (*grpc.ClientConn, error) {
-			client, err := grpc.NewClient(address, options...)
+		fx.Provide(func(tracerProvider trace.TracerProvider) (*grpc.ClientConn, error) {
+			client, err := grpc.NewClient(address, append(
+				options,
+				grpc.WithStatsHandler(otelgrpc.NewClientHandler(otelgrpc.WithTracerProvider(tracerProvider))),
+			)...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to dial: %v", err)
 			}

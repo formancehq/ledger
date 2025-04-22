@@ -74,6 +74,17 @@ func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.Aggreg
 	return d.AggregatedVolumes()
 }
 
+func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) (ledgercontroller.Store, bun.IDB, func() error, error) {
+	lockLedger, conn, release, err := d.Store.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return &DefaultStoreAdapter{
+		Store: lockLedger,
+	}, conn, release, nil
+}
+
 func NewDefaultStoreAdapter(store *ledgerstore.Store) *DefaultStoreAdapter {
 	return &DefaultStoreAdapter{
 		Store: store,

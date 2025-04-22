@@ -35,7 +35,7 @@ func (srv GRPCServiceImpl) ListConnectors(ctx context.Context, _ *grpc.ListConne
 	}
 
 	return &grpc.ListConnectorsResponse{
-		Data: collectionutils.Map(ret.Data, mapConnector),
+		Data:   collectionutils.Map(ret.Data, mapConnector),
 		Cursor: mapCursor(ret),
 	}, nil
 }
@@ -65,7 +65,7 @@ func (srv GRPCServiceImpl) ListPipelines(ctx context.Context, _ *grpc.ListPipeli
 	}
 
 	return &grpc.ListPipelinesResponse{
-		Data: collectionutils.Map(cursor.Data, mapPipeline),
+		Data:   collectionutils.Map(cursor.Data, mapPipeline),
 		Cursor: mapCursor(cursor),
 	}, nil
 }
@@ -123,8 +123,6 @@ func (srv GRPCServiceImpl) ResetPipeline(ctx context.Context, request *grpc.Rese
 
 	return &grpc.ResetPipelineResponse{}, nil
 }
-
-func (srv GRPCServiceImpl) mustEmbedUnimplementedReplicationServer() {}
 
 var _ grpc.ReplicationServer = (*GRPCServiceImpl)(nil)
 

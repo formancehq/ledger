@@ -330,14 +330,18 @@ func (m *Manager) DeleteConnector(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for id, config := range m.pipelines {
-		if config.pipeline.ConnectorID == id {
-			if err := m.stopPipeline(ctx, id); err != nil {
-				return fmt.Errorf("stopping pipeline: %w", err)
+	driver, ok := m.drivers[id]
+	if ok {
+		for id, config := range m.pipelines {
+			if config.pipeline.ConnectorID == id {
+				if err := m.stopPipeline(ctx, id); err != nil {
+					return fmt.Errorf("stopping pipeline: %w", err)
+				}
 			}
 		}
+
+		m.stopDriver(ctx, driver)
 	}
-	m.stopDriver(ctx, m.drivers[id])
 
 	if err := m.storage.DeleteConnector(ctx, id); err != nil {
 		switch {
