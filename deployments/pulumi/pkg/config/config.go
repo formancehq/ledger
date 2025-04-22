@@ -708,7 +708,7 @@ type Config struct {
 
 func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 	return pulumi_ledger.ComponentArgs{
-		CommonArgs:    cfg.Common.toInput(),
+		CommonArgs:    cfg.toInput(),
 		Storage:       cfg.Storage.toInput(),
 		API:           cfg.API.toInput(),
 		Worker:        cfg.Worker.toInput(),

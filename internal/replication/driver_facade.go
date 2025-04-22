@@ -31,7 +31,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 	go func() {
 		defer close(c.startingChan)
 		for {
-			if err := c.Driver.Start(c.startContext); err != nil {
+			if err := c.Start(c.startContext); err != nil {
 				c.logger.Errorf("unable to start connector: %s", err)
 				if errors.Is(err, context.Canceled) {
 					return

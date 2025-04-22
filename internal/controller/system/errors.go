@@ -62,6 +62,10 @@ func (e ErrInvalidDriverConfiguration) Is(err error) bool {
 	return ok
 }
 
+func (e ErrInvalidDriverConfiguration) Unwrap() error {
+	return e.err
+}
+
 func NewErrInvalidDriverConfiguration(name string, err error) ErrInvalidDriverConfiguration {
 	return ErrInvalidDriverConfiguration{
 		name: name,
