@@ -132,9 +132,9 @@ func (mr *MockStoreMockRecorder) DeleteAccountMetadata(ctx, address, key any) *g
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error) {
+func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string, at time.Time) (*ledger.Transaction, bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, transactionID, key)
+	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, transactionID, key, at)
 	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
@@ -142,9 +142,9 @@ func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID
 }
 
 // DeleteTransactionMetadata indicates an expected call of DeleteTransactionMetadata.
-func (mr *MockStoreMockRecorder) DeleteTransactionMetadata(ctx, transactionID, key any) *gomock.Call {
+func (mr *MockStoreMockRecorder) DeleteTransactionMetadata(ctx, transactionID, key, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTransactionMetadata", reflect.TypeOf((*MockStore)(nil).DeleteTransactionMetadata), ctx, transactionID, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTransactionMetadata", reflect.TypeOf((*MockStore)(nil).DeleteTransactionMetadata), ctx, transactionID, key, at)
 }
 
 // GetBalances mocks base method.
@@ -322,9 +322,9 @@ func (mr *MockStoreMockRecorder) UpdateAccountsMetadata(ctx, m any) *gomock.Call
 }
 
 // UpdateTransactionMetadata mocks base method.
-func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error) {
+func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error) {
 	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "UpdateTransactionMetadata", ctx, transactionID, m)
+	ret := m_2.ctrl.Call(m_2, "UpdateTransactionMetadata", ctx, transactionID, m, at)
 	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
@@ -332,9 +332,9 @@ func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transaction
 }
 
 // UpdateTransactionMetadata indicates an expected call of UpdateTransactionMetadata.
-func (mr *MockStoreMockRecorder) UpdateTransactionMetadata(ctx, transactionID, m any) *gomock.Call {
+func (mr *MockStoreMockRecorder) UpdateTransactionMetadata(ctx, transactionID, m, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTransactionMetadata", reflect.TypeOf((*MockStore)(nil).UpdateTransactionMetadata), ctx, transactionID, m)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTransactionMetadata", reflect.TypeOf((*MockStore)(nil).UpdateTransactionMetadata), ctx, transactionID, m, at)
 }
 
 // UpsertAccounts mocks base method.

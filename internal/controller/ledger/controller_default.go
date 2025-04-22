@@ -221,7 +221,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 			switch payload.TargetType {
 			case ledger.MetaTargetTypeTransaction:
 				logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
-				if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
+				if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata, log.Date); err != nil {
 					return nil, fmt.Errorf("failed to update transaction metadata: %w", err)
 				}
 			case ledger.MetaTargetTypeAccount:
@@ -236,7 +236,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 			switch payload.TargetType {
 			case ledger.MetaTargetTypeTransaction:
 				logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
-				if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
+				if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key, log.Date); err != nil {
 					return nil, fmt.Errorf("failed to delete transaction metadata: %w", err)
 				}
 			case ledger.MetaTargetTypeAccount:
@@ -429,7 +429,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 }
 
 func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
-	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata); err != nil {
+	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
 		return nil, err
 	}
 
@@ -467,7 +467,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 }
 
 func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
-	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key)
+	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
 	}

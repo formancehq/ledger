@@ -149,7 +149,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		"foo": "bar",
 	}
 	store.EXPECT().
-		UpdateTransactionMetadata(gomock.Any(), 1, m).
+		UpdateTransactionMetadata(gomock.Any(), 1, m, time.Time{}).
 		Return(&ledger.Transaction{}, true, nil)
 
 	store.EXPECT().
@@ -190,7 +190,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		Return(nil)
 
 	store.EXPECT().
-		DeleteTransactionMetadata(gomock.Any(), 1, "foo").
+		DeleteTransactionMetadata(gomock.Any(), 1, "foo", time.Time{}).
 		Return(&ledger.Transaction{}, true, nil)
 
 	store.EXPECT().

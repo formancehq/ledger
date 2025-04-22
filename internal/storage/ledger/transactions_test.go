@@ -143,11 +143,11 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update their metadata
-	_, modified, err := store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"})
+	_, modified, err := store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"}, time.Time{})
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, *tx2.ID, metadata.Metadata{"foo2": "bar2"})
+	_, _, err = store.UpdateTransactionMetadata(ctx, *tx2.ID, metadata.Metadata{"foo2": "bar2"}, time.Time{})
 	require.NoError(t, err)
 
 	// Check that the database returns metadata
@@ -166,12 +166,12 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo2": "bar2"}, "metadata should be equal")
 
 	// Update metadata of a transaction already having those metadata
-	_, modified, err = store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"})
+	_, modified, err = store.UpdateTransactionMetadata(ctx, *tx1.ID, metadata.Metadata{"foo1": "bar2"}, time.Time{})
 	require.NoError(t, err)
 	require.False(t, modified)
 
 	// Update metadata of non existing transactions
-	_, modified, err = store.UpdateTransactionMetadata(ctx, 10, metadata.Metadata{"foo2": "bar2"})
+	_, modified, err = store.UpdateTransactionMetadata(ctx, 10, metadata.Metadata{"foo2": "bar2"}, time.Time{})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
 	require.False(t, modified)
@@ -201,7 +201,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"})
 
 	// Delete a metadata
-	tx1, modified, err := store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1")
+	tx1, modified, err := store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1", time.Time{})
 	require.NoError(t, err)
 	require.True(t, modified)
 
@@ -212,12 +212,12 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{"foo2": "bar2"}, tx.Metadata)
 
 	// Delete a not existing metadata
-	_, modified, err = store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1")
+	_, modified, err = store.DeleteTransactionMetadata(ctx, *tx1.ID, "foo1", time.Time{})
 	require.NoError(t, err)
 	require.False(t, modified)
 
 	// Delete metadata of a non existing transaction
-	_, modified, err = store.DeleteTransactionMetadata(ctx, 10, "foo1")
+	_, modified, err = store.DeleteTransactionMetadata(ctx, 10, "foo1", time.Time{})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
 	require.False(t, modified)
@@ -643,6 +643,7 @@ func TestTransactionsInsert(t *testing.T) {
 			Destinations       []string         `bun:"destinations,type:jsonb"`
 			SourcesArrays      []map[string]any `bun:"sources_arrays,type:jsonb"`
 			DestinationsArrays []map[string]any `bun:"destinations_arrays,type:jsonb"`
+			UpdatedAt          time.Time        `bun:"updated_at,notnull"`
 		}
 
 		m := Model{}
@@ -665,6 +666,7 @@ func TestTransactionsInsert(t *testing.T) {
 				"0": "bank",
 				"1": nil,
 			}},
+			UpdatedAt: now,
 		}, m)
 	})
 }
@@ -714,7 +716,7 @@ func TestTransactionsList(t *testing.T) {
 
 	_, _, err = store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
-	})
+	}, time.Time{})
 	require.NoError(t, err)
 
 	// refresh tx3
