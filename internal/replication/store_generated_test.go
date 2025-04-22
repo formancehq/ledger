@@ -242,11 +242,12 @@ func (mr *MockStorageMockRecorder) StorePipelineState(ctx, id, lastLogID any) *g
 }
 
 // UpdatePipeline mocks base method.
-func (m *MockStorage) UpdatePipeline(ctx context.Context, id string, o map[string]any) error {
+func (m *MockStorage) UpdatePipeline(ctx context.Context, id string, o map[string]any) (*ledger.Pipeline, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdatePipeline", ctx, id, o)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // UpdatePipeline indicates an expected call of UpdatePipeline.
