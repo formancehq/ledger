@@ -404,6 +404,8 @@ github.com/zitadel/oidc/v2 v2.12.2 h1:3kpckg4rurgw7w7aLJrq7yvRxb2pkNOtD08RH42vPE
 github.com/zitadel/oidc/v2 v2.12.2/go.mod h1:vhP26g1g4YVntcTi0amMYW3tJuid70nxqxf+kb6XKgg=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=
 go.opentelemetry.io/auto/sdk v1.1.0/go.mod h1:3wSPjt5PWp2RhlCcmmOial7AvC4DQqZb7a7wCow3W8A=
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0 h1:rbRJ8BBoVMsQShESYZ0FkvcITu8X8QNwJogcLUmDNNw=
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0/go.mod h1:ru6KHrNtNHxM4nD/vd6QrLVWgKhxPYgblq4VAtNawTQ=
 go.opentelemetry.io/contrib/instrumentation/host v0.62.0 h1:hAVkLihKCrIkiX/cUvY0qn6yi0uMdr1/zWpb7lEjdYY=
 go.opentelemetry.io/contrib/instrumentation/host v0.62.0/go.mod h1:GiuKDIEAJPhz+D9gApgUxthEVmwC29T73Eg158qBT2g=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0 h1:Hf9xI/XLML9ElpiHVDNwvqI0hIFlzV8dgIr35kV1kRU=

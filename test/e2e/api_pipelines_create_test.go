@@ -5,6 +5,7 @@ package test_suite
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/grpcserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
@@ -65,7 +66,7 @@ var driversSetup = map[string]func(func(d *deferred.Deferred[Driver])){
 	},
 }
 
-var _ = FContext("Pipelines API tests", func() {
+var _ = Context("Pipelines API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
@@ -83,7 +84,6 @@ var _ = FContext("Pipelines API tests", func() {
 				ExperimentalEnableWorker(),
 				ExperimentalPipelinesPullIntervalInstrumentation(100*time.Millisecond),
 				ExperimentalPipelinesPushRetryPeriodInstrumentation(100*time.Millisecond),
-				ExperimentalPipelinesSyncPeriodInstrumentation(100*time.Millisecond),
 			),
 			testservice.WithLogger(GinkgoT()),
 		)
@@ -91,19 +91,10 @@ var _ = FContext("Pipelines API tests", func() {
 	})
 
 	Context("With a single instance, and worker on a separate process", func() {
-		testServer := DeferTestServer(
-			DeferMap(db, (*pgtesting.Database).ConnectionOptions),
-			testservice.WithInstruments(
-				testservice.NatsInstrumentation(DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
-				testservice.DebugInstrumentation(debug),
-				testservice.OutputInstrumentation(GinkgoWriter),
-				ExperimentalFeaturesInstrumentation(),
-				ExperimentalConnectorsInstrumentation(),
-			),
-			testservice.WithLogger(GinkgoT()),
-		)
-		_ = DeferTestWorker(
-			DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		connectionOptions := DeferMap(db, (*pgtesting.Database).ConnectionOptions)
+
+		worker := DeferTestWorker(
+			connectionOptions,
 			testservice.WithInstruments(
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
@@ -111,7 +102,21 @@ var _ = FContext("Pipelines API tests", func() {
 				ExperimentalConnectorsInstrumentation(),
 				ExperimentalPipelinesPullIntervalInstrumentation(100*time.Millisecond),
 				ExperimentalPipelinesPushRetryPeriodInstrumentation(100*time.Millisecond),
-				ExperimentalPipelinesSyncPeriodInstrumentation(100*time.Millisecond),
+			),
+			testservice.WithLogger(GinkgoT()),
+		)
+
+		testServer := DeferTestServer(
+			connectionOptions,
+			testservice.WithInstruments(
+				testservice.NatsInstrumentation(DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
+				testservice.DebugInstrumentation(debug),
+				testservice.OutputInstrumentation(GinkgoWriter),
+				ExperimentalFeaturesInstrumentation(),
+				ExperimentalConnectorsInstrumentation(),
+				WorkerAddressInstrumentation(DeferMap(worker, func(from *testservice.Service) string {
+					return grpcserver.Address(from.GetContext())
+				})),
 			),
 			testservice.WithLogger(GinkgoT()),
 		)

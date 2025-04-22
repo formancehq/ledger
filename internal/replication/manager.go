@@ -26,7 +26,6 @@ type Manager struct {
 
 	driverFactory drivers.Factory
 	drivers       map[string]*DriverFacade
-	syncPeriod    time.Duration
 
 	pipelineOptions           []PipelineOption
 	connectorsConfigValidator ConfigValidator
@@ -152,7 +151,10 @@ func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (
 }
 
 func (m *Manager) stopPipeline(ctx context.Context, id string) error {
-	handler := m.pipelines[id]
+	handler, ok := m.pipelines[id]
+	if !ok {
+		return ledger.NewErrPipelineNotFound(id)
+	}
 
 	if err := handler.Shutdown(ctx); err != nil {
 		return fmt.Errorf("error stopping pipeline: %w", err)
@@ -252,21 +254,11 @@ func (m *Manager) Run(ctx context.Context) {
 		m.logger.Errorf("starting pipelines: %s", err)
 	}
 
-	for {
-		select {
-		case signalChannel := <-m.stopChannel:
-			m.logger.Debugf("got stop signal")
-			m.stopPipelines(ctx)
-			m.pipelinesWaitGroup.Wait()
-			close(signalChannel)
-			return
-		case <-time.After(m.syncPeriod):
-			// todo: lock?
-			//if err := m.synchronizePipelines(ctx); err != nil {
-			//	m.logger.Errorf("starting pipelines: %s", err)
-			//}
-		}
-	}
+	signalChannel := <-m.stopChannel
+	m.logger.Debugf("got stop signal")
+	m.stopPipelines(ctx)
+	m.pipelinesWaitGroup.Wait()
+	close(signalChannel)
 }
 
 func (m *Manager) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
@@ -330,14 +322,18 @@ func (m *Manager) DeleteConnector(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for id, config := range m.pipelines {
-		if config.pipeline.ConnectorID == id {
-			if err := m.stopPipeline(ctx, id); err != nil {
-				return fmt.Errorf("stopping pipeline: %w", err)
+	driver, ok := m.drivers[id]
+	if ok {
+		for id, config := range m.pipelines {
+			if config.pipeline.ConnectorID == id {
+				if err := m.stopPipeline(ctx, id); err != nil {
+					return fmt.Errorf("stopping pipeline: %w", err)
+				}
 			}
 		}
+
+		m.stopDriver(ctx, driver)
 	}
-	m.stopDriver(ctx, m.drivers[id])
 
 	if err := m.storage.DeleteConnector(ctx, id); err != nil {
 		switch {
@@ -391,9 +387,9 @@ func (m *Manager) DeletePipeline(ctx context.Context, id string) error {
 }
 
 func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if err := m.stopPipeline(ctx, id); err != nil {
 		return fmt.Errorf("stopping pipeline: %w", err)
 	}
@@ -441,18 +437,10 @@ func NewManager(
 
 type Option func(r *Manager)
 
-func WithSyncPeriod(duration time.Duration) Option {
-	return func(r *Manager) {
-		r.syncPeriod = duration
-	}
-}
-
 func WithPipelineOptions(options ...PipelineOption) Option {
 	return func(r *Manager) {
 		r.pipelineOptions = append(r.pipelineOptions, options...)
 	}
 }
 
-var defaultOptions = []Option{
-	WithSyncPeriod(5 * time.Second),
-}
+var defaultOptions = []Option{}

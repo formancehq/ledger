@@ -58,6 +58,7 @@ require (
 	github.com/olivere/elastic/v7 v7.0.32
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0
 	go.vallahaye.net/batcher v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )

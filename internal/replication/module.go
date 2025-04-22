@@ -12,7 +12,6 @@ import (
 )
 
 type WorkerModuleConfig struct {
-	SyncPeriod      time.Duration
 	PushRetryPeriod time.Duration
 	PullInterval    time.Duration
 }
@@ -28,9 +27,6 @@ func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 			logger logging.Logger,
 		) *Manager {
 			options := make([]Option, 0)
-			if cfg.SyncPeriod > 0 {
-				options = append(options, WithSyncPeriod(cfg.SyncPeriod))
-			}
 			if cfg.PushRetryPeriod > 0 {
 				options = append(options, WithPipelineOptions(
 					WithPushRetryPeriod(cfg.PushRetryPeriod),
@@ -81,7 +77,7 @@ func NewFXGRPCClientModule() fx.Option {
 		fx.Provide(func(conn *grpc.ClientConn) innergrpc.ReplicationClient {
 			return innergrpc.NewReplicationClient(conn)
 		}),
-		fx.Provide(fx.Annotate(NewThroughGRPCReplicationBackend, fx.As(new(system.ReplicationBackend)))),
+		fx.Provide(fx.Annotate(NewThroughGRPCBackend, fx.As(new(system.ReplicationBackend)))),
 	)
 }
 
