@@ -51,12 +51,13 @@ require (
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.35.0
-	github.com/formancehq/go-libs/v3 v3.0.0-20250521193206-16afb7f06140
+	github.com/formancehq/go-libs/v3 v3.0.0-20250422121250-0689c5e8027f
 	github.com/lib/pq v1.10.9
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/olivere/elastic/v7 v7.0.32
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
 	go.vallahaye.net/batcher v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -236,8 +237,8 @@ require (
 	golang.org/x/tools v0.33.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
-	google.golang.org/grpc v1.72.1 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/grpc v1.72.1
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

@@ -66,19 +66,24 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 
 		templateDatabase := ret.NewDatabase(GinkgoT(), WithName(DBTemplate))
 
+		By("Connecting to database...")
 		bunDB, err := bunconnect.OpenSQLDB(context.Background(), templateDatabase.ConnectionOptions())
 		Expect(err).To(BeNil())
 
+		By("Creating system schema")
 		err = system.Migrate(context.Background(), bunDB)
 		Expect(err).To(BeNil())
 
+		By("Creating default bucket")
 		// Initialize the _default bucket on the default database
 		// This way, we will be able to clone this database to speed up the tests
 		err = bucket.GetMigrator(bunDB, ledger.DefaultBucket).Up(context.Background())
 		Expect(err).To(BeNil())
 
+		By("Closing connection")
 		Expect(bunDB.Close()).To(BeNil())
 
+		By("Loaded")
 		return ret, nil
 	})
 
@@ -99,7 +104,16 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 	}
 
 	By("Waiting services alive")
-	Expect(deferred.WaitContext(specContext, pgServer, natsServer, clickhouseServer)).To(BeNil())
+	By("Waiting PG")
+	_, err := pgServer.Wait(specContext)
+	Expect(err).To(BeNil())
+	By("Waiting nats")
+	_, err = natsServer.Wait(specContext)
+	Expect(err).To(BeNil())
+	By("Waiting clickhouse")
+	_, err = clickhouseServer.Wait(specContext)
+	Expect(err).To(BeNil())
+	//Expect(deferred.WaitContext(specContext, pgServer, natsServer, clickhouseServer)).To(BeNil())
 	By("All services ready.")
 
 	data, err := json.Marshal(ParallelExecutionContext{

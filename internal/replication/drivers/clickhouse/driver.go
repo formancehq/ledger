@@ -166,8 +166,6 @@ func OpenDB(logger logging.Logger, dsn string, debug bool) (driver.Conn, error) 
 		"enable_variant_type":                     true,
 		"output_format_json_quote_64bit_integers": false,
 	}
-	// todo: make conditional
-	// options.TLS = &tls.Config{}
 
 	db, err := clickhouse.Open(options)
 	if err != nil {

@@ -7,7 +7,7 @@ replace github.com/formancehq/ledger => ../../
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0-20250521193206-16afb7f06140
+	github.com/formancehq/go-libs/v3 v3.0.0-20250422121250-0689c5e8027f
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-20250522125118-07406c497fbe
 	github.com/google/go-cmp v0.7.0
@@ -197,6 +197,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zitadel/oidc/v2 v2.12.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/host v0.60.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.60.0 // indirect

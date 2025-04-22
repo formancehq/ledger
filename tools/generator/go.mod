@@ -9,7 +9,7 @@ replace github.com/formancehq/ledger => ../..
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0-20250521193206-16afb7f06140
+	github.com/formancehq/go-libs/v3 v3.0.0-20250422121250-0689c5e8027f
 	github.com/formancehq/ledger v1.12.0
 	github.com/formancehq/ledger/pkg/client v0.0.0-20250522125118-07406c497fbe
 	github.com/spf13/cobra v1.9.1
@@ -88,10 +88,8 @@ require (
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/fx v1.24.0 // indirect
-	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	go.vallahaye.net/batcher v0.6.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/net v0.40.0 // indirect
