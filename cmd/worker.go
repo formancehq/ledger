@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	WorkerPipelinesSyncPeriodFlag      = "worker-pipelines-sync-period"
 	WorkerPipelinesPullIntervalFlag    = "worker-pipelines-pull-interval"
 	WorkerPipelinesPushRetryPeriodFlag = "worker-pipelines-push-retry-period"
 
@@ -39,7 +38,6 @@ type WorkerConfiguration struct {
 	HashLogsBlockMaxSize  int           `mapstructure:"worker-async-block-hasher-max-block-size"`
 	HashLogsBlockCRONSpec cron.Schedule `mapstructure:"worker-async-block-hasher-schedule"`
 
-	SyncPeriod      time.Duration `mapstructure:"worker-pipelines-sync-period"`
 	PushRetryPeriod time.Duration `mapstructure:"worker-pipelines-push-retry-period"`
 	PullInterval    time.Duration `mapstructure:"worker-pipelines-pull-interval"`
 }
@@ -53,7 +51,6 @@ type WorkerCommandConfiguration struct {
 func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(WorkerAsyncBlockHasherMaxBlockSizeFlag, 1000, "Max block size")
 	cmd.Flags().String(WorkerAsyncBlockHasherScheduleFlag, "0 * * * * *", "Schedule")
-	cmd.Flags().Duration(WorkerPipelinesSyncPeriodFlag, 5*time.Second, "Pipelines sync period")
 	cmd.Flags().Duration(WorkerPipelinesPullIntervalFlag, 5*time.Second, "Pipelines pull interval")
 	cmd.Flags().Duration(WorkerPipelinesPushRetryPeriodFlag, 10*time.Second, "Pipelines push retry period")
 }
@@ -111,7 +108,6 @@ func newWorkerModule(configuration WorkerConfiguration) fx.Option {
 			Schedule:     configuration.HashLogsBlockCRONSpec,
 		},
 		ReplicationConfig: replication.WorkerModuleConfig{
-			SyncPeriod:      configuration.SyncPeriod,
 			PushRetryPeriod: configuration.PushRetryPeriod,
 			PullInterval:    configuration.PullInterval,
 		},

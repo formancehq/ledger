@@ -69,13 +69,6 @@ func DefaultPageSizeInstrumentation(size uint64) testservice.InstrumentationFunc
 	}
 }
 
-func ExperimentalPipelinesSyncPeriodInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
-	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
-		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesSyncPeriodFlag, fmt.Sprint(duration))
-		return nil
-	}
-}
-
 func ExperimentalPipelinesPushRetryPeriodInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
 		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesPushRetryPeriodFlag, fmt.Sprint(duration))
@@ -86,6 +79,24 @@ func ExperimentalPipelinesPushRetryPeriodInstrumentation(duration time.Duration)
 func ExperimentalPipelinesPullIntervalInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
 		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesPullIntervalFlag, fmt.Sprint(duration))
+		return nil
+	}
+}
+
+func GRPCAddressInstrumentation(addr string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerGRPCAddressFlag, addr)
+		return nil
+	}
+}
+
+func WorkerAddressInstrumentation(addr *deferred.Deferred[string]) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		address, err := addr.Wait(ctx)
+		if err != nil {
+			return fmt.Errorf("waiting for worker address: %w", err)
+		}
+		runConfiguration.AppendArgs("--"+cmd.WorkerGRPCAddressFlag, address)
 		return nil
 	}
 }
