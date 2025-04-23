@@ -43,7 +43,7 @@ jobs:
 
       - name: Login to Antithesis Docker Registry
         run: |
-          echo '${{ secrets.ANTITHESIS_JSON_KEY }}' | docker login -u _json_key --password-stdin ${{ secrets.ANTITHESIS_REGISTRY }}
+          echo '${{ secrets.ANTITHESIS_JSON_KEY }}' | docker login -u _json_key https://us-central1-docker.pkg.dev --password-stdin
 
       - name: Build and Push Config Image
         run: |
