@@ -48,12 +48,12 @@ jobs:
       - name: Build and Push Config Image
         run: |
           cd test/antithesis
-          earthly --push +requirements-build --ANTITHESIS_REPOSITORY=${{ secrets.ANTITHESIS_REGISTRY }}
+          earthly --push +requirements-build --ANTITHESIS_REPOSITORY=${{ secrets.ANTITHESIS_REPOSITORY }}
 
       - name: Run Antithesis Tests
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests == true }}
         run: |
           cd test/antithesis
-          earthly --push +run --ANTITHESIS_SLACK_REPORT_RECIPIENT="${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}" --ANTITHESIS_REPOSITORY=${{ secrets.ANTITHESIS_REGISTRY }}
-        env:
-          ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }} 
+          earthly +run --ANTITHESIS_SLACK_REPORT_RECIPIENT="${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}" --ANTITHESIS_REPOSITORY=${{ secrets.ANTITHESIS_REGISTRY }} --ANTITHESIS_PASSWORD=${{ secrets.ANTITHESIS_PASSWORD }}
+        # env:
+        #   ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }} 
