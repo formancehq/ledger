@@ -1,0 +1,62 @@
+name: Antithesis Integration
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run Antithesis tests after pushing images'
+        type: boolean
+        default: true
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'test/antithesis/**'
+
+jobs:
+  push-antithesis-images:
+    name: Push Images to Antithesis
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Earthly
+        uses: earthly/actions-setup@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: "latest"
+
+      - name: Setup Environment
+        uses: ./.github/actions/default
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Antithesis Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ANTITHESIS_REGISTRY }}
+          username: ${{ secrets.ANTITHESIS_USERNAME }}
+          password: ${{ secrets.ANTITHESIS_PASSWORD }}
+
+      - name: Build and Push Config Image
+        run: |
+          cd test/antithesis
+          earthly --push +requirements-build --ANTITHESIS_REPOSITORY=${{ secrets.ANTITHESIS_REGISTRY }}
+
+      - name: Run Antithesis Tests
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests == true }}
+        run: |
+          cd test/antithesis
+          earthly --push +run --ANTITHESIS_SLACK_REPORT_RECIPIENT="${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}" --ANTITHESIS_REPOSITORY=${{ secrets.ANTITHESIS_REGISTRY }}
+        env:
+          ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }} 
