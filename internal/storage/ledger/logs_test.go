@@ -5,7 +5,9 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
@@ -13,12 +15,12 @@ import (
 	"errors"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/logging"
 
-	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +34,10 @@ func TestLogsInsert(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
 		store := newLedgerStore(t)
 		log1 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction:     ledger.NewTransaction(),
+			Transaction: ledger.NewTransaction().WithMetadata(metadata.Metadata{
+				"foo": "<nil>",
+				"bar": "?/\\'>",
+			}),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log1Copy := log1
@@ -52,7 +57,9 @@ func TestLogsInsert(t *testing.T) {
 		// Insert a new log to test the hash when a previous hash exists
 		// We also addi an idempotency key to check for conflicts
 		log2 := ledger.NewLog(ledger.CreatedTransaction{
-			Transaction:     ledger.NewTransaction().WithID(1),
+			Transaction: ledger.NewTransaction().WithID(1).WithMetadata(metadata.Metadata{
+				"foo": "<nil>",
+			}),
 			AccountMetadata: ledger.AccountMetadata{},
 		})
 		log2Copy := log2
@@ -123,7 +130,7 @@ func TestLogsInsert(t *testing.T) {
 		err := errGroup.Wait()
 		require.NoError(t, err)
 
-		logs, err := store.Logs().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+		logs, err := store.Logs().Paginate(ctx, common.ColumnPaginatedQuery[any]{
 			PageSize: countLogs,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
@@ -213,14 +220,14 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{})
+	cursor, err := store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	require.NoError(t, err)
@@ -228,9 +235,9 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
 		PageSize: 10,
-		Options: ledgercontroller.ResourceQuery[any]{
+		Options: common.ResourceQuery[any]{
 			Builder: query.And(
 				query.Gte("date", now.Add(-2*time.Hour)),
 				query.Lt("date", now.Add(-time.Hour)),
@@ -243,9 +250,9 @@ func TestLogsList(t *testing.T) {
 	require.Len(t, cursor.Data, 1)
 	require.EqualValues(t, 2, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), ledgercontroller.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
 		PageSize: 10,
-		Options: ledgercontroller.ResourceQuery[any]{
+		Options: common.ResourceQuery[any]{
 			Builder: query.Lt("id", 3),
 		},
 	})

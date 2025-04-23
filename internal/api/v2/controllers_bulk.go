@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger/internal/api/common"
 )
 
@@ -43,7 +43,7 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 			},
 		)
 		if err != nil {
-			api.InternalServerError(w, r, err)
+			common.InternalServerError(w, r, err)
 			return
 		}
 

@@ -3,8 +3,7 @@ package ledger
 import (
 	"encoding/base64"
 	"fmt"
-
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/internal/machine"
@@ -31,7 +30,7 @@ func (i ErrImport) Is(err error) bool {
 
 var _ error = (*ErrImport)(nil)
 
-func newErrImport(err error) ErrImport {
+func NewErrImport(err error) ErrImport {
 	return ErrImport{
 		err: err,
 	}
@@ -57,7 +56,7 @@ func (i ErrInvalidHash) Error() string {
 var _ error = (*ErrInvalidHash)(nil)
 
 func newErrInvalidHash(logID int, got, expected []byte) ErrImport {
-	return newErrImport(ErrInvalidHash{
+	return NewErrImport(ErrInvalidHash{
 		expected: expected,
 		got:      got,
 		logID:    logID,
@@ -88,25 +87,6 @@ var _ error = (*ErrAlreadyReverted)(nil)
 func newErrAlreadyReverted(id int) ErrAlreadyReverted {
 	return ErrAlreadyReverted{
 		id: id,
-	}
-}
-
-type ErrInvalidQuery struct {
-	msg string
-}
-
-func (e ErrInvalidQuery) Error() string {
-	return e.msg
-}
-
-func (e ErrInvalidQuery) Is(err error) bool {
-	_, ok := err.(ErrInvalidQuery)
-	return ok
-}
-
-func NewErrInvalidQuery(msg string, args ...any) ErrInvalidQuery {
-	return ErrInvalidQuery{
-		msg: fmt.Sprintf(msg, args...),
 	}
 }
 
@@ -265,5 +245,25 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		idempotencyKey:          idempotencyKey,
 		expectedIdempotencyHash: expectedIdempotencyHash,
 		computedIdempotencyHash: gotIdempotencyHash,
+	}
+}
+
+// ErrConcurrentTransaction can be raised in case of conflicting between an import and a single transaction
+type ErrConcurrentTransaction struct {
+	id int
+}
+
+func (e ErrConcurrentTransaction) Error() string {
+	return fmt.Sprintf("duplicate id insertion %d", e.id)
+}
+
+func (e ErrConcurrentTransaction) Is(err error) bool {
+	_, ok := err.(ErrConcurrentTransaction)
+	return ok
+}
+
+func NewErrConcurrentTransaction(id int) ErrConcurrentTransaction {
+	return ErrConcurrentTransaction{
+		id: id,
 	}
 }

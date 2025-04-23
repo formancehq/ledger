@@ -73,7 +73,7 @@ func (o *V2ListAccountsRequest) GetPit() *time.Time {
 
 func (o *V2ListAccountsRequest) GetRequestBody() map[string]any {
 	if o == nil {
-		return nil
+		return map[string]any{}
 	}
 	return o.RequestBody
 }

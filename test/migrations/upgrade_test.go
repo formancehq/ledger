@@ -3,13 +3,14 @@ package migrations
 import (
 	"flag"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/docker"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/ory/dockertest/v3"
 	dockerlib "github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/require"
@@ -69,6 +70,7 @@ func TestMigrations(t *testing.T) {
 		db,
 		ledger.NewFactory(db),
 		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
 		driver.WithParallelBucketMigration(1),
 	)
 	require.NoError(t, driver.Initialize(ctx))

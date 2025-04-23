@@ -9,10 +9,10 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 
-	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -26,7 +26,7 @@ func autoCreateMiddleware(backend system.Controller, tracer trace.Tracer) func(h
 			ledgerName := chi.URLParam(r, "ledger")
 			if _, err := backend.GetLedger(ctx, ledgerName); err != nil {
 				if !postgres.IsNotFoundError(err) {
-					api.InternalServerError(w, r, err)
+					common.InternalServerError(w, r, err)
 					return
 				}
 
@@ -37,7 +37,7 @@ func autoCreateMiddleware(backend system.Controller, tracer trace.Tracer) func(h
 					case errors.Is(err, ledger.ErrInvalidLedgerName{}):
 						api.BadRequest(w, common.ErrValidation, err)
 					default:
-						api.InternalServerError(w, r, err)
+						common.InternalServerError(w, r, err)
 					}
 					return
 				}

@@ -1,14 +1,15 @@
 package v1
 
 import (
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"strings"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontroller.Parameters[INPUT] {
@@ -24,8 +25,8 @@ func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontrol
 	}
 }
 
-func getOffsetPaginatedQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.OffsetPaginatedQuery[v], error) {
-	return bunpaginate.Extract[ledgercontroller.OffsetPaginatedQuery[v]](r, func() (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+func getOffsetPaginatedQuery[v any](r *http.Request, modifiers ...func(*v) error) (*storagecommon.OffsetPaginatedQuery[v], error) {
+	return bunpaginate.Extract[storagecommon.OffsetPaginatedQuery[v]](r, func() (*storagecommon.OffsetPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
 		if err != nil {
 			return nil, err
@@ -36,15 +37,15 @@ func getOffsetPaginatedQuery[v any](r *http.Request, modifiers ...func(*v) error
 			return nil, err
 		}
 
-		return &ledgercontroller.OffsetPaginatedQuery[v]{
+		return &storagecommon.OffsetPaginatedQuery[v]{
 			PageSize: pageSize,
 			Options:  *rq,
 		}, nil
 	})
 }
 
-func getColumnPaginatedQuery[v any](r *http.Request, column string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
-	return bunpaginate.Extract[ledgercontroller.ColumnPaginatedQuery[v]](r, func() (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+func getColumnPaginatedQuery[v any](r *http.Request, column string, order bunpaginate.Order, modifiers ...func(*v) error) (*storagecommon.ColumnPaginatedQuery[v], error) {
+	return bunpaginate.Extract[storagecommon.ColumnPaginatedQuery[v]](r, func() (*storagecommon.ColumnPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
 		if err != nil {
 			return nil, err
@@ -55,7 +56,7 @@ func getColumnPaginatedQuery[v any](r *http.Request, column string, order bunpag
 			return nil, err
 		}
 
-		return &ledgercontroller.ColumnPaginatedQuery[v]{
+		return &storagecommon.ColumnPaginatedQuery[v]{
 			PageSize: pageSize,
 			Column:   column,
 			Order:    pointer.For(order),
@@ -64,7 +65,7 @@ func getColumnPaginatedQuery[v any](r *http.Request, column string, order bunpag
 	})
 }
 
-func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.ResourceQuery[v], error) {
+func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*storagecommon.ResourceQuery[v], error) {
 	var options v
 	for _, modifier := range modifiers {
 		if err := modifier(&options); err != nil {
@@ -72,8 +73,8 @@ func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*led
 		}
 	}
 
-	return &ledgercontroller.ResourceQuery[v]{
-		Expand:  r.URL.Query()["expand"],
-		Opts:    options,
+	return &storagecommon.ResourceQuery[v]{
+		Expand: r.URL.Query()["expand"],
+		Opts:   options,
 	}, nil
 }

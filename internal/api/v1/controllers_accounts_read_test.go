@@ -2,19 +2,19 @@ package v1
 
 import (
 	"bytes"
-	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -26,7 +26,7 @@ func TestAccountsRead(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgercontroller.ResourceQuery[any]
+		expectQuery       storagecommon.ResourceQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -38,7 +38,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "nominal",
 			account: "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},
@@ -47,7 +47,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "with expand volumes",
 			account: "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},
@@ -65,7 +65,7 @@ func TestAccountsRead(t *testing.T) {
 		{
 			name:    "with not existing account",
 			account: "foo",
-			expectQuery: ledgercontroller.ResourceQuery[any]{
+			expectQuery: storagecommon.ResourceQuery[any]{
 				Builder: query.Match("address", "foo"),
 				Expand:  []string{"volumes"},
 			},

@@ -4,21 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/migrations"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type Store interface {
 	CreateLedger(ctx context.Context, l *ledger.Ledger) error
 	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
+	Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 
@@ -32,7 +35,8 @@ const (
 )
 
 type DefaultStore struct {
-	db bun.IDB
+	db     bun.IDB
+	tracer trace.Tracer
 }
 
 func (d *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
@@ -91,27 +95,14 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 	return err
 }
 
-func (d *DefaultStore) ListLedgers(ctx context.Context, q ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	query := d.db.NewSelect().
-		Model(&ledger.Ledger{}).
-		Column("*").
-		Order("added_at asc")
-
-	if len(q.Options.Options.Features) > 0 {
-		for key, value := range q.Options.Options.Features {
-			query = query.Where("features->>? = ?", key, value)
-		}
-	}
-
-	if q.Options.Options.Bucket != "" {
-		query = query.Where("bucket = ?", q.Options.Options.Bucket)
-	}
-
-	return bunpaginate.UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload], ledger.Ledger](
-		ctx,
-		query,
-		bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[ledgercontroller.ListLedgersQueryPayload]](q),
-	)
+func (d *DefaultStore) Ledgers() common.PaginatedResource[
+	ledger.Ledger,
+	any,
+	common.ColumnPaginatedQuery[any]] {
+	return common.NewPaginatedResourceRepository(&ledgersResourceHandler{store: d}, common.ColumnPaginator[ledger.Ledger, any]{
+		DefaultPaginationColumn: "id",
+		DefaultOrder:            bunpaginate.OrderAsc,
+	})
 }
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
@@ -128,15 +119,37 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 }
 
 func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option) error {
-	return d.GetMigrator(options...).Up(ctx)
+	_, err := tracing.Trace(ctx, d.tracer, "MigrateSystemStore", func(ctx context.Context) (any, error) {
+		return nil, d.GetMigrator(options...).Up(ctx)
+	})
+	return err
+
 }
 
 func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
-	return GetMigrator(d.db, options...)
+	return GetMigrator(d.db, append(options, migrations.WithTracer(d.tracer))...)
 }
 
-func New(db bun.IDB) *DefaultStore {
-	return &DefaultStore{
+func New(db bun.IDB, opts ...Option) *DefaultStore {
+	ret := &DefaultStore{
 		db: db,
 	}
+
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(ret)
+	}
+
+	return ret
+}
+
+type Option func(*DefaultStore)
+
+func WithTracer(tracer trace.Tracer) Option {
+	return func(d *DefaultStore) {
+		d.tracer = tracer
+	}
+}
+
+var defaultOptions = []Option{
+	WithTracer(noop.Tracer{}),
 }

@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
@@ -401,9 +401,11 @@ func TestTransactionCreate(t *testing.T) {
 			if testCase.expectControllerCall {
 				testCase.expectedRunScript.Timestamp = time.Time{}
 				expect := ledgerController.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 						DryRun: tc.expectedDryRun,
-						Input:  testCase.expectedRunScript,
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: testCase.expectedRunScript,
+						},
 					})
 
 				if tc.returnError == nil {

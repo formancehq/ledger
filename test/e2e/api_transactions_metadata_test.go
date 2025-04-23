@@ -3,11 +3,15 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
@@ -21,18 +25,17 @@ var _ = Context("Ledger accounts list API tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL: natsServer.GetValue().ClientURL(),
-		}
-	})
-	BeforeEach(func() {
-		err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
+	BeforeEach(func(specContext SpecContext) {
+		_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
@@ -40,14 +43,13 @@ var _ = Context("Ledger accounts list API tests", func() {
 	When("creating a transaction on a ledger", func() {
 		var (
 			timestamp = time.Now().Round(time.Second).UTC()
-			rsp       *components.V2Transaction
+			rsp       *operations.V2CreateTransactionResponse
 			err       error
 		)
-		BeforeEach(func() {
+		BeforeEach(func(specContext SpecContext) {
 			// Create a transaction
-			rsp, err = CreateTransaction(
+			rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2CreateTransactionRequest{
 					V2PostTransaction: components.V2PostTransaction{
 						Metadata: map[string]string{},
@@ -67,24 +69,22 @@ var _ = Context("Ledger accounts list API tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Check existence on api
-			_, err := GetTransaction(
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetTransactionRequest{
 					Ledger: "default",
-					ID:     rsp.ID,
+					ID:     rsp.V2CreateTransactionResponse.Data.ID,
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		It("should fail if the transaction does not exist", func() {
+		It("should fail if the transaction does not exist", func(specContext SpecContext) {
 			metadata := map[string]string{
 				"foo": "bar",
 			}
 
-			err := AddMetadataToTransaction(
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataOnTransaction(
 				ctx,
-				testServer.GetValue(),
 				operations.V2AddMetadataOnTransactionRequest{
 					RequestBody: metadata,
 					Ledger:      "default",
@@ -98,29 +98,27 @@ var _ = Context("Ledger accounts list API tests", func() {
 			metadata := map[string]string{
 				"foo": "bar",
 			}
-			BeforeEach(func() {
-				err := AddMetadataToTransaction(
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataOnTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2AddMetadataOnTransactionRequest{
 						RequestBody: metadata,
 						Ledger:      "default",
-						ID:          rsp.ID,
+						ID:          rsp.V2CreateTransactionResponse.Data.ID,
 					},
 				)
 				Expect(err).To(Succeed())
 			})
-			It("should be available on api", func() {
-				response, err := GetTransaction(
+			It("should be available on api", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 					ctx,
-					testServer.GetValue(),
 					operations.V2GetTransactionRequest{
 						Ledger: "default",
-						ID:     rsp.ID,
+						ID:     rsp.V2CreateTransactionResponse.Data.ID,
 					},
 				)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(response.Metadata).Should(Equal(metadata))
+				Expect(response.V2GetTransactionResponse.Data.Metadata).Should(Equal(metadata))
 			})
 		})
 	})

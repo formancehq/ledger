@@ -22,7 +22,6 @@ concurrency:
 jobs:
   Benchmark:
     runs-on: "github-001"
-    if: github.ref == 'refs/heads/main'
     steps:
       - uses: 'actions/checkout@v4'
         with:
@@ -36,13 +35,13 @@ jobs:
           develop --impure --command just
           --justfile ./test/performance/justfile
           --working-directory ./test/performance 
-          run ${{ inputs.bench }} ${{ inputs.parallelism }} ${{ inputs.duration }} 1
+          writes run ${{ inputs.bench }} ${{ inputs.parallelism }} ${{ inputs.duration }} 1
       - run: >
           /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
           develop --impure --command just 
           --justfile ./test/performance/justfile 
           --working-directory ./test/performance 
-          graphs
+          writes graphs
       - uses: actions/upload-artifact@v4
         with:
           name: graphs

@@ -5,16 +5,17 @@ package ledger_test
 import (
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"math/rand"
 	"testing"
 
 	"errors"
 	"github.com/alitto/pond"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
@@ -157,7 +158,7 @@ func TestMovesInsert(t *testing.T) {
 					tx := ledger.NewTransaction().WithPostings(
 						ledger.NewPosting(src, dst, "USD", big.NewInt(1)),
 					)
-					err = storeCP.CommitTransaction(ctx, &tx)
+					err = storeCP.CommitTransaction(ctx, &tx, nil)
 					if errors.Is(err, postgres.ErrDeadlockDetected) {
 						require.NoError(t, sqlTx.Rollback())
 						continue
@@ -170,7 +171,7 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 			Opts: ledgercontroller.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},

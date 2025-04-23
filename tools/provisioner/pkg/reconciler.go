@@ -3,7 +3,7 @@ package provisionner
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -51,7 +51,7 @@ func (r Reconciler) Reconcile(ctx context.Context, cfg Config) error {
 		fmt.Printf("Creating ledger %s...\r\n", ledgerName)
 		if _, err := r.ledgerClient.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 			Ledger: ledgerName,
-			V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
+			V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 				Bucket:   pointer.For(ledgerConfig.Bucket),
 				Features: ledgerConfig.Features,
 				Metadata: ledgerConfig.Metadata,

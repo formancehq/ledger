@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -9,7 +10,7 @@ import (
 )
 
 type migrationArgs struct {
-	utils.CommonArgs
+	common.CommonArgs
 	component *Component
 }
 
@@ -21,6 +22,7 @@ func runMigrateJob(ctx *pulumi.Context, args migrationArgs, opts ...pulumi.Resou
 		},
 	}
 	envVars = append(envVars, args.component.GetEnvVars()...)
+	envVars = append(envVars, args.Monitoring.GetEnvVars(ctx)...)
 
 	return batchv1.NewJob(ctx, "migrate", &batchv1.JobArgs{
 		Metadata: &metav1.ObjectMetaArgs{

@@ -155,11 +155,11 @@ const (
 )
 
 type V2BulkElementResult struct {
-	V2BulkElementResultCreateTransaction *V2BulkElementResultCreateTransaction
-	V2BulkElementResultAddMetadata       *V2BulkElementResultAddMetadata
-	V2BulkElementResultRevertTransaction *V2BulkElementResultRevertTransaction
-	V2BulkElementResultDeleteMetadata    *V2BulkElementResultDeleteMetadata
-	V2BulkElementResultError             *V2BulkElementResultError
+	V2BulkElementResultCreateTransaction *V2BulkElementResultCreateTransaction `queryParam:"inline"`
+	V2BulkElementResultAddMetadata       *V2BulkElementResultAddMetadata       `queryParam:"inline"`
+	V2BulkElementResultRevertTransaction *V2BulkElementResultRevertTransaction `queryParam:"inline"`
+	V2BulkElementResultDeleteMetadata    *V2BulkElementResultDeleteMetadata    `queryParam:"inline"`
+	V2BulkElementResultError             *V2BulkElementResultError             `queryParam:"inline"`
 
 	Type V2BulkElementResultType
 }

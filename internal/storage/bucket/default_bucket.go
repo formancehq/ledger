@@ -6,7 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
@@ -19,12 +19,12 @@ const MinimalSchemaVersion = 26
 
 type DefaultBucket struct {
 	name   string
-	db     bun.IDB
+
 	tracer trace.Tracer
 }
 
-func (b *DefaultBucket) IsInitialized(ctx context.Context) (bool, error) {
-	_, err := GetMigrator(b.db, b.name).GetLastVersion(ctx)
+func (b *DefaultBucket) IsInitialized(ctx context.Context, db bun.IDB) (bool, error) {
+	_, err := GetMigrator(db, b.name).GetLastVersion(ctx)
 	if err == nil {
 		return true, nil
 	}
@@ -34,16 +34,16 @@ func (b *DefaultBucket) IsInitialized(ctx context.Context) (bool, error) {
 	return false, err
 }
 
-func (b *DefaultBucket) IsUpToDate(ctx context.Context) (bool, error) {
-	return GetMigrator(b.db, b.name).IsUpToDate(ctx)
+func (b *DefaultBucket) IsUpToDate(ctx context.Context, db bun.IDB) (bool, error) {
+	return GetMigrator(db, b.name).IsUpToDate(ctx)
 }
 
-func (b *DefaultBucket) Migrate(ctx context.Context, options ...migrations.Option) error {
-	return migrate(ctx, b.tracer, b.db, b.name, options...)
+func (b *DefaultBucket) Migrate(ctx context.Context, db bun.IDB, options ...migrations.Option) error {
+	return runMigrate(ctx, b.tracer, db, b.name, append(options, migrations.WithTracer(b.tracer))...)
 }
 
-func (b *DefaultBucket) HasMinimalVersion(ctx context.Context) (bool, error) {
-	lastVersion, err := b.GetLastVersion(ctx)
+func (b *DefaultBucket) HasMinimalVersion(ctx context.Context, db bun.IDB) (bool, error) {
+	lastVersion, err := b.GetLastVersion(ctx, db)
 	if err != nil {
 		return false, err
 	}
@@ -51,15 +51,15 @@ func (b *DefaultBucket) HasMinimalVersion(ctx context.Context) (bool, error) {
 	return lastVersion >= MinimalSchemaVersion, nil
 }
 
-func (b *DefaultBucket) GetLastVersion(ctx context.Context) (int, error) {
-	return GetMigrator(b.db, b.name).GetLastVersion(ctx)
+func (b *DefaultBucket) GetLastVersion(ctx context.Context, db bun.IDB) (int, error) {
+	return GetMigrator(db, b.name).GetLastVersion(ctx)
 }
 
-func (b *DefaultBucket) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return GetMigrator(b.db, b.name).GetMigrations(ctx)
+func (b *DefaultBucket) GetMigrationsInfo(ctx context.Context, db bun.IDB) ([]migrations.Info, error) {
+	return GetMigrator(db, b.name).GetMigrations(ctx)
 }
 
-func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
+func (b *DefaultBucket) AddLedger(ctx context.Context, db bun.IDB, l ledger.Ledger) error {
 
 	for _, setup := range ledgerSetups {
 		if l.Features.Match(setup.requireFeatures) {
@@ -69,7 +69,7 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 				return fmt.Errorf("executing template: %w", err)
 			}
 
-			_, err := b.db.ExecContext(ctx, buf.String())
+			_, err := db.ExecContext(ctx, buf.String())
 			if err != nil {
 				return fmt.Errorf("executing sql: %w", err)
 			}
@@ -79,9 +79,9 @@ func (b *DefaultBucket) AddLedger(ctx context.Context, l ledger.Ledger) error {
 	return nil
 }
 
-func NewDefault(db bun.IDB, tracer trace.Tracer, name string) *DefaultBucket {
+func NewDefault(tracer trace.Tracer, name string) *DefaultBucket {
 	return &DefaultBucket{
-		db:     db,
+
 		name:   name,
 		tracer: tracer,
 	}

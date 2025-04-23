@@ -117,11 +117,18 @@ Authorization ( Scopes: ledger:read )
 ```http
 GET http://localhost:8080/v2 HTTP/1.1
 Host: localhost:8080
+Content-Type: application/json
 Accept: application/json
 
 ```
 
 `GET /v2`
+
+> Body parameter
+
+```json
+{}
+```
 
 <h3 id="list-ledgers-parameters">Parameters</h3>
 
@@ -129,6 +136,7 @@ Accept: application/json
 |---|---|---|---|---|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|body|body|object|true|none|
 
 #### Detailed descriptions
 
@@ -271,7 +279,7 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[V2CreateLedgerRequest](#schemav2createledgerrequest)|false|none|
+|body|body|[V2CreateLedgerRequest](#schemav2createledgerrequest)|true|none|
 |ledger|path|string|true|Name of the ledger.|
 
 > Example responses
@@ -326,7 +334,7 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[V2Metadata](#schemav2metadata)|false|none|
+|body|body|[V2Metadata](#schemav2metadata)|true|none|
 |ledger|path|string|true|Name of the ledger.|
 
 > Example responses
@@ -497,6 +505,14 @@ Accept: application/json
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
+      },
+      "accountMetadata": {
+        "property1": {
+          "admin": "true"
+        },
+        "property2": {
+          "admin": "true"
+        }
       }
     }
   }
@@ -511,7 +527,7 @@ Accept: application/json
 |continueOnFailure|query|boolean|false|Continue on failure|
 |atomic|query|boolean|false|Make bulk atomic|
 |parallel|query|boolean|false|Process bulk elements in parallel|
-|body|body|[V2Bulk](#schemav2bulk)|false|none|
+|body|body|[V2Bulk](#schemav2bulk)|true|none|
 
 > Example responses
 
@@ -609,8 +625,7 @@ Accept: application/json
     }
   ],
   "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param"
 }
 ```
 
@@ -655,7 +670,7 @@ Accept: application/json
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 > Example responses
 
@@ -720,7 +735,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 #### Detailed descriptions
 
@@ -1067,7 +1082,7 @@ Accept: application/json
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 > Example responses
 
@@ -1134,7 +1149,7 @@ List transactions from a ledger, sorted by id in descending order.
 |pit|query|string(date-time)|false|none|
 |order|query|string|false|none|
 |reverse|query|boolean|false|none|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 #### Detailed descriptions
 
@@ -1302,6 +1317,14 @@ Idempotency-Key: string
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
+  },
+  "accountMetadata": {
+    "property1": {
+      "admin": "true"
+    },
+    "property2": {
+      "admin": "true"
+    }
   }
 }
 ```
@@ -1587,7 +1610,7 @@ Idempotency-Key: string
 |id|path|integer(bigint)|true|Transaction ID.|
 |dryRun|query|boolean|false|Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
-|body|body|[V2Metadata](#schemav2metadata)|false|metadata|
+|body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 > Example responses
 
@@ -1773,7 +1796,7 @@ Accept: application/json
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
 |useInsertionDate|query|boolean|false|Use insertion date instead of effective date|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 > Example responses
 
@@ -1833,7 +1856,7 @@ Accept: application/json
 |startTime|query|string(date-time)|false|none|
 |insertionDate|query|boolean|false|Use insertion date instead of effective date|
 |groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 #### Detailed descriptions
 
@@ -1912,7 +1935,7 @@ List the logs from a ledger, sorted by ID in descending order.
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |pit|query|string(date-time)|false|none|
-|body|body|object|false|none|
+|body|body|object|true|none|
 
 #### Detailed descriptions
 
@@ -1978,7 +2001,7 @@ Accept: application/json
 > Body parameter
 
 ```yaml
-string
+file: string
 
 ```
 
@@ -1987,7 +2010,7 @@ string
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |ledger|path|string|true|Name of the ledger.|
-|body|body|string|false|none|
+|body|body|[V2ImportLogsRequest](#schemav2importlogsrequest)|true|none|
 
 > Example responses
 
@@ -2685,6 +2708,14 @@ Authorization ( Scopes: ledger:write )
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
+  },
+  "accountMetadata": {
+    "property1": {
+      "admin": "true"
+    },
+    "property2": {
+      "admin": "true"
+    }
   }
 }
 
@@ -2702,6 +2733,8 @@ Authorization ( Scopes: ledger:write )
 |»» **additionalProperties**|string|false|none|none|
 |reference|string|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+|accountMetadata|object|false|none|none|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -3355,6 +3388,7 @@ Authorization ( Scopes: ledger:write )
 |---|---|
 |state|TO DO|
 |state|DONE|
+|state|PROGRESS|
 
 <h2 id="tocS_V2Bulk">V2Bulk</h2>
 <!-- backwards compatibility -->
@@ -3387,6 +3421,14 @@ Authorization ( Scopes: ledger:write )
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
+      },
+      "accountMetadata": {
+        "property1": {
+          "admin": "true"
+        },
+        "property2": {
+          "admin": "true"
+        }
       }
     }
   }
@@ -3452,6 +3494,14 @@ Authorization ( Scopes: ledger:write )
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
+    },
+    "accountMetadata": {
+      "property1": {
+        "admin": "true"
+      },
+      "property2": {
+        "admin": "true"
+      }
     }
   }
 }
@@ -3514,6 +3564,14 @@ xor
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
+    },
+    "accountMetadata": {
+      "property1": {
+        "admin": "true"
+      },
+      "property2": {
+        "admin": "true"
+      }
     }
   }
 }
@@ -3803,26 +3861,18 @@ and
     }
   ],
   "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param"
 }
 
 ```
 
 ### Properties
 
-allOf
-
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
-
-and
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[V2ErrorResponse](#schemav2errorresponse)|false|none|none|
+|data|[[V2BulkElementResult](#schemav2bulkelementresult)]|false|none|none|
+|errorCode|[V2ErrorsEnum](#schemav2errorsenum)|false|none|none|
+|errorMessage|string|false|none|none|
 
 <h2 id="tocS_V2BulkElementResult">V2BulkElementResult</h2>
 <!-- backwards compatibility -->
@@ -4435,4 +4485,24 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |data|[V2Ledger](#schemav2ledger)|true|none|none|
+
+<h2 id="tocS_V2ImportLogsRequest">V2ImportLogsRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2importlogsrequest"></a>
+<a id="schema_V2ImportLogsRequest"></a>
+<a id="tocSv2importlogsrequest"></a>
+<a id="tocsv2importlogsrequest"></a>
+
+```json
+{
+  "file": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|file|string(binary)|true|none|none|
 

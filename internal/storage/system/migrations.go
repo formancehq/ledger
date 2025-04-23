@@ -3,11 +3,11 @@ package system
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/pkg/features"
 
-	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/uptrace/bun"
 )
 
@@ -210,6 +210,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 					update _system.ledgers
 					set features = ?
 					where features is null;
+				`, features.DefaultFeatures)
+					return err
+				})
+			},
+		},
+		migrations.Migration{
+			Name: "Add state column to ledgers",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, `
+					alter table _system.ledgers
+					add column state varchar(255) default 'initializing';
 				`, features.DefaultFeatures)
 					return err
 				})

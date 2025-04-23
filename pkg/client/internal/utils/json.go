@@ -165,11 +165,17 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 			if field.Tag.Get("const") != "" {
 				if r, ok := unmarhsaled[fieldName]; ok {
 					val := string(r)
+
 					if strings.HasPrefix(val, `"`) && strings.HasSuffix(val, `"`) {
-						val = val[1 : len(val)-1]
+						var err error
+						val, err = strconv.Unquote(val)
+						if err != nil {
+							return fmt.Errorf("failed to unquote const field `%s` value `%s`: %w", fieldName, val, err)
+						}
 					}
-					if val != field.Tag.Get("const") {
-						return fmt.Errorf("const field %s does not match expected value %s", fieldName, field.Tag.Get("const"))
+					constValue := field.Tag.Get("const")
+					if val != constValue {
+						return fmt.Errorf("const field `%s` does not match expected value `%s` got `%s`", fieldName, constValue, val)
 					}
 
 					delete(unmarhsaled, fieldName)
@@ -481,30 +487,29 @@ func unmarshalValue(value json.RawMessage, v reflect.Value, tag reflect.StructTa
 		v.Set(m)
 		return nil
 	case reflect.Slice, reflect.Array:
-		if bytes.Equal(value, []byte("null")) || !isComplexValueType(dereferenceTypePointer(typ.Elem())) {
-			if v.CanAddr() {
-				return json.Unmarshal(value, v.Addr().Interface())
-			} else {
-				return json.Unmarshal(value, v.Interface())
-			}
-		}
+		var unmarshaled []json.RawMessage
 
-		var unmarhsaled []json.RawMessage
-
-		if err := json.Unmarshal(value, &unmarhsaled); err != nil {
+		if err := json.Unmarshal(value, &unmarshaled); err != nil {
 			return err
 		}
 
-		arrVal := v
+		arrVal := reflect.MakeSlice(typ, len(unmarshaled), len(unmarshaled))
 
-		for _, value := range unmarhsaled {
+		for index, value := range unmarshaled {
 			itemVal := reflect.New(typ.Elem())
 
 			if err := unmarshalValue(value, itemVal, tag, disallowUnknownFields); err != nil {
 				return err
 			}
 
-			arrVal = reflect.Append(arrVal, itemVal.Elem())
+			arrVal.Index(index).Set(itemVal.Elem())
+		}
+
+		if v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				v.Set(reflect.New(typ))
+			}
+			v = v.Elem()
 		}
 
 		v.Set(arrVal)

@@ -3,13 +3,18 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
-	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"strings"
@@ -17,21 +22,22 @@ import (
 
 var _ = Context("Ledger engine tests", func() {
 	var (
-		db  = UseTemplatedDatabase()
-		ctx = logging.TestingContext()
+		db      = UseTemplatedDatabase()
+		ctx     = logging.TestingContext()
+		natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL:              natsServer.GetValue().ClientURL(),
-			ExperimentalFeatures: true,
-		}
-	})
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(natsURL),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			ExperimentalFeaturesInstrumentation(),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
 	When("creating a new ledger", func() {
 		var (
 			createLedgerRequest operations.V2CreateLedgerRequest
@@ -40,11 +46,11 @@ var _ = Context("Ledger engine tests", func() {
 		BeforeEach(func() {
 			createLedgerRequest = operations.V2CreateLedgerRequest{
 				Ledger:                "foo",
-				V2CreateLedgerRequest: &components.V2CreateLedgerRequest{},
+				V2CreateLedgerRequest: components.V2CreateLedgerRequest{},
 			}
 		})
-		JustBeforeEach(func() {
-			err = CreateLedger(ctx, testServer.GetValue(), createLedgerRequest)
+		JustBeforeEach(func(specContext SpecContext) {
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, createLedgerRequest)
 		})
 		It("should be ok", func() {
 			Expect(err).To(BeNil())
@@ -77,8 +83,8 @@ var _ = Context("Ledger engine tests", func() {
 			})
 		})
 		Context("trying to create another ledger with the same name", func() {
-			JustBeforeEach(func() {
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+			JustBeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).NotTo(BeNil())
@@ -100,12 +106,12 @@ var _ = Context("Ledger engine tests", func() {
 					"foo": "bar",
 				}
 			})
-			It("Should be ok", func() {
-				ledger, err := GetLedger(ctx, testServer.GetValue(), operations.V2GetLedgerRequest{
+			It("Should be ok", func(specContext SpecContext) {
+				ledger, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetLedger(ctx, operations.V2GetLedgerRequest{
 					Ledger: createLedgerRequest.Ledger,
 				})
 				Expect(err).To(BeNil())
-				Expect(ledger.Metadata).To(Equal(createLedgerRequest.V2CreateLedgerRequest.Metadata))
+				Expect(ledger.V2GetLedgerResponse.Data.Metadata).To(Equal(createLedgerRequest.V2CreateLedgerRequest.Metadata))
 			})
 		})
 		Context("with invalid ledger name", func() {
@@ -119,7 +125,7 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("with invalid bucket name", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest = &components.V2CreateLedgerRequest{
+				createLedgerRequest.V2CreateLedgerRequest = components.V2CreateLedgerRequest{
 					Bucket: pointer.For("invalid\\name\\contains\\some\\backslash"),
 				}
 			})
@@ -130,7 +136,7 @@ var _ = Context("Ledger engine tests", func() {
 		})
 		Context("on alternate bucket", func() {
 			BeforeEach(func() {
-				createLedgerRequest.V2CreateLedgerRequest = &components.V2CreateLedgerRequest{
+				createLedgerRequest.V2CreateLedgerRequest = components.V2CreateLedgerRequest{
 					Bucket: pointer.For("bucket0"),
 				}
 			})

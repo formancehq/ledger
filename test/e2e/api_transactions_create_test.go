@@ -3,19 +3,25 @@
 package test_suite
 
 import (
+	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
-	"github.com/formancehq/go-libs/v2/logging"
-	. "github.com/formancehq/go-libs/v2/testing/api"
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
@@ -32,28 +38,31 @@ var _ = Context("Ledger transactions create API tests", func() {
 	} {
 		Context(data.description, func() {
 			var (
-				db  = UseTemplatedDatabase()
-				ctx = logging.TestingContext()
+				db      = UseTemplatedDatabase()
+				ctx     = logging.TestingContext()
+				natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 			)
-			testServer := NewTestServer(func() Configuration {
-				return Configuration{
-					CommonConfiguration: CommonConfiguration{
-						PostgresConfiguration: db.GetValue().ConnectionOptions(),
-						Output:                GinkgoWriter,
-						Debug:                 debug,
-					},
-					NatsURL:                      natsServer.GetValue().ClientURL(),
-					ExperimentalNumscriptRewrite: data.numscriptRewrite,
-				}
-			})
+			instruments := []testservice.Instrumentation{
+				testservice.NatsInstrumentation(natsURL),
+				testservice.DebugInstrumentation(debug),
+				testservice.OutputInstrumentation(GinkgoWriter),
+			}
+			if data.numscriptRewrite {
+				instruments = append(instruments, ExperimentalNumscriptRewriteInstrumentation())
+			}
+			testServer := DeferTestServer(
+				ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+				testservice.WithInstruments(instruments...),
+				testservice.WithLogger(GinkgoT()),
+			)
 
-			BeforeEach(func() {
-				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+			BeforeEach(func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: "default",
 				})
 				Expect(err).To(BeNil())
 
-				err = CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 					Ledger: "test",
 				})
 				Expect(err).To(BeNil())
@@ -63,12 +72,12 @@ var _ = Context("Ledger transactions create API tests", func() {
 				var (
 					events    chan *nats.Msg
 					timestamp = time.Now().Round(time.Second).UTC()
-					rsp       *components.V2Transaction
+					rsp       *operations.V2CreateTransactionResponse
 					req       operations.V2CreateTransactionRequest
 					err       error
 				)
-				BeforeEach(func() {
-					events = Subscribe(GinkgoT(), testServer.GetValue())
+				BeforeEach(func(specContext SpecContext) {
+					_, events = Subscribe(specContext, testServer, natsURL)
 					req = operations.V2CreateTransactionRequest{
 						V2PostTransaction: components.V2PostTransaction{
 							Timestamp: &timestamp,
@@ -76,13 +85,13 @@ var _ = Context("Ledger transactions create API tests", func() {
 						Ledger: "default",
 					}
 				})
-				JustBeforeEach(func() {
+				JustBeforeEach(func(specContext SpecContext) {
 					// Create a transaction
-					rsp, err = CreateTransaction(ctx, testServer.GetValue(), req)
+					rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, req)
 				})
 				Context("overriding an account metadata", func() {
-					BeforeEach(func() {
-						err := AddMetadataToAccount(ctx, testServer.GetValue(), operations.V2AddMetadataToAccountRequest{
+					BeforeEach(func(specContext SpecContext) {
+						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataToAccount(ctx, operations.V2AddMetadataToAccountRequest{
 							Address: "alice",
 							Ledger:  "default",
 							RequestBody: map[string]string{
@@ -98,22 +107,79 @@ var _ = Context("Ledger transactions create API tests", func() {
 									destination = @alice
 								)			
 								set_account_meta(@alice, "clientType", "silver")
+								set_account_meta(@foo, "status", "pending")
 							`,
 						}
 					})
-					It("should override account metadata", func() {
+					It("should override account metadata", func(specContext SpecContext) {
 						Expect(err).To(BeNil())
 
-						account, err := GetAccount(ctx, testServer.GetValue(), operations.V2GetAccountRequest{
+						account, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
 							Address: "alice",
 							Ledger:  "default",
 						})
 						Expect(err).ToNot(HaveOccurred())
-						Expect(*account).Should(Equal(components.V2Account{
+						Expect(account.V2AccountResponse.Data).Should(Equal(components.V2Account{
 							Address: "alice",
 							Metadata: map[string]string{
 								"clientType": "silver",
 							},
+						}))
+
+						account, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
+							Address: "foo",
+							Ledger:  "default",
+						})
+						Expect(err).ToNot(HaveOccurred())
+						Expect(account.V2AccountResponse.Data).Should(Equal(components.V2Account{
+							Address: "foo",
+							Metadata: map[string]string{
+								"status": "pending",
+							},
+						}))
+					})
+				})
+				Context("with account metadata", func() {
+					BeforeEach(func() {
+						req = operations.V2CreateTransactionRequest{
+							V2PostTransaction: components.V2PostTransaction{
+								Postings: []components.V2Posting{
+									{
+										Amount:      big.NewInt(100),
+										Asset:       "USD",
+										Source:      "world",
+										Destination: "alice",
+									},
+								},
+								AccountMetadata: map[string]map[string]string{
+									"world": {
+										"foo": "bar",
+									},
+									"alice": {
+										"foo": "baz",
+									},
+								},
+							},
+							Ledger: "default",
+						}
+					})
+					It("should be ok", func(specContext SpecContext) {
+						alice, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
+							Address: "alice",
+							Ledger:  "default",
+						})
+						Expect(err).To(BeNil())
+						Expect(alice.V2AccountResponse.Data.Metadata).To(Equal(map[string]string{
+							"foo": "baz",
+						}))
+
+						world, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
+							Address: "world",
+							Ledger:  "default",
+						})
+						Expect(err).To(BeNil())
+						Expect(world.V2AccountResponse.Data.Metadata).To(Equal(map[string]string{
+							"foo": "bar",
 						}))
 					})
 				})
@@ -139,25 +205,24 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Ledger: "default",
 						}
 					})
-					It("should be ok", func() {
-						response, err := GetTransaction(
+					It("should be ok", func(specContext SpecContext) {
+						response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 							ctx,
-							testServer.GetValue(),
 							operations.V2GetTransactionRequest{
 								Ledger: "default",
-								ID:     rsp.ID,
+								ID:     rsp.V2CreateTransactionResponse.Data.ID,
 								Expand: pointer.For("volumes"),
 							},
 						)
 						Expect(err).ToNot(HaveOccurred())
 
-						Expect(*response).To(Equal(components.V2Transaction{
-							Timestamp:  rsp.Timestamp,
-							InsertedAt: rsp.InsertedAt,
-							Postings:   rsp.Postings,
-							Reference:  rsp.Reference,
-							Metadata:   rsp.Metadata,
-							ID:         rsp.ID,
+						Expect(response.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
+							Timestamp:  rsp.V2CreateTransactionResponse.Data.Timestamp,
+							InsertedAt: rsp.V2CreateTransactionResponse.Data.InsertedAt,
+							Postings:   rsp.V2CreateTransactionResponse.Data.Postings,
+							Reference:  rsp.V2CreateTransactionResponse.Data.Reference,
+							Metadata:   rsp.V2CreateTransactionResponse.Data.Metadata,
+							ID:         rsp.V2CreateTransactionResponse.Data.ID,
 							PreCommitVolumes: map[string]map[string]components.V2Volume{
 								"world": {
 									"USD": {
@@ -192,9 +257,8 @@ var _ = Context("Ledger transactions create API tests", func() {
 							},
 						}))
 
-						account, err := GetAccount(
+						account, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(
 							ctx,
-							testServer.GetValue(),
 							operations.V2GetAccountRequest{
 								Address: "alice",
 								Ledger:  "default",
@@ -203,7 +267,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 						)
 						Expect(err).ToNot(HaveOccurred())
 
-						Expect(*account).Should(Equal(components.V2Account{
+						Expect(account.V2AccountResponse.Data).Should(Equal(components.V2Account{
 							Address:  "alice",
 							Metadata: metadata.Metadata{},
 							Volumes: map[string]components.V2Volume{
@@ -217,7 +281,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 						By("should trigger a new event", func() {
 							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
 								Ledger:          "default",
-								Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(rsp)},
+								Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&rsp.V2CreateTransactionResponse.Data)},
 								AccountMetadata: ledger.AccountMetadata{},
 							}))))
 						})
@@ -230,8 +294,8 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Expect(err).To(BeNil())
 						})
 						When("trying to commit a new transaction with the same reference", func() {
-							JustBeforeEach(func() {
-								_, err = CreateTransaction(ctx, testServer.GetValue(), req)
+							JustBeforeEach(func(specContext SpecContext) {
+								_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, req)
 								Expect(err).To(HaveOccurred())
 								Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumConflict)))
 							})
@@ -351,15 +415,15 @@ var _ = Context("Ledger transactions create API tests", func() {
 					})
 					It("should be ok", func() {
 						Expect(err).To(Succeed())
-						Expect(rsp.ID).To(Equal(big.NewInt(1)))
+						Expect(rsp.V2CreateTransactionResponse.Data.ID).To(Equal(big.NewInt(1)))
 					})
 					When("creating a ledger transaction with same ik and different ledger", func() {
-						JustBeforeEach(func() {
-							rsp, err = CreateTransaction(ctx, testServer.GetValue(), req)
+						JustBeforeEach(func(specContext SpecContext) {
+							rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, req)
 						})
 						It("should not have an error", func() {
 							Expect(err).To(Succeed())
-							Expect(rsp.ID).To(Equal(big.NewInt(1)))
+							Expect(rsp.V2CreateTransactionResponse.Data.ID).To(Equal(big.NewInt(1)))
 						})
 					})
 				})
@@ -531,9 +595,12 @@ var _ = Context("Ledger transactions create API tests", func() {
 					err      error
 					response *operations.CreateTransactionResponse
 				)
-				BeforeEach(func() {
+				BeforeEach(func(specContext SpecContext) {
 					v, _ := big.NewInt(0).SetString("1320000000000000000000000000000000000000000000000001", 10)
-					response, err = testServer.GetValue().Client().Ledger.V1.CreateTransaction(
+					testServer, err := testServer.Wait(specContext)
+					Expect(err).To(BeNil())
+
+					response, err = Client(testServer).Ledger.V1.CreateTransaction(
 						ctx,
 						operations.CreateTransactionRequest{
 							PostTransaction: components.PostTransaction{
@@ -557,6 +624,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Ledger: "default",
 						},
 					)
+					Expect(err).To(BeNil())
 				})
 				It("should be ok", func() {
 					Expect(err).To(Succeed())

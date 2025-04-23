@@ -35,5 +35,8 @@ func printSchema(_ *cobra.Command, _ []string) error {
 	}
 	schema := reflector.Reflect(config.Config{})
 
-	return json.NewEncoder(os.Stdout).Encode(schema)
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+
+	return enc.Encode(schema)
 }

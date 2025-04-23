@@ -11,10 +11,11 @@ import (
 
 type PostgresDatabaseArgs struct {
 	URI     pulumix.Input[string]
-	Install pulumix.Input[bool]
+	Install *PostgresInstallArgs
 }
 
 func (a PostgresDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ...pulumi.ResourceOption) (databaseComponent, error) {
+
 	uri, err := internals.UnsafeAwaitOutput(ctx.Context(), a.URI.ToOutput(ctx.Context()))
 	if err != nil {
 		return nil, fmt.Errorf("awaiting URI: %w", err)
@@ -25,33 +26,31 @@ func (a PostgresDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, optio
 		if err != nil {
 			return nil, fmt.Errorf("parsing port: %w", err)
 		}
+
 		return newExternalDatabaseComponent(ctx, "postgres", ExternalDatabaseComponentArgs{
 			Endpoint: pulumix.Val(dsn.GetHost()),
 			Username: pulumix.Val(dsn.GetUser()),
 			Password: pulumix.Val(dsn.GetPassword()),
 			Port:     pulumix.Val(port),
 			Options:  pulumix.Val(dsn.GetParams()),
+			Database: pulumix.Val(dsn.GetPath()),
 		})
 	}
 
-	install, err := internals.UnsafeAwaitOutput(ctx.Context(), a.Install.ToOutput(ctx.Context()))
-	if err != nil {
-		return nil, fmt.Errorf("awaiting install: %w", err)
-	}
-	if install.Value != nil && !install.Value.(bool) {
-		panic("uri must be provided if install is false")
-	}
-
 	return newPostgresComponent(ctx, "postgres", &PostgresComponentArgs{
-		Namespace: args.Namespace,
+		Namespace:           args.Namespace,
+		PostgresInstallArgs: *a.Install,
 	}, options...)
 }
 
 func (a *PostgresDatabaseArgs) SetDefaults() {
 	if a.URI == nil && a.Install == nil {
-		a.Install = pulumix.Val(true)
+		a.Install = &PostgresInstallArgs{}
 	}
 	if a.URI == nil {
 		a.URI = pulumix.Val("")
+	}
+	if a.Install != nil {
+		a.Install.SetDefaults()
 	}
 }

@@ -1,0 +1,42 @@
+set dotenv-load
+set positional-arguments
+
+tmpdir := `mktemp -d`
+
+# Run against the local branch
+run bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt':
+    mkdir -p $(dirname {{output}})
+    rm -f {{output}}
+    go test -run ^$ -tags it,local \
+        -timeout 600m \
+        -bench={{bench}} \
+        -count={{count}} \
+        -test.benchtime {{benchtime}} ./... \
+            -report.file $(pwd)/report/writes/report.json \
+            -parallelism {{p}} | tee -a {{output}}
+
+run-remote ledgerURL bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt':
+    mkdir -p $(dirname {{output}})
+    rm -f {{output}}
+    go test -run ^$ -tags it,local \
+        -timeout 600m \
+        -bench={{bench}} \
+        -count={{count}} \
+        -test.benchtime {{benchtime}} ./... \
+            -ledger.url {{ledgerURL}} \
+            -report.file $(pwd)/report/writes/report.json \
+            -parallelism {{p}} | tee -a {{output}}
+
+# Compare against main branch
+compare bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt':
+    trap 'rm -rf {{tmpdir}}' EXIT
+    just run {{bench}} {{p}} {{benchtime}} {{count}} './report/writes/benchmark-output-local.txt'
+    rm -f ./report/writes/benchmark-output-main.txt
+    git clone --depth 1 -b main https://github.com/formancehq/ledger {{tmpdir}}
+    location=$(pwd) && cd {{tmpdir}}/test/performance && just run {{bench}} {{p}} {{benchtime}} {{count}} $location/report/writes/benchmark-output-main.txt
+    benchstat ./report/writes/benchmark-output-main.txt ./report/writes/benchmark-output-local.txt > ./report/writes/benchmark-comparison.txt || true
+
+graphs:
+    cd charts && npm install
+    cd charts && npm run build
+    cd charts && node ./index.js

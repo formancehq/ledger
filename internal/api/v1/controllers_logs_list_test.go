@@ -2,21 +2,21 @@ package v1
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/query"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -27,7 +27,7 @@ func TestGetLogs(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       ledgercontroller.ColumnPaginatedQuery[any]
+		expectQuery       storagecommon.ColumnPaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -36,7 +36,7 @@ func TestGetLogs(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -47,11 +47,11 @@ func TestGetLogs(t *testing.T) {
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Builder: query.Gte("date", now.Format(time.DateFormat)),
 				},
 			},
@@ -61,11 +61,11 @@ func TestGetLogs(t *testing.T) {
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: ledgercontroller.ResourceQuery[any]{
+				Options: storagecommon.ResourceQuery[any]{
 					Builder: query.Lt("date", now.Format(time.DateFormat)),
 				},
 			},
@@ -73,9 +73,9 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(ledgercontroller.ColumnPaginatedQuery[any]{})},
+				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{})},
 			},
-			expectQuery: ledgercontroller.ColumnPaginatedQuery[any]{},
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{},
 		},
 		{
 			name: "using invalid cursor",

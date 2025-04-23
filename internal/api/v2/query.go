@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v3/api"
 )
 
 func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledger.Parameters[INPUT] {

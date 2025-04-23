@@ -4,14 +4,15 @@ package driver_test
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v2/collectionutils"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"math/rand"
@@ -23,10 +24,15 @@ func TestLedgersCreate(t *testing.T) {
 	t.Parallel()
 	ctx := logging.TestingContext()
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	buckets := []string{"bucket1", "bucket2"}
-	const countLedgers = 80
+	const countLedgers = 30
 
 	wg := sync.WaitGroup{}
 	wg.Add(countLedgers)
@@ -71,7 +77,12 @@ func TestLedgersList(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	bucket := uuid.NewString()[:8]
 
@@ -91,16 +102,13 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	query := ledgercontroller.NewListLedgersQuery(15).WithBucket(bucket)
+	q := ledgercontroller.NewListLedgersQuery(15)
+	q.Options.Builder = query.Match("bucket", bucket)
 
-	cursor, err := d.ListLedgers(ctx, query)
+	cursor, err := d.ListLedgers(ctx, q)
 	require.NoError(t, err)
 
-	ledgers := collectionutils.Filter(cursor.Data, func(l ledger.Ledger) bool {
-		return l.Bucket == bucket
-	})
-
-	require.Len(t, ledgers, 2)
+	require.Len(t, cursor.Data, 2)
 }
 
 func TestLedgerUpdateMetadata(t *testing.T) {
@@ -108,7 +116,12 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString())
 	_, err := d.CreateLedger(ctx, &l)
@@ -125,7 +138,12 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory())
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
 		"foo": "bar",

@@ -1,15 +1,13 @@
 package cmd
 
 import (
-	"github.com/formancehq/go-libs/v2/bun/bunmigrate"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/service"
-	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/go-libs/v3/bun/bunmigrate"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/uptrace/bun"
-
 	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
 )
 
 const (
@@ -36,19 +34,28 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(NewWorkerCommand())
 	root.AddCommand(NewDocsCommand())
 
-	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
-		logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
-		cmd.SetContext(logging.ContextWithLogger(cmd.Context(), logger))
+	root.AddCommand(newMigrationCommand())
+	root.AddCommand(NewDocsCommand())
 
-		driver := driver.New(db, ledger.NewFactory(db), bucket.NewDefaultFactory())
-		if err := driver.Initialize(cmd.Context()); err != nil {
-			return err
-		}
-
-		return driver.UpgradeAllBuckets(cmd.Context())
-	}))
+	service.AddFlags(root.PersistentFlags())
 
 	return root
+}
+
+func newMigrationCommand() *cobra.Command {
+	ret := bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
+		return withStorageDriver(cmd, func(driver *driver.Driver) error {
+			if err := driver.Initialize(cmd.Context()); err != nil {
+				return err
+			}
+
+			return driver.UpgradeAllBuckets(cmd.Context())
+		})
+	})
+	otlp.AddFlags(ret.Flags())
+	otlptraces.AddFlags(ret.Flags())
+
+	return ret
 }
 
 func Execute() {

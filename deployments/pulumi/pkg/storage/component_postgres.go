@@ -21,6 +21,10 @@ type PostgresDatabaseComponent struct {
 	Namespace pulumix.Input[string]
 }
 
+func (cmp *PostgresDatabaseComponent) GetDatabase() pulumix.Input[string] {
+	return pulumix.Val("postgres")
+}
+
 func (cmp *PostgresDatabaseComponent) GetService() *corev1.Service {
 	return cmp.Service
 }
@@ -49,8 +53,35 @@ func (cmp *PostgresDatabaseComponent) GetPort() pulumix.Input[int] {
 	return pulumix.Val(5432)
 }
 
+type PostgresInstallArgs struct {
+	Username pulumix.Input[string]
+	Password pulumix.Input[string]
+}
+
+func (args *PostgresInstallArgs) SetDefaults() {
+	if args.Username == nil {
+		args.Username = pulumix.Val("")
+	}
+	args.Username = pulumix.Apply(args.Username, func(username string) string {
+		if username == "" {
+			return "root"
+		}
+		return username
+	})
+	if args.Password == nil {
+		args.Password = pulumix.Val("")
+	}
+	args.Password = pulumix.Apply(args.Password, func(password string) string {
+		if password == "" {
+			return "password"
+		}
+		return password
+	})
+}
+
 type PostgresComponentArgs struct {
 	Namespace pulumix.Input[string]
+	PostgresInstallArgs
 }
 
 func newPostgresComponent(ctx *pulumi.Context, name string, args *PostgresComponentArgs, opts ...pulumi.ResourceOption) (*PostgresDatabaseComponent, error) {
@@ -60,8 +91,6 @@ func newPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 		return nil, err
 	}
 
-	username := pulumix.Val("root")
-	password := pulumix.Val("password")
 	cmp.Namespace = args.Namespace
 
 	cmp.Chart, err = helm.NewChart(ctx, "postgres", &helm.ChartArgs{
@@ -73,8 +102,8 @@ func newPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 			"global": pulumi.Map{
 				"postgresql": pulumi.Map{
 					"auth": pulumi.Map{
-						"username": username,
-						"password": password,
+						"username": args.Username,
+						"password": args.Password,
 					},
 				},
 			},
@@ -115,8 +144,8 @@ func newPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 	}
 
 	cmp.Service = ret.Value.(*corev1.Service)
-	cmp.Username = username
-	cmp.Password = password
+	cmp.Username = args.Username.ToOutput(ctx.Context())
+	cmp.Password = args.Password.ToOutput(ctx.Context())
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{}); err != nil {
 		return nil, fmt.Errorf("registering outputs: %w", err)

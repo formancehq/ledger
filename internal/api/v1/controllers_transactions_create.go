@@ -9,9 +9,9 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 )
@@ -83,7 +83,9 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.TxToScriptData(txData, false)))
+		_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
+			RunScript: ledgercontroller.TxToScriptData(txData, false),
+		}))
 		if err != nil {
 			switch {
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
@@ -112,14 +114,14 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runScript := ledgercontroller.RunScript{
-		Script:    *script,
-		Timestamp: payload.Timestamp,
-		Reference: payload.Reference,
-		Metadata:  payload.Metadata,
-	}
-
-	_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, runScript))
+	_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
+		RunScript: ledgercontroller.RunScript{
+			Script:    *script,
+			Timestamp: payload.Timestamp,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
+		},
+	}))
 	if err != nil {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):

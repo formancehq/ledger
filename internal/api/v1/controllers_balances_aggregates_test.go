@@ -1,6 +1,7 @@
 package v1
 
 import (
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -10,9 +11,9 @@ import (
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
-	"github.com/formancehq/go-libs/v2/query"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -24,13 +25,13 @@ func TestBalancesAggregates(t *testing.T) {
 	type testCase struct {
 		name        string
 		queryParams url.Values
-		expectQuery ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
+		expectQuery storagecommon.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]
 	}
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			expectQuery: storagecommon.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 				Opts: ledgercontroller.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},
@@ -41,7 +42,7 @@ func TestBalancesAggregates(t *testing.T) {
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+			expectQuery: storagecommon.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
 				Opts: ledgercontroller.GetAggregatedVolumesOptions{
 					UseInsertionDate: true,
 				},

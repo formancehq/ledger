@@ -5,13 +5,14 @@ package system
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/bun/bunconnect"
-	"github.com/formancehq/go-libs/v2/bun/bundebug"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/testing/docker"
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/bun/bundebug"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
@@ -20,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,16 +92,16 @@ func TestLedgersList(t *testing.T) {
 		ledgers = append(ledgers, l)
 	}
 
-	cursor, err := store.ListLedgers(ctx, ledgercontroller.NewListLedgersQuery(pageSize))
+	cursor, err := store.Ledgers().Paginate(ctx, ledgercontroller.NewListLedgersQuery(pageSize))
 	require.NoError(t, err)
 	require.Len(t, cursor.Data, int(pageSize))
 	require.Equal(t, ledgers[:pageSize], cursor.Data)
 
 	for i := pageSize; i < count; i += pageSize {
-		query := ledgercontroller.ListLedgersQuery{}
+		query := common.ColumnPaginatedQuery[any]{}
 		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
 
-		cursor, err = store.ListLedgers(ctx, query)
+		cursor, err = store.Ledgers().Paginate(ctx, query)
 		require.NoError(t, err)
 		require.Len(t, cursor.Data, 2)
 		require.Equal(t, ledgers[i:i+pageSize], cursor.Data)
@@ -156,9 +157,9 @@ func newStore(t docker.T) Store {
 	pgDatabase := srv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	if os.Getenv("DEBUG") == "true" {
-		hooks = append(hooks, bundebug.NewQueryHook())
-	}
+	debugHook := bundebug.NewQueryHook()
+	debugHook.Debug = os.Getenv("DEBUG") == "true"
+	hooks = append(hooks, debugHook)
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 

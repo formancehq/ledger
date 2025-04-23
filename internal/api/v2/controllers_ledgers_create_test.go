@@ -11,11 +11,11 @@ import (
 	"github.com/formancehq/ledger/internal/controller/system"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/logging"
 	ledger "github.com/formancehq/ledger/internal"
 
-	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

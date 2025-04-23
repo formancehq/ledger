@@ -4,37 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
 
-var (
-	metadataRegex = regexp.MustCompile(`metadata\[(.+)]`)
-)
-
-func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
+func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
+	if accountMetadata == nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+	}
 
 	postCommitVolumes, err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
@@ -47,11 +45,17 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
-	err = store.UpsertAccounts(ctx, collectionutils.Map(tx.InvolvedAccounts(), func(address string) *ledger.Account {
+	accountsToUpsert := tx.InvolvedAccounts()
+	accountsToUpsert = append(accountsToUpsert, Keys(accountMetadata)...)
+
+	slices.Sort(accountsToUpsert)
+	accountsToUpsert = slices.Compact(accountsToUpsert)
+
+	err = store.UpsertAccounts(ctx, Map(accountsToUpsert, func(address string) *ledger.Account {
 		return &ledger.Account{
 			Address:       address,
 			FirstUsage:    tx.Timestamp,
-			Metadata:      make(metadata.Metadata),
+			Metadata:      accountMetadata[address],
 			InsertionDate: tx.InsertedAt,
 			UpdatedAt:     tx.InsertedAt,
 		}
@@ -116,7 +120,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 				Model(tx).
 				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Value("ledger", "?", store.ledger.Name).
-				Returning("id, timestamp, inserted_at")
+				Returning("id, timestamp, inserted_at, updated_at")
 
 			if tx.ID == nil {
 				query = query.Value("id", "nextval(?)", store.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, store.ledger.ID)))
@@ -130,6 +134,11 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
 						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
 					}
+					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_ledger" {
+						return nil, ledgercontroller.NewErrConcurrentTransaction(*tx.ID)
+					}
+
+					return nil, err
 				default:
 					return nil, err
 				}
@@ -208,52 +217,58 @@ func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time)
 	return tx, modified, err
 }
 
-func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"UpdateTransactionMetadata",
 		store.tracer,
 		store.updateTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			tx, modified, err = store.updateTxWithRetrieve(
-				ctx,
-				id,
-				store.db.NewUpdate().
-					Model(&ledger.Transaction{}).
-					ModelTableExpr(store.GetPrefixedRelationName("transactions")).
-					Where("id = ?", id).
-					Where("ledger = ?", store.ledger.Name).
-					Set("metadata = metadata || ?", m).
-					Set("updated_at = (now() at time zone 'utc')").
-					Where("not (metadata @> ?)", m).
-					Returning("*"),
-			)
+
+			updateQuery := store.db.NewUpdate().
+				Model(&ledger.Transaction{}).
+				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
+				Where("id = ?", id).
+				Where("ledger = ?", store.ledger.Name).
+				Set("metadata = metadata || ?", m).
+				Where("not (metadata @> ?)", m).
+				Returning("*")
+			if at.IsZero() {
+				updateQuery = updateQuery.Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
+			} else {
+				updateQuery = updateQuery.Set("updated_at = ?", at)
+			}
+
+			tx, modified, err = store.updateTxWithRetrieve(ctx, id, updateQuery)
+
 			return nil, postgres.ResolveError(err)
 		},
 	)
 	return tx, modified, err
 }
 
-func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteTransactionMetadata",
 		store.tracer,
 		store.deleteTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
-			tx, modified, err = store.updateTxWithRetrieve(
-				ctx,
-				id,
-				store.db.NewUpdate().
-					Model(&ledger.Transaction{}).
-					ModelTableExpr(store.GetPrefixedRelationName("transactions")).
-					Set("metadata = metadata - ?", key).
-					Set("updated_at = (now() at time zone 'utc')").
-					Where("id = ?", id).
-					Where("ledger = ?", store.ledger.Name).
-					Where("metadata -> ? is not null", key).
-					Returning("*"),
-			)
+			updateQuery := store.db.NewUpdate().
+				Model(&ledger.Transaction{}).
+				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
+				Set("metadata = metadata - ?", key).
+				Where("id = ?", id).
+				Where("ledger = ?", store.ledger.Name).
+				Where("metadata -> ? is not null", key).
+				Returning("*")
+			if at.IsZero() {
+				updateQuery = updateQuery.Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
+			} else {
+				updateQuery = updateQuery.Set("updated_at = ?", at)
+			}
+
+			tx, modified, err = store.updateTxWithRetrieve(ctx, id, updateQuery)
 			return nil, postgres.ResolveError(err)
 		},
 	)

@@ -2,12 +2,12 @@ package ledger
 
 import (
 	"encoding/base64"
-	"github.com/formancehq/go-libs/v2/metadata"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/stretchr/testify/require"
 )

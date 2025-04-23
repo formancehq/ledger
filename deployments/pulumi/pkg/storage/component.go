@@ -1,13 +1,16 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	. "github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	. "github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -18,6 +21,7 @@ type ConnectivityDatabaseArgs struct {
 	MaxIdleConns    pulumix.Input[*int]
 	MaxOpenConns    pulumix.Input[*int]
 	ConnMaxIdleTime pulumix.Input[*time.Duration]
+	Options         pulumix.Output[map[string]string]
 }
 
 type databaseComponent interface {
@@ -28,6 +32,7 @@ type databaseComponent interface {
 	GetPassword() pulumix.Input[string]
 	GetPort() pulumix.Input[int]
 	GetOptions() pulumix.Input[map[string]string]
+	GetDatabase() pulumix.Input[string]
 }
 
 type databaseWithOwnedServiceComponent interface {
@@ -43,17 +48,22 @@ type databaseComponentFactory interface {
 	setup(ctx *pulumi.Context, args factoryArgs, options ...pulumi.ResourceOption) (databaseComponent, error)
 }
 
+type Service struct {
+	Annotations pulumix.Input[map[string]string]
+}
+
 type Args struct {
 	Postgres                 *PostgresDatabaseArgs
 	RDS                      *RDSDatabaseArgs
 	ConnectivityDatabaseArgs ConnectivityDatabaseArgs
-	DisableUpgrade           pulumix.Output[bool]
+	DisableUpgrade           pulumix.Input[bool]
+	Service                  Service
 }
 
 func (args *Args) SetDefaults() {
 	if args.RDS == nil && args.Postgres == nil {
 		args.Postgres = &PostgresDatabaseArgs{
-			Install: pulumix.Val(true),
+			Install: &PostgresInstallArgs{},
 		}
 	}
 	if args.RDS != nil {
@@ -82,13 +92,13 @@ type Component struct {
 	Service           *corev1.Service
 }
 
-func (args *Component) GetEnvVars() corev1.EnvVarArray {
+func (cmp *Component) GetEnvVars() corev1.EnvVarArray {
 	ret := corev1.EnvVarArray{
 		corev1.EnvVarArgs{
 			Name: pulumi.String("POSTGRES_USERNAME"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: args.Credentials.Metadata.Name(),
+					Name: cmp.Credentials.Metadata.Name(),
 					Key:  pulumi.String("username"),
 				},
 			},
@@ -97,44 +107,53 @@ func (args *Component) GetEnvVars() corev1.EnvVarArray {
 			Name: pulumi.String("POSTGRES_PASSWORD"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: args.Credentials.Metadata.Name(),
+					Name: cmp.Credentials.Metadata.Name(),
 					Key:  pulumi.String("password"),
 				},
 			},
 		},
 		corev1.EnvVarArgs{
 			Name: pulumi.String("POSTGRES_URI"),
-			Value: pulumi.Sprintf("postgres://$(POSTGRES_USERNAME):$(POSTGRES_PASSWORD)@%s:%d/postgres?%s",
-				args.DatabaseComponent.GetEndpoint(),
-				args.DatabaseComponent.GetPort(),
-				pulumix.Apply(args.DatabaseComponent.GetOptions(), func(options map[string]string) string {
-					if options == nil {
-						return ""
-					}
+			Value: pulumi.Sprintf("postgres://$(POSTGRES_USERNAME):$(POSTGRES_PASSWORD)@%s.%s.svc.cluster.local:%d/%s?%s",
+				cmp.Service.Metadata.Name().Elem(),
+				cmp.Service.Metadata.Namespace().Elem(),
+				cmp.DatabaseComponent.GetPort(),
+				cmp.DatabaseComponent.GetDatabase(),
+				pulumix.Apply2(
+					cmp.DatabaseComponent.GetOptions(),
+					cmp.Options,
+					func(options, additionalOptions map[string]string) string {
+						if options == nil {
+							return ""
+						}
 
-					asSlice := make([]string, 0, len(options))
-					for k, v := range options {
-						asSlice = append(asSlice, fmt.Sprintf("%s=%s", k, v))
-					}
-					slices.Sort(asSlice)
+						asSlice := make([]string, 0, len(options))
+						for k, v := range options {
+							asSlice = append(asSlice, fmt.Sprintf("%s=%s", k, v))
+						}
+						for k, v := range additionalOptions {
+							asSlice = append(asSlice, fmt.Sprintf("%s=%s", k, v))
+						}
+						slices.Sort(asSlice)
 
-					return strings.Join(asSlice, "&")
-				}),
+						return strings.Join(asSlice, "&")
+					},
+				),
 			),
 		},
 	}
 
-	if args.AWSEnableIAM != nil {
+	if cmp.AWSEnableIAM != nil {
 		ret = append(ret, corev1.EnvVarArgs{
 			Name:  pulumi.String("POSTGRES_AWS_ENABLE_IAM"),
-			Value: BoolToString(args.AWSEnableIAM).Untyped().(pulumi.StringOutput),
+			Value: BoolToString(cmp.AWSEnableIAM).Untyped().(pulumi.StringOutput),
 		})
 	}
 
-	if args.ConnMaxIdleTime != nil {
+	if cmp.ConnMaxIdleTime != nil {
 		ret = append(ret, corev1.EnvVarArgs{
 			Name: pulumi.String("POSTGRES_CONN_MAX_IDLE_TIME"),
-			Value: pulumix.Apply(args.ConnMaxIdleTime, func(connMaxIdleTime *time.Duration) string {
+			Value: pulumix.Apply(cmp.ConnMaxIdleTime, func(connMaxIdleTime *time.Duration) string {
 				if connMaxIdleTime == nil {
 					return ""
 				}
@@ -143,10 +162,10 @@ func (args *Component) GetEnvVars() corev1.EnvVarArray {
 		})
 	}
 
-	if args.MaxOpenConns != nil {
+	if cmp.MaxOpenConns != nil {
 		ret = append(ret, corev1.EnvVarArgs{
 			Name: pulumi.String("POSTGRES_MAX_OPEN_CONNS"),
-			Value: pulumix.Apply(args.MaxOpenConns, func(maxOpenConns *int) string {
+			Value: pulumix.Apply(cmp.MaxOpenConns, func(maxOpenConns *int) string {
 				if maxOpenConns == nil {
 					return ""
 				}
@@ -155,10 +174,10 @@ func (args *Component) GetEnvVars() corev1.EnvVarArray {
 		})
 	}
 
-	if args.MaxIdleConns != nil {
+	if cmp.MaxIdleConns != nil {
 		ret = append(ret, corev1.EnvVarArgs{
 			Name: pulumi.String("POSTGRES_MAX_IDLE_CONNS"),
-			Value: pulumix.Apply(args.MaxIdleConns, func(maxIdleConns *int) string {
+			Value: pulumix.Apply(cmp.MaxIdleConns, func(maxIdleConns *int) string {
 				if maxIdleConns == nil {
 					return ""
 				}
@@ -170,8 +189,65 @@ func (args *Component) GetEnvVars() corev1.EnvVarArray {
 	return ret
 }
 
+func (cmp *Component) GetDevBoxContainer(ctx context.Context) corev1.ContainerInput {
+	return corev1.ContainerArgs{
+		Name:  pulumi.String("psql"),
+		Image: pulumi.String("alpine/psql:17.4"),
+		Command: pulumi.StringArray{
+			pulumi.String("sleep"),
+		},
+		Args: pulumi.StringArray{
+			pulumi.String("infinity"),
+		},
+		Env: corev1.EnvVarArray{
+			corev1.EnvVarArgs{
+				Name:  pulumi.String("POSTGRES_SERVICE_NAME"),
+				Value: cmp.Service.Metadata.Name(),
+			},
+			corev1.EnvVarArgs{
+				Name: pulumi.String("POSTGRES_USERNAME"),
+				ValueFrom: corev1.EnvVarSourceArgs{
+					SecretKeyRef: &corev1.SecretKeySelectorArgs{
+						Key:  pulumi.String("username"),
+						Name: cmp.Credentials.Metadata.Name(),
+					},
+				},
+			},
+			corev1.EnvVarArgs{
+				Name: pulumi.String("POSTGRES_PASSWORD"),
+				ValueFrom: corev1.EnvVarSourceArgs{
+					SecretKeyRef: &corev1.SecretKeySelectorArgs{
+						Key:  pulumi.String("password"),
+						Name: cmp.Credentials.Metadata.Name(),
+					},
+				},
+			},
+			corev1.EnvVarArgs{
+				Name: pulumi.String("PGDATABASE"),
+				Value: cmp.DatabaseComponent.GetDatabase().
+					ToOutput(ctx).
+					Untyped().(pulumi.StringOutput),
+			},
+			corev1.EnvVarArgs{
+				Name:  pulumi.String("PGPASSWORD"),
+				Value: pulumi.String("$(POSTGRES_PASSWORD)"),
+			},
+			corev1.EnvVarArgs{
+				Name:  pulumi.String("PGHOST"),
+				Value: pulumi.String("$(POSTGRES_SERVICE_NAME)"),
+			},
+			corev1.EnvVarArgs{
+				Name:  pulumi.String("PGUSER"),
+				Value: pulumi.String("$(POSTGRES_USERNAME)"),
+			},
+		},
+	}
+}
+
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options ...pulumi.ResourceOption) (*Component, error) {
-	cmp := &Component{}
+	cmp := &Component{
+		ConnectivityDatabaseArgs: args.ConnectivityDatabaseArgs,
+	}
 	err := ctx.RegisterComponentResource("Formance:Ledger:Storage", name, cmp, options...)
 	if err != nil {
 		return nil, err
@@ -208,7 +284,9 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 		},
 		StringData: pulumi.StringMap{
 			"username": cmp.DatabaseComponent.GetUsername().ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
-			"password": cmp.DatabaseComponent.GetPassword().ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
+			"password": pulumix.Apply(cmp.DatabaseComponent.GetPassword(), func(password string) string {
+				return url.QueryEscape(password)
+			}).Untyped().(pulumi.StringOutput),
 		},
 	}, pulumi.Parent(cmp))
 	if err != nil {
@@ -224,6 +302,9 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 				Namespace: args.CommonArgs.Namespace.
 					ToOutput(ctx.Context()).
 					Untyped().(pulumi.StringOutput),
+				Annotations: args.Service.Annotations.
+					ToOutput(ctx.Context()).
+					Untyped().(pulumi.StringMapOutput),
 			},
 			Spec: &corev1.ServiceSpecArgs{
 				Type: pulumi.String("ExternalName"),
@@ -238,7 +319,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 		}
 	}
 
-	args.DisableUpgrade.ApplyT(func(disableUpgrade bool) error {
+	args.DisableUpgrade.ToOutput(ctx.Context()).ApplyT(func(disableUpgrade bool) error {
 		if disableUpgrade {
 			return nil
 		}
@@ -256,6 +337,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, options 
 		if err != nil {
 			return fmt.Errorf("creating migration job: %w", err)
 		}
+
 		job.Status.Succeeded().Elem().ApplyT(func(succeeded int) error {
 			if succeeded == 0 {
 				return errors.New("migration job failed")

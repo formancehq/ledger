@@ -11,9 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	common "github.com/formancehq/ledger/internal/storage/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -100,7 +101,7 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 }
 
 // ListLedgers mocks base method.
-func (m *SystemController) ListLedgers(ctx context.Context, query ledger0.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])

@@ -4,31 +4,31 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"reflect"
 
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/pkg/features"
-
-	. "github.com/formancehq/go-libs/v2/collectionutils"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 
 	"errors"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/google/uuid"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -45,7 +45,7 @@ type DefaultController struct {
 	executeMachineHistogram metric.Int64Histogram
 	deadLockCounter         metric.Int64Counter
 
-	createTransactionLp         *logProcessor[RunScript, ledger.CreatedTransaction]
+	createTransactionLp         *logProcessor[CreateTransaction, ledger.CreatedTransaction]
 	revertTransactionLp         *logProcessor[RevertTransaction, ledger.RevertedTransaction]
 	saveTransactionMetadataLp   *logProcessor[SaveTransactionMetadata, ledger.SavedMetadata]
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
@@ -53,15 +53,18 @@ type DefaultController struct {
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
 }
 
-func (ctrl *DefaultController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
+func (ctrl *DefaultController) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
 	cp := *ctrl
-	var err error
-	cp.store, err = ctrl.store.BeginTX(ctx, options)
+	var (
+		err error
+		tx  *bun.Tx
+	)
+	cp.store, tx, err = ctrl.store.BeginTX(ctx, options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &cp, nil
+	return &cp, tx, nil
 }
 
 func (ctrl *DefaultController) Commit(_ context.Context) error {
@@ -98,7 +101,7 @@ func NewDefaultController(
 		panic(err)
 	}
 
-	ret.createTransactionLp = newLogProcessor[RunScript, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
+	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
 	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter)
 	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter)
 	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
@@ -116,31 +119,31 @@ func (ctrl *DefaultController) GetMigrationsInfo(ctx context.Context) ([]migrati
 	return ctrl.store.GetMigrationsInfo(ctx)
 }
 
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	return ctrl.store.Transactions().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) CountTransactions(ctx context.Context, q ResourceQuery[any]) (int, error) {
+func (ctrl *DefaultController) CountTransactions(ctx context.Context, q common.ResourceQuery[any]) (int, error) {
 	return ctrl.store.Transactions().Count(ctx, q)
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, q ResourceQuery[any]) (*ledger.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Transaction, error) {
 	return ctrl.store.Transactions().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) CountAccounts(ctx context.Context, q ResourceQuery[any]) (int, error) {
+func (ctrl *DefaultController) CountAccounts(ctx context.Context, q common.ResourceQuery[any]) (int, error) {
 	return ctrl.store.Accounts().Count(ctx, q)
 }
 
-func (ctrl *DefaultController) ListAccounts(ctx context.Context, q OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (ctrl *DefaultController) ListAccounts(ctx context.Context, q common.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	return ctrl.store.Accounts().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, q ResourceQuery[any]) (*ledger.Account, error) {
+func (ctrl *DefaultController) GetAccount(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Account, error) {
 	return ctrl.store.Accounts().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	ret, err := ctrl.store.AggregatedBalances().GetOne(ctx, q)
 	if err != nil {
 		return nil, err
@@ -148,47 +151,20 @@ func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q Reso
 	return ret.Aggregated.Balances(), nil
 }
 
-func (ctrl *DefaultController) ListLogs(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (ctrl *DefaultController) ListLogs(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	return ctrl.store.Logs().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q common.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error {
-	// Use serializable isolation level to ensure no concurrent request use the store.
-	// If a concurrent transactions is made while we are importing some logs, the transaction importing logs will
-	// be canceled with serialization error.
-	store, err := ctrl.store.BeginTX(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
 
-	if err := ctrl.importLogs(ctx, store, stream); err != nil {
-		if rollbackErr := store.Rollback(); rollbackErr != nil {
-			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
-		}
-		return err
-	}
-
-	if err := store.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
-func (ctrl *DefaultController) importLogs(ctx context.Context, store Store, stream chan ledger.Log) error {
-
-	// Due to the serializable isolation level, and since we explicitly ask for the ledger state in the sql transaction context
-	// if the state change, the sql transaction will be aborted with a serialization error
-	if err := store.LockLedger(ctx); err != nil {
-		return fmt.Errorf("failed to lock ledger: %w", err)
-	}
+	var lastLogID *int
 
 	// We can import only if the ledger is empty.
-	logs, err := store.Logs().Paginate(ctx, ColumnPaginatedQuery[any]{
+	logs, err := ctrl.store.Logs().Paginate(ctx, common.ColumnPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	if err != nil {
@@ -196,13 +172,20 @@ func (ctrl *DefaultController) importLogs(ctx context.Context, store Store, stre
 	}
 
 	if len(logs.Data) > 0 {
-		return newErrImport(errors.New("ledger must be empty"))
+		lastLogID = logs.Data[0].ID
 	}
 
 	for log := range stream {
-		if err := ctrl.importLog(ctx, store, log); err != nil {
-			if errors.Is(err, postgres.ErrSerialization) {
-				return newErrImport(errors.New("concurrent transaction occur" +
+		if lastLogID != nil && *log.ID <= *lastLogID {
+			return fmt.Errorf("log %d already exists", *log.ID)
+		}
+		lastLogID = nil
+
+		if err := ctrl.importLog(ctx, log); err != nil {
+			switch {
+			case errors.Is(err, postgres.ErrSerialization) ||
+				errors.Is(err, ErrConcurrentTransaction{}):
+				return NewErrImport(errors.New("concurrent transaction occur" +
 					"red, cannot import the ledger"))
 			}
 			return fmt.Errorf("importing log %d: %w", *log.ID, err)
@@ -212,89 +195,83 @@ func (ctrl *DefaultController) importLogs(ctx context.Context, store Store, stre
 	return err
 }
 
-// todo: as ids are generated by the database, the exported ids can not match imported ones
-// it can cause issues with actions referencing other objects
-func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log ledger.Log) error {
-	switch payload := log.Data.(type) {
-	case ledger.CreatedTransaction:
-		logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-		if err := store.CommitTransaction(ctx, &payload.Transaction); err != nil {
-			return fmt.Errorf("failed to commit transaction: %w", err)
+func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) error {
+	_, err := tracing.Trace(ctx, ctrl.tracer, "ImportLog", func(ctx context.Context) (any, error) {
+		switch payload := log.Data.(type) {
+		case ledger.CreatedTransaction:
+			logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
+			if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
+				return nil, fmt.Errorf("failed to commit transaction: %w", err)
+			}
+			logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
+		case ledger.RevertedTransaction:
+			logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
+			_, _, err := ctrl.store.RevertTransaction(
+				ctx,
+				*payload.RevertedTransaction.ID,
+				*payload.RevertedTransaction.RevertedAt,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to revert transaction: %w", err)
+			}
+			if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
+				return nil, fmt.Errorf("failed to commit transaction: %w", err)
+			}
+		case ledger.SavedMetadata:
+			switch payload.TargetType {
+			case ledger.MetaTargetTypeTransaction:
+				logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
+				if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata, log.Date); err != nil {
+					return nil, fmt.Errorf("failed to update transaction metadata: %w", err)
+				}
+			case ledger.MetaTargetTypeAccount:
+				logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
+				if err := ctrl.store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
+					payload.TargetID.(string): payload.Metadata,
+				}); err != nil {
+					return nil, fmt.Errorf("failed to update account metadata: %w", err)
+				}
+			}
+		case ledger.DeletedMetadata:
+			switch payload.TargetType {
+			case ledger.MetaTargetTypeTransaction:
+				logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
+				if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key, log.Date); err != nil {
+					return nil, fmt.Errorf("failed to delete transaction metadata: %w", err)
+				}
+			case ledger.MetaTargetTypeAccount:
+				logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
+				if err := ctrl.store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
+					return nil, fmt.Errorf("failed to delete account metadata: %w", err)
+				}
+			}
 		}
-		logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
 
-		if len(payload.AccountMetadata) > 0 {
-			logging.FromContext(ctx).Debugf("Importing metadata of accounts '%s'", Keys(payload.AccountMetadata))
-			if err := store.UpdateAccountsMetadata(ctx, payload.AccountMetadata); err != nil {
-				return fmt.Errorf("updating metadata of accounts '%s': %w", Keys(payload.AccountMetadata), err)
-			}
+		logCopy := log
+		logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
+		if err := ctrl.store.InsertLog(ctx, &log); err != nil {
+			return nil, fmt.Errorf("failed to insert log: %w", err)
 		}
-	case ledger.RevertedTransaction:
-		logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
-		_, _, err := store.RevertTransaction(
-			ctx,
-			*payload.RevertedTransaction.ID,
-			*payload.RevertedTransaction.RevertedAt,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to revert transaction: %w", err)
-		}
-		if err := store.CommitTransaction(ctx, &payload.RevertTransaction); err != nil {
-			return fmt.Errorf("failed to commit transaction: %w", err)
-		}
-	case ledger.SavedMetadata:
-		switch payload.TargetType {
-		case ledger.MetaTargetTypeTransaction:
-			logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
-			if _, _, err := store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
-				return fmt.Errorf("failed to update transaction metadata: %w", err)
-			}
-		case ledger.MetaTargetTypeAccount:
-			logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
-			if err := store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
-				payload.TargetID.(string): payload.Metadata,
-			}); err != nil {
-				return fmt.Errorf("failed to update account metadata: %w", err)
-			}
-		}
-	case ledger.DeletedMetadata:
-		switch payload.TargetType {
-		case ledger.MetaTargetTypeTransaction:
-			logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
-			if _, _, err := store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
-				return fmt.Errorf("failed to delete transaction metadata: %w", err)
-			}
-		case ledger.MetaTargetTypeAccount:
-			logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
-			if err := store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
-				return fmt.Errorf("failed to delete account metadata: %w", err)
-			}
-		}
-	}
 
-	logCopy := log
-	logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
-	if err := store.InsertLog(ctx, &log); err != nil {
-		return fmt.Errorf("failed to insert log: %w", err)
-	}
-
-	if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
-		if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
-			return newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+		if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
+			if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
+				return nil, newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+			}
 		}
-	}
 
-	return nil
+		return nil, nil
+	})
+	return err
 }
 
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
 	return bunpaginate.Iterate(
 		ctx,
-		ColumnPaginatedQuery[any]{
+		common.ColumnPaginatedQuery[any]{
 			PageSize: 100,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		},
-		func(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+		func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 			return ctrl.store.Logs().Paginate(ctx, q)
 		},
 		func(cursor *bunpaginate.Cursor[ledger.Log]) error {
@@ -308,7 +285,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
-func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
@@ -346,29 +323,38 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		finalMetadata[k] = v
 	}
 
+	accountMetadata := result.AccountMetadata
+	if accountMetadata == nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+	}
+	if parameters.Input.AccountMetadata != nil {
+		for account, values := range parameters.Input.AccountMetadata {
+			if accountMetadata[account] == nil {
+				accountMetadata[account] = metadata.Metadata{}
+			}
+			for k, v := range values {
+				accountMetadata[account][k] = v
+			}
+		}
+	}
+
 	transaction := ledger.NewTransaction().
 		WithPostings(result.Postings...).
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
 		WithReference(parameters.Input.Reference)
-	err = store.CommitTransaction(ctx, &transaction)
+	err = store.CommitTransaction(ctx, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(result.AccountMetadata) > 0 {
-		if err := store.UpdateAccountsMetadata(ctx, result.AccountMetadata); err != nil {
-			return nil, fmt.Errorf("updating metadata of account '%s': %w", Keys(result.AccountMetadata), err)
-		}
-	}
-
 	return &ledger.CreatedTransaction{
 		Transaction:     transaction,
-		AccountMetadata: result.AccountMetadata,
+		AccountMetadata: accountMetadata,
 	}, err
 }
 
-func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 
@@ -398,6 +384,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 	} else {
 		reversedTx = reversedTx.WithTimestamp(*originalTransaction.RevertedAt)
 	}
+	reversedTx.Metadata = ledger.MarkReverts(metadata.Metadata{}, *originalTransaction.ID)
 
 	// Check balances after the revert, all balances must be greater than 0
 	if !parameters.Input.Force {
@@ -426,7 +413,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 		}
 	}
 
-	err = store.CommitTransaction(ctx, &reversedTx)
+	err = store.CommitTransaction(ctx, &reversedTx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert transaction: %w", err)
 	}
@@ -442,7 +429,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 }
 
 func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
-	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata); err != nil {
+	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
 		return nil, err
 	}
 
@@ -480,7 +467,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 }
 
 func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
-	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key)
+	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
 	}

@@ -904,6 +904,7 @@ paths:
             minimum: 0
             example: 1234
       requestBody:
+        required: true
         description: metadata
         content:
           application/json:
@@ -1351,6 +1352,13 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       responses:
         "200":
           description: OK
@@ -1405,6 +1413,7 @@ paths:
       tags:
         - ledger.v2
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1437,6 +1446,7 @@ paths:
       tags:
         - ledger.v2
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1558,6 +1568,7 @@ paths:
             type: boolean
             example: true
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1606,6 +1617,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1681,6 +1693,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -1920,6 +1933,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -2007,6 +2021,7 @@ paths:
           schema:
             type: boolean
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -2175,6 +2190,7 @@ paths:
           schema:
             type: string
       requestBody:
+        required: true
         description: metadata
         content:
           application/json:
@@ -2325,6 +2341,7 @@ paths:
           schema:
             type: boolean
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -2413,6 +2430,7 @@ paths:
             minimum: 0
             maximum: 1000
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -2481,6 +2499,7 @@ paths:
             type: string
             format: date-time
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -2517,10 +2536,11 @@ paths:
             type: string
             example: ledger001
       requestBody:
+        required: true
         content:
           application/octet-stream:
             schema:
-              type: string
+              $ref: "#/components/schemas/V2ImportLogsRequest"
       responses:
         "204":
           description: Import OK
@@ -3459,6 +3479,10 @@ components:
           example: ref:001
         metadata:
           $ref: "#/components/schemas/V2Metadata"
+        accountMetadata:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/V2Metadata"
     V2Stats:
       type: object
       properties:
@@ -3648,6 +3672,7 @@ components:
           enum:
             - TO DO
             - DONE
+            - PROGRESS
     V2Bulk:
       type: array
       items:
@@ -3752,16 +3777,17 @@ components:
                 - targetType
                 - key
     V2BulkResponse:
-      allOf:
-        - properties:
-            data:
-              type: array
-              items:
-                $ref: "#/components/schemas/V2BulkElementResult"
-        - $ref: "#/components/schemas/V2ErrorResponse"
       type: object
-      required:
-        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2BulkElementResult"
+        errorCode:
+          $ref: "#/components/schemas/V2ErrorsEnum"
+        errorMessage:
+          type: string
+          example: "[VALIDATION] invalid 'cursor' query param"
     V2BulkElementResult:
       type: object
       oneOf:
@@ -3899,5 +3925,13 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/V2Ledger"
+    V2ImportLogsRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
 servers:
   - url: http://localhost:8080/

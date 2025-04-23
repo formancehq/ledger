@@ -3,12 +3,14 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 )
 
@@ -139,14 +141,19 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 	return ret
 }
 
-func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
-	return tracing.TraceWithMetric(
+func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
+	var (
+		ctrl Controller
+		tx   *bun.Tx
+		err  error
+	)
+	ctrl, err = tracing.TraceWithMetric(
 		ctx,
 		"BeginTX",
 		c.tracer,
 		c.beginTxHistogram,
 		func(ctx context.Context) (Controller, error) {
-			ctrl, err := c.underlying.BeginTX(ctx, options)
+			ctrl, tx, err = c.underlying.BeginTX(ctx, options)
 			if err != nil {
 				return nil, err
 			}
@@ -157,6 +164,10 @@ func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptio
 			return &ret, nil
 		},
 	)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ctrl, tx, nil
 }
 
 func (c *ControllerWithTraces) Commit(ctx context.Context) error {
@@ -195,7 +206,7 @@ func (c *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrati
 	)
 }
 
-func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListTransactions",
@@ -207,7 +218,7 @@ func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q ColumnPag
 	)
 }
 
-func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q ResourceQuery[any]) (int, error) {
+func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q common.ResourceQuery[any]) (int, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"CountTransactions",
@@ -219,7 +230,7 @@ func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q Resource
 	)
 }
 
-func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query ResourceQuery[any]) (*ledger.Transaction, error) {
+func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query common.ResourceQuery[any]) (*ledger.Transaction, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetTransaction",
@@ -231,7 +242,7 @@ func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query Resourc
 	)
 }
 
-func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a ResourceQuery[any]) (int, error) {
+func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a common.ResourceQuery[any]) (int, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"CountAccounts",
@@ -243,7 +254,7 @@ func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a ResourceQuer
 	)
 }
 
-func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
@@ -255,7 +266,7 @@ func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a OffsetPaginat
 	)
 }
 
-func (c *ControllerWithTraces) GetAccount(ctx context.Context, q ResourceQuery[any]) (*ledger.Account, error) {
+func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Account, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAccount",
@@ -267,7 +278,7 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q ResourceQuery[a
 	)
 }
 
-func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetAggregatedBalances",
@@ -279,7 +290,7 @@ func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q Reso
 	)
 }
 
-func (c *ControllerWithTraces) ListLogs(ctx context.Context, q ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListLogs",
@@ -327,7 +338,7 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",
@@ -339,7 +350,7 @@ func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q Off
 	)
 }
 
-func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	var (
 		createdTransaction *ledger.CreatedTransaction
 		log                *ledger.Log

@@ -3,12 +3,15 @@ package config
 import (
 	"errors"
 	"fmt"
-	. "github.com/formancehq/go-libs/v2/collectionutils"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/monitoring"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/rds"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -56,6 +59,9 @@ func (a *RDSUseExistingCluster) toInput() *storage.RDSUseExistingClusterArgs {
 type RDSPostMigrateSnapshot struct {
 	// SnapshotIdentifier is the snapshot identifier to create after migrations
 	SnapshotIdentifier string `json:"snapshot-identifier" yaml:"snapshot-identifier"`
+
+	// RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted)
+	RetainsOnDelete bool `json:"retains-on-delete" yaml:"retains-on-delete"`
 }
 
 func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
@@ -64,6 +70,7 @@ func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
 	}
 	return &storage.RDSPostMigrateSnapshotArgs{
 		SnapshotIdentifier: pulumi.String(a.SnapshotIdentifier),
+		RetainsOnDelete:    a.RetainsOnDelete,
 	}
 }
 
@@ -76,6 +83,9 @@ type RDSDatabase struct {
 
 	// PostMigrateSnapshot is the configuration for a snapshot to create after migrations
 	PostMigrateSnapshot *RDSPostMigrateSnapshot `json:"post-migrate-snapshot" yaml:"post-migrate-snapshot"`
+
+	// UseDBName is the name of the database to use
+	UseDBName string `json:"use-db-name" yaml:"use-db-name"`
 }
 
 func (a *RDSDatabase) toInput() *storage.RDSDatabaseArgs {
@@ -87,6 +97,7 @@ func (a *RDSDatabase) toInput() *storage.RDSDatabaseArgs {
 		CreateCluster:       a.CreateCluster.toInput(),
 		UseCluster:          a.UseCluster.toInput(),
 		PostMigrateSnapshot: a.PostMigrateSnapshot.toInput(),
+		UseDBName:           pulumi.String(a.UseDBName),
 	}
 }
 
@@ -114,6 +125,9 @@ type RDSClusterCreate struct {
 
 	// EngineVersion is the engine version for the RDS cluster
 	EngineVersion string `json:"engine-version" yaml:"engine-version"`
+
+	// RetainsOnDelete is whether to retain the RDS cluster on delete (instances will be deleted)
+	RetainsOnDelete bool `json:"retains-on-delete" yaml:"retains-on-delete"`
 }
 
 func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
@@ -126,7 +140,16 @@ func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
 		InstanceClass:              pulumix.Val(rds.InstanceType(a.InstanceClass)),
 		Engine:                     pulumi.String(a.Engine),
 		EngineVersion:              pulumi.String(a.EngineVersion),
+		RetainsOnDelete:            a.RetainsOnDelete,
 	}
+}
+
+type PostgresInstall struct {
+	// Username is the username for the Postgres database
+	Username string `json:"username" yaml:"username"`
+
+	// Password is the password for the Postgres database
+	Password string `json:"password" yaml:"password"`
 }
 
 type PostgresDatabase struct {
@@ -134,7 +157,7 @@ type PostgresDatabase struct {
 	URI string `json:"uri" yaml:"uri"`
 
 	// Install is whether to install the Postgres database
-	Install bool `json:"install" yaml:"install"`
+	Install *PostgresInstall `json:"install" yaml:"install"`
 }
 
 func (a *PostgresDatabase) toInput() *storage.PostgresDatabaseArgs {
@@ -147,12 +170,15 @@ func (a *PostgresDatabase) toInput() *storage.PostgresDatabaseArgs {
 		}
 	}
 
-	if !a.Install {
+	if a.Install == nil {
 		panic("uri must be provided if install is false")
 	}
 
 	return &storage.PostgresDatabaseArgs{
-		Install: pulumi.Bool(a.Install),
+		Install: &storage.PostgresInstallArgs{
+			Username: pulumix.Val(a.Install.Username),
+			Password: pulumix.Val(a.Install.Password),
+		},
 	}
 }
 
@@ -168,6 +194,9 @@ type ConnectivityDatabase struct {
 
 	// ConnMaxIdleTime is the maximum idle time for a connection
 	ConnMaxIdleTime *time.Duration `json:"conn-max-idle-time" yaml:"conn-max-idle-time"`
+
+	// Options is the options for the Postgres database to pass on the dsn
+	Options map[string]string `json:"options" yaml:"options"`
 }
 
 func (d ConnectivityDatabase) toInput() storage.ConnectivityDatabaseArgs {
@@ -176,6 +205,7 @@ func (d ConnectivityDatabase) toInput() storage.ConnectivityDatabaseArgs {
 		MaxIdleConns:    pulumix.Val(d.MaxIdleConns),
 		MaxOpenConns:    pulumix.Val(d.MaxOpenConns),
 		ConnMaxIdleTime: pulumix.Val(d.ConnMaxIdleTime),
+		Options:         pulumix.Val(d.Options),
 	}
 }
 
@@ -187,6 +217,17 @@ type StorageSource struct {
 	Postgres *PostgresDatabase `json:"postgres" yaml:"postgres" jsonschema:"oneof_required=postgres"`
 }
 
+type StorageService struct {
+	// Annotations is the annotations for the service
+	Annotations map[string]string `json:"annotations" yaml:"annotations"`
+}
+
+func (s StorageService) toInput() storage.Service {
+	return storage.Service{
+		Annotations: pulumix.Val(s.Annotations),
+	}
+}
+
 type Storage struct {
 	StorageSource
 
@@ -195,6 +236,9 @@ type Storage struct {
 
 	// DisableUpgrade is whether to disable upgrades for the database
 	DisableUpgrade bool `json:"disable-upgrade" yaml:"disable-upgrade"`
+
+	// Service is the service configuration for the database
+	Service StorageService `json:"service" yaml:"service"`
 }
 
 func (s Storage) toInput() storage.Args {
@@ -203,6 +247,7 @@ func (s Storage) toInput() storage.Args {
 		RDS:                      s.RDS.toInput(),
 		ConnectivityDatabaseArgs: s.Connectivity.toInput(),
 		DisableUpgrade:           pulumix.Val(s.DisableUpgrade),
+		Service:                  s.Service.toInput(),
 	}
 }
 
@@ -249,6 +294,12 @@ func (d API) toInput() api.Args {
 	}
 }
 
+type Worker struct{}
+
+func (w Worker) toInput() worker.Args {
+	return worker.Args{}
+}
+
 type Monitoring struct {
 	// ResourceAttributes is the resource attributes for OpenTelemetry
 	ResourceAttributes map[string]string `json:"resource-attributes" yaml:"resource-attributes"`
@@ -257,17 +308,17 @@ type Monitoring struct {
 	ServiceName string `json:"service-name" yaml:"service-name"`
 
 	// Traces is the traces configuration for OpenTelemetry
-	Traces *OtelTraces `json:"traces" yaml:"traces"`
+	Traces *MonitoringTraces `json:"traces" yaml:"traces"`
 
 	// Metrics is the metrics configuration for OpenTelemetry
-	Metrics *OtelMetrics `json:"metrics" yaml:"metrics"`
+	Metrics *MonitoringMetrics `json:"metrics" yaml:"metrics"`
 }
 
-func (o *Monitoring) ToInput() *utils.OtelArgs {
+func (o *Monitoring) ToInput() *monitoring.Args {
 	if o == nil {
 		return nil
 	}
-	return &utils.OtelArgs{
+	return &monitoring.Args{
 		ResourceAttributes: pulumix.Val(o.ResourceAttributes),
 		ServiceName:        pulumix.Val(o.ServiceName),
 		Traces:             o.Traces.toInput(),
@@ -275,7 +326,7 @@ func (o *Monitoring) ToInput() *utils.OtelArgs {
 	}
 }
 
-type OtelTracesJaeger struct {
+type MonitoringTracesJaeger struct {
 	// Endpoint is the endpoint for the Jaeger exporter
 	Endpoint string `json:"endpoint" yaml:"endpoint"`
 
@@ -286,7 +337,18 @@ type OtelTracesJaeger struct {
 	Password string `json:"password" yaml:"password"`
 }
 
-type OtelTracesOTLP struct {
+func (j *MonitoringTracesJaeger) toInput() *monitoring.JaegerExporterArgs {
+	if j == nil {
+		return nil
+	}
+	return &monitoring.JaegerExporterArgs{
+		Endpoint: pulumi.String(j.Endpoint),
+		User:     pulumi.String(j.User),
+		Password: pulumi.String(j.Password),
+	}
+}
+
+type MonitoringTracesOTLP struct {
 	// Mode is the mode for the OTLP exporter
 	Mode string `json:"mode" yaml:"mode"`
 
@@ -297,37 +359,44 @@ type OtelTracesOTLP struct {
 	Insecure bool `json:"insecure" yaml:"insecure"`
 }
 
-type OtelTraces struct {
+func (o *MonitoringTracesOTLP) toInput() *monitoring.EndpointArgs {
+	if o == nil {
+		return nil
+	}
+	return &monitoring.EndpointArgs{
+		Mode:     pulumi.String(o.Mode),
+		Endpoint: pulumi.String(o.Endpoint),
+		Insecure: pulumi.Bool(o.Insecure),
+	}
+}
+
+type MonitoringTraces struct {
 	// Batch is whether to batch traces
 	Batch bool `json:"batch" yaml:"batch"`
 
-	// ExporterFlag is the exporter flag for traces
-	ExporterFlag string `json:"exporter-flag" yaml:"exporter-flag"`
+	// Exporter is the exporter flag for traces
+	Exporter string `json:"exporter" yaml:"exporter"`
 
 	// Jaeger is the Jaeger configuration for traces
-	Jaeger *OtelTracesJaeger `json:"jaeger" yaml:"jaeger"`
+	Jaeger *MonitoringTracesJaeger `json:"jaeger" yaml:"jaeger"`
 
 	// OTLP is the OTLP configuration for traces
-	OTLP *OtelTracesOTLP `json:"otlp" yaml:"otlp"`
+	OTLP *MonitoringTracesOTLP `json:"otlp" yaml:"otlp"`
 }
 
-func (t *OtelTraces) toInput() *utils.OtelTracesArgs {
+func (t *MonitoringTraces) toInput() *monitoring.TracesArgs {
 	if t == nil {
 		return nil
 	}
-	return &utils.OtelTracesArgs{
-		OtelTracesBatch:                  pulumix.Val(t.Batch),
-		OtelTracesExporterFlag:           pulumix.Val(t.ExporterFlag),
-		OtelTracesExporterJaegerEndpoint: pulumix.Val(t.Jaeger.Endpoint),
-		OtelTracesExporterJaegerUser:     pulumix.Val(t.Jaeger.User),
-		OtelTracesExporterJaegerPassword: pulumix.Val(t.Jaeger.Password),
-		OtelTracesExporterOTLPMode:       pulumix.Val(t.OTLP.Mode),
-		OtelTracesExporterOTLPEndpoint:   pulumix.Val(t.OTLP.Endpoint),
-		OtelTracesExporterOTLPInsecure:   pulumix.Val(t.OTLP.Insecure),
+	return &monitoring.TracesArgs{
+		Batch:    pulumix.Val(t.Batch),
+		Exporter: pulumix.Val(t.Exporter),
+		OTLP:     t.OTLP.toInput(),
+		Jaeger:   t.Jaeger.toInput(),
 	}
 }
 
-type OtelMetricsOTLP struct {
+type MonitoringMetricsOTLP struct {
 	// Mode is the mode for the OTLP metrics exporter
 	Mode string `json:"mode" yaml:"mode"`
 
@@ -338,7 +407,18 @@ type OtelMetricsOTLP struct {
 	Insecure bool `json:"insecure" yaml:"insecure"`
 }
 
-type OtelMetrics struct {
+func (o *MonitoringMetricsOTLP) toInput() *monitoring.EndpointArgs {
+	if o == nil {
+		return nil
+	}
+	return &monitoring.EndpointArgs{
+		Mode:     pulumi.String(o.Mode),
+		Endpoint: pulumi.String(o.Endpoint),
+		Insecure: pulumi.Bool(o.Insecure),
+	}
+}
+
+type MonitoringMetrics struct {
 	// PushInterval is the push interval for the metrics exporter
 	PushInterval *time.Duration `json:"push-interval" yaml:"push-interval"`
 
@@ -355,22 +435,20 @@ type OtelMetrics struct {
 	KeepInMemory bool `json:"keep-in-memory" yaml:"keep-in-memory"`
 
 	// OTLP is the OTLP configuration for metrics
-	OtelMetricsOTLP *OtelMetricsOTLP `json:"otlp" yaml:"otlp"`
+	MonitoringMetricsOTLP *MonitoringMetricsOTLP `json:"otlp" yaml:"otlp"`
 }
 
-func (m *OtelMetrics) toInput() *utils.OtelMetricsArgs {
+func (m *MonitoringMetrics) toInput() *monitoring.MetricsArgs {
 	if m == nil {
 		return nil
 	}
-	return &utils.OtelMetricsArgs{
-		OtelMetricsExporterPushInterval:               pulumix.Val(m.PushInterval),
-		OtelMetricsRuntime:                            pulumix.Val(m.Runtime),
-		OtelMetricsRuntimeMinimumReadMemStatsInterval: pulumix.Val(m.RuntimeMinimumReadMemStatsInterval),
-		OtelMetricsExporter:                           pulumix.Val(m.Exporter),
-		OtelMetricsKeepInMemory:                       pulumix.Val(m.KeepInMemory),
-		OtelMetricsExporterOTLPMode:                   pulumix.Val(m.OtelMetricsOTLP.Mode),
-		OtelMetricsExporterOTLPEndpoint:               pulumix.Val(m.OtelMetricsOTLP.Endpoint),
-		OtelMetricsExporterOTLPInsecure:               pulumix.Val(m.OtelMetricsOTLP.Insecure),
+	return &monitoring.MetricsArgs{
+		PushInterval:                pulumix.Val(m.PushInterval),
+		Runtime:                     pulumix.Val(m.Runtime),
+		MinimumReadMemStatsInterval: pulumix.Val(m.RuntimeMinimumReadMemStatsInterval),
+		Exporter:                    pulumix.Val(m.Exporter),
+		KeepInMemory:                pulumix.Val(m.KeepInMemory),
+		OTLP:                        m.MonitoringMetricsOTLP.toInput(),
 	}
 }
 
@@ -391,10 +469,10 @@ type Common struct {
 	Debug bool `json:"debug" yaml:"debug"`
 }
 
-func (c Common) toInput() utils.CommonArgs {
-	return utils.CommonArgs{
+func (c Common) toInput() common.CommonArgs {
+	return common.CommonArgs{
 		Namespace:       pulumix.Val(c.Namespace),
-		Otel:            c.Monitoring.ToInput(),
+		Monitoring:      c.Monitoring.ToInput(),
 		Tag:             pulumix.Val(c.Tag),
 		ImagePullPolicy: pulumix.Val(c.ImagePullPolicy),
 		Debug:           pulumix.Val(c.Debug),
@@ -420,32 +498,68 @@ func (c LedgerConfig) toInput() provision.LedgerConfigArgs {
 	}
 }
 
-type ProvisionConfig struct {
-	// Ledgers are the ledgers to auto create
-	Ledgers map[string]LedgerConfig `json:"ledgers" yaml:"ledgers"`
-}
-
-func (c ProvisionConfig) toInput() provision.ConfigArgs {
-	if c.Ledgers == nil {
-		return provision.ConfigArgs{}
-	}
-	return provision.ConfigArgs{
-		Ledgers: ConvertMap(c.Ledgers, LedgerConfig.toInput),
-	}
-}
-
 type Provision struct {
 	// ProvisionerVersion is the version of the provisioner (default to the ledger version if not specified)
 	ProvisionerVersion string `json:"provisioner-version" yaml:"provisioner-version"`
 
-	// Config is the configuration for the provisioner
-	Config ProvisionConfig `json:"config" yaml:"config"`
+	// Ledgers are the ledgers to auto create
+	Ledgers map[string]LedgerConfig `json:"ledgers" yaml:"ledgers"`
 }
 
 func (i Provision) toInput() provision.Args {
 	return provision.Args{
 		ProvisionerVersion: pulumi.String(i.ProvisionerVersion),
-		Config:             i.Config.toInput(),
+		Ledgers:            ConvertMap(i.Ledgers, LedgerConfig.toInput),
+	}
+}
+
+type GeneratorLedgerConfiguration struct {
+	// UntilLogID is the log ID to run the generator until
+	UntilLogID uint `json:"until-log-id" yaml:"until-log-id"`
+
+	// Script is the script to run
+	Script string `json:"script" yaml:"script"`
+
+	// ScriptFromFile is the script to run from a file (related to the root directory)
+	ScriptFromFile string `json:"script-from-file" yaml:"script-from-file"`
+
+	// VUs is the number of virtual users to run
+	VUs int `json:"vus" yaml:"vus"`
+
+	// HTTPClientTimeout is the http client timeout for the generator
+	HTTPClientTimeout time.Duration `json:"http-client-timeout" yaml:"http-client-timeout"`
+
+	// SkipAwait is whether to skip the await for the generator
+	SkipAwait bool `json:"skip-await" yaml:"skip-await"`
+}
+
+func (g GeneratorLedgerConfiguration) toInput() generator.LedgerConfiguration {
+	return generator.LedgerConfiguration{
+		UntilLogID:        pulumix.Val(g.UntilLogID),
+		Script:            pulumix.Val(g.Script),
+		ScriptFromFile:    pulumix.Val(g.ScriptFromFile),
+		VUs:               pulumix.Val(g.VUs),
+		HTTPClientTimeout: pulumix.Val(g.HTTPClientTimeout),
+		SkipAwait:         pulumix.Val(g.SkipAwait),
+	}
+}
+
+type Generator struct {
+	// GeneratorVersion is the version of the generator
+	GeneratorVersion string `json:"generator-version" yaml:"generator-version"`
+
+	// Ledgers are the ledgers to run the generator against
+	Ledgers map[string]GeneratorLedgerConfiguration `json:"ledgers" yaml:"ledgers"`
+}
+
+func (g *Generator) toInput() *generator.Args {
+	if g == nil {
+		return nil
+	}
+
+	return &generator.Args{
+		GeneratorVersion: pulumix.Val(g.GeneratorVersion),
+		Ledgers:          ConvertMap(g.Ledgers, GeneratorLedgerConfiguration.toInput),
 	}
 }
 
@@ -458,6 +572,9 @@ type Config struct {
 	// API is the API configuration for the ledger
 	API *API `json:"api" yaml:"api"`
 
+	// Worker is the worker configuration for the ledger
+	Worker *Worker `json:"worker" yaml:"worker"`
+
 	// Ingress is the ingress configuration for the ledger
 	Ingress *Ingress `json:"ingress" yaml:"ingress"`
 
@@ -469,6 +586,9 @@ type Config struct {
 
 	// InstallDevBox is whether to install the dev box
 	InstallDevBox bool `json:"install-dev-box" yaml:"install-dev-box"`
+
+	// Generator is the generator configuration for the ledger
+	Generator *Generator `json:"generator" yaml:"generator"`
 }
 
 func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
@@ -476,10 +596,12 @@ func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 		CommonArgs:    cfg.Common.toInput(),
 		Storage:       cfg.Storage.toInput(),
 		API:           cfg.API.toInput(),
+		Worker:        cfg.Worker.toInput(),
 		Timeout:       pulumix.Val(cfg.Timeout),
 		Ingress:       cfg.Ingress.toInput(),
 		InstallDevBox: pulumix.Val(cfg.InstallDevBox),
 		Provision:     cfg.Provision.toInput(),
+		Generator:     cfg.Generator.toInput(),
 	}
 }
 
@@ -517,8 +639,15 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
-	otel := &Monitoring{}
-	if err := config.GetObject(ctx, "monitoring", otel); err != nil {
+	worker := &Worker{}
+	if err := config.GetObject(ctx, "worker", worker); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+	}
+
+	monitoring := &Monitoring{}
+	if err := config.GetObject(ctx, "monitoring", monitoring); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, err
 		}
@@ -529,6 +658,14 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, err
 		}
+	}
+
+	generator := &Generator{}
+	if err := cfg.TryObject("generator", generator); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+		generator = nil
 	}
 
 	namespace := config.Get(ctx, "namespace")
@@ -542,12 +679,14 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 			Debug:      config.GetBool(ctx, "debug"),
 			Namespace:  namespace,
 			Tag:        config.Get(ctx, "version"),
-			Monitoring: otel,
+			Monitoring: monitoring,
 		},
 		InstallDevBox: config.GetBool(ctx, "install-dev-box"),
 		Storage:       storage,
 		API:           api,
+		Worker:        worker,
 		Ingress:       ingress,
 		Provision:     provision,
+		Generator:     generator,
 	}, nil
 }

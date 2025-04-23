@@ -6,15 +6,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/uptrace/bun"
 	"reflect"
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 const (
@@ -91,7 +91,7 @@ type Log struct {
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-	ID              *int    `json:"id" bun:"id,unique,type:numeric"`
+	ID              *int   `json:"id" bun:"id,unique,type:numeric"`
 	Hash            []byte `json:"hash" bun:"hash,type:bytea"`
 }
 
@@ -159,12 +159,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		Data:           payload,
 		Date:           l.Date,
 		IdempotencyKey: l.IdempotencyKey,
-		ID: func() int {
-			if l.ID == nil {
-				return 0
-			}
-			return *l.ID
-		}(),
+		ID:             0,
 		Hash:           l.Hash,
 	}); err != nil {
 		panic(err)
@@ -214,7 +209,7 @@ func (p CreatedTransaction) GetMemento() any {
 		Metadata  metadata.Metadata `json:"metadata"`
 		Timestamp time.Time         `json:"timestamp"`
 		Reference string            `json:"reference,omitempty"`
-		ID        *int               `json:"id"`
+		ID        *int              `json:"id"`
 		Reverted  bool              `json:"reverted"`
 	}
 
@@ -345,7 +340,7 @@ func (r RevertedTransaction) GetMemento() any {
 		Metadata  metadata.Metadata `json:"metadata"`
 		Timestamp time.Time         `json:"timestamp"`
 		Reference string            `json:"reference,omitempty"`
-		ID        *int               `json:"id"`
+		ID        *int              `json:"id"`
 		Reverted  bool              `json:"reverted"`
 	}
 

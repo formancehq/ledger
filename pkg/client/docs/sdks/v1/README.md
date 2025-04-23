@@ -1,6 +1,8 @@
 # V1
 (*Ledger.V1*)
 
+## Overview
+
 ### Available Operations
 
 * [GetInfo](#getinfo) - Show server information
@@ -34,21 +36,23 @@ Show server information
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
-    ctx := context.Background()
     res, err := s.Ledger.V1.GetInfo(ctx)
     if err != nil {
         log.Fatal(err)
@@ -66,14 +70,16 @@ func main() {
 | `ctx`                                                    | [context.Context](https://pkg.go.dev/context#Context)    | :heavy_check_mark:                                       | The context to use for the request.                      |
 | `opts`                                                   | [][operations.Option](../../models/operations/option.md) | :heavy_minus_sign:                                       | The options for this request.                            |
 
-
 ### Response
 
 **[*operations.GetInfoResponse](../../models/operations/getinforesponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetLedgerInfo
 
@@ -85,25 +91,27 @@ Get information about a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.GetLedgerInfoRequest{
+
+    res, err := s.Ledger.V1.GetLedgerInfo(ctx, operations.GetLedgerInfoRequest{
         Ledger: "ledger001",
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.GetLedgerInfo(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -121,14 +129,16 @@ func main() {
 | `request`                                                                          | [operations.GetLedgerInfoRequest](../../models/operations/getledgerinforequest.md) | :heavy_check_mark:                                                                 | The request object to use for the request.                                         |
 | `opts`                                                                             | [][operations.Option](../../models/operations/option.md)                           | :heavy_minus_sign:                                                                 | The options for this request.                                                      |
 
-
 ### Response
 
 **[*operations.GetLedgerInfoResponse](../../models/operations/getledgerinforesponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CountAccounts
 
@@ -140,21 +150,25 @@ Count the accounts from a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.CountAccountsRequest{
+
+    res, err := s.Ledger.V1.CountAccounts(ctx, operations.CountAccountsRequest{
         Ledger: "ledger001",
         Address: client.String("users:.+"),
         Metadata: map[string]any{
@@ -209,9 +223,7 @@ func main() {
             "48": "e",
             "49": "2",
         },
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.CountAccounts(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -229,14 +241,16 @@ func main() {
 | `request`                                                                          | [operations.CountAccountsRequest](../../models/operations/countaccountsrequest.md) | :heavy_check_mark:                                                                 | The request object to use for the request.                                         |
 | `opts`                                                                             | [][operations.Option](../../models/operations/option.md)                           | :heavy_minus_sign:                                                                 | The options for this request.                                                      |
 
-
 ### Response
 
 **[*operations.CountAccountsResponse](../../models/operations/countaccountsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## ListAccounts
 
@@ -248,21 +262,25 @@ List accounts from a ledger, sorted by address in descending order.
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.ListAccountsRequest{
+
+    res, err := s.Ledger.V1.ListAccounts(ctx, operations.ListAccountsRequest{
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         After: client.String("users:003"),
@@ -321,9 +339,8 @@ func main() {
         },
         Balance: client.Int64(2400),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.ListAccounts(ctx, request)
+        PaginationToken: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -341,14 +358,16 @@ func main() {
 | `request`                                                                        | [operations.ListAccountsRequest](../../models/operations/listaccountsrequest.md) | :heavy_check_mark:                                                               | The request object to use for the request.                                       |
 | `opts`                                                                           | [][operations.Option](../../models/operations/option.md)                         | :heavy_minus_sign:                                                               | The options for this request.                                                    |
 
-
 ### Response
 
 **[*operations.ListAccountsResponse](../../models/operations/listaccountsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetAccount
 
@@ -360,26 +379,28 @@ Get account by its address
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.GetAccountRequest{
+
+    res, err := s.Ledger.V1.GetAccount(ctx, operations.GetAccountRequest{
         Ledger: "ledger001",
         Address: "users:001",
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.GetAccount(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -397,14 +418,16 @@ func main() {
 | `request`                                                                    | [operations.GetAccountRequest](../../models/operations/getaccountrequest.md) | :heavy_check_mark:                                                           | The request object to use for the request.                                   |
 | `opts`                                                                       | [][operations.Option](../../models/operations/option.md)                     | :heavy_minus_sign:                                                           | The options for this request.                                                |
 
-
 ### Response
 
 **[*operations.GetAccountResponse](../../models/operations/getaccountresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## AddMetadataToAccount
 
@@ -416,29 +439,31 @@ Add metadata to an account
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.AddMetadataToAccountRequest{
+
+    res, err := s.Ledger.V1.AddMetadataToAccount(ctx, operations.AddMetadataToAccountRequest{
         Ledger: "ledger001",
         Address: "users:001",
         RequestBody: map[string]any{
             "key": "<value>",
         },
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.AddMetadataToAccount(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -456,14 +481,16 @@ func main() {
 | `request`                                                                                        | [operations.AddMetadataToAccountRequest](../../models/operations/addmetadatatoaccountrequest.md) | :heavy_check_mark:                                                                               | The request object to use for the request.                                                       |
 | `opts`                                                                                           | [][operations.Option](../../models/operations/option.md)                                         | :heavy_minus_sign:                                                                               | The options for this request.                                                                    |
 
-
 ### Response
 
 **[*operations.AddMetadataToAccountResponse](../../models/operations/addmetadatatoaccountresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetMapping
 
@@ -475,25 +502,27 @@ Get the mapping of a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.GetMappingRequest{
+
+    res, err := s.Ledger.V1.GetMapping(ctx, operations.GetMappingRequest{
         Ledger: "ledger001",
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.GetMapping(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -511,14 +540,16 @@ func main() {
 | `request`                                                                    | [operations.GetMappingRequest](../../models/operations/getmappingrequest.md) | :heavy_check_mark:                                                           | The request object to use for the request.                                   |
 | `opts`                                                                       | [][operations.Option](../../models/operations/option.md)                     | :heavy_minus_sign:                                                           | The options for this request.                                                |
 
-
 ### Response
 
 **[*operations.GetMappingResponse](../../models/operations/getmappingresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## UpdateMapping
 
@@ -530,21 +561,25 @@ Update the mapping of a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.UpdateMappingRequest{
+
+    res, err := s.Ledger.V1.UpdateMapping(ctx, operations.UpdateMappingRequest{
         Ledger: "ledger001",
         Mapping: &components.Mapping{
             Contracts: []components.Contract{
@@ -552,11 +587,13 @@ func main() {
                     Account: client.String("users:001"),
                     Expr: components.Expr{},
                 },
+                components.Contract{
+                    Account: client.String("users:001"),
+                    Expr: components.Expr{},
+                },
             },
         },
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.UpdateMapping(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -574,14 +611,16 @@ func main() {
 | `request`                                                                          | [operations.UpdateMappingRequest](../../models/operations/updatemappingrequest.md) | :heavy_check_mark:                                                                 | The request object to use for the request.                                         |
 | `opts`                                                                             | [][operations.Option](../../models/operations/option.md)                           | :heavy_minus_sign:                                                                 | The options for this request.                                                      |
 
-
 ### Response
 
 **[*operations.UpdateMappingResponse](../../models/operations/updatemappingresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## ~~RunScript~~
 
@@ -596,40 +635,42 @@ This route is deprecated, and has been merged into `POST /{ledger}/transactions`
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.RunScriptRequest{
+
+    res, err := s.Ledger.V1.RunScript(ctx, operations.RunScriptRequest{
         Ledger: "ledger001",
         Preview: client.Bool(true),
         Script: components.Script{
-            Plain: "vars {
-        account $user
-        }
-        send [COIN 10] (
-        	source = @world
-        	destination = $user
-        )
-        ",
+            Plain: "vars {\n" +
+            "account $user\n" +
+            "}\n" +
+            "send [COIN 10] (\n" +
+            "	source = @world\n" +
+            "	destination = $user\n" +
+            ")\n" +
+            "",
             Vars: map[string]any{
                 "user": "users:042",
             },
             Reference: client.String("order_1234"),
         },
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.RunScript(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -647,13 +688,15 @@ func main() {
 | `request`                                                                  | [operations.RunScriptRequest](../../models/operations/runscriptrequest.md) | :heavy_check_mark:                                                         | The request object to use for the request.                                 |
 | `opts`                                                                     | [][operations.Option](../../models/operations/option.md)                   | :heavy_minus_sign:                                                         | The options for this request.                                              |
 
-
 ### Response
 
 **[*operations.RunScriptResponse](../../models/operations/runscriptresponse.md), error**
-| Error Object       | Status Code        | Content Type       |
+
+### Errors
+
+| Error Type         | Status Code        | Content Type       |
 | ------------------ | ------------------ | ------------------ |
-| sdkerrors.SDKError | 4xx-5xx            | */*                |
+| sdkerrors.SDKError | 4XX, 5XX           | \*/\*              |
 
 ## ReadStats
 
@@ -666,25 +709,27 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.ReadStatsRequest{
+
+    res, err := s.Ledger.V1.ReadStats(ctx, operations.ReadStatsRequest{
         Ledger: "ledger001",
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.ReadStats(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -702,14 +747,16 @@ func main() {
 | `request`                                                                  | [operations.ReadStatsRequest](../../models/operations/readstatsrequest.md) | :heavy_check_mark:                                                         | The request object to use for the request.                                 |
 | `opts`                                                                     | [][operations.Option](../../models/operations/option.md)                   | :heavy_minus_sign:                                                         | The options for this request.                                              |
 
-
 ### Response
 
 **[*operations.ReadStatsResponse](../../models/operations/readstatsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CountTransactions
 
@@ -721,30 +768,32 @@ Count the transactions from a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.CountTransactionsRequest{
+
+    res, err := s.Ledger.V1.CountTransactions(ctx, operations.CountTransactionsRequest{
         Ledger: "ledger001",
         Reference: client.String("ref:001"),
         Account: client.String("users:001"),
         Source: client.String("users:001"),
         Destination: client.String("users:001"),
         Metadata: &operations.Metadata{},
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.CountTransactions(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -762,14 +811,16 @@ func main() {
 | `request`                                                                                  | [operations.CountTransactionsRequest](../../models/operations/counttransactionsrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
 | `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
 
-
 ### Response
 
 **[*operations.CountTransactionsResponse](../../models/operations/counttransactionsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## ListTransactions
 
@@ -781,21 +832,25 @@ List transactions from a ledger, sorted by txid in descending order.
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.ListTransactionsRequest{
+
+    res, err := s.Ledger.V1.ListTransactions(ctx, operations.ListTransactionsRequest{
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         After: client.String("1234"),
@@ -804,9 +859,7 @@ func main() {
         Source: client.String("users:001"),
         Destination: client.String("users:001"),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.ListTransactions(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -824,14 +877,16 @@ func main() {
 | `request`                                                                                | [operations.ListTransactionsRequest](../../models/operations/listtransactionsrequest.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
 | `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
 
-
 ### Response
 
 **[*operations.ListTransactionsResponse](../../models/operations/listtransactionsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CreateTransaction
 
@@ -843,22 +898,26 @@ Create a new transaction to a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
-	"context"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.CreateTransactionRequest{
+
+    res, err := s.Ledger.V1.CreateTransaction(ctx, operations.CreateTransactionRequest{
         Ledger: "ledger001",
         Preview: client.Bool(true),
         PostTransaction: components.PostTransaction{
@@ -869,25 +928,35 @@ func main() {
                     Destination: "users:002",
                     Source: "users:001",
                 },
+                components.Posting{
+                    Amount: big.NewInt(100),
+                    Asset: "COIN",
+                    Destination: "users:002",
+                    Source: "users:001",
+                },
+                components.Posting{
+                    Amount: big.NewInt(100),
+                    Asset: "COIN",
+                    Destination: "users:002",
+                    Source: "users:001",
+                },
             },
             Script: &components.PostTransactionScript{
-                Plain: "vars {
-            account $user
-            }
-            send [COIN 10] (
-            	source = @world
-            	destination = $user
-            )
-            ",
+                Plain: "vars {\n" +
+                "account $user\n" +
+                "}\n" +
+                "send [COIN 10] (\n" +
+                "	source = @world\n" +
+                "	destination = $user\n" +
+                ")\n" +
+                "",
                 Vars: map[string]any{
                     "user": "users:042",
                 },
             },
             Reference: client.String("ref:001"),
         },
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.CreateTransaction(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -905,14 +974,16 @@ func main() {
 | `request`                                                                                  | [operations.CreateTransactionRequest](../../models/operations/createtransactionrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
 | `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
 
-
 ### Response
 
 **[*operations.CreateTransactionResponse](../../models/operations/createtransactionresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetTransaction
 
@@ -924,27 +995,29 @@ Get transaction from a ledger by its ID
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
-	"context"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.GetTransactionRequest{
+
+    res, err := s.Ledger.V1.GetTransaction(ctx, operations.GetTransactionRequest{
         Ledger: "ledger001",
         Txid: big.NewInt(1234),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.GetTransaction(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -962,14 +1035,16 @@ func main() {
 | `request`                                                                            | [operations.GetTransactionRequest](../../models/operations/gettransactionrequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
 | `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
 
-
 ### Response
 
 **[*operations.GetTransactionResponse](../../models/operations/gettransactionresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## AddMetadataOnTransaction
 
@@ -981,27 +1056,32 @@ Set the metadata of a transaction by its ID
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
-	"context"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.AddMetadataOnTransactionRequest{
+
+    res, err := s.Ledger.V1.AddMetadataOnTransaction(ctx, operations.AddMetadataOnTransactionRequest{
         Ledger: "ledger001",
         Txid: big.NewInt(1234),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.AddMetadataOnTransaction(ctx, request)
+        RequestBody: map[string]any{
+            "key": "<value>",
+        },
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -1019,14 +1099,16 @@ func main() {
 | `request`                                                                                                | [operations.AddMetadataOnTransactionRequest](../../models/operations/addmetadataontransactionrequest.md) | :heavy_check_mark:                                                                                       | The request object to use for the request.                                                               |
 | `opts`                                                                                                   | [][operations.Option](../../models/operations/option.md)                                                 | :heavy_minus_sign:                                                                                       | The options for this request.                                                                            |
 
-
 ### Response
 
 **[*operations.AddMetadataOnTransactionResponse](../../models/operations/addmetadataontransactionresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## RevertTransaction
 
@@ -1038,27 +1120,29 @@ Revert a ledger transaction by its ID
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
-	"context"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.RevertTransactionRequest{
+
+    res, err := s.Ledger.V1.RevertTransaction(ctx, operations.RevertTransactionRequest{
         Ledger: "ledger001",
         Txid: big.NewInt(1234),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.RevertTransaction(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -1076,14 +1160,16 @@ func main() {
 | `request`                                                                                  | [operations.RevertTransactionRequest](../../models/operations/reverttransactionrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
 | `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
 
-
 ### Response
 
 **[*operations.RevertTransactionResponse](../../models/operations/reverttransactionresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CreateTransactions
 
@@ -1095,22 +1181,26 @@ Create a new batch of transactions to a ledger
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"math/big"
-	"context"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.CreateTransactionsRequest{
+
+    res, err := s.Ledger.V1.CreateTransactions(ctx, operations.CreateTransactionsRequest{
         Ledger: "ledger001",
         Transactions: components.Transactions{
             Transactions: []components.TransactionData{
@@ -1122,14 +1212,24 @@ func main() {
                             Destination: "users:002",
                             Source: "users:001",
                         },
+                        components.Posting{
+                            Amount: big.NewInt(100),
+                            Asset: "COIN",
+                            Destination: "users:002",
+                            Source: "users:001",
+                        },
+                        components.Posting{
+                            Amount: big.NewInt(100),
+                            Asset: "COIN",
+                            Destination: "users:002",
+                            Source: "users:001",
+                        },
                     },
                     Reference: client.String("ref:001"),
                 },
             },
         },
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.CreateTransactions(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -1147,14 +1247,16 @@ func main() {
 | `request`                                                                                    | [operations.CreateTransactionsRequest](../../models/operations/createtransactionsrequest.md) | :heavy_check_mark:                                                                           | The request object to use for the request.                                                   |
 | `opts`                                                                                       | [][operations.Option](../../models/operations/option.md)                                     | :heavy_minus_sign:                                                                           | The options for this request.                                                                |
 
-
 ### Response
 
 **[*operations.CreateTransactionsResponse](../../models/operations/createtransactionsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetBalances
 
@@ -1166,28 +1268,30 @@ Get the balances from a ledger's account
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.GetBalancesRequest{
+
+    res, err := s.Ledger.V1.GetBalances(ctx, operations.GetBalancesRequest{
         Ledger: "ledger001",
         Address: client.String("users:001"),
         After: client.String("users:003"),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.GetBalances(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -1205,14 +1309,16 @@ func main() {
 | `request`                                                                      | [operations.GetBalancesRequest](../../models/operations/getbalancesrequest.md) | :heavy_check_mark:                                                             | The request object to use for the request.                                     |
 | `opts`                                                                         | [][operations.Option](../../models/operations/option.md)                       | :heavy_minus_sign:                                                             | The options for this request.                                                  |
 
-
 ### Response
 
 **[*operations.GetBalancesResponse](../../models/operations/getbalancesresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetBalancesAggregated
 
@@ -1224,26 +1330,28 @@ Get the aggregated balances from selected accounts
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.GetBalancesAggregatedRequest{
+
+    res, err := s.Ledger.V1.GetBalancesAggregated(ctx, operations.GetBalancesAggregatedRequest{
         Ledger: "ledger001",
         Address: client.String("users:001"),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.GetBalancesAggregated(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -1261,14 +1369,16 @@ func main() {
 | `request`                                                                                          | [operations.GetBalancesAggregatedRequest](../../models/operations/getbalancesaggregatedrequest.md) | :heavy_check_mark:                                                                                 | The request object to use for the request.                                                         |
 | `opts`                                                                                             | [][operations.Option](../../models/operations/option.md)                                           | :heavy_minus_sign:                                                                                 | The options for this request.                                                                      |
 
-
 ### Response
 
 **[*operations.GetBalancesAggregatedResponse](../../models/operations/getbalancesaggregatedresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## ListLogs
 
@@ -1280,28 +1390,30 @@ List the logs from a ledger, sorted by ID in descending order.
 package main
 
 import(
+	"context"
+	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"context"
 	"log"
 )
 
 func main() {
+    ctx := context.Background()
+
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: "",
-            ClientSecret: "",
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
-    request := operations.ListLogsRequest{
+
+    res, err := s.Ledger.V1.ListLogs(ctx, operations.ListLogsRequest{
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         After: client.String("1234"),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-    }
-    ctx := context.Background()
-    res, err := s.Ledger.V1.ListLogs(ctx, request)
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -1319,11 +1431,13 @@ func main() {
 | `request`                                                                | [operations.ListLogsRequest](../../models/operations/listlogsrequest.md) | :heavy_check_mark:                                                       | The request object to use for the request.                               |
 | `opts`                                                                   | [][operations.Option](../../models/operations/option.md)                 | :heavy_minus_sign:                                                       | The options for this request.                                            |
 
-
 ### Response
 
 **[*operations.ListLogsResponse](../../models/operations/listlogsresponse.md), error**
-| Error Object            | Status Code             | Content Type            |
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | default                 | application/json        |
-| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

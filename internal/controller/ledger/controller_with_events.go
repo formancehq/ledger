@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/uptrace/bun"
 )
 
 type ControllerWithEvents struct {
@@ -37,7 +38,7 @@ func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
 	c.atCommit = append(c.atCommit, fn)
 }
 
-func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	log, ret, err := c.Controller.CreateTransaction(ctx, parameters)
 	if err != nil {
 		return nil, nil, err
@@ -62,7 +63,7 @@ func (c *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters
 				ctx,
 				c.ledger.Name,
 				ret.RevertedTransaction,
-				ret.RevertedTransaction,
+				ret.RevertTransaction,
 			)
 		})
 	}
@@ -150,10 +151,10 @@ func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parame
 	return log, nil
 }
 
-func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, error) {
-	ctrl, err := c.Controller.BeginTX(ctx, options)
+func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
+	ctrl, tx, err := c.Controller.BeginTX(ctx, options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return &ControllerWithEvents{
@@ -162,7 +163,7 @@ func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptio
 		listener:   c.listener,
 		parent:     c,
 		hasTx:      true,
-	}, nil
+	}, tx, nil
 }
 
 func (c *ControllerWithEvents) Commit(ctx context.Context) error {

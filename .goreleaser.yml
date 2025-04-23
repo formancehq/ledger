@@ -35,13 +35,15 @@ builds:
       - amd64
       - arm64
     command: test
-    dir: test/performance
+    dir: test/performance/pkg/write
     no_main_check: true
     tags:
       - it
 
 release:
   prerelease: auto
+  extra_files:
+    - glob: openapi.yaml
   footer: |
     ## What to do next?
     - Read the [documentation](https://docs.formance.com/)

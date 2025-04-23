@@ -3,12 +3,12 @@
 package bucket_test
 
 import (
-	. "github.com/formancehq/go-libs/v2/testing/utils"
+	. "github.com/formancehq/go-libs/v3/testing/utils"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/docker"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 )
 
 var (

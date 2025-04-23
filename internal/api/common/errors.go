@@ -2,8 +2,10 @@ package common
 
 import (
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"net/http"
 )
 
@@ -31,6 +33,12 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 	default:
-		api.InternalServerError(w, r, err)
+		InternalServerError(w, r, err)
 	}
+}
+
+func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+	otlp.RecordError(r.Context(), err)
+	logging.FromContext(r.Context()).Error(err)
+	api.WriteErrorResponse(w, http.StatusInternalServerError, api.ErrorInternal, errors.New("Internal error. Consult logs/traces to have more details."))
 }

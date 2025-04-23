@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dop251/goja"
-	"github.com/formancehq/go-libs/v2/collectionutils"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/pkg/client"
@@ -152,8 +152,8 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 	if response.HTTPMeta.Response.StatusCode == http.StatusBadRequest {
 		return nil, fmt.Errorf(
 			"unexpected error: %s [%s]",
-			response.V2BulkResponse.ErrorMessage,
-			response.V2BulkResponse.ErrorCode,
+			*response.V2BulkResponse.ErrorMessage,
+			*response.V2BulkResponse.ErrorCode,
 		)
 	}
 

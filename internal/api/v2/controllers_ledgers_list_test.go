@@ -3,16 +3,17 @@ package v2
 import (
 	"encoding/json"
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/google/uuid"
@@ -27,7 +28,7 @@ func TestListLedgers(t *testing.T) {
 
 	type testCase struct {
 		name               string
-		expectQuery        ledgercontroller.ListLedgersQuery
+		expectQuery        storagecommon.ColumnPaginatedQuery[any]
 		queryParams        url.Values
 		returnData         []ledger.Ledger
 		returnErr          error
@@ -69,7 +70,7 @@ func TestListLedgers(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
-			returnErr:          ledgercontroller.ErrInvalidQuery{},
+			returnErr:          storagecommon.ErrInvalidQuery{},
 			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 		{
@@ -107,6 +108,10 @@ func TestListLedgers(t *testing.T) {
 			if tc.expectedStatusCode == 0 || tc.expectedStatusCode == http.StatusOK {
 				require.Equal(t, http.StatusOK, rec.Code)
 				cursor := api.DecodeCursorResponse[ledger.Ledger](t, rec.Body)
+				for i, data := range cursor.Data {
+					data.State = ledger.StateInitializing
+					cursor.Data[i] = data
+				}
 
 				require.Equal(t, tc.returnData, cursor.Data)
 			} else {

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -15,7 +16,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/tracing"
 
-	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
@@ -23,7 +24,7 @@ import (
 type Controller interface {
 	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
-	ListLedgers(ctx context.Context, query ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error)
+	ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error)
 	// CreateLedger can return following errors:
 	//  * ErrLedgerAlreadyExists
 	//  * ledger.ErrInvalidLedgerName
@@ -94,7 +95,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			ledgerController = ledgercontroller.NewControllerWithEvents(*l, ledgerController, ctrl.listener)
 		}
 
-		return ledgerController, nil
+		return newLedgerStateTracker(ledgerController, *l), nil
 	})
 }
 
@@ -123,7 +124,7 @@ func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*led
 	})
 }
 
-func (ctrl *DefaultController) ListLedgers(ctx context.Context, query ledgercontroller.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListLedgers", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Ledger], error) {
 		return ctrl.store.ListLedgers(ctx, query)
 	})

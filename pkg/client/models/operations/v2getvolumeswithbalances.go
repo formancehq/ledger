@@ -91,7 +91,7 @@ func (o *V2GetVolumesWithBalancesRequest) GetGroupBy() *int64 {
 
 func (o *V2GetVolumesWithBalancesRequest) GetRequestBody() map[string]any {
 	if o == nil {
-		return nil
+		return map[string]any{}
 	}
 	return o.RequestBody
 }

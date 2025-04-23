@@ -11,7 +11,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/api"
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,7 +20,7 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 		configuration := ledger.Configuration{}
 		data, err := io.ReadAll(r.Body)
 		if err != nil && !errors.Is(err, io.EOF) {
-			api.InternalServerError(w, r, err)
+			common.InternalServerError(w, r, err)
 			return
 		}
 

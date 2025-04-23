@@ -4,8 +4,9 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v2/bun/bundebug"
-	. "github.com/formancehq/go-libs/v2/testing/utils"
+	"github.com/formancehq/go-libs/v3/bun/bundebug"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	. "github.com/formancehq/go-libs/v3/testing/utils"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -14,7 +15,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/go-cmp/cmp"
 
@@ -22,26 +23,26 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	srv           = NewDeferred[*pgtesting.PostgresServer]()
-	defaultBunDB  = NewDeferred[*bun.DB]()
-	defaultDriver = NewDeferred[*driver.Driver]()
+	srv           = deferred.New[*pgtesting.PostgresServer]()
+	defaultBunDB  = deferred.New[*bun.DB]()
+	defaultDriver = deferred.New[*driver.Driver]()
 )
 
 func TestMain(m *testing.M) {
 	WithTestMain(func(t *TestingTForMain) int {
-		srv.LoadAsync(func() *pgtesting.PostgresServer {
+		srv.LoadAsync(func() (*pgtesting.PostgresServer, error) {
 			ret := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()),
 				pgtesting.WithExtension("pgcrypto"),
 			)
 
-			defaultBunDB.LoadAsync(func() *bun.DB {
+			defaultBunDB.LoadAsync(func() (*bun.DB, error) {
 				db, err := sql.Open("pgx", ret.GetDSN())
 				require.NoError(t, err)
 
@@ -60,11 +61,12 @@ func TestMain(m *testing.M) {
 					bunDB,
 					ledgerstore.NewFactory(bunDB),
 					bucket.NewDefaultFactory(),
+					systemstore.NewStoreFactory(),
 				))
 
-				return bunDB
+				return bunDB, nil
 			})
-			return ret
+			return ret, nil
 		})
 
 		return m.Run()

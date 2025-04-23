@@ -2,10 +2,12 @@ module github.com/formancehq/ledger/tools/provisioner
 
 go 1.23.3
 
+replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
+
 require (
-	github.com/formancehq/go-libs/v2 v2.2.2
-	github.com/formancehq/ledger/pkg/client v0.0.0-20250311092937-f5e12569a770
-	github.com/google/go-cmp v0.6.0
+	github.com/formancehq/go-libs/v3 v3.0.0-20250407134146-8be8ce3ddc42
+	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
+	github.com/google/go-cmp v0.7.0
 	github.com/spf13/cobra v1.9.1
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -15,7 +17,6 @@ require (
 )
 
 require (
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/ericlagergren/decimal v0.0.0-20221120152707-495c53812d05 // indirect
@@ -41,6 +42,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/oauth2 v0.26.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect

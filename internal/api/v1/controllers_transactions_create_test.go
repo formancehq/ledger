@@ -2,7 +2,7 @@ package v1
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	"math/big"
 	"net/http"
@@ -11,10 +11,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v2/api"
-	"github.com/formancehq/go-libs/v2/auth"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
@@ -227,9 +227,11 @@ func TestTransactionsCreate(t *testing.T) {
 			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
 				tc.expectedRunScript.Timestamp = time.Time{}
 				ledgerController.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 						DryRun: tc.expectedPreview,
-						Input:  tc.expectedRunScript,
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: tc.expectedRunScript,
+						},
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(0),

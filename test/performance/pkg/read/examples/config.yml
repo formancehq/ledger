@@ -1,0 +1,21 @@
+queries:
+  - name: list accounts
+    operation: list-accounts
+    expand:
+    - volumes
+    - effectiveVolumes
+  - name: list volumes fees for all organizations
+    operation: list-volumes
+    filter:
+      $match:
+        account: "organization::fees"
+  - name: list volumes for psp 0
+    operation: list-volumes
+    filter:
+      $match:
+        account: "::psp:0"
+  - name: list volumes for users
+    operation: list-volumes
+    filter:
+      $match:
+        account: "::users:"

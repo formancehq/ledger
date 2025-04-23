@@ -25,18 +25,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   Dirty:
-    runs-on: "formance-runner"
+    runs-on: "shipfox-4vcpu-ubuntu-2404"
+    env:
+      GOPATH: /tmp/go
+      GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     steps:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
       - name: Setup Env
-        uses: ./.github/actions/env
+        uses: ./.github/actions/default
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
-          develop --impure --command just pre-commit
+          nix develop --impure --command just pre-commit
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Get changed files
@@ -52,18 +54,19 @@ jobs:
           fi
 
   Tests:
-    runs-on: "formance-runner"
+    runs-on: "shipfox-8vcpu-ubuntu-2404"
+    env:
+      GOPATH: /tmp/go
     steps:
       - uses: 'actions/checkout@v4'
         with:
           fetch-depth: 0
       - name: Setup Env
-        uses: ./.github/actions/env
+        uses: ./.github/actions/default
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
-          develop --impure --command just tests
+          nix develop --impure --command just tests
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
       - name: Upload coverage reports to Codecov with GitHub Action
@@ -72,11 +75,15 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   GoReleaser:
-    runs-on: "formance-runner"
+    runs-on: "shipfox-4vcpu-ubuntu-2404"
     if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
     needs:
       - Dirty
     steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - uses: earthly/actions-setup@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -85,9 +92,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Env
-        uses: ./.github/actions/env
+        uses: ./.github/actions/default
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -95,22 +106,28 @@ jobs:
           username: "NumaryBot"
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes" 
-          develop --impure --command just release-ci
+          nix develop --impure --command just release-ci
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
+
   Deploy:
-    runs-on: "formance-runner"
+    runs-on: "shipfox-2vcpu-ubuntu-2404"
     if: github.ref == 'refs/heads/main'
     environment: staging
     needs:
       - GoReleaser
       - Tests
     steps:
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
       - uses: earthly/actions-setup@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

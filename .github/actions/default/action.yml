@@ -1,0 +1,27 @@
+name: Setup Env
+description: Setup Env for Linux x64
+inputs:
+  token:
+    description: 'A Github PAT'
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: cachix/install-nix-action@v31
+    - name: Cache dependencies
+      uses: nix-community/cache-nix-action@v6
+      with:
+        primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.nix', '**/flake.lock') }}
+        restore-prefixes-first-match: nix-${{ runner.os }}-
+    - name: Load dependencies
+      shell: bash
+      run: nix develop --install
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          /tmp/go/pkg/mod/
+        key: ${{ runner.os }}-${{ github.job }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ github.job }}-go-

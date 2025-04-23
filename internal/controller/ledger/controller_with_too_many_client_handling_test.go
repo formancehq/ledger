@@ -2,9 +2,9 @@ package ledger
 
 import (
 	"errors"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -23,7 +23,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		delayCalculator := NewMockDelayCalculator(ctrl)
 		ctx := logging.TestingContext()
 
-		parameters := Parameters[RunScript]{}
+		parameters := Parameters[CreateTransaction]{}
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).
@@ -57,7 +57,7 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		delayCalculator := NewMockDelayCalculator(ctrl)
 		ctx := logging.TestingContext()
 
-		parameters := Parameters[RunScript]{}
+		parameters := Parameters[CreateTransaction]{}
 
 		underlyingLedgerController.EXPECT().
 			CreateTransaction(gomock.Any(), parameters).

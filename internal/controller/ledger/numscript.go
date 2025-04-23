@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type variable struct {

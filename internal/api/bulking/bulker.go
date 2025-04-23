@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/alitto/pond"
-	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
@@ -56,7 +57,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 				ret, logID, err := b.processElement(ctx, ctrl, element)
 				if err != nil {
 					hasError.Store(true)
-					span.RecordError(err)
+					otlp.RecordError(ctx, err)
 
 					result <- BulkElementResult{
 						Error: err,
@@ -98,7 +99,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	ctrl := b.ctrl
 	if bulkOptions.Atomic {
 		var err error
-		ctrl, err = ctrl.BeginTX(ctx, nil)
+		ctrl, _, err = ctrl.BeginTX(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("error starting transaction: %s", err)
 		}
@@ -126,12 +127,12 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 
 	switch data.Action {
 	case ActionCreateTransaction:
-		rs, err := data.Data.(TransactionRequest).ToRunScript(false)
+		rs, err := data.Data.(TransactionRequest).ToCore(false)
 		if err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
-		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RunScript]{
+		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input:          *rs,

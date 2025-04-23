@@ -11,11 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v2/bun/bunpaginate"
-	metadata "github.com/formancehq/go-libs/v2/metadata"
-	migrations "github.com/formancehq/go-libs/v2/migrations"
+	metadata "github.com/formancehq/go-libs/v3/metadata"
+	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
-	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+	common "github.com/formancehq/ledger/internal/storage/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -134,19 +133,18 @@ func (mr *SystemStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUpToDate", reflect.TypeOf((*SystemStore)(nil).IsUpToDate), ctx)
 }
 
-// ListLedgers mocks base method.
-func (m *SystemStore) ListLedgers(ctx context.Context, q ledger0.ListLedgersQuery) (*bunpaginate.Cursor[ledger.Ledger], error) {
+// Ledgers mocks base method.
+func (m *SystemStore) Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]] {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLedgers", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "Ledgers")
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]])
+	return ret0
 }
 
-// ListLedgers indicates an expected call of ListLedgers.
-func (mr *SystemStoreMockRecorder) ListLedgers(ctx, q any) *gomock.Call {
+// Ledgers indicates an expected call of Ledgers.
+func (mr *SystemStoreMockRecorder) Ledgers() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*SystemStore)(nil).ListLedgers), ctx, q)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ledgers", reflect.TypeOf((*SystemStore)(nil).Ledgers))
 }
 
 // Migrate mocks base method.

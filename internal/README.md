@@ -11,6 +11,11 @@ import "github.com/formancehq/ledger/internal"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
+- [func ComputeMetadata\(key, value string\) metadata.Metadata](<#ComputeMetadata>)
+- [func MarkReverts\(m metadata.Metadata, txID int\) metadata.Metadata](<#MarkReverts>)
+- [func RevertMetadata\(txID int\) metadata.Metadata](<#RevertMetadata>)
+- [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
+- [func SpecMetadata\(name string\) string](<#SpecMetadata>)
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
@@ -115,6 +120,15 @@ import "github.com/formancehq/ledger/internal"
 
 ## Constants
 
+<a name="StateInitializing"></a>
+
+```go
+const (
+    StateInitializing = "initializing"
+    StateInUse        = "in-use"
+)
+```
+
 <a name="MetaTargetTypeAccount"></a>
 
 ```go
@@ -149,10 +163,55 @@ var Zero = big.NewInt(0)
 ```
 
 <a name="ComputeIdempotencyHash"></a>
-## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L391>)
+## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L386>)
 
 ```go
 func ComputeIdempotencyHash(inputs any) string
+```
+
+
+
+<a name="ComputeMetadata"></a>
+## func [ComputeMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L28>)
+
+```go
+func ComputeMetadata(key, value string) metadata.Metadata
+```
+
+
+
+<a name="MarkReverts"></a>
+## func [MarkReverts](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L20>)
+
+```go
+func MarkReverts(m metadata.Metadata, txID int) metadata.Metadata
+```
+
+
+
+<a name="RevertMetadata"></a>
+## func [RevertMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L34>)
+
+```go
+func RevertMetadata(txID int) metadata.Metadata
+```
+
+
+
+<a name="RevertMetadataSpecKey"></a>
+## func [RevertMetadataSpecKey](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L24>)
+
+```go
+func RevertMetadataSpecKey() string
+```
+
+
+
+<a name="SpecMetadata"></a>
+## func [SpecMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L16>)
+
+```go
+func SpecMetadata(name string) string
 ```
 
 
@@ -186,7 +245,7 @@ func (a Account) GetAddress() string
 
 
 <a name="AccountMetadata"></a>
-## type [AccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L196>)
+## type [AccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L191>)
 
 
 
@@ -240,7 +299,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
 
 <a name="Configuration"></a>
-## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L85-L89>)
+## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L92-L96>)
 
 
 
@@ -253,7 +312,7 @@ type Configuration struct {
 ```
 
 <a name="NewDefaultConfiguration"></a>
-### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L116>)
+### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L123>)
 
 ```go
 func NewDefaultConfiguration() Configuration
@@ -262,7 +321,7 @@ func NewDefaultConfiguration() Configuration
 
 
 <a name="Configuration.SetDefaults"></a>
-### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L91>)
+### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L98>)
 
 ```go
 func (c *Configuration) SetDefaults()
@@ -271,7 +330,7 @@ func (c *Configuration) SetDefaults()
 
 
 <a name="Configuration.Validate"></a>
-### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L106>)
+### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L113>)
 
 ```go
 func (c *Configuration) Validate() error
@@ -280,7 +339,7 @@ func (c *Configuration) Validate() error
 
 
 <a name="CreatedTransaction"></a>
-## type [CreatedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L198-L201>)
+## type [CreatedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L193-L196>)
 
 
 
@@ -292,7 +351,7 @@ type CreatedTransaction struct {
 ```
 
 <a name="CreatedTransaction.GetMemento"></a>
-### func \(CreatedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L209>)
+### func \(CreatedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L204>)
 
 ```go
 func (p CreatedTransaction) GetMemento() any
@@ -301,7 +360,7 @@ func (p CreatedTransaction) GetMemento() any
 
 
 <a name="CreatedTransaction.Type"></a>
-### func \(CreatedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L203>)
+### func \(CreatedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L198>)
 
 ```go
 func (p CreatedTransaction) Type() LogType
@@ -310,7 +369,7 @@ func (p CreatedTransaction) Type() LogType
 
 
 <a name="DeletedMetadata"></a>
-## type [DeletedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L284-L288>)
+## type [DeletedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L279-L283>)
 
 
 
@@ -323,7 +382,7 @@ type DeletedMetadata struct {
 ```
 
 <a name="DeletedMetadata.Type"></a>
-### func \(DeletedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L290>)
+### func \(DeletedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L285>)
 
 ```go
 func (s DeletedMetadata) Type() LogType
@@ -332,7 +391,7 @@ func (s DeletedMetadata) Type() LogType
 
 
 <a name="DeletedMetadata.UnmarshalJSON"></a>
-### func \(\*DeletedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L296>)
+### func \(\*DeletedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L291>)
 
 ```go
 func (s *DeletedMetadata) UnmarshalJSON(data []byte) error
@@ -399,7 +458,7 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="Ledger"></a>
-## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L13-L20>)
+## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L18-L26>)
 
 
 
@@ -411,11 +470,12 @@ type Ledger struct {
     ID      int       `json:"id" bun:"id,type:int,scanonly"`
     Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
     AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
 }
 ```
 
 <a name="MustNewWithDefault"></a>
-### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L61>)
+### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L68>)
 
 ```go
 func MustNewWithDefault(name string) Ledger
@@ -424,7 +484,7 @@ func MustNewWithDefault(name string) Ledger
 
 
 <a name="New"></a>
-### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L35>)
+### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L41>)
 
 ```go
 func New(name string, configuration Configuration) (*Ledger, error)
@@ -433,7 +493,7 @@ func New(name string, configuration Configuration) (*Ledger, error)
 
 
 <a name="NewWithDefaults"></a>
-### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L57>)
+### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L64>)
 
 ```go
 func NewWithDefaults(name string) (*Ledger, error)
@@ -442,7 +502,7 @@ func NewWithDefaults(name string) (*Ledger, error)
 
 
 <a name="Ledger.HasFeature"></a>
-### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L22>)
+### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L28>)
 
 ```go
 func (l Ledger) HasFeature(feature, value string) bool
@@ -451,7 +511,7 @@ func (l Ledger) HasFeature(feature, value string) bool
 
 
 <a name="Ledger.WithMetadata"></a>
-### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L30>)
+### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L36>)
 
 ```go
 func (l Ledger) WithMetadata(m metadata.Metadata) Ledger
@@ -481,7 +541,7 @@ type Log struct {
 ```
 
 <a name="NewLog"></a>
-### func [NewLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L181>)
+### func [NewLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L176>)
 
 ```go
 func NewLog(payload LogPayload) Log
@@ -517,7 +577,7 @@ func (l *Log) UnmarshalJSON(data []byte) error
 
 
 <a name="Log.WithID"></a>
-### func \(Log\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L176>)
+### func \(Log\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L171>)
 
 ```go
 func (l Log) WithID(i int) Log
@@ -535,7 +595,7 @@ func (l Log) WithIdempotencyKey(key string) Log
 
 
 <a name="LogPayload"></a>
-## type [LogPayload](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L188-L190>)
+## type [LogPayload](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L183-L185>)
 
 
 
@@ -546,7 +606,7 @@ type LogPayload interface {
 ```
 
 <a name="HydrateLog"></a>
-### func [HydrateLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L369>)
+### func [HydrateLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L364>)
 
 ```go
 func HydrateLog(_type LogType, data []byte) (LogPayload, error)
@@ -629,7 +689,7 @@ func (lt LogType) Value() (driver.Value, error)
 
 
 <a name="Memento"></a>
-## type [Memento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L192-L194>)
+## type [Memento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L187-L189>)
 
 
 
@@ -774,7 +834,7 @@ func (p Postings) Validate() (int, error)
 
 
 <a name="RevertedTransaction"></a>
-## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L330-L333>)
+## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L325-L328>)
 
 
 
@@ -786,7 +846,7 @@ type RevertedTransaction struct {
 ```
 
 <a name="RevertedTransaction.GetMemento"></a>
-### func \(RevertedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L341>)
+### func \(RevertedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L336>)
 
 ```go
 func (r RevertedTransaction) GetMemento() any
@@ -795,7 +855,7 @@ func (r RevertedTransaction) GetMemento() any
 
 
 <a name="RevertedTransaction.Type"></a>
-### func \(RevertedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L335>)
+### func \(RevertedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L330>)
 
 ```go
 func (r RevertedTransaction) Type() LogType
@@ -804,7 +864,7 @@ func (r RevertedTransaction) Type() LogType
 
 
 <a name="SavedMetadata"></a>
-## type [SavedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L238-L242>)
+## type [SavedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L233-L237>)
 
 
 
@@ -817,7 +877,7 @@ type SavedMetadata struct {
 ```
 
 <a name="SavedMetadata.Type"></a>
-### func \(SavedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L244>)
+### func \(SavedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L239>)
 
 ```go
 func (s SavedMetadata) Type() LogType
@@ -826,7 +886,7 @@ func (s SavedMetadata) Type() LogType
 
 
 <a name="SavedMetadata.UnmarshalJSON"></a>
-### func \(\*SavedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L250>)
+### func \(\*SavedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L245>)
 
 ```go
 func (s *SavedMetadata) UnmarshalJSON(data []byte) error

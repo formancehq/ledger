@@ -3,11 +3,15 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
@@ -21,26 +25,24 @@ var _ = Context("Ledger engine tests", func() {
 		ctx = logging.TestingContext()
 	)
 
-	testServer := NewTestServer(func() Configuration {
-		return Configuration{
-			CommonConfiguration: CommonConfiguration{
-				PostgresConfiguration: db.GetValue().ConnectionOptions(),
-				Output:                GinkgoWriter,
-				Debug:                 debug,
-			},
-			NatsURL: natsServer.GetValue().ClientURL(),
-		}
-	})
+	testServer := ginkgo.DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
 	now := time.Now().UTC().Round(time.Second)
 	When("creating two transactions on a ledger with custom metadata", func() {
 		var firstTransactionsInsertedAt time.Time
-		BeforeEach(func() {
-			err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
+		BeforeEach(func(specContext SpecContext) {
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 				Ledger: "default",
 			})
 			Expect(err).To(BeNil())
 
-			ret, err := CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+			ret, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
 				RequestBody: []components.V2BulkElement{
 					components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 						Data: &components.V2PostTransaction{
@@ -101,9 +103,9 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			Expect(err).To(Succeed())
 
-			firstTransactionsInsertedAt = *ret[2].V2BulkElementResultCreateTransaction.Data.InsertedAt
+			firstTransactionsInsertedAt = *ret.V2BulkResponse.Data[2].V2BulkElementResultCreateTransaction.Data.InsertedAt
 
-			_, err = CreateBulk(ctx, testServer.GetValue(), operations.V2CreateBulkRequest{
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
 				RequestBody: []components.V2BulkElement{
 					components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 						Data: &components.V2PostTransaction{
@@ -122,10 +124,9 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			Expect(err).To(Succeed())
 		})
-		It("should be ok when aggregating using the metadata", func() {
-			response, err := GetBalancesAggregated(
+		It("should be ok when aggregating using the metadata", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetBalancesAggregatedRequest{
 					RequestBody: map[string]any{
 						"$match": map[string]any{
@@ -137,13 +138,12 @@ var _ = Context("Ledger engine tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(response).To(HaveLen(1))
-			Expect(response["USD/2"]).To(Equal(big.NewInt(400)))
+			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
+			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(400)))
 		})
-		It("should be ok when aggregating using pit on effective date", func() {
-			response, err := GetBalancesAggregated(
+		It("should be ok when aggregating using pit on effective date", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetBalancesAggregatedRequest{
 					Ledger: "default",
 					Pit:    pointer.For(now.Add(-time.Minute)),
@@ -156,13 +156,12 @@ var _ = Context("Ledger engine tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(response).To(HaveLen(1))
-			Expect(response["USD/2"]).To(Equal(big.NewInt(100)))
+			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
+			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(100)))
 		})
-		It("should be ok when aggregating using pit on insertion date", func() {
-			response, err := GetBalancesAggregated(
+		It("should be ok when aggregating using pit on insertion date", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
 				ctx,
-				testServer.GetValue(),
 				operations.V2GetBalancesAggregatedRequest{
 					Ledger:           "default",
 					Pit:              pointer.For(firstTransactionsInsertedAt),
@@ -176,8 +175,8 @@ var _ = Context("Ledger engine tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(response).To(HaveLen(1))
-			Expect(response["USD/2"]).To(Equal(big.NewInt(200)))
+			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
+			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(200)))
 		})
 	})
 })

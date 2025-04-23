@@ -16,6 +16,7 @@ type RDSClusterCreateArgs struct {
 	InstanceClass              pulumix.Input[rds.InstanceType]
 	Engine                     pulumix.Input[string]
 	EngineVersion              pulumix.Input[string]
+	RetainsOnDelete            bool
 }
 
 func (a *RDSClusterCreateArgs) SetDefaults() {
@@ -89,12 +90,14 @@ func (a *RDSUseExistingClusterArgs) SetDefaults() {
 
 type RDSPostMigrateSnapshotArgs struct {
 	SnapshotIdentifier pulumix.Input[string]
+	RetainsOnDelete    bool
 }
 
 type RDSDatabaseArgs struct {
 	UseCluster          *RDSUseExistingClusterArgs
 	CreateCluster       *RDSClusterCreateArgs
 	PostMigrateSnapshot *RDSPostMigrateSnapshotArgs
+	UseDBName           pulumi.String
 }
 
 func (a *RDSDatabaseArgs) SetDefaults() {
@@ -103,6 +106,9 @@ func (a *RDSDatabaseArgs) SetDefaults() {
 	}
 	if a.UseCluster != nil {
 		a.UseCluster.SetDefaults()
+	}
+	if a.UseDBName == "" {
+		a.UseDBName = "postgres"
 	}
 }
 
@@ -143,6 +149,7 @@ func (a RDSDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ..
 				return map[string]string{}
 			}),
 			Password: a.UseCluster.MasterPassword,
+			Database: a.UseDBName,
 		})
 		if err != nil {
 			return nil, err
@@ -150,6 +157,7 @@ func (a RDSDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ..
 	case a.CreateCluster != nil:
 		ret, err = newRDSDatabaseComponent(ctx, &RDSComponentArgs{
 			CreateCluster: a.CreateCluster,
+			Database:      a.UseDBName,
 		}, options...)
 		if err != nil {
 			return nil, err
@@ -165,12 +173,13 @@ func (a RDSDatabaseArgs) setup(ctx *pulumi.Context, args factoryArgs, options ..
 				if snapshotIdentifier == "" || migratedUnderVersion == "" {
 					return nil, nil
 				}
+
 				return rds.NewClusterSnapshot(ctx, "snapshot-"+migratedUnderVersion, &rds.ClusterSnapshotArgs{
 					DbClusterIdentifier: clusterIdentifier.
 						ToOutput(ctx.Context()).
 						Untyped().(pulumi.StringOutput),
 					DbClusterSnapshotIdentifier: pulumi.String(snapshotIdentifier),
-				}, options...)
+				}, append(options, pulumi.RetainOnDelete(a.PostMigrateSnapshot.RetainsOnDelete))...)
 			},
 		)
 	}

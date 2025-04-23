@@ -10,7 +10,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	topicmapper "github.com/formancehq/go-libs/v2/publish/topic_mapper"
+	topicmapper "github.com/formancehq/go-libs/v3/publish/topic_mapper"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 )

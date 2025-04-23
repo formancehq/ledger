@@ -2,17 +2,18 @@ package bulking
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/uptrace/bun"
 	"math/big"
 	"testing"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
-	"github.com/formancehq/go-libs/v2/time"
+	"github.com/formancehq/go-libs/v3/time"
 
 	"errors"
-	"github.com/formancehq/go-libs/v2/metadata"
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -55,11 +56,13 @@ func TestBulk(t *testing.T) {
 					Asset:       "USD/2",
 				}}
 				mockLedger.EXPECT().
-					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RunScript]{
-						Input: ledgercontroller.TxToScriptData(ledger.TransactionData{
-							Postings:  postings,
-							Timestamp: now,
-						}, false),
+					CreateTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
+						Input: ledgercontroller.CreateTransaction{
+							RunScript: ledgercontroller.TxToScriptData(ledger.TransactionData{
+								Postings:  postings,
+								Timestamp: now,
+							}, false),
+						},
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(1),
@@ -372,7 +375,7 @@ func TestBulk(t *testing.T) {
 			expectations: func(mockLedger *LedgerController) {
 				mockLedger.EXPECT().
 					BeginTX(gomock.Any(), nil).
-					Return(mockLedger, nil)
+					Return(mockLedger, &bun.Tx{}, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{

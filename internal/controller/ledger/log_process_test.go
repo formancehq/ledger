@@ -2,11 +2,12 @@ package ledger
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v2/logging"
-	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"github.com/formancehq/go-libs/v2/pointer"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 	"testing"
@@ -25,7 +26,7 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		Rollback().
@@ -56,7 +57,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	// First call returns a deadlock
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		Rollback().
@@ -65,7 +66,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	// Second call is ok
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
-		Return(store, nil)
+		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).
