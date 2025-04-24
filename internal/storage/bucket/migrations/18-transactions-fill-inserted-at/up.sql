@@ -21,7 +21,7 @@ do $$
 
 		-- select the date where the "11-make-stateless" migration has been applied
 		select tstamp into _date
-		from _system.goose_db_version
+		from goose_db_version
 		where version_id = 12;
 
 		create temporary table logs_transactions as
