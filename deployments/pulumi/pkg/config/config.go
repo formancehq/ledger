@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	. "github.com/formancehq/go-libs/v3/collectionutils"
@@ -16,6 +17,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+	"gopkg.in/yaml.v3"
 	"time"
 )
 
@@ -193,7 +195,7 @@ type ConnectivityDatabase struct {
 	MaxOpenConns *int `json:"max-open-conns" yaml:"max-open-conns"`
 
 	// ConnMaxIdleTime is the maximum idle time for a connection
-	ConnMaxIdleTime *time.Duration `json:"conn-max-idle-time" yaml:"conn-max-idle-time"`
+	ConnMaxIdleTime *Duration `json:"conn-max-idle-time" yaml:"conn-max-idle-time"`
 
 	// Options is the options for the Postgres database to pass on the dsn
 	Options map[string]string `json:"options" yaml:"options"`
@@ -204,7 +206,7 @@ func (d ConnectivityDatabase) toInput() storage.ConnectivityDatabaseArgs {
 		AWSEnableIAM:    pulumi.Bool(d.AWSEnableIAM),
 		MaxIdleConns:    pulumix.Val(d.MaxIdleConns),
 		MaxOpenConns:    pulumix.Val(d.MaxOpenConns),
-		ConnMaxIdleTime: pulumix.Val(d.ConnMaxIdleTime),
+		ConnMaxIdleTime: pulumix.Val((*time.Duration)(d.ConnMaxIdleTime)),
 		Options:         pulumix.Val(d.Options),
 	}
 }
@@ -251,12 +253,55 @@ func (s Storage) toInput() storage.Args {
 	}
 }
 
+type Duration time.Duration
+
+var _ json.Marshaler = Duration(0)
+var _ json.Unmarshaler = (*Duration)(nil)
+var _ yaml.Marshaler = Duration(0)
+var _ yaml.Unmarshaler = (*Duration)(nil)
+
+func (d *Duration) UnmarshalJSON(data []byte) error {
+
+	fmt.Println(string(data))
+
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	duration, err := time.ParseDuration(str)
+	if err != nil {
+		return err
+	}
+	*d = Duration(duration)
+	return nil
+}
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	duration := time.Duration(d)
+	return json.Marshal(duration.String())
+}
+
+func (d Duration) MarshalYAML() (interface{}, error) {
+	duration := time.Duration(d)
+	return duration.String(), nil
+}
+
+func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
+	v, err := time.ParseDuration(value.Value)
+	if err != nil {
+		return err
+	}
+	*d = Duration(v)
+
+	return nil
+}
+
 type API struct {
 	// ReplicaCount is the number of replicas for the API
 	ReplicaCount *int `json:"replica-count" yaml:"replica-count"`
 
 	// GracePeriod is the grace period for the API
-	GracePeriod time.Duration `json:"grace-period" yaml:"grace-period"`
+	GracePeriod Duration `json:"grace-period" yaml:"grace-period"`
 
 	// BallastSizeInBytes is the ballast size in bytes for the API
 	BallastSizeInBytes int `json:"ballast-size-in-bytes" yaml:"ballast-size-in-bytes"`
@@ -283,7 +328,7 @@ type API struct {
 func (d API) toInput() api.Args {
 	return api.Args{
 		ReplicaCount:                     pulumix.Val(d.ReplicaCount),
-		GracePeriod:                      pulumix.Val(d.GracePeriod),
+		GracePeriod:                      pulumix.Val(time.Duration(d.GracePeriod)),
 		BallastSizeInBytes:               pulumix.Val(d.BallastSizeInBytes),
 		NumscriptCacheMaxCount:           pulumix.Val(d.NumscriptCacheMaxCount),
 		BulkMaxSize:                      pulumix.Val(d.BulkMaxSize),
@@ -420,13 +465,13 @@ func (o *MonitoringMetricsOTLP) toInput() *monitoring.EndpointArgs {
 
 type MonitoringMetrics struct {
 	// PushInterval is the push interval for the metrics exporter
-	PushInterval *time.Duration `json:"push-interval" yaml:"push-interval"`
+	PushInterval *Duration `json:"push-interval" yaml:"push-interval"`
 
 	// Runtime is whether to enable runtime metrics
 	Runtime bool `json:"runtime" yaml:"runtime"`
 
 	// RuntimeMinimumReadMemStatsInterval is the minimum read memory stats interval for runtime metrics
-	RuntimeMinimumReadMemStatsInterval *time.Duration `json:"runtime-minimum-read-mem-stats-interval" yaml:"runtime-minimum-read-mem-stats-interval"`
+	RuntimeMinimumReadMemStatsInterval *Duration `json:"runtime-minimum-read-mem-stats-interval" yaml:"runtime-minimum-read-mem-stats-interval"`
 
 	// Exporter is the exporter for metrics
 	Exporter string `json:"exporter" yaml:"exporter"`
@@ -443,9 +488,9 @@ func (m *MonitoringMetrics) toInput() *monitoring.MetricsArgs {
 		return nil
 	}
 	return &monitoring.MetricsArgs{
-		PushInterval:                pulumix.Val(m.PushInterval),
+		PushInterval:                pulumix.Val((*time.Duration)(m.PushInterval)),
 		Runtime:                     pulumix.Val(m.Runtime),
-		MinimumReadMemStatsInterval: pulumix.Val(m.RuntimeMinimumReadMemStatsInterval),
+		MinimumReadMemStatsInterval: pulumix.Val((*time.Duration)(m.RuntimeMinimumReadMemStatsInterval)),
 		Exporter:                    pulumix.Val(m.Exporter),
 		KeepInMemory:                pulumix.Val(m.KeepInMemory),
 		OTLP:                        m.MonitoringMetricsOTLP.toInput(),
@@ -457,16 +502,16 @@ type Common struct {
 	Namespace string `json:"namespace" yaml:"namespace"`
 
 	// Monitoring is the monitoring configuration for the ledger
-	Monitoring *Monitoring `json:"monitoring" yaml:"monitoring"`
+	Monitoring *Monitoring `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
 
 	// Tag is the version tag for the ledger
-	Tag string `json:"version" yaml:"version"`
+	Tag string `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// ImagePullPolicy is the image pull policy for the ledger
-	ImagePullPolicy string `json:"image-pull-policy" yaml:"image-pull-policy"`
+	ImagePullPolicy string `json:"image-pull-policy,omitempty" yaml:"image-pull-policy,omitempty"`
 
 	// Debug is whether to enable debug mode
-	Debug bool `json:"debug" yaml:"debug"`
+	Debug bool `json:"debug,omitempty" yaml:"debug,omitempty"`
 }
 
 func (c Common) toInput() common.CommonArgs {
@@ -527,7 +572,7 @@ type GeneratorLedgerConfiguration struct {
 	VUs int `json:"vus" yaml:"vus"`
 
 	// HTTPClientTimeout is the http client timeout for the generator
-	HTTPClientTimeout time.Duration `json:"http-client-timeout" yaml:"http-client-timeout"`
+	HTTPClientTimeout Duration `json:"http-client-timeout" yaml:"http-client-timeout"`
 
 	// SkipAwait is whether to skip the await for the generator
 	SkipAwait bool `json:"skip-await" yaml:"skip-await"`
@@ -539,7 +584,7 @@ func (g GeneratorLedgerConfiguration) toInput() generator.LedgerConfiguration {
 		Script:            pulumix.Val(g.Script),
 		ScriptFromFile:    pulumix.Val(g.ScriptFromFile),
 		VUs:               pulumix.Val(g.VUs),
-		HTTPClientTimeout: pulumix.Val(g.HTTPClientTimeout),
+		HTTPClientTimeout: pulumix.Val((time.Duration)(g.HTTPClientTimeout)),
 		SkipAwait:         pulumix.Val(g.SkipAwait),
 	}
 }
@@ -564,31 +609,31 @@ func (g *Generator) toInput() *generator.Args {
 }
 
 type Config struct {
-	Common
+	Common `yaml:",inline"`
 
 	// Storage is the storage configuration for the ledger
-	Storage *Storage `json:"storage" yaml:"storage"`
+	Storage *Storage `json:"storage,omitempty" yaml:"storage,omitempty"`
 
 	// API is the API configuration for the ledger
-	API *API `json:"api" yaml:"api"`
+	API *API `json:"api,omitempty" yaml:"api,omitempty"`
 
 	// Worker is the worker configuration for the ledger
-	Worker *Worker `json:"worker" yaml:"worker"`
+	Worker *Worker `json:"worker,omitempty" yaml:"worker,omitempty"`
 
 	// Ingress is the ingress configuration for the ledger
-	Ingress *Ingress `json:"ingress" yaml:"ingress"`
+	Ingress *Ingress `json:"ingress,omitempty" yaml:"ingress,omitempty"`
 
 	// Provision is the initialization configuration for the ledger
-	Provision *Provision `json:"provision" yaml:"provision"`
+	Provision *Provision `json:"provision,omitempty" yaml:"provision,omitempty"`
 
 	// Timeout is the timeout for the ledger
-	Timeout int `json:"timeout" yaml:"timeout"`
+	Timeout int `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 
 	// InstallDevBox is whether to install the dev box
-	InstallDevBox bool `json:"install-dev-box" yaml:"install-dev-box"`
+	InstallDevBox bool `json:"install-dev-box,omitempty" yaml:"install-dev-box,omitempty"`
 
 	// Generator is the generator configuration for the ledger
-	Generator *Generator `json:"generator" yaml:"generator"`
+	Generator *Generator `json:"generator,omitempty" yaml:"generator,omitempty"`
 }
 
 func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
@@ -611,7 +656,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	ingress := &Ingress{}
 	if err := cfg.TryObject("ingress", ingress); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading ingress config: %w", err)
 		}
 	}
 
@@ -627,7 +672,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	storage := &Storage{}
 	if err := config.GetObject(ctx, "storage", storage); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading storage config: %w", err)
 		}
 		return nil, errors.New("storage not defined")
 	}
@@ -635,35 +680,35 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	api := &API{}
 	if err := config.GetObject(ctx, "api", api); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading api config: %w", err)
 		}
 	}
 
 	worker := &Worker{}
 	if err := config.GetObject(ctx, "worker", worker); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading worker config: %w", err)
 		}
 	}
 
 	monitoring := &Monitoring{}
 	if err := config.GetObject(ctx, "monitoring", monitoring); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading monitoring config: %w", err)
 		}
 	}
 
 	provision := &Provision{}
 	if err := cfg.TryObject("provision", provision); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading provision config: %w", err)
 		}
 	}
 
 	generator := &Generator{}
 	if err := cfg.TryObject("generator", generator); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
-			return nil, err
+			return nil, fmt.Errorf("error reading generator config: %w", err)
 		}
 		generator = nil
 	}
