@@ -2987,12 +2987,6 @@ components:
                 user: users:042
           required:
             - plain
-        runtime:
-          description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
-          type: string
-          enum:
-            - interpreter
-            - machine
         reference:
           type: string
           example: ref:001
@@ -3480,6 +3474,12 @@ components:
                 user: users:042
           required:
             - plain
+        runtime:
+          description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+          type: string
+          enum:
+            - interpreter
+            - machine
         reference:
           type: string
           example: ref:001
