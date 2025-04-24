@@ -139,7 +139,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances Filter by address account", func() {
+	When("Get volumes and balances filter by partial address account", func() {
 		It("should be ok", func() {
 			response, err := GetVolumesWithBalances(
 				ctx,
@@ -164,6 +164,35 @@ var _ = Context("Ledger accounts list API tests", func() {
 					Expect(volume.Balance).To(Equal(big.NewInt(50)))
 				}
 			}
+		})
+	})
+
+	When("Get volumes and balances filter by partial account address and full address", func() {
+		It("should be ok", func() {
+			response, err := GetVolumesWithBalances(
+				ctx,
+				testServer.GetValue(),
+				operations.V2GetVolumesWithBalancesRequest{
+					InsertionDate: pointer.For(true),
+					RequestBody: map[string]interface{}{
+						"$or": []map[string]any{
+							{
+								"$match": map[string]any{
+									"account": "account:",
+								},
+							},
+							{
+								"$match": map[string]any{
+									"account": "world",
+								},
+							},
+						},
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Data).To(HaveLen(3))
 		})
 	})
 

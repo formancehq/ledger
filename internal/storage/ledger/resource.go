@@ -62,7 +62,7 @@ type filter struct {
 
 type repositoryHandlerBuildContext[Opts any] struct {
 	ledgercontroller.ResourceQuery[Opts]
-	filters map[string]any
+	filters map[string][]any
 }
 
 func (ctx repositoryHandlerBuildContext[Opts]) useFilter(v string, matchers ...func(value any) bool) bool {
@@ -70,13 +70,19 @@ func (ctx repositoryHandlerBuildContext[Opts]) useFilter(v string, matchers ...f
 	if !ok {
 		return false
 	}
+	if len(matchers) == 0 {
+		return true
+	}
+
 	for _, matcher := range matchers {
-		if !matcher(value) {
-			return false
+		for _, v := range value {
+			if matcher(v) {
+				return true
+			}
 		}
 	}
 
-	return true
+	return false
 }
 
 type repositoryHandler[Opts any] interface {
@@ -93,12 +99,12 @@ type resourceRepository[ResourceType, OptionsType any] struct {
 	ledger          ledger.Ledger
 }
 
-func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) (map[string]any, error) {
+func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) (map[string][]any, error) {
 	if builder == nil {
 		return nil, nil
 	}
 
-	ret := make(map[string]any)
+	ret := make(map[string][]any)
 	properties := r.resourceHandler.filters()
 	if err := builder.Walk(func(operator string, key string, value any) (err error) {
 
@@ -129,7 +135,7 @@ func (r *resourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 					return err
 				}
 			}
-			ret[property.name] = value
+			ret[property.name] = append(ret[property.name], value)
 			break
 		}
 
