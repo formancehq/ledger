@@ -5,7 +5,7 @@ sources:
         inputs:
             - location: ../../openapi.yaml
         registry:
-            location: registry.speakeasyapi.dev/formance/gfyrag/formance-oas
+            location: registry.speakeasyapi.dev/formance/formance/formance-oas
 targets:
     formance:
         target: go
