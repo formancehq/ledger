@@ -14,13 +14,15 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
+const fillAccountsVolumeHistoryMigration = 21
+
 func (store *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQuery) (ledgercontroller.Balances, error) {
-	isUpToDate, err := store.bucket.IsUpToDate(ctx, store.db)
+	lastVersion, err := store.bucket.GetLastVersion(ctx, store.db)
 	if err != nil {
 		return nil, err
 	}
 
-	if isUpToDate {
+	if lastVersion >= fillAccountsVolumeHistoryMigration {
 		return store.GetBalancesAfterUpgrade(ctx, query)
 	} else {
 		return store.GetBalancesWhenUpgrading(ctx, query)
