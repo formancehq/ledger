@@ -1,9 +1,9 @@
 do $$
 	declare
 		expected varchar = '{"transaction": {"id": 22, "metadata": {"tax": "1%"}, "postings": [{"asset": "USD", "amount": 99, "source": "sellers:0", "destination": "orders:10"}, {"asset": "USD", "amount": 1, "source": "fees", "destination": "orders:10"}, {"asset": "USD", "amount": 100, "source": "orders:10", "destination": "world"}, {"asset": "SELL", "amount": 1, "source": "sellers:0", "destination": "world"}], ' ||
-            '"timestamp": ' ||
-            (select to_json(timestamp) from "{{.Schema}}".transactions where id = 22 and ledger = 'ledger0')
-            || '}, "revertedTransaction": {"id": 2, "metadata": {"tax": "1%"}, "postings": [{"asset": "SELL", "amount": 1, "source": "world", "destination": "sellers:0"}, {"asset": "USD", "amount": 100, "source": "world", "destination": "orders:10"}, {"asset": "USD", "amount": 1, "source": "orders:10", "destination": "fees"}, {"asset": "USD", "amount": 99, "source": "orders:10", "destination": "sellers:0"}], "reverted": true, "reference": null, "timestamp": ' ||
+            '"timestamp": "' ||
+            (select to_json(timestamp)#>>'{}' from "{{.Schema}}".transactions where id = 22 and ledger = 'ledger0')
+            || 'Z"}, "revertedTransaction": {"id": 2, "metadata": {"tax": "1%"}, "postings": [{"asset": "SELL", "amount": 1, "source": "world", "destination": "sellers:0"}, {"asset": "USD", "amount": 100, "source": "world", "destination": "orders:10"}, {"asset": "USD", "amount": 1, "source": "orders:10", "destination": "fees"}, {"asset": "USD", "amount": 99, "source": "orders:10", "destination": "sellers:0"}], "reverted": true, "reference": null, "timestamp": ' ||
 		    (select to_json(timestamp) from "{{.Schema}}".transactions where id = 2 and ledger = 'ledger0') ||
             ', "insertedAt": ' ||
             (select to_json(inserted_at) from "{{.Schema}}".transactions where id = 2 and ledger = 'ledger0') ||

@@ -52,6 +52,21 @@ func (mr *MockBucketMockRecorder) AddLedger(ctx, db, ledger any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLedger", reflect.TypeOf((*MockBucket)(nil).AddLedger), ctx, db, ledger)
 }
 
+// GetLastVersion mocks base method.
+func (m *MockBucket) GetLastVersion(ctx context.Context, db bun.IDB) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastVersion", ctx, db)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLastVersion indicates an expected call of GetLastVersion.
+func (mr *MockBucketMockRecorder) GetLastVersion(ctx, db any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastVersion", reflect.TypeOf((*MockBucket)(nil).GetLastVersion), ctx, db)
+}
+
 // GetMigrationsInfo mocks base method.
 func (m *MockBucket) GetMigrationsInfo(ctx context.Context, db bun.IDB) ([]migrations.Info, error) {
 	m.ctrl.T.Helper()
