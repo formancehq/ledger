@@ -34,8 +34,10 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
 		) *DefaultController {
-			var machineParser ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
-			var interpreterParser ledgercontroller.NumscriptParser = ledgercontroller.NewInterpreterNumscriptParser(configuration.NumscriptInterpreterFlags)
+			var (
+				machineParser     ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
+				interpreterParser ledgercontroller.NumscriptParser = ledgercontroller.NewInterpreterNumscriptParser(configuration.NumscriptInterpreterFlags)
+			)
 
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
 				machineParser = ledgercontroller.NewCachedNumscriptParser(machineParser, ledgercontroller.CacheConfiguration{
