@@ -313,6 +313,8 @@ var _ = Context("Ledger transactions create API tests", func() {
 								Runtime:  pointer.For(components.RuntimeInterpreter),
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
+									// note that we're missing newlines here,
+									// so this is only accepted by the "interpreter" runtime
 									Plain: `send [USD 100] ( source = @world destination = @alice )`,
 									Vars:  map[string]string{},
 								},
