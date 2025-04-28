@@ -130,6 +130,7 @@ func (req TransactionRequest) ToCore(allowUnboundedOverdrafts bool) (*ledgercont
 	}
 
 	return &ledgercontroller.CreateTransaction{
+		Runtime:         req.Runtime,
 		RunScript:       runScript,
 		AccountMetadata: req.AccountMetadata,
 	}, nil
