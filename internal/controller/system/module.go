@@ -34,21 +34,27 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
 		) *DefaultController {
-			var parser ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
-			if configuration.NumscriptInterpreter {
-				parser = ledgercontroller.NewInterpreterNumscriptParser(configuration.NumscriptInterpreterFlags)
-			}
+			var machineParser ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
+			var interpreterParser ledgercontroller.NumscriptParser = ledgercontroller.NewInterpreterNumscriptParser(configuration.NumscriptInterpreterFlags)
 
 			if configuration.NSCacheConfiguration.MaxCount != 0 {
-				parser = ledgercontroller.NewCachedNumscriptParser(parser, ledgercontroller.CacheConfiguration{
+				machineParser = ledgercontroller.NewCachedNumscriptParser(machineParser, ledgercontroller.CacheConfiguration{
 					MaxCount: configuration.NSCacheConfiguration.MaxCount,
 				})
+				interpreterParser = ledgercontroller.NewCachedNumscriptParser(interpreterParser, ledgercontroller.CacheConfiguration{
+					MaxCount: configuration.NSCacheConfiguration.MaxCount,
+				})
+			}
+
+			parser := machineParser
+			if configuration.NumscriptInterpreter {
+				parser = interpreterParser
 			}
 
 			return NewDefaultController(
 				store,
 				listener,
-				WithParser(parser),
+				WithParser(parser, machineParser, interpreterParser),
 				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
 				WithMeterProvider(meterProvider),
 				WithTracerProvider(tracerProvider),

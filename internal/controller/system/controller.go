@@ -2,11 +2,12 @@ package system
 
 import (
 	"context"
+	"reflect"
+	"time"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/attribute"
-	"reflect"
-	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
@@ -34,9 +35,14 @@ type Controller interface {
 }
 
 type DefaultController struct {
-	store                      Store
-	listener                   ledgercontroller.Listener
-	parser                     ledgercontroller.NumscriptParser
+	store    Store
+	listener ledgercontroller.Listener
+	// The numscript runtime used by default
+	parser ledgercontroller.NumscriptParser
+	// The numscript runtime used when the "machine" runtime option is passed
+	machineParser ledgercontroller.NumscriptParser
+	// The numscript runtime used when the "interpreter" runtime option is passed
+	interpreterParser          ledgercontroller.NumscriptParser
 	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
 
@@ -67,6 +73,8 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			*l,
 			store,
 			ctrl.parser,
+			ctrl.machineParser,
+			ctrl.interpreterParser,
 			ledgercontroller.WithMeter(meter),
 		)
 
@@ -156,9 +164,15 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 
 type Option func(ctrl *DefaultController)
 
-func WithParser(parser ledgercontroller.NumscriptParser) Option {
+func WithParser(
+	parser ledgercontroller.NumscriptParser,
+	machineParser ledgercontroller.NumscriptParser,
+	interpreterParser ledgercontroller.NumscriptParser,
+) Option {
 	return func(ctrl *DefaultController) {
 		ctrl.parser = parser
+		ctrl.machineParser = machineParser
+		ctrl.interpreterParser = interpreterParser
 	}
 }
 

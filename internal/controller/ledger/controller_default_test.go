@@ -2,11 +2,12 @@ package ledger
 
 import (
 	"context"
+	"math/big"
+	"testing"
+
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
-	"math/big"
-	"testing"
 
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
@@ -28,8 +29,10 @@ func TestCreateTransaction(t *testing.T) {
 	store := NewMockStore(ctrl)
 	numscriptRuntime := NewMockNumscriptRuntime(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 
 	runScript := RunScript{}
 
@@ -78,10 +81,12 @@ func TestRevertTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
-	parser := NewMockNumscriptParser(ctrl)
-	ctx := logging.TestingContext()
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	ctx := logging.TestingContext()
+	interpreterParser := NewMockNumscriptParser(ctrl)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
@@ -132,10 +137,12 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
-	parser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
+	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
@@ -177,9 +184,11 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
@@ -218,7 +227,10 @@ func TestListTransactions(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
+
 	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Transaction]{}
@@ -231,7 +243,7 @@ func TestListTransactions(t *testing.T) {
 		}).
 		Return(cursor, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.ListTransactions(ctx, common.ColumnPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -247,13 +259,15 @@ func TestCountAccounts(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
 
 	store.EXPECT().Accounts().Return(accounts)
 	accounts.EXPECT().Count(gomock.Any(), common.ResourceQuery[any]{}).Return(1, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	count, err := l.CountAccounts(ctx, common.ResourceQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
@@ -265,6 +279,8 @@ func TestGetTransaction(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
 
@@ -274,7 +290,7 @@ func TestGetTransaction(t *testing.T) {
 		Builder: query.Match("id", 1),
 	}).Return(&tx, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.GetTransaction(ctx, common.ResourceQuery[any]{
 		Builder: query.Match("id", 1),
 	})
@@ -288,6 +304,8 @@ func TestGetAccount(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
 
@@ -297,7 +315,7 @@ func TestGetAccount(t *testing.T) {
 		Builder: query.Match("address", "world"),
 	}).Return(&account, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.GetAccount(ctx, common.ResourceQuery[any]{
 		Builder: query.Match("address", "world"),
 	})
@@ -311,13 +329,15 @@ func TestCountTransactions(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
 
 	store.EXPECT().Transactions().Return(transactions)
 	transactions.EXPECT().Count(gomock.Any(), common.ResourceQuery[any]{}).Return(1, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	count, err := l.CountTransactions(ctx, common.ResourceQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
@@ -329,6 +349,8 @@ func TestListAccounts(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
 
@@ -339,7 +361,7 @@ func TestListAccounts(t *testing.T) {
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(cursor, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.ListAccounts(ctx, common.OffsetPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
@@ -354,6 +376,8 @@ func TestGetAggregatedBalances(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](ctrl)
 
@@ -361,7 +385,7 @@ func TestGetAggregatedBalances(t *testing.T) {
 	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[GetAggregatedVolumesOptions]{}).
 		Return(&ledger.AggregatedVolumes{}, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[GetAggregatedVolumesOptions]{})
 	require.NoError(t, err)
 	require.Equal(t, ledger.BalancesByAssets{}, ret)
@@ -373,6 +397,8 @@ func TestListLogs(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	logs := NewMockPaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]](ctrl)
 
@@ -384,7 +410,7 @@ func TestListLogs(t *testing.T) {
 		Column:   "id",
 	}).Return(cursor, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.ListLogs(ctx, common.ColumnPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -400,6 +426,8 @@ func TestGetVolumesWithBalances(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]](ctrl)
 
@@ -410,7 +438,7 @@ func TestGetVolumesWithBalances(t *testing.T) {
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.GetVolumesWithBalances(ctx, common.OffsetPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
@@ -425,6 +453,8 @@ func TestGetMigrationsInfo(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 
 	migrationsInfo := make([]migrations.Info, 0)
@@ -432,7 +462,7 @@ func TestGetMigrationsInfo(t *testing.T) {
 		GetMigrationsInfo(gomock.Any()).
 		Return(migrationsInfo, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.GetMigrationsInfo(ctx)
 	require.NoError(t, err)
 	require.Equal(t, migrationsInfo, ret)
@@ -444,13 +474,15 @@ func TestIsDatabaseUpToDate(t *testing.T) {
 
 	store := NewMockStore(ctrl)
 	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 
 	store.EXPECT().
 		IsUpToDate(gomock.Any()).
 		Return(true, nil)
 
-	l := NewDefaultController(ledger.Ledger{}, store, parser)
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.IsDatabaseUpToDate(ctx)
 	require.NoError(t, err)
 	require.True(t, ret)

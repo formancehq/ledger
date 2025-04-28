@@ -36,8 +36,11 @@ import (
 )
 
 type DefaultController struct {
-	store  Store
-	parser NumscriptParser
+	store             Store
+	parser            NumscriptParser
+	machineParser     NumscriptParser
+	interpreterParser NumscriptParser
+
 	ledger ledger.Ledger
 
 	tracer trace.Tracer
@@ -80,12 +83,16 @@ func NewDefaultController(
 	l ledger.Ledger,
 	store Store,
 	numscriptParser NumscriptParser,
+	machineParser NumscriptParser,
+	interpreterParser NumscriptParser,
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
-		store:  store,
-		ledger: l,
-		parser: numscriptParser,
+		store:             store,
+		ledger:            l,
+		parser:            numscriptParser,
+		interpreterParser: interpreterParser,
+		machineParser:     machineParser,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -289,10 +296,9 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
 	switch tx.Runtime {
 	case RuntimeInterpreter:
-		return NewDefaultNumscriptParser()
+		return ctrl.interpreterParser
 	case RuntimeMachine:
-		// TODO pass feature flags
-		return NewInterpreterNumscriptParser(nil)
+		return ctrl.machineParser
 	default:
 		return ctrl.parser
 	}
