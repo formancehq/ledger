@@ -3,6 +3,7 @@ package bulking
 import (
 	"encoding/json"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/pointer"
 	"github.com/uptrace/bun"
 	"math/big"
 	"testing"
@@ -61,7 +62,9 @@ func TestBulk(t *testing.T) {
 							Timestamp: now,
 						}, false),
 					}).
-					Return(&ledger.Log{}, &ledger.CreatedTransaction{
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, &ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{
 							TransactionData: ledger.TransactionData{
 								Postings:  postings,
@@ -105,7 +108,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -131,7 +136,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -150,7 +157,9 @@ func TestBulk(t *testing.T) {
 							TransactionID: 1,
 						},
 					}).
-					Return(&ledger.Log{}, &ledger.RevertedTransaction{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, &ledger.RevertedTransaction{}, nil)
 			},
 			expectResults: []BulkElementResult{{
 				Data: ledger.Transaction{},
@@ -174,7 +183,9 @@ func TestBulk(t *testing.T) {
 							Key:           "foo",
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -196,7 +207,9 @@ func TestBulk(t *testing.T) {
 							Key:     "foo",
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -240,7 +253,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -300,7 +315,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -320,7 +337,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 			},
 			expectResults: []BulkElementResult{{}, {
 				Error: errors.New("unexpected error"),
@@ -365,7 +384,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -376,7 +397,9 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{
+						ID: pointer.For(1),
+					}, nil)
 
 				mockLedger.EXPECT().
 					Commit(gomock.Any()).
