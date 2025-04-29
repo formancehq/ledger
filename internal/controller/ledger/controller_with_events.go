@@ -171,6 +171,7 @@ func (c *ControllerWithEvents) LockLedger(ctx context.Context) (Controller, bun.
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
 	return &ControllerWithEvents{
 		ledger:     c.ledger,
 		Controller: ctrl,
