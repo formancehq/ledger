@@ -138,7 +138,6 @@ func (c *controllerFacade) Import(ctx context.Context, stream chan ledger.Log) e
 			return err
 		}
 
-		// Check again after the ledger is locked
 		if c.ledger.State != ledger.StateInitializing {
 			return ledgercontroller.NewErrImport(errors.New("ledger is not in initializing state"))
 		}

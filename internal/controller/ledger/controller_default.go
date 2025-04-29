@@ -199,8 +199,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 			switch {
 			case errors.Is(err, postgres.ErrSerialization) ||
 				errors.Is(err, ErrConcurrentTransaction{}):
-				return NewErrImport(errors.New("concurrent transaction occur" +
-					"red, cannot import the ledger"))
+				return NewErrImport(errors.New("concurrent transaction occurred, cannot import the ledger"))
 			}
 			return fmt.Errorf("importing log %d: %w", *log.ID, err)
 		}

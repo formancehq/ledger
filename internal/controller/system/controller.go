@@ -67,6 +67,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			store,
 			ctrl.parser,
 			ledgercontroller.WithMeter(meter),
+			ledgercontroller.WithTracer(tracer),
 		)
 
 		// Add too many client error handling
