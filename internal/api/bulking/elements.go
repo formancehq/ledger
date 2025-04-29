@@ -3,11 +3,12 @@ package bulking
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"reflect"
 )
 
 const (
@@ -100,6 +101,7 @@ type TransactionRequest struct {
 	Reference       string                       `json:"reference"`
 	Metadata        metadata.Metadata            `json:"metadata" swaggertype:"object"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
+	Runtime         ledgercontroller.RuntimeType `json:"runtime,omitempty"`
 }
 
 func (req TransactionRequest) ToCore(allowUnboundedOverdrafts bool) (*ledgercontroller.CreateTransaction, error) {
@@ -128,6 +130,7 @@ func (req TransactionRequest) ToCore(allowUnboundedOverdrafts bool) (*ledgercont
 	}
 
 	return &ledgercontroller.CreateTransaction{
+		Runtime:         req.Runtime,
 		RunScript:       runScript,
 		AccountMetadata: req.AccountMetadata,
 	}, nil

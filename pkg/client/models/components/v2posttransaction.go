@@ -3,6 +3,8 @@
 package components
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"time"
 )
@@ -26,10 +28,39 @@ func (o *V2PostTransactionScript) GetVars() map[string]string {
 	return o.Vars
 }
 
+// Runtime - The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+type Runtime string
+
+const (
+	RuntimeInterpreter Runtime = "interpreter"
+	RuntimeMachine     Runtime = "machine"
+)
+
+func (e Runtime) ToPointer() *Runtime {
+	return &e
+}
+func (e *Runtime) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "interpreter":
+		fallthrough
+	case "machine":
+		*e = Runtime(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for Runtime: %v", v)
+	}
+}
+
 type V2PostTransaction struct {
-	Timestamp       *time.Time                   `json:"timestamp,omitempty"`
-	Postings        []V2Posting                  `json:"postings,omitempty"`
-	Script          *V2PostTransactionScript     `json:"script,omitempty"`
+	Timestamp *time.Time               `json:"timestamp,omitempty"`
+	Postings  []V2Posting              `json:"postings,omitempty"`
+	Script    *V2PostTransactionScript `json:"script,omitempty"`
+	// The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+	Runtime         *Runtime                     `json:"runtime,omitempty"`
 	Reference       *string                      `json:"reference,omitempty"`
 	Metadata        map[string]string            `json:"metadata"`
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
@@ -65,6 +96,13 @@ func (o *V2PostTransaction) GetScript() *V2PostTransactionScript {
 		return nil
 	}
 	return o.Script
+}
+
+func (o *V2PostTransaction) GetRuntime() *Runtime {
+	if o == nil {
+		return nil
+	}
+	return o.Runtime
 }
 
 func (o *V2PostTransaction) GetReference() *string {

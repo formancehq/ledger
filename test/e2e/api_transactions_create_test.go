@@ -3,14 +3,15 @@
 package test_suite
 
 import (
+	"math/big"
+	"time"
+
 	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
-	"math/big"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	. "github.com/formancehq/go-libs/v3/testing/api"
@@ -301,6 +302,54 @@ var _ = Context("Ledger transactions create API tests", func() {
 							})
 							It("Should fail with "+string(components.V2ErrorsEnumConflict)+" error code", func() {})
 						})
+					})
+				})
+				Context("using the `runtime` option to chose numscript rewrite", func() {
+					BeforeEach(func(specContext SpecContext) {
+						req = operations.V2CreateTransactionRequest{
+							IdempotencyKey: pointer.For("testing"),
+							Ledger:         "default",
+							V2PostTransaction: components.V2PostTransaction{
+								Runtime:  pointer.For(components.RuntimeInterpreter),
+								Metadata: map[string]string{},
+								Script: &components.V2PostTransactionScript{
+									// note that we're missing newlines here,
+									// so this is only accepted by the "interpreter" runtime
+									Plain: `send [USD 100] ( source = @world destination = @alice )`,
+									Vars:  map[string]string{},
+								},
+							},
+						}
+					})
+
+					It("should be ok", func(specContext SpecContext) {
+						response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
+							ctx,
+							operations.V2GetTransactionRequest{
+								Ledger: "default",
+								ID:     rsp.V2CreateTransactionResponse.Data.ID,
+								Expand: pointer.For("volumes"),
+							},
+						)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(response.V2GetTransactionResponse.Data.PostCommitVolumes).To(Equal(
+							map[string]map[string]components.V2Volume{
+								"world": {
+									"USD": {
+										Input:   big.NewInt(0),
+										Output:  big.NewInt(100),
+										Balance: big.NewInt(-100),
+									},
+								},
+								"alice": {
+									"USD": {
+										Input:   big.NewInt(100),
+										Output:  big.NewInt(0),
+										Balance: big.NewInt(100),
+									},
+								},
+							},
+						))
 					})
 				})
 				When("with insufficient funds", func() {

@@ -5,6 +5,10 @@ package test_suite
 import (
 	"bytes"
 	"encoding/json"
+	"math/big"
+	"net/http"
+	"time"
+
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
@@ -16,9 +20,6 @@ import (
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"github.com/nats-io/nats.go"
-	"math/big"
-	"net/http"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	. "github.com/formancehq/go-libs/v3/testing/api"
