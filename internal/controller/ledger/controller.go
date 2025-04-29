@@ -20,6 +20,7 @@ type Controller interface {
 	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error)
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
+	LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error)
 
 	// IsDatabaseUpToDate check if the ledger store is up to date, including the bucket and the ledger specifics
 	// It returns true if up to date
