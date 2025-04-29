@@ -157,7 +157,7 @@ func newLedgerStateTracker(ctrl ledgercontroller.Controller, ledger ledger.Ledge
 }
 
 func withLock(ctx context.Context, ctrl ledgercontroller.Controller, fn func(ctrl ledgercontroller.Controller, conn bun.IDB) error) error {
-	_, conn, release, err := ctrl.LockLedger(ctx)
+	lockedCtrl, conn, release, err := ctrl.LockLedger(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to lock ledger: %w", err)
 	}
@@ -171,5 +171,5 @@ func withLock(ctx context.Context, ctrl ledgercontroller.Controller, fn func(ctr
 		}
 	}()
 
-	return fn(ctrl, conn)
+	return fn(lockedCtrl, conn)
 }
