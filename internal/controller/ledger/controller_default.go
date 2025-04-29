@@ -74,6 +74,21 @@ func (ctrl *DefaultController) Rollback(_ context.Context) error {
 	return ctrl.store.Rollback()
 }
 
+func (ctrl *DefaultController) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
+	cp := *ctrl
+	var (
+		err     error
+		db      bun.IDB
+		release func() error
+	)
+	cp.store, db, release, err = ctrl.store.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return &cp, db, release, nil
+}
+
 func NewDefaultController(
 	l ledger.Ledger,
 	store Store,

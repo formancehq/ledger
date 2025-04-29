@@ -218,11 +218,14 @@ func (mr *MockStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 }
 
 // LockLedger mocks base method.
-func (m *MockStore) LockLedger(ctx context.Context) error {
+func (m *MockStore) LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LockLedger", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(Store)
+	ret1, _ := ret[1].(bun.IDB)
+	ret2, _ := ret[2].(func() error)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
 }
 
 // LockLedger indicates an expected call of LockLedger.

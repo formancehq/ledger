@@ -296,8 +296,16 @@ func (d *DefaultStoreAdapter) InsertLog(ctx context.Context, log *ledger.Log) er
 	return d.newStore.InsertLog(ctx, log)
 }
 
-func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) error {
-	return d.newStore.LockLedger(ctx)
+func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) (ledgercontroller.Store, bun.IDB, func() error, error) {
+	store, db, release, err := d.newStore.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return &DefaultStoreAdapter{
+		newStore:    store,
+		legacyStore: d.legacyStore.WithDB(db),
+	}, db, release, err
 }
 
 func (d *DefaultStoreAdapter) ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error) {

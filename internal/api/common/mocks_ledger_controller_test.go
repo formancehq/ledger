@@ -325,6 +325,23 @@ func (mr *LedgerControllerMockRecorder) ListTransactions(ctx, query any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTransactions", reflect.TypeOf((*LedgerController)(nil).ListTransactions), ctx, query)
 }
 
+// LockLedger mocks base method.
+func (m *LedgerController) LockLedger(ctx context.Context) (ledger0.Controller, bun.IDB, func() error, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockLedger", ctx)
+	ret0, _ := ret[0].(ledger0.Controller)
+	ret1, _ := ret[1].(bun.IDB)
+	ret2, _ := ret[2].(func() error)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// LockLedger indicates an expected call of LockLedger.
+func (mr *LedgerControllerMockRecorder) LockLedger(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockLedger", reflect.TypeOf((*LedgerController)(nil).LockLedger), ctx)
+}
+
 // RevertTransaction mocks base method.
 func (m *LedgerController) RevertTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
 	m.ctrl.T.Helper()

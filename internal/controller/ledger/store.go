@@ -49,7 +49,7 @@ type Store interface {
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
-	LockLedger(ctx context.Context) error
+	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)
 
 	GetDB() bun.IDB
 	ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error)

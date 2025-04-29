@@ -74,7 +74,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 				// lock logs table to block transactions creation requests
 				// the first tx will block on the log insertion
-				// the next transaction will block earlier on advisory lock acquirement for accounts
+				// the next transactions will block earlier on the advisory lock acquirement (since the ledger is in initializing state)
 				db := ConnectToDatabase(GinkgoT(), testServer.GetValue())
 				sqlTx, err = db.BeginTx(ctx, &sql.TxOptions{})
 				Expect(err).To(BeNil())
@@ -108,18 +108,16 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				// check postgres locks
 				Eventually(func(g Gomega) int {
 					count, err := db.NewSelect().
-						Table("pg_stat_activity").
-						Where("state <> 'idle' and pid <> pg_backend_pid()").
-						Where(`query like 'INSERT INTO "_default".accounts%'`).
+						Table("pg_locks").
+						Where("locktype = 'advisory'").
 						Count(ctx)
 					g.Expect(err).To(BeNil())
 					return count
 				}).
 					WithTimeout(10 * time.Second).
-					// Once all the transactions are in pending state, we should have one lock
-					// for the first tx, trying to write a new log.
-					// And, we should also have countTransactions-1 pending lock for the 'bank' account
-					Should(BeNumerically("==", countTransactions-1)) // -1 for the first one
+					// Once all the transactions are in pending state, and since the ledger is still in an 'initializing' state
+					// we should have countTransactions+1 (+1 for the advisory lock used for logs sync hashing) active advisory locks
+					Should(BeNumerically("==", countTransactions+1))
 			})
 			When("restarting the service", func() {
 				BeforeEach(func() {
