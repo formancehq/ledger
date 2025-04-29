@@ -39,6 +39,7 @@ type ControllerWithTraces struct {
 	saveAccountMetadataHistogram       metric.Int64Histogram
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	deleteAccountMetadataHistogram     metric.Int64Histogram
+	lockLedgerHistogram                metric.Int64Histogram
 }
 
 func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter metric.Meter) *ControllerWithTraces {
@@ -133,6 +134,10 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 		panic(err)
 	}
 	ret.deleteAccountMetadataHistogram, err = meter.Int64Histogram("DeleteAccountMetadata")
+	if err != nil {
+		panic(err)
+	}
+	ret.lockLedgerHistogram, err = meter.Int64Histogram("LockLedger")
 	if err != nil {
 		panic(err)
 	}
@@ -453,6 +458,30 @@ func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 			return c.underlying.GetStats(ctx)
 		},
 	)
+}
+
+func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
+	var (
+		controller Controller
+		release    func() error
+		conn       bun.IDB
+		err        error
+	)
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"LockLedger",
+		c.tracer,
+		c.lockLedgerHistogram,
+		func(ctx context.Context) (any, error) {
+			controller, conn, release, err = c.underlying.LockLedger(ctx)
+			return nil, err
+		},
+	)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return controller, conn, release, nil
 }
 
 var _ Controller = (*ControllerWithTraces)(nil)

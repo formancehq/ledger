@@ -340,7 +340,6 @@ var _ = Context("Ledger engine tests", func() {
 							DeferCleanup(func() {
 								_ = sqlTx.Rollback()
 							})
-
 							_, err := sqlTx.NewRaw("lock table _default.logs").Exec(ctx)
 							Expect(err).To(BeNil())
 
@@ -363,10 +362,19 @@ var _ = Context("Ledger engine tests", func() {
 								Expect(err).To(BeNil())
 							}()
 
+							// At this point, and since the ledger is in 'initializing' state,
+							// the transaction creation should have taken an advisory lock
+							Eventually(func(g Gomega) int {
+								count, err := db.NewSelect().
+									Table("pg_locks").
+									Where("locktype = 'advisory'").
+									Count(ctx)
+								g.Expect(err).To(BeNil())
+								return count
+							}).Should(Equal(1))
+
 							// check postgres locks
-							// we wait for two active locks. The first is the one we took in the test.
-							// the second is the one took by the call to the CreateTransaction
-							// Once we have the two locks, we know that the CreateTransaction is in a sql tx.
+							// since we have locked the 'logs' table, the insertion of the log must block
 							Eventually(func(g Gomega) int {
 								count, err := db.NewSelect().
 									Table("pg_stat_activity").
@@ -385,15 +393,18 @@ var _ = Context("Ledger engine tests", func() {
 								importErrChan <- importLogs()
 							}()
 
+							// At this point, the import should block when trying to acquire the advisory lock taken
+							// by the transaction creation parallel (and blocked) request.
+							// We should have two taken advisory locks in the pg_locks table
+							// One with waiting status, and one granted.
 							Eventually(func(g Gomega) int {
 								count, err := db.NewSelect().
-									Table("pg_stat_activity").
-									Where("state <> 'idle' and pid <> pg_backend_pid()").
-									Where(`query like 'SELECT "logs"."type"%foo-copy%'`).
+									Table("pg_locks").
+									Where("locktype = 'advisory'").
 									Count(ctx)
 								g.Expect(err).To(BeNil())
 								return count
-							}).Should(Equal(1))
+							}).Should(Equal(2))
 						})
 						It("should fail", func() {
 							Expect(sqlTx.Rollback()).To(Succeed())
