@@ -161,12 +161,14 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		storeCp.db = conn
 
 		_, err = conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
 		if err != nil {
+			_ = conn.Close()
 			return nil, nil, nil, err
 		}
+		storeCp.db = conn
+
 		return &storeCp, storeCp.db, func() error {
 			_, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
 			if err != nil {
@@ -181,8 +183,8 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 		}
 
 		return store, db, func() error {
-			// nothing to do, the lock will be released when the transaction is closed
-			return err
+			// xact-scoped advisory locks are released automatically – nothing to do
+			return nil
 		}, nil
 	default:
 		panic(fmt.Errorf("invalid db type: %T", store.db))

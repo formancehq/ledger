@@ -166,6 +166,19 @@ func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptio
 	}, tx, nil
 }
 
+func (c *ControllerWithEvents) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
+	ctrl, db, release, err := c.Controller.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return &ControllerWithEvents{
+		ledger:     c.ledger,
+		Controller: ctrl,
+		listener:   c.listener,
+		parent:     c,
+	}, db, release, nil
+}
+
 func (c *ControllerWithEvents) Commit(ctx context.Context) error {
 	err := c.Controller.Commit(ctx)
 	if err != nil {

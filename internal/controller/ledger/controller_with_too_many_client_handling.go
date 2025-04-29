@@ -132,6 +132,18 @@ func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, optio
 	}, tx, nil
 }
 
+func (c *ControllerWithTooManyClientHandling) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
+	ctrl, db, release, err := c.Controller.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return &ControllerWithTooManyClientHandling{
+		Controller:      ctrl,
+		delayCalculator: c.delayCalculator,
+		tracer:          c.tracer,
+	}, db, release, nil
+}
+
 var _ Controller = (*ControllerWithTooManyClientHandling)(nil)
 
 func handleRetry(
