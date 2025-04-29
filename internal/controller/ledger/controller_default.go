@@ -185,9 +185,9 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 
 	for log := range stream {
 		if lastLogID != nil && *log.ID <= *lastLogID {
-			return fmt.Errorf("log %d already exists", *log.ID)
+			return NewErrImport(fmt.Errorf("log %d already exists", *log.ID))
 		}
-		lastLogID = nil
+		lastLogID = log.ID
 
 		if err := ctrl.importLog(ctx, log); err != nil {
 			switch {
