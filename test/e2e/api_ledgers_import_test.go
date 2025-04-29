@@ -131,6 +131,43 @@ var _ = Context("Ledger engine tests", func() {
 				Expect(accountsFromOriginalLedger.Data).To(Equal(accountsFromNewLedger.Data))
 			})
 		})
+		When("importing data with errors", func() {
+			JustBeforeEach(func() {
+				// Third log as an invalid id (== 0)
+				logs := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"world","destination":"payments:1234","amount":10000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:07:41.522336Z","id":0,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:07:41.534898Z","idempotencyKey":"","id":0,"hash":"g489GFReBqquboEjkB95X3OU6mheMzgiu63PdSTfMuM="}
+{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"payments:1234","destination":"platform","amount":1500,"asset":"EUR/2"},{"source":"payments:1234","destination":"merchants:777","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:07:55.145802Z","id":1,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:07:55.170731Z","idempotencyKey":"","id":1,"hash":"T+2SGiCeC8tagt1tf5E/L7r98wB8tm6EbNd+OJ7ZvCI="}
+{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"merchants:777","destination":"payouts:987","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:24.955784Z","id":2,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:24.985834Z","idempotencyKey":"","id":0,"hash":"WgOIXsh8x0pGSi//jHjQ78RF9YnFRslsbp2aOHiG43U="}
+{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"platform","destination":"refunds:4567","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:39.301709Z","id":3,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:39.330919Z","idempotencyKey":"","id":3,"hash":"JblhzL91s+DTcd53YTV2laC4QBRe5oDDoz9CzsX5Pro="}
+{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"refunds:4567","destination":"world","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:11:02.413499Z","id":4,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:11:02.434078Z","idempotencyKey":"","id":4,"hash":"Y8TBz5GhxTWW9D/wRXHPcIlrYFPQjroiIBWX1q6SJJo="}`
+
+				err := Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
+					Ledger:              createLedgerRequest.Ledger,
+					V2ImportLogsRequest: []byte(logs),
+				})
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumImport)))
+			})
+			It("should fail but should insert first logs", func() {
+				list, err := ListLogs(ctx, testServer.GetValue(), operations.V2ListLogsRequest{
+					Ledger: createLedgerRequest.Ledger,
+				})
+				Expect(err).To(Succeed())
+				Expect(list.Data).To(HaveLen(2))
+			})
+			Context("then when resuming with correct logs", func() {
+				It("Should be ok", func() {
+					// restart from the failed log
+					logs := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"merchants:777","destination":"payouts:987","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:24.955784Z","id":2,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:24.985834Z","idempotencyKey":"","id":2,"hash":"WgOIXsh8x0pGSi//jHjQ78RF9YnFRslsbp2aOHiG43U="}
+{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"platform","destination":"refunds:4567","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:39.301709Z","id":3,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:39.330919Z","idempotencyKey":"","id":3,"hash":"JblhzL91s+DTcd53YTV2laC4QBRe5oDDoz9CzsX5Pro="}
+{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"refunds:4567","destination":"world","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:11:02.413499Z","id":4,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:11:02.434078Z","idempotencyKey":"","id":4,"hash":"Y8TBz5GhxTWW9D/wRXHPcIlrYFPQjroiIBWX1q6SJJo="}`
+
+					err := Import(ctx, testServer.GetValue(), operations.V2ImportLogsRequest{
+						Ledger:              createLedgerRequest.Ledger,
+						V2ImportLogsRequest: []byte(logs),
+					})
+					Expect(err).To(Succeed())
+				})
+			})
+		})
 		Context("with a set of all possible actions", func() {
 			JustBeforeEach(func() {
 				Expect(err).To(BeNil())
