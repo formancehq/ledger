@@ -161,6 +161,7 @@ func withLock(ctx context.Context, ctrl ledgercontroller.Controller, fn func(ctr
 	if err != nil {
 		return fmt.Errorf("failed to lock ledger: %w", err)
 	}
+
 	defer func() {
 		if err := release(); err != nil {
 			logging.FromContext(ctx).Errorf(

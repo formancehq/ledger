@@ -481,7 +481,10 @@ func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.
 		return nil, nil, nil, err
 	}
 
-	return controller, conn, release, nil
+	cp := *c
+	cp.underlying = controller
+
+	return &cp, conn, release, nil
 }
 
 var _ Controller = (*ControllerWithTraces)(nil)
