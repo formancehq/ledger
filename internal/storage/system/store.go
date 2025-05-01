@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
+	stdtime "time"
 	
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -156,7 +157,7 @@ func WithTracer(tracer trace.Tracer) Option {
 func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
 	_, err := d.db.NewUpdate().
 		Model(&ledger.Ledger{}).
-		Set("deleted_at = ?", time.Now().UTC()).
+		Set("deleted_at = ?", stdtime.Now().UTC()).
 		Where("bucket = ?", bucketName).
 		Exec(ctx)
 	return postgres.ResolveError(err)
@@ -173,8 +174,8 @@ func (d *DefaultStore) RestoreBucket(ctx context.Context, bucketName string) err
 
 func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
 	var results []struct {
-		Bucket    string    `bun:"bucket"`
-		DeletedAt time.Time `bun:"deleted_at"`
+		Bucket    string       `bun:"bucket"`
+		DeletedAt stdtime.Time `bun:"deleted_at"`
 	}
 
 	err := d.db.NewSelect().
@@ -190,7 +191,7 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontr
 	for i, result := range results {
 		buckets[i] = systemcontroller.BucketWithStatus{
 			Name:      result.Bucket,
-			DeletedAt: result.DeletedAt,
+			DeletedAt: time.Time(result.DeletedAt),
 		}
 	}
 
