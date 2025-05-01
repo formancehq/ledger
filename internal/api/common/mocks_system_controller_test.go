@@ -101,6 +101,21 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerController", reflect.TypeOf((*SystemController)(nil).GetLedgerController), ctx, name)
 }
 
+// ListBucketsWithStatus mocks base method.
+func (m *SystemController) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
+	ret0, _ := ret[0].([]system.BucketWithStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBucketsWithStatus indicates an expected call of ListBucketsWithStatus.
+func (mr *SystemControllerMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemController)(nil).ListBucketsWithStatus), ctx)
+}
+
 // ListLedgers mocks base method.
 func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
@@ -116,20 +131,6 @@ func (mr *SystemControllerMockRecorder) ListLedgers(ctx, query any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*SystemController)(nil).ListLedgers), ctx, query)
 }
 
-// UpdateLedgerMetadata mocks base method.
-func (m_2 *SystemController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
-	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "UpdateLedgerMetadata", ctx, name, m)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateLedgerMetadata indicates an expected call of UpdateLedgerMetadata.
-func (mr *SystemControllerMockRecorder) UpdateLedgerMetadata(ctx, name, m any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLedgerMetadata", reflect.TypeOf((*SystemController)(nil).UpdateLedgerMetadata), ctx, name, m)
-}
-
 // MarkBucketAsDeleted mocks base method.
 func (m *SystemController) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
 	m.ctrl.T.Helper()
@@ -138,6 +139,7 @@ func (m *SystemController) MarkBucketAsDeleted(ctx context.Context, bucketName s
 	return ret0
 }
 
+// MarkBucketAsDeleted indicates an expected call of MarkBucketAsDeleted.
 func (mr *SystemControllerMockRecorder) MarkBucketAsDeleted(ctx, bucketName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkBucketAsDeleted", reflect.TypeOf((*SystemController)(nil).MarkBucketAsDeleted), ctx, bucketName)
@@ -151,21 +153,22 @@ func (m *SystemController) RestoreBucket(ctx context.Context, bucketName string)
 	return ret0
 }
 
+// RestoreBucket indicates an expected call of RestoreBucket.
 func (mr *SystemControllerMockRecorder) RestoreBucket(ctx, bucketName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreBucket", reflect.TypeOf((*SystemController)(nil).RestoreBucket), ctx, bucketName)
 }
 
-// ListBucketsWithStatus mocks base method.
-func (m *SystemController) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
-	ret0, _ := ret[0].([]system.BucketWithStatus)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+// UpdateLedgerMetadata mocks base method.
+func (m_2 *SystemController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
+	m_2.ctrl.T.Helper()
+	ret := m_2.ctrl.Call(m_2, "UpdateLedgerMetadata", ctx, name, m)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-func (mr *SystemControllerMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
+// UpdateLedgerMetadata indicates an expected call of UpdateLedgerMetadata.
+func (mr *SystemControllerMockRecorder) UpdateLedgerMetadata(ctx, name, m any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemController)(nil).ListBucketsWithStatus), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLedgerMetadata", reflect.TypeOf((*SystemController)(nil).UpdateLedgerMetadata), ctx, name, m)
 }

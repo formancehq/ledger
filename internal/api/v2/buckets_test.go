@@ -1,12 +1,11 @@
 package v2
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,7 @@ func TestDeleteBucket(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	systemController := NewMockSystemController(ctrl)
+	systemController := NewSystemController(ctrl)
 	systemController.EXPECT().
 		MarkBucketAsDeleted(gomock.Any(), "test-bucket").
 		Return(nil)
@@ -38,7 +37,7 @@ func TestRestoreBucket(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	systemController := NewMockSystemController(ctrl)
+	systemController := NewSystemController(ctrl)
 	systemController.EXPECT().
 		RestoreBucket(gomock.Any(), "test-bucket").
 		Return(nil)
@@ -59,6 +58,7 @@ func TestListBuckets(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	now := time.Now()
 	buckets := []system.BucketWithStatus{
 		{
 			Name:      "bucket1",
@@ -66,11 +66,11 @@ func TestListBuckets(t *testing.T) {
 		},
 		{
 			Name:      "bucket2",
-			DeletedAt: time.Now(),
+			DeletedAt: now,
 		},
 	}
 
-	systemController := NewMockSystemController(ctrl)
+	systemController := NewSystemController(ctrl)
 	systemController.EXPECT().
 		ListBucketsWithStatus(gomock.Any()).
 		Return(buckets, nil)
