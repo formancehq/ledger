@@ -189,9 +189,13 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontr
 
 	buckets := make([]systemcontroller.BucketWithStatus, len(results))
 	for i, result := range results {
+		var deletedAt time.Time
+		if !result.DeletedAt.IsZero() {
+			deletedAt = time.Time{Time: result.DeletedAt}
+		}
 		buckets[i] = systemcontroller.BucketWithStatus{
 			Name:      result.Bucket,
-			DeletedAt: time.Time(result.DeletedAt),
+			DeletedAt: deletedAt,
 		}
 	}
 
