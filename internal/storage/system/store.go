@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+	
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
@@ -49,6 +51,7 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
 		Column("bucket").
+		Where("deleted_at IS NULL").
 		Scan(ctx, &buckets)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
@@ -148,6 +151,50 @@ func WithTracer(tracer trace.Tracer) Option {
 	return func(d *DefaultStore) {
 		d.tracer = tracer
 	}
+}
+
+func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("deleted_at = ?", time.Now().UTC()).
+		Where("bucket = ?", bucketName).
+		Exec(ctx)
+	return postgres.ResolveError(err)
+}
+
+func (d *DefaultStore) RestoreBucket(ctx context.Context, bucketName string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("deleted_at = NULL").
+		Where("bucket = ?", bucketName).
+		Exec(ctx)
+	return postgres.ResolveError(err)
+}
+
+func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	var results []struct {
+		Bucket    string    `bun:"bucket"`
+		DeletedAt time.Time `bun:"deleted_at"`
+	}
+
+	err := d.db.NewSelect().
+		DistinctOn("bucket").
+		Model(&ledger.Ledger{}).
+		Column("bucket", "deleted_at").
+		Scan(ctx, &results)
+	if err != nil {
+		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
+	}
+
+	buckets := make([]systemcontroller.BucketWithStatus, len(results))
+	for i, result := range results {
+		buckets[i] = systemcontroller.BucketWithStatus{
+			Name:      result.Bucket,
+			DeletedAt: result.DeletedAt,
+		}
+	}
+
+	return buckets, nil
 }
 
 var defaultOptions = []Option{

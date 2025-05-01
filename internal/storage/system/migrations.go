@@ -239,7 +239,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 				})
 			},
 		},
-	)
+	migrations.Migration{
+		Name: "Add deleted_at column to ledgers",
+		Up: func(ctx context.Context, db bun.IDB) error {
+			return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					alter table _system.ledgers
+					add column if not exists deleted_at timestamp;
+				`)
+				return err
+			})
+		},
+	})
 
 	return migrator
 }

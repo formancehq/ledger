@@ -90,6 +90,10 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		return nil, nil, err
 	}
 
+	if !ret.DeletedAt.IsZero() {
+		return nil, nil, systemcontroller.ErrLedgerNotFound
+	}
+
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 
 	return store, ret, err
@@ -319,6 +323,55 @@ func WithTracer(tracer trace.Tracer) Option {
 	return func(d *Driver) {
 		d.tracer = tracer
 	}
+}
+
+func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]string, error) {
+	var buckets []string
+	cutoffDate := time.Now().UTC().AddDate(0, 0, -days)
+	
+	err := d.db.NewSelect().
+		DistinctOn("bucket").
+		Model(&ledger.Ledger{}).
+		Column("bucket").
+		Where("deleted_at IS NOT NULL").
+		Where("deleted_at <= ?", cutoffDate).
+		Scan(ctx, &buckets)
+	
+	if err != nil {
+		return nil, fmt.Errorf("getting buckets marked for deletion: %w", err)
+	}
+	
+	return buckets, nil
+}
+
+func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
+	_, err := d.db.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE", bucketName))
+	if err != nil {
+		return fmt.Errorf("dropping bucket schema: %w", err)
+	}
+	
+	_, err = d.db.NewDelete().
+		Model(&ledger.Ledger{}).
+		Where("bucket = ?", bucketName).
+		Exec(ctx)
+	
+	if err != nil {
+		return fmt.Errorf("deleting ledger entries for bucket: %w", err)
+	}
+	
+	return nil
+}
+
+func (d *Driver) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	return d.systemStoreFactory.Create(d.db).ListBucketsWithStatus(ctx)
+}
+
+func (d *Driver) RestoreBucket(ctx context.Context, bucketName string) error {
+	return d.systemStoreFactory.Create(d.db).RestoreBucket(ctx, bucketName)
+}
+
+func (d *Driver) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	return d.systemStoreFactory.Create(d.db).MarkBucketAsDeleted(ctx, bucketName)
 }
 
 var defaultOptions = []Option{

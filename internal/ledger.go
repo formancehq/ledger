@@ -19,10 +19,11 @@ type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
 	Configuration
-	ID      int       `json:"id" bun:"id,type:int,scanonly"`
-	Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
-	AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
-	State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
+	ID        int       `json:"id" bun:"id,type:int,scanonly"`
+	Name      string    `json:"name" bun:"name,type:varchar(255),pk"`
+	AddedAt   time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+	State     string    `json:"-" bun:"state,type:varchar(255),nullzero"`
+	DeletedAt time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {

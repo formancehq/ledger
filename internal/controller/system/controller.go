@@ -32,6 +32,9 @@ type Controller interface {
 	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
+	RestoreBucket(ctx context.Context, bucketName string) error
+	ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error)
 }
 
 type DefaultController struct {
@@ -147,6 +150,24 @@ func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param s
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.store.DeleteLedgerMetadata(ctx, param, key)
 	})))
+}
+
+func (ctrl *DefaultController) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "MarkBucketAsDeleted", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.store.MarkBucketAsDeleted(ctx, bucketName)
+	})))
+}
+
+func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucketName string) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "RestoreBucket", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.store.RestoreBucket(ctx, bucketName)
+	})))
+}
+
+func (ctrl *DefaultController) ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListBucketsWithStatus", func(ctx context.Context) ([]BucketWithStatus, error) {
+		return ctrl.store.ListBucketsWithStatus(ctx)
+	})
 }
 
 func NewDefaultController(store Store, listener ledgercontroller.Listener, opts ...Option) *DefaultController {
