@@ -66,6 +66,88 @@ paths:
       x-speakeasy-name-override: ListLedgers
       tags:
         - ledger.v2
+        
+  /v2/_/buckets:
+    get:
+      summary: List buckets with their deletion status
+      operationId: v2ListBuckets
+      x-speakeasy-name-override: ListBuckets
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/V2BucketWithStatus"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+            
+  /v2/_/buckets/{bucket}:
+    parameters:
+      - name: bucket
+        in: path
+        description: Name of the bucket.
+        required: true
+        schema:
+          type: string
+          example: default
+    delete:
+      summary: Mark a bucket for deletion
+      operationId: v2DeleteBucket
+      x-speakeasy-name-override: DeleteBucket
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+            
+  /v2/_/buckets/{bucket}/restore:
+    parameters:
+      - name: bucket
+        in: path
+        description: Name of the bucket.
+        required: true
+        schema:
+          type: string
+          example: default
+    post:
+      summary: Restore a bucket that was marked for deletion
+      operationId: v2RestoreBucket
+      x-speakeasy-name-override: RestoreBucket
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: No Content
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
       parameters:
         - name: pageSize
           in: query
@@ -2096,3 +2178,18 @@ components:
         file:
           type: string
           format: binary
+          
+    V2BucketWithStatus:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the bucket
+          example: default
+        deletedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the bucket was marked for deletion, null if active
+          nullable: true
+      required:
+        - name
