@@ -14,6 +14,7 @@ import (
 	metadata "github.com/formancehq/go-libs/v3/metadata"
 	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
+	system "github.com/formancehq/ledger/internal/controller/system"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -147,6 +148,35 @@ func (mr *SystemStoreMockRecorder) Ledgers() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ledgers", reflect.TypeOf((*SystemStore)(nil).Ledgers))
 }
 
+// ListBucketsWithStatus mocks base method.
+func (m *SystemStore) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
+	ret0, _ := ret[0].([]system.BucketWithStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBucketsWithStatus indicates an expected call of ListBucketsWithStatus.
+func (mr *SystemStoreMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemStore)(nil).ListBucketsWithStatus), ctx)
+}
+
+// MarkBucketAsDeleted mocks base method.
+func (m *SystemStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkBucketAsDeleted", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkBucketAsDeleted indicates an expected call of MarkBucketAsDeleted.
+func (mr *SystemStoreMockRecorder) MarkBucketAsDeleted(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkBucketAsDeleted", reflect.TypeOf((*SystemStore)(nil).MarkBucketAsDeleted), ctx, bucketName)
+}
+
 // Migrate mocks base method.
 func (m *SystemStore) Migrate(ctx context.Context, options ...migrations.Option) error {
 	m.ctrl.T.Helper()
@@ -164,6 +194,20 @@ func (mr *SystemStoreMockRecorder) Migrate(ctx any, options ...any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx}, options...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Migrate", reflect.TypeOf((*SystemStore)(nil).Migrate), varargs...)
+}
+
+// RestoreBucket mocks base method.
+func (m *SystemStore) RestoreBucket(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreBucket", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RestoreBucket indicates an expected call of RestoreBucket.
+func (mr *SystemStoreMockRecorder) RestoreBucket(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreBucket", reflect.TypeOf((*SystemStore)(nil).RestoreBucket), ctx, bucketName)
 }
 
 // UpdateLedgerMetadata mocks base method.

@@ -299,7 +299,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
 
 <a name="Configuration"></a>
-## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L92-L96>)
+## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L93-L97>)
 
 
 
@@ -312,7 +312,7 @@ type Configuration struct {
 ```
 
 <a name="NewDefaultConfiguration"></a>
-### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L123>)
+### func [NewDefaultConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L124>)
 
 ```go
 func NewDefaultConfiguration() Configuration
@@ -321,7 +321,7 @@ func NewDefaultConfiguration() Configuration
 
 
 <a name="Configuration.SetDefaults"></a>
-### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L98>)
+### func \(\*Configuration\) [SetDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L99>)
 
 ```go
 func (c *Configuration) SetDefaults()
@@ -330,7 +330,7 @@ func (c *Configuration) SetDefaults()
 
 
 <a name="Configuration.Validate"></a>
-### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L113>)
+### func \(\*Configuration\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L114>)
 
 ```go
 func (c *Configuration) Validate() error
@@ -458,7 +458,7 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="Ledger"></a>
-## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L18-L26>)
+## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L18-L27>)
 
 
 
@@ -467,15 +467,16 @@ type Ledger struct {
     bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
     Configuration
-    ID      int       `json:"id" bun:"id,type:int,scanonly"`
-    Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
-    AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
-    State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
+    ID        int       `json:"id" bun:"id,type:int,scanonly"`
+    Name      string    `json:"name" bun:"name,type:varchar(255),pk"`
+    AddedAt   time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    State     string    `json:"-" bun:"state,type:varchar(255),nullzero"`
+    DeletedAt time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
 }
 ```
 
 <a name="MustNewWithDefault"></a>
-### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L68>)
+### func [MustNewWithDefault](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L69>)
 
 ```go
 func MustNewWithDefault(name string) Ledger
@@ -484,7 +485,7 @@ func MustNewWithDefault(name string) Ledger
 
 
 <a name="New"></a>
-### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L41>)
+### func [New](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L42>)
 
 ```go
 func New(name string, configuration Configuration) (*Ledger, error)
@@ -493,7 +494,7 @@ func New(name string, configuration Configuration) (*Ledger, error)
 
 
 <a name="NewWithDefaults"></a>
-### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L64>)
+### func [NewWithDefaults](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L65>)
 
 ```go
 func NewWithDefaults(name string) (*Ledger, error)
@@ -502,7 +503,7 @@ func NewWithDefaults(name string) (*Ledger, error)
 
 
 <a name="Ledger.HasFeature"></a>
-### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L28>)
+### func \(Ledger\) [HasFeature](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L29>)
 
 ```go
 func (l Ledger) HasFeature(feature, value string) bool
@@ -511,7 +512,7 @@ func (l Ledger) HasFeature(feature, value string) bool
 
 
 <a name="Ledger.WithMetadata"></a>
-### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L36>)
+### func \(Ledger\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L37>)
 
 ```go
 func (l Ledger) WithMetadata(m metadata.Metadata) Ledger
