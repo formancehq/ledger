@@ -14,6 +14,7 @@ import (
 	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
+nc	system "github.com/formancehq/ledger/internal/controller/system"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -127,4 +128,44 @@ func (m_2 *SystemController) UpdateLedgerMetadata(ctx context.Context, name stri
 func (mr *SystemControllerMockRecorder) UpdateLedgerMetadata(ctx, name, m any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLedgerMetadata", reflect.TypeOf((*SystemController)(nil).UpdateLedgerMetadata), ctx, name, m)
+}
+
+// MarkBucketAsDeleted mocks base method.
+func (m *SystemController) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkBucketAsDeleted", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+func (mr *SystemControllerMockRecorder) MarkBucketAsDeleted(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkBucketAsDeleted", reflect.TypeOf((*SystemController)(nil).MarkBucketAsDeleted), ctx, bucketName)
+}
+
+// RestoreBucket mocks base method.
+func (m *SystemController) RestoreBucket(ctx context.Context, bucketName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreBucket", ctx, bucketName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+func (mr *SystemControllerMockRecorder) RestoreBucket(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreBucket", reflect.TypeOf((*SystemController)(nil).RestoreBucket), ctx, bucketName)
+}
+
+// ListBucketsWithStatus mocks base method.
+func (m *SystemController) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
+	ret0, _ := ret[0].([]system.BucketWithStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *SystemControllerMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemController)(nil).ListBucketsWithStatus), ctx)
 }
