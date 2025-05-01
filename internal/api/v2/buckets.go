@@ -45,6 +45,6 @@ func listBuckets(systemController system.Controller) http.HandlerFunc {
 			return
 		}
 		
-		api.OK(w, buckets)
+		api.RenderJSON(w, buckets)
 	}
 }
