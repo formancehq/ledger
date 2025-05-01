@@ -3,7 +3,6 @@ package system
 import (
 	"context"
 	"database/sql"
-
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/pkg/features"
@@ -240,67 +239,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 				})
 			},
 		},
-		migrations.Migration{
-			Name: "Create buckets table",
-			Up: func(ctx context.Context, db bun.IDB) error {
-				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-					_, err := tx.ExecContext(ctx, `
-						create table _system.buckets (
-							id serial primary key,
-							name varchar(255) unique not null,
-							added_at timestamp without time zone default (now() at time zone 'utc'),
-							deleted_at timestamp
-						);
-					`)
-					return err
-				})
-			},
+	migrations.Migration{
+		Name: "Add deleted_at column to ledgers",
+		Up: func(ctx context.Context, db bun.IDB) error {
+			return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					alter table _system.ledgers
+					add column if not exists deleted_at timestamp;
+				`)
+				return err
+			})
 		},
-		migrations.Migration{
-			Name: "Populate buckets table from existing ledgers",
-			Up: func(ctx context.Context, db bun.IDB) error {
-				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-					_, err := tx.ExecContext(ctx, `
-						insert into _system.buckets (name, added_at, deleted_at)
-						select distinct bucket, min(added_at), NULL::timestamp
-						from _system.ledgers
-						group by bucket
-						on conflict (name) do nothing;
-					`)
-					return err
-				})
-			},
-		},
-		migrations.Migration{
-			Name: "Add foreign key from ledgers to buckets",
-			Up: func(ctx context.Context, db bun.IDB) error {
-				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-					// S'assurer que chaque bucket dans ledgers existe dans la table buckets
-					_, err := tx.ExecContext(ctx, `
-						insert into _system.buckets (name, added_at)
-						select distinct bucket, now()
-						from _system.ledgers l
-						where not exists (
-							select 1 from _system.buckets b where b.name = l.bucket
-						);
-					`)
-					if err != nil {
-						return err
-					}
-
-					// Ajouter la contrainte de clé étrangère
-					_, err = tx.ExecContext(ctx, `
-						alter table _system.ledgers
-						add constraint fk_ledgers_bucket_buckets_name
-						foreign key (bucket)
-						references _system.buckets(name)
-						on delete restrict;
-					`)
-					return err
-				})
-			},
-		},
-	)
+	})
 
 	return migrator
 }

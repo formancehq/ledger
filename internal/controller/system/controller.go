@@ -34,7 +34,7 @@ type Controller interface {
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[BucketWithStatus], error)
+	ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error)
 }
 
 type DefaultController struct {
@@ -130,12 +130,7 @@ func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, co
 
 func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "GetLedger", func(ctx context.Context) (*ledger.Ledger, error) {
-		l, err := ctrl.store.GetLedger(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-
-		return l, nil
+		return ctrl.store.GetLedger(ctx, name)
 	})
 }
 
@@ -169,9 +164,9 @@ func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucketName str
 	})))
 }
 
-func (ctrl *DefaultController) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[BucketWithStatus], error) {
-	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListBucketsWithStatus", func(ctx context.Context) (*bunpaginate.Cursor[BucketWithStatus], error) {
-		return ctrl.store.ListBucketsWithStatus(ctx, query)
+func (ctrl *DefaultController) ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListBucketsWithStatus", func(ctx context.Context) ([]BucketWithStatus, error) {
+		return ctrl.store.ListBucketsWithStatus(ctx)
 	})
 }
 

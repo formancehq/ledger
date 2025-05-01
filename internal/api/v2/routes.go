@@ -41,7 +41,6 @@ func NewRouter(
 		router.Get("/_/buckets", listBuckets(systemController, routerOptions.paginationConfig))
 		router.Delete("/_/buckets/{bucket}", deleteBucket(systemController))
 		router.Post("/_/buckets/{bucket}/restore", restoreBucket(systemController))
-
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

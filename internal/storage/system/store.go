@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
+	"time"
+	
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
-	gotime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -26,15 +26,10 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
-	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
-	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error)
-	ListBuckets(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Bucket], error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
 	IsUpToDate(ctx context.Context) (bool, error)
-	CreateBucket(ctx context.Context, b *ledger.Bucket) error
 }
 
 const (
@@ -51,17 +46,18 @@ func (d *DefaultStore) IsUpToDate(ctx context.Context) (bool, error) {
 }
 
 func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error) {
-	var bucketNames []string
+	var buckets []string
 	err := d.db.NewSelect().
-		Model(&ledger.Bucket{}).
+		DistinctOn("bucket").
+		Model(&ledger.Ledger{}).
+		Column("bucket").
 		Where("deleted_at IS NULL").
-		Column("name").
-		Scan(ctx, &bucketNames)
+		Scan(ctx, &buckets)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
 	}
 
-	return bucketNames, nil
+	return buckets, nil
 }
 
 func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
@@ -114,15 +110,11 @@ func (d *DefaultStore) Ledgers() common.PaginatedResource[
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	ret := &ledger.Ledger{}
-	err := d.db.NewSelect().
+	if err := d.db.NewSelect().
 		Model(ret).
-		Column("ledgers.*").
-		Join("LEFT JOIN _system.buckets ON ledgers.bucket = _system.buckets.name").
-		Where("ledgers.name = ?", name).
-		Where("_system.buckets.deleted_at IS NULL").
-		Scan(ctx)
-
-	if err != nil {
+		Column("*").
+		Where("name = ?", name).
+		Scan(ctx); err != nil {
 		return nil, postgres.ResolveError(err)
 	}
 
@@ -163,103 +155,46 @@ func WithTracer(tracer trace.Tracer) Option {
 
 func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
 	_, err := d.db.NewUpdate().
-		Model(&ledger.Bucket{}).
-		Set("deleted_at = now()").
-		Where("name = ?", bucketName).
+		Model(&ledger.Ledger{}).
+		Set("deleted_at = ?", time.Now().UTC()).
+		Where("bucket = ?", bucketName).
 		Exec(ctx)
 	return postgres.ResolveError(err)
 }
 
 func (d *DefaultStore) RestoreBucket(ctx context.Context, bucketName string) error {
 	_, err := d.db.NewUpdate().
-		Model(&ledger.Bucket{}).
+		Model(&ledger.Ledger{}).
 		Set("deleted_at = NULL").
-		Where("name = ?", bucketName).
+		Where("bucket = ?", bucketName).
 		Exec(ctx)
 	return postgres.ResolveError(err)
 }
 
-func (d *DefaultStore) ListBuckets(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Bucket], error) {
-	var buckets []ledger.Bucket
-
-	q := d.db.NewSelect().
-		Model(&ledger.Bucket{}).
-		Column("name", "added_at", "deleted_at")
-
-	if query.PageSize == 0 {
-		query.PageSize = bunpaginate.QueryDefaultPageSize
+func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	var results []struct {
+		Bucket    string    `bun:"bucket"`
+		DeletedAt time.Time `bun:"deleted_at"`
 	}
 
-	if query.Column == "" {
-		query.Column = "name"
-	}
-
-	paginator := common.ColumnPaginator[ledger.Bucket, any]{
-		DefaultPaginationColumn: "name",
-		DefaultOrder:            bunpaginate.OrderAsc,
-	}
-
-	var err error
-	q, err = paginator.Paginate(q, query)
+	err := d.db.NewSelect().
+		DistinctOn("bucket").
+		Model(&ledger.Ledger{}).
+		Column("bucket", "deleted_at").
+		Scan(ctx, &results)
 	if err != nil {
-		return nil, fmt.Errorf("applying pagination: %w", err)
+		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
 	}
 
-	err = q.Scan(ctx, &buckets)
-	if err != nil {
-		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
-	}
-
-	cursor, err := paginator.BuildCursor(buckets, query)
-	if err != nil {
-		return nil, fmt.Errorf("building cursor: %w", err)
-	}
-
-	return cursor, nil
-}
-
-func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
-	bucketsCursor, err := d.ListBuckets(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map Bucket to BucketWithStatus
-	bucketsWithStatus := make([]systemcontroller.BucketWithStatus, len(bucketsCursor.Data))
-	for i, bucket := range bucketsCursor.Data {
-
-		bucketsWithStatus[i] = systemcontroller.BucketWithStatus{
-			Name:      bucket.Name,
-			DeletedAt: bucket.DeletedAt,
+	buckets := make([]systemcontroller.BucketWithStatus, len(results))
+	for i, result := range results {
+		buckets[i] = systemcontroller.BucketWithStatus{
+			Name:      result.Bucket,
+			DeletedAt: result.DeletedAt,
 		}
 	}
 
-	return &bunpaginate.Cursor[systemcontroller.BucketWithStatus]{
-		Data:     bucketsWithStatus,
-		PageSize: bucketsCursor.PageSize,
-		HasMore:  bucketsCursor.HasMore,
-		Next:     bucketsCursor.Next,
-		Previous: bucketsCursor.Previous,
-	}, nil
-}
-
-func (d *DefaultStore) CreateBucket(ctx context.Context, b *ledger.Bucket) error {
-	if b.AddedAt.IsZero() {
-		b.AddedAt = gotime.Now()
-	}
-
-	_, err := d.db.NewInsert().
-		Model(b).
-		Returning("id, added_at").
-		Exec(ctx)
-	if err != nil {
-		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return fmt.Errorf("bucket already exists: %s", b.Name)
-		}
-		return postgres.ResolveError(err)
-	}
-
-	return nil
+	return buckets, nil
 }
 
 var defaultOptions = []Option{
