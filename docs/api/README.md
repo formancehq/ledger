@@ -117,76 +117,18 @@ Authorization ( Scopes: ledger:read )
 ```http
 GET http://localhost:8080/v2 HTTP/1.1
 Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
 
 ```
 
 `GET /v2`
 
-> Body parameter
-
-```json
-{}
-```
-
-<h3 id="list-ledgers-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
-|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|body|body|object|true|none|
-
-#### Detailed descriptions
-
-**pageSize**: The maximum number of results to return per page.
-
-**cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "cursor": {
-    "pageSize": 15,
-    "hasMore": false,
-    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
-    "data": [
-      {
-        "name": "string",
-        "addedAt": "2019-08-24T14:15:22Z",
-        "bucket": "string",
-        "metadata": {
-          "admin": "true"
-        },
-        "features": {
-          "property1": "string",
-          "property2": "string"
-        },
-        "id": 0
-      }
-    ]
-  }
-}
-```
-
 <h3 id="list-ledgers-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2LedgerListResponse](#schemav2ledgerlistresponse)|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:read )
+<aside class="success">
+This operation does not require authentication
 </aside>
 
 ## List buckets with their deletion status
@@ -642,7 +584,7 @@ Accept: application/json
           "user": "users:042"
         }
       },
-      "runtime": "interpreter",
+      "runtime": "experimental-interpreter",
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
@@ -1455,7 +1397,7 @@ Idempotency-Key: string
       "user": "users:042"
     }
   },
-  "runtime": "interpreter",
+  "runtime": "experimental-interpreter",
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
@@ -2847,7 +2789,7 @@ Authorization ( Scopes: ledger:write )
       "user": "users:042"
     }
   },
-  "runtime": "interpreter",
+  "runtime": "experimental-interpreter",
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
@@ -2884,7 +2826,7 @@ Authorization ( Scopes: ledger:write )
 
 |Property|Value|
 |---|---|
-|runtime|interpreter|
+|runtime|experimental-interpreter|
 |runtime|machine|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
@@ -3569,7 +3511,7 @@ Authorization ( Scopes: ledger:write )
           "user": "users:042"
         }
       },
-      "runtime": "interpreter",
+      "runtime": "experimental-interpreter",
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
@@ -3643,7 +3585,7 @@ Authorization ( Scopes: ledger:write )
         "user": "users:042"
       }
     },
-    "runtime": "interpreter",
+    "runtime": "experimental-interpreter",
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
@@ -3714,7 +3656,7 @@ xor
         "user": "users:042"
       }
     },
-    "runtime": "interpreter",
+    "runtime": "experimental-interpreter",
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
