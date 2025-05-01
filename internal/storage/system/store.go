@@ -27,6 +27,9 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
+	RestoreBucket(ctx context.Context, bucketName string) error
+	ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
