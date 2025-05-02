@@ -6,7 +6,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/storage/driver"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
