@@ -190,9 +190,22 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 		query.PageSize = bunpaginate.QueryDefaultPageSize
 	}
 	
-	q = bunpaginate.ApplyPagination(q, query, "bucket")
+	if query.Column == "" {
+		query.Column = "bucket"
+	}
 	
-	err := q.Scan(ctx, &results)
+	paginator := common.ColumnPaginator[systemcontroller.BucketWithStatus, any]{
+		DefaultPaginationColumn: "bucket",
+		DefaultOrder:            bunpaginate.OrderAsc,
+	}
+	
+	var err error
+	q, err = paginator.Paginate(q, query)
+	if err != nil {
+		return nil, fmt.Errorf("applying pagination: %w", err)
+	}
+	
+	err = q.Scan(ctx, &results)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
 	}
@@ -210,7 +223,12 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 		}
 	}
 
-	return bunpaginate.NewCursor(buckets, query.PaginationToken, query.PageSize, true), nil
+	cursor, err := paginator.BuildCursor(buckets, query)
+	if err != nil {
+		return nil, fmt.Errorf("building cursor: %w", err)
+	}
+	
+	return cursor, nil
 }
 
 var defaultOptions = []Option{
