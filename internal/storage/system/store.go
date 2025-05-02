@@ -29,7 +29,7 @@ type Store interface {
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error)
+	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -175,17 +175,24 @@ func (d *DefaultStore) RestoreBucket(ctx context.Context, bucketName string) err
 	return postgres.ResolveError(err)
 }
 
-func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
 	var results []struct {
 		Bucket    string       `bun:"bucket"`
 		DeletedAt stdtime.Time `bun:"deleted_at"`
 	}
 
-	err := d.db.NewSelect().
+	q := d.db.NewSelect().
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
-		Column("bucket", "deleted_at").
-		Scan(ctx, &results)
+		Column("bucket", "deleted_at")
+	
+	if query.PageSize == 0 {
+		query.PageSize = bunpaginate.QueryDefaultPageSize
+	}
+	
+	q = bunpaginate.ApplyPagination(q, query, "bucket")
+	
+	err := q.Scan(ctx, &results)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
 	}
@@ -203,7 +210,7 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontr
 		}
 	}
 
-	return buckets, nil
+	return bunpaginate.NewCursor(buckets, query.PaginationToken, query.PageSize, true), nil
 }
 
 var defaultOptions = []Option{

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -57,15 +58,21 @@ func TestListBucketsWithStatus(t *testing.T) {
 		},
 	}
 
+	query := common.ColumnPaginatedQuery[any]{
+		PageSize: 15,
+	}
+	
+	expectedCursor := bunpaginate.NewCursor(buckets, "", 15, true)
+
 	store := NewMockStore(ctrl)
 	store.EXPECT().
-		ListBucketsWithStatus(gomock.Any()).
-		Return(buckets, nil)
+		ListBucketsWithStatus(gomock.Any(), query).
+		Return(expectedCursor, nil)
 
 	controller := NewDefaultController(store, nil)
-	result, err := controller.ListBucketsWithStatus(context.Background())
+	result, err := controller.ListBucketsWithStatus(context.Background(), query)
 	require.NoError(t, err)
-	require.Equal(t, buckets, result)
+	require.Equal(t, expectedCursor, result)
 }
 
 func TestGetLedgerWithDeletedBucket(t *testing.T) {

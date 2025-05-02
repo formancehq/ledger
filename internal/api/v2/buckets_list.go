@@ -19,7 +19,7 @@ func listBuckets(systemController system.Controller, paginationConfig common.Pag
 			return
 		}
 
-		buckets, err := systemController.ListBucketsWithStatus(r.Context())
+		buckets, err := systemController.ListBucketsWithStatus(r.Context(), *rq)
 		if err != nil {
 			switch {
 			case errors.Is(err, storagecommon.ErrInvalidQuery{}):
@@ -30,7 +30,6 @@ func listBuckets(systemController system.Controller, paginationConfig common.Pag
 			return
 		}
 		
-		cursor := bunpaginate.NewCursor(buckets, rq.PaginationToken, rq.PageSize, true)
-		api.RenderCursor(w, cursor)
+		api.RenderCursor(w, buckets)
 	}
 }
