@@ -90,7 +90,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		return nil, nil, err
 	}
 
-	if !ret.DeletedAt.IsZero() {
+	if ret.DeletedAt != nil {
 		return nil, nil, systemcontroller.ErrLedgerNotFound
 	}
 
