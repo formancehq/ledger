@@ -366,8 +366,8 @@ func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) 
 	return nil
 }
 
-func (d *Driver) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
-	return d.systemStoreFactory.Create(d.db).ListBucketsWithStatus(ctx)
+func (d *Driver) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
+	return d.systemStoreFactory.Create(d.db).ListBucketsWithStatus(ctx, query)
 }
 
 func (d *Driver) RestoreBucket(ctx context.Context, bucketName string) error {
