@@ -28,8 +28,6 @@ func (o *V2UpdateLedgerMetadataRequest) GetRequestBody() map[string]string {
 
 type V2UpdateLedgerMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
-	// Error
-	V2ErrorResponse *components.V2ErrorResponse
 }
 
 func (o *V2UpdateLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -37,11 +35,4 @@ func (o *V2UpdateLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
 		return components.HTTPMetadata{}
 	}
 	return o.HTTPMeta
-}
-
-func (o *V2UpdateLedgerMetadataResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
-	if o == nil {
-		return nil
-	}
-	return o.V2ErrorResponse
 }
