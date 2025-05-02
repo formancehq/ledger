@@ -26,7 +26,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
-
+        5XX:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -61,19 +66,7 @@ paths:
       x-speakeasy-name-override: ListLedgers
       tags:
         - ledger.v2
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2LedgerListResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
+        
   /v2/_/buckets:
     get:
       summary: List buckets with their deletion status
@@ -155,6 +148,54 @@ paths:
       security:
         - Authorization:
             - ledger:write
+      parameters:
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to
+            15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2LedgerListResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}:
     parameters:
       - name: ledger
@@ -240,7 +281,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
-
+        5XX:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -641,7 +687,7 @@ paths:
             type: string
             example: foo
       responses:
-        "204":
+        2XX:
           description: Key deleted
           content: {}
         default:
@@ -1020,7 +1066,7 @@ paths:
             type: string
             example: foo
       responses:
-        "204":
+        2XX:
           description: Key deleted
           content: {}
         default:
