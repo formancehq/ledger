@@ -1,11 +1,10 @@
 package cmd
 
 import (
-	"time"
-
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +24,7 @@ func NewBucketListCommand() *cobra.Command {
 					if bucket.DeletedAt == nil {
 						cmd.Printf("%s: active\n", bucket.Name)
 					} else {
-						cmd.Printf("%s: deleted at %s\n", bucket.Name, bucket.DeletedAt.Format(time.RFC3339))
+						cmd.Printf("%s: deleted at %s\n", bucket.Name, bucket.DeletedAt.Format(formancetime.RFC3339))
 					}
 				}
 				
