@@ -10,7 +10,9 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/google/uuid"
@@ -19,7 +21,7 @@ import (
 	"os"
 	"slices"
 	"testing"
-	"time"
+	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
@@ -148,6 +150,64 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	ledgerFromDB, err := store.GetLedger(ctx, l.Name)
 	require.NoError(t, err)
 	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
+}
+
+func TestBucketDeletion(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	store := newStore(t)
+
+	bucketName := "test-bucket-" + uuid.NewString()
+	l1 := ledger.MustNewWithDefault(bucketName + "-ledger1").WithBucket(bucketName)
+	l2 := ledger.MustNewWithDefault(bucketName + "-ledger2").WithBucket(bucketName)
+
+	err := store.CreateLedger(ctx, &l1)
+	require.NoError(t, err)
+	err = store.CreateLedger(ctx, &l2)
+	require.NoError(t, err)
+
+	buckets, err := store.GetDistinctBuckets(ctx)
+	require.NoError(t, err)
+	require.Contains(t, buckets, bucketName)
+
+	err = store.MarkBucketAsDeleted(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err = store.GetDistinctBuckets(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, buckets, bucketName)
+
+	bucketsWithStatus, err := store.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+	
+	var foundBucket bool
+	for _, b := range bucketsWithStatus {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.NotNil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets with status list")
+
+	err = store.RestoreBucket(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err = store.GetDistinctBuckets(ctx)
+	require.NoError(t, err)
+	require.Contains(t, buckets, bucketName)
+
+	bucketsWithStatus, err = store.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+	
+	foundBucket = false
+	for _, b := range bucketsWithStatus {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.Nil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets with status list")
 }
 
 func newStore(t docker.T) Store {

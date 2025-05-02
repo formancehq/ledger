@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 )
 
@@ -32,6 +33,8 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+	case errors.Is(err, systemcontroller.ErrLedgerNotFound):
+		api.WriteErrorResponse(w, http.StatusNotFound, api.ErrorNotFound, err)
 	default:
 		InternalServerError(w, r, err)
 	}
