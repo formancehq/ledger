@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -153,4 +154,147 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 
 	err = d.DeleteLedgerMetadata(ctx, l.Name, "foo")
 	require.NoError(t, err)
+}
+
+func TestBucketDeletion(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
+
+	bucketName := "test-bucket-" + uuid.NewString()[:8]
+
+	l1, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: bucketName,
+	})
+	require.NoError(t, err)
+	_, err = d.CreateLedger(ctx, l1)
+	require.NoError(t, err)
+
+	l2, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: bucketName,
+	})
+	require.NoError(t, err)
+	_, err = d.CreateLedger(ctx, l2)
+	require.NoError(t, err)
+
+	buckets, err := d.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+	
+	var foundBucket bool
+	for _, b := range buckets {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.Nil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets list")
+
+	err = d.MarkBucketAsDeleted(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err = d.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+	
+	foundBucket = false
+	for _, b := range buckets {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.NotNil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets list with deleted status")
+
+	_, _, err = d.OpenLedger(ctx, l1.Name)
+	require.Error(t, err)
+	require.ErrorIs(t, err, systemcontroller.ErrLedgerNotFound)
+
+	err = d.RestoreBucket(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err = d.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+	
+	foundBucket = false
+	for _, b := range buckets {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.Nil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets list with restored status")
+
+	_, _, err = d.OpenLedger(ctx, l1.Name)
+	require.NoError(t, err)
+}
+
+func TestGetBucketsMarkedForDeletion(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
+
+	bucketName := "test-bucket-deletion-" + uuid.NewString()[:8]
+
+	l, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: bucketName,
+	})
+	require.NoError(t, err)
+	_, err = d.CreateLedger(ctx, l)
+	require.NoError(t, err)
+
+	err = d.MarkBucketAsDeleted(ctx, bucketName)
+	require.NoError(t, err)
+
+	deletedBuckets, err := d.GetBucketsMarkedForDeletion(ctx, -1) // -1 days means 1 day in the future
+	require.NoError(t, err)
+	require.NotContains(t, deletedBuckets, bucketName)
+
+	deletedBuckets, err = d.GetBucketsMarkedForDeletion(ctx, 0) // 0 days means today
+	require.NoError(t, err)
+	require.Contains(t, deletedBuckets, bucketName)
+}
+
+func TestPhysicallyDeleteBucket(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	d := driver.New(
+		db,
+		ledgerstore.NewFactory(db),
+		bucket.NewDefaultFactory(),
+		system.NewStoreFactory(),
+	)
+
+	bucketName := "test-bucket-physical-" + uuid.NewString()[:8]
+
+	l, err := ledger.New(uuid.NewString(), ledger.Configuration{
+		Bucket: bucketName,
+	})
+	require.NoError(t, err)
+	_, err = d.CreateLedger(ctx, l)
+	require.NoError(t, err)
+
+	err = d.MarkBucketAsDeleted(ctx, bucketName)
+	require.NoError(t, err)
+
+	err = d.PhysicallyDeleteBucket(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err := d.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+	
+	for _, b := range buckets {
+		require.NotEqual(t, bucketName, b.Name, "Bucket should not be found after physical deletion")
+	}
 }
