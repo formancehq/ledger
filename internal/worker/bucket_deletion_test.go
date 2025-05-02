@@ -196,16 +196,6 @@ func TestBucketDeletionRunner_run(t *testing.T) {
 				tracer: noopTracer,
 			}
 			
-			testWrapper := &TestDriverWrapper{mock: mockDriver}
-			
-			customRunner := &BucketDeletionRunner{
-				logger: runner.logger,
-				driver: runner.driver,
-				cfg:    runner.cfg,
-				tracer: runner.tracer,
-			}
-			
-			days := int(tc.gracePeriod.Hours() / 24)
 			
 			err := runner.run(context.Background())
 			
@@ -223,8 +213,6 @@ func TestBucketDeletionRunner_RunAndStop(t *testing.T) {
 	
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	
-	mockDriver := NewMockDriverWrapper(ctrl)
 	
 	schedule, err := cron.ParseStandard("* * * * *")
 	require.NoError(t, err)
