@@ -1,0 +1,36 @@
+package v2
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/controller/system"
+)
+
+func listBuckets(systemController system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, "name", bunpaginate.OrderAsc)
+		if err != nil {
+			api.BadRequest(w, common.ErrValidation, err)
+			return
+		}
+
+		buckets, err := systemController.ListBucketsWithStatus(r.Context())
+		if err != nil {
+			switch {
+			case errors.Is(err, storagecommon.ErrInvalidQuery{}):
+				api.BadRequest(w, common.ErrValidation, err)
+			default:
+				common.HandleCommonErrors(w, r, err)
+			}
+			return
+		}
+		
+		cursor := bunpaginate.NewCursor(buckets, rq.PaginationToken, rq.PageSize, true)
+		api.RenderCursor(w, cursor)
+	}
+}
