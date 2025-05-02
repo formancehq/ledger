@@ -2606,9 +2606,11 @@ paths:
         default:
           description: Error
           content:
-            application/json:
+            application/octet-stream:
               schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
+                title: bytes
+                type: string
+                format: binary
       security:
         - Authorization:
             - ledger:write
