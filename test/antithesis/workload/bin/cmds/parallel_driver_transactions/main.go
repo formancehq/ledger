@@ -16,19 +16,8 @@ import (
 func main() {
 	ctx := context.Background()
 	client := internal.NewClient()
-	ledger := fmt.Sprintf("ledger-%d", internal.RandomBigInt().Int64())
 
-	err := internal.CreateLedger(
-		ctx,
-		client,
-		ledger,
-	)
-	if err != nil {
-		assert.Always(err == nil, "ledger should have been created properly", internal.Details{
-			"error": err,
-		})
-		return
-	}
+	ledger := fmt.Sprintf("ledger-%d", internal.RandomBigInt().Int64())
 
 	const count = 100
 

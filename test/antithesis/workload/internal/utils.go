@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/rand"
 	"net/http"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -61,6 +62,37 @@ func CreateLedger(ctx context.Context, client *client.Formance, name string) err
 	})
 
 	return err
+}
+
+func ListLedgers(ctx context.Context, client *client.Formance) ([]string, error) {
+	res, err := client.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	ledgers := []string{}
+	for _, ledger := range res.V2LedgerListResponse.Cursor.Data {
+		ledgers = append(ledgers, ledger.Name)
+	}
+
+	return ledgers, nil
+}
+
+func GetRandomLedger(ctx context.Context, client *client.Formance) (string, error) {
+	ledgers, err := ListLedgers(ctx, client)
+	if err != nil {
+		return "", err
+	}
+
+	if len(ledgers) == 0 {
+		return "", fmt.Errorf("no ledgers found")
+	}
+
+	// Get a random index within the ledgers slice
+	randomIndex := rand.Intn(len(ledgers))
+
+	// Return the ledger at the random index
+	return ledgers[randomIndex], nil
 }
 
 func RunTx(ctx context.Context, client *client.Formance, amount *big.Int, ledger string) error {
