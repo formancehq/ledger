@@ -342,7 +342,7 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]s
 		Scan(ctx, &buckets)
 	
 	if err != nil {
-		return nil, fmt.Errorf("getting buckets marked for deletion: %w", err)
+		return nil, fmt.Errorf("getting buckets marked for deletion: %w", postgres.ResolveError(err))
 	}
 	
 	return buckets, nil
@@ -351,7 +351,7 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]s
 func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
 	_, err := d.db.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, bucketName))
 	if err != nil {
-		return fmt.Errorf("dropping bucket schema: %w", err)
+		return fmt.Errorf("dropping bucket schema: %w", postgres.ResolveError(err))
 	}
 	
 	_, err = d.db.NewDelete().
@@ -360,7 +360,7 @@ func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) 
 		Exec(ctx)
 	
 	if err != nil {
-		return fmt.Errorf("deleting ledger entries for bucket: %w", err)
+		return fmt.Errorf("deleting ledger entries for bucket: %w", postgres.ResolveError(err))
 	}
 	
 	return nil
