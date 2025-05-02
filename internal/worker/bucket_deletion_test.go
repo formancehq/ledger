@@ -244,15 +244,6 @@ func TestBucketDeletionRunner_run(t *testing.T) {
 				*MockDriverWrapper
 			}{mockDriver}
 			
-			runner := &BucketDeletionRunner{
-				logger: NoOpLogger(),
-				driver: nil, // Not used directly in the test
-				cfg: BucketDeletionRunnerConfig{
-					GracePeriod: tc.gracePeriod,
-				},
-				tracer: mockTracer,
-			}
-			
 			runFunc := func(ctx context.Context) error {
 				ctx, span := mockTracer.Start(ctx, "RunBucketDeletion")
 				defer span.End()
