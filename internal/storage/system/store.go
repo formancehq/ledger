@@ -177,8 +177,8 @@ func (d *DefaultStore) RestoreBucket(ctx context.Context, bucketName string) err
 
 func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
 	var results []struct {
-		Bucket    string       `bun:"bucket"`
-		DeletedAt stdtime.Time `bun:"deleted_at"`
+		Bucket    string    `bun:"bucket"`
+		DeletedAt time.Time `bun:"deleted_at"`
 	}
 
 	q := d.db.NewSelect().
@@ -214,8 +214,7 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 	for i, result := range results {
 		var deletedAt *time.Time
 		if !result.DeletedAt.IsZero() {
-			t := time.Time{Time: result.DeletedAt}
-			deletedAt = &t
+			deletedAt = &time.Time{Time: result.DeletedAt}
 		}
 		buckets[i] = systemcontroller.BucketWithStatus{
 			Name:      result.Bucket,
