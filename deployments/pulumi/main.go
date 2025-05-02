@@ -8,7 +8,6 @@ import (
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
-
 		cfg, err := config.Load(ctx)
 		if err != nil {
 			return err
