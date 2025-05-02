@@ -3,26 +3,32 @@ package worker
 import (
 	"testing"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"go.uber.org/fx"
 )
 
 func TestNewFXModule(t *testing.T) {
 	t.Parallel()
 
 	cfg := ModuleConfig{
-		Schedule:                  "* * * * *",
-		MaxBlockSize:              1000,
-		BucketDeletionSchedule:    "0 0 0 * * *",
-		BucketDeletionGracePeriod: "30d",
+		Schedule:                "* * * * *",
+		MaxBlockSize:            1000,
+		BucketDeletionSchedule:  "0 0 0 * * *",
+		BucketDeletionGraceDays: 30,
 	}
 
 	module := NewFXModule(cfg)
 	require.NotNil(t, module)
+
+	_, ok := module.(fx.Option)
+	require.True(t, ok)
 }
 
 func TestBucketDeletionProviders(t *testing.T) {
@@ -30,11 +36,11 @@ func TestBucketDeletionProviders(t *testing.T) {
 
 	logger := NoOpLogger()
 	mockDriver := &driver.Driver{}
-	tracerProvider := noop.NewTracerProvider()
+	tracerProvider := trace.NewNoopTracerProvider()
 
 	cfg := ModuleConfig{
-		BucketDeletionSchedule:    "",
-		BucketDeletionGracePeriod: "720h",
+		BucketDeletionSchedule:  "",
+		BucketDeletionGraceDays: 0,
 	}
 
 	providerFunc := func() (*BucketDeletionRunner, error) {
@@ -42,26 +48,21 @@ func TestBucketDeletionProviders(t *testing.T) {
 		if bucketDeletionSchedule == "" {
 			bucketDeletionSchedule = "0 0 0 * * *" // Daily at midnight
 		}
-
-		gracePeriod := cfg.BucketDeletionGracePeriod
-		if gracePeriod == "" {
-			gracePeriod = "720h" // Default 30 days
+		
+		graceDays := cfg.BucketDeletionGraceDays
+		if graceDays <= 0 {
+			graceDays = 30 // Default 30 days
 		}
-
+		
 		parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 		schedule, err := parser.Parse(bucketDeletionSchedule)
 		if err != nil {
 			return nil, err
 		}
 
-		duration, err := time.ParseDuration(gracePeriod)
-		if err != nil {
-			return nil, err
-		}
-
 		return NewBucketDeletionRunner(logger, mockDriver, BucketDeletionRunnerConfig{
 			Schedule:    schedule,
-			GracePeriod: duration,
+			GracePeriod: time.Duration(graceDays) * 24 * time.Hour,
 		}, WithBucketDeletionTracer(tracerProvider.Tracer("BucketDeletionRunner"))), nil
 	}
 
@@ -70,17 +71,17 @@ func TestBucketDeletionProviders(t *testing.T) {
 	require.NotNil(t, runner)
 	require.Equal(t, mockDriver, runner.driver)
 	require.Equal(t, logger, runner.logger)
-	require.Equal(t, 30*24*time.Hour, runner.cfg.GracePeriod)
+	require.Equal(t, time.Duration(30*24)*time.Hour, runner.cfg.GracePeriod)
 
 	cfg = ModuleConfig{
-		BucketDeletionSchedule:    "*/5 * * * * *",
-		BucketDeletionGracePeriod: "1080h", // 45 days in hours (45 * 24)
+		BucketDeletionSchedule:  "*/5 * * * *",
+		BucketDeletionGraceDays: 45,
 	}
 
 	runner, err = providerFunc()
 	require.NoError(t, err)
 	require.NotNil(t, runner)
-	require.Equal(t, 45*24*time.Hour, runner.cfg.GracePeriod)
+	require.Equal(t, time.Duration(45*24)*time.Hour, runner.cfg.GracePeriod)
 }
 
 func TestAsyncBlockProviders(t *testing.T) {
@@ -88,10 +89,10 @@ func TestAsyncBlockProviders(t *testing.T) {
 
 	logger := NoOpLogger()
 	db := &bun.DB{}
-	tracerProvider := noop.NewTracerProvider()
+	tracerProvider := trace.NewNoopTracerProvider()
 
 	cfg := ModuleConfig{
-		Schedule:     "* * * * * *",
+		Schedule:     "* * * * *",
 		MaxBlockSize: 1000,
 	}
 
