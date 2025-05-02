@@ -48,6 +48,7 @@ func (h ledgersResourceHandler) Filters() []common.Filter {
 func (h ledgersResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	return h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
+		Where("deleted_at IS NULL").
 		Column("*"), nil
 }
 

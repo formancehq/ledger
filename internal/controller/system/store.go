@@ -13,8 +13,8 @@ import (
 )
 
 type BucketWithStatus struct {
-	Name      string    `json:"name"`
-	DeletedAt time.Time `json:"deletedAt,omitempty"`
+	Name      string     `json:"name"`
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 }
 
 type Store interface {

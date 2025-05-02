@@ -59,14 +59,15 @@ func TestListBuckets(t *testing.T) {
 	defer ctrl.Finish()
 
 	now := time.Now()
+	var nilTime *time.Time
 	buckets := []system.BucketWithStatus{
 		{
 			Name:      "bucket1",
-			DeletedAt: time.Time{},
+			DeletedAt: nilTime,
 		},
 		{
 			Name:      "bucket2",
-			DeletedAt: now,
+			DeletedAt: &now,
 		},
 	}
 
