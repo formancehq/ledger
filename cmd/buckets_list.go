@@ -4,7 +4,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v3/time"
+	formancetime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/spf13/cobra"
 )
