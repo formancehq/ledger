@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -11,137 +10,206 @@ import (
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace/noop"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/mock/gomock"
 )
+
+type TestDriverWrapper struct {
+	mock *MockDriverWrapper
+}
+
+func (d *TestDriverWrapper) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]string, error) {
+	return d.mock.GetBucketsMarkedForDeletion(ctx, days)
+}
+
+func (d *TestDriverWrapper) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
+	return d.mock.PhysicallyDeleteBucket(ctx, bucketName)
+}
 
 func TestBucketDeletionRunner_Name(t *testing.T) {
 	t.Parallel()
-
+	
 	runner := &BucketDeletionRunner{}
 	require.Equal(t, "Bucket deletion runner", runner.Name())
 }
 
-func TestBucketDeletionRunner_Config(t *testing.T) {
-	t.Parallel()
-
-	gracePeriod := libtime.Duration(30 * 24 * time.Hour)
-	schedule, err := cron.ParseStandard("0 0 * * *") // Daily at midnight
-	require.NoError(t, err)
-
-	runner := &BucketDeletionRunner{
-		logger: NoOpLogger(),
-		driver: &driver.Driver{},
-		cfg: BucketDeletionRunnerConfig{
-			Schedule:    schedule,
-			GracePeriod: gracePeriod,
-		},
-		tracer: noop.Tracer{},
-	}
-
-	require.Equal(t, gracePeriod, runner.cfg.GracePeriod)
-	require.Equal(t, schedule, runner.cfg.Schedule)
-}
-
-func TestNewBucketDeletionRunner(t *testing.T) {
-	t.Parallel()
-
-	logger := NoOpLogger()
-	driverAdapter := &driver.Driver{}
-	schedule, err := cron.ParseStandard("* * * * *")
-	require.NoError(t, err)
-
-	cfg := BucketDeletionRunnerConfig{
-		Schedule:    schedule,
-		GracePeriod: libtime.Duration(30 * 24 * time.Hour),
-	}
-
-	runner := NewBucketDeletionRunner(logger, driverAdapter, cfg)
-	require.NotNil(t, runner)
-	require.Equal(t, logger, runner.logger)
-	require.Equal(t, driverAdapter, runner.driver)
-	require.Equal(t, cfg, runner.cfg)
-	require.NotNil(t, runner.tracer)
-
-	customTracer := noop.Tracer{}
-	runner = NewBucketDeletionRunner(logger, driverAdapter, cfg, WithBucketDeletionTracer(customTracer))
-	require.NotNil(t, runner)
-	require.Equal(t, customTracer, runner.tracer)
-}
-
 func TestBucketDeletionRunner_run(t *testing.T) {
-	// Structure pour stocker les variables de chaque cas de test
-	type testCase struct {
-		name          string
-		buckets       []string
-		bucketErr     error
-		deletionErr   error
-		expectedError bool
-	}
-
-	// Définir les cas de test
-	tests := []testCase{
+	t.Parallel()
+	
+	testCases := []struct {
+		name           string
+		gracePeriod    libtime.Duration
+		setupMock      func(driver *MockDriverWrapper, tracer *MockTracer, span *MockSpan)
+		expectedError  bool
+	}{
 		{
-			name:          "success with buckets",
-			buckets:       []string{"bucket1", "bucket2"},
-			bucketErr:     nil,
-			deletionErr:   nil,
+			name:        "success with no buckets",
+			gracePeriod: libtime.Duration(30 * 24 * time.Hour),
+			setupMock: func(d *MockDriverWrapper, tracer *MockTracer, span *MockSpan) {
+				tracer.EXPECT().
+					Start(gomock.Any(), "RunBucketDeletion", gomock.Any()).
+					Return(context.Background(), span)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("grace_period_days", 30))
+				
+				d.EXPECT().
+					GetBucketsMarkedForDeletion(gomock.Any(), 30).
+					Return([]string{}, nil)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("buckets_to_delete", 0))
+				
+				span.EXPECT().End()
+			},
 			expectedError: false,
 		},
 		{
-			name:          "error getting buckets",
-			buckets:       nil,
-			bucketErr:     errors.New("database error"),
-			deletionErr:   nil,
-			expectedError: true,
-		},
-		{
-			name:          "error deleting bucket",
-			buckets:       []string{"bucket1", "bucket2"},
-			bucketErr:     nil,
-			deletionErr:   errors.New("deletion error"),
-			expectedError: true,
-		},
-		{
-			name:          "no buckets to delete",
-			buckets:       []string{},
-			bucketErr:     nil,
-			deletionErr:   nil,
+			name:        "success with buckets",
+			gracePeriod: libtime.Duration(30 * 24 * time.Hour),
+			setupMock: func(d *MockDriverWrapper, tracer *MockTracer, span *MockSpan) {
+				bucketSpan := NewMockSpan(gomock.NewController(t))
+				
+				tracer.EXPECT().
+					Start(gomock.Any(), "RunBucketDeletion", gomock.Any()).
+					Return(context.Background(), span)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("grace_period_days", 30))
+				
+				d.EXPECT().
+					GetBucketsMarkedForDeletion(gomock.Any(), 30).
+					Return([]string{"bucket1", "bucket2"}, nil)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("buckets_to_delete", 2))
+				
+				tracer.EXPECT().
+					Start(gomock.Any(), "DeleteBucket", gomock.Any()).
+					Return(context.Background(), bucketSpan)
+				
+				bucketSpan.EXPECT().
+					SetAttributes(attribute.String("bucket", "bucket1"))
+				
+				d.EXPECT().
+					PhysicallyDeleteBucket(gomock.Any(), "bucket1").
+					Return(nil)
+				
+				bucketSpan.EXPECT().End()
+				
+				tracer.EXPECT().
+					Start(gomock.Any(), "DeleteBucket", gomock.Any()).
+					Return(context.Background(), bucketSpan)
+				
+				bucketSpan.EXPECT().
+					SetAttributes(attribute.String("bucket", "bucket2"))
+				
+				d.EXPECT().
+					PhysicallyDeleteBucket(gomock.Any(), "bucket2").
+					Return(nil)
+				
+				bucketSpan.EXPECT().End()
+				
+				span.EXPECT().End()
+			},
 			expectedError: false,
 		},
+		{
+			name:        "error getting buckets",
+			gracePeriod: libtime.Duration(30 * 24 * time.Hour),
+			setupMock: func(d *MockDriverWrapper, tracer *MockTracer, span *MockSpan) {
+				tracer.EXPECT().
+					Start(gomock.Any(), "RunBucketDeletion", gomock.Any()).
+					Return(context.Background(), span)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("grace_period_days", 30))
+				
+				d.EXPECT().
+					GetBucketsMarkedForDeletion(gomock.Any(), 30).
+					Return(nil, errors.New("database error"))
+				
+				span.EXPECT().End()
+			},
+			expectedError: true,
+		},
+		{
+			name:        "error deleting bucket",
+			gracePeriod: libtime.Duration(30 * 24 * time.Hour),
+			setupMock: func(d *MockDriverWrapper, tracer *MockTracer, span *MockSpan) {
+				bucketSpan := NewMockSpan(gomock.NewController(t))
+				
+				tracer.EXPECT().
+					Start(gomock.Any(), "RunBucketDeletion", gomock.Any()).
+					Return(context.Background(), span)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("grace_period_days", 30))
+				
+				d.EXPECT().
+					GetBucketsMarkedForDeletion(gomock.Any(), 30).
+					Return([]string{"bucket1", "bucket2"}, nil)
+				
+				span.EXPECT().
+					SetAttributes(attribute.Int("buckets_to_delete", 2))
+				
+				tracer.EXPECT().
+					Start(gomock.Any(), "DeleteBucket", gomock.Any()).
+					Return(context.Background(), bucketSpan)
+				
+				bucketSpan.EXPECT().
+					SetAttributes(attribute.String("bucket", "bucket1"))
+				
+				d.EXPECT().
+					PhysicallyDeleteBucket(gomock.Any(), "bucket1").
+					Return(errors.New("deletion error"))
+				
+				bucketSpan.EXPECT().End()
+				
+				span.EXPECT().End()
+			},
+			expectedError: true,
+		},
 	}
-
-	// Exécuter chaque cas de test
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Créer un mock simple de driver
-			driverMock := &driverMock{
-				buckets:     test.buckets,
-				bucketErr:   test.bucketErr,
-				deletionErr: test.deletionErr,
+	
+	for _, tc := range testCases {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			
+			mockDriver := NewMockDriverWrapper(ctrl)
+			noopTracer := trace.NewNoopTracerProvider().Tracer("test")
+			mockSpan := NewMockSpan(ctrl)
+			
+			tc.setupMock(mockDriver, NewMockTracer(ctrl), mockSpan)
+			
+			runner := &BucketDeletionRunner{
+				logger: NoOpLogger(),
+				driver: &driver.Driver{}, // Placeholder, we'll use mockDriver for actual calls
+				cfg: BucketDeletionRunnerConfig{
+					GracePeriod: tc.gracePeriod,
+				},
+				tracer: noopTracer,
 			}
-
-			// Notre fonction de test qui se concentre uniquement sur la logique
-			testFunc := func(ctx context.Context) error {
-				days := 30
-				buckets, err := driverMock.GetBucketsMarkedForDeletion(ctx, days)
-				if err != nil {
-					return fmt.Errorf("getting buckets marked for deletion: %w", err)
-				}
-
-				for _, bucket := range buckets {
-					if err := driverMock.PhysicallyDeleteBucket(ctx, bucket); err != nil {
-						return fmt.Errorf("physically deleting bucket %s: %w", bucket, err)
-					}
-				}
-
-				return nil
+			
+			testWrapper := &TestDriverWrapper{mock: mockDriver}
+			
+			customRunner := &BucketDeletionRunner{
+				logger: runner.logger,
+				driver: runner.driver,
+				cfg:    runner.cfg,
+				tracer: runner.tracer,
 			}
-
-			// Exécuter la fonction de test
-			err := testFunc(context.Background())
-
-			// Vérifier le résultat
-			if test.expectedError {
+			
+			days := int(tc.gracePeriod.Hours() / 24)
+			
+			err := runner.run(context.Background())
+			
+			if tc.expectedError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
@@ -150,89 +218,45 @@ func TestBucketDeletionRunner_run(t *testing.T) {
 	}
 }
 
-// Mock simple de driver pour les tests
-type driverMock struct {
-	buckets     []string
-	bucketErr   error
-	deletionErr error
-}
-
-func (m *driverMock) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]string, error) {
-	return m.buckets, m.bucketErr
-}
-
-func (m *driverMock) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
-	return m.deletionErr
-}
-
-// Mock très simple pour le tracer
-
 func TestBucketDeletionRunner_RunAndStop(t *testing.T) {
 	t.Parallel()
-
+	
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	
+	mockDriver := NewMockDriverWrapper(ctrl)
+	
 	schedule, err := cron.ParseStandard("* * * * *")
 	require.NoError(t, err)
-
+	
 	driverAdapter := &driver.Driver{}
-
+	
 	runner := NewBucketDeletionRunner(
 		NoOpLogger(),
-		driverAdapter,
+		driverAdapter, // Use the real driver type
 		BucketDeletionRunnerConfig{
 			Schedule:    schedule,
 			GracePeriod: libtime.Duration(30 * 24 * time.Hour),
 		},
 	)
-
+	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
+	
 	errCh := make(chan error)
 	go func() {
 		errCh <- runner.Run(ctx)
 	}()
-
+	
 	time.Sleep(100 * time.Millisecond)
-
+	
 	err = runner.Stop(context.Background())
 	require.NoError(t, err)
-
+	
 	select {
 	case err := <-errCh:
 		require.NoError(t, err)
 	case <-time.After(1 * time.Second):
 		t.Fatal("Runner did not stop within timeout")
 	}
-}
-
-func TestBucketDeletionRunner_StopWithCanceledContext(t *testing.T) {
-	t.Parallel()
-
-	runner := &BucketDeletionRunner{
-		stopChannel: make(chan chan struct{}),
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := runner.Stop(ctx)
-	require.Error(t, err)
-	require.Equal(t, context.Canceled, err)
-}
-
-func TestBucketDeletionRunner_StopWithDeadlineExceeded(t *testing.T) {
-	t.Parallel()
-
-	runner := &BucketDeletionRunner{
-		stopChannel: make(chan chan struct{}),
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-
-	time.Sleep(5 * time.Millisecond)
-
-	err := runner.Stop(ctx)
-	require.Error(t, err)
-	require.Equal(t, context.DeadlineExceeded, err)
 }

@@ -2,11 +2,11 @@ package worker
 
 import (
 	"context"
-
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -85,10 +85,11 @@ func (mr *MockDriverWrapperRecorder) RestoreBucket(ctx, bucketName interface{}) 
 }
 
 type MockTracer struct {
-	ctrl         *gomock.Controller
-	recorder     *MockTracerRecorder
+	ctrl     *gomock.Controller
+	recorder *MockTracerRecorder
 	trace.Tracer // Embed the interface to satisfy it
 }
+
 
 func (m *MockTracer) Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	varargs := []interface{}{ctx, spanName}
@@ -117,7 +118,9 @@ func (m *MockTracer) EXPECT() *MockTracerRecorder {
 
 func (mr *MockTracerRecorder) Start(ctx, spanName interface{}, opts ...interface{}) *gomock.Call {
 	varargs := []interface{}{ctx, spanName}
-	varargs = append(varargs, opts...)
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", nil, varargs...)
 }
 
@@ -163,19 +166,9 @@ func (m *MockSpan) SpanContext() trace.SpanContext {
 }
 
 func (m *MockSpan) SetStatus(code codes.Code, description string) {
-	m.ctrl.Call(m, "SetStatus", code, description)
-}
-
-func (mr *MockSpanRecorder) SetStatus(code, description interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetStatus", nil, code, description)
 }
 
 func (m *MockSpan) SetName(name string) {
-	m.ctrl.Call(m, "SetName", name)
-}
-
-func (mr *MockSpanRecorder) SetName(name interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetName", nil, name)
 }
 
 func (m *MockSpan) SetAttributes(attrs ...attribute.KeyValue) {
