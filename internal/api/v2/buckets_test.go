@@ -105,7 +105,7 @@ func TestRestoreBucket(t *testing.T) {
 			bucket:             "test-bucket",
 			returnErr:          system.ErrLedgerNotFound,
 			expectedStatusCode: http.StatusNotFound,
-			expectedErrorCode:  api.ErrorNotFound,
+			expectedErrorCode:  api.ErrorCodeNotFound,
 		},
 		{
 			name:               "internal error",
@@ -203,7 +203,10 @@ func TestListBuckets(t *testing.T) {
 			systemController, _ := newTestingSystemController(t, false)
 
 			if tc.expectBackendCall {
-				expectedCursor := bunpaginate.NewCursor(tc.returnData, "", 15, true)
+				expectedCursor := &bunpaginate.Cursor[system.BucketWithStatus]{
+					Data:     tc.returnData,
+					PageSize: 15,
+				}
 				systemController.EXPECT().
 					ListBucketsWithStatus(gomock.Any(), gomock.Any()).
 					Return(expectedCursor, tc.returnErr)

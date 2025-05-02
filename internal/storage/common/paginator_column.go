@@ -198,6 +198,10 @@ func checkTag(field reflect.StructField, paginationColumn string) []reflect.Stru
 
 //nolint:unused
 func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
+	if len(fields) == 0 {
+		return big.NewInt(0)
+	}
+	
 	vOf := reflect.ValueOf(v)
 	field := vOf.FieldByName(fields[0].Name)
 	if len(fields) == 1 {
@@ -205,16 +209,28 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 		case time.Time:
 			return big.NewInt(rawPaginationID.UTC().UnixMicro())
 		case *time.Time:
+			if rawPaginationID == nil {
+				return big.NewInt(0)
+			}
 			return big.NewInt(rawPaginationID.UTC().UnixMicro())
 		case *libtime.Time:
+			if rawPaginationID == nil {
+				return big.NewInt(0)
+			}
 			return big.NewInt(rawPaginationID.UTC().UnixMicro())
 		case libtime.Time:
 			return big.NewInt(rawPaginationID.UTC().UnixMicro())
 		case *bunpaginate.BigInt:
+			if rawPaginationID == nil {
+				return big.NewInt(0)
+			}
 			return (*big.Int)(rawPaginationID)
 		case bunpaginate.BigInt:
 			return (*big.Int)(&rawPaginationID)
 		case *big.Int:
+			if rawPaginationID == nil {
+				return big.NewInt(0)
+			}
 			return rawPaginationID
 		case big.Int:
 			return &rawPaginationID
@@ -223,11 +239,17 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 		case int:
 			return big.NewInt(int64(rawPaginationID))
 		case *int64:
+			if rawPaginationID == nil {
+				return big.NewInt(0)
+			}
 			return big.NewInt(*rawPaginationID)
 		case *int:
+			if rawPaginationID == nil {
+				return big.NewInt(0)
+			}
 			return big.NewInt(int64(*rawPaginationID))
 		default:
-			panic(fmt.Sprintf("invalid paginationID, type %T not handled", rawPaginationID))
+			return big.NewInt(0)
 		}
 	}
 
