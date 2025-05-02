@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/time"
@@ -86,6 +87,43 @@ func TestGetLedgerWithDeletedBucket(t *testing.T) {
 	_, err := controller.GetLedger(context.Background(), "test-ledger")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrLedgerNotFound)
+}
+
+func TestGetLedgerWithError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	expectedErr := errors.New("database error")
+	
+	store := NewMockStore(ctrl)
+	store.EXPECT().
+		GetLedger(gomock.Any(), "test-ledger").
+		Return(nil, expectedErr)
+
+	controller := NewDefaultController(store, nil)
+	_, err := controller.GetLedger(context.Background(), "test-ledger")
+	require.Error(t, err)
+	require.Equal(t, expectedErr, err)
+}
+
+func TestGetLedgerWithActiveBucket(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	l := &ledger.Ledger{
+		Name:      "test-ledger",
+		DeletedAt: nil,
+	}
+
+	store := NewMockStore(ctrl)
+	store.EXPECT().
+		GetLedger(gomock.Any(), "test-ledger").
+		Return(l, nil)
+
+	controller := NewDefaultController(store, nil)
+	result, err := controller.GetLedger(context.Background(), "test-ledger")
+	require.NoError(t, err)
+	require.Equal(t, l, result)
 }
 
 func TestListLedgersWithDeletedBucket(t *testing.T) {
