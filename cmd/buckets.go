@@ -11,8 +11,5 @@ func NewBucketsCommand() *cobra.Command {
 	}
 
 	ret.AddCommand(NewBucketUpgrade())
-	ret.AddCommand(NewBucketDeleteCommand())
-	ret.AddCommand(NewBucketListCommand())
-	ret.AddCommand(NewBucketRestoreCommand())
 	return ret
 }

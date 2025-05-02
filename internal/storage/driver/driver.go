@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"sync"
-	stdtime "time"
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -330,10 +329,10 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]s
 	if days < 0 {
 		return []string{}, nil
 	}
-	
+
 	var buckets []string
 	cutoffDate := time.Now().UTC().AddDate(0, 0, -days)
-	
+
 	err := d.db.NewSelect().
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
@@ -341,11 +340,11 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]s
 		Where("deleted_at IS NOT NULL").
 		Where("deleted_at <= ?", cutoffDate).
 		Scan(ctx, &buckets)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets marked for deletion: %w", postgres.ResolveError(err))
 	}
-	
+
 	return buckets, nil
 }
 
@@ -354,16 +353,16 @@ func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) 
 	if err != nil {
 		return fmt.Errorf("dropping bucket schema: %w", postgres.ResolveError(err))
 	}
-	
+
 	_, err = d.db.NewDelete().
 		Model(&ledger.Ledger{}).
 		Where("bucket = ?", bucketName).
 		Exec(ctx)
-	
+
 	if err != nil {
 		return fmt.Errorf("deleting ledger entries for bucket: %w", postgres.ResolveError(err))
 	}
-	
+
 	return nil
 }
 

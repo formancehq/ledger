@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	stdtime "time"
-	
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
@@ -185,26 +184,26 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
 		Column("bucket", "deleted_at")
-	
+
 	if query.PageSize == 0 {
 		query.PageSize = bunpaginate.QueryDefaultPageSize
 	}
-	
+
 	if query.Column == "" {
 		query.Column = "bucket"
 	}
-	
+
 	paginator := common.ColumnPaginator[systemcontroller.BucketWithStatus, any]{
 		DefaultPaginationColumn: "bucket",
 		DefaultOrder:            bunpaginate.OrderAsc,
 	}
-	
+
 	var err error
 	q, err = paginator.Paginate(q, query)
 	if err != nil {
 		return nil, fmt.Errorf("applying pagination: %w", err)
 	}
-	
+
 	err = q.Scan(ctx, &results)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
@@ -214,7 +213,7 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 	for i, result := range results {
 		var deletedAt *time.Time
 		if !result.DeletedAt.IsZero() {
-			deletedAt = &time.Time{Time: result.DeletedAt}
+			deletedAt = &result.DeletedAt
 		}
 		buckets[i] = systemcontroller.BucketWithStatus{
 			Name:      result.Bucket,
@@ -226,7 +225,7 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 	if err != nil {
 		return nil, fmt.Errorf("building cursor: %w", err)
 	}
-	
+
 	return cursor, nil
 }
 
