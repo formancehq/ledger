@@ -174,3 +174,40 @@ func TestLedgersList(t *testing.T) {
 	_, err := controller.ListLedgers(context.Background(), common.ColumnPaginatedQuery[any]{})
 	require.NoError(t, err)
 }
+
+func TestGetLedgerWithDeletedBucket(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	now := time.Now()
+	l := &ledger.Ledger{
+		Name:      "test-ledger",
+		DeletedAt: &now,
+	}
+
+	store := NewMockStore(ctrl)
+	store.EXPECT().
+		GetLedger(gomock.Any(), "test-ledger").
+		Return(l, nil)
+
+	controller := NewDefaultController(store, nil)
+	_, err := controller.GetLedger(context.Background(), "test-ledger")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrLedgerNotFound)
+}
+
+func TestListLedgersWithDeletedBucket(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	store := NewMockStore(ctrl)
+	store.EXPECT().
+		ListLedgers(gomock.Any(), gomock.Any()).
+		Return(nil, nil)
+
+	controller := NewDefaultController(store, nil)
+	_, err := controller.ListLedgers(context.Background(), common.ColumnPaginatedQuery[any]{})
+	require.NoError(t, err)
+}

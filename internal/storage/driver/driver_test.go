@@ -1,4 +1,3 @@
-//go:build it
 
 package driver_test
 
@@ -14,6 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -36,12 +36,10 @@ func TestLedgersCreate(t *testing.T) {
 
 	buckets := []string{"bucket1", "bucket2"}
 
-	// Create buckets first
 	systemStore := system.New(db)
 	for _, bucketName := range buckets {
 		err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
 		if err != nil {
-			// Ignore if bucket already exists
 			if !strings.Contains(err.Error(), "bucket already exists") {
 				require.NoError(t, err)
 			}
@@ -161,11 +159,9 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 		system.NewStoreFactory(),
 	)
 
-	// Create the default bucket first
 	systemStore := system.New(db)
 	err := systemStore.CreateBucket(ctx, ledger.NewBucket("_default"))
 	if err != nil {
-		// Ignore if bucket already exists
 		if !strings.Contains(err.Error(), "bucket already exists") {
 			require.NoError(t, err)
 		}
@@ -194,7 +190,6 @@ func TestBucketDeletion(t *testing.T) {
 
 	bucketName := "test-bucket-" + uuid.NewString()[:8]
 
-	// Create the bucket first
 	systemStore := system.New(db)
 	err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
 	require.NoError(t, err)
@@ -245,7 +240,7 @@ func TestBucketDeletion(t *testing.T) {
 
 	_, _, err = d.OpenLedger(ctx, l1.Name)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not found")
+	require.ErrorIs(t, err, systemcontroller.ErrLedgerNotFound)
 
 	err = d.RestoreBucket(ctx, bucketName)
 	require.NoError(t, err)
@@ -279,7 +274,6 @@ func TestGetBucketsMarkedForDeletion(t *testing.T) {
 
 	bucketName := "test-bucket-deletion-" + uuid.NewString()[:8]
 
-	// Create the bucket first
 	systemStore := system.New(db)
 	err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
 	require.NoError(t, err)
@@ -316,7 +310,6 @@ func TestPhysicallyDeleteBucket(t *testing.T) {
 
 	bucketName := "test-bucket-physical-" + uuid.NewString()[:8]
 
-	// Create the bucket first
 	systemStore := system.New(db)
 	err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
 	require.NoError(t, err)
