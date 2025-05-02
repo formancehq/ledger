@@ -10,6 +10,8 @@ type V2GetInfoResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
 	V2ConfigInfoResponse *components.V2ConfigInfoResponse
+	// Error
+	V2ErrorResponse *components.V2ErrorResponse
 }
 
 func (o *V2GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -24,4 +26,11 @@ func (o *V2GetInfoResponse) GetV2ConfigInfoResponse() *components.V2ConfigInfoRe
 		return nil
 	}
 	return o.V2ConfigInfoResponse
+}
+
+func (o *V2GetInfoResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
+	if o == nil {
+		return nil
+	}
+	return o.V2ErrorResponse
 }
