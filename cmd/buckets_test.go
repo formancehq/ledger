@@ -7,6 +7,7 @@ import (
 
 	formancetime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -41,23 +42,14 @@ func TestBucketDeleteCommand(t *testing.T) {
 		BucketsMarkedForDeletion: []string{"bucket1", "bucket2"},
 	}
 	
-	cmd := &cobra.Command{
-		Use:   "delete",
-		Short: "Delete buckets that were marked for deletion N days ago",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			days, _ := cmd.Flags().GetInt("days")
-			deletedBuckets, _ := mockDriver.GetBucketsMarkedForDeletion(cmd.Context(), days)
-			
-			for _, bucket := range deletedBuckets {
-				_ = mockDriver.PhysicallyDeleteBucket(cmd.Context(), bucket)
-				cmd.Printf("Bucket %s physically deleted\n", bucket)
-			}
-			
-			return nil
-		},
+	originalWithStorageDriver := withStorageDriver
+	defer func() { withStorageDriver = originalWithStorageDriver }()
+	
+	withStorageDriver = func(cmd *cobra.Command, fn func(driver *driver.Driver) error) error {
+		return fn(mockDriver)
 	}
 	
-	cmd.Flags().Int("days", 30, "Delete buckets marked for deletion N days ago")
+	cmd := NewBucketDeleteCommand()
 	
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
@@ -85,23 +77,14 @@ func TestBucketListCommand(t *testing.T) {
 		},
 	}
 	
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all buckets with their deletion status",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			buckets, _ := mockDriver.ListBucketsWithStatus(cmd.Context())
-			
-			for _, bucket := range buckets {
-				if bucket.DeletedAt == nil {
-					cmd.Printf("%s: active\n", bucket.Name)
-				} else {
-					cmd.Printf("%s: deleted at %s\n", bucket.Name, bucket.DeletedAt.Format("2006-01-02T15:04:05Z07:00"))
-				}
-			}
-			
-			return nil
-		},
+	originalWithStorageDriver := withStorageDriver
+	defer func() { withStorageDriver = originalWithStorageDriver }()
+	
+	withStorageDriver = func(cmd *cobra.Command, fn func(driver *driver.Driver) error) error {
+		return fn(mockDriver)
 	}
+	
+	cmd := NewBucketListCommand()
 	
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
@@ -117,16 +100,14 @@ func TestBucketListCommand(t *testing.T) {
 func TestBucketRestoreCommand(t *testing.T) {
 	mockDriver := &MockDriver{}
 	
-	cmd := &cobra.Command{
-		Use:   "restore [bucket]",
-		Short: "Restore a bucket that was marked for deletion",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = mockDriver.RestoreBucket(cmd.Context(), args[0])
-			cmd.Printf("Bucket %s restored\n", args[0])
-			return nil
-		},
+	originalWithStorageDriver := withStorageDriver
+	defer func() { withStorageDriver = originalWithStorageDriver }()
+	
+	withStorageDriver = func(cmd *cobra.Command, fn func(driver *driver.Driver) error) error {
+		return fn(mockDriver)
 	}
+	
+	cmd := NewBucketRestoreCommand()
 	
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
