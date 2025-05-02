@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/fx"
 )
 
@@ -24,9 +25,6 @@ func TestNewFXModule(t *testing.T) {
 
 	module := NewFXModule(cfg)
 	require.NotNil(t, module)
-
-	_, ok := module.(fx.Option)
-	require.True(t, ok)
 }
 
 func TestBucketDeletionProviders(t *testing.T) {
@@ -34,7 +32,7 @@ func TestBucketDeletionProviders(t *testing.T) {
 
 	logger := NoOpLogger()
 	mockDriver := &driver.Driver{}
-	tracerProvider := trace.NewNoopTracerProvider()
+	tracerProvider := noop.NewTracerProvider()
 
 	cfg := ModuleConfig{
 		BucketDeletionSchedule:  "",
@@ -87,7 +85,7 @@ func TestAsyncBlockProviders(t *testing.T) {
 
 	logger := NoOpLogger()
 	db := &bun.DB{}
-	tracerProvider := trace.NewNoopTracerProvider()
+	tracerProvider := noop.NewTracerProvider()
 
 	cfg := ModuleConfig{
 		Schedule:     "* * * * *",
