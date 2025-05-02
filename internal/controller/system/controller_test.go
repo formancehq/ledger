@@ -194,6 +194,7 @@ func TestGetLedgerWithDeletedBucket(t *testing.T) {
 }
 
 func TestGetLedgerWithError(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -211,6 +212,7 @@ func TestGetLedgerWithError(t *testing.T) {
 }
 
 func TestGetLedgerWithActiveBucket(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
