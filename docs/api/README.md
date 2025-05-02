@@ -2160,7 +2160,7 @@ Authorization ( Scopes: ledger:write )
 ```http
 POST http://localhost:8080/v2/{ledger}/logs/export HTTP/1.1
 Host: localhost:8080
-Accept: application/json
+Accept: application/octet-stream
 
 ```
 
@@ -2176,20 +2176,12 @@ Accept: application/json
 
 > default Response
 
-```json
-{
-  "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-}
-```
-
 <h3 id="export-logs-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Import OK|None|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+|default|Default|Error|string|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
