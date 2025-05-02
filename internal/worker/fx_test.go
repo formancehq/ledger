@@ -8,9 +8,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"go.uber.org/fx"
 )
 
 func TestNewFXModule(t *testing.T) {
