@@ -7,14 +7,30 @@ import (
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/internals"
 )
 
 func createConfigMap(ctx *pulumi.Context, cmp *Component, args ComponentArgs) (*corev1.ConfigMap, error) {
+	connectors := make(map[string]any)
+	if args.Connectors != nil && args.Connectors.Connectors != nil {
+		for connectorName, connectorComponent := range args.Connectors.Connectors {
+			config, err := internals.UnsafeAwaitOutput(ctx.Context(), connectorComponent.Component.GetConfig())
+			if err != nil {
+				return nil, err
+			}
+			connectors[connectorName] = map[string]any{
+				"driver": connectorComponent.Driver,
+				"config": config.Value,
+			}
+		}
+	}
 
 	marshalledConfig, err := json.Marshal(struct {
-		Ledgers map[string]LedgerConfigArgs `json:"ledgers"`
+		Ledgers    map[string]LedgerConfigArgs `json:"ledgers"`
+		Connectors map[string]any              `json:"connectors"`
 	}{
-		Ledgers: args.Ledgers,
+		Ledgers:    args.Ledgers,
+		Connectors: connectors,
 	})
 	if err != nil {
 		return nil, err

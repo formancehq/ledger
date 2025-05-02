@@ -1,0 +1,134 @@
+
+edition = "2023";
+option go_package = "github.com/formancehq/ledger/internal/replication/grpc";
+option features.field_presence = IMPLICIT;
+
+import "google/protobuf/timestamp.proto";
+
+package replication;
+
+service Replication {
+  rpc CreateConnector(CreateConnectorRequest) returns (CreateConnectorResponse);
+  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse);
+  rpc GetConnector(GetConnectorRequest) returns (GetConnectorResponse);
+  rpc DeleteConnector(DeleteConnectorRequest) returns (DeleteConnectorResponse);
+  rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse);
+  rpc GetPipeline(GetPipelineRequest) returns (GetPipelineResponse);
+  rpc CreatePipeline(CreatePipelineRequest) returns (CreatePipelineResponse);
+  rpc DeletePipeline(DeletePipelineRequest) returns (DeletePipelineResponse);
+  rpc StartPipeline(StartPipelineRequest) returns (StartPipelineResponse);
+  rpc StopPipeline(StopPipelineRequest) returns (StopPipelineResponse);
+  rpc ResetPipeline(ResetPipelineRequest) returns (ResetPipelineResponse);
+}
+
+message Cursor {
+  string next = 1;
+  bool has_more = 2;
+  string prev = 3;
+}
+
+message ListConnectorsRequest {
+  string cursor = 1;
+}
+
+message ListConnectorsResponse {
+  repeated Connector data = 1;
+  Cursor cursor = 2;
+}
+
+message Connector {
+  string id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  ConnectorConfiguration config = 3;
+}
+
+message GetConnectorRequest {
+  string id = 1;
+}
+
+message GetConnectorResponse {
+  Connector connector = 1;
+}
+
+message DeleteConnectorRequest {
+  string id = 1;
+}
+
+message DeleteConnectorResponse {}
+
+message ConnectorConfiguration {
+  string driver = 1;
+  string config = 2;
+}
+
+message CreateConnectorRequest {
+  ConnectorConfiguration config = 1;
+}
+
+message CreateConnectorResponse {
+  Connector connector = 1;
+}
+
+message ListPipelinesRequest {
+  string cursor = 1;
+}
+
+message ListPipelinesResponse {
+  repeated Pipeline data = 1;
+  Cursor cursor = 2;
+}
+
+message PipelineConfiguration {
+  string connector_id = 1;
+  string ledger = 2;
+}
+
+message Pipeline {
+  PipelineConfiguration config = 1;
+  google.protobuf.Timestamp createdAt = 2;
+  string id = 3;
+  bool enabled = 5;
+  uint64 lastLogID = 6;
+  string error = 7;
+}
+
+message GetPipelineRequest {
+  string id = 1;
+}
+
+message GetPipelineResponse {
+  Pipeline pipeline = 1;
+}
+
+message CreatePipelineRequest {
+  PipelineConfiguration config = 1;
+}
+
+message CreatePipelineResponse {
+  Pipeline pipeline = 1;
+}
+
+message DeletePipelineRequest {
+  string id = 1;
+}
+
+message DeletePipelineResponse {}
+
+message StartPipelineRequest {
+  string id = 1;
+}
+
+message StartPipelineResponse {}
+
+message StopPipelineRequest {
+  string id = 1;
+}
+
+message StopPipelineResponse {}
+
+message ResetPipelineRequest {
+  string id = 1;
+}
+
+message ResetPipelineResponse {}
+

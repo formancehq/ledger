@@ -8,11 +8,10 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/formancehq/ledger/internal/storage/system"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"math/rand"
@@ -28,7 +27,7 @@ func TestLedgersCreate(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	buckets := []string{"bucket1", "bucket2"}
@@ -81,7 +80,7 @@ func TestLedgersList(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	bucket := uuid.NewString()[:8]
@@ -102,7 +101,7 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	q := ledgercontroller.NewListLedgersQuery(15)
+	q := systemstore.NewListLedgersQuery(15)
 	q.Options.Builder = query.Match("bucket", bucket)
 
 	cursor, err := d.ListLedgers(ctx, q)
@@ -120,7 +119,7 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString())
@@ -142,7 +141,7 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{
