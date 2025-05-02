@@ -10,9 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/testing/docker"
-	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/google/uuid"
@@ -21,7 +19,7 @@ import (
 	"os"
 	"slices"
 	"testing"
-	stdtime "time"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
@@ -159,8 +157,10 @@ func TestBucketDeletion(t *testing.T) {
 	store := newStore(t)
 
 	bucketName := "test-bucket-" + uuid.NewString()
-	l1 := ledger.MustNewWithDefault(bucketName + "-ledger1").WithBucket(bucketName)
-	l2 := ledger.MustNewWithDefault(bucketName + "-ledger2").WithBucket(bucketName)
+	l1 := ledger.MustNewWithDefault(bucketName + "-ledger1")
+	l1.Bucket = bucketName
+	l2 := ledger.MustNewWithDefault(bucketName + "-ledger2")
+	l2.Bucket = bucketName
 
 	err := store.CreateLedger(ctx, &l1)
 	require.NoError(t, err)
