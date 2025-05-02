@@ -84,11 +84,10 @@ func (mr *MockDriverWrapperRecorder) RestoreBucket(ctx, bucketName interface{}) 
 }
 
 type MockTracer struct {
-	ctrl     *gomock.Controller
-	recorder *MockTracerRecorder
+	ctrl         *gomock.Controller
+	recorder     *MockTracerRecorder
 	trace.Tracer // Embed the interface to satisfy it
 }
-
 
 func (m *MockTracer) Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	varargs := []interface{}{ctx, spanName}
@@ -117,9 +116,7 @@ func (m *MockTracer) EXPECT() *MockTracerRecorder {
 
 func (mr *MockTracerRecorder) Start(ctx, spanName interface{}, opts ...interface{}) *gomock.Call {
 	varargs := []interface{}{ctx, spanName}
-	for _, a := range opts {
-		varargs = append(varargs, a)
-	}
+	varargs = append(varargs, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", nil, varargs...)
 }
 
