@@ -11,6 +11,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
@@ -183,11 +184,14 @@ func TestBucketDeletion(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	buckets, err := d.ListBucketsWithStatus(ctx)
+	query := common.ColumnPaginatedQuery[any]{
+		PageSize: 100,
+	}
+	bucketsResult, err := d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
 	
 	var foundBucket bool
-	for _, b := range buckets {
+	for _, b := range bucketsResult.Data {
 		if b.Name == bucketName {
 			foundBucket = true
 			require.Nil(t, b.DeletedAt)
@@ -198,11 +202,11 @@ func TestBucketDeletion(t *testing.T) {
 	err = d.MarkBucketAsDeleted(ctx, bucketName)
 	require.NoError(t, err)
 
-	buckets, err = d.ListBucketsWithStatus(ctx)
+	bucketsResult, err = d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
 	
 	foundBucket = false
-	for _, b := range buckets {
+	for _, b := range bucketsResult.Data {
 		if b.Name == bucketName {
 			foundBucket = true
 			require.NotNil(t, b.DeletedAt)
@@ -217,11 +221,11 @@ func TestBucketDeletion(t *testing.T) {
 	err = d.RestoreBucket(ctx, bucketName)
 	require.NoError(t, err)
 
-	buckets, err = d.ListBucketsWithStatus(ctx)
+	bucketsResult, err = d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
 	
 	foundBucket = false
-	for _, b := range buckets {
+	for _, b := range bucketsResult.Data {
 		if b.Name == bucketName {
 			foundBucket = true
 			require.Nil(t, b.DeletedAt)
@@ -291,10 +295,13 @@ func TestPhysicallyDeleteBucket(t *testing.T) {
 	err = d.PhysicallyDeleteBucket(ctx, bucketName)
 	require.NoError(t, err)
 
-	buckets, err := d.ListBucketsWithStatus(ctx)
+	query := common.ColumnPaginatedQuery[any]{
+		PageSize: 100,
+	}
+	bucketsResult, err := d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
 	
-	for _, b := range buckets {
+	for _, b := range bucketsResult.Data {
 		require.NotEqual(t, bucketName, b.Name, "Bucket should not be found after physical deletion")
 	}
 }
