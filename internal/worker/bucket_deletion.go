@@ -68,10 +68,10 @@ func (r *BucketDeletionRunner) run(ctx context.Context) error {
 	ctx, span := r.tracer.Start(ctx, "RunBucketDeletion")
 	defer span.End()
 
-	gracePeriodHours := r.cfg.GracePeriod.Hours()
-	span.SetAttributes(attribute.Float64("grace_period_hours", gracePeriodHours))
+	days := int(r.cfg.GracePeriod.Hours() / 24)
+	span.SetAttributes(attribute.Int("grace_period_days", days))
 
-	buckets, err := r.driver.GetBucketsMarkedForDeletion(ctx, r.cfg.GracePeriod)
+	buckets, err := r.driver.GetBucketsMarkedForDeletion(ctx, days)
 	if err != nil {
 		return fmt.Errorf("getting buckets marked for deletion: %w", err)
 	}
