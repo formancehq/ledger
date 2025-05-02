@@ -1,31 +1,27 @@
 package cmd
 
 import (
-	"dario.cat/mergo"
-	"encoding/json"
+	"context"
+	_ "embed"
 	"fmt"
-	pconfig "github.com/formancehq/ledger/deployments/pulumi/pkg/config"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
+	"github.com/pterm/pterm"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
-	"github.com/pulumi/pulumi/sdk/v3/go/auto/optdestroy"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
-	"gopkg.in/yaml.v3"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
-
-	_ "embed"
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"go.uber.org/atomic"
+	"k8s.io/client-go/tools/clientcmd"
+	"math/big"
+	"os"
 )
 
-//go:embed script.js
-var script string
-
 const (
-	fromConfigFlag = "from-config"
+	baseConfigFlag = "from-config"
 	toConfigFlag   = "to-config"
 	stackNameFlag  = "stack-name"
 	debugFlag      = "debug"
@@ -33,25 +29,10 @@ const (
 	noCleanupFlag  = "no-cleanup"
 )
 
-type PartialConfig struct {
-	pconfig.Common `yaml:",inline"`
-
-	// Storage is the storage configuration for the ledger
-	Storage *pconfig.Storage `json:"storage,omitempty" yaml:"storage,omitempty"`
-
-	// API is the API configuration for the ledger
-	API *pconfig.API `json:"api,omitempty" yaml:"api,omitempty"`
-
-	// Worker is the worker configuration for the ledger
-	Worker *pconfig.Worker `json:"worker,omitempty" yaml:"worker,omitempty"`
-
-	// InstallDevBox is whether to install the dev box
-	InstallDevBox bool `json:"install-dev-box,omitempty" yaml:"install-dev-box,omitempty"`
-}
-
 var rootCmd = &cobra.Command{
-	Use:  "rolling-upgrades",
-	RunE: runE,
+	Use:          "rolling-upgrades",
+	RunE:         runE,
+	SilenceUsage: true,
 }
 
 func Execute() {
@@ -62,8 +43,7 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.Flags().String(fromConfigFlag, "", "Initial configuration")
-	rootCmd.Flags().String(toConfigFlag, "", "Target configuration")
+	rootCmd.Flags().String(baseConfigFlag, "", "Initial configuration")
 	rootCmd.Flags().String(stackNameFlag, "tests-rolling-upgrades", "Stack name")
 	rootCmd.Flags().Bool(debugFlag, false, "Enable debug mode")
 	rootCmd.Flags().StringArray(overlayFlag, nil, "Overlay configs")
@@ -73,14 +53,9 @@ func init() {
 }
 
 func runE(cmd *cobra.Command, _ []string) error {
-	fromConfig, err := loadConfigFromFlag(cmd, fromConfigFlag)
+	baseConfig, err := loadConfigFromFlag(cmd, baseConfigFlag)
 	if err != nil {
 		return fmt.Errorf("failed to load from config: %w", err)
-	}
-
-	toConfig, err := loadConfigFromFlag(cmd, toConfigFlag)
-	if err != nil {
-		return fmt.Errorf("failed to load to config: %w", err)
 	}
 
 	stackName, err := cmd.Flags().GetString(stackNameFlag)
@@ -88,22 +63,36 @@ func runE(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to load stack name: %w", err)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "")
+	noCleanup, err := cmd.Flags().GetBool(noCleanupFlag)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load no-cleanup flag: %w", err)
 	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir)
-	}()
 
-	tmpConfigFileName := filepath.Join(tmpDir, "config.yaml")
-	tmpConfigFile, err := os.Create(tmpConfigFileName)
+	debug, err := cmd.Flags().GetBool(debugFlag)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load debug flag: %w", err)
 	}
-	defer func() {
-		_ = tmpConfigFile.Close()
-	}()
+
+	pterm.EnableStyling()
+	if debug {
+		pterm.EnableDebugMessages()
+	}
+
+	info := pterm.Info.WithWriter(cmd.OutOrStdout())
+
+	options := []DeploymentOption{
+		WithLogger(LoggerFn(func(fmt string, args ...interface{}) {
+			info.Printf(fmt, args...)
+		})),
+	}
+	if debug {
+		options = append(options,
+			WithProgressStream(cmd.OutOrStdout()),
+			WithErrorProgressStream(cmd.ErrOrStderr()),
+		)
+	}
+
+	stackManager := NewStackManager(options...)
 
 	stack, err := auto.UpsertStackLocalSource(
 		cmd.Context(),
@@ -114,50 +103,120 @@ func runE(cmd *cobra.Command, _ []string) error {
 		}),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create stack: %w", err)
+		return fmt.Errorf("failed to get ledger stack: %w", err)
 	}
 
+	ledgerStackUpResult, err := stackManager.Deploy(cmd.Context(), stack, *baseConfig, optup.Refresh())
+	if err != nil {
+		return fmt.Errorf("failed to deploy stack: %w", err)
+	}
+
+	projectSettings, err := stack.Workspace().ProjectSettings(cmd.Context())
+	if err != nil {
+		return fmt.Errorf("failed to get project settings: %w", err)
+	}
+
+	startingConfig, err := clientcmd.NewDefaultPathOptions().GetStartingConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get kubeconfig: %w", err)
+	}
+
+	accessTokenCreationStack, err := auto.UpsertStackInlineSource(
+		cmd.Context(),
+		stack.Name(),
+		string(projectSettings.Name)+"-access-token",
+		hackStack,
+		auto.Stacks(map[string]workspace.ProjectStack{
+			stack.Name(): {Config: config.Map{}},
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to get access token creation stack: %w", err)
+	}
 	defer func() {
-		_ = stack.Cancel(cmd.Context())
+		_ = stackManager.Destroy(cmd.Context(), accessTokenCreationStack)
 	}()
 
-	noCleanup, err := cmd.Flags().GetBool(noCleanupFlag)
+	hashStackResult, err := stackManager.Deploy(cmd.Context(), accessTokenCreationStack, nil, optup.Refresh())
 	if err != nil {
-		return fmt.Errorf("failed to load no-cleanup flag: %w", err)
+		return fmt.Errorf("failed to up access token creation stack: %w", err)
 	}
 
-	// Remove the existing generator if exists
-	if err := destroyGeneratorIfExists(cmd, stack); err != nil {
-		return fmt.Errorf("failed to destroy existing generator: %w", err)
+	apiClient := createAPIClient(
+		ledgerStackUpResult.Outputs["namespace"].Value.(string),
+		ledgerStackUpResult.Outputs["api-service"].Value.(string),
+		hashStackResult.Outputs["token"].Value.(string),
+		startingConfig,
+		func(_ context.Context) func(fmt string, args ...interface{}) {
+			return func(fmt string, args ...interface{}) {
+				pterm.Debug.
+					WithWriter(cmd.OutOrStdout()).
+					Printf(fmt, args...)
+			}
+		},
+	)
+
+	events := make(chan any, 1)
+	errCh := make(chan error, 1)
+
+	workflowContext, cancelWorkflow := context.WithCancel(cmd.Context())
+	defer cancelWorkflow()
+
+	go func() {
+		info.Printf("Starting workflow...\r\n")
+		errCh <- runWorkflow(workflowContext, apiClient, events)
+		info.Printf("Workflow terminated.\r\n")
+	}()
+
+	counter := atomic.Int64{}
+	deployErrCh := make(chan error, 1)
+l:
+	for {
+		select {
+		case <-events:
+			if counter.Add(1) == 100 {
+				info.Printf("100 transactions inserted, triggering rolling upgrade...\r\n")
+				go func() {
+					_, err := stackManager.Deploy(cmd.Context(), stack, *baseConfig,
+						optup.Replace([]string{"urn:pulumi:tests-rolling-upgrades::ledger::Formance:Ledger$Formance:Ledger:API$kubernetes:apps/v1:Deployment::ledger-api"}),
+					)
+					deployErrCh <- err
+				}()
+			}
+		case err := <-deployErrCh:
+			if err != nil {
+				return fmt.Errorf("failed to up stack: %w", err)
+			}
+			break l
+
+		case err := <-errCh:
+			return fmt.Errorf("failed to run workflow: %w", err)
+		}
 	}
 
-	if err := updateConfigFile(tmpConfigFileName, *fromConfig); err != nil {
-		return fmt.Errorf("failed to update config file: %w", err)
+	// todo: Wait the complete migration
+
+	info.Printf("Waiting some transactions to be processed...\r\n")
+	counter.Store(0)
+l2:
+	for {
+		select {
+		case <-events:
+			if counter.Add(1) == 100 {
+				info.Printf("100 transactions inserted, considering the upgrade ok.\r\n")
+				break l2
+			}
+		case err := <-errCh:
+			return fmt.Errorf("failed to run workflow: %w", err)
+		}
 	}
 
-	if err := upStack(cmd, stack, tmpConfigFileName,
-		optup.Refresh(),
-	); err != nil {
-		return fmt.Errorf("failed to up stack: %w", err)
-	}
-
-	// let a bit of time to the generator to start
-	<-time.After(5 * time.Second)
-
-	if err := updateConfigFile(tmpConfigFileName, *toConfig); err != nil {
-		return err
-	}
-
-	if err := upStack(cmd, stack, tmpConfigFileName,
-		optup.Replace([]string{"urn:pulumi:tests-rolling-upgrades::ledger::Formance:Ledger$Formance:Ledger:API$kubernetes:apps/v1:Deployment::ledger-api"}),
-	); err != nil {
-		return fmt.Errorf("failed to up stack: %w", err)
-	}
-
-	// todo: make checks
+	info.Printf("Cancelling workflow...\r\n")
+	cancelWorkflow()
 
 	if !noCleanup {
-		if err := cleanup(cmd, stack); err != nil {
+		info.Printf("Cleaning up resources...\r\n")
+		if err := stackManager.Destroy(cmd.Context(), stack); err != nil {
 			return fmt.Errorf("failed to cleanup stack: %w", err)
 		}
 	}
@@ -165,159 +224,48 @@ func runE(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func cleanup(cmd *cobra.Command, stack auto.Stack) error {
+func runWorkflow(ctx context.Context, client *client.Formance, events chan any) error {
 
-	pterm.Info.Println("Cleaning up stack...")
+	const ledgerName = "testing"
 
-	destroyOptions := []optdestroy.Option{}
-
-	debug, err := cmd.Flags().GetBool(debugFlag)
-	if err != nil {
-		return fmt.Errorf("failed to load debug flag: %w", err)
-	}
-
-	if debug {
-		destroyOptions = append(destroyOptions,
-			optdestroy.ProgressStreams(os.Stdout),
-			optdestroy.ErrorProgressStreams(os.Stderr),
-		)
-	}
-
-	_, err = stack.Destroy(cmd.Context(), destroyOptions...)
-	if err != nil {
-		return fmt.Errorf("failed to destroy stack: %w", err)
-	}
-
-	pterm.Info.Println("Stack cleaned up.")
-
-	return nil
-}
-
-func upStack(cmd *cobra.Command, stack auto.Stack, configFileLocation string, options ...optup.Option) error {
-
-	pterm.Info.Println("Upgrading stack...")
-
-	upOptions := append(options,
-		optup.ConfigFile(configFileLocation),
-	)
-
-	debug, err := cmd.Flags().GetBool(debugFlag)
-	if err != nil {
-		return fmt.Errorf("failed to load debug flag: %w", err)
-	}
-
-	if debug {
-		upOptions = append(upOptions,
-			optup.ProgressStreams(os.Stdout),
-			optup.ErrorProgressStreams(os.Stderr),
-		)
-	}
-
-	_, err = stack.Up(cmd.Context(), upOptions...)
-	if err != nil {
-		return fmt.Errorf("failed to up stack: %w", err)
-	}
-
-	pterm.Info.Println("Stack upgraded.")
-
-	return nil
-}
-
-func destroyGeneratorIfExists(cmd *cobra.Command, stack auto.Stack) error {
-
-	pterm.Info.Println("Destroying generator if exists...")
-
-	debug, err := cmd.Flags().GetBool(debugFlag)
-	if err != nil {
-		return fmt.Errorf("failed to load debug flag: %w", err)
-	}
-
-	destroyOptions := []optdestroy.Option{
-		optdestroy.Target([]string{
-			"urn:pulumi:ledger-tests-rolling-upgrades::ledger::Formance:Ledger$Formance:Ledger:Tools:Generator::generator",
-		}),
-		optdestroy.TargetDependents(),
-	}
-	if debug {
-		destroyOptions = append(destroyOptions,
-			optdestroy.ProgressStreams(os.Stdout),
-			optdestroy.ErrorProgressStreams(os.Stderr),
-		)
-	}
-
-	_, err = stack.Destroy(cmd.Context(), destroyOptions...)
-	// Ugly check...
-	if err != nil && !strings.Contains(err.Error(), "no resource named") {
-		return err
-	}
-	if strings.Contains(err.Error(), "no resource named") {
-		pterm.Info.Println("No generator to destroy.")
-	} else {
-		pterm.Info.Println("Generator destroyed.")
-	}
-
-	return nil
-}
-
-func loadConfigFromFlag(cmd *cobra.Command, flag string) (*pconfig.Config, error) {
-	value, err := cmd.Flags().GetString(flag)
-	if err != nil {
-		return nil, err
-	}
-	cfg := &PartialConfig{}
-	if value != "" {
-		if err := json.Unmarshal([]byte(value), cfg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-		}
-	}
-
-	overlays, err := cmd.Flags().GetStringArray(overlayFlag)
-	if err != nil {
-		return nil, err
-	}
-	for _, overlay := range overlays {
-		oCfg := &PartialConfig{}
-		if err := json.Unmarshal([]byte(overlay), oCfg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal overlay (%s): %w", overlay, err)
-		}
-
-		err := mergo.Merge(cfg, oCfg)
-		if err != nil {
-			return nil, fmt.Errorf("failed to merge overlay (%s): %w", overlay, err)
-		}
-	}
-
-	return &pconfig.Config{
-		Common:        cfg.Common,
-		Storage:       cfg.Storage,
-		API:           cfg.API,
-		Worker:        cfg.Worker,
-		InstallDevBox: cfg.InstallDevBox,
-		Generator: &pconfig.Generator{
-			Ledgers: map[string]pconfig.GeneratorLedgerConfiguration{
-				"testing": {
-					Script:            script,
-					VUs:               1,
-					HTTPClientTimeout: pconfig.Duration(2 * time.Second),
-					SkipAwait:         true,
-				},
-			},
-		},
-	}, nil
-}
-
-func updateConfigFile(configFileName string, cfg pconfig.Config) error {
-	tmpConfigFile, err := os.Create(configFileName)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = tmpConfigFile.Close()
-	}()
-
-	return yaml.NewEncoder(tmpConfigFile).Encode(struct {
-		Config pconfig.Config `yaml:"config"`
-	}{
-		Config: cfg,
+	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+		Ledger:                ledgerName,
+		V2CreateLedgerRequest: components.V2CreateLedgerRequest{},
 	})
+	if err != nil {
+		switch err := err.(type) {
+		case *sdkerrors.V2ErrorResponse:
+			if err.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists {
+				return fmt.Errorf("failed to create ledger, got api error: %w", err)
+			}
+		default:
+			return fmt.Errorf("failed to create ledger: %w", err)
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+				Ledger: ledgerName,
+				V2PostTransaction: components.V2PostTransaction{
+					Postings: []components.V2Posting{
+						{
+							Source:      "world",
+							Destination: "bank",
+							Asset:       "USD/2",
+							Amount:      big.NewInt(100),
+						},
+					},
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			events <- struct{}{}
+		}
+	}
 }

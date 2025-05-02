@@ -1,11 +1,9 @@
 name: Run no downtime upgrades
 on:
-  workflow_dispatch:
-    inputs:
-      organization:
-        description: 'The organization to deploy the test'
-        required: false
-        default: formance
+  workflow_dispatch: {}
+
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened, labeled ]
 
 concurrency:
   group: rolling-upgrades
@@ -13,6 +11,9 @@ concurrency:
 
 jobs:
   Run:
+    env:
+      GOPATH: /tmp/go
+      GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     name: Run no downtime upgrades
     runs-on: "shipfox-4vcpu-ubuntu-2404"
     permissions:
@@ -22,17 +23,47 @@ jobs:
       - uses: actions/checkout@v4
         name: Checkout
       - id: setup-env
-        uses: ./.github/actions/setup-env
+        uses: ./.github/actions/default
+      - name: Tailscale
+        uses: tailscale/github-action@v2
         with:
-          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          kube-api-server-address: ${{ secrets.FORMANCE_DEV_KUBE_API_SERVER_ADDRESS }}
-          kube-token: ${{ secrets.FORMANCE_DEV_KUBE_TOKEN }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Create kube config file
+        env:
+          KUBE_APISERVER: ${{ secrets.FORMANCE_DEV_KUBE_API_SERVER_ADDRESS }}
+          KUBE_TOKEN: ${{ secrets.FORMANCE_DEV_KUBE_TOKEN }}
+        shell: bash
+        run: |
+          mkdir .kube;
+
+          cat <<EOF > .kube/config
+          apiVersion: v1
+          kind: Config
+          clusters:
+            - cluster:
+                insecure-skip-tls-verify: true
+                server: $KUBE_APISERVER
+              name: default
+          contexts:
+            - name: default
+              context:
+                cluster: default
+                user: default
+          users:
+            - name: default
+              user:
+                token: $KUBE_TOKEN
+          current-context: default
+          EOF
       - name: Run Pulumi
-        working-directory: ./tests/rolling-upgrades
+        working-directory: ./test/rolling-upgrades
         run: >
-          go run main.go --overlay '{"version": "${{ github.sha }}"}'
+          https_proxy= 
+          HTTPS_PROXY=
+          KUBECONFIG=$(pwd)/../../.kube/config 
+          nix develop --impure --command 
+          go run main.go --overlay '{"version": "${{ github.sha }}"}' --stack-name rolling-upgrades-${{ github.sha }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          KUBECONFIG: /home/runner/work/ledger/ledger/.kube/config
