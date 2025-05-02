@@ -1287,6 +1287,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
+        5XX:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:read
@@ -1493,6 +1499,12 @@ paths:
         "204":
           description: OK
         default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        5XX:
           description: Error
           content:
             application/json:
