@@ -14,6 +14,7 @@ import (
 )
 
 func TestMarkBucketAsDeleted(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -28,6 +29,7 @@ func TestMarkBucketAsDeleted(t *testing.T) {
 }
 
 func TestRestoreBucket(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -42,6 +44,7 @@ func TestRestoreBucket(t *testing.T) {
 }
 
 func TestListBucketsWithStatus(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -76,6 +79,7 @@ func TestListBucketsWithStatus(t *testing.T) {
 }
 
 func TestGetLedgerWithDeletedBucket(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -97,6 +101,7 @@ func TestGetLedgerWithDeletedBucket(t *testing.T) {
 }
 
 func TestGetLedgerWithError(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -114,6 +119,7 @@ func TestGetLedgerWithError(t *testing.T) {
 }
 
 func TestGetLedgerWithActiveBucket(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -134,6 +140,7 @@ func TestGetLedgerWithActiveBucket(t *testing.T) {
 }
 
 func TestListLedgersWithDeletedBucket(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
