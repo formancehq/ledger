@@ -130,7 +130,16 @@ func (ctrl *DefaultController) CreateLedger(ctx context.Context, name string, co
 
 func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "GetLedger", func(ctx context.Context) (*ledger.Ledger, error) {
-		return ctrl.store.GetLedger(ctx, name)
+		l, err := ctrl.store.GetLedger(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		
+		if l.DeletedAt != nil {
+			return nil, ErrLedgerNotFound
+		}
+		
+		return l, nil
 	})
 }
 

@@ -326,6 +326,10 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]string, error) {
+	if days < 0 {
+		return []string{}, nil
+	}
+	
 	var buckets []string
 	cutoffDate := time.Now().UTC().AddDate(0, 0, -days)
 	
@@ -345,7 +349,7 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]s
 }
 
 func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
-	_, err := d.db.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE", bucketName))
+	_, err := d.db.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, bucketName))
 	if err != nil {
 		return fmt.Errorf("dropping bucket schema: %w", err)
 	}
