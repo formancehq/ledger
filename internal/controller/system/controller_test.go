@@ -92,12 +92,8 @@ func TestBucketsListWithStatus(t *testing.T) {
 	query := common.ColumnPaginatedQuery[any]{
 		PageSize: 15,
 	}
-
-	expectedCursor := &bunpaginate.Cursor[BucketWithStatus]{
-		Data:     buckets,
-		PageSize: 15,
-	}
-
+	
+	expectedCursor := bunpaginate.NewCursor(buckets, "", 15, true)
 	store := NewMockStore(ctrl)
 	store.EXPECT().
 		ListBucketsWithStatus(gomock.Any(), query).

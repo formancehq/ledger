@@ -168,7 +168,7 @@ func TestListBuckets(t *testing.T) {
 				},
 				{
 					Name:      "bucket2",
-					DeletedAt: pointer.For(time.Now()),
+					DeletedAt: &time.Now(),
 				},
 			},
 			expectBackendCall: true,
@@ -203,10 +203,7 @@ func TestListBuckets(t *testing.T) {
 			systemController, _ := newTestingSystemController(t, false)
 
 			if tc.expectBackendCall {
-				expectedCursor := &bunpaginate.Cursor[system.BucketWithStatus]{
-					Data:     tc.returnData,
-					PageSize: 15,
-				}
+				expectedCursor := bunpaginate.NewCursor(tc.returnData, "", 15, true)
 				systemController.EXPECT().
 					ListBucketsWithStatus(gomock.Any(), gomock.Any()).
 					Return(expectedCursor, tc.returnErr)

@@ -30,6 +30,6 @@ func listBuckets(systemController system.Controller, paginationConfig common.Pag
 			return
 		}
 
-		api.RenderCursor[system.BucketWithStatus](w, *buckets)
+		api.RenderCursor(w, buckets)
 	}
 }

@@ -26,5 +26,5 @@ type Store interface {
 	CreateLedger(context.Context, *ledger.Ledger) error
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error)
+	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[BucketWithStatus], error)
 }
