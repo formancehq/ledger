@@ -7,8 +7,8 @@ import (
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 func listBuckets(systemController system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
@@ -29,7 +29,7 @@ func listBuckets(systemController system.Controller, paginationConfig common.Pag
 			}
 			return
 		}
-		
-		api.RenderCursor[system.BucketWithStatus](w, buckets)
+
+		api.RenderCursor[system.BucketWithStatus](w, *buckets)
 	}
 }

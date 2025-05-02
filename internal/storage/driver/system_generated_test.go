@@ -11,6 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	metadata "github.com/formancehq/go-libs/v3/metadata"
 	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
@@ -149,18 +150,18 @@ func (mr *SystemStoreMockRecorder) Ledgers() *gomock.Call {
 }
 
 // ListBucketsWithStatus mocks base method.
-func (m *SystemStore) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
+func (m *SystemStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[system.BucketWithStatus], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
-	ret0, _ := ret[0].([]system.BucketWithStatus)
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx, query)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[system.BucketWithStatus])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListBucketsWithStatus indicates an expected call of ListBucketsWithStatus.
-func (mr *SystemStoreMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
+func (mr *SystemStoreMockRecorder) ListBucketsWithStatus(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemStore)(nil).ListBucketsWithStatus), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemStore)(nil).ListBucketsWithStatus), ctx, query)
 }
 
 // MarkBucketAsDeleted mocks base method.

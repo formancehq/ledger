@@ -16,7 +16,6 @@ import (
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -44,7 +43,7 @@ func TestDeleteBucket(t *testing.T) {
 			bucket:             "test-bucket",
 			returnErr:          system.ErrLedgerNotFound,
 			expectedStatusCode: http.StatusNotFound,
-			expectedErrorCode:  api.ErrorNotFound,
+			expectedErrorCode:  api.ErrorCodeNotFound,
 		},
 		{
 			name:               "internal error",
