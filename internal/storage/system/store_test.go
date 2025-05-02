@@ -39,7 +39,7 @@ func TestLedgersCreate(t *testing.T) {
 		grp.Go(func() error {
 			l := ledger.MustNewWithDefault(fmt.Sprintf("ledger%d", i))
 
-			ctx, cancel := context.WithDeadline(ctx, time.Now().Add(40*time.Second))
+			ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 			defer cancel()
 
 			err := store.CreateLedger(ctx, &l)
