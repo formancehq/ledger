@@ -160,7 +160,7 @@ func WithTracer(tracer trace.Tracer) Option {
 func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
 	_, err := d.db.NewUpdate().
 		Model(&ledger.Ledger{}).
-		Set("deleted_at = ?", stdtime.Now().UTC()).
+		Set("deleted_at = ?", time.Now().UTC()).
 		Where("bucket = ?", bucketName).
 		Exec(ctx)
 	return postgres.ResolveError(err)
