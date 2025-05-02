@@ -3,6 +3,7 @@ package v2
 import (
 	"encoding/json"
 	"errors"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -167,7 +168,7 @@ func TestListBuckets(t *testing.T) {
 				},
 				{
 					Name:      "bucket2",
-					DeletedAt: &time.Now(),
+					DeletedAt: pointer.For(time.Now()),
 				},
 			},
 			expectBackendCall: true,
