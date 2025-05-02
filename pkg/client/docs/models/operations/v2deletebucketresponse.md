@@ -1,4 +1,4 @@
-# V2UpdateLedgerMetadataResponse
+# V2DeleteBucketResponse
 
 
 ## Fields

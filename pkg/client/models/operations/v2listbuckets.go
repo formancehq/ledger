@@ -6,22 +6,22 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
-type V2GetInfoResponse struct {
+type V2ListBucketsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
-	V2ConfigInfoResponse *components.V2ConfigInfoResponse
+	V2BucketWithStatuses []components.V2BucketWithStatus
 }
 
-func (o *V2GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
+func (o *V2ListBucketsResponse) GetHTTPMeta() components.HTTPMetadata {
 	if o == nil {
 		return components.HTTPMetadata{}
 	}
 	return o.HTTPMeta
 }
 
-func (o *V2GetInfoResponse) GetV2ConfigInfoResponse() *components.V2ConfigInfoResponse {
+func (o *V2ListBucketsResponse) GetV2BucketWithStatuses() []components.V2BucketWithStatus {
 	if o == nil {
 		return nil
 	}
-	return o.V2ConfigInfoResponse
+	return o.V2BucketWithStatuses
 }
