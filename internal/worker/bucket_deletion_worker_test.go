@@ -92,7 +92,7 @@ func TestBucketDeletionWorker_Stop(t *testing.T) {
 	require.Equal(t, context.DeadlineExceeded, err)
 }
 
-func TestNewBucketDeletionRunner(t *testing.T) {
+func TestNewBucketDeletionWorker(t *testing.T) {
 	t.Parallel()
 
 	logger := NoOpLogger()
