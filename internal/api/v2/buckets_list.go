@@ -29,7 +29,7 @@ func listBuckets(systemController system.Controller, paginationConfig common.Pag
 			}
 			return
 		}
-
-		api.RenderCursor(w, buckets)
+		
+		api.RenderCursor[system.BucketWithStatus](w, buckets)
 	}
 }
