@@ -107,7 +107,7 @@ func TestBucketsListWithStatus(t *testing.T) {
 
 func TestLedgerGet(t *testing.T) {
 	t.Parallel()
-
+	
 	testCases := []struct {
 		name          string
 		ledger        *ledger.Ledger
@@ -115,39 +115,53 @@ func TestLedgerGet(t *testing.T) {
 		expectedError error
 	}{
 		{
-			name:          "with store error",
-			ledger:        nil,
+			name: "with deleted bucket",
+			ledger: &ledger.Ledger{
+				Name:      "test-ledger",
+				DeletedAt: timePtr(time.Now()),
+			},
+			storeError:    nil,
+			expectedError: ErrLedgerNotFound,
+		},
+		{
+			name: "with store error",
+			ledger: nil,
 			storeError:    errors.New("database error"),
 			expectedError: errors.New("database error"),
 		},
 		{
-			name: "with active ledger",
+			name: "with active bucket",
 			ledger: &ledger.Ledger{
-				Name: "test-ledger",
+				Name:      "test-ledger",
+				DeletedAt: nil,
 			},
 			storeError:    nil,
 			expectedError: nil,
 		},
 	}
-
+	
 	for _, tc := range testCases {
 		tc := tc // capture range variable
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-
+			
 			store := NewMockStore(ctrl)
 			store.EXPECT().
 				GetLedger(gomock.Any(), "test-ledger").
 				Return(tc.ledger, tc.storeError)
-
+			
 			controller := NewDefaultController(store, nil)
 			result, err := controller.GetLedger(context.Background(), "test-ledger")
-
+			
 			if tc.expectedError != nil {
 				require.Error(t, err)
-				require.Equal(t, tc.expectedError.Error(), err.Error())
+				if tc.name == "with deleted bucket" {
+					require.ErrorIs(t, err, tc.expectedError)
+				} else {
+					require.Equal(t, tc.expectedError.Error(), err.Error())
+				}
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.ledger, result)
@@ -171,78 +185,6 @@ func TestLedgersList(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestGetLedgerWithDeletedBucket(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	now := time.Now()
-	l := &ledger.Ledger{
-		Name:      "test-ledger",
-		DeletedAt: &now,
-	}
-
-	store := NewMockStore(ctrl)
-	store.EXPECT().
-		GetLedger(gomock.Any(), "test-ledger").
-		Return(l, nil)
-
-	controller := NewDefaultController(store, nil)
-	_, err := controller.GetLedger(context.Background(), "test-ledger")
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrLedgerNotFound)
-}
-
-func TestGetLedgerWithError(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	expectedErr := errors.New("database error")
-	
-	store := NewMockStore(ctrl)
-	store.EXPECT().
-		GetLedger(gomock.Any(), "test-ledger").
-		Return(nil, expectedErr)
-
-	controller := NewDefaultController(store, nil)
-	_, err := controller.GetLedger(context.Background(), "test-ledger")
-	require.Error(t, err)
-	require.Equal(t, expectedErr, err)
-}
-
-func TestGetLedgerWithActiveBucket(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	l := &ledger.Ledger{
-		Name:      "test-ledger",
-		DeletedAt: nil,
-	}
-
-	store := NewMockStore(ctrl)
-	store.EXPECT().
-		GetLedger(gomock.Any(), "test-ledger").
-		Return(l, nil)
-
-	controller := NewDefaultController(store, nil)
-	result, err := controller.GetLedger(context.Background(), "test-ledger")
-	require.NoError(t, err)
-	require.Equal(t, l, result)
-}
-
-func TestListLedgersWithDeletedBucket(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	store := NewMockStore(ctrl)
-	store.EXPECT().
-		ListLedgers(gomock.Any(), gomock.Any()).
-		Return(nil, nil)
-
-	controller := NewDefaultController(store, nil)
-	_, err := controller.ListLedgers(context.Background(), common.ColumnPaginatedQuery[any]{})
-	require.NoError(t, err)
+func timePtr(t time.Time) *time.Time {
+	return &t
 }
