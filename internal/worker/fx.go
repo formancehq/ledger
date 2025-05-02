@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/robfig/cron/v3"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
@@ -10,8 +12,10 @@ import (
 )
 
 type ModuleConfig struct {
-	Schedule     string
-	MaxBlockSize int
+	Schedule                string
+	MaxBlockSize            int
+	BucketDeletionSchedule  string
+	BucketDeletionGraceDays int
 }
 
 func NewFXModule(cfg ModuleConfig) fx.Option {
@@ -32,6 +36,32 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 				Schedule:     schedule,
 			}, WithTracer(traceProvider.Tracer("AsyncBlockRunner"))), nil
 		}),
+		fx.Provide(func(
+			logger logging.Logger,
+			driver *driver.Driver,
+			traceProvider trace.TracerProvider,
+		) (*BucketDeletionRunner, error) {
+			bucketDeletionSchedule := cfg.BucketDeletionSchedule
+			if bucketDeletionSchedule == "" {
+				bucketDeletionSchedule = "0 0 0 * * *" // Daily at midnight
+			}
+			
+			graceDays := cfg.BucketDeletionGraceDays
+			if graceDays <= 0 {
+				graceDays = 30 // Default 30 days
+			}
+			
+			parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+			schedule, err := parser.Parse(bucketDeletionSchedule)
+			if err != nil {
+				return nil, err
+			}
+
+			return NewBucketDeletionRunner(logger, driver, BucketDeletionRunnerConfig{
+				Schedule:    schedule,
+				GracePeriod: time.Duration(graceDays) * 24 * time.Hour,
+			}, WithBucketDeletionTracer(traceProvider.Tracer("BucketDeletionRunner"))), nil
+		}),
 		fx.Invoke(fx.Annotate(func(lc fx.Lifecycle, asyncBlockRunner *AsyncBlockRunner) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
@@ -45,6 +75,20 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 				},
 				OnStop: asyncBlockRunner.Stop,
 			})
-		}, fx.ParamTags(``, ``, ``, `group:"workerModules"`))),
+		}, fx.ParamTags(``, ``))),
+		fx.Invoke(fx.Annotate(func(lc fx.Lifecycle, bucketDeletionRunner *BucketDeletionRunner) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					go func() {
+						if err := bucketDeletionRunner.Run(context.WithoutCancel(ctx)); err != nil {
+							panic(err)
+						}
+					}()
+
+					return nil
+				},
+				OnStop: bucketDeletionRunner.Stop,
+			})
+		}, fx.ParamTags(``, ``))),
 	)
 }
