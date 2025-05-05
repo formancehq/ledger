@@ -21,6 +21,7 @@ func main() {
 		ctx,
 		client,
 		ledger,
+		ledger,
 	)
 	if err != nil {
 		assert.Always(err == nil, "ledger should have been created properly", internal.Details{

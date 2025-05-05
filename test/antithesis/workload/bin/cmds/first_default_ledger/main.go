@@ -18,6 +18,7 @@ func main() {
 		ctx,
 		client,
 		ledger,
+		ledger,
 	)
 	if err != nil {
 		log.Fatalf("error creating ledger %s: %s", ledger, err)

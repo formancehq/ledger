@@ -49,16 +49,19 @@ func NewClient() *client.Formance {
 			Backoff: &retry.BackoffStrategy{
 				InitialInterval: 200,
 				Exponent:        1.5,
-				MaxElapsedTime:  4000,
+				MaxElapsedTime:  10_000,
 			},
 			RetryConnectionErrors: true,
 		}),
 	)
 }
 
-func CreateLedger(ctx context.Context, client *client.Formance, name string) error {
+func CreateLedger(ctx context.Context, client *client.Formance, name string, bucket string) error {
 	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: name,
+		V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+			Bucket: &bucket,
+		},
 	})
 
 	return err
