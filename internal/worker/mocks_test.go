@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -162,9 +163,19 @@ func (m *MockSpan) SpanContext() trace.SpanContext {
 }
 
 func (m *MockSpan) SetStatus(code codes.Code, description string) {
+	m.ctrl.Call(m, "SetStatus", code, description)
+}
+
+func (mr *MockSpanRecorder) SetStatus(code, description interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetStatus", nil, code, description)
 }
 
 func (m *MockSpan) SetName(name string) {
+	m.ctrl.Call(m, "SetName", name)
+}
+
+func (mr *MockSpanRecorder) SetName(name interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetName", nil, name)
 }
 
 func (m *MockSpan) SetAttributes(attrs ...attribute.KeyValue) {

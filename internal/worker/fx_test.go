@@ -42,12 +42,12 @@ func TestBucketDeletionProviders(t *testing.T) {
 		if bucketDeletionSchedule == "" {
 			bucketDeletionSchedule = "0 0 0 * * *" // Daily at midnight
 		}
-		
+
 		graceDays := cfg.BucketDeletionGraceDays
 		if graceDays <= 0 {
 			graceDays = 30 // Default 30 days
 		}
-		
+
 		parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 		schedule, err := parser.Parse(bucketDeletionSchedule)
 		if err != nil {
@@ -68,7 +68,7 @@ func TestBucketDeletionProviders(t *testing.T) {
 	require.Equal(t, time.Duration(30*24)*time.Hour, runner.cfg.GracePeriod)
 
 	cfg = ModuleConfig{
-		BucketDeletionSchedule:  "*/5 * * * *",
+		BucketDeletionSchedule:  "*/5 * * * * *",
 		BucketDeletionGraceDays: 45,
 	}
 
@@ -86,7 +86,7 @@ func TestAsyncBlockProviders(t *testing.T) {
 	tracerProvider := noop.NewTracerProvider()
 
 	cfg := ModuleConfig{
-		Schedule:     "* * * * *",
+		Schedule:     "* * * * * *",
 		MaxBlockSize: 1000,
 	}
 
