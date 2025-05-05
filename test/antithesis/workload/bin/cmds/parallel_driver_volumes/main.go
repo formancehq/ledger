@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
+	"os"
+	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/pkg/client"
@@ -12,20 +15,25 @@ import (
 )
 
 func main() {
+	log.Println("composer: parallel_driver_volumes")
 	ctx := context.Background()
 	client := internal.NewClient()
 
 	ledgers, err := client.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{})
 	if err != nil {
-		assert.Always(err == nil, "error listing ledgers", internal.Details{
-			"error": err,
-		})
-		return
+		log.Printf("error listing ledgers: %s", err)
+		os.Exit(1)
 	}
 
+	wg := sync.WaitGroup{}
 	for _, ledger := range ledgers.V2LedgerListResponse.Cursor.Data {
-		go checkVolumes(ctx, client, ledger.Name)
+		wg.Add(1)
+		go func(ledger string) {
+			defer wg.Done()
+			checkVolumes(ctx, client, ledger)
+		}(ledger.Name)
 	}
+	wg.Wait()
 }
 
 func checkVolumes(ctx context.Context, client *client.Formance, ledger string) {
@@ -51,4 +59,6 @@ func checkVolumes(ctx context.Context, client *client.Formance, ledger string) {
 				"error": err,
 			})
 	}
+
+	log.Printf("composer: parallel_driver_volumes: done for ledger %s", ledger)
 }
