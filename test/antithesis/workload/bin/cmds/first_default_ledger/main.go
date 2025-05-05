@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
 
@@ -21,10 +20,7 @@ func main() {
 		ledger,
 	)
 	if err != nil {
-		assert.Always(err == nil, "ledger should have been created properly", internal.Details{
-			"error": err,
-		})
-		return
+		log.Fatalf("error creating ledger %s: %s", ledger, err)
 	}
 
 	log.Println("composer: first_default_ledger: done")

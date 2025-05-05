@@ -41,13 +41,7 @@ func checkVolumes(ctx context.Context, client *client.Formance, ledger string) {
 		Ledger: ledger,
 	})
 	if err != nil {
-		assert.Always(
-			err == nil,
-			fmt.Sprintf("error getting aggregated balances for ledger %s", ledger),
-			internal.Details{
-				"error": err,
-			})
-		return
+		log.Fatalf("error getting aggregated balances for ledger %s: %s", ledger, err)
 	}
 
 	for asset, volumes := range aggregated.V2AggregateBalancesResponse.Data {
