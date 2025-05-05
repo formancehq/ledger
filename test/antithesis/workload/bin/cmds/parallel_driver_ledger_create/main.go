@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/big"
+	"math/rand"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/test/antithesis/internal"
@@ -14,7 +14,7 @@ func main() {
 	log.Println("composer: parallel_driver_ledger_create")
 	ctx := context.Background()
 	client := internal.NewClient()
-	id := big.NewInt(0).Abs(internal.RandomBigInt()).Int64()
+	id := rand.Intn(1e6)
 	ledger := fmt.Sprintf("ledger-%d", id)
 
 	err := internal.CreateLedger(
