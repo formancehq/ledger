@@ -153,9 +153,42 @@ func validateAddressFilter(ledger ledger.Ledger, operator string, value any) err
 	return nil
 }
 
-func (store *Store) LockLedger(ctx context.Context) error {
-	_, err := store.db.NewRaw(`lock table ` + store.GetPrefixedRelationName("logs")).Exec(ctx)
-	return postgres.ResolveError(err)
+func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() error, error) {
+	storeCp := *store
+	switch db := store.db.(type) {
+	case *bun.DB:
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		_, err = conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
+		if err != nil {
+			_ = conn.Close()
+			return nil, nil, nil, err
+		}
+		storeCp.db = conn
+
+		return &storeCp, storeCp.db, func() error {
+			_, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
+			if err != nil {
+				return err
+			}
+			return conn.Close()
+		}, nil
+	case bun.Tx:
+		_, err := db.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext(?))`, fmt.Sprintf("ledger:%d", store.ledger.ID))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return store, db, func() error {
+			// xact-scoped advisory locks are released automatically – nothing to do
+			return nil
+		}, nil
+	default:
+		panic(fmt.Errorf("invalid db type: %T", store.db))
+	}
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {

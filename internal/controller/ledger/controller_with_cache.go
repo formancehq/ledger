@@ -49,6 +49,18 @@ func (c *ControllerWithCache) BeginTX(ctx context.Context, options *sql.TxOption
 	}, tx, nil
 }
 
+func (c *ControllerWithCache) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
+	ctrl, db, release, err := c.Controller.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return &ControllerWithCache{
+		registry:   c.registry,
+		ledger:     c.ledger,
+		Controller: ctrl,
+	}, db, release, nil
+}
+
 func NewControllerWithCache(ledger ledger.Ledger, underlying Controller, registry *StateRegistry) *ControllerWithCache {
 	return &ControllerWithCache{
 		ledger:     ledger,

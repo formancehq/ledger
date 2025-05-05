@@ -502,6 +502,7 @@ Accept: application/json
           "user": "users:042"
         }
       },
+      "runtime": "interpreter",
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
@@ -1314,6 +1315,7 @@ Idempotency-Key: string
       "user": "users:042"
     }
   },
+  "runtime": "interpreter",
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
@@ -2705,6 +2707,7 @@ Authorization ( Scopes: ledger:write )
       "user": "users:042"
     }
   },
+  "runtime": "interpreter",
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
@@ -2731,10 +2734,18 @@ Authorization ( Scopes: ledger:write )
 |» plain|string|true|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
+|runtime|string|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 |reference|string|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 |accountMetadata|object|false|none|none|
 |» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|runtime|interpreter|
+|runtime|machine|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -3418,6 +3429,7 @@ Authorization ( Scopes: ledger:write )
           "user": "users:042"
         }
       },
+      "runtime": "interpreter",
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
@@ -3491,6 +3503,7 @@ Authorization ( Scopes: ledger:write )
         "user": "users:042"
       }
     },
+    "runtime": "interpreter",
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
@@ -3561,6 +3574,7 @@ xor
         "user": "users:042"
       }
     },
+    "runtime": "interpreter",
     "reference": "ref:001",
     "metadata": {
       "admin": "true"

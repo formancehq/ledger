@@ -3,19 +3,24 @@
 package bucket_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/extra/bundebug"
+	"go.opentelemetry.io/otel/trace/noop"
 	"io/fs"
 	"testing"
 )
@@ -35,6 +40,7 @@ func TestMigrations(t *testing.T) {
 
 	bucketName := uuid.NewString()[:8]
 	migrator := bucket.GetMigrator(db, bucketName)
+	ledgers := make([]ledger.Ledger, 0)
 
 	for i := 0; i < 5; i++ {
 		l, err := ledger.New(fmt.Sprintf("ledger%d", i), ledger.Configuration{
@@ -42,6 +48,8 @@ func TestMigrations(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NoError(t, system.New(db).CreateLedger(ctx, l))
+
+		ledgers = append(ledgers, *l)
 	}
 
 	_, err = bucket.WalkMigrations(bucket.MigrationsFS, func(entry fs.DirEntry) (*struct{}, error) {
@@ -79,4 +87,22 @@ func TestMigrations(t *testing.T) {
 		return pointer.For(struct{}{}), nil
 	})
 	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		store := ledgerstore.New(db, bucket.NewDefault(noop.Tracer{}, bucketName), ledgers[i])
+
+		require.NoError(t, bunpaginate.Iterate(
+			ctx,
+			common.ColumnPaginatedQuery[any]{
+				PageSize: 100,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			},
+			func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+				return store.Logs().Paginate(ctx, q)
+			},
+			func(cursor *bunpaginate.Cursor[ledger.Log]) error {
+				return nil
+			},
+		))
+	}
 }

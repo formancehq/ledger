@@ -40,8 +40,14 @@ func TraceWithMetric[RET any](
 	})
 }
 
-func Trace[RET any](ctx context.Context, tracer trace.Tracer, name string, fn func(ctx context.Context) (RET, error)) (RET, error) {
-	ctx, span := tracer.Start(ctx, name)
+func Trace[RET any](
+	ctx context.Context,
+	tracer trace.Tracer,
+	name string,
+	fn func(ctx context.Context) (RET, error),
+	spanOptions ...trace.SpanStartOption,
+) (RET, error) {
+	ctx, span := tracer.Start(ctx, name, spanOptions...)
 	defer span.End()
 
 	ret, err := fn(ctx)

@@ -1,0 +1,38 @@
+name: Run no downtime upgrades
+on:
+  workflow_dispatch:
+    inputs:
+      organization:
+        description: 'The organization to deploy the test'
+        required: false
+        default: formance
+
+concurrency:
+  group: rolling-upgrades
+  cancel-in-progress: true
+
+jobs:
+  Run:
+    name: Run no downtime upgrades
+    runs-on: "shipfox-4vcpu-ubuntu-2404"
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout
+      - id: setup-env
+        uses: ./.github/actions/setup-env
+        with:
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          kube-api-server-address: ${{ secrets.FORMANCE_DEV_KUBE_API_SERVER_ADDRESS }}
+          kube-token: ${{ secrets.FORMANCE_DEV_KUBE_TOKEN }}
+      - name: Run Pulumi
+        working-directory: ./tests/rolling-upgrades
+        run: >
+          go run main.go --overlay '{"version": "${{ github.sha }}"}'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          KUBECONFIG: /home/runner/work/ledger/ledger/.kube/config

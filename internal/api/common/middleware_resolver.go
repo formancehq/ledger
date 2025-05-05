@@ -1,6 +1,7 @@
 package common
 
 import (
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"net/http"
 	"strings"
@@ -30,7 +31,9 @@ func LedgerMiddleware(
 				return
 			}
 
-			ctx, span := tracer.Start(r.Context(), "OpenLedger")
+			ctx, span := tracer.Start(r.Context(), "OpenLedger", trace.WithAttributes(
+				attribute.String("ledger", name),
+			))
 			defer span.End()
 
 			var err error

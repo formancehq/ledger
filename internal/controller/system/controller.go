@@ -35,9 +35,14 @@ type Controller interface {
 }
 
 type DefaultController struct {
-	store                      Store
-	listener                   ledgercontroller.Listener
-	parser                     ledgercontroller.NumscriptParser
+	store    Store
+	listener ledgercontroller.Listener
+	// The numscript runtime used by default
+	defaultParser ledgercontroller.NumscriptParser
+	// The numscript runtime used when the "machine" runtime option is passed
+	machineParser ledgercontroller.NumscriptParser
+	// The numscript runtime used when the "interpreter" runtime option is passed
+	interpreterParser          ledgercontroller.NumscriptParser
 	registry                   *ledgercontroller.StateRegistry
 	databaseRetryConfiguration DatabaseRetryConfiguration
 
@@ -67,7 +72,9 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
 			store,
-			ctrl.parser,
+			ctrl.defaultParser,
+			ctrl.machineParser,
+			ctrl.interpreterParser,
 			ledgercontroller.WithMeter(meter),
 		)
 
@@ -144,10 +151,10 @@ func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param s
 
 func NewDefaultController(store Store, listener ledgercontroller.Listener, opts ...Option) *DefaultController {
 	ret := &DefaultController{
-		store:    store,
-		listener: listener,
-		registry: ledgercontroller.NewStateRegistry(),
-		parser:   ledgercontroller.NewDefaultNumscriptParser(),
+		store:         store,
+		listener:      listener,
+		registry:      ledgercontroller.NewStateRegistry(),
+		defaultParser: ledgercontroller.NewDefaultNumscriptParser(),
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -157,9 +164,15 @@ func NewDefaultController(store Store, listener ledgercontroller.Listener, opts 
 
 type Option func(ctrl *DefaultController)
 
-func WithParser(parser ledgercontroller.NumscriptParser) Option {
+func WithParser(
+	defaultParser ledgercontroller.NumscriptParser,
+	machineParser ledgercontroller.NumscriptParser,
+	interpreterParser ledgercontroller.NumscriptParser,
+) Option {
 	return func(ctrl *DefaultController) {
-		ctrl.parser = parser
+		ctrl.defaultParser = defaultParser
+		ctrl.machineParser = machineParser
+		ctrl.interpreterParser = interpreterParser
 	}
 }
 

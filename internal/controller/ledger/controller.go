@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"database/sql"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -19,6 +20,7 @@ type Controller interface {
 	BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error)
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
+	LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error)
 
 	// IsDatabaseUpToDate check if the ledger store is up to date, including the bucket and the ledger specifics
 	// It returns true if up to date
@@ -81,9 +83,17 @@ type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
 
+type RuntimeType string
+
+const (
+	RuntimeInterpreter RuntimeType = "interpreter"
+	RuntimeMachine     RuntimeType = "machine"
+)
+
 type CreateTransaction struct {
 	RunScript
 	AccountMetadata map[string]metadata.Metadata
+	Runtime         RuntimeType
 }
 
 type RevertTransaction struct {

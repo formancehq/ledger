@@ -2,12 +2,13 @@ package system
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/uptrace/bun"
 )
 
 type controllerFacade struct {
@@ -28,12 +29,15 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		_ = ctrl.Rollback(ctx)
 	}()
 
-	if err := fn(ctrl); err != nil {
+	if err := withLock(ctx, ctrl, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
+		return fn(ctrl)
+	}); err != nil {
 		return err
 	}
 
 	c.ledger.State = ledger.StateInUse
 
+	// todo: remove that in a later version
 	_, err = tx.NewUpdate().
 		Model(&c.ledger).
 		Set("state = ?", c.ledger.State).
@@ -126,42 +130,20 @@ func (c *controllerFacade) DeleteAccountMetadata(ctx context.Context, parameters
 }
 
 func (c *controllerFacade) Import(ctx context.Context, stream chan ledger.Log) error {
-	// Check before open a sql transaction
-	if c.ledger.State != ledger.StateInitializing {
-		return ledgercontroller.NewErrImport(errors.New("ledger is not in initializing state"))
-	}
-
-	// Use serializable isolation level to ensure no concurrent request use the store.
-	// If a concurrent transactions is made while we are importing some logs, the transaction importing logs will
-	// be canceled with serialization error.
-	ctrl, tx, err := c.BeginTX(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-
-	if err := tx.NewSelect().Model(&c.ledger).
-		Where("id = ?", c.ledger.ID).
-		Scan(ctx); err != nil {
-		return err
-	}
-
-	// Check again after the transaction is open
-	if c.ledger.State != ledger.StateInitializing {
-		return ledgercontroller.NewErrImport(errors.New("ledger is not in initializing state"))
-	}
-
-	if err := ctrl.Import(ctx, stream); err != nil {
-		if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
-			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
+	return withLock(ctx, c.Controller, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
+		// todo: remove that in a later version
+		if err := conn.NewSelect().Model(&c.ledger).
+			Where("id = ?", c.ledger.ID).
+			Scan(ctx); err != nil {
+			return err
 		}
-		return err
-	}
 
-	if err := ctrl.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
+		if c.ledger.State != ledger.StateInitializing {
+			return ledgercontroller.NewErrImport(errors.New("ledger is not in initializing state"))
+		}
 
-	return nil
+		return ctrl.Import(ctx, stream)
+	})
 }
 
 var _ ledgercontroller.Controller = (*controllerFacade)(nil)
@@ -171,4 +153,23 @@ func newLedgerStateTracker(ctrl ledgercontroller.Controller, ledger ledger.Ledge
 		Controller: ctrl,
 		ledger:     ledger,
 	}
+}
+
+func withLock(ctx context.Context, ctrl ledgercontroller.Controller, fn func(ctrl ledgercontroller.Controller, conn bun.IDB) error) error {
+	lockedCtrl, conn, release, err := ctrl.LockLedger(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to lock ledger: %w", err)
+	}
+
+	defer func() {
+		if err := release(); err != nil {
+			logging.FromContext(ctx).Errorf(
+				"failed to release lock: %v",
+				err,
+			)
+			otlp.RecordError(ctx, fmt.Errorf("failed to release lock: %v", err))
+		}
+	}()
+
+	return fn(lockedCtrl, conn)
 }

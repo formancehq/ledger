@@ -32,16 +32,18 @@ func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) 
 	}, tx, nil
 }
 
-func (d *DefaultStoreAdapter) Commit() error {
-	return d.Store.Commit()
-}
-
-func (d *DefaultStoreAdapter) Rollback() error {
-	return d.Store.Rollback()
-}
-
 func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
 	return d.AggregatedVolumes()
+}
+
+func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) (ledgercontroller.Store, bun.IDB, func() error, error) {
+	lockLedger, b, f, err := d.Store.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return &DefaultStoreAdapter{
+		Store: lockLedger,
+	}, b, f, err
 }
 
 func NewDefaultStoreAdapter(store *Store) *DefaultStoreAdapter {

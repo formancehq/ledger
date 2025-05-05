@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"reflect"
+
+	"github.com/formancehq/ledger/internal/storage/common"
 
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
@@ -35,8 +36,11 @@ import (
 )
 
 type DefaultController struct {
-	store  Store
-	parser NumscriptParser
+	store             Store
+	parser            NumscriptParser
+	machineParser     NumscriptParser
+	interpreterParser NumscriptParser
+
 	ledger ledger.Ledger
 
 	tracer trace.Tracer
@@ -75,16 +79,35 @@ func (ctrl *DefaultController) Rollback(_ context.Context) error {
 	return ctrl.store.Rollback()
 }
 
+func (ctrl *DefaultController) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
+	cp := *ctrl
+	var (
+		err     error
+		db      bun.IDB
+		release func() error
+	)
+	cp.store, db, release, err = ctrl.store.LockLedger(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return &cp, db, release, nil
+}
+
 func NewDefaultController(
 	l ledger.Ledger,
 	store Store,
 	numscriptParser NumscriptParser,
+	machineParser NumscriptParser,
+	interpreterParser NumscriptParser,
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
-		store:  store,
-		ledger: l,
-		parser: numscriptParser,
+		store:             store,
+		ledger:            l,
+		parser:            numscriptParser,
+		interpreterParser: interpreterParser,
+		machineParser:     machineParser,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -177,9 +200,9 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 
 	for log := range stream {
 		if lastLogID != nil && *log.ID <= *lastLogID {
-			return fmt.Errorf("log %d already exists", *log.ID)
+			return NewErrImport(fmt.Errorf("log %d already exists", *log.ID))
 		}
-		lastLogID = nil
+		lastLogID = log.ID
 
 		if err := ctrl.importLog(ctx, log); err != nil {
 			switch {
@@ -196,71 +219,78 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 }
 
 func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) error {
-	_, err := tracing.Trace(ctx, ctrl.tracer, "ImportLog", func(ctx context.Context) (any, error) {
-		switch payload := log.Data.(type) {
-		case ledger.CreatedTransaction:
-			logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-			if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
-				return nil, fmt.Errorf("failed to commit transaction: %w", err)
-			}
-			logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
-		case ledger.RevertedTransaction:
-			logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
-			_, _, err := ctrl.store.RevertTransaction(
-				ctx,
-				*payload.RevertedTransaction.ID,
-				*payload.RevertedTransaction.RevertedAt,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to revert transaction: %w", err)
-			}
-			if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
-				return nil, fmt.Errorf("failed to commit transaction: %w", err)
-			}
-		case ledger.SavedMetadata:
-			switch payload.TargetType {
-			case ledger.MetaTargetTypeTransaction:
-				logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
-				if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata, log.Date); err != nil {
-					return nil, fmt.Errorf("failed to update transaction metadata: %w", err)
+	_, err := tracing.Trace(
+		ctx,
+		ctrl.tracer,
+		"ImportLog",
+		func(ctx context.Context) (any, error) {
+			switch payload := log.Data.(type) {
+			case ledger.CreatedTransaction:
+				logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
+				if err := ctrl.store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
+					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
-			case ledger.MetaTargetTypeAccount:
-				logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
-				if err := ctrl.store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
-					payload.TargetID.(string): payload.Metadata,
-				}); err != nil {
-					return nil, fmt.Errorf("failed to update account metadata: %w", err)
+				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
+			case ledger.RevertedTransaction:
+				logging.FromContext(ctx).Debugf("Reverting transaction %d", *payload.RevertedTransaction.ID)
+				_, _, err := ctrl.store.RevertTransaction(
+					ctx,
+					*payload.RevertedTransaction.ID,
+					*payload.RevertedTransaction.RevertedAt,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to revert transaction: %w", err)
+				}
+				if err := ctrl.store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
+					return nil, fmt.Errorf("failed to commit transaction: %w", err)
+				}
+			case ledger.SavedMetadata:
+				switch payload.TargetType {
+				case ledger.MetaTargetTypeTransaction:
+					logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
+					if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata, log.Date); err != nil {
+						return nil, fmt.Errorf("failed to update transaction metadata: %w", err)
+					}
+				case ledger.MetaTargetTypeAccount:
+					logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
+					if err := ctrl.store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
+						payload.TargetID.(string): payload.Metadata,
+					}); err != nil {
+						return nil, fmt.Errorf("failed to update account metadata: %w", err)
+					}
+				}
+			case ledger.DeletedMetadata:
+				switch payload.TargetType {
+				case ledger.MetaTargetTypeTransaction:
+					logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
+					if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key, log.Date); err != nil {
+						return nil, fmt.Errorf("failed to delete transaction metadata: %w", err)
+					}
+				case ledger.MetaTargetTypeAccount:
+					logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
+					if err := ctrl.store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
+						return nil, fmt.Errorf("failed to delete account metadata: %w", err)
+					}
 				}
 			}
-		case ledger.DeletedMetadata:
-			switch payload.TargetType {
-			case ledger.MetaTargetTypeTransaction:
-				logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
-				if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key, log.Date); err != nil {
-					return nil, fmt.Errorf("failed to delete transaction metadata: %w", err)
-				}
-			case ledger.MetaTargetTypeAccount:
-				logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
-				if err := ctrl.store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
-					return nil, fmt.Errorf("failed to delete account metadata: %w", err)
-				}
-			}
-		}
 
-		logCopy := log
-		logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
-		if err := ctrl.store.InsertLog(ctx, &log); err != nil {
-			return nil, fmt.Errorf("failed to insert log: %w", err)
-		}
-
-		if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
-			if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
-				return nil, newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+			logCopy := log
+			logging.FromContext(ctx).Debugf("Inserting log %d", *log.ID)
+			if err := ctrl.store.InsertLog(ctx, &log); err != nil {
+				return nil, fmt.Errorf("failed to insert log: %w", err)
 			}
-		}
 
-		return nil, nil
-	})
+			if ctrl.ledger.HasFeature(features.FeatureHashLogs, "SYNC") {
+				if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
+					return nil, newErrInvalidHash(*log.ID, logCopy.Hash, log.Hash)
+				}
+			}
+
+			return nil, nil
+		},
+		trace.WithNewRoot(),
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+	)
 	return err
 }
 
@@ -285,12 +315,23 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
+func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
+	switch tx.Runtime {
+	case RuntimeInterpreter:
+		return ctrl.interpreterParser
+	case RuntimeMachine:
+		return ctrl.machineParser
+	default:
+		return ctrl.parser
+	}
+}
+
 func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	m, err := ctrl.parser.Parse(parameters.Input.Plain)
+	m, err := ctrl.getParser(parameters.Input).Parse(parameters.Input.Plain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}
