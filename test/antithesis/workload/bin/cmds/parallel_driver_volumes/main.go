@@ -20,6 +20,7 @@ func main() {
 	client := internal.NewClient()
 
 	ledgers, err := client.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{})
+
 	if err != nil {
 		log.Printf("error listing ledgers: %s", err)
 		os.Exit(1)
