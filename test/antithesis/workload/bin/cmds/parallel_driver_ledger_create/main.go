@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -10,6 +11,7 @@ import (
 )
 
 func main() {
+	log.Println("composer: parallel_driver_ledger_create")
 	ctx := context.Background()
 	client := internal.NewClient()
 	id := big.NewInt(0).Abs(internal.RandomBigInt()).Int64()
@@ -26,4 +28,6 @@ func main() {
 		})
 		return
 	}
+
+	log.Println("composer: parallel_driver_ledger_create: done")
 }

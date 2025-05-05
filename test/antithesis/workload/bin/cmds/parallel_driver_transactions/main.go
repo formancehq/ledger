@@ -2,22 +2,25 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/alitto/pond"
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/go-libs/v2/pointer"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 	"go.uber.org/atomic"
 )
 
 func main() {
+	log.Println("composer: parallel_driver_transactions")
+
 	ctx := context.Background()
 	client := internal.NewClient()
 
-	ledger := fmt.Sprintf("ledger-%d", internal.RandomBigInt().Int64())
+	ledger, err := internal.GetRandomLedger(ctx, client)
+	if err != nil {
+		log.Fatalf("error getting random ledger: %s", err)
+	}
 
 	const count = 100
 
@@ -49,27 +52,5 @@ func main() {
 		return
 	}
 
-	account, err := client.Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
-		Address: "world",
-		Expand:  pointer.For("volumes"),
-		Ledger:  ledger,
-	})
-
-	if !internal.AssertAlwaysErrNil(err, "we should be able to query account 'world'", nil) {
-		return
-	}
-
-	output := account.V2AccountResponse.Data.Volumes["USD/2"].Output
-
-	if !internal.AssertAlways(output != nil, "Expect output of world for USD/2 to be not empty", internal.Details{}) {
-		return
-	}
-
-	assert.Always(
-		output.Cmp(totalAmount) == 0,
-		"output of 'world' should match",
-		internal.Details{
-			"output": output,
-		},
-	)
+	log.Println("composer: parallel_driver_transactions: done")
 }

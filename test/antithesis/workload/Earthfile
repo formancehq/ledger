@@ -12,18 +12,6 @@ sources:
 
     SAVE ARTIFACT /src
 
-# tidy:
-#     FROM +sources
-
-#     CACHE --id go-mod-cache /go/pkg/mod
-#     CACHE --id go-cache /root/.cache/go-build
-
-#     WORKDIR /src/test/antithesis/workload
-#     RUN go mod tidy
-
-#     SAVE ARTIFACT go.mod AS LOCAL go.mod
-#     SAVE ARTIFACT go.sum AS LOCAL go.sum
-
 compile:
     CACHE --id go-mod-cache /go/pkg/mod
     CACHE --id go-cache /root/.cache/go-build

@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
 
 func main() {
+	log.Println("composer: first_default_ledger")
+
 	ctx := context.Background()
 	client := internal.NewClient()
 	ledger := "default"
@@ -23,4 +26,6 @@ func main() {
 		})
 		return
 	}
+
+	log.Println("composer: first_default_ledger: done")
 }

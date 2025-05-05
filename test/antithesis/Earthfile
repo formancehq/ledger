@@ -24,6 +24,26 @@ run:
           }
         }"
 
+run-1h:
+    WAIT
+        BUILD +requirements-build
+    END
+
+    FROM curlimages/curl
+    ARG ANTITHESIS_USERNAME=formance
+    ARG --required ANTITHESIS_SLACK_REPORT_RECIPIENT
+    RUN --no-cache --secret ANTITHESIS_PASSWORD curl \
+        --fail \
+        --user "$ANTITHESIS_USERNAME:$ANTITHESIS_PASSWORD" \
+        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance -d "{
+          \"params\": {
+            \"custom.duration\": \"1\",
+            \"antithesis.report.recipients\": \"${ANTITHESIS_SLACK_REPORT_RECIPIENT}\",
+            \"antithesis.config_image\": \"antithesis-config:latest\",
+            \"antithesis.images\": \"ledger:latest;workload:latest\"
+          }
+        }"
+
 debugger:
   FROM curlimages/curl
 
