@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	log.Println("composer: parallel_driver_volumes")
+	log.Println("composer: eventually_correct")
 	ctx := context.Background()
 	client := internal.NewClient()
 
@@ -55,5 +55,5 @@ func checkVolumes(ctx context.Context, client *client.Formance, ledger string) {
 			})
 	}
 
-	log.Printf("composer: parallel_driver_volumes: done for ledger %s", ledger)
+	log.Printf("composer: eventually_correct: done for ledger %s", ledger)
 }
