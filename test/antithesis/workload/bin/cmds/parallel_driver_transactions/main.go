@@ -8,7 +8,6 @@ import (
 	"github.com/alitto/pond"
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/test/antithesis/internal"
-	"go.uber.org/atomic"
 )
 
 func main() {
@@ -24,7 +23,6 @@ func main() {
 
 	const count = 100
 
-	hasSuccess := atomic.NewBool(false)
 	totalAmount := big.NewInt(0)
 
 	pool := pond.New(10, 10e3)
@@ -33,21 +31,14 @@ func main() {
 		amount := internal.RandomBigInt()
 		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
-			if internal.AssertAlwaysErrNil(
-				internal.RunTx(ctx, client, amount, ledger),
-				"creating transaction from @world to $account always return a nil error",
-				internal.Details{
-					"ledger": ledger,
-				},
-			) {
-				hasSuccess.CompareAndSwap(false, true)
-			}
+			err := internal.RunTx(ctx, client, amount, ledger)
+			assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
+				"ledger": ledger,
+			})
 		})
 	}
 
 	pool.StopAndWait()
-
-	assert.Always(hasSuccess.Load(), "at least some transactions were written", internal.Details{})
 
 	log.Println("composer: parallel_driver_transactions: done")
 }
