@@ -86,7 +86,7 @@ type ScriptV1 = vm.ScriptV1
 type RuntimeType string
 
 const (
-	RuntimeInterpreter RuntimeType = "interpreter"
+	RuntimeInterpreter RuntimeType = "experimental-interpreter"
 	RuntimeMachine     RuntimeType = "machine"
 )
 

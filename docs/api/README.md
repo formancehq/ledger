@@ -502,7 +502,7 @@ Accept: application/json
           "user": "users:042"
         }
       },
-      "runtime": "interpreter",
+      "runtime": "experimental-interpreter",
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
@@ -1315,7 +1315,7 @@ Idempotency-Key: string
       "user": "users:042"
     }
   },
-  "runtime": "interpreter",
+  "runtime": "experimental-interpreter",
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
@@ -2707,7 +2707,7 @@ Authorization ( Scopes: ledger:write )
       "user": "users:042"
     }
   },
-  "runtime": "interpreter",
+  "runtime": "experimental-interpreter",
   "reference": "ref:001",
   "metadata": {
     "admin": "true"
@@ -2744,7 +2744,7 @@ Authorization ( Scopes: ledger:write )
 
 |Property|Value|
 |---|---|
-|runtime|interpreter|
+|runtime|experimental-interpreter|
 |runtime|machine|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
@@ -3429,7 +3429,7 @@ Authorization ( Scopes: ledger:write )
           "user": "users:042"
         }
       },
-      "runtime": "interpreter",
+      "runtime": "experimental-interpreter",
       "reference": "ref:001",
       "metadata": {
         "admin": "true"
@@ -3503,7 +3503,7 @@ Authorization ( Scopes: ledger:write )
         "user": "users:042"
       }
     },
-    "runtime": "interpreter",
+    "runtime": "experimental-interpreter",
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
@@ -3574,7 +3574,7 @@ xor
         "user": "users:042"
       }
     },
-    "runtime": "interpreter",
+    "runtime": "experimental-interpreter",
     "reference": "ref:001",
     "metadata": {
       "admin": "true"
