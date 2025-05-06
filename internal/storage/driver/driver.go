@@ -39,7 +39,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		systemStore := d.systemStoreFactory.Create(d.db)
+		systemStore := d.systemStoreFactory.Create(tx)
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
