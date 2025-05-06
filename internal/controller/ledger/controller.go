@@ -86,8 +86,8 @@ type ScriptV1 = vm.ScriptV1
 type RuntimeType string
 
 const (
-	RuntimeInterpreter RuntimeType = "experimental-interpreter"
-	RuntimeMachine     RuntimeType = "machine"
+	RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
+	RuntimeMachine                 RuntimeType = "machine"
 )
 
 type CreateTransaction struct {
