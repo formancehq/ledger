@@ -5,7 +5,7 @@ The numscript runtime used to execute the script. Uses "machine" by default, unl
 
 ## Values
 
-| Name                 | Value                |
-| -------------------- | -------------------- |
-| `RuntimeInterpreter` | interpreter          |
-| `RuntimeMachine`     | machine              |
+| Name                             | Value                            |
+| -------------------------------- | -------------------------------- |
+| `RuntimeExperimentalInterpreter` | experimental-interpreter         |
+| `RuntimeMachine`                 | machine                          |

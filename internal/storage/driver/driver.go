@@ -57,7 +57,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	// Run the entire ledger creation process in a transaction for atomicity
 	// This ensures that either all steps succeed or none do (preventing partial state)
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		systemStore := d.systemStoreFactory.Create(d.db)
+		systemStore := d.systemStoreFactory.Create(tx)
 
 		// Step 1: Create the ledger record in the system store
 		if err := systemStore.CreateLedger(ctx, l); err != nil {

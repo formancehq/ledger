@@ -32,8 +32,8 @@ func (o *V2PostTransactionScript) GetVars() map[string]string {
 type Runtime string
 
 const (
-	RuntimeInterpreter Runtime = "interpreter"
-	RuntimeMachine     Runtime = "machine"
+	RuntimeExperimentalInterpreter Runtime = "experimental-interpreter"
+	RuntimeMachine                 Runtime = "machine"
 )
 
 func (e Runtime) ToPointer() *Runtime {
@@ -45,7 +45,7 @@ func (e *Runtime) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch v {
-	case "interpreter":
+	case "experimental-interpreter":
 		fallthrough
 	case "machine":
 		*e = Runtime(v)
