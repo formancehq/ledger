@@ -10,6 +10,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
@@ -42,7 +43,17 @@ func checkVolumes(ctx context.Context, client *client.Formance, ledger string) {
 		Ledger: ledger,
 	})
 	if err != nil {
-		log.Fatalf("error getting aggregated balances for ledger %s: %s", ledger, err)
+		if internal.IsServerError(aggregated.GetHTTPMeta()) {
+			assert.Always(
+				false,
+				fmt.Sprintf("error getting aggregated balances for ledger %s: %s", ledger, err),
+				internal.Details{
+					"error": err,
+				},
+			)
+		} else {
+			log.Fatalf("error getting aggregated balances for ledger %s: %s", ledger, err)
+		}
 	}
 
 	for asset, volumes := range aggregated.V2AggregateBalancesResponse.Data {
@@ -56,4 +67,8 @@ func checkVolumes(ctx context.Context, client *client.Formance, ledger string) {
 	}
 
 	log.Printf("composer: eventually_correct: done for ledger %s", ledger)
+}
+
+func IsServerError(httpMeta components.HTTPMetadata) bool {
+	return httpMeta.Response.StatusCode >= 400 && httpMeta.Response.StatusCode < 600
 }
