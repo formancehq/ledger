@@ -4,9 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"github.com/blang/semver"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/pterm/pterm"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
@@ -16,17 +13,16 @@ import (
 	"go.uber.org/atomic"
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
-	"path/filepath"
 )
 
 const (
-	baseConfigFlag   = "base-config"
-	fromRevisionFlag = "from-revision"
-	toRevisionFlag   = "to-revision"
-	stackNameFlag    = "stack-name"
-	debugFlag        = "debug"
-	overlayFlag      = "overlay"
-	noCleanupFlag    = "no-cleanup"
+	baseConfigFlag  = "base-config"
+	fromVersionFlag = "from-version"
+	toVersionFlag   = "to-version"
+	stackNameFlag   = "stack-name"
+	debugFlag       = "debug"
+	overlayFlag     = "overlay"
+	noCleanupFlag   = "no-cleanup"
 )
 
 var rootCmd = &cobra.Command{
@@ -50,8 +46,8 @@ func init() {
 	rootCmd.Flags().Bool(debugFlag, false, "Enable debug mode")
 	rootCmd.Flags().StringArray(overlayFlag, nil, "Overlay configs")
 	rootCmd.Flags().Bool(noCleanupFlag, false, "Do not cleanup the stack after the test")
-	rootCmd.Flags().String(fromRevisionFlag, "", "From revision/hash")
-	rootCmd.Flags().String(toRevisionFlag, "", "To revision/hash")
+	rootCmd.Flags().String(fromVersionFlag, "", "From version")
+	rootCmd.Flags().String(toVersionFlag, "", "To version")
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
@@ -72,12 +68,12 @@ func runE(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to load no-cleanup flag: %w", err)
 	}
 
-	fromRevision, err := cmd.Flags().GetString(fromRevisionFlag)
+	fromVersion, err := cmd.Flags().GetString(fromVersionFlag)
 	if err != nil {
 		return fmt.Errorf("failed to load from revision: %w", err)
 	}
 
-	toRevision, err := cmd.Flags().GetString(toRevisionFlag)
+	toVersion, err := cmd.Flags().GetString(toVersionFlag)
 	if err != nil {
 		return fmt.Errorf("failed to load to revision: %w", err)
 	}
@@ -102,39 +98,19 @@ func runE(cmd *cobra.Command, _ []string) error {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
-	semver.Parse()
-
-	info.Println("Cloning ledger into temporary directory...\r\n")
-	repository, err := git.PlainClone(tmpDir, false, &git.CloneOptions{
-		URL: "https://github.com/formancehq/ledger",
-	})
+	info.Printf("Searching last tag for version %s...\r\n", fromVersion)
+	fromReference, err := resolveReferenceFromVersion(fromVersion)
 	if err != nil {
-		return fmt.Errorf("failed to clone repository: %w", err)
+		return fmt.Errorf("failed to resolve hash from version %s: %w", fromVersion, err)
 	}
-	info.Println("Ledger cloned.")
+	info.Printf("Found tag %s for version %s\r\n", fromReference, fromVersion)
 
-	fromHash, err := repository.ResolveRevision(plumbing.Revision(fromRevision))
+	info.Printf("Searching last tag for version %s...\r\n", toVersion)
+	toReference, err := resolveReferenceFromVersion(toVersion)
 	if err != nil {
-		return fmt.Errorf("failed to resolve revision %s: %w", fromRevision, err)
+		return fmt.Errorf("failed to resolve hash from version %s: %w", toVersion, err)
 	}
-	info.Printf("Resolved revision %s to %s...\r\n", fromRevision, fromHash)
-
-	toHash, err := repository.ResolveRevision(plumbing.Revision(toRevision))
-	if err != nil {
-		return fmt.Errorf("failed to resolve revision %s: %w", toRevision, err)
-	}
-	info.Printf("Resolved revision %s to %s...\r\n", toRevision, toHash)
-
-	worktree, err := repository.Worktree()
-	if err != nil {
-		return fmt.Errorf("failed to get worktree: %w", err)
-	}
-
-	if err = worktree.Checkout(&git.CheckoutOptions{
-		Hash: *fromHash,
-	}); err != nil {
-		return err
-	}
+	info.Printf("Found tag %s for version %s\r\n", toReference, toVersion)
 
 	options := []DeploymentOption{
 		WithLogger(LoggerFn(func(fmt string, args ...interface{}) {
@@ -150,10 +126,10 @@ func runE(cmd *cobra.Command, _ []string) error {
 
 	stackManager := NewStackManager(options...)
 
-	stack, err := auto.UpsertStackLocalSource(
+	stack, err := auto.UpsertStackRemoteSource(
 		cmd.Context(),
-		stackName,
-		filepath.Join(tmpDir, "deployments/pulumi"),
+		"formance/ledger/"+stackName,
+		fromReference.getGitRepo(),
 		auto.Stacks(map[string]workspace.ProjectStack{
 			stackName: {Config: pconfig.Map{}},
 		}),
@@ -162,6 +138,7 @@ func runE(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to get ledger stack: %w", err)
 	}
 
+	baseConfig.Common.Tag = fromReference.imageTag
 	ledgerStackUpResult, err := stackManager.Deploy(cmd.Context(), stack, *baseConfig, optup.Refresh())
 	if err != nil {
 		return fmt.Errorf("failed to deploy stack: %w", err)
@@ -179,7 +156,7 @@ func runE(cmd *cobra.Command, _ []string) error {
 
 	accessTokenCreationStack, err := auto.UpsertStackInlineSource(
 		cmd.Context(),
-		stack.Name(),
+		"formance/"+string(projectSettings.Name)+"-access-token"+"/"+stackName,
 		string(projectSettings.Name)+"-access-token",
 		hackStack,
 		auto.Stacks(map[string]workspace.ProjectStack{
@@ -232,12 +209,20 @@ l:
 		case <-events:
 			if counter.Add(1) == 100 {
 				info.Printf("100 transactions inserted, triggering rolling upgrade...\r\n")
-				if err := worktree.Checkout(&git.CheckoutOptions{
-					Hash: *toHash,
-				}); err != nil {
-					return err
+				stack, err = auto.UpsertStackRemoteSource(
+					cmd.Context(),
+					"formance/ledger/"+stackName,
+					toReference.getGitRepo(),
+					auto.Stacks(map[string]workspace.ProjectStack{
+						stackName: {Config: pconfig.Map{}},
+					}),
+				)
+				if err != nil {
+					return fmt.Errorf("failed to get ledger stack: %w", err)
 				}
+
 				go func() {
+					baseConfig.Common.Tag = toReference.imageTag
 					_, err := stackManager.Deploy(cmd.Context(), stack, *baseConfig,
 						optup.Replace([]string{"urn:pulumi:tests-rolling-upgrades::ledger::Formance:Ledger$Formance:Ledger:API$kubernetes:apps/v1:Deployment::ledger-api"}),
 					)

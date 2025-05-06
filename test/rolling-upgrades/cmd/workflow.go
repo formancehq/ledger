@@ -21,7 +21,8 @@ func runWorkflow(ctx context.Context, client *client.Formance, events chan any) 
 	if err != nil {
 		switch err := err.(type) {
 		case *sdkerrors.V2ErrorResponse:
-			if err.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists {
+			if err.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists &&
+				err.ErrorMessage != "ledger already exists" {
 				return fmt.Errorf("failed to create ledger, got api error: %w", err)
 			}
 		default:
@@ -55,4 +56,3 @@ func runWorkflow(ctx context.Context, client *client.Formance, events chan any) 
 		}
 	}
 }
-

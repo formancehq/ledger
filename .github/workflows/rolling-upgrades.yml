@@ -22,6 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         name: Checkout
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
       - id: setup-env
         uses: ./.github/actions/default
       - name: Tailscale
@@ -59,11 +62,24 @@ jobs:
           EOF
       - name: Run Pulumi
         working-directory: ./test/rolling-upgrades
-        run: >
-          https_proxy= 
-          HTTPS_PROXY=
-          KUBECONFIG=$(pwd)/../../.kube/config 
-          nix develop --impure --command 
-          go run main.go --overlay '{"version": "${{ github.sha }}"}' --stack-name rolling-upgrades-${{ github.sha }}
+        run: |
+          set -ex 
+          
+          git fetch --all;
+          git branch -a;
+          git branch -a --contains ${{ github.sha }} || true;
+          git branch --contains ${{ github.sha }} || true;
+          git branch --contains ${{ github.event.pull_request.head.sha }} || true;
+          
+          previousRelease=$(git branch | sort | grep $(git branch --contains ${{ github.sha }} | tail -1 | tr -d " ") -B 1 | head -1 | tr -d ' ');
+          export https_proxy= ;
+          export HTTPS_PROXY= ;
+          export KUBECONFIG=$(pwd)/../../.kube/config; 
+          
+          nix develop --impure --command \ 
+            go run main.go \
+            --from-version $previousRelease \
+            --to-version ${{ github.sha }} \
+            --stack-name rolling-upgrades-${{ github.sha }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
