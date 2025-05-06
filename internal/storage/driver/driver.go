@@ -40,6 +40,21 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		systemStore := d.systemStoreFactory.Create(d.db)
+		
+		var count int
+		err := d.db.NewSelect().
+			Model(&ledger.Ledger{}).
+			Where("bucket = ?", l.Bucket).
+			Where("deleted_at IS NOT NULL").
+			Count(ctx, &count)
+		
+		if err != nil {
+			return fmt.Errorf("checking if bucket is marked for deletion: %w", err)
+		}
+		
+		if count > 0 {
+			return systemcontroller.ErrBucketMarkedForDeletion
+		}
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
@@ -325,13 +340,13 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, days int) ([]string, error) {
-	if days < 0 {
+func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, gracePeriod time.Duration) ([]string, error) {
+	if gracePeriod < 0 {
 		return []string{}, nil
 	}
 
 	var buckets []string
-	cutoffDate := time.Now().UTC().AddDate(0, 0, -days)
+	cutoffDate := time.Now().UTC().Add(-gracePeriod)
 
 	err := d.db.NewSelect().
 		DistinctOn("bucket").
