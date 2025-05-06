@@ -102,11 +102,11 @@ func GetRandomLedger(ctx context.Context, client *client.Formance) (string, erro
 	return ledgers[randomIndex], nil
 }
 
-func RunTx(ctx context.Context, client *client.Formance, amount *big.Int, ledger string) error {
+func RunTx(ctx context.Context, client *client.Formance, amount *big.Int, ledger string) (*operations.V2CreateTransactionResponse, error) {
 	orderID := fmt.Sprint(int64(math.Abs(float64(random.GetRandom()))))
 	dest := fmt.Sprintf("orders:%s", orderID)
 
-	_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+	res, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 		V2PostTransaction: components.V2PostTransaction{
 			Postings: []components.V2Posting{{
 				Amount:      amount,
@@ -117,5 +117,6 @@ func RunTx(ctx context.Context, client *client.Formance, amount *big.Int, ledger
 		},
 		Ledger: ledger,
 	})
-	return err
+
+	return res, err
 }

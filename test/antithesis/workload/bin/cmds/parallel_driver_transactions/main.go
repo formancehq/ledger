@@ -18,7 +18,8 @@ func main() {
 
 	ledger, err := internal.GetRandomLedger(ctx, client)
 	if err != nil {
-		log.Fatalf("error getting random ledger: %s", err)
+		ledger = "default"
+		log.Printf("error getting random ledger: %s", err)
 	}
 
 	const count = 100
@@ -31,9 +32,13 @@ func main() {
 		amount := internal.RandomBigInt()
 		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
-			err := internal.RunTx(ctx, client, amount, ledger)
+			res, err := internal.RunTx(ctx, client, amount, ledger)
 			assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
 				"ledger": ledger,
+			})
+			assert.Always(!internal.IsServerError(res.GetHTTPMeta()), "no internal server error when committing transaction", internal.Details{
+				"ledger": ledger,
+				"error":  err,
 			})
 		})
 	}
