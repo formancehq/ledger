@@ -310,7 +310,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							IdempotencyKey: pointer.For("testing"),
 							Ledger:         "default",
 							V2PostTransaction: components.V2PostTransaction{
-								Runtime:  pointer.For(components.RuntimeInterpreter),
+								Runtime:  pointer.For(components.RuntimeExperimentalInterpreter),
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
 									// note that we're missing newlines here,

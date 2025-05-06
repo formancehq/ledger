@@ -317,7 +317,7 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 
 func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
 	switch tx.Runtime {
-	case RuntimeInterpreter:
+	case RuntimeExperimentalInterpreter:
 		return ctrl.interpreterParser
 	case RuntimeMachine:
 		return ctrl.machineParser
