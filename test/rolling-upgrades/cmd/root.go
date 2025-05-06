@@ -4,40 +4,42 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
+	"github.com/blang/semver"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/pterm/pterm"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optup"
-	"github.com/pulumi/pulumi/sdk/v3/go/common/resource/config"
+	pconfig "github.com/pulumi/pulumi/sdk/v3/go/common/resource/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	"github.com/spf13/cobra"
 	"go.uber.org/atomic"
 	"k8s.io/client-go/tools/clientcmd"
-	"math/big"
 	"os"
+	"path/filepath"
 )
 
 const (
-	baseConfigFlag = "from-config"
-	toConfigFlag   = "to-config"
-	stackNameFlag  = "stack-name"
-	debugFlag      = "debug"
-	overlayFlag    = "overlay"
-	noCleanupFlag  = "no-cleanup"
+	baseConfigFlag   = "base-config"
+	fromRevisionFlag = "from-revision"
+	toRevisionFlag   = "to-revision"
+	stackNameFlag    = "stack-name"
+	debugFlag        = "debug"
+	overlayFlag      = "overlay"
+	noCleanupFlag    = "no-cleanup"
 )
 
 var rootCmd = &cobra.Command{
-	Use:          "rolling-upgrades",
-	RunE:         runE,
-	SilenceUsage: true,
+	Use:           "rolling-upgrades",
+	RunE:          runE,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
+		pterm.Error.WithWriter(rootCmd.OutOrStderr()).Println(err)
 		os.Exit(1)
 	}
 }
@@ -48,6 +50,8 @@ func init() {
 	rootCmd.Flags().Bool(debugFlag, false, "Enable debug mode")
 	rootCmd.Flags().StringArray(overlayFlag, nil, "Overlay configs")
 	rootCmd.Flags().Bool(noCleanupFlag, false, "Do not cleanup the stack after the test")
+	rootCmd.Flags().String(fromRevisionFlag, "", "From revision/hash")
+	rootCmd.Flags().String(toRevisionFlag, "", "To revision/hash")
 
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
@@ -68,6 +72,16 @@ func runE(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to load no-cleanup flag: %w", err)
 	}
 
+	fromRevision, err := cmd.Flags().GetString(fromRevisionFlag)
+	if err != nil {
+		return fmt.Errorf("failed to load from revision: %w", err)
+	}
+
+	toRevision, err := cmd.Flags().GetString(toRevisionFlag)
+	if err != nil {
+		return fmt.Errorf("failed to load to revision: %w", err)
+	}
+
 	debug, err := cmd.Flags().GetBool(debugFlag)
 	if err != nil {
 		return fmt.Errorf("failed to load debug flag: %w", err)
@@ -79,6 +93,48 @@ func runE(cmd *cobra.Command, _ []string) error {
 	}
 
 	info := pterm.Info.WithWriter(cmd.OutOrStdout())
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	semver.Parse()
+
+	info.Println("Cloning ledger into temporary directory...\r\n")
+	repository, err := git.PlainClone(tmpDir, false, &git.CloneOptions{
+		URL: "https://github.com/formancehq/ledger",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to clone repository: %w", err)
+	}
+	info.Println("Ledger cloned.")
+
+	fromHash, err := repository.ResolveRevision(plumbing.Revision(fromRevision))
+	if err != nil {
+		return fmt.Errorf("failed to resolve revision %s: %w", fromRevision, err)
+	}
+	info.Printf("Resolved revision %s to %s...\r\n", fromRevision, fromHash)
+
+	toHash, err := repository.ResolveRevision(plumbing.Revision(toRevision))
+	if err != nil {
+		return fmt.Errorf("failed to resolve revision %s: %w", toRevision, err)
+	}
+	info.Printf("Resolved revision %s to %s...\r\n", toRevision, toHash)
+
+	worktree, err := repository.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	if err = worktree.Checkout(&git.CheckoutOptions{
+		Hash: *fromHash,
+	}); err != nil {
+		return err
+	}
 
 	options := []DeploymentOption{
 		WithLogger(LoggerFn(func(fmt string, args ...interface{}) {
@@ -97,9 +153,9 @@ func runE(cmd *cobra.Command, _ []string) error {
 	stack, err := auto.UpsertStackLocalSource(
 		cmd.Context(),
 		stackName,
-		"../../deployments/pulumi",
+		filepath.Join(tmpDir, "deployments/pulumi"),
 		auto.Stacks(map[string]workspace.ProjectStack{
-			stackName: {Config: config.Map{}},
+			stackName: {Config: pconfig.Map{}},
 		}),
 	)
 	if err != nil {
@@ -127,7 +183,7 @@ func runE(cmd *cobra.Command, _ []string) error {
 		string(projectSettings.Name)+"-access-token",
 		hackStack,
 		auto.Stacks(map[string]workspace.ProjectStack{
-			stack.Name(): {Config: config.Map{}},
+			stack.Name(): {Config: pconfig.Map{}},
 		}),
 	)
 	if err != nil {
@@ -176,6 +232,11 @@ l:
 		case <-events:
 			if counter.Add(1) == 100 {
 				info.Printf("100 transactions inserted, triggering rolling upgrade...\r\n")
+				if err := worktree.Checkout(&git.CheckoutOptions{
+					Hash: *toHash,
+				}); err != nil {
+					return err
+				}
 				go func() {
 					_, err := stackManager.Deploy(cmd.Context(), stack, *baseConfig,
 						optup.Replace([]string{"urn:pulumi:tests-rolling-upgrades::ledger::Formance:Ledger$Formance:Ledger:API$kubernetes:apps/v1:Deployment::ledger-api"}),
@@ -193,8 +254,6 @@ l:
 			return fmt.Errorf("failed to run workflow: %w", err)
 		}
 	}
-
-	// todo: Wait the complete migration
 
 	info.Printf("Waiting some transactions to be processed...\r\n")
 	counter.Store(0)
@@ -222,50 +281,4 @@ l2:
 	}
 
 	return nil
-}
-
-func runWorkflow(ctx context.Context, client *client.Formance, events chan any) error {
-
-	const ledgerName = "testing"
-
-	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
-		Ledger:                ledgerName,
-		V2CreateLedgerRequest: components.V2CreateLedgerRequest{},
-	})
-	if err != nil {
-		switch err := err.(type) {
-		case *sdkerrors.V2ErrorResponse:
-			if err.ErrorCode != components.V2ErrorsEnumLedgerAlreadyExists {
-				return fmt.Errorf("failed to create ledger, got api error: %w", err)
-			}
-		default:
-			return fmt.Errorf("failed to create ledger: %w", err)
-		}
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-			_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-				Ledger: ledgerName,
-				V2PostTransaction: components.V2PostTransaction{
-					Postings: []components.V2Posting{
-						{
-							Source:      "world",
-							Destination: "bank",
-							Asset:       "USD/2",
-							Amount:      big.NewInt(100),
-						},
-					},
-				},
-			})
-			if err != nil {
-				return err
-			}
-
-			events <- struct{}{}
-		}
-	}
 }
