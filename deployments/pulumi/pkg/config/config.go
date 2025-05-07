@@ -231,7 +231,7 @@ func (s StorageService) toInput() storage.Service {
 }
 
 type Storage struct {
-	StorageSource
+	StorageSource `yaml:",inline"`
 
 	// Connectivity is the connectivity configuration for the database
 	Connectivity ConnectivityDatabase `json:"connectivity" yaml:"connectivity"`
