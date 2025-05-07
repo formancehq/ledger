@@ -42,20 +42,31 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		systemStore := d.systemStoreFactory.Create(d.db)
 
-		count, err := d.db.NewSelect().
-			Model(&ledger.Ledger{}).
-			TableExpr("_system.ledgers").
-			Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
-			Where("_system.ledgers.bucket = ?", l.Bucket).
-			Where("_system.buckets.deleted_at IS NOT NULL").
-			Count(ctx)
+		// Get bucket status in a single query - either returns the bucket (if it exists) or nil
+		var buckets []*ledger.Bucket
+		err := d.db.NewSelect().
+			Model(&ledger.Bucket{}).
+			Where("name = ?", l.Bucket).
+			Scan(ctx, &buckets)
 
 		if err != nil {
-			return fmt.Errorf("checking if bucket is marked for deletion: %w", err)
+			return fmt.Errorf("checking bucket status: %w", err)
 		}
 
-		if count > 0 {
-			return systemcontroller.ErrBucketMarkedForDeletion
+		// Check if bucket exists and its deletion status
+		if len(buckets) > 0 {
+			// Bucket exists
+			if buckets[0].DeletedAt != nil {
+				return systemcontroller.ErrBucketMarkedForDeletion
+			}
+		} else {
+			// Bucket doesn't exist, create it
+			bucket := &ledger.Bucket{
+				Name: l.Bucket,
+			}
+			if err := systemStore.CreateBucket(ctx, bucket); err != nil {
+				return fmt.Errorf("creating bucket: %w", err)
+			}
 		}
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {

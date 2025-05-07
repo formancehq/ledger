@@ -183,7 +183,8 @@ func (d *DefaultStore) ListBuckets(ctx context.Context, query common.ColumnPagin
 	var buckets []ledger.Bucket
 
 	q := d.db.NewSelect().
-		Model(&ledger.Bucket{})
+		Model(&ledger.Bucket{}).
+		Column("name", "added_at", "deleted_at")
 
 	if query.PageSize == 0 {
 		query.PageSize = bunpaginate.QueryDefaultPageSize
@@ -226,6 +227,7 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 	// Map Bucket to BucketWithStatus
 	bucketsWithStatus := make([]systemcontroller.BucketWithStatus, len(bucketsCursor.Data))
 	for i, bucket := range bucketsCursor.Data {
+
 		bucketsWithStatus[i] = systemcontroller.BucketWithStatus{
 			Name:      bucket.Name,
 			DeletedAt: bucket.DeletedAt,
