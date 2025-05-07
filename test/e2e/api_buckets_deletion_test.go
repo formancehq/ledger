@@ -73,7 +73,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 					Ledger: ledgerName,
 				})
 				Expect(err).ToNot(HaveOccurred())
-				Expect(info.V2LedgerInfoResponse.Data.Name).To(PointTo(Equal(ledgerName)))
+				Expect(*info.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
 			})
 
 			It("should mark the bucket as deleted and make it inaccessible", func(specContext SpecContext) {
@@ -182,7 +182,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 					Ledger: ledgerName,
 				})
 				Expect(err).ToNot(HaveOccurred())
-				Expect(info.V2LedgerInfoResponse.Data.Name).To(PointTo(Equal(ledgerName)))
+				Expect(*info.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
 
 				buckets, err := client.Ledger.V2.ListBuckets(ctx)
 				Expect(err).ToNot(HaveOccurred())
