@@ -262,7 +262,7 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
 					_, err := tx.ExecContext(ctx, `
 						insert into _system.buckets (name, added_at, deleted_at)
-						select distinct bucket, min(added_at), null
+						select distinct bucket, min(added_at), NULL::timestamp
 						from _system.ledgers
 						group by bucket
 						on conflict (name) do nothing;
@@ -275,7 +275,21 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 			Name: "Add foreign key from ledgers to buckets",
 			Up: func(ctx context.Context, db bun.IDB) error {
 				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					// S'assurer que chaque bucket dans ledgers existe dans la table buckets
 					_, err := tx.ExecContext(ctx, `
+						insert into _system.buckets (name, added_at)
+						select distinct bucket, now()
+						from _system.ledgers l
+						where not exists (
+							select 1 from _system.buckets b where b.name = l.bucket
+						);
+					`)
+					if err != nil {
+						return err
+					}
+
+					// Ajouter la contrainte de clé étrangère
+					_, err = tx.ExecContext(ctx, `
 						alter table _system.ledgers
 						add constraint fk_ledgers_bucket_buckets_name
 						foreign key (bucket)

@@ -458,7 +458,7 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="Ledger"></a>
-## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L18-L27>)
+## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L19-L27>)
 
 
 
@@ -467,11 +467,10 @@ type Ledger struct {
     bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
     Configuration
-    ID        int        `json:"id" bun:"id,type:int,scanonly"`
-    Name      string     `json:"name" bun:"name,type:varchar(255),pk"`
-    AddedAt   time.Time  `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
-    State     string     `json:"-" bun:"state,type:varchar(255),nullzero"`
-    DeletedAt *time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
+    ID      int       `json:"id" bun:"id,type:int,scanonly"`
+    Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
+    AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
 }
 ```
 

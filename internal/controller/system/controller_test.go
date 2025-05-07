@@ -15,12 +15,12 @@ import (
 
 func TestBucketOperations(t *testing.T) {
 	t.Parallel()
-	
+
 	testCases := []struct {
-		name           string
-		operation      func(controller *DefaultController, ctx context.Context) error
-		setupMock      func(store *MockStore)
-		expectedError  error
+		name          string
+		operation     func(controller *DefaultController, ctx context.Context) error
+		setupMock     func(store *MockStore)
+		expectedError error
 	}{
 		{
 			name: "mark bucket as deleted",
@@ -47,20 +47,20 @@ func TestBucketOperations(t *testing.T) {
 			expectedError: nil,
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		tc := tc // capture range variable
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			
+
 			store := NewMockStore(ctrl)
 			tc.setupMock(store)
-			
+
 			controller := NewDefaultController(store, nil)
 			err := tc.operation(controller, context.Background())
-			
+
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.Equal(t, tc.expectedError, err)
@@ -92,7 +92,7 @@ func TestBucketsListWithStatus(t *testing.T) {
 	query := common.ColumnPaginatedQuery[any]{
 		PageSize: 15,
 	}
-	
+
 	expectedCursor := &bunpaginate.Cursor[BucketWithStatus]{
 		Data:     buckets,
 		PageSize: 15,
@@ -111,7 +111,7 @@ func TestBucketsListWithStatus(t *testing.T) {
 
 func TestLedgerGet(t *testing.T) {
 	t.Parallel()
-	
+
 	testCases := []struct {
 		name          string
 		ledger        *ledger.Ledger
@@ -119,53 +119,39 @@ func TestLedgerGet(t *testing.T) {
 		expectedError error
 	}{
 		{
-			name: "with deleted bucket",
-			ledger: &ledger.Ledger{
-				Name:      "test-ledger",
-				DeletedAt: timePtr(time.Now()),
-			},
-			storeError:    nil,
-			expectedError: ErrLedgerNotFound,
-		},
-		{
-			name: "with store error",
-			ledger: nil,
+			name:          "with store error",
+			ledger:        nil,
 			storeError:    errors.New("database error"),
 			expectedError: errors.New("database error"),
 		},
 		{
-			name: "with active bucket",
+			name: "with active ledger",
 			ledger: &ledger.Ledger{
-				Name:      "test-ledger",
-				DeletedAt: nil,
+				Name: "test-ledger",
 			},
 			storeError:    nil,
 			expectedError: nil,
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		tc := tc // capture range variable
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			
+
 			store := NewMockStore(ctrl)
 			store.EXPECT().
 				GetLedger(gomock.Any(), "test-ledger").
 				Return(tc.ledger, tc.storeError)
-			
+
 			controller := NewDefaultController(store, nil)
 			result, err := controller.GetLedger(context.Background(), "test-ledger")
-			
+
 			if tc.expectedError != nil {
 				require.Error(t, err)
-				if tc.name == "with deleted bucket" {
-					require.ErrorIs(t, err, tc.expectedError)
-				} else {
-					require.Equal(t, tc.expectedError.Error(), err.Error())
-				}
+				require.Equal(t, tc.expectedError.Error(), err.Error())
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.ledger, result)
@@ -187,8 +173,4 @@ func TestLedgersList(t *testing.T) {
 	controller := NewDefaultController(store, nil)
 	_, err := controller.ListLedgers(context.Background(), common.ColumnPaginatedQuery[any]{})
 	require.NoError(t, err)
-}
-
-func timePtr(t time.Time) *time.Time {
-	return &t
 }

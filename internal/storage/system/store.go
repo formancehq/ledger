@@ -54,7 +54,8 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
 		Column("bucket").
-		Where("deleted_at IS NULL").
+		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
+		Where("_system.buckets.deleted_at IS NULL").
 		Scan(ctx, &buckets)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
@@ -113,11 +114,15 @@ func (d *DefaultStore) Ledgers() common.PaginatedResource[
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	ret := &ledger.Ledger{}
-	if err := d.db.NewSelect().
+	err := d.db.NewSelect().
 		Model(ret).
-		Column("*").
-		Where("name = ?", name).
-		Scan(ctx); err != nil {
+		Column("_system.ledgers.*").
+		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
+		Where("_system.ledgers.name = ?", name).
+		Where("_system.buckets.deleted_at IS NULL").
+		Scan(ctx)
+
+	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}
 
@@ -158,18 +163,18 @@ func WithTracer(tracer trace.Tracer) Option {
 
 func (d *DefaultStore) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
 	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
-		Set("deleted_at = ?", time.Now().UTC()).
-		Where("bucket = ?", bucketName).
+		Table("_system.buckets").
+		Set("deleted_at = now()").
+		Where("name = ?", bucketName).
 		Exec(ctx)
 	return postgres.ResolveError(err)
 }
 
 func (d *DefaultStore) RestoreBucket(ctx context.Context, bucketName string) error {
 	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
+		Table("_system.buckets").
 		Set("deleted_at = NULL").
-		Where("bucket = ?", bucketName).
+		Where("name = ?", bucketName).
 		Exec(ctx)
 	return postgres.ResolveError(err)
 }
@@ -183,7 +188,9 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.C
 	q := d.db.NewSelect().
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
-		Column("bucket", "deleted_at")
+		Column("_system.ledgers.bucket").
+		ColumnExpr("_system.buckets.deleted_at AS deleted_at").
+		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name")
 
 	if query.PageSize == 0 {
 		query.PageSize = bunpaginate.QueryDefaultPageSize
