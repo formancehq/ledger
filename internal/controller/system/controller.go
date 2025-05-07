@@ -134,11 +134,7 @@ func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*led
 		if err != nil {
 			return nil, err
 		}
-		
-		if l.DeletedAt != nil {
-			return nil, ErrLedgerNotFound
-		}
-		
+
 		return l, nil
 	})
 }

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -13,9 +14,9 @@ import (
 )
 
 type ModuleConfig struct {
-	Schedule                string
-	MaxBlockSize            int
-	BucketDeletionSchedule  string
+	Schedule                  string
+	MaxBlockSize              int
+	BucketDeletionSchedule    string
 	BucketDeletionGracePeriod string
 }
 
@@ -46,18 +47,18 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 			if bucketDeletionSchedule == "" {
 				bucketDeletionSchedule = "0 0 0 * * *" // Daily at midnight
 			}
-			
+
 			gracePeriod := cfg.BucketDeletionGracePeriod
 			if gracePeriod == "" {
 				gracePeriod = "720h" // Default 30 days (720 hours)
 			}
-			
+
 			parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 			schedule, err := parser.Parse(bucketDeletionSchedule)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			duration, err := time.ParseDuration(gracePeriod)
 			if err != nil {
 				return nil, fmt.Errorf("parsing grace period duration: %w", err)

@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"sync"
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -40,18 +41,19 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		systemStore := d.systemStoreFactory.Create(d.db)
-		
-		var count int
-		err := d.db.NewSelect().
+
+		count, err := d.db.NewSelect().
 			Model(&ledger.Ledger{}).
-			Where("bucket = ?", l.Bucket).
-			Where("deleted_at IS NOT NULL").
-			Count(ctx, &count)
-		
+			TableExpr("_system.ledgers").
+			Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
+			Where("_system.ledgers.bucket = ?", l.Bucket).
+			Where("_system.buckets.deleted_at IS NOT NULL").
+			Count(ctx)
+
 		if err != nil {
 			return fmt.Errorf("checking if bucket is marked for deletion: %w", err)
 		}
-		
+
 		if count > 0 {
 			return systemcontroller.ErrBucketMarkedForDeletion
 		}
@@ -103,10 +105,6 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	ret, err := d.systemStoreFactory.Create(d.db).GetLedger(ctx, name)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	if ret.DeletedAt != nil {
-		return nil, nil, systemcontroller.ErrLedgerNotFound
 	}
 
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
@@ -346,14 +344,14 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, gracePeriod ti
 	}
 
 	var buckets []string
-	cutoffDate := time.Now().UTC().Add(-gracePeriod)
+	gracePeriodInterval := fmt.Sprintf("%.0f seconds", gracePeriod.Seconds())
 
 	err := d.db.NewSelect().
-		DistinctOn("bucket").
+		DistinctOn("_system.ledgers.bucket").
 		Model(&ledger.Ledger{}).
-		Column("bucket").
-		Where("deleted_at IS NOT NULL").
-		Where("deleted_at <= ?", cutoffDate).
+		Column("_system.ledgers.bucket").
+		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
+		Where("_system.buckets.deleted_at IS NOT NULL AND _system.buckets.deleted_at <= now() - interval ?", gracePeriodInterval).
 		Scan(ctx, &buckets)
 
 	if err != nil {
@@ -364,21 +362,35 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, gracePeriod ti
 }
 
 func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
-	_, err := d.db.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, bucketName))
-	if err != nil {
-		return fmt.Errorf("dropping bucket schema: %w", postgres.ResolveError(err))
-	}
+	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Drop the schema
+		_, err := tx.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, bucketName))
+		if err != nil {
+			return fmt.Errorf("dropping bucket schema: %w", postgres.ResolveError(err))
+		}
 
-	_, err = d.db.NewDelete().
-		Model(&ledger.Ledger{}).
-		Where("bucket = ?", bucketName).
-		Exec(ctx)
+		// Delete from ledgers table
+		_, err = tx.NewDelete().
+			Model(&ledger.Ledger{}).
+			Where("bucket = ?", bucketName).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("deleting ledger entries for bucket: %w", postgres.ResolveError(err))
+		}
 
-	if err != nil {
-		return fmt.Errorf("deleting ledger entries for bucket: %w", postgres.ResolveError(err))
-	}
+		// Delete from buckets table
+		_, err = tx.NewDelete().
+			Table("_system.buckets").
+			Where("name = ?", bucketName).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("deleting bucket entry: %w", postgres.ResolveError(err))
+		}
 
-	return nil
+		return nil
+	})
+
+	return err
 }
 
 func (d *Driver) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {

@@ -49,9 +49,9 @@ func (h ledgersResourceHandler) Filters() []common.Filter {
 func (h ledgersResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	return h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
-		Join("LEFT JOIN _system.buckets ON ledgers.bucket = _system.buckets.name").
+		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
 		Where("_system.buckets.deleted_at IS NULL").
-		Column("ledgers.*"), nil
+		Column("_system.ledgers.*"), nil
 }
 
 func (h ledgersResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
