@@ -23,6 +23,9 @@ import "github.com/formancehq/ledger/internal"
 - [type AggregatedVolumes](<#AggregatedVolumes>)
 - [type BalancesByAssets](<#BalancesByAssets>)
 - [type BalancesByAssetsByAccounts](<#BalancesByAssetsByAccounts>)
+- [type Bucket](<#Bucket>)
+  - [func NewBucket\(name string\) \*Bucket](<#NewBucket>)
+  - [func \(b Bucket\) IsDeleted\(\) bool](<#Bucket.IsDeleted>)
 - [type Configuration](<#Configuration>)
   - [func NewDefaultConfiguration\(\) Configuration](<#NewDefaultConfiguration>)
   - [func \(c \*Configuration\) SetDefaults\(\)](<#Configuration.SetDefaults>)
@@ -297,6 +300,40 @@ type BalancesByAssets map[string]*big.Int
 ```go
 type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
+
+<a name="Bucket"></a>
+## type [Bucket](<https://github.com/formancehq/ledger/blob/main/internal/bucket.go#L9-L16>)
+
+Bucket represents a container for ledgers in the system
+
+```go
+type Bucket struct {
+    bun.BaseModel `bun:"_system.buckets,alias:buckets"`
+
+    ID        int        `json:"id" bun:"id,type:int,scanonly"`
+    Name      string     `json:"name" bun:"name,type:varchar(255),pk"`
+    AddedAt   time.Time  `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+    DeletedAt *time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
+}
+```
+
+<a name="NewBucket"></a>
+### func [NewBucket](<https://github.com/formancehq/ledger/blob/main/internal/bucket.go#L24>)
+
+```go
+func NewBucket(name string) *Bucket
+```
+
+New creates a new bucket with the given name
+
+<a name="Bucket.IsDeleted"></a>
+### func \(Bucket\) [IsDeleted](<https://github.com/formancehq/ledger/blob/main/internal/bucket.go#L19>)
+
+```go
+func (b Bucket) IsDeleted() bool
+```
+
+IsDeleted returns true if the bucket has been marked as deleted
 
 <a name="Configuration"></a>
 ## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L93-L97>)

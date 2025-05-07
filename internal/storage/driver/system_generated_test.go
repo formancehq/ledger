@@ -44,6 +44,20 @@ func (m *SystemStore) EXPECT() *SystemStoreMockRecorder {
 	return m.recorder
 }
 
+// CreateBucket mocks base method.
+func (m *SystemStore) CreateBucket(ctx context.Context, b *ledger.Bucket) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBucket", ctx, b)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateBucket indicates an expected call of CreateBucket.
+func (mr *SystemStoreMockRecorder) CreateBucket(ctx, b any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBucket", reflect.TypeOf((*SystemStore)(nil).CreateBucket), ctx, b)
+}
+
 // CreateLedger mocks base method.
 func (m *SystemStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
 	m.ctrl.T.Helper()
@@ -147,6 +161,21 @@ func (m *SystemStore) Ledgers() common.PaginatedResource[ledger.Ledger, any, com
 func (mr *SystemStoreMockRecorder) Ledgers() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ledgers", reflect.TypeOf((*SystemStore)(nil).Ledgers))
+}
+
+// ListBuckets mocks base method.
+func (m *SystemStore) ListBuckets(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Bucket], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBuckets", ctx, query)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Bucket])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBuckets indicates an expected call of ListBuckets.
+func (mr *SystemStoreMockRecorder) ListBuckets(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBuckets", reflect.TypeOf((*SystemStore)(nil).ListBuckets), ctx, query)
 }
 
 // ListBucketsWithStatus mocks base method.
