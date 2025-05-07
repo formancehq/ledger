@@ -45,6 +45,23 @@ func TestMigrations(t *testing.T) {
 
 var addIdOnLedgerTable = migrations.Hook{
 	Before: func(ctx context.Context, t *testing.T, db bun.IDB) {
+		// Attempt to create the bucket table if it doesn't exist yet
+		// We'll try in a transaction so we can safely roll back if there's an error
+		_ = db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			// Try to create the bucket but ignore errors since it might not exist yet in this migration
+			_, err := tx.NewInsert().
+				Model(&map[string]any{
+					"name":    ledger.DefaultBucket,
+					"addedat": time.Now().Format(time.RFC3339Nano),
+				}).
+				TableExpr("_system.buckets").
+				Exec(ctx)
+
+			// Just return error to rollback, we'll continue anyway
+			return err
+		})
+
+		// Create ledgers
 		for i := 0; i < 3; i++ {
 			_, err := db.NewInsert().
 				Model(&map[string]any{
