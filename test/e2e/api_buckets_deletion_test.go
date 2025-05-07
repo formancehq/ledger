@@ -1,4 +1,3 @@
-
 package test_suite
 
 import (
@@ -74,7 +73,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 					Ledger: ledgerName,
 				})
 				Expect(err).ToNot(HaveOccurred())
-				Expect(*info.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
+				Expect(info.V2LedgerInfoResponse.Data.Name).To(PointTo(Equal(ledgerName)))
 			})
 
 			It("should mark the bucket as deleted and make it inaccessible", func(specContext SpecContext) {
@@ -122,7 +121,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 
 				drv := driver.New(db, ledgerStoreFactory, bucketFactory, systemStoreFactory)
 
-				schedule, err := cron.ParseStandard("* * * * *") // Every minute
+				schedule, err := cron.ParseStandard("* * * * * *") // Every second
 				Expect(err).ToNot(HaveOccurred())
 
 				_, err = db.NewUpdate().
@@ -183,7 +182,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 					Ledger: ledgerName,
 				})
 				Expect(err).ToNot(HaveOccurred())
-				Expect(*info.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
+				Expect(info.V2LedgerInfoResponse.Data.Name).To(PointTo(Equal(ledgerName)))
 
 				buckets, err := client.Ledger.V2.ListBuckets(ctx)
 				Expect(err).ToNot(HaveOccurred())
