@@ -116,9 +116,9 @@ func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledg
 	ret := &ledger.Ledger{}
 	err := d.db.NewSelect().
 		Model(ret).
-		Column("_system.ledgers.*").
-		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
-		Where("_system.ledgers.name = ?", name).
+		Column("ledgers.*").
+		Join("LEFT JOIN _system.buckets ON ledgers.bucket = _system.buckets.name").
+		Where("ledgers.name = ?", name).
 		Where("_system.buckets.deleted_at IS NULL").
 		Scan(ctx)
 

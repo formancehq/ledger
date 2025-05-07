@@ -5,10 +5,11 @@ package system
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/testing/migrations"
-	"github.com/formancehq/ledger/pkg/features"
 	"os"
 	"testing"
+
+	"github.com/formancehq/go-libs/v3/testing/migrations"
+	"github.com/formancehq/ledger/pkg/features"
 
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/bun/bundebug"
