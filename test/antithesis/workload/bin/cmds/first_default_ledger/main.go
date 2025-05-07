@@ -14,12 +14,13 @@ func main() {
 	client := internal.NewClient()
 	ledger := "default"
 
-	err := internal.CreateLedger(
+	_, err := internal.CreateLedger(
 		ctx,
 		client,
 		ledger,
 		ledger,
 	)
+
 	if err != nil {
 		log.Fatalf("error creating ledger %s: %s", ledger, err)
 	}

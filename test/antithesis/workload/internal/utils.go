@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/big"
 	"math/rand"
 	"net/http"
@@ -60,15 +59,15 @@ func IsServerError(httpMeta components.HTTPMetadata) bool {
 	return httpMeta.Response.StatusCode >= 400 && httpMeta.Response.StatusCode < 600
 }
 
-func CreateLedger(ctx context.Context, client *client.Formance, name string, bucket string) error {
-	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+func CreateLedger(ctx context.Context, client *client.Formance, name string, bucket string) (*operations.V2CreateLedgerResponse, error) {
+	res, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: name,
 		V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 			Bucket: &bucket,
 		},
 	})
 
-	return err
+	return res, err
 }
 
 func ListLedgers(ctx context.Context, client *client.Formance) ([]string, error) {
@@ -95,28 +94,7 @@ func GetRandomLedger(ctx context.Context, client *client.Formance) (string, erro
 		return "", fmt.Errorf("no ledgers found")
 	}
 
-	// Get a random index within the ledgers slice
 	randomIndex := rand.Intn(len(ledgers))
 
-	// Return the ledger at the random index
 	return ledgers[randomIndex], nil
-}
-
-func RunTx(ctx context.Context, client *client.Formance, amount *big.Int, ledger string) (*operations.V2CreateTransactionResponse, error) {
-	orderID := fmt.Sprint(int64(math.Abs(float64(random.GetRandom()))))
-	dest := fmt.Sprintf("orders:%s", orderID)
-
-	res, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-		V2PostTransaction: components.V2PostTransaction{
-			Postings: []components.V2Posting{{
-				Amount:      amount,
-				Asset:       "USD/2",
-				Destination: dest,
-				Source:      "world",
-			}},
-		},
-		Ledger: ledger,
-	})
-
-	return res, err
 }

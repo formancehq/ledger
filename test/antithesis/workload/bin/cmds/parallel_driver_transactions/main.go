@@ -7,6 +7,9 @@ import (
 
 	"github.com/alitto/pond"
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
 
@@ -32,7 +35,7 @@ func main() {
 		amount := internal.RandomBigInt()
 		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
-			res, err := internal.RunTx(ctx, client, amount, ledger)
+			res, err := RunTx(ctx, client, Transaction(), ledger)
 			assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
 				"ledger": ledger,
 			})
@@ -46,4 +49,45 @@ func main() {
 	pool.StopAndWait()
 
 	log.Println("composer: parallel_driver_transactions: done")
+}
+
+type Postings []components.V2Posting
+
+func RunTx(
+	ctx context.Context,
+	client *client.Formance,
+	postings Postings,
+	ledger string,
+) (*operations.V2CreateTransactionResponse, error) {
+	res, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+		Ledger: ledger,
+		V2PostTransaction: components.V2PostTransaction{
+			Postings: postings,
+		},
+	})
+
+	return res, err
+}
+
+func Transaction() []components.V2Posting {
+	postings := []components.V2Posting{}
+
+	postings = append(postings, components.V2Posting{
+		Amount:      big.NewInt(100),
+		Asset:       "USD/2",
+		Destination: "orders:1234",
+		Source:      "world",
+	})
+
+	return postings
+}
+
+func Sequence() []Postings {
+	postings := []Postings{}
+
+	for i := 0; i < 10; i++ {
+		postings = append(postings, Transaction())
+	}
+
+	return postings
 }
