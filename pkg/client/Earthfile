@@ -1,0 +1,8 @@
+VERSION 0.7
+
+FROM --platform=linux/amd64 golang:1.22.2
+
+client:
+  FROM scratch
+  COPY . /client
+  SAVE ARTIFACT /client client
