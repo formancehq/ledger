@@ -34,7 +34,7 @@ func TestBucketDeletionProviders(t *testing.T) {
 
 	cfg := ModuleConfig{
 		BucketDeletionSchedule:    "",
-		BucketDeletionGracePeriod: "0h",
+		BucketDeletionGracePeriod: "720h",
 	}
 
 	providerFunc := func() (*BucketDeletionRunner, error) {
@@ -74,7 +74,7 @@ func TestBucketDeletionProviders(t *testing.T) {
 
 	cfg = ModuleConfig{
 		BucketDeletionSchedule:    "*/5 * * * * *",
-		BucketDeletionGracePeriod: "45d",
+		BucketDeletionGracePeriod: "1080h", // 45 days in hours (45 * 24)
 	}
 
 	runner, err = providerFunc()

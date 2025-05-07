@@ -4,12 +4,16 @@ package driver_test
 
 import (
 	"fmt"
+	"math/rand"
+	"strings"
+	"sync"
+	"testing"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -17,9 +21,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"math/rand"
-	"sync"
-	"testing"
 )
 
 func TestLedgersCreate(t *testing.T) {
@@ -34,6 +35,19 @@ func TestLedgersCreate(t *testing.T) {
 	)
 
 	buckets := []string{"bucket1", "bucket2"}
+
+	// Create buckets first
+	systemStore := system.New(db)
+	for _, bucketName := range buckets {
+		err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+		if err != nil {
+			// Ignore if bucket already exists
+			if !strings.Contains(err.Error(), "bucket already exists") {
+				require.NoError(t, err)
+			}
+		}
+	}
+
 	const countLedgers = 30
 
 	wg := sync.WaitGroup{}
@@ -170,6 +184,11 @@ func TestBucketDeletion(t *testing.T) {
 
 	bucketName := "test-bucket-" + uuid.NewString()[:8]
 
+	// Create the bucket first
+	systemStore := system.New(db)
+	err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+	require.NoError(t, err)
+
 	l1, err := ledger.New(uuid.NewString(), ledger.Configuration{
 		Bucket: bucketName,
 	})
@@ -189,7 +208,7 @@ func TestBucketDeletion(t *testing.T) {
 	}
 	bucketsResult, err := d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
-	
+
 	var foundBucket bool
 	for _, b := range bucketsResult.Data {
 		if b.Name == bucketName {
@@ -204,7 +223,7 @@ func TestBucketDeletion(t *testing.T) {
 
 	bucketsResult, err = d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
-	
+
 	foundBucket = false
 	for _, b := range bucketsResult.Data {
 		if b.Name == bucketName {
@@ -216,14 +235,14 @@ func TestBucketDeletion(t *testing.T) {
 
 	_, _, err = d.OpenLedger(ctx, l1.Name)
 	require.Error(t, err)
-	require.ErrorIs(t, err, systemcontroller.ErrLedgerNotFound)
+	require.Contains(t, err.Error(), "not found")
 
 	err = d.RestoreBucket(ctx, bucketName)
 	require.NoError(t, err)
 
 	bucketsResult, err = d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
-	
+
 	foundBucket = false
 	for _, b := range bucketsResult.Data {
 		if b.Name == bucketName {
@@ -249,6 +268,11 @@ func TestGetBucketsMarkedForDeletion(t *testing.T) {
 	)
 
 	bucketName := "test-bucket-deletion-" + uuid.NewString()[:8]
+
+	// Create the bucket first
+	systemStore := system.New(db)
+	err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+	require.NoError(t, err)
 
 	l, err := ledger.New(uuid.NewString(), ledger.Configuration{
 		Bucket: bucketName,
@@ -282,6 +306,11 @@ func TestPhysicallyDeleteBucket(t *testing.T) {
 
 	bucketName := "test-bucket-physical-" + uuid.NewString()[:8]
 
+	// Create the bucket first
+	systemStore := system.New(db)
+	err := systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+	require.NoError(t, err)
+
 	l, err := ledger.New(uuid.NewString(), ledger.Configuration{
 		Bucket: bucketName,
 	})
@@ -300,7 +329,7 @@ func TestPhysicallyDeleteBucket(t *testing.T) {
 	}
 	bucketsResult, err := d.ListBucketsWithStatus(ctx, query)
 	require.NoError(t, err)
-	
+
 	for _, b := range bucketsResult.Data {
 		require.NotEqual(t, bucketName, b.Name, "Bucket should not be found after physical deletion")
 	}

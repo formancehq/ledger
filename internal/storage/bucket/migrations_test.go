@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"testing"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
@@ -21,8 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/extra/bundebug"
 	"go.opentelemetry.io/otel/trace/noop"
-	"io/fs"
-	"testing"
 )
 
 func TestMigrations(t *testing.T) {
@@ -41,6 +42,11 @@ func TestMigrations(t *testing.T) {
 	bucketName := uuid.NewString()[:8]
 	migrator := bucket.GetMigrator(db, bucketName)
 	ledgers := make([]ledger.Ledger, 0)
+
+	// Create the bucket first
+	systemStore := system.New(db)
+	err = systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+	require.NoError(t, err)
 
 	for i := 0; i < 5; i++ {
 		l, err := ledger.New(fmt.Sprintf("ledger%d", i), ledger.Configuration{
