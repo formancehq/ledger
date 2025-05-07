@@ -1,5 +1,4 @@
 //go:build it
-//go:build it
 
 package driver_test
 
