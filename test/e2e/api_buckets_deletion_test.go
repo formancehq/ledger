@@ -2,6 +2,8 @@
 package test_suite
 
 import (
+	"encoding/json"
+	"net/http"
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
@@ -91,12 +93,26 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("404"))
 
-				buckets, err := client.Ledger.V2.ListBuckets(ctx)
+				req, err := http.NewRequestWithContext(ctx, "GET", client.Ledger.V2.ServerURL+"/v2/_/buckets", nil)
 				Expect(err).ToNot(HaveOccurred())
-
+				
+				resp, err := http.DefaultClient.Do(req)
+				Expect(err).ToNot(HaveOccurred())
+				defer resp.Body.Close()
+				
+				var bucketResponse struct {
+					Data []struct {
+						Name      string     `json:"name"`
+						DeletedAt *time.Time `json:"deletedAt,omitempty"`
+					} `json:"data"`
+				}
+				
+				err = json.NewDecoder(resp.Body).Decode(&bucketResponse)
+				Expect(err).ToNot(HaveOccurred())
+				
 				var foundBucket bool
 				var isDeleted bool
-				for _, bucket := range buckets.V2BucketWithStatuses {
+				for _, bucket := range bucketResponse.Data {
 					if bucket.Name == bucketName {
 						foundBucket = true
 						isDeleted = bucket.DeletedAt != nil
@@ -122,7 +138,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 
 				drv := driver.New(db, ledgerStoreFactory, bucketFactory, systemStoreFactory)
 
-				schedule, err := cron.ParseStandard("* * * * * *") // Every second
+				schedule, err := cron.ParseStandard("* * * * *") // Every minute
 				Expect(err).ToNot(HaveOccurred())
 
 				_, err = db.NewUpdate().
@@ -148,11 +164,25 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(count).To(Equal(0), "Bucket should be physically deleted from the database")
 
-				buckets, err := client.Ledger.V2.ListBuckets(ctx)
+				req, err := http.NewRequestWithContext(ctx, "GET", client.Ledger.V2.ServerURL+"/v2/_/buckets", nil)
 				Expect(err).ToNot(HaveOccurred())
-
+				
+				resp, err := http.DefaultClient.Do(req)
+				Expect(err).ToNot(HaveOccurred())
+				defer resp.Body.Close()
+				
+				var bucketResponse struct {
+					Data []struct {
+						Name      string     `json:"name"`
+						DeletedAt *time.Time `json:"deletedAt,omitempty"`
+					} `json:"data"`
+				}
+				
+				err = json.NewDecoder(resp.Body).Decode(&bucketResponse)
+				Expect(err).ToNot(HaveOccurred())
+				
 				var foundBucket bool
-				for _, bucket := range buckets.V2BucketWithStatuses {
+				for _, bucket := range bucketResponse.Data {
 					if bucket.Name == bucketName {
 						foundBucket = true
 						break
@@ -185,12 +215,26 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(*info.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
 
-				buckets, err := client.Ledger.V2.ListBuckets(ctx)
+				req, err := http.NewRequestWithContext(ctx, "GET", client.Ledger.V2.ServerURL+"/v2/_/buckets", nil)
 				Expect(err).ToNot(HaveOccurred())
-
+				
+				resp, err := http.DefaultClient.Do(req)
+				Expect(err).ToNot(HaveOccurred())
+				defer resp.Body.Close()
+				
+				var bucketResponse struct {
+					Data []struct {
+						Name      string     `json:"name"`
+						DeletedAt *time.Time `json:"deletedAt,omitempty"`
+					} `json:"data"`
+				}
+				
+				err = json.NewDecoder(resp.Body).Decode(&bucketResponse)
+				Expect(err).ToNot(HaveOccurred())
+				
 				var foundBucket bool
 				var isDeleted bool
-				for _, bucket := range buckets.V2BucketWithStatuses {
+				for _, bucket := range bucketResponse.Data {
 					if bucket.Name == bucketName {
 						foundBucket = true
 						isDeleted = bucket.DeletedAt != nil
