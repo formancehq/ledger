@@ -358,10 +358,10 @@ func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, gracePeriod ti
 	gracePeriodInterval := fmt.Sprintf("%.0f seconds", gracePeriod.Seconds())
 
 	err := d.db.NewSelect().
-		DistinctOn("_system.ledgers.bucket").
+		DistinctOn("ledgers.bucket").
 		Model(&ledger.Ledger{}).
-		Column("_system.ledgers.bucket").
-		Join("LEFT JOIN _system.buckets ON _system.ledgers.bucket = _system.buckets.name").
+		Column("ledgers.bucket").
+		Join("LEFT JOIN _system.buckets ON ledgers.bucket = _system.buckets.name").
 		Where("_system.buckets.deleted_at IS NOT NULL AND _system.buckets.deleted_at <= now() - interval ?", gracePeriodInterval).
 		Scan(ctx, &buckets)
 
