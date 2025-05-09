@@ -3,11 +3,8 @@
 package test_suite
 
 import (
-	stdtime "time"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -15,7 +12,7 @@ import (
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
@@ -49,7 +46,7 @@ var _ = Context("Bucket deletion API tests", func() {
 			// Create a ledger in the test bucket
 			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 				Ledger: ledgerName,
-				V2CreateLedgerRequest: &operations.V2CreateLedgerRequestBody{
+				V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 					Bucket: pointer.For(bucketName),
 				},
 			})
