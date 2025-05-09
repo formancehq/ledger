@@ -28,7 +28,7 @@ type Store interface {
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error)
+	ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error)
 	ListBuckets(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Bucket], error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
@@ -218,29 +218,25 @@ func (d *DefaultStore) ListBuckets(ctx context.Context, query common.ColumnPagin
 	return cursor, nil
 }
 
-func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
-	bucketsCursor, err := d.ListBuckets(ctx, query)
+func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	var buckets []ledger.Bucket
+	err := d.db.NewSelect().
+		Model(&buckets).
+		Column("name", "deleted_at").
+		Scan(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
 	}
 
-	// Map Bucket to BucketWithStatus
-	bucketsWithStatus := make([]systemcontroller.BucketWithStatus, len(bucketsCursor.Data))
-	for i, bucket := range bucketsCursor.Data {
-
+	bucketsWithStatus := make([]systemcontroller.BucketWithStatus, len(buckets))
+	for i, bucket := range buckets {
 		bucketsWithStatus[i] = systemcontroller.BucketWithStatus{
 			Name:      bucket.Name,
 			DeletedAt: bucket.DeletedAt,
 		}
 	}
 
-	return &bunpaginate.Cursor[systemcontroller.BucketWithStatus]{
-		Data:     bucketsWithStatus,
-		PageSize: bucketsCursor.PageSize,
-		HasMore:  bucketsCursor.HasMore,
-		Next:     bucketsCursor.Next,
-		Previous: bucketsCursor.Previous,
-	}, nil
+	return bucketsWithStatus, nil
 }
 
 func (d *DefaultStore) CreateBucket(ctx context.Context, b *ledger.Bucket) error {

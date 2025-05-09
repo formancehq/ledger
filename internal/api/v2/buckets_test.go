@@ -150,12 +150,10 @@ func TestListBuckets(t *testing.T) {
 
 	type testCase struct {
 		name               string
-		queryParams        url.Values
 		returnData         []system.BucketWithStatus
 		returnErr          error
 		expectedStatusCode int
 		expectedErrorCode  string
-		expectBackendCall  bool
 	}
 
 	for _, tc := range []testCase{
@@ -171,29 +169,17 @@ func TestListBuckets(t *testing.T) {
 					DeletedAt: pointer.For(time.Now()),
 				},
 			},
-			expectBackendCall: true,
-		},
-		{
-			name: "invalid page size",
-			queryParams: url.Values{
-				"pageSize": {"-1"},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  common.ErrValidation,
-			expectBackendCall:  false,
 		},
 		{
 			name:               "error from backend",
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedErrorCode:  api.ErrorInternal,
-			expectBackendCall:  true,
 			returnErr:          errors.New("undefined error"),
 		},
 		{
 			name:               "with invalid query from core point of view",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  common.ErrValidation,
-			expectBackendCall:  true,
 			returnErr:          storagecommon.ErrInvalidQuery{},
 		},
 	} {
@@ -202,21 +188,14 @@ func TestListBuckets(t *testing.T) {
 
 			systemController, _ := newTestingSystemController(t, false)
 
-			if tc.expectBackendCall {
-				expectedCursor := &bunpaginate.Cursor[system.BucketWithStatus]{
-					Data:     tc.returnData,
-					PageSize: 15,
-				}
-				systemController.EXPECT().
-					ListBucketsWithStatus(gomock.Any(), gomock.Any()).
-					Return(expectedCursor, tc.returnErr)
-			}
+			systemController.EXPECT().
+				ListBucketsWithStatus(gomock.Any()).
+				Return(tc.returnData, tc.returnErr)
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodGet, "/_/buckets", nil)
 			req = req.WithContext(ctx)
-			req.URL.RawQuery = tc.queryParams.Encode()
 
 			rec := httptest.NewRecorder()
 
@@ -224,8 +203,9 @@ func TestListBuckets(t *testing.T) {
 
 			if tc.expectedStatusCode == 0 || tc.expectedStatusCode == http.StatusOK {
 				require.Equal(t, http.StatusOK, rec.Code)
-				cursor := api.DecodeCursorResponse[system.BucketWithStatus](t, rec.Body)
-				require.Equal(t, tc.returnData, cursor.Data)
+				var buckets []system.BucketWithStatus
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &buckets))
+				require.Equal(t, tc.returnData, buckets)
 			} else {
 				require.Equal(t, tc.expectedStatusCode, rec.Code)
 				errorResponse := api.ErrorResponse{}

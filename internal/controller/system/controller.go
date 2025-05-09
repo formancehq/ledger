@@ -169,9 +169,9 @@ func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucketName str
 	})))
 }
 
-func (ctrl *DefaultController) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[BucketWithStatus], error) {
-	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListBucketsWithStatus", func(ctx context.Context) (*bunpaginate.Cursor[BucketWithStatus], error) {
-		return ctrl.store.ListBucketsWithStatus(ctx, query)
+func (ctrl *DefaultController) ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListBucketsWithStatus", func(ctx context.Context) ([]BucketWithStatus, error) {
+		return ctrl.store.ListBucketsWithStatus(ctx)
 	})
 }
 
