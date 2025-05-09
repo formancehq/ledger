@@ -25,6 +25,9 @@ func listBuckets(systemController system.Controller) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(buckets)
+		if err := json.NewEncoder(w).Encode(buckets); err != nil {
+			common.HandleCommonErrors(w, r, err)
+			return
+		}
 	}
 }
