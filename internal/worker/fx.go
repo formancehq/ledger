@@ -87,7 +87,7 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					go func() {
-						if err := bucketDeletionRunner.Run(context.WithoutCancel(ctx)); err != nil {
+						if err := bucketDeletionRunner.Run(ctx); err != nil {
 							panic(err)
 						}
 					}()
