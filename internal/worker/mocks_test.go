@@ -3,10 +3,8 @@ package worker
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/controller/system"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -53,15 +51,15 @@ func (mr *MockDriverWrapperRecorder) PhysicallyDeleteBucket(ctx, bucketName inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PhysicallyDeleteBucket", nil, ctx, bucketName)
 }
 
-func (m *MockDriverWrapper) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[system.BucketWithStatus], error) {
-	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[system.BucketWithStatus])
+func (m *MockDriverWrapper) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
+	ret0, _ := ret[0].([]system.BucketWithStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-func (mr *MockDriverWrapperRecorder) ListBucketsWithStatus(ctx, query interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", nil, ctx, query)
+func (mr *MockDriverWrapperRecorder) ListBucketsWithStatus(ctx interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", nil, ctx)
 }
 
 func (m *MockDriverWrapper) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {

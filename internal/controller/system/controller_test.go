@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -89,23 +88,15 @@ func TestBucketsListWithStatus(t *testing.T) {
 		},
 	}
 
-	query := common.ColumnPaginatedQuery[any]{
-		PageSize: 15,
-	}
-
-	expectedCursor := &bunpaginate.Cursor[BucketWithStatus]{
-		Data:     buckets,
-		PageSize: 15,
-	}
 	store := NewMockStore(ctrl)
 	store.EXPECT().
-		ListBucketsWithStatus(gomock.Any(), query).
-		Return(expectedCursor, nil)
+		ListBucketsWithStatus(gomock.Any()).
+		Return(buckets, nil)
 
 	controller := NewDefaultController(store, nil)
-	result, err := controller.ListBucketsWithStatus(context.Background(), query)
+	result, err := controller.ListBucketsWithStatus(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, expectedCursor, result)
+	require.Equal(t, buckets, result)
 }
 
 func TestLedgerGet(t *testing.T) {

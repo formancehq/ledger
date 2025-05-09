@@ -89,7 +89,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 					Ledger: ledgerName,
 				})
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("404"))
+				Expect(err.Error()).To(ContainSubstring("LEDGER_NOT_FOUND"))
 
 				buckets, err := client.Ledger.V2.ListBuckets(ctx)
 				Expect(err).ToNot(HaveOccurred())
