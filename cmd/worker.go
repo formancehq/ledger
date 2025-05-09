@@ -39,11 +39,7 @@ func addWorkerFlags(cmd *cobra.Command) {
 }
 
 func NewWorkerCommand() *cobra.Command {
-	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
-	if err != nil {
-		return nil
-	}
-	
+	connectionOptions := bunconnect.NewOptions()
 	cmd := &cobra.Command{
 		Use:   "worker",
 		Short: "Run worker",
@@ -77,7 +73,7 @@ func NewWorkerCommand() *cobra.Command {
 						BucketDeletionGracePeriod: cfg.BucketDeletionGracePeriod,
 					}),
 				),
-			).Run(ctx)
+			).Run(cmd)
 		},
 	}
 
