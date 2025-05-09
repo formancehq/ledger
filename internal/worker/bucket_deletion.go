@@ -64,6 +64,10 @@ func (r *BucketDeletionRunner) Stop(ctx context.Context) error {
 	return nil
 }
 
+func (r *BucketDeletionRunner) RunOnce(ctx context.Context) error {
+	return r.run(ctx)
+}
+
 func (r *BucketDeletionRunner) run(ctx context.Context) error {
 	ctx, span := r.tracer.Start(ctx, "RunBucketDeletion")
 	defer span.End()

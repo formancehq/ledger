@@ -138,7 +138,7 @@ var _ = Context("Bucket deletion lifecycle tests", func() {
 					GracePeriod: 1 * time.Second, // Very short grace period for testing
 				})
 
-				err = bucketDeletionRunner.Run(ctx)
+				err = bucketDeletionRunner.RunOnce(ctx)
 				Expect(err).ToNot(HaveOccurred())
 
 				count, err := db.NewSelect().
