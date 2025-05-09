@@ -3,7 +3,6 @@ package v2
 import (
 	"encoding/json"
 	"errors"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
