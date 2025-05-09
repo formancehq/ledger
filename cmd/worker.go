@@ -16,16 +16,22 @@ import (
 const (
 	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
 	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
+	WorkerBucketDeletionScheduleFlag       = "worker-bucket-deletion-schedule"
+	WorkerBucketDeletionGracePeriodFlag    = "worker-bucket-deletion-grace-period"
 )
 
 type WorkerConfiguration struct {
-	HashLogsBlockMaxSize  int    `mapstructure:"worker-async-block-hasher-max-block-size"`
-	HashLogsBlockCRONSpec string `mapstructure:"worker-async-block-hasher-schedule"`
+	HashLogsBlockMaxSize       int    `mapstructure:"worker-async-block-hasher-max-block-size"`
+	HashLogsBlockCRONSpec      string `mapstructure:"worker-async-block-hasher-schedule"`
+	BucketDeletionCRONSpec     string `mapstructure:"worker-bucket-deletion-schedule"`
+	BucketDeletionGracePeriod  string `mapstructure:"worker-bucket-deletion-grace-period"`
 }
 
 func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(WorkerAsyncBlockHasherMaxBlockSizeFlag, 1000, "Max block size")
 	cmd.Flags().String(WorkerAsyncBlockHasherScheduleFlag, "0 * * * * *", "Schedule")
+	cmd.Flags().String(WorkerBucketDeletionScheduleFlag, "0 0 0 * * *", "Schedule for bucket deletion (default: daily at midnight)")
+	cmd.Flags().String(WorkerBucketDeletionGracePeriodFlag, "720h", "Grace period before physically deleting buckets marked for deletion (default: 720h = 30 days)")
 }
 
 func NewWorkerCommand() *cobra.Command {
@@ -51,8 +57,10 @@ func NewWorkerCommand() *cobra.Command {
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
 				worker.NewFXModule(worker.ModuleConfig{
-					MaxBlockSize: cfg.HashLogsBlockMaxSize,
-					Schedule:     cfg.HashLogsBlockCRONSpec,
+					MaxBlockSize:             cfg.HashLogsBlockMaxSize,
+					Schedule:                 cfg.HashLogsBlockCRONSpec,
+					BucketDeletionSchedule:   cfg.BucketDeletionCRONSpec,
+					BucketDeletionGracePeriod: cfg.BucketDeletionGracePeriod,
 				}),
 			).Run(cmd)
 		},

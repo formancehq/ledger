@@ -9,3 +9,5 @@ dumps
 .env
 !.envrc
 Pulumi.*.yaml
+coverage.txt
+coverage2.txt

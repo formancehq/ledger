@@ -6,6 +6,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math/big"
+	"net/http"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -28,8 +31,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
-	"math/big"
-	"net/http"
 )
 
 var _ = Context("Ledger application lifecycle tests", func() {
@@ -205,6 +206,18 @@ var _ = Context("Ledger application lifecycle tests", func() {
 
 			Expect(system.Migrate(ctx, bunDB)).To(BeNil())
 
+			// Create the default bucket first
+			_, err = bunDB.NewInsert().
+				Model(&map[string]any{
+					"name":     ledger.DefaultBucket,
+					"added_at": time.Now().Format(time.RFC3339Nano),
+				}).
+				TableExpr("_system.buckets").
+				On("CONFLICT (name) DO NOTHING").
+				Exec(ctx)
+			Expect(err).To(BeNil())
+
+			// Then create the ledger
 			_, err = bunDB.NewInsert().
 				Model(pointer.For(ledger.MustNewWithDefault(ledgerName))).
 				Exec(ctx)
