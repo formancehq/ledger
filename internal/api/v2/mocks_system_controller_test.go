@@ -102,18 +102,18 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 }
 
 // ListBucketsWithStatus mocks base method.
-func (m *SystemController) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[system.BucketWithStatus], error) {
+func (m *SystemController) ListBucketsWithStatus(ctx context.Context) ([]system.BucketWithStatus, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[system.BucketWithStatus])
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
+	ret0, _ := ret[0].([]system.BucketWithStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListBucketsWithStatus indicates an expected call of ListBucketsWithStatus.
-func (mr *SystemControllerMockRecorder) ListBucketsWithStatus(ctx, query any) *gomock.Call {
+func (mr *SystemControllerMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemController)(nil).ListBucketsWithStatus), ctx, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*SystemController)(nil).ListBucketsWithStatus), ctx)
 }
 
 // ListLedgers mocks base method.

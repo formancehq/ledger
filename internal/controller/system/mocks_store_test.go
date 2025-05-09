@@ -74,18 +74,18 @@ func (mr *MockStoreMockRecorder) GetLedger(ctx, name any) *gomock.Call {
 }
 
 // ListBucketsWithStatus mocks base method.
-func (m *MockStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[BucketWithStatus], error) {
+func (m *MockStore) ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[BucketWithStatus])
+	ret := m.ctrl.Call(m, "ListBucketsWithStatus", ctx)
+	ret0, _ := ret[0].([]BucketWithStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListBucketsWithStatus indicates an expected call of ListBucketsWithStatus.
-func (mr *MockStoreMockRecorder) ListBucketsWithStatus(ctx, query any) *gomock.Call {
+func (mr *MockStoreMockRecorder) ListBucketsWithStatus(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*MockStore)(nil).ListBucketsWithStatus), ctx, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBucketsWithStatus", reflect.TypeOf((*MockStore)(nil).ListBucketsWithStatus), ctx)
 }
 
 func (m *MockStore) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {

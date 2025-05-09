@@ -185,14 +185,11 @@ func TestBucketDeletion(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, buckets, bucketName)
 
-	query := common.ColumnPaginatedQuery[any]{
-		PageSize: 100,
-	}
-	bucketsWithStatus, err := store.ListBucketsWithStatus(ctx, query)
+	bucketsWithStatus, err := store.ListBucketsWithStatus(ctx)
 	require.NoError(t, err)
 
 	var foundBucket bool
-	for _, b := range bucketsWithStatus.Data {
+	for _, b := range bucketsWithStatus {
 		if b.Name == bucketName {
 			foundBucket = true
 			require.NotNil(t, b.DeletedAt)
@@ -207,11 +204,11 @@ func TestBucketDeletion(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, buckets, bucketName)
 
-	bucketsWithStatus, err = store.ListBucketsWithStatus(ctx, query)
+	bucketsWithStatus, err = store.ListBucketsWithStatus(ctx)
 	require.NoError(t, err)
 
 	foundBucket = false
-	for _, b := range bucketsWithStatus.Data {
+	for _, b := range bucketsWithStatus {
 		if b.Name == bucketName {
 			foundBucket = true
 			require.Nil(t, b.DeletedAt)

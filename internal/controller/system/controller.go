@@ -34,7 +34,7 @@ type Controller interface {
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[BucketWithStatus], error)
+	ListBucketsWithStatus(ctx context.Context) ([]BucketWithStatus, error)
 }
 
 type DefaultController struct {

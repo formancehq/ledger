@@ -2,13 +2,11 @@ package driver
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 type DefaultStorageDriverAdapter struct {
@@ -29,8 +27,8 @@ func (d *DefaultStorageDriverAdapter) CreateLedger(ctx context.Context, l *ledge
 	return err
 }
 
-func (d *DefaultStorageDriverAdapter) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
-	return d.Driver.ListBucketsWithStatus(ctx, query)
+func (d *DefaultStorageDriverAdapter) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	return d.Driver.ListBucketsWithStatus(ctx)
 }
 
 func (d *DefaultStorageDriverAdapter) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {

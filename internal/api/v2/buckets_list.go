@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
+	"encoding/json"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -23,6 +24,7 @@ func listBuckets(systemController system.Controller) http.HandlerFunc {
 			return
 		}
 
-		api.RenderJSON(w, buckets)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(buckets)
 	}
 }
