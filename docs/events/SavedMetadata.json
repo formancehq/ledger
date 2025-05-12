@@ -1,37 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/formancehq/ledger/internal/bus/saved-metadata",
-  "$ref": "#/$defs/SavedMetadata",
-  "$defs": {
+  "properties": {
     "Metadata": {
-      "additionalProperties": {
-        "type": "string"
-      },
       "type": "object"
     },
-    "SavedMetadata": {
-      "properties": {
-        "ledger": {
-          "type": "string"
-        },
-        "targetType": {
-          "type": "string"
-        },
-        "targetId": {
-          "type": "string"
-        },
-        "metadata": {
-          "$ref": "#/$defs/Metadata"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "ledger",
-        "targetType",
-        "targetId",
-        "metadata"
-      ]
+    "TargetId": {
+      "type": "string"
+    },
+    "TargetType": {
+      "type": "string"
     }
-  }
+  },
+  "type": "object"
 }
