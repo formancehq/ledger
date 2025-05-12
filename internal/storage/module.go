@@ -43,7 +43,7 @@ func NewFXModule(config ModuleConfig) fx.Option {
 			}))
 		}),
 	}
-	if autoUpgrade {
+	if config.AutoUpgrade {
 		ret = append(ret,
 			fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
 				var (
