@@ -14,7 +14,8 @@ import (
 type WorkerModuleConfig struct {
 	PushRetryPeriod time.Duration
 	PullInterval    time.Duration
-	SyncPeriod time.Duration
+	SyncPeriod   time.Duration
+	LogsPageSize uint64
 }
 
 // NewWorkerFXModule create a new fx module
@@ -36,6 +37,11 @@ func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 			if cfg.PullInterval > 0 {
 				options = append(options, WithPipelineOptions(
 					WithPullPeriod(cfg.PullInterval),
+				))
+			}
+			if cfg.LogsPageSize > 0 {
+				options = append(options, WithPipelineOptions(
+					WithLogsPageSize(cfg.LogsPageSize),
 				))
 			}
 			if cfg.SyncPeriod > 0 {

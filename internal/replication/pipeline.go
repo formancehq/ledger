@@ -22,6 +22,7 @@ var (
 type PipelineHandlerConfig struct {
 	PullInterval    time.Duration
 	PushRetryPeriod time.Duration
+	LogsPageSize    uint64
 }
 
 type PipelineOption func(config *PipelineHandlerConfig)
@@ -38,10 +39,17 @@ func WithPushRetryPeriod(v time.Duration) PipelineOption {
 	}
 }
 
+func WithLogsPageSize(v uint64) PipelineOption {
+	return func(config *PipelineHandlerConfig) {
+		config.LogsPageSize = v
+	}
+}
+
 var (
 	defaultPipelineOptions = []PipelineOption{
 		WithPullPeriod(DefaultPullInterval),
 		WithPushRetryPeriod(DefaultPushRetryPeriod),
+		WithLogsPageSize(100),
 	}
 )
 
@@ -67,8 +75,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				builder = query.Gt("id", *p.pipeline.LastLogID)
 			}
 			logs, err := p.store.ListLogs(ctx, common.InitialPaginatedQuery[any]{
-				// todo: make configurable
-				PageSize: 100,
+				PageSize: p.pipelineConfig.LogsPageSize,
 				Column:   "id",
 				Options: common.ResourceQuery[any]{
 					Builder: builder,
