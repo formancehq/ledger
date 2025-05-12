@@ -159,7 +159,7 @@ func TestHash(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tc.log.ID = pointer.For(0)
+			tc.log.ID = pointer.For(uint64(0))
 
 			chainedLog := tc.log.ChainLog(nil)
 			require.Equal(t, tc.expectedHash, base64.URLEncoding.EncodeToString(chainedLog.Hash))

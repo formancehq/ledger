@@ -132,7 +132,7 @@ func (mr *MockStoreMockRecorder) DeleteAccountMetadata(ctx, address, key any) *g
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID int, key string, at time.Time) (*ledger.Transaction, bool, error) {
+func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID uint64, key string, at time.Time) (*ledger.Transaction, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, transactionID, key, at)
 	ret0, _ := ret[0].(*ledger.Transaction)
@@ -267,7 +267,7 @@ func (mr *MockStoreMockRecorder) ReadLogWithIdempotencyKey(ctx, ik any) *gomock.
 }
 
 // RevertTransaction mocks base method.
-func (m *MockStore) RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error) {
+func (m *MockStore) RevertTransaction(ctx context.Context, id uint64, at time.Time) (*ledger.Transaction, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id, at)
 	ret0, _ := ret[0].(*ledger.Transaction)
@@ -325,7 +325,7 @@ func (mr *MockStoreMockRecorder) UpdateAccountsMetadata(ctx, m any) *gomock.Call
 }
 
 // UpdateTransactionMetadata mocks base method.
-func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error) {
+func (m_2 *MockStore) UpdateTransactionMetadata(ctx context.Context, transactionID uint64, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error) {
 	m_2.ctrl.T.Helper()
 	ret := m_2.ctrl.Call(m_2, "UpdateTransactionMetadata", ctx, transactionID, m, at)
 	ret0, _ := ret[0].(*ledger.Transaction)

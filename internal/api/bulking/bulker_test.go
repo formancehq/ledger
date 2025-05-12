@@ -65,7 +65,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, &ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{
 							TransactionData: ledger.TransactionData{
@@ -111,7 +111,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
@@ -139,7 +139,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
@@ -160,7 +160,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, &ledger.RevertedTransaction{}, nil)
 			},
 			expectResults: []BulkElementResult{{
@@ -186,7 +186,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
@@ -210,7 +210,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 			},
 			expectResults: []BulkElementResult{{}},
@@ -256,7 +256,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -318,7 +318,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -340,7 +340,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 			},
 			expectResults: []BulkElementResult{{}, {
@@ -387,7 +387,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 
 				mockLedger.EXPECT().
@@ -400,7 +400,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(1),
+						ID: pointer.For(uint64(1)),
 					}, nil)
 
 				mockLedger.EXPECT().

@@ -226,6 +226,14 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 			return big.NewInt(*rawPaginationID)
 		case *int:
 			return big.NewInt(int64(*rawPaginationID))
+		case uint64:
+			v := new(big.Int)
+			v.SetUint64(rawPaginationID)
+			return v
+		case *uint64:
+			v := new(big.Int)
+			v.SetUint64(*rawPaginationID)
+			return v
 		default:
 			panic(fmt.Sprintf("invalid paginationID, type %T not handled", rawPaginationID))
 		}

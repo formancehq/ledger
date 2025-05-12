@@ -149,7 +149,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
 					Ledger: "default",
 					RevertTransaction: ledger.Transaction{
-						ID: pointer.For(int(newTransaction.V2RevertTransactionResponse.Data.ID.Int64())),
+						ID: pointer.For(newTransaction.V2RevertTransactionResponse.Data.ID.Uint64()),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{
 								"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
@@ -190,7 +190,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						},
 					},
 					RevertedTransaction: ledger.Transaction{
-						ID: pointer.For(int(tx.V2CreateTransactionResponse.Data.ID.Int64())),
+						ID: pointer.For(tx.V2CreateTransactionResponse.Data.ID.Uint64()),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{},
 							Postings: []ledger.Posting{

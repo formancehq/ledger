@@ -45,7 +45,7 @@ func TestLogsInsert(t *testing.T) {
 		err := store.InsertLog(ctx, &log1)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, *log1.ID)
+		require.Equal(t, uint64(1), *log1.ID)
 		require.NotZero(t, log1.Hash)
 		require.NotEmpty(t, log1.Date)
 
@@ -65,7 +65,7 @@ func TestLogsInsert(t *testing.T) {
 		log2Copy := log2
 		err = store.InsertLog(ctx, &log2)
 		require.NoError(t, err)
-		require.Equal(t, 2, *log2.ID)
+		require.Equal(t, uint64(2), *log2.ID)
 		require.NotZero(t, log2.Hash)
 		require.NotZero(t, log2.Date)
 
@@ -141,7 +141,7 @@ func TestLogsInsert(t *testing.T) {
 			expectedHash := log.Hash
 			expectedID := *log.ID
 			log.Hash = nil
-			log.ID = pointer.For(0)
+			log.ID = pointer.For(uint64(0))
 			chainedLog := log.ChainLog(previous)
 			require.Equal(t, expectedHash, chainedLog.Hash, "checking log hash %d", expectedID)
 			previous = &chainedLog

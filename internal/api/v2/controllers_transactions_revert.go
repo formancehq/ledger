@@ -15,7 +15,7 @@ import (
 func revertTransaction(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	txId, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	txId, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
@@ -26,7 +26,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "force"),
 			AtEffectiveDate: api.QueryParamBool(r, "atEffectiveDate"),
-			TransactionID:   int(txId),
+			TransactionID:   txId,
 		}),
 	)
 	if err != nil {

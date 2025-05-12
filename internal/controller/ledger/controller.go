@@ -99,11 +99,11 @@ type CreateTransaction struct {
 type RevertTransaction struct {
 	Force           bool
 	AtEffectiveDate bool
-	TransactionID   int
+	TransactionID   uint64
 }
 
 type SaveTransactionMetadata struct {
-	TransactionID int
+	TransactionID uint64
 	Metadata      metadata.Metadata
 }
 
@@ -113,7 +113,7 @@ type SaveAccountMetadata struct {
 }
 
 type DeleteTransactionMetadata struct {
-	TransactionID int
+	TransactionID uint64
 	Key           string
 }
 

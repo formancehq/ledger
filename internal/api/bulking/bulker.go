@@ -123,7 +123,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, int, error) {
+func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, uint64, error) {
 
 	switch data.Action {
 	case ActionCreateTransaction:
@@ -165,7 +165,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				},
 			})
 		case ledger.MetaTargetTypeTransaction:
-			transactionID := 0
+			transactionID := uint64(0)
 			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 				return nil, 0, err
 			}
@@ -225,7 +225,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				},
 			})
 		case ledger.MetaTargetTypeTransaction:
-			transactionID := 0
+			transactionID := uint64(0)
 			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 				return nil, 0, err
 			}

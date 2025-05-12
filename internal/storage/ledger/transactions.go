@@ -148,7 +148,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		},
 		func(ctx context.Context, tx *ledger.Transaction) {
 			trace.SpanFromContext(ctx).SetAttributes(
-				attribute.Int("id", *tx.ID),
+				attribute.String("id", fmt.Sprint(tx.ID)),
 				attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
 			)
 		},
@@ -156,7 +156,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 }
 
 // updateTxWithRetrieve try to apply to provided update query and check (if the update return no rows modified), that the row exists
-func (store *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
+func (store *Store) updateTxWithRetrieve(ctx context.Context, id uint64, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
 	type modifiedEntity struct {
 		ledger.Transaction `bun:",extend"`
 		Modified           bool `bun:"modified"`
@@ -186,7 +186,7 @@ func (store *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun
 	return &me.Transaction, me.Modified, postgres.ResolveError(err)
 }
 
-func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) RevertTransaction(ctx context.Context, id uint64, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"RevertTransaction",
@@ -217,7 +217,7 @@ func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time)
 	return tx, modified, err
 }
 
-func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, m metadata.Metadata, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"UpdateTransactionMetadata",
@@ -247,7 +247,7 @@ func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m met
 	return tx, modified, err
 }
 
-func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) DeleteTransactionMetadata(ctx context.Context, id uint64, key string, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteTransactionMetadata",
