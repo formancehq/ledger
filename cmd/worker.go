@@ -23,7 +23,8 @@ import (
 const (
 	WorkerPipelinesPullIntervalFlag    = "worker-pipelines-pull-interval"
 	WorkerPipelinesPushRetryPeriodFlag = "worker-pipelines-push-retry-period"
-	WorkerPipelinesSyncPeriod = "worker-pipelines-sync-period"
+	WorkerPipelinesSyncPeriod          = "worker-pipelines-sync-period"
+	WorkerPipelinesLogsPageSize        = "worker-pipelines-logs-page-size"
 
 	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
 	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
@@ -42,6 +43,7 @@ type WorkerConfiguration struct {
 	PushRetryPeriod time.Duration `mapstructure:"worker-pipelines-push-retry-period"`
 	PullInterval    time.Duration `mapstructure:"worker-pipelines-pull-interval"`
 	SyncPeriod      time.Duration `mapstructure:"worker-pipelines-sync-period"`
+	LogsPageSize    uint64        `mapstructure:"worker-pipelines-logs-page-size"`
 }
 
 type WorkerCommandConfiguration struct {
@@ -56,6 +58,7 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(WorkerPipelinesPullIntervalFlag, 5*time.Second, "Pipelines pull interval")
 	cmd.Flags().Duration(WorkerPipelinesPushRetryPeriodFlag, 10*time.Second, "Pipelines push retry period")
 	cmd.Flags().Duration(WorkerPipelinesSyncPeriod, time.Minute, "Pipelines sync period")
+	cmd.Flags().Uint64(WorkerPipelinesLogsPageSize, 100, "Pipelines logs page size")
 }
 
 func NewWorkerCommand() *cobra.Command {
@@ -113,6 +116,8 @@ func newWorkerModule(configuration WorkerConfiguration) fx.Option {
 		ReplicationConfig: replication.WorkerModuleConfig{
 			PushRetryPeriod: configuration.PushRetryPeriod,
 			PullInterval:    configuration.PullInterval,
+			SyncPeriod:      configuration.SyncPeriod,
+			LogsPageSize:    configuration.LogsPageSize,
 		},
 	})
 }
