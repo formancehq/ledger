@@ -28,7 +28,7 @@ type Store interface {
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 	MarkBucketAsDeleted(ctx context.Context, bucketName string) error
 	RestoreBucket(ctx context.Context, bucketName string) error
-	ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error)
+	ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error)
 	ListBuckets(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Bucket], error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
@@ -218,14 +218,35 @@ func (d *DefaultStore) ListBuckets(ctx context.Context, query common.ColumnPagin
 	return cursor, nil
 }
 
-func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[systemcontroller.BucketWithStatus], error) {
 	var buckets []ledger.Bucket
-	err := d.db.NewSelect().
-		Model(&buckets).
-		Column("name", "deleted_at").
-		Scan(ctx)
+
+	q := d.db.NewSelect().
+		Model(&ledger.Bucket{}).
+		Column("name", "added_at", "deleted_at")
+
+	if query.PageSize == 0 {
+		query.PageSize = bunpaginate.QueryDefaultPageSize
+	}
+
+	if query.Column == "" {
+		query.Column = "name"
+	}
+
+	paginator := common.ColumnPaginator[ledger.Bucket, any]{
+		DefaultPaginationColumn: "name",
+		DefaultOrder:            bunpaginate.OrderAsc,
+	}
+
+	var err error
+	q, err = paginator.Paginate(q, query)
 	if err != nil {
-		return nil, fmt.Errorf("getting buckets with status: %w", postgres.ResolveError(err))
+		return nil, fmt.Errorf("applying pagination: %w", err)
+	}
+
+	err = q.Scan(ctx, &buckets)
+	if err != nil {
+		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
 	}
 
 	bucketsWithStatus := make([]systemcontroller.BucketWithStatus, len(buckets))
@@ -236,7 +257,12 @@ func (d *DefaultStore) ListBucketsWithStatus(ctx context.Context) ([]systemcontr
 		}
 	}
 
-	return bucketsWithStatus, nil
+	cursor, err := paginator.BuildCursor(bucketsWithStatus, query)
+	if err != nil {
+		return nil, fmt.Errorf("building cursor: %w", err)
+	}
+
+	return cursor, nil
 }
 
 func (d *DefaultStore) CreateBucket(ctx context.Context, b *ledger.Bucket) error {
