@@ -53,8 +53,17 @@ var _ = Context("Bucket deletion worker", func() {
 			ledgerName = "test-ledger-" + uuid.NewString()[:8]
 		})
 
-		It("should create a ledger in a new bucket", func(specContext SpecContext) {
-			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+		It("should create a bucket and a ledger in it", func(specContext SpecContext) {
+			dbOptions := DeferMap(db, (*Database).ConnectionOptions)
+			bunDB, err := bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
+			Expect(err).ToNot(HaveOccurred())
+			defer bunDB.Close()
+			
+			systemStore := system.New(bunDB)
+			err = systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+			Expect(err).ToNot(HaveOccurred())
+			
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 				Ledger: ledgerName,
 				V2CreateLedgerRequest: components.V2CreateLedgerRequest{
 					Bucket: pointer.For(bucketName),
@@ -67,6 +76,26 @@ var _ = Context("Bucket deletion worker", func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(*ledgerInfo.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
+			
+			serverURL := testservice.GetServerURL(Wait(specContext, testServer))
+			req, err := http.NewRequest("GET", serverURL.String()+"/v2/_/buckets", nil)
+			Expect(err).ToNot(HaveOccurred())
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			
+			var buckets []map[string]interface{}
+			Expect(json.NewDecoder(resp.Body).Decode(&buckets)).To(Succeed())
+			resp.Body.Close()
+			
+			var foundBucket bool
+			for _, bucket := range buckets {
+				if bucket["name"] == bucketName {
+					foundBucket = true
+					break
+				}
+			}
+			Expect(foundBucket).To(BeTrue(), "Bucket should be found in buckets list")
 		})
 
 		It("should mark the bucket for deletion", func(specContext SpecContext) {
