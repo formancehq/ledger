@@ -59,7 +59,7 @@ var _ = Context("Bucket deletion API tests", func() {
 				Ledger: ledgerName,
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ledgerInfo.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
+			Expect(*ledgerInfo.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
 
 			// List buckets and verify our bucket is there and not deleted
 			req, err := http.NewRequest("GET", testservice.GetServerURL(testServer.GetValue()).String()+"/v2/_/buckets", nil)
@@ -149,7 +149,7 @@ var _ = Context("Bucket deletion API tests", func() {
 				Ledger: ledgerName,
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ledgerInfo.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
+			Expect(*ledgerInfo.V2LedgerInfoResponse.Data.Name).To(Equal(ledgerName))
 		})
 	})
 })
