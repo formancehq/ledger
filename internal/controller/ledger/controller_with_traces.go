@@ -466,51 +466,6 @@ func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 	)
 }
 
-func (c *ControllerWithTraces) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) DeletePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) StartPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) PausePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) ResumePipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) ResetPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *ControllerWithTraces) StopPipeline(ctx context.Context, id string) error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
 	var (
 		controller Controller
