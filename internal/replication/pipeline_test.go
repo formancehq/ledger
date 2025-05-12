@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"testing"
@@ -58,10 +57,8 @@ func TestPipeline(t *testing.T) {
 		ListLogs(gomock.Any(), common.InitialPaginatedQuery[any]{
 			PageSize: 100,
 			Column:   "id",
-			Options: common.ResourceQuery[any]{
-				Builder: query.Gt("id", -1),
-			},
-			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Options:  common.ResourceQuery[any]{},
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		}).
 		AnyTimes().
 		DoAndReturn(func(ctx context.Context, paginatedQuery common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {

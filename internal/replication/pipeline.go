@@ -62,12 +62,16 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			close(ch)
 			return
 		case <-time.After(nextInterval):
+			var builder query.Builder
+			if p.pipeline.LastLogID != nil {
+				builder = query.Gt("id", *p.pipeline.LastLogID)
+			}
 			logs, err := p.store.ListLogs(ctx, common.InitialPaginatedQuery[any]{
 				// todo: make configurable
 				PageSize: 100,
 				Column:   "id",
 				Options: common.ResourceQuery[any]{
-					Builder: query.Gt("id", p.pipeline.LastLogID),
+					Builder: builder,
 				},
 				Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 			})

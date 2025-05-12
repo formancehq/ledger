@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"testing"
@@ -42,7 +41,7 @@ func startRunner(
 	return runner
 }
 
-func TestRunner(t *testing.T) {
+func TestManager(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -72,10 +71,8 @@ func TestRunner(t *testing.T) {
 		ListLogs(gomock.Any(), common.InitialPaginatedQuery[any]{
 			PageSize: 100,
 			Column:   "id",
-			Options: common.ResourceQuery[any]{
-				Builder: query.Gt("id", -1),
-			},
-			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Options:  common.ResourceQuery[any]{},
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		}).
 		AnyTimes().
 		DoAndReturn(func(ctx context.Context, paginatedQuery common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
@@ -109,8 +106,12 @@ func TestRunner(t *testing.T) {
 		Return(logFetcher, &ledger.Ledger{}, nil)
 
 	storage.EXPECT().
-		StorePipelineState(gomock.Any(), pipeline.ID, 1).
+		StorePipelineState(gomock.Any(), pipeline.ID, uint64(1)).
 		Return(nil)
+
+	connector.EXPECT().
+		Accept(gomock.Any(), drivers.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
+		Return([]error{nil}, nil)
 
 	runner := startRunner(
 		t,
@@ -119,12 +120,10 @@ func TestRunner(t *testing.T) {
 		connectorFactory,
 		connectorConfigValidator,
 	)
-	err := runner.StartPipeline(ctx, pipeline.ID)
-	require.NoError(t, err)
+	<-runner.Started()
 
-	connector.EXPECT().
-		Accept(gomock.Any(), drivers.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
-		Return([]error{nil}, nil)
+	err := runner.StartPipeline(ctx, pipeline.ID)
+	require.Error(t, err)
 
 	require.Eventually(t, func() bool {
 		return runner.GetDriver("connector") != nil
