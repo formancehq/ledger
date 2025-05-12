@@ -23,6 +23,7 @@ import (
 const (
 	WorkerPipelinesPullIntervalFlag    = "worker-pipelines-pull-interval"
 	WorkerPipelinesPushRetryPeriodFlag = "worker-pipelines-push-retry-period"
+	WorkerPipelinesSyncPeriod = "worker-pipelines-sync-period"
 
 	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
 	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
@@ -40,6 +41,7 @@ type WorkerConfiguration struct {
 
 	PushRetryPeriod time.Duration `mapstructure:"worker-pipelines-push-retry-period"`
 	PullInterval    time.Duration `mapstructure:"worker-pipelines-pull-interval"`
+	SyncPeriod      time.Duration `mapstructure:"worker-pipelines-sync-period"`
 }
 
 type WorkerCommandConfiguration struct {
@@ -53,6 +55,7 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().String(WorkerAsyncBlockHasherScheduleFlag, "0 * * * * *", "Schedule")
 	cmd.Flags().Duration(WorkerPipelinesPullIntervalFlag, 5*time.Second, "Pipelines pull interval")
 	cmd.Flags().Duration(WorkerPipelinesPushRetryPeriodFlag, 10*time.Second, "Pipelines push retry period")
+	cmd.Flags().Duration(WorkerPipelinesSyncPeriod, time.Minute, "Pipelines sync period")
 }
 
 func NewWorkerCommand() *cobra.Command {
