@@ -117,15 +117,48 @@ Authorization ( Scopes: ledger:read )
 ```http
 GET http://localhost:8080/v2 HTTP/1.1
 Host: localhost:8080
+Accept: application/json
 
 ```
 
 `GET /v2`
 
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "",
+    "data": [
+      {
+        "name": "string",
+        "addedAt": "2019-08-24T14:15:22Z",
+        "bucket": "string",
+        "metadata": {
+          "admin": "true"
+        },
+        "features": {
+          "property1": "string",
+          "property2": "string"
+        },
+        "id": 0
+      }
+    ]
+  }
+}
+```
+
 <h3 id="list-ledgers-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2LedgerListResponse](#schemav2ledgerlistresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="success">
 This operation does not require authentication

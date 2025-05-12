@@ -48,7 +48,6 @@ import(
 	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
 
@@ -62,73 +61,11 @@ func main() {
         }),
     )
 
-    res, err := s.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        RequestBody: map[string]any{
-            "key": "<value>",
-        },
-    })
+    res, err := s.Ledger.V2.ListLedgers(ctx)
     if err != nil {
         log.Fatal(err)
     }
     if res.V2LedgerListResponse != nil {
-        // handle response
-    }
-}
-```
-
-### Parameters
-
-| Parameter                                                                          | Type                                                                               | Required                                                                           | Description                                                                        |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `ctx`                                                                              | [context.Context](https://pkg.go.dev/context#Context)                              | :heavy_check_mark:                                                                 | The context to use for the request.                                                |
-| `request`                                                                          | [operations.V2ListLedgersRequest](../../models/operations/v2listledgersrequest.md) | :heavy_check_mark:                                                                 | The request object to use for the request.                                         |
-| `opts`                                                                             | [][operations.Option](../../models/operations/option.md)                           | :heavy_minus_sign:                                                                 | The options for this request.                                                      |
-
-### Response
-
-**[*operations.V2ListLedgersResponse](../../models/operations/v2listledgersresponse.md), error**
-
-### Errors
-
-| Error Type                | Status Code               | Content Type              |
-| ------------------------- | ------------------------- | ------------------------- |
-| sdkerrors.V2ErrorResponse | default                   | application/json          |
-| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
-
-## ListBuckets
-
-List buckets with their deletion status
-
-### Example Usage
-
-```go
-package main
-
-import(
-	"context"
-	"os"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client"
-	"log"
-)
-
-func main() {
-    ctx := context.Background()
-
-    s := client.New(
-        client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
-        }),
-    )
-
-    res, err := s.Ledger.V2.ListBuckets(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    if res.V2BucketWithStatuses != nil {
         // handle response
     }
 }
@@ -143,125 +80,7 @@ func main() {
 
 ### Response
 
-**[*operations.V2ListBucketsResponse](../../models/operations/v2listbucketsresponse.md), error**
-
-### Errors
-
-| Error Type                | Status Code               | Content Type              |
-| ------------------------- | ------------------------- | ------------------------- |
-| sdkerrors.V2ErrorResponse | default                   | application/json          |
-| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
-
-## DeleteBucket
-
-Mark a bucket for deletion
-
-### Example Usage
-
-```go
-package main
-
-import(
-	"context"
-	"os"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"log"
-)
-
-func main() {
-    ctx := context.Background()
-
-    s := client.New(
-        client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
-        }),
-    )
-
-    res, err := s.Ledger.V2.DeleteBucket(ctx, operations.V2DeleteBucketRequest{
-        Bucket: "default",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    if res != nil {
-        // handle response
-    }
-}
-```
-
-### Parameters
-
-| Parameter                                                                            | Type                                                                                 | Required                                                                             | Description                                                                          |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `ctx`                                                                                | [context.Context](https://pkg.go.dev/context#Context)                                | :heavy_check_mark:                                                                   | The context to use for the request.                                                  |
-| `request`                                                                            | [operations.V2DeleteBucketRequest](../../models/operations/v2deletebucketrequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
-| `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
-
-### Response
-
-**[*operations.V2DeleteBucketResponse](../../models/operations/v2deletebucketresponse.md), error**
-
-### Errors
-
-| Error Type                | Status Code               | Content Type              |
-| ------------------------- | ------------------------- | ------------------------- |
-| sdkerrors.V2ErrorResponse | default                   | application/json          |
-| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
-
-## RestoreBucket
-
-Restore a bucket that was marked for deletion
-
-### Example Usage
-
-```go
-package main
-
-import(
-	"context"
-	"os"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"log"
-)
-
-func main() {
-    ctx := context.Background()
-
-    s := client.New(
-        client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
-        }),
-    )
-
-    res, err := s.Ledger.V2.RestoreBucket(ctx, operations.V2RestoreBucketRequest{
-        Bucket: "default",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    if res != nil {
-        // handle response
-    }
-}
-```
-
-### Parameters
-
-| Parameter                                                                              | Type                                                                                   | Required                                                                               | Description                                                                            |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `ctx`                                                                                  | [context.Context](https://pkg.go.dev/context#Context)                                  | :heavy_check_mark:                                                                     | The context to use for the request.                                                    |
-| `request`                                                                              | [operations.V2RestoreBucketRequest](../../models/operations/v2restorebucketrequest.md) | :heavy_check_mark:                                                                     | The request object to use for the request.                                             |
-| `opts`                                                                                 | [][operations.Option](../../models/operations/option.md)                               | :heavy_minus_sign:                                                                     | The options for this request.                                                          |
-
-### Response
-
-**[*operations.V2RestoreBucketResponse](../../models/operations/v2restorebucketresponse.md), error**
+**[*operations.V2ListLedgersResponse](../../models/operations/v2listledgersresponse.md), error**
 
 ### Errors
 

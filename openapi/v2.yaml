@@ -66,7 +66,19 @@ paths:
       x-speakeasy-name-override: ListLedgers
       tags:
         - ledger.v2
-        
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2LedgerListResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
   /v2/_/buckets:
     get:
       summary: List buckets with their deletion status
