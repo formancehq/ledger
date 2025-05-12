@@ -26,5 +26,4 @@ func deletePipeline(systemController systemcontroller.Controller) func(w http.Re
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
-
 }
