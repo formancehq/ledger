@@ -14,6 +14,7 @@ import (
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
@@ -61,7 +62,7 @@ var _ = Context("Bucket deletion worker", func() {
 			
 			systemStore := system.New(bunDB)
 			
-			err = systemStore.CreateBucket(ctx, &ledger.Bucket{
+			err = systemStore.CreateBucket(ctx, &internal.Bucket{
 				Name: bucketName,
 			})
 			Expect(err).ToNot(HaveOccurred())
