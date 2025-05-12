@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/otlp"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"sync"
@@ -29,6 +30,8 @@ type Manager struct {
 
 	pipelineOptions           []PipelineOption
 	connectorsConfigValidator ConfigValidator
+	syncPeriod                time.Duration
+	started chan struct{}
 }
 
 func (m *Manager) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
@@ -214,14 +217,6 @@ func (m *Manager) synchronizePipelines(ctx context.Context) error {
 
 	for _, pipeline := range pipelines {
 		m.logger.Debugf("restoring pipeline %s", pipeline.ID)
-		if handler := m.pipelines[pipeline.ID]; handler != nil {
-			m.logger.Debugf("pipeline %s outdated, stopping it", pipeline.ID)
-			if err := m.StopPipeline(ctx, pipeline.ID); err != nil {
-				m.logger.Errorf("error stopping pipeline: %s", err)
-				continue
-			}
-		}
-		m.logger.Debugf("starting pipeline %s", pipeline.ID)
 		if _, err := m.startPipeline(ctx, pipeline); err != nil {
 			return err
 		}
@@ -235,7 +230,7 @@ l:
 			}
 		}
 
-		if err := m.StopPipeline(ctx, id); err != nil {
+		if err := m.stopPipeline(ctx, id); err != nil {
 			m.logger.Errorf("error stopping pipeline: %s", err)
 			continue
 		}
@@ -244,16 +239,31 @@ l:
 	return nil
 }
 
+func (m *Manager) Started() <-chan struct{} {
+	return m.started
+}
+
 func (m *Manager) Run(ctx context.Context) {
 	if err := m.synchronizePipelines(ctx); err != nil {
-		m.logger.Errorf("starting pipelines: %s", err)
+		m.logger.Errorf("restoring pipeline: %s", err)
 	}
 
-	signalChannel := <-m.stopChannel
-	m.logger.Debugf("got stop signal")
-	m.stopPipelines(ctx)
-	m.pipelinesWaitGroup.Wait()
-	close(signalChannel)
+	close(m.started)
+
+	for {
+		select {
+		case signalChannel := <-m.stopChannel:
+			m.logger.Debugf("got stop signal")
+			m.stopPipelines(ctx)
+			m.pipelinesWaitGroup.Wait()
+			close(signalChannel)
+			return
+		case <-time.After(m.syncPeriod):
+			if err := m.synchronizePipelines(ctx); err != nil {
+				m.logger.Errorf("synchronizing pipelines: %s", err)
+			}
+		}
+	}
 }
 
 func (m *Manager) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
@@ -357,7 +367,8 @@ func (m *Manager) CreatePipeline(ctx context.Context, config ledger.PipelineConf
 	}
 
 	if _, err := m.startPipeline(ctx, pipeline); err != nil {
-		return nil, err
+		logging.FromContext(ctx).Error("starting pipeline %s: %s", pipeline.ID, err)
+		otlp.RecordError(ctx, err)
 	}
 
 	return &pipeline, nil
@@ -421,6 +432,7 @@ func NewManager(
 		drivers:                   map[string]*DriverFacade{},
 		logger:                    logger.WithField("component", "manager"),
 		connectorsConfigValidator: connectorsConfigValidator,
+		started:                   make(chan struct{}),
 	}
 
 	for _, option := range append(defaultOptions, options...) {
@@ -438,4 +450,12 @@ func WithPipelineOptions(options ...PipelineOption) Option {
 	}
 }
 
-var defaultOptions = []Option{}
+func WithSyncPeriod(period time.Duration) Option {
+	return func(r *Manager) {
+		r.syncPeriod = period
+	}
+}
+
+var defaultOptions = []Option{
+	WithSyncPeriod(time.Minute),
+}

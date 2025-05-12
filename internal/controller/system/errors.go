@@ -87,3 +87,4 @@ func (e ErrConnectorUsed) Is(err error) bool {
 func NewErrConnectorUsed(id string) ErrConnectorUsed {
 	return ErrConnectorUsed(id)
 }
+

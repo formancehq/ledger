@@ -14,6 +14,7 @@ import (
 type WorkerModuleConfig struct {
 	PushRetryPeriod time.Duration
 	PullInterval    time.Duration
+	SyncPeriod time.Duration
 }
 
 // NewWorkerFXModule create a new fx module
@@ -36,6 +37,9 @@ func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 				options = append(options, WithPipelineOptions(
 					WithPullPeriod(cfg.PullInterval),
 				))
+			}
+			if cfg.SyncPeriod > 0 {
+				options = append(options, WithSyncPeriod(cfg.SyncPeriod))
 			}
 			return NewManager(
 				storageDriver,
