@@ -14,13 +14,18 @@ import (
 
 const HealthCheckName = `storage-driver-up-to-date`
 
-func NewFXModule(autoUpgrade bool) fx.Option {
+type ModuleConfig struct {
+	AutoUpgrade bool
+	Debug       bool
+}
+
+func NewFXModule(config ModuleConfig) fx.Option {
 	ret := []fx.Option{
 		driver.NewFXModule(),
 		health.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
-				_, err := tracing.TraceInDebugMode(ctx, service.IsDebugFromContext(ctx), tracer.Tracer("HealthCheck"), "HealthCheckStorage", tracing.NoResult(func(ctx context.Context) error {
+				_, err := tracing.TraceInDebugMode(ctx, config.Debug, tracer.Tracer("HealthCheck"), "HealthCheckStorage", tracing.NoResult(func(ctx context.Context) error {
 					if hasReachedMinimalVersion {
 						return nil
 					}

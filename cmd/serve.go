@@ -94,7 +94,10 @@ func NewServeCommand() *cobra.Command {
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
-				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				storage.NewFXModule(storage.ModuleConfig{
+					AutoUpgrade: serveConfiguration.autoUpgrade,
+					Debug:       service.IsDebug(cmd),
+				}),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter: numscriptInterpreter,
 					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
