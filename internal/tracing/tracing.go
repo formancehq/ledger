@@ -59,6 +59,21 @@ func Trace[RET any](
 	return ret, nil
 }
 
+func TraceInDebugMode[RET any](
+	ctx context.Context,
+	debug bool,
+	tracer trace.Tracer,
+	name string,
+	fn func(ctx context.Context) (RET, error),
+	spanOptions ...trace.SpanStartOption,
+) (RET, error) {
+	if debug {
+		return Trace(ctx, tracer, name, fn, spanOptions...)
+	}
+	
+	return fn(ctx)
+}
+
 func NoResult(fn func(ctx context.Context) error) func(ctx context.Context) (any, error) {
 	return func(ctx context.Context) (any, error) {
 		return nil, fn(ctx)

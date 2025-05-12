@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v2/health"
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/service"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
@@ -19,7 +20,7 @@ func NewFXModule(autoUpgrade bool) fx.Option {
 		health.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
-				_, err := tracing.Trace(ctx, tracer.Tracer("HealthCheck"), "HealthCheckStorage", tracing.NoResult(func(ctx context.Context) error {
+				_, err := tracing.TraceInDebugMode(ctx, service.IsDebugFromContext(ctx), tracer.Tracer("HealthCheck"), "HealthCheckStorage", tracing.NoResult(func(ctx context.Context) error {
 					if hasReachedMinimalVersion {
 						return nil
 					}
