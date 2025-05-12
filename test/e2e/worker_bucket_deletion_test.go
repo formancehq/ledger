@@ -11,13 +11,14 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	. "github.com/formancehq/go-libs/v3/testing/api"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/ledger/internal"
+	internalPkg "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/ledger/internal/storage/ledger"
+	ledgerStorage "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/worker"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -28,6 +29,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/robfig/cron/v3"
+	"github.com/uptrace/bun"
 )
 
 var _ = Context("Bucket deletion worker", func() {
@@ -47,22 +49,33 @@ var _ = Context("Bucket deletion worker", func() {
 		var (
 			bucketName string
 			ledgerName string
+			dbOptions  *deferred.Deferred[bunconnect.ConnectionOptions]
+			bunDB      *bun.DB
 		)
 
 		BeforeAll(func() {
 			bucketName = "test-bucket-" + uuid.NewString()[:8]
 			ledgerName = "test-ledger-" + uuid.NewString()[:8]
+			
+			dbOptions = DeferMap(db, (*Database).ConnectionOptions)
+		})
+		
+		BeforeEach(func() {
+			var err error
+			bunDB, err = bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
+			Expect(err).ToNot(HaveOccurred())
+		})
+		
+		AfterEach(func() {
+			if bunDB != nil {
+				bunDB.Close()
+			}
 		})
 
 		It("should create a bucket and a ledger in it", func(specContext SpecContext) {
-			dbOptions := DeferMap(db, (*Database).ConnectionOptions)
-			bunDB, err := bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
-			Expect(err).ToNot(HaveOccurred())
-			defer bunDB.Close()
-			
 			systemStore := system.New(bunDB)
 			
-			err = systemStore.CreateBucket(ctx, &internal.Bucket{
+			err := systemStore.CreateBucket(ctx, &internalPkg.Bucket{
 				Name: bucketName,
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -145,15 +158,11 @@ var _ = Context("Bucket deletion worker", func() {
 		})
 
 		It("should physically delete the bucket using the worker", func(specContext SpecContext) {
-			dbOptions := DeferMap(db, (*Database).ConnectionOptions)
-			
-			bunDB, err := bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
-			Expect(err).ToNot(HaveOccurred())
-			defer bunDB.Close()
+			var err error
 			
 			testDriver := driver.New(
 				bunDB,
-				ledger.NewFactory(bunDB),
+				ledgerStorage.NewFactory(bunDB),
 				bucket.NewDefaultFactory(),
 				system.NewStoreFactory(),
 			)
