@@ -228,7 +228,7 @@ func (mr *MockStorageMockRecorder) OpenLedger(arg0, arg1 any) *gomock.Call {
 }
 
 // StorePipelineState mocks base method.
-func (m *MockStorage) StorePipelineState(ctx context.Context, id string, lastLogID int) error {
+func (m *MockStorage) StorePipelineState(ctx context.Context, id string, lastLogID uint64) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StorePipelineState", ctx, id, lastLogID)
 	ret0, _ := ret[0].(error)

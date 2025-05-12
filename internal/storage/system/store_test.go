@@ -272,7 +272,6 @@ func TestUpdatePipeline(t *testing.T) {
 	require.False(t, pipelineFromDB.Enabled)
 
 	pipelineFromDB.Enabled = true
-	pipelineFromDB.Version -= 1
 	require.Equal(t, alivePipeline, *pipelineFromDB)
 }
 

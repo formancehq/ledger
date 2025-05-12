@@ -1,7 +1,5 @@
-
-edition = "2023";
+syntax = "proto3";
 option go_package = "github.com/formancehq/ledger/internal/replication/grpc";
-option features.field_presence = IMPLICIT;
 
 import "google/protobuf/timestamp.proto";
 
@@ -88,7 +86,7 @@ message Pipeline {
   google.protobuf.Timestamp createdAt = 2;
   string id = 3;
   bool enabled = 4;
-  uint64 lastLogID = 5;
+  optional uint64 lastLogID = 5;
   string error = 6;
 }
 
