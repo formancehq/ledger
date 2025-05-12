@@ -31,7 +31,7 @@ type Manager struct {
 	pipelineOptions           []PipelineOption
 	connectorsConfigValidator ConfigValidator
 	syncPeriod                time.Duration
-	started chan struct{}
+	started                   chan struct{}
 }
 
 func (m *Manager) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
@@ -396,8 +396,12 @@ func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := m.stopPipeline(ctx, id); err != nil {
-		return fmt.Errorf("stopping pipeline: %w", err)
+	started := m.pipelines[id] != nil
+
+	if started {
+		if err := m.stopPipeline(ctx, id); err != nil {
+			return fmt.Errorf("stopping pipeline: %w", err)
+		}
 	}
 
 	pipeline, err := m.storage.UpdatePipeline(ctx, id, map[string]any{
@@ -411,8 +415,10 @@ func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
 		return fmt.Errorf("updating pipeline: %w", err)
 	}
 
-	if _, err := m.startPipeline(ctx, *pipeline); err != nil {
-		return fmt.Errorf("starting pipeline: %w", err)
+	if started {
+		if _, err := m.startPipeline(ctx, *pipeline); err != nil {
+			logging.FromContext(ctx).Error("starting pipeline %s: %s", pipeline.ID, err)
+		}
 	}
 	return nil
 }
