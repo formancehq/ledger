@@ -2,10 +2,10 @@ package drivers
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/formancehq/ledger/internal/replication/config"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"reflect"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -68,7 +68,7 @@ func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessa
 	connector, err := c.store.GetConnector(ctx, id)
 	if err != nil {
 		switch {
-		case errors.Is(err, sql.ErrNoRows):
+		case errors.Is(err, common.ErrNotFound):
 			return nil, nil, NewErrConnectorNotFound(id)
 		default:
 			return nil, nil, err
