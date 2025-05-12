@@ -2,12 +2,12 @@ package replication
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/otlp"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"sync"
 	"time"
 
@@ -269,7 +269,7 @@ func (m *Manager) Run(ctx context.Context) {
 func (m *Manager) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
 	pipeline, err := m.storage.GetPipeline(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, common.ErrNotFound) {
 			return nil, ledger.NewErrPipelineNotFound(id)
 		}
 		return nil, err
@@ -310,7 +310,7 @@ func (m *Manager) GetConnector(ctx context.Context, id string) (*ledger.Connecto
 	connector, err := m.storage.GetConnector(ctx, id)
 	if err != nil {
 		switch {
-		case errors.Is(err, sql.ErrNoRows):
+		case errors.Is(err, common.ErrNotFound):
 			return nil, system.NewErrConnectorNotFound(id)
 		default:
 			return nil, err
@@ -342,7 +342,7 @@ func (m *Manager) DeleteConnector(ctx context.Context, id string) error {
 
 	if err := m.storage.DeleteConnector(ctx, id); err != nil {
 		switch {
-		case errors.Is(err, sql.ErrNoRows):
+		case errors.Is(err, common.ErrNotFound):
 			return system.NewErrConnectorNotFound(id)
 		default:
 			return err
@@ -383,7 +383,7 @@ func (m *Manager) DeletePipeline(ctx context.Context, id string) error {
 	}
 
 	if err := m.storage.DeletePipeline(ctx, id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, common.ErrNotFound) {
 			return ledger.NewErrPipelineNotFound(id)
 		}
 		return err
@@ -409,7 +409,7 @@ func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
 		"last_log_id": nil,
 	})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, common.ErrNotFound) {
 			return ledger.NewErrPipelineNotFound(id)
 		}
 		return fmt.Errorf("updating pipeline: %w", err)
