@@ -60,7 +60,10 @@ var _ = Context("Bucket deletion worker", func() {
 			defer bunDB.Close()
 			
 			systemStore := system.New(bunDB)
-			err = systemStore.CreateBucket(ctx, ledger.NewBucket(bucketName))
+			bucket := &ledger.Bucket{
+				Name: bucketName,
+			}
+			err = systemStore.CreateBucket(ctx, bucket)
 			Expect(err).ToNot(HaveOccurred())
 			
 			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
