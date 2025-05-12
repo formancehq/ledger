@@ -54,7 +54,7 @@ type PipelineHandler struct {
 	logger         logging.Logger
 }
 
-func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan int) {
+func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 	nextInterval := time.Duration(0)
 	for {
 		select {
@@ -105,12 +105,13 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan int) {
 				break
 			}
 
-			p.pipeline.LastLogID = int(*logs.Data[len(logs.Data)-1].ID)
+			lastLogID := logs.Data[len(logs.Data)-1].ID
+			p.pipeline.LastLogID = lastLogID
 
 			select {
 			case <-ctx.Done():
 				return
-			case ingestedLogs <- p.pipeline.LastLogID:
+			case ingestedLogs <- *lastLogID:
 			}
 
 			if !logs.HasMore {
