@@ -138,8 +138,18 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 		system.NewStoreFactory(),
 	)
 
+	// Create the default bucket first
+	systemStore := system.New(db)
+	err := systemStore.CreateBucket(ctx, ledger.NewBucket("_default"))
+	if err != nil {
+		// Ignore if bucket already exists
+		if !strings.Contains(err.Error(), "bucket already exists") {
+			require.NoError(t, err)
+		}
+	}
+
 	l := ledger.MustNewWithDefault(uuid.NewString())
-	_, err := d.CreateLedger(ctx, &l)
+	_, err = d.CreateLedger(ctx, &l)
 	require.NoError(t, err)
 
 	addedMetadata := metadata.Metadata{
