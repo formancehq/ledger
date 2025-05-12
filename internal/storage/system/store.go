@@ -300,7 +300,7 @@ func (d *DefaultStore) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipel
 	return ret, nil
 }
 
-func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLogID int) error {
+func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLogID uint64) error {
 	ret, err := d.db.NewUpdate().
 		Model(&ledger.Pipeline{}).
 		Where("id = ?", id).

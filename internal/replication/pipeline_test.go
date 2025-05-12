@@ -17,7 +17,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan int) {
+func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan uint64) {
 	t.Helper()
 
 	handler := NewPipelineHandler(
@@ -27,7 +27,7 @@ func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, st
 		logging.Testing(),
 	)
 
-	lastLogIDChannel := make(chan int)
+	lastLogIDChannel := make(chan uint64)
 
 	go handler.Run(ctx, lastLogIDChannel)
 	t.Cleanup(func() {

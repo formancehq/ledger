@@ -43,7 +43,7 @@ func mapPipeline(pipeline ledger.Pipeline) *grpc.Pipeline {
 		},
 		Id:        pipeline.ID,
 		Enabled:   pipeline.Enabled,
-		LastLogID: uint64(pipeline.LastLogID),
+		LastLogID: pipeline.LastLogID,
 		Error:     pipeline.Error,
 	}
 }
@@ -54,7 +54,7 @@ func mapPipelineFromGRPC(pipeline *grpc.Pipeline) ledger.Pipeline {
 		CreatedAt:             time.New(pipeline.CreatedAt.AsTime()),
 		ID:                    pipeline.Id,
 		Enabled:               pipeline.Enabled,
-		LastLogID:             int(pipeline.LastLogID),
+		LastLogID:             pipeline.LastLogID,
 		Error:                 pipeline.Error,
 	}
 }

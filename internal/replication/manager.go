@@ -127,7 +127,7 @@ func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (
 	m.pipelinesWaitGroup.Add(1)
 
 	// ignore the cancel function, as it will be called by the pipeline at its end
-	subscription := make(chan int)
+	subscription := make(chan uint64)
 
 	m.logger.Infof("starting handler")
 	go func() {
@@ -215,11 +215,6 @@ func (m *Manager) synchronizePipelines(ctx context.Context) error {
 	for _, pipeline := range pipelines {
 		m.logger.Debugf("restoring pipeline %s", pipeline.ID)
 		if handler := m.pipelines[pipeline.ID]; handler != nil {
-			if pipeline.Version == handler.pipeline.Version {
-				m.logger.Debugf("pipeline %s up to date, skipping", pipeline.ID)
-				continue
-			}
-
 			m.logger.Debugf("pipeline %s outdated, stopping it", pipeline.ID)
 			if err := m.StopPipeline(ctx, pipeline.ID); err != nil {
 				m.logger.Errorf("error stopping pipeline: %s", err)

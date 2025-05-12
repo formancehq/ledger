@@ -25,7 +25,7 @@ func (fn LogFetcherFn) ListLogs(ctx context.Context, query common.PaginatedQuery
 
 type Storage interface {
 	OpenLedger(context.Context, string) (LogFetcher, *ledger.Ledger, error)
-	StorePipelineState(ctx context.Context, id string, lastLogID int) error
+	StorePipelineState(ctx context.Context, id string, lastLogID uint64) error
 
 	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
 	CreateConnector(ctx context.Context, connector ledger.Connector) error
@@ -57,7 +57,7 @@ func (s *storageAdapter) OpenLedger(ctx context.Context, name string) (LogFetche
 	}), l, err
 }
 
-func (s *storageAdapter) StorePipelineState(ctx context.Context, id string, lastLogID int) error {
+func (s *storageAdapter) StorePipelineState(ctx context.Context, id string, lastLogID uint64) error {
 	return s.DefaultStore.StorePipelineState(ctx, id, lastLogID)
 }
 
