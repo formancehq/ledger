@@ -63,6 +63,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan int) {
 			return
 		case <-time.After(nextInterval):
 			logs, err := p.store.ListLogs(ctx, common.InitialPaginatedQuery[any]{
+				// todo: make configurable
 				PageSize: 100,
 				Column:   "id",
 				Options: common.ResourceQuery[any]{

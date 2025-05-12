@@ -87,9 +87,9 @@ message Pipeline {
   PipelineConfiguration config = 1;
   google.protobuf.Timestamp createdAt = 2;
   string id = 3;
-  bool enabled = 5;
-  uint64 lastLogID = 6;
-  string error = 7;
+  bool enabled = 4;
+  uint64 lastLogID = 5;
+  string error = 6;
 }
 
 message GetPipelineRequest {
