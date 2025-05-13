@@ -238,7 +238,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx1, nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, *tx1.ID)
+		require.Equal(t, uint64(1), *tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:1": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -260,7 +260,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err = store.CommitTransaction(ctx, &tx2, nil)
 		require.NoError(t, err)
-		require.Equal(t, 2, *tx2.ID)
+		require.Equal(t, uint64(2), *tx2.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:2": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -286,7 +286,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx3, nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, *tx3.ID)
+		require.Equal(t, uint64(1), *tx3.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:x": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -465,7 +465,7 @@ func TestTransactionsCommit(t *testing.T) {
 		slices.Reverse(txs)
 
 		for i := range countTx {
-			require.Equal(t, i+1, *txs[i].ID)
+			require.Equal(t, uint64(i)+1, *txs[i].ID)
 			require.Equalf(t, ledger.PostCommitVolumes{
 				"world": {
 					"USD": {

@@ -39,7 +39,7 @@ type Transaction struct {
 	bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
 	TransactionData
-	ID         *int       `json:"id" bun:"id,type:numeric"`
+	ID         *uint64       `json:"id" bun:"id,type:numeric"`
 	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.
@@ -63,7 +63,7 @@ func (tx Transaction) Reverse() Transaction {
 	return ret
 }
 
-func (tx Transaction) WithID(id int) Transaction {
+func (tx Transaction) WithID(id uint64) Transaction {
 	tx.ID = &id
 	return tx
 }

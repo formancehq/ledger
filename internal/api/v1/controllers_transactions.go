@@ -17,8 +17,8 @@ func mapTransactionToV1(tx ledger.Transaction) any {
 		Reverted                  bool                     `json:"reverted"`
 		PreCommitVolumes          ledger.PostCommitVolumes `json:"preCommitVolumes,omitempty"`
 		PreCommitEffectiveVolumes ledger.PostCommitVolumes `json:"preCommitEffectiveVolumes,omitempty"`
-		TxID                      *int                     `json:"txid"`
-		ID                        *int                     `json:"-"`
+		TxID                      *uint64                  `json:"txid"`
+		ID                        *uint64                  `json:"-"`
 	}
 
 	var (

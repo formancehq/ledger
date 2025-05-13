@@ -184,7 +184,7 @@ func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q com
 
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error {
 
-	var lastLogID *int
+	var lastLogID *uint64
 
 	// We can import only if the ledger is empty.
 	logs, err := ctrl.store.Logs().Paginate(ctx, common.ColumnPaginatedQuery[any]{
@@ -248,7 +248,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 				switch payload.TargetType {
 				case ledger.MetaTargetTypeTransaction:
 					logging.FromContext(ctx).Debugf("Saving metadata of transaction %d", payload.TargetID)
-					if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata, log.Date); err != nil {
+					if _, _, err := ctrl.store.UpdateTransactionMetadata(ctx, payload.TargetID.(uint64), payload.Metadata, log.Date); err != nil {
 						return nil, fmt.Errorf("failed to update transaction metadata: %w", err)
 					}
 				case ledger.MetaTargetTypeAccount:
@@ -263,7 +263,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, log ledger.Log) er
 				switch payload.TargetType {
 				case ledger.MetaTargetTypeTransaction:
 					logging.FromContext(ctx).Debugf("Deleting metadata of transaction %d", payload.TargetID)
-					if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key, log.Date); err != nil {
+					if _, _, err := ctrl.store.DeleteTransactionMetadata(ctx, payload.TargetID.(uint64), payload.Key, log.Date); err != nil {
 						return nil, fmt.Errorf("failed to delete transaction metadata: %w", err)
 					}
 				case ledger.MetaTargetTypeAccount:

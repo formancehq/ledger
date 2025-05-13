@@ -64,7 +64,7 @@ func TestCreateTransaction(t *testing.T) {
 			return x.(*ledger.Log).Type == ledger.NewLogType
 		})).
 		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
-			log.ID = pointer.For(0)
+			log.ID = pointer.For(uint64(0))
 			return log
 		})
 
@@ -97,11 +97,11 @@ func TestRevertTransaction(t *testing.T) {
 		Return(nil)
 
 	txToRevert := ledger.Transaction{
-		ID: pointer.For(0),
+		ID: pointer.For(uint64(0)),
 	}
 	store.EXPECT().
-		RevertTransaction(gomock.Any(), 1, time.Time{}).
-		DoAndReturn(func(_ context.Context, _ int, _ time.Time) (*ledger.Transaction, bool, error) {
+		RevertTransaction(gomock.Any(), uint64(1), time.Time{}).
+		DoAndReturn(func(_ context.Context, _ uint64, _ time.Time) (*ledger.Transaction, bool, error) {
 			txToRevert.RevertedAt = pointer.For(time.Now())
 			return &txToRevert, true, nil
 		})
@@ -119,14 +119,14 @@ func TestRevertTransaction(t *testing.T) {
 			return x.(*ledger.Log).Type == ledger.RevertedTransactionLogType
 		})).
 		DoAndReturn(func(ctx context.Context, v *ledger.Log) error {
-			v.ID = pointer.For(0)
+			v.ID = pointer.For(uint64(0))
 
 			return nil
 		})
 
 	_, _, err := l.RevertTransaction(ctx, Parameters[RevertTransaction]{
 		Input: RevertTransaction{
-			TransactionID: 1,
+			TransactionID: uint64(1),
 		},
 	})
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		"foo": "bar",
 	}
 	store.EXPECT().
-		UpdateTransactionMetadata(gomock.Any(), 1, m, time.Time{}).
+		UpdateTransactionMetadata(gomock.Any(), uint64(1), m, time.Time{}).
 		Return(&ledger.Transaction{}, true, nil)
 
 	store.EXPECT().
@@ -164,7 +164,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 			return x.(*ledger.Log).Type == ledger.SetMetadataLogType
 		})).
 		DoAndReturn(func(ctx context.Context, log *ledger.Log) error {
-			log.ID = pointer.For(0)
+			log.ID = pointer.For(uint64(0))
 
 			return nil
 		})
@@ -199,7 +199,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		Return(nil)
 
 	store.EXPECT().
-		DeleteTransactionMetadata(gomock.Any(), 1, "foo", time.Time{}).
+		DeleteTransactionMetadata(gomock.Any(), uint64(1), "foo", time.Time{}).
 		Return(&ledger.Transaction{}, true, nil)
 
 	store.EXPECT().
@@ -207,7 +207,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 			return x.(*ledger.Log).Type == ledger.DeleteMetadataLogType
 		})).
 		DoAndReturn(func(ctx context.Context, log *ledger.Log) error {
-			log.ID = pointer.For(0)
+			log.ID = pointer.For(uint64(0))
 
 			return nil
 		})

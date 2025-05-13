@@ -221,7 +221,7 @@ func TestTransactionsCreate(t *testing.T) {
 			expectedTx := ledger.NewTransaction().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			)
-			expectedTx.ID = pointer.For(0)
+			expectedTx.ID = pointer.For(uint64(0))
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if tc.expectedStatusCode < 300 && tc.expectedStatusCode >= 200 {
@@ -234,7 +234,7 @@ func TestTransactionsCreate(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
 					}, nil)

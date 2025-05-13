@@ -17,7 +17,7 @@ func SpecMetadata(name string) string {
 	return formanceNamespace + name
 }
 
-func MarkReverts(m metadata.Metadata, txID int) metadata.Metadata {
+func MarkReverts(m metadata.Metadata, txID uint64) metadata.Metadata {
 	return m.Merge(RevertMetadata(txID))
 }
 
@@ -31,6 +31,6 @@ func ComputeMetadata(key, value string) metadata.Metadata {
 	}
 }
 
-func RevertMetadata(txID int) metadata.Metadata {
+func RevertMetadata(txID uint64) metadata.Metadata {
 	return ComputeMetadata(RevertMetadataSpecKey(), fmt.Sprint(txID))
 }

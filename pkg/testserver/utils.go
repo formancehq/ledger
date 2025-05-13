@@ -22,7 +22,7 @@ func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 				return *tx.Reference
 			}(),
 		},
-		ID:                         pointer.For(int(tx.ID.Int64())),
+		ID:                         pointer.For(tx.ID.Uint64()),
 		PostCommitVolumes:          ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitVolumes),
 		PostCommitEffectiveVolumes: ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitEffectiveVolumes),
 	}

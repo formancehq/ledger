@@ -12,8 +12,8 @@ import "github.com/formancehq/ledger/internal"
 - [Variables](<#variables>)
 - [func ComputeIdempotencyHash\(inputs any\) string](<#ComputeIdempotencyHash>)
 - [func ComputeMetadata\(key, value string\) metadata.Metadata](<#ComputeMetadata>)
-- [func MarkReverts\(m metadata.Metadata, txID int\) metadata.Metadata](<#MarkReverts>)
-- [func RevertMetadata\(txID int\) metadata.Metadata](<#RevertMetadata>)
+- [func MarkReverts\(m metadata.Metadata, txID uint64\) metadata.Metadata](<#MarkReverts>)
+- [func RevertMetadata\(txID uint64\) metadata.Metadata](<#RevertMetadata>)
 - [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
 - [func SpecMetadata\(name string\) string](<#SpecMetadata>)
 - [type Account](<#Account>)
@@ -50,7 +50,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(l Log\) ChainLog\(previous \*Log\) Log](<#Log.ChainLog>)
   - [func \(l \*Log\) ComputeHash\(previous \*Log\)](<#Log.ComputeHash>)
   - [func \(l \*Log\) UnmarshalJSON\(data \[\]byte\) error](<#Log.UnmarshalJSON>)
-  - [func \(l Log\) WithID\(i int\) Log](<#Log.WithID>)
+  - [func \(l Log\) WithID\(i uint64\) Log](<#Log.WithID>)
   - [func \(l Log\) WithIdempotencyKey\(key string\) Log](<#Log.WithIdempotencyKey>)
 - [type LogPayload](<#LogPayload>)
   - [func HydrateLog\(\_type LogType, data \[\]byte\) \(LogPayload, error\)](<#HydrateLog>)
@@ -90,7 +90,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(tx Transaction\) MarshalJSON\(\) \(\[\]byte, error\)](<#Transaction.MarshalJSON>)
   - [func \(tx Transaction\) Reverse\(\) Transaction](<#Transaction.Reverse>)
   - [func \(tx Transaction\) VolumeUpdates\(\) \[\]AccountsVolumes](<#Transaction.VolumeUpdates>)
-  - [func \(tx Transaction\) WithID\(id int\) Transaction](<#Transaction.WithID>)
+  - [func \(tx Transaction\) WithID\(id uint64\) Transaction](<#Transaction.WithID>)
   - [func \(tx Transaction\) WithInsertedAt\(date time.Time\) Transaction](<#Transaction.WithInsertedAt>)
   - [func \(tx Transaction\) WithMetadata\(m metadata.Metadata\) Transaction](<#Transaction.WithMetadata>)
   - [func \(tx Transaction\) WithPostCommitEffectiveVolumes\(volumes PostCommitVolumes\) Transaction](<#Transaction.WithPostCommitEffectiveVolumes>)
@@ -163,7 +163,7 @@ var Zero = big.NewInt(0)
 ```
 
 <a name="ComputeIdempotencyHash"></a>
-## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L386>)
+## func [ComputeIdempotencyHash](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L384>)
 
 ```go
 func ComputeIdempotencyHash(inputs any) string
@@ -184,7 +184,7 @@ func ComputeMetadata(key, value string) metadata.Metadata
 ## func [MarkReverts](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L20>)
 
 ```go
-func MarkReverts(m metadata.Metadata, txID int) metadata.Metadata
+func MarkReverts(m metadata.Metadata, txID uint64) metadata.Metadata
 ```
 
 
@@ -193,7 +193,7 @@ func MarkReverts(m metadata.Metadata, txID int) metadata.Metadata
 ## func [RevertMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata.go#L34>)
 
 ```go
-func RevertMetadata(txID int) metadata.Metadata
+func RevertMetadata(txID uint64) metadata.Metadata
 ```
 
 
@@ -369,7 +369,7 @@ func (p CreatedTransaction) Type() LogType
 
 
 <a name="DeletedMetadata"></a>
-## type [DeletedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L279-L283>)
+## type [DeletedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L278-L282>)
 
 
 
@@ -382,7 +382,7 @@ type DeletedMetadata struct {
 ```
 
 <a name="DeletedMetadata.Type"></a>
-### func \(DeletedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L285>)
+### func \(DeletedMetadata\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L284>)
 
 ```go
 func (s DeletedMetadata) Type() LogType
@@ -391,7 +391,7 @@ func (s DeletedMetadata) Type() LogType
 
 
 <a name="DeletedMetadata.UnmarshalJSON"></a>
-### func \(\*DeletedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L291>)
+### func \(\*DeletedMetadata\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L290>)
 
 ```go
 func (s *DeletedMetadata) UnmarshalJSON(data []byte) error
@@ -534,9 +534,9 @@ type Log struct {
     IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
     // IdempotencyHash is a signature used when using IdempotencyKey.
     // It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
-    IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-    ID              *int   `json:"id" bun:"id,unique,type:numeric"`
-    Hash            []byte `json:"hash" bun:"hash,type:bytea"`
+    IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
+    ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
+    Hash            []byte  `json:"hash" bun:"hash,type:bytea"`
 }
 ```
 
@@ -580,7 +580,7 @@ func (l *Log) UnmarshalJSON(data []byte) error
 ### func \(Log\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L171>)
 
 ```go
-func (l Log) WithID(i int) Log
+func (l Log) WithID(i uint64) Log
 ```
 
 
@@ -606,7 +606,7 @@ type LogPayload interface {
 ```
 
 <a name="HydrateLog"></a>
-### func [HydrateLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L364>)
+### func [HydrateLog](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L362>)
 
 ```go
 func HydrateLog(_type LogType, data []byte) (LogPayload, error)
@@ -708,7 +708,7 @@ type Memento interface {
 type Move struct {
     bun.BaseModel `bun:"table:moves"`
 
-    TransactionID              int                 `bun:"transactions_id,type:bigint"`
+    TransactionID              uint64              `bun:"transactions_id,type:bigint"`
     IsSource                   bool                `bun:"is_source,type:bool"`
     Account                    string              `bun:"accounts_address,type:varchar"`
     Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
@@ -834,7 +834,7 @@ func (p Postings) Validate() (int, error)
 
 
 <a name="RevertedTransaction"></a>
-## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L325-L328>)
+## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L323-L326>)
 
 
 
@@ -846,7 +846,7 @@ type RevertedTransaction struct {
 ```
 
 <a name="RevertedTransaction.GetMemento"></a>
-### func \(RevertedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L336>)
+### func \(RevertedTransaction\) [GetMemento](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L334>)
 
 ```go
 func (r RevertedTransaction) GetMemento() any
@@ -855,7 +855,7 @@ func (r RevertedTransaction) GetMemento() any
 
 
 <a name="RevertedTransaction.Type"></a>
-### func \(RevertedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L330>)
+### func \(RevertedTransaction\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L328>)
 
 ```go
 func (r RevertedTransaction) Type() LogType
@@ -904,7 +904,7 @@ type Transaction struct {
     bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
     TransactionData
-    ID         *int       `json:"id" bun:"id,type:numeric"`
+    ID         *uint64    `json:"id" bun:"id,type:numeric"`
     RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
     // PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
     // Those volumes will never change as those are computed in flight.
@@ -991,7 +991,7 @@ func (tx Transaction) VolumeUpdates() []AccountsVolumes
 ### func \(Transaction\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L66>)
 
 ```go
-func (tx Transaction) WithID(id int) Transaction
+func (tx Transaction) WithID(id uint64) Transaction
 ```
 
 

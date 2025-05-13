@@ -23,14 +23,14 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	txID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		api.NotFound(w, errors.New("invalid transaction ID"))
 		return
 	}
 
 	if _, err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
-		TransactionID: int(txID),
+		TransactionID: txID,
 		Metadata:      m,
 	})); err != nil {
 		switch {

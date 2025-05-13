@@ -39,7 +39,7 @@ func NewErrImport(err error) ErrImport {
 var _ error = (*ErrInvalidHash)(nil)
 
 type ErrInvalidHash struct {
-	logID    int
+	logID    uint64
 	expected []byte
 	got      []byte
 }
@@ -55,7 +55,7 @@ func (i ErrInvalidHash) Error() string {
 
 var _ error = (*ErrInvalidHash)(nil)
 
-func newErrInvalidHash(logID int, got, expected []byte) ErrImport {
+func newErrInvalidHash(logID uint64, got, expected []byte) ErrImport {
 	return NewErrImport(ErrInvalidHash{
 		expected: expected,
 		got:      got,
@@ -70,7 +70,7 @@ type ErrInsufficientFunds = machine.ErrInsufficientFund
 var ErrNoPostings = errors.New("numscript execution returned no postings")
 
 type ErrAlreadyReverted struct {
-	id int
+	id uint64
 }
 
 func (e ErrAlreadyReverted) Error() string {
@@ -84,7 +84,7 @@ func (e ErrAlreadyReverted) Is(err error) bool {
 
 var _ error = (*ErrAlreadyReverted)(nil)
 
-func newErrAlreadyReverted(id int) ErrAlreadyReverted {
+func newErrAlreadyReverted(id uint64) ErrAlreadyReverted {
 	return ErrAlreadyReverted{
 		id: id,
 	}
@@ -250,7 +250,7 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 
 // ErrConcurrentTransaction can be raised in case of conflicting between an import and a single transaction
 type ErrConcurrentTransaction struct {
-	id int
+	id uint64
 }
 
 func (e ErrConcurrentTransaction) Error() string {
@@ -262,7 +262,7 @@ func (e ErrConcurrentTransaction) Is(err error) bool {
 	return ok
 }
 
-func NewErrConcurrentTransaction(id int) ErrConcurrentTransaction {
+func NewErrConcurrentTransaction(id uint64) ErrConcurrentTransaction {
 	return ErrConcurrentTransaction{
 		id: id,
 	}

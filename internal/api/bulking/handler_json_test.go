@@ -101,7 +101,7 @@ send [USD 100] (
 
 					receive <- BulkElementResult{
 						Data:      ledger.CreatedTransaction{},
-						LogID:     id + 1,
+						LogID:     uint64(id) + 1,
 						ElementID: id,
 					}
 				case <-time.After(100 * time.Millisecond):

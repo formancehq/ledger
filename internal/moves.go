@@ -12,7 +12,7 @@ import (
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	TransactionID              int                 `bun:"transactions_id,type:bigint"`
+	TransactionID              uint64                 `bun:"transactions_id,type:bigint"`
 	IsSource                   bool                `bun:"is_source,type:bool"`
 	Account                    string              `bun:"accounts_address,type:varchar"`
 	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`

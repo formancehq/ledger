@@ -71,7 +71,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, log *ledger.Log) error {
-			log.ID = pointer.For(0)
+			log.ID = pointer.For(uint64(0))
 			return nil
 		})
 
