@@ -117,35 +117,11 @@ Authorization ( Scopes: ledger:read )
 ```http
 GET http://localhost:8080/v2 HTTP/1.1
 Host: localhost:8080
-Content-Type: application/json
 Accept: application/json
 
 ```
 
 `GET /v2`
-
-> Body parameter
-
-```json
-{}
-```
-
-<h3 id="list-ledgers-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
-|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|body|body|object|true|none|
-
-#### Detailed descriptions
-
-**pageSize**: The maximum number of results to return per page.
-
-**cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
 
 > Example responses
 
@@ -184,9 +160,148 @@ No other parameters can be set when this parameter is set.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2LedgerListResponse](#schemav2ledgerlistresponse)|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List buckets with their deletion status
+
+<a id="opIdv2ListBuckets"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_/buckets HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_/buckets`
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "name": "default",
+    "deletedAt": "2019-08-24T14:15:22Z"
+  }
+]
+```
+
+<h3 id="list-buckets-with-their-deletion-status-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-buckets-with-their-deletion-status-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[[V2BucketWithStatus](#schemav2bucketwithstatus)]|false|none|none|
+|» name|string|true|none|Name of the bucket|
+|» deletedAt|string(date-time)¦null|false|none|Timestamp when the bucket was marked for deletion, null if active|
+
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:read )
+</aside>
+
+## Mark a bucket for deletion
+
+<a id="opIdv2DeleteBucket"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/_/buckets/{bucket} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/_/buckets/{bucket}`
+
+<h3 id="mark-a-bucket-for-deletion-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|bucket|path|string|true|Name of the bucket.|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="mark-a-bucket-for-deletion-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
+</aside>
+
+## Restore a bucket that was marked for deletion
+
+<a id="opIdv2RestoreBucket"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/_/buckets/{bucket}/restore HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/_/buckets/{bucket}/restore`
+
+<h3 id="restore-a-bucket-that-was-marked-for-deletion-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|bucket|path|string|true|Name of the bucket.|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="restore-a-bucket-that-was-marked-for-deletion-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|No Content|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
 </aside>
 
 ## Get a ledger
@@ -4519,4 +4634,26 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |file|string(binary)|true|none|none|
+
+<h2 id="tocS_V2BucketWithStatus">V2BucketWithStatus</h2>
+<!-- backwards compatibility -->
+<a id="schemav2bucketwithstatus"></a>
+<a id="schema_V2BucketWithStatus"></a>
+<a id="tocSv2bucketwithstatus"></a>
+<a id="tocsv2bucketwithstatus"></a>
+
+```json
+{
+  "name": "default",
+  "deletedAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Name of the bucket|
+|deletedAt|string(date-time)¦null|false|none|Timestamp when the bucket was marked for deletion, null if active|
 

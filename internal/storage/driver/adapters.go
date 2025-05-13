@@ -27,6 +27,18 @@ func (d *DefaultStorageDriverAdapter) CreateLedger(ctx context.Context, l *ledge
 	return err
 }
 
+func (d *DefaultStorageDriverAdapter) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	return d.Driver.ListBucketsWithStatus(ctx)
+}
+
+func (d *DefaultStorageDriverAdapter) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	return d.Driver.MarkBucketAsDeleted(ctx, bucketName)
+}
+
+func (d *DefaultStorageDriverAdapter) RestoreBucket(ctx context.Context, bucketName string) error {
+	return d.Driver.RestoreBucket(ctx, bucketName)
+}
+
 func NewControllerStorageDriverAdapter(d *Driver) *DefaultStorageDriverAdapter {
 	return &DefaultStorageDriverAdapter{Driver: d}
 }

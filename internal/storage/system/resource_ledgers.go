@@ -2,10 +2,11 @@ package system
 
 import (
 	"errors"
+	"regexp"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
-	"regexp"
 )
 
 var (
@@ -48,7 +49,9 @@ func (h ledgersResourceHandler) Filters() []common.Filter {
 func (h ledgersResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	return h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
-		Column("*"), nil
+		Join("LEFT JOIN _system.buckets ON ledgers.bucket = _system.buckets.name").
+		Where("_system.buckets.deleted_at IS NULL").
+		Column("ledgers.*"), nil
 }
 
 func (h ledgersResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {

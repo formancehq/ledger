@@ -1,11 +1,12 @@
 package v2
 
 import (
+	"net/http"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"net/http"
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
@@ -36,6 +37,14 @@ func NewRouter(
 		router.Get("/_info", v1.GetInfo(systemController, version))
 
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
+
+		router.Route("/_/buckets", func(r chi.Router) {
+			r.Get("/", listBuckets(systemController, routerOptions.paginationConfig))
+			r.Delete("/{bucket}", deleteBucket(systemController))
+			r.Post("/{bucket}/restore", restoreBucket(systemController))
+		})
+
+
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

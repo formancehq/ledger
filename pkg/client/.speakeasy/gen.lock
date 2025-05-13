@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: ba1cd35a327e7c3ca6b907a3a850d1ac
+  docChecksum: 5a77a400befbb9a05b524413032cc845
   docVersion: v2
   speakeasyVersion: 1.517.3
   generationVersion: 2.548.6
@@ -75,6 +75,7 @@ generatedFiles:
   - /models/components/v2accountresponse.go
   - /models/components/v2accountscursorresponse.go
   - /models/components/v2aggregatebalancesresponse.go
+  - /models/components/v2bucketwithstatus.go
   - /models/components/v2bulkelement.go
   - /models/components/v2bulkelementaddmetadata.go
   - /models/components/v2bulkelementcreatetransaction.go
@@ -138,6 +139,7 @@ generatedFiles:
   - /models/operations/v2createledger.go
   - /models/operations/v2createtransaction.go
   - /models/operations/v2deleteaccountmetadata.go
+  - /models/operations/v2deletebucket.go
   - /models/operations/v2deleteledgermetadata.go
   - /models/operations/v2deletetransactionmetadata.go
   - /models/operations/v2exportlogs.go
@@ -150,10 +152,12 @@ generatedFiles:
   - /models/operations/v2getvolumeswithbalances.go
   - /models/operations/v2importlogs.go
   - /models/operations/v2listaccounts.go
+  - /models/operations/v2listbuckets.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2listlogs.go
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
+  - /models/operations/v2restorebucket.go
   - /models/operations/v2reverttransaction.go
   - /models/operations/v2updateledgermetadata.go
   - /models/sdkerrors/errorresponse.go
@@ -209,6 +213,7 @@ generatedFiles:
   - docs/models/components/v2accountscursorresponse.md
   - docs/models/components/v2accountscursorresponsecursor.md
   - docs/models/components/v2aggregatebalancesresponse.md
+  - docs/models/components/v2bucketwithstatus.md
   - docs/models/components/v2bulkelement.md
   - docs/models/components/v2bulkelementaddmetadata.md
   - docs/models/components/v2bulkelementcreatetransaction.md
@@ -317,6 +322,8 @@ generatedFiles:
   - docs/models/operations/v2createtransactionresponse.md
   - docs/models/operations/v2deleteaccountmetadatarequest.md
   - docs/models/operations/v2deleteaccountmetadataresponse.md
+  - docs/models/operations/v2deletebucketrequest.md
+  - docs/models/operations/v2deletebucketresponse.md
   - docs/models/operations/v2deleteledgermetadatarequest.md
   - docs/models/operations/v2deleteledgermetadataresponse.md
   - docs/models/operations/v2deletetransactionmetadatarequest.md
@@ -340,7 +347,7 @@ generatedFiles:
   - docs/models/operations/v2importlogsresponse.md
   - docs/models/operations/v2listaccountsrequest.md
   - docs/models/operations/v2listaccountsresponse.md
-  - docs/models/operations/v2listledgersrequest.md
+  - docs/models/operations/v2listbucketsresponse.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2listlogsrequest.md
   - docs/models/operations/v2listlogsresponse.md
@@ -348,6 +355,8 @@ generatedFiles:
   - docs/models/operations/v2listtransactionsresponse.md
   - docs/models/operations/v2readstatsrequest.md
   - docs/models/operations/v2readstatsresponse.md
+  - docs/models/operations/v2restorebucketrequest.md
+  - docs/models/operations/v2restorebucketresponse.md
   - docs/models/operations/v2reverttransactionrequest.md
   - docs/models/operations/v2reverttransactionresponse.md
   - docs/models/operations/v2updateledgermetadatarequest.md
@@ -652,6 +661,12 @@ examples:
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
       requestBody:
         application/json: {"key": "<value>"}
+      responses:
+        "200":
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"name": "<value>", "addedAt": "2025-08-18T14:16:25.795Z", "bucket": "<value>", "metadata": {"admin": "true"}}]}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+    speakeasy-default-v2-list-ledgers:
       responses:
         "200":
           application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"name": "<value>", "addedAt": "2025-08-18T14:16:25.795Z", "bucket": "<value>", "metadata": {"admin": "true"}}]}}
@@ -965,5 +980,28 @@ examples:
       responses:
         default:
           application/octet-stream: "x-file: example.file"
+  v2ListBuckets:
+    speakeasy-default-v2-list-buckets:
+      responses:
+        "200":
+          application/json: [{"name": "default"}, {"name": "default"}, {"name": "default"}]
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeleteBucket:
+    speakeasy-default-v2-delete-bucket:
+      parameters:
+        path:
+          bucket: "default"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2RestoreBucket:
+    speakeasy-default-v2-restore-bucket:
+      parameters:
+        path:
+          bucket: "default"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.0
 generatedTests: {}

@@ -5,6 +5,12 @@ package system
 import (
 	"context"
 	"fmt"
+	"os"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/bun/bundebug"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -16,10 +22,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
-	"os"
-	"slices"
-	"testing"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
@@ -39,7 +41,7 @@ func TestLedgersCreate(t *testing.T) {
 		grp.Go(func() error {
 			l := ledger.MustNewWithDefault(fmt.Sprintf("ledger%d", i))
 
-			ctx, cancel := context.WithDeadline(ctx, time.Now().Add(40*time.Second))
+			ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 			defer cancel()
 
 			err := store.CreateLedger(ctx, &l)
@@ -150,6 +152,70 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
 }
 
+func TestBucketDeletion(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	store := newStore(t)
+
+	bucketName := "test-bucket-" + uuid.NewString()
+
+	// Create the bucket first
+	err := store.CreateBucket(ctx, ledger.NewBucket(bucketName))
+	require.NoError(t, err)
+
+	l1 := ledger.MustNewWithDefault(bucketName + "-ledger1")
+	l1.Bucket = bucketName
+	l2 := ledger.MustNewWithDefault(bucketName + "-ledger2")
+	l2.Bucket = bucketName
+
+	err = store.CreateLedger(ctx, &l1)
+	require.NoError(t, err)
+	err = store.CreateLedger(ctx, &l2)
+	require.NoError(t, err)
+
+	buckets, err := store.GetDistinctBuckets(ctx)
+	require.NoError(t, err)
+	require.Contains(t, buckets, bucketName)
+
+	err = store.MarkBucketAsDeleted(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err = store.GetDistinctBuckets(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, buckets, bucketName)
+
+	bucketsWithStatus, err := store.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+
+	var foundBucket bool
+	for _, b := range bucketsWithStatus {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.NotNil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets with status list")
+
+	err = store.RestoreBucket(ctx, bucketName)
+	require.NoError(t, err)
+
+	buckets, err = store.GetDistinctBuckets(ctx)
+	require.NoError(t, err)
+	require.Contains(t, buckets, bucketName)
+
+	bucketsWithStatus, err = store.ListBucketsWithStatus(ctx)
+	require.NoError(t, err)
+
+	foundBucket = false
+	for _, b := range bucketsWithStatus {
+		if b.Name == bucketName {
+			foundBucket = true
+			require.Nil(t, b.DeletedAt)
+		}
+	}
+	require.True(t, foundBucket, "Bucket should be found in buckets with status list")
+}
 func newStore(t docker.T) Store {
 	t.Helper()
 
@@ -165,6 +231,13 @@ func newStore(t docker.T) Store {
 
 	ret := New(db)
 	require.NoError(t, ret.Migrate(ctx))
+
+	// Create the default bucket to ensure foreign key constraints are satisfied
+	defaultBucket := ledger.NewBucket(ledger.DefaultBucket)
+	err = ret.CreateBucket(ctx, defaultBucket)
+	if err != nil && !strings.Contains(err.Error(), "bucket already exists") {
+		require.NoError(t, err)
+	}
 
 	return ret
 }

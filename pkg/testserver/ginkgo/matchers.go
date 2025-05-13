@@ -36,9 +36,7 @@ func (h HaveCoherentStateMatcher) Match(actual interface{}) (success bool, err e
 	}
 	client := testserver.Client(testServer).Ledger.V2
 
-	ledgers, err := client.ListLedgers(ctx, operations.V2ListLedgersRequest{
-		PageSize: pointer.For(int64(100)),
-	})
+	ledgers, err := client.ListLedgers(ctx)
 	if err != nil {
 		return false, err
 	}

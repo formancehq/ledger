@@ -4,19 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"sync"
-	"time"
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -39,7 +40,34 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		systemStore := d.systemStoreFactory.Create(tx)
+		systemStore := d.systemStoreFactory.Create(d.db)
+
+		// Get bucket status in a single query - either returns the bucket (if it exists) or nil
+		var buckets []*ledger.Bucket
+		err := d.db.NewSelect().
+			Model(&ledger.Bucket{}).
+			Where("name = ?", l.Bucket).
+			Scan(ctx, &buckets)
+
+		if err != nil {
+			return fmt.Errorf("checking bucket status: %w", err)
+		}
+
+		// Check if bucket exists and its deletion status
+		if len(buckets) > 0 {
+			// Bucket exists
+			if buckets[0].DeletedAt != nil {
+				return systemcontroller.ErrBucketMarkedForDeletion
+			}
+		} else {
+			// Bucket doesn't exist, create it
+			bucket := &ledger.Bucket{
+				Name: l.Bucket,
+			}
+			if err := systemStore.CreateBucket(ctx, bucket); err != nil {
+				return fmt.Errorf("creating bucket: %w", err)
+			}
+		}
 
 		if err := systemStore.CreateLedger(ctx, l); err != nil {
 			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
@@ -319,6 +347,73 @@ func WithTracer(tracer trace.Tracer) Option {
 	return func(d *Driver) {
 		d.tracer = tracer
 	}
+}
+
+func (d *Driver) GetBucketsMarkedForDeletion(ctx context.Context, gracePeriod time.Duration) ([]string, error) {
+	if gracePeriod < 0 {
+		return []string{}, nil
+	}
+
+	var buckets []string
+	gracePeriodInterval := fmt.Sprintf("%.0f seconds", gracePeriod.Seconds())
+
+	err := d.db.NewSelect().
+		DistinctOn("ledgers.bucket").
+		Model(&ledger.Ledger{}).
+		Column("ledgers.bucket").
+		Join("LEFT JOIN _system.buckets ON ledgers.bucket = _system.buckets.name").
+		Where("_system.buckets.deleted_at IS NOT NULL AND _system.buckets.deleted_at <= now() - interval ?", gracePeriodInterval).
+		Scan(ctx, &buckets)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting buckets marked for deletion: %w", postgres.ResolveError(err))
+	}
+
+	return buckets, nil
+}
+
+func (d *Driver) PhysicallyDeleteBucket(ctx context.Context, bucketName string) error {
+	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Drop the schema
+		_, err := tx.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, bucketName))
+		if err != nil {
+			return fmt.Errorf("dropping bucket schema: %w", postgres.ResolveError(err))
+		}
+
+		// Delete from ledgers table
+		_, err = tx.NewDelete().
+			Model(&ledger.Ledger{}).
+			Where("bucket = ?", bucketName).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("deleting ledger entries for bucket: %w", postgres.ResolveError(err))
+		}
+
+		// Delete from buckets table
+		_, err = tx.NewDelete().
+			Table("_system.buckets").
+			Where("name = ?", bucketName).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("deleting bucket entry: %w", postgres.ResolveError(err))
+		}
+
+		return nil
+	})
+
+	return err
+}
+
+func (d *Driver) ListBucketsWithStatus(ctx context.Context) ([]systemcontroller.BucketWithStatus, error) {
+	return d.systemStoreFactory.Create(d.db).ListBucketsWithStatus(ctx)
+}
+
+func (d *Driver) RestoreBucket(ctx context.Context, bucketName string) error {
+	return d.systemStoreFactory.Create(d.db).RestoreBucket(ctx, bucketName)
+}
+
+func (d *Driver) MarkBucketAsDeleted(ctx context.Context, bucketName string) error {
+	return d.systemStoreFactory.Create(d.db).MarkBucketAsDeleted(ctx, bucketName)
 }
 
 var defaultOptions = []Option{
