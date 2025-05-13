@@ -50,14 +50,14 @@ func TestReadPipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithConnectors(true))
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
-			connectorID := uuid.NewString()
-			req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines/"+connectorID, nil)
+			exporterID := uuid.NewString()
+			req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines/"+exporterID, nil)
 			rec := httptest.NewRecorder()
 
 			systemController.EXPECT().
-				GetPipeline(gomock.Any(), connectorID).
+				GetPipeline(gomock.Any(), exporterID).
 				Return(&ledger.Pipeline{}, testCase.returnError)
 
 			router.ServeHTTP(rec, req)

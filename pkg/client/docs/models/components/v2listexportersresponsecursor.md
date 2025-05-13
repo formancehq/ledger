@@ -1,0 +1,9 @@
+# V2ListExportersResponseCursor
+
+
+## Fields
+
+| Field                                                                                                            | Type                                                                                                             | Required                                                                                                         | Description                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `Cursor`                                                                                                         | [components.V2ListExportersResponseCursorCursor](../../models/components/v2listexportersresponsecursorcursor.md) | :heavy_check_mark:                                                                                               | N/A                                                                                                              |
+| `Data`                                                                                                           | [][components.V2Exporter](../../models/components/v2exporter.md)                                                 | :heavy_minus_sign:                                                                                               | N/A                                                                                                              |

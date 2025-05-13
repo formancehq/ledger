@@ -28,32 +28,32 @@ type Manager struct {
 	driverFactory drivers.Factory
 	drivers       map[string]*DriverFacade
 
-	pipelineOptions           []PipelineOption
-	connectorsConfigValidator ConfigValidator
-	syncPeriod                time.Duration
+	pipelineOptions          []PipelineOption
+	exportersConfigValidator ConfigValidator
+	syncPeriod               time.Duration
 	started                   chan struct{}
 }
 
-func (m *Manager) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
-	if err := m.connectorsConfigValidator.ValidateConfig(configuration.Driver, configuration.Config); err != nil {
+func (m *Manager) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
+	if err := m.exportersConfigValidator.ValidateConfig(configuration.Driver, configuration.Config); err != nil {
 		return nil, system.NewErrInvalidDriverConfiguration(configuration.Driver, err)
 	}
 
-	connector := ledger.NewConnector(configuration)
-	if err := m.storage.CreateConnector(ctx, connector); err != nil {
+	exporter := ledger.NewExporter(configuration)
+	if err := m.storage.CreateExporter(ctx, exporter); err != nil {
 		return nil, err
 	}
-	return &connector, nil
+	return &exporter, nil
 }
 
-func (m *Manager) initConnector(connectorID string) error {
+func (m *Manager) initExporter(exporterID string) error {
 
-	_, ok := m.drivers[connectorID]
+	_, ok := m.drivers[exporterID]
 	if ok {
 		return nil
 	}
 
-	driver, _, err := m.driverFactory.Create(context.Background(), connectorID)
+	driver, _, err := m.driverFactory.Create(context.Background(), exporterID)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (m *Manager) initConnector(connectorID string) error {
 	driverFacade := newDriverFacade(driver, m.logger, 2*time.Second)
 	driverFacade.Run(context.Background())
 
-	m.drivers[connectorID] = driverFacade
+	m.drivers[exporterID] = driverFacade
 
 	return nil
 }
@@ -70,8 +70,8 @@ func (m *Manager) stopDriver(ctx context.Context, driver drivers.Driver) {
 	if err := driver.Stop(ctx); err != nil {
 		m.logger.Errorf("stopping driver: %s", err)
 	}
-	for name, registeredConnector := range m.drivers {
-		if driver == registeredConnector {
+	for name, registeredExporter := range m.drivers {
+		if driver == registeredExporter {
 			delete(m.drivers, name)
 			return
 		}
@@ -102,16 +102,16 @@ func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (
 		ctx,
 		m.logger.WithFields(map[string]any{
 			"ledger":    pipeline.Ledger,
-			"connector": pipeline.ConnectorID,
+			"exporter": pipeline.ExporterID,
 		}),
 	)
 
 	// Detach the context as once the process of pipeline initialisation is started, we must not stop it
 	ctx = context.WithoutCancel(ctx)
 
-	m.logger.Infof("initializing connector")
-	if err := m.initConnector(pipeline.ConnectorID); err != nil {
-		return nil, fmt.Errorf("initializing connector: %w", err)
+	m.logger.Infof("initializing exporter")
+	if err := m.initExporter(pipeline.ExporterID); err != nil {
+		return nil, fmt.Errorf("initializing exporter: %w", err)
 	}
 
 	store, _, err := m.storage.OpenLedger(ctx, pipeline.Ledger)
@@ -122,7 +122,7 @@ func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (
 	pipelineHandler := NewPipelineHandler(
 		pipeline,
 		store,
-		m.drivers[pipeline.ConnectorID],
+		m.drivers[pipeline.ExporterID],
 		m.logger,
 		m.pipelineOptions...,
 	)
@@ -164,8 +164,8 @@ func (m *Manager) stopPipeline(ctx context.Context, id string) error {
 	}
 	delete(m.pipelines, id)
 
-	m.logger.Infof("pipeline terminated, pruning connectors...")
-	m.stopConnectorIfNeeded(ctx, handler)
+	m.logger.Infof("pipeline terminated, pruning exporter...")
+	m.stopExporterIfNeeded(ctx, handler)
 
 	return nil
 }
@@ -188,18 +188,18 @@ func (m *Manager) stopPipelines(ctx context.Context) {
 	}
 }
 
-func (m *Manager) stopConnectorIfNeeded(ctx context.Context, handler *PipelineHandler) {
-	// Check if the connector associated to the pipeline is still in used
-	connector := handler.connector
+func (m *Manager) stopExporterIfNeeded(ctx context.Context, handler *PipelineHandler) {
+	// Check if the exporter associated to the pipeline is still in used
+	exporter := handler.exporter
 	for _, anotherPipeline := range m.pipelines {
-		if anotherPipeline.connector == connector {
-			// Connector still used, keep it
+		if anotherPipeline.exporter == exporter {
+			// Exporter still used, keep it
 			return
 		}
 	}
 
-	m.logger.Infof("connector %s no more used, stopping it...", handler.pipeline.ConnectorID)
-	m.stopDriver(ctx, connector)
+	m.logger.Infof("exporter %s no more used, stopping it...", handler.pipeline.ExporterID)
+	m.stopDriver(ctx, exporter)
 }
 
 func (m *Manager) synchronizePipelines(ctx context.Context) error {
@@ -306,31 +306,31 @@ func (m *Manager) GetDriver(name string) *DriverFacade {
 	return m.drivers[name]
 }
 
-func (m *Manager) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
-	connector, err := m.storage.GetConnector(ctx, id)
+func (m *Manager) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	exporter, err := m.storage.GetExporter(ctx, id)
 	if err != nil {
 		switch {
 		case errors.Is(err, common.ErrNotFound):
-			return nil, system.NewErrConnectorNotFound(id)
+			return nil, system.NewErrExporterNotFound(id)
 		default:
 			return nil, err
 		}
 	}
-	return connector, nil
+	return exporter, nil
 }
 
-func (m *Manager) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	return m.storage.ListConnectors(ctx)
+func (m *Manager) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	return m.storage.ListExporters(ctx)
 }
 
-func (m *Manager) DeleteConnector(ctx context.Context, id string) error {
+func (m *Manager) DeleteExporter(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	driver, ok := m.drivers[id]
 	if ok {
 		for id, config := range m.pipelines {
-			if config.pipeline.ConnectorID == id {
+			if config.pipeline.ExporterID == id {
 				if err := m.stopPipeline(ctx, id); err != nil {
 					return fmt.Errorf("stopping pipeline: %w", err)
 				}
@@ -340,10 +340,10 @@ func (m *Manager) DeleteConnector(ctx context.Context, id string) error {
 		m.stopDriver(ctx, driver)
 	}
 
-	if err := m.storage.DeleteConnector(ctx, id); err != nil {
+	if err := m.storage.DeleteExporter(ctx, id); err != nil {
 		switch {
 		case errors.Is(err, common.ErrNotFound):
-			return system.NewErrConnectorNotFound(id)
+			return system.NewErrExporterNotFound(id)
 		default:
 			return err
 		}
@@ -425,20 +425,20 @@ func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
 
 func NewManager(
 	storageDriver Storage,
-	connectorFactory drivers.Factory,
+	driverFactory drivers.Factory,
 	logger logging.Logger,
-	connectorsConfigValidator ConfigValidator,
+	exportersConfigValidator ConfigValidator,
 	options ...Option,
 ) *Manager {
 	ret := &Manager{
-		storage:                   storageDriver,
-		stopChannel:               make(chan chan error, 1),
-		pipelines:                 map[string]*PipelineHandler{},
-		driverFactory:             connectorFactory,
-		drivers:                   map[string]*DriverFacade{},
-		logger:                    logger.WithField("component", "manager"),
-		connectorsConfigValidator: connectorsConfigValidator,
-		started:                   make(chan struct{}),
+		storage:                  storageDriver,
+		stopChannel:              make(chan chan error, 1),
+		pipelines:                map[string]*PipelineHandler{},
+		driverFactory:            driverFactory,
+		drivers:                  map[string]*DriverFacade{},
+		logger:                   logger.WithField("component", "manager"),
+		exportersConfigValidator: exportersConfigValidator,
+		started:                  make(chan struct{}),
 	}
 
 	for _, option := range append(defaultOptions, options...) {

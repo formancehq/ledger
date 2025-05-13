@@ -125,7 +125,7 @@ func NewServeCommand() *cobra.Command {
 						MaxPageSize:     cfg.MaxPageSize,
 						DefaultPageSize: cfg.DefaultPageSize,
 					},
-					Connectors: cfg.ExperimentalConnectors,
+					Exporters: cfg.ExperimentalExporters,
 				}),
 				fx.Decorate(func(
 					params struct {

@@ -19,27 +19,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Replication_CreateConnector_FullMethodName = "/replication.Replication/CreateConnector"
-	Replication_ListConnectors_FullMethodName  = "/replication.Replication/ListConnectors"
-	Replication_GetConnector_FullMethodName    = "/replication.Replication/GetConnector"
-	Replication_DeleteConnector_FullMethodName = "/replication.Replication/DeleteConnector"
-	Replication_ListPipelines_FullMethodName   = "/replication.Replication/ListPipelines"
-	Replication_GetPipeline_FullMethodName     = "/replication.Replication/GetPipeline"
-	Replication_CreatePipeline_FullMethodName  = "/replication.Replication/CreatePipeline"
-	Replication_DeletePipeline_FullMethodName  = "/replication.Replication/DeletePipeline"
-	Replication_StartPipeline_FullMethodName   = "/replication.Replication/StartPipeline"
-	Replication_StopPipeline_FullMethodName    = "/replication.Replication/StopPipeline"
-	Replication_ResetPipeline_FullMethodName   = "/replication.Replication/ResetPipeline"
+	Replication_CreateExporter_FullMethodName = "/replication.Replication/CreateExporter"
+	Replication_ListExporters_FullMethodName  = "/replication.Replication/ListExporters"
+	Replication_GetExporter_FullMethodName    = "/replication.Replication/GetExporter"
+	Replication_DeleteExporter_FullMethodName = "/replication.Replication/DeleteExporter"
+	Replication_ListPipelines_FullMethodName  = "/replication.Replication/ListPipelines"
+	Replication_GetPipeline_FullMethodName    = "/replication.Replication/GetPipeline"
+	Replication_CreatePipeline_FullMethodName = "/replication.Replication/CreatePipeline"
+	Replication_DeletePipeline_FullMethodName = "/replication.Replication/DeletePipeline"
+	Replication_StartPipeline_FullMethodName  = "/replication.Replication/StartPipeline"
+	Replication_StopPipeline_FullMethodName   = "/replication.Replication/StopPipeline"
+	Replication_ResetPipeline_FullMethodName  = "/replication.Replication/ResetPipeline"
 )
 
 // ReplicationClient is the client API for Replication service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ReplicationClient interface {
-	CreateConnector(ctx context.Context, in *CreateConnectorRequest, opts ...grpc.CallOption) (*CreateConnectorResponse, error)
-	ListConnectors(ctx context.Context, in *ListConnectorsRequest, opts ...grpc.CallOption) (*ListConnectorsResponse, error)
-	GetConnector(ctx context.Context, in *GetConnectorRequest, opts ...grpc.CallOption) (*GetConnectorResponse, error)
-	DeleteConnector(ctx context.Context, in *DeleteConnectorRequest, opts ...grpc.CallOption) (*DeleteConnectorResponse, error)
+	CreateExporter(ctx context.Context, in *CreateExporterRequest, opts ...grpc.CallOption) (*CreateExporterResponse, error)
+	ListExporters(ctx context.Context, in *ListExportersRequest, opts ...grpc.CallOption) (*ListExportersResponse, error)
+	GetExporter(ctx context.Context, in *GetExporterRequest, opts ...grpc.CallOption) (*GetExporterResponse, error)
+	DeleteExporter(ctx context.Context, in *DeleteExporterRequest, opts ...grpc.CallOption) (*DeleteExporterResponse, error)
 	ListPipelines(ctx context.Context, in *ListPipelinesRequest, opts ...grpc.CallOption) (*ListPipelinesResponse, error)
 	GetPipeline(ctx context.Context, in *GetPipelineRequest, opts ...grpc.CallOption) (*GetPipelineResponse, error)
 	CreatePipeline(ctx context.Context, in *CreatePipelineRequest, opts ...grpc.CallOption) (*CreatePipelineResponse, error)
@@ -57,40 +57,40 @@ func NewReplicationClient(cc grpc.ClientConnInterface) ReplicationClient {
 	return &replicationClient{cc}
 }
 
-func (c *replicationClient) CreateConnector(ctx context.Context, in *CreateConnectorRequest, opts ...grpc.CallOption) (*CreateConnectorResponse, error) {
+func (c *replicationClient) CreateExporter(ctx context.Context, in *CreateExporterRequest, opts ...grpc.CallOption) (*CreateExporterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateConnectorResponse)
-	err := c.cc.Invoke(ctx, Replication_CreateConnector_FullMethodName, in, out, cOpts...)
+	out := new(CreateExporterResponse)
+	err := c.cc.Invoke(ctx, Replication_CreateExporter_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationClient) ListConnectors(ctx context.Context, in *ListConnectorsRequest, opts ...grpc.CallOption) (*ListConnectorsResponse, error) {
+func (c *replicationClient) ListExporters(ctx context.Context, in *ListExportersRequest, opts ...grpc.CallOption) (*ListExportersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListConnectorsResponse)
-	err := c.cc.Invoke(ctx, Replication_ListConnectors_FullMethodName, in, out, cOpts...)
+	out := new(ListExportersResponse)
+	err := c.cc.Invoke(ctx, Replication_ListExporters_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationClient) GetConnector(ctx context.Context, in *GetConnectorRequest, opts ...grpc.CallOption) (*GetConnectorResponse, error) {
+func (c *replicationClient) GetExporter(ctx context.Context, in *GetExporterRequest, opts ...grpc.CallOption) (*GetExporterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetConnectorResponse)
-	err := c.cc.Invoke(ctx, Replication_GetConnector_FullMethodName, in, out, cOpts...)
+	out := new(GetExporterResponse)
+	err := c.cc.Invoke(ctx, Replication_GetExporter_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationClient) DeleteConnector(ctx context.Context, in *DeleteConnectorRequest, opts ...grpc.CallOption) (*DeleteConnectorResponse, error) {
+func (c *replicationClient) DeleteExporter(ctx context.Context, in *DeleteExporterRequest, opts ...grpc.CallOption) (*DeleteExporterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteConnectorResponse)
-	err := c.cc.Invoke(ctx, Replication_DeleteConnector_FullMethodName, in, out, cOpts...)
+	out := new(DeleteExporterResponse)
+	err := c.cc.Invoke(ctx, Replication_DeleteExporter_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,10 +171,10 @@ func (c *replicationClient) ResetPipeline(ctx context.Context, in *ResetPipeline
 // All implementations must embed UnimplementedReplicationServer
 // for forward compatibility.
 type ReplicationServer interface {
-	CreateConnector(context.Context, *CreateConnectorRequest) (*CreateConnectorResponse, error)
-	ListConnectors(context.Context, *ListConnectorsRequest) (*ListConnectorsResponse, error)
-	GetConnector(context.Context, *GetConnectorRequest) (*GetConnectorResponse, error)
-	DeleteConnector(context.Context, *DeleteConnectorRequest) (*DeleteConnectorResponse, error)
+	CreateExporter(context.Context, *CreateExporterRequest) (*CreateExporterResponse, error)
+	ListExporters(context.Context, *ListExportersRequest) (*ListExportersResponse, error)
+	GetExporter(context.Context, *GetExporterRequest) (*GetExporterResponse, error)
+	DeleteExporter(context.Context, *DeleteExporterRequest) (*DeleteExporterResponse, error)
 	ListPipelines(context.Context, *ListPipelinesRequest) (*ListPipelinesResponse, error)
 	GetPipeline(context.Context, *GetPipelineRequest) (*GetPipelineResponse, error)
 	CreatePipeline(context.Context, *CreatePipelineRequest) (*CreatePipelineResponse, error)
@@ -192,17 +192,17 @@ type ReplicationServer interface {
 // pointer dereference when methods are called.
 type UnimplementedReplicationServer struct{}
 
-func (UnimplementedReplicationServer) CreateConnector(context.Context, *CreateConnectorRequest) (*CreateConnectorResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateConnector not implemented")
+func (UnimplementedReplicationServer) CreateExporter(context.Context, *CreateExporterRequest) (*CreateExporterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateExporter not implemented")
 }
-func (UnimplementedReplicationServer) ListConnectors(context.Context, *ListConnectorsRequest) (*ListConnectorsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListConnectors not implemented")
+func (UnimplementedReplicationServer) ListExporters(context.Context, *ListExportersRequest) (*ListExportersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListExporters not implemented")
 }
-func (UnimplementedReplicationServer) GetConnector(context.Context, *GetConnectorRequest) (*GetConnectorResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetConnector not implemented")
+func (UnimplementedReplicationServer) GetExporter(context.Context, *GetExporterRequest) (*GetExporterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetExporter not implemented")
 }
-func (UnimplementedReplicationServer) DeleteConnector(context.Context, *DeleteConnectorRequest) (*DeleteConnectorResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteConnector not implemented")
+func (UnimplementedReplicationServer) DeleteExporter(context.Context, *DeleteExporterRequest) (*DeleteExporterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteExporter not implemented")
 }
 func (UnimplementedReplicationServer) ListPipelines(context.Context, *ListPipelinesRequest) (*ListPipelinesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPipelines not implemented")
@@ -246,74 +246,74 @@ func RegisterReplicationServer(s grpc.ServiceRegistrar, srv ReplicationServer) {
 	s.RegisterService(&Replication_ServiceDesc, srv)
 }
 
-func _Replication_CreateConnector_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateConnectorRequest)
+func _Replication_CreateExporter_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateExporterRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServer).CreateConnector(ctx, in)
+		return srv.(ReplicationServer).CreateExporter(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Replication_CreateConnector_FullMethodName,
+		FullMethod: Replication_CreateExporter_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServer).CreateConnector(ctx, req.(*CreateConnectorRequest))
+		return srv.(ReplicationServer).CreateExporter(ctx, req.(*CreateExporterRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Replication_ListConnectors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListConnectorsRequest)
+func _Replication_ListExporters_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListExportersRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServer).ListConnectors(ctx, in)
+		return srv.(ReplicationServer).ListExporters(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Replication_ListConnectors_FullMethodName,
+		FullMethod: Replication_ListExporters_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServer).ListConnectors(ctx, req.(*ListConnectorsRequest))
+		return srv.(ReplicationServer).ListExporters(ctx, req.(*ListExportersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Replication_GetConnector_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetConnectorRequest)
+func _Replication_GetExporter_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetExporterRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServer).GetConnector(ctx, in)
+		return srv.(ReplicationServer).GetExporter(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Replication_GetConnector_FullMethodName,
+		FullMethod: Replication_GetExporter_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServer).GetConnector(ctx, req.(*GetConnectorRequest))
+		return srv.(ReplicationServer).GetExporter(ctx, req.(*GetExporterRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Replication_DeleteConnector_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteConnectorRequest)
+func _Replication_DeleteExporter_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteExporterRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServer).DeleteConnector(ctx, in)
+		return srv.(ReplicationServer).DeleteExporter(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Replication_DeleteConnector_FullMethodName,
+		FullMethod: Replication_DeleteExporter_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServer).DeleteConnector(ctx, req.(*DeleteConnectorRequest))
+		return srv.(ReplicationServer).DeleteExporter(ctx, req.(*DeleteExporterRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -452,20 +452,20 @@ var Replication_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ReplicationServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "CreateConnector",
-			Handler:    _Replication_CreateConnector_Handler,
+			MethodName: "CreateExporter",
+			Handler:    _Replication_CreateExporter_Handler,
 		},
 		{
-			MethodName: "ListConnectors",
-			Handler:    _Replication_ListConnectors_Handler,
+			MethodName: "ListExporters",
+			Handler:    _Replication_ListExporters_Handler,
 		},
 		{
-			MethodName: "GetConnector",
-			Handler:    _Replication_GetConnector_Handler,
+			MethodName: "GetExporter",
+			Handler:    _Replication_GetExporter_Handler,
 		},
 		{
-			MethodName: "DeleteConnector",
-			Handler:    _Replication_DeleteConnector_Handler,
+			MethodName: "DeleteExporter",
+			Handler:    _Replication_DeleteExporter_Handler,
 		},
 		{
 			MethodName: "ListPipelines",

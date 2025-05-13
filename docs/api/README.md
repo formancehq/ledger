@@ -2123,20 +2123,20 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## List connectors
+## List exporters
 
-<a id="opIdv2ListConnectors"></a>
+<a id="opIdv2ListExporters"></a>
 
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/_system/connectors HTTP/1.1
+GET http://localhost:8080/v2/_system/exporters HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/_system/connectors`
+`GET /v2/_system/exporters`
 
 > Example responses
 
@@ -2171,14 +2171,14 @@ Accept: application/json
 }
 ```
 
-<h3 id="list-connectors-responses">Responses</h3>
+<h3 id="list-exporters-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Connectors list|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Exporters list|Inline|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<h3 id="list-connectors-responseschema">Response Schema</h3>
+<h3 id="list-exporters-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -2190,7 +2190,7 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»» *anonymous*|[V2ConnectorsCursorResponse](#schemav2connectorscursorresponse)|false|none|none|
+|»» *anonymous*|[V2ExportersCursorResponse](#schemav2exporterscursorresponse)|false|none|none|
 |»»» cursor|object|true|none|none|
 |»»»» pageSize|integer(int64)|true|none|none|
 |»»»» hasMore|boolean|true|none|none|
@@ -2202,7 +2202,7 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»»»»» *anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|»»»»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
 |»»»»»» driver|string|true|none|none|
 |»»»»»» config|object|true|none|none|
 
@@ -2225,21 +2225,21 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## Create connector
+## Create exporter
 
-<a id="opIdv2CreateConnector"></a>
+<a id="opIdv2CreateExporter"></a>
 
 > Code samples
 
 ```http
-POST http://localhost:8080/v2/_system/connectors HTTP/1.1
+POST http://localhost:8080/v2/_system/exporters HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
 
 ```
 
-`POST /v2/_system/connectors`
+`POST /v2/_system/exporters`
 
 > Body parameter
 
@@ -2250,11 +2250,11 @@ Accept: application/json
 }
 ```
 
-<h3 id="create-connector-parameters">Parameters</h3>
+<h3 id="create-exporter-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|true|none|
+|body|body|[V2ExporterConfiguration](#schemav2exporterconfiguration)|true|none|
 
 > Example responses
 
@@ -2271,26 +2271,26 @@ Accept: application/json
 }
 ```
 
-<h3 id="create-connector-responses">Responses</h3>
+<h3 id="create-exporter-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created connector|Inline|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created exporter|Inline|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<h3 id="create-connector-responseschema">Response Schema</h3>
+<h3 id="create-exporter-responseschema">Response Schema</h3>
 
 Status Code **201**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» data|[V2Connector](#schemav2connector)|true|none|none|
+|» data|[V2Exporter](#schemav2exporter)|true|none|none|
 
 *allOf*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»» *anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
 |»»» driver|string|true|none|none|
 |»»» config|object|true|none|none|
 
@@ -2306,26 +2306,26 @@ Status Code **201**
 This operation does not require authentication
 </aside>
 
-## Get connector state
+## Get exporter state
 
-<a id="opIdv2GetConnectorState"></a>
+<a id="opIdv2GetExporterState"></a>
 
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/_system/connectors/{connectorID} HTTP/1.1
+GET http://localhost:8080/v2/_system/exporters/{exporterID} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/_system/connectors/{connectorID}`
+`GET /v2/_system/exporters/{exporterID}`
 
-<h3 id="get-connector-state-parameters">Parameters</h3>
+<h3 id="get-exporter-state-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|connectorID|path|string|true|The connector id|
+|exporterID|path|string|true|The exporter id|
 
 > Example responses
 
@@ -2342,26 +2342,26 @@ Accept: application/json
 }
 ```
 
-<h3 id="get-connector-state-responses">Responses</h3>
+<h3 id="get-exporter-state-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Connector information|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Exporter information|Inline|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
-<h3 id="get-connector-state-responseschema">Response Schema</h3>
+<h3 id="get-exporter-state-responseschema">Response Schema</h3>
 
 Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» data|[V2Connector](#schemav2connector)|true|none|none|
+|» data|[V2Exporter](#schemav2exporter)|true|none|none|
 
 *allOf*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»» *anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
 |»»» driver|string|true|none|none|
 |»»» config|object|true|none|none|
 
@@ -2377,26 +2377,26 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## Delete connector
+## Delete exporter
 
-<a id="opIdv2DeleteConnector"></a>
+<a id="opIdv2DeleteExporter"></a>
 
 > Code samples
 
 ```http
-DELETE http://localhost:8080/v2/_system/connectors/{connectorID} HTTP/1.1
+DELETE http://localhost:8080/v2/_system/exporters/{exporterID} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`DELETE /v2/_system/connectors/{connectorID}`
+`DELETE /v2/_system/exporters/{exporterID}`
 
-<h3 id="delete-connector-parameters">Parameters</h3>
+<h3 id="delete-exporter-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|connectorID|path|string|true|The connector id|
+|exporterID|path|string|true|The exporter id|
 
 > Example responses
 
@@ -2410,11 +2410,11 @@ Accept: application/json
 }
 ```
 
-<h3 id="delete-connector-responses">Responses</h3>
+<h3 id="delete-exporter-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Connector deleted|None|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Exporter deleted|None|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <aside class="success">
@@ -2508,7 +2508,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»»»»» *anonymous*|object|false|none|none|
 |»»»»»» ledger|string|true|none|none|
-|»»»»»» connectorID|string|true|none|none|
+|»»»»»» exporterID|string|true|none|none|
 
 *and*
 
@@ -2551,7 +2551,7 @@ Accept: application/json
 
 ```json
 {
-  "connectorID": "string"
+  "exporterID": "string"
 }
 ```
 
@@ -2598,7 +2598,7 @@ Status Code **201**
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
 |»»» ledger|string|true|none|none|
-|»»» connectorID|string|true|none|none|
+|»»» exporterID|string|true|none|none|
 
 *and*
 
@@ -2672,7 +2672,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
 |»»» ledger|string|true|none|none|
-|»»» connectorID|string|true|none|none|
+|»»» exporterID|string|true|none|none|
 
 *and*
 
@@ -2870,12 +2870,12 @@ This operation does not require authentication
 
 # Schemas
 
-<h2 id="tocS_V2ConnectorsCursorResponse">V2ConnectorsCursorResponse</h2>
+<h2 id="tocS_V2ExportersCursorResponse">V2ExportersCursorResponse</h2>
 <!-- backwards compatibility -->
-<a id="schemav2connectorscursorresponse"></a>
-<a id="schema_V2ConnectorsCursorResponse"></a>
-<a id="tocSv2connectorscursorresponse"></a>
-<a id="tocsv2connectorscursorresponse"></a>
+<a id="schemav2exporterscursorresponse"></a>
+<a id="schema_V2ExportersCursorResponse"></a>
+<a id="tocSv2exporterscursorresponse"></a>
+<a id="tocsv2exporterscursorresponse"></a>
 
 ```json
 {
@@ -2906,7 +2906,7 @@ This operation does not require authentication
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
-|» data|[[V2Connector](#schemav2connector)]|true|none|none|
+|» data|[[V2Exporter](#schemav2exporter)]|true|none|none|
 
 <h2 id="tocS_V2PipelinesCursorResponse">V2PipelinesCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -5449,7 +5449,7 @@ and
 
 ```json
 {
-  "connectorID": "string"
+  "exporterID": "string"
 }
 
 ```
@@ -5458,14 +5458,14 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|connectorID|string|true|none|none|
+|exporterID|string|true|none|none|
 
-<h2 id="tocS_V2CreateConnectorRequest">V2CreateConnectorRequest</h2>
+<h2 id="tocS_V2CreateExporterRequest">V2CreateExporterRequest</h2>
 <!-- backwards compatibility -->
-<a id="schemav2createconnectorrequest"></a>
-<a id="schema_V2CreateConnectorRequest"></a>
-<a id="tocSv2createconnectorrequest"></a>
-<a id="tocsv2createconnectorrequest"></a>
+<a id="schemav2createexporterrequest"></a>
+<a id="schema_V2CreateExporterRequest"></a>
+<a id="tocSv2createexporterrequest"></a>
+<a id="tocsv2createexporterrequest"></a>
 
 ```json
 {
@@ -5489,7 +5489,7 @@ and
 ```json
 {
   "ledger": "string",
-  "connectorID": "string"
+  "exporterID": "string"
 }
 
 ```
@@ -5499,14 +5499,14 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |ledger|string|true|none|none|
-|connectorID|string|true|none|none|
+|exporterID|string|true|none|none|
 
-<h2 id="tocS_V2ConnectorConfiguration">V2ConnectorConfiguration</h2>
+<h2 id="tocS_V2ExporterConfiguration">V2ExporterConfiguration</h2>
 <!-- backwards compatibility -->
-<a id="schemav2connectorconfiguration"></a>
-<a id="schema_V2ConnectorConfiguration"></a>
-<a id="tocSv2connectorconfiguration"></a>
-<a id="tocsv2connectorconfiguration"></a>
+<a id="schemav2exporterconfiguration"></a>
+<a id="schema_V2ExporterConfiguration"></a>
+<a id="tocSv2exporterconfiguration"></a>
+<a id="tocsv2exporterconfiguration"></a>
 
 ```json
 {
@@ -5523,12 +5523,12 @@ and
 |driver|string|true|none|none|
 |config|object|true|none|none|
 
-<h2 id="tocS_V2Connector">V2Connector</h2>
+<h2 id="tocS_V2Exporter">V2Exporter</h2>
 <!-- backwards compatibility -->
-<a id="schemav2connector"></a>
-<a id="schema_V2Connector"></a>
-<a id="tocSv2connector"></a>
-<a id="tocsv2connector"></a>
+<a id="schemav2exporter"></a>
+<a id="schema_V2Exporter"></a>
+<a id="tocSv2exporter"></a>
+<a id="tocsv2exporter"></a>
 
 ```json
 {
@@ -5546,7 +5546,7 @@ allOf
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[V2ConnectorConfiguration](#schemav2connectorconfiguration)|false|none|none|
+|*anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
 
 and
 

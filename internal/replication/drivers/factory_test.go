@@ -73,17 +73,17 @@ func TestDriverFactoryWithBatching(t *testing.T) {
 
 			rawConfig, _ := json.Marshal(testCase.config)
 
-			underlyingConnectorFactory := NewMockFactory(ctrl)
-			underlyingConnectorFactory.EXPECT().
+			underlyingExporterFactory := NewMockFactory(ctrl)
+			underlyingExporterFactory.EXPECT().
 				Create(gomock.Any(), "test").
 				Return(&MockDriver{}, json.RawMessage(rawConfig), nil)
 
 			logger := logging.Testing()
-			f := NewWithBatchingConnectorFactory(underlyingConnectorFactory, logger)
-			connector, _, err := f.Create(logging.TestingContext(), "test")
+			f := NewWithBatchingDriverFactory(underlyingExporterFactory, logger)
+			exporter, _, err := f.Create(logging.TestingContext(), "test")
 			if testCase.expectError == "" {
 				require.NoError(t, err)
-				require.NotNil(t, connector)
+				require.NotNil(t, exporter)
 			} else {
 				require.Equal(t, testCase.expectError, err.Error())
 			}

@@ -42,8 +42,8 @@ func TestCreatePipeline(t *testing.T) {
 			expectErrorCode:       "VALIDATION",
 		},
 		{
-			name:                  "connector not available",
-			returnError:           systemcontroller.NewErrConnectorNotFound("connector1"),
+			name:                  "exporter not available",
+			returnError:           systemcontroller.NewErrExporterNotFound("exporter1"),
 			expectErrorStatusCode: http.StatusBadRequest,
 			expectErrorCode:       "VALIDATION",
 		},
@@ -65,11 +65,11 @@ func TestCreatePipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, ledgerController := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithConnectors(true))
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
 			pipelineConfiguration := ledger.PipelineConfiguration{
-				Ledger:      "module1",
-				ConnectorID: uuid.NewString(),
+				Ledger:     "module1",
+				ExporterID: uuid.NewString(),
 			}
 			req := httptest.NewRequest(http.MethodPost, "/"+pipelineConfiguration.Ledger+"/pipelines", sharedapi.Buffer(t, pipelineConfiguration))
 			req = req.WithContext(ctx)

@@ -27,14 +27,14 @@ func TestClickhouseDriver(t *testing.T) {
 	dockerPool := docker.NewPool(t, logging.Testing())
 	srv := clickhousetesting.CreateServer(dockerPool, clickhousetesting.WithVersion("24.12"))
 
-	// Create our connector
-	connector, err := NewConnector(Config{
+	// Create our driver
+	driver, err := NewDriver(Config{
 		DSN: srv.GetDSN(),
 	}, logging.Testing())
 	require.NoError(t, err)
-	require.NoError(t, connector.Start(ctx))
+	require.NoError(t, driver.Start(ctx))
 	t.Cleanup(func() {
-		require.NoError(t, connector.Stop(ctx))
+		require.NoError(t, driver.Stop(ctx))
 	})
 
 	// We will insert numberOfLogs logs split across numberOfModules modules
@@ -58,8 +58,8 @@ func TestClickhouseDriver(t *testing.T) {
 		)
 	}
 
-	// Send all logs to the connector
-	itemsErrors, err := connector.Accept(ctx, logs...)
+	// Send all logs to the driver
+	itemsErrors, err := driver.Accept(ctx, logs...)
 	require.NoError(t, err)
 	require.Len(t, itemsErrors, numberOfLogs)
 	for index := range logs {
@@ -67,8 +67,8 @@ func TestClickhouseDriver(t *testing.T) {
 	}
 
 	// Ensure data has been inserted
-	require.Equal(t, numberOfLogs, count(t, ctx, connector, `select count(*) from logs`))
-	_, err = readLogs(ctx, connector.db)
+	require.Equal(t, numberOfLogs, count(t, ctx, driver, `select count(*) from logs`))
+	_, err = readLogs(ctx, driver.db)
 	require.NoError(t, err)
 }
 
@@ -101,8 +101,8 @@ func readLogs(ctx context.Context, client driver.Conn) ([]drivers.LogWithLedger,
 	return ret, nil
 }
 
-func count(t *testing.T, ctx context.Context, connector *Connector, query string) int {
-	rows, err := connector.db.Query(ctx, query)
+func count(t *testing.T, ctx context.Context, driver *Driver, query string) int {
+	rows, err := driver.db.Query(ctx, query)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, rows.Close())

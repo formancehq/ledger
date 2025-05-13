@@ -30,10 +30,10 @@
 * [ListLogs](#listlogs) - List the logs from a ledger
 * [ImportLogs](#importlogs)
 * [ExportLogs](#exportlogs) - Export logs
-* [ListConnectors](#listconnectors) - List connectors
-* [CreateConnector](#createconnector) - Create connector
-* [GetConnectorState](#getconnectorstate) - Get connector state
-* [DeleteConnector](#deleteconnector) - Delete connector
+* [ListExporters](#listexporters) - List exporters
+* [CreateExporter](#createexporter) - Create exporter
+* [GetExporterState](#getexporterstate) - Get exporter state
+* [DeleteExporter](#deleteexporter) - Delete exporter
 * [ListPipelines](#listpipelines) - List pipelines
 * [CreatePipeline](#createpipeline) - Create pipeline
 * [GetPipelineState](#getpipelinestate) - Get pipeline state
@@ -1646,9 +1646,9 @@ func main() {
 | ------------------ | ------------------ | ------------------ |
 | sdkerrors.SDKError | 4XX, 5XX           | \*/\*              |
 
-## ListConnectors
+## ListExporters
 
-List connectors
+List exporters
 
 ### Example Usage
 
@@ -1673,11 +1673,11 @@ func main() {
         }),
     )
 
-    res, err := s.Ledger.V2.ListConnectors(ctx)
+    res, err := s.Ledger.V2.ListExporters(ctx)
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2ListConnectorsResponse != nil {
+    if res.V2ListExportersResponse != nil {
         // handle response
     }
 }
@@ -1692,7 +1692,7 @@ func main() {
 
 ### Response
 
-**[*operations.V2ListConnectorsResponse](../../models/operations/v2listconnectorsresponse.md), error**
+**[*operations.V2ListExportersResponse](../../models/operations/v2listexportersresponse.md), error**
 
 ### Errors
 
@@ -1701,9 +1701,9 @@ func main() {
 | sdkerrors.V2ErrorResponse | default                   | application/json          |
 | sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
 
-## CreateConnector
+## CreateExporter
 
-Create connector
+Create exporter
 
 ### Example Usage
 
@@ -1728,7 +1728,7 @@ func main() {
         }),
     )
 
-    res, err := s.Ledger.V2.CreateConnector(ctx, components.V2ConnectorConfiguration{
+    res, err := s.Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
         Driver: "<value>",
         Config: map[string]any{
             "key": "<value>",
@@ -1737,7 +1737,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2CreateConnectorResponse != nil {
+    if res.V2CreateExporterResponse != nil {
         // handle response
     }
 }
@@ -1745,15 +1745,15 @@ func main() {
 
 ### Parameters
 
-| Parameter                                                                                  | Type                                                                                       | Required                                                                                   | Description                                                                                |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `ctx`                                                                                      | [context.Context](https://pkg.go.dev/context#Context)                                      | :heavy_check_mark:                                                                         | The context to use for the request.                                                        |
-| `request`                                                                                  | [components.V2ConnectorConfiguration](../../models/components/v2connectorconfiguration.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
-| `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
+| Parameter                                                                                | Type                                                                                     | Required                                                                                 | Description                                                                              |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ctx`                                                                                    | [context.Context](https://pkg.go.dev/context#Context)                                    | :heavy_check_mark:                                                                       | The context to use for the request.                                                      |
+| `request`                                                                                | [components.V2ExporterConfiguration](../../models/components/v2exporterconfiguration.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
+| `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
 
 ### Response
 
-**[*operations.V2CreateConnectorResponse](../../models/operations/v2createconnectorresponse.md), error**
+**[*operations.V2CreateExporterResponse](../../models/operations/v2createexporterresponse.md), error**
 
 ### Errors
 
@@ -1762,9 +1762,9 @@ func main() {
 | sdkerrors.V2ErrorResponse | default                   | application/json          |
 | sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
 
-## GetConnectorState
+## GetExporterState
 
-Get connector state
+Get exporter state
 
 ### Example Usage
 
@@ -1790,13 +1790,13 @@ func main() {
         }),
     )
 
-    res, err := s.Ledger.V2.GetConnectorState(ctx, operations.V2GetConnectorStateRequest{
-        ConnectorID: "<id>",
+    res, err := s.Ledger.V2.GetExporterState(ctx, operations.V2GetExporterStateRequest{
+        ExporterID: "<id>",
     })
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2GetConnectorStateResponse != nil {
+    if res.V2GetExporterStateResponse != nil {
         // handle response
     }
 }
@@ -1804,15 +1804,15 @@ func main() {
 
 ### Parameters
 
-| Parameter                                                                                      | Type                                                                                           | Required                                                                                       | Description                                                                                    |
-| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `ctx`                                                                                          | [context.Context](https://pkg.go.dev/context#Context)                                          | :heavy_check_mark:                                                                             | The context to use for the request.                                                            |
-| `request`                                                                                      | [operations.V2GetConnectorStateRequest](../../models/operations/v2getconnectorstaterequest.md) | :heavy_check_mark:                                                                             | The request object to use for the request.                                                     |
-| `opts`                                                                                         | [][operations.Option](../../models/operations/option.md)                                       | :heavy_minus_sign:                                                                             | The options for this request.                                                                  |
+| Parameter                                                                                    | Type                                                                                         | Required                                                                                     | Description                                                                                  |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `ctx`                                                                                        | [context.Context](https://pkg.go.dev/context#Context)                                        | :heavy_check_mark:                                                                           | The context to use for the request.                                                          |
+| `request`                                                                                    | [operations.V2GetExporterStateRequest](../../models/operations/v2getexporterstaterequest.md) | :heavy_check_mark:                                                                           | The request object to use for the request.                                                   |
+| `opts`                                                                                       | [][operations.Option](../../models/operations/option.md)                                     | :heavy_minus_sign:                                                                           | The options for this request.                                                                |
 
 ### Response
 
-**[*operations.V2GetConnectorStateResponse](../../models/operations/v2getconnectorstateresponse.md), error**
+**[*operations.V2GetExporterStateResponse](../../models/operations/v2getexporterstateresponse.md), error**
 
 ### Errors
 
@@ -1821,9 +1821,9 @@ func main() {
 | sdkerrors.V2ErrorResponse | default                   | application/json          |
 | sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
 
-## DeleteConnector
+## DeleteExporter
 
-Delete connector
+Delete exporter
 
 ### Example Usage
 
@@ -1849,8 +1849,8 @@ func main() {
         }),
     )
 
-    res, err := s.Ledger.V2.DeleteConnector(ctx, operations.V2DeleteConnectorRequest{
-        ConnectorID: "<id>",
+    res, err := s.Ledger.V2.DeleteExporter(ctx, operations.V2DeleteExporterRequest{
+        ExporterID: "<id>",
     })
     if err != nil {
         log.Fatal(err)
@@ -1863,15 +1863,15 @@ func main() {
 
 ### Parameters
 
-| Parameter                                                                                  | Type                                                                                       | Required                                                                                   | Description                                                                                |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `ctx`                                                                                      | [context.Context](https://pkg.go.dev/context#Context)                                      | :heavy_check_mark:                                                                         | The context to use for the request.                                                        |
-| `request`                                                                                  | [operations.V2DeleteConnectorRequest](../../models/operations/v2deleteconnectorrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
-| `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
+| Parameter                                                                                | Type                                                                                     | Required                                                                                 | Description                                                                              |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ctx`                                                                                    | [context.Context](https://pkg.go.dev/context#Context)                                    | :heavy_check_mark:                                                                       | The context to use for the request.                                                      |
+| `request`                                                                                | [operations.V2DeleteExporterRequest](../../models/operations/v2deleteexporterrequest.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
+| `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
 
 ### Response
 
-**[*operations.V2DeleteConnectorResponse](../../models/operations/v2deleteconnectorresponse.md), error**
+**[*operations.V2DeleteExporterResponse](../../models/operations/v2deleteexporterresponse.md), error**
 
 ### Errors
 

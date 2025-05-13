@@ -2605,16 +2605,16 @@ paths:
       security:
         - Authorization:
             - ledger:write
-  /v2/_system/connectors:
+  /v2/_system/exporters:
     get:
-      summary: List connectors
-      operationId: v2ListConnectors
-      x-speakeasy-name-override: ListConnectors
+      summary: List exporters
+      operationId: v2ListExporters
+      x-speakeasy-name-override: ListExporters
       tags:
         - ledger.v2
       responses:
         "200":
-          $ref: '#/components/responses/V2ListConnectorsResponse'
+          $ref: '#/components/responses/V2ListExportersResponse'
         default:
           description: Error
           content:
@@ -2622,9 +2622,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
     post:
-      summary: Create connector
-      operationId: v2CreateConnector
-      x-speakeasy-name-override: CreateConnector
+      summary: Create exporter
+      operationId: v2CreateExporter
+      x-speakeasy-name-override: CreateExporter
       tags:
         - ledger.v2
       requestBody:
@@ -2632,33 +2632,33 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2CreateConnectorRequest'
+              $ref: '#/components/schemas/V2CreateExporterRequest'
       responses:
         "201":
-          $ref: '#/components/responses/V2CreateConnectorResponse'
+          $ref: '#/components/responses/V2CreateExporterResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
-  /v2/_system/connectors/{connectorID}:
+  /v2/_system/exporters/{exporterID}:
     parameters:
-      - name: connectorID
-        description: The connector id
+      - name: exporterID
+        description: The exporter id
         in: path
         schema:
           type: string
         required: true
     get:
-      summary: Get connector state
-      operationId: v2GetConnectorState
-      x-speakeasy-name-override: GetConnectorState
+      summary: Get exporter state
+      operationId: v2GetExporterState
+      x-speakeasy-name-override: GetExporterState
       tags:
         - ledger.v2
       responses:
         "200":
-          $ref: '#/components/responses/V2GetConnectorStateResponse'
+          $ref: '#/components/responses/V2GetExporterStateResponse'
         default:
           description: Error
           content:
@@ -2666,14 +2666,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
     delete:
-      summary: Delete connector
-      operationId: v2DeleteConnector
-      x-speakeasy-name-override: DeleteConnector
+      summary: Delete exporter
+      operationId: v2DeleteExporter
+      x-speakeasy-name-override: DeleteExporter
       tags:
         - ledger.v2
       responses:
         "204":
-          description: Connector deleted
+          description: Exporter deleted
         default:
           description: Error
           content:
@@ -3457,7 +3457,7 @@ components:
           enum:
             - TO DO
             - DONE
-    V2ConnectorsCursorResponse:
+    V2ExportersCursorResponse:
       type: object
       required:
         - cursor
@@ -3487,7 +3487,7 @@ components:
             data:
               type: array
               items:
-                $ref: "#/components/schemas/V2Connector"
+                $ref: "#/components/schemas/V2Exporter"
     V2PipelinesCursorResponse:
       type: object
       required:
@@ -4306,22 +4306,22 @@ components:
     V2CreatePipelineRequest:
       type: object
       properties:
-        connectorID:
+        exporterID:
           type: string
       required:
-        - connectorID
-    V2CreateConnectorRequest:
-      $ref: '#/components/schemas/V2ConnectorConfiguration'
+        - exporterID
+    V2CreateExporterRequest:
+      $ref: '#/components/schemas/V2ExporterConfiguration'
     V2PipelineConfiguration:
       properties:
         ledger:
           type: string
-        connectorID:
+        exporterID:
           type: string
       required:
         - ledger
-        - connectorID
-    V2ConnectorConfiguration:
+        - exporterID
+    V2ExporterConfiguration:
       type: object
       properties:
         driver:
@@ -4332,10 +4332,10 @@ components:
       required:
         - driver
         - config
-    V2Connector:
+    V2Exporter:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2ConnectorConfiguration'
+        - $ref: '#/components/schemas/V2ExporterConfiguration'
         - type: object
           properties:
             id:
@@ -4410,19 +4410,19 @@ components:
                 $ref: '#/components/schemas/V2Pipeline'
             required:
               - data
-    V2CreateConnectorResponse:
-      description: Created connector
+    V2CreateExporterResponse:
+      description: Created exporter
       content:
         application/json:
           schema:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Connector'
+                $ref: '#/components/schemas/V2Exporter'
             required:
               - data
-    V2ListConnectorsResponse:
-      description: Connectors list
+    V2ListExportersResponse:
+      description: Exporters list
       content:
         application/json:
           schema:
@@ -4430,22 +4430,22 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: '#/components/schemas/V2ConnectorsCursorResponse'
+                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
                   - type: object
                     properties:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/V2Connector'
-    V2GetConnectorStateResponse:
-      description: Connector information
+                          $ref: '#/components/schemas/V2Exporter'
+    V2GetExporterStateResponse:
+      description: Exporter information
       content:
         application/json:
           schema:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Connector'
+                $ref: '#/components/schemas/V2Exporter'
             required:
               - data
 servers:

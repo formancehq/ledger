@@ -36,12 +36,12 @@ func NewRouter(
 		router.Get("/_info", v1.GetInfo(systemController, version))
 
 		router.Route("/_system", func(router chi.Router) {
-			if routerOptions.connectors {
-				router.Route("/connectors", func(router chi.Router) {
-					router.Get("/", listConnectors(systemController))
-					router.Get("/{connectorID}", getConnector(systemController))
-					router.Delete("/{connectorID}", deleteConnector(systemController))
-					router.Post("/", createConnector(systemController))
+			if routerOptions.exporters {
+				router.Route("/exporters", func(router chi.Router) {
+					router.Get("/", listExporters(systemController))
+					router.Get("/{exporterID}", getExporter(systemController))
+					router.Delete("/{exporterID}", deleteExporter(systemController))
+					router.Post("/", createExporter(systemController))
 				})
 			}
 		})
@@ -71,7 +71,7 @@ func NewRouter(
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", readStats)
 
-				if routerOptions.connectors {
+				if routerOptions.exporters {
 					router.Route("/pipelines", func(router chi.Router) {
 						router.Get("/", listPipelines(systemController))
 						router.Post("/", createPipeline(systemController))
@@ -124,7 +124,7 @@ type routerOptions struct {
 	bulkerFactory        bulking.BulkerFactory
 	bulkHandlerFactories map[string]bulking.HandlerFactory
 	paginationConfig     common.PaginationConfig
-	connectors           bool
+	exporters            bool
 }
 
 type RouterOption func(ro *routerOptions)
@@ -153,9 +153,9 @@ func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption
 	}
 }
 
-func WithConnectors(v bool) RouterOption {
+func WithExporters(v bool) RouterOption {
 	return func(ro *routerOptions) {
-		ro.connectors = v
+		ro.exporters = v
 	}
 }
 

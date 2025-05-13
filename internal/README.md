@@ -28,10 +28,6 @@ import "github.com/formancehq/ledger/internal"
   - [func NewDefaultConfiguration\(\) Configuration](<#NewDefaultConfiguration>)
   - [func \(c \*Configuration\) SetDefaults\(\)](<#Configuration.SetDefaults>)
   - [func \(c \*Configuration\) Validate\(\) error](<#Configuration.Validate>)
-- [type Connector](<#Connector>)
-  - [func NewConnector\(configuration ConnectorConfiguration\) Connector](<#NewConnector>)
-- [type ConnectorConfiguration](<#ConnectorConfiguration>)
-  - [func NewConnectorConfiguration\(driver string, config json.RawMessage\) ConnectorConfiguration](<#NewConnectorConfiguration>)
 - [type CreatedTransaction](<#CreatedTransaction>)
   - [func \(p CreatedTransaction\) GetMemento\(\) any](<#CreatedTransaction.GetMemento>)
   - [func \(p CreatedTransaction\) Type\(\) LogType](<#CreatedTransaction.Type>)
@@ -42,10 +38,10 @@ import "github.com/formancehq/ledger/internal"
   - [func NewErrAlreadyStarted\(id string\) ErrAlreadyStarted](<#NewErrAlreadyStarted>)
   - [func \(e ErrAlreadyStarted\) Error\(\) string](<#ErrAlreadyStarted.Error>)
   - [func \(e ErrAlreadyStarted\) Is\(err error\) bool](<#ErrAlreadyStarted.Is>)
-- [type ErrConnectorUsed](<#ErrConnectorUsed>)
-  - [func NewErrConnectorUsed\(id string\) ErrConnectorUsed](<#NewErrConnectorUsed>)
-  - [func \(e ErrConnectorUsed\) Error\(\) string](<#ErrConnectorUsed.Error>)
-  - [func \(e ErrConnectorUsed\) Is\(err error\) bool](<#ErrConnectorUsed.Is>)
+- [type ErrExporterUsed](<#ErrExporterUsed>)
+  - [func NewErrExporterUsed\(id string\) ErrExporterUsed](<#NewErrExporterUsed>)
+  - [func \(e ErrExporterUsed\) Error\(\) string](<#ErrExporterUsed.Error>)
+  - [func \(e ErrExporterUsed\) Is\(err error\) bool](<#ErrExporterUsed.Is>)
 - [type ErrInvalidBucketName](<#ErrInvalidBucketName>)
   - [func \(e ErrInvalidBucketName\) Error\(\) string](<#ErrInvalidBucketName.Error>)
   - [func \(e ErrInvalidBucketName\) Is\(err error\) bool](<#ErrInvalidBucketName.Is>)
@@ -60,6 +56,10 @@ import "github.com/formancehq/ledger/internal"
   - [func NewErrPipelineNotFound\(id string\) ErrPipelineNotFound](<#NewErrPipelineNotFound>)
   - [func \(e ErrPipelineNotFound\) Error\(\) string](<#ErrPipelineNotFound.Error>)
   - [func \(e ErrPipelineNotFound\) Is\(err error\) bool](<#ErrPipelineNotFound.Is>)
+- [type Exporter](<#Exporter>)
+  - [func NewExporter\(configuration ExporterConfiguration\) Exporter](<#NewExporter>)
+- [type ExporterConfiguration](<#ExporterConfiguration>)
+  - [func NewExporterConfiguration\(driver string, config json.RawMessage\) ExporterConfiguration](<#NewExporterConfiguration>)
 - [type Ledger](<#Ledger>)
   - [func MustNewWithDefault\(name string\) Ledger](<#MustNewWithDefault>)
   - [func New\(name string, configuration Configuration\) \(\*Ledger, error\)](<#New>)
@@ -90,7 +90,7 @@ import "github.com/formancehq/ledger/internal"
 - [type Pipeline](<#Pipeline>)
   - [func NewPipeline\(pipelineConfiguration PipelineConfiguration\) Pipeline](<#NewPipeline>)
 - [type PipelineConfiguration](<#PipelineConfiguration>)
-  - [func NewPipelineConfiguration\(ledger, connectorID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
+  - [func NewPipelineConfiguration\(ledger, exporterID string\) PipelineConfiguration](<#NewPipelineConfiguration>)
   - [func \(p PipelineConfiguration\) String\(\) string](<#PipelineConfiguration.String>)
 - [type PostCommitVolumes](<#PostCommitVolumes>)
   - [func \(a PostCommitVolumes\) AddInput\(account, asset string, input \*big.Int\)](<#PostCommitVolumes.AddInput>)
@@ -379,51 +379,6 @@ func (c *Configuration) Validate() error
 
 
 
-<a name="Connector"></a>
-## type [Connector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L23-L29>)
-
-
-
-```go
-type Connector struct {
-    bun.BaseModel `bun:"table:_system.connectors"`
-
-    ID        string    `json:"id" bun:"id,pk"`
-    CreatedAt time.Time `json:"createdAt" bun:"created_at"`
-    ConnectorConfiguration
-}
-```
-
-<a name="NewConnector"></a>
-### func [NewConnector](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L31>)
-
-```go
-func NewConnector(configuration ConnectorConfiguration) Connector
-```
-
-
-
-<a name="ConnectorConfiguration"></a>
-## type [ConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L11-L14>)
-
-
-
-```go
-type ConnectorConfiguration struct {
-    Driver string          `json:"driver" bun:"driver"`
-    Config json.RawMessage `json:"config" bun:"config"`
-}
-```
-
-<a name="NewConnectorConfiguration"></a>
-### func [NewConnectorConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/connector.go#L16>)
-
-```go
-func NewConnectorConfiguration(driver string, config json.RawMessage) ConnectorConfiguration
-```
-
-
-
 <a name="CreatedTransaction"></a>
 ## type [CreatedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L199-L202>)
 
@@ -521,38 +476,38 @@ func (e ErrAlreadyStarted) Is(err error) bool
 
 
 
-<a name="ErrConnectorUsed"></a>
-## type [ErrConnectorUsed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L43>)
+<a name="ErrExporterUsed"></a>
+## type [ErrExporterUsed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L43>)
 
 
 
 ```go
-type ErrConnectorUsed string
+type ErrExporterUsed string
 ```
 
-<a name="NewErrConnectorUsed"></a>
-### func [NewErrConnectorUsed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L54>)
+<a name="NewErrExporterUsed"></a>
+### func [NewErrExporterUsed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L54>)
 
 ```go
-func NewErrConnectorUsed(id string) ErrConnectorUsed
-```
-
-
-
-<a name="ErrConnectorUsed.Error"></a>
-### func \(ErrConnectorUsed\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L45>)
-
-```go
-func (e ErrConnectorUsed) Error() string
+func NewErrExporterUsed(id string) ErrExporterUsed
 ```
 
 
 
-<a name="ErrConnectorUsed.Is"></a>
-### func \(ErrConnectorUsed\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L49>)
+<a name="ErrExporterUsed.Error"></a>
+### func \(ErrExporterUsed\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L45>)
 
 ```go
-func (e ErrConnectorUsed) Is(err error) bool
+func (e ErrExporterUsed) Error() string
+```
+
+
+
+<a name="ErrExporterUsed.Is"></a>
+### func \(ErrExporterUsed\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L49>)
+
+```go
+func (e ErrExporterUsed) Is(err error) bool
 ```
 
 
@@ -683,6 +638,51 @@ func (e ErrPipelineNotFound) Error() string
 
 ```go
 func (e ErrPipelineNotFound) Is(err error) bool
+```
+
+
+
+<a name="Exporter"></a>
+## type [Exporter](<https://github.com/formancehq/ledger/blob/main/internal/exporter.go#L23-L29>)
+
+
+
+```go
+type Exporter struct {
+    bun.BaseModel `bun:"table:_system.exporters"`
+
+    ID        string    `json:"id" bun:"id,pk"`
+    CreatedAt time.Time `json:"createdAt" bun:"created_at"`
+    ExporterConfiguration
+}
+```
+
+<a name="NewExporter"></a>
+### func [NewExporter](<https://github.com/formancehq/ledger/blob/main/internal/exporter.go#L31>)
+
+```go
+func NewExporter(configuration ExporterConfiguration) Exporter
+```
+
+
+
+<a name="ExporterConfiguration"></a>
+## type [ExporterConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/exporter.go#L11-L14>)
+
+
+
+```go
+type ExporterConfiguration struct {
+    Driver string          `json:"driver" bun:"driver"`
+    Config json.RawMessage `json:"config" bun:"config"`
+}
+```
+
+<a name="NewExporterConfiguration"></a>
+### func [NewExporterConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/exporter.go#L16>)
+
+```go
+func NewExporterConfiguration(driver string, config json.RawMessage) ExporterConfiguration
 ```
 
 
@@ -1011,8 +1011,8 @@ func NewPipeline(pipelineConfiguration PipelineConfiguration) Pipeline
 
 ```go
 type PipelineConfiguration struct {
-    Ledger      string `json:"ledger" bun:"ledger"`
-    ConnectorID string `json:"connectorID" bun:"connector_id"`
+    Ledger     string `json:"ledger" bun:"ledger"`
+    ExporterID string `json:"exporterID" bun:"exporter_id"`
 }
 ```
 
@@ -1020,7 +1020,7 @@ type PipelineConfiguration struct {
 ### func [NewPipelineConfiguration](<https://github.com/formancehq/ledger/blob/main/internal/pipeline.go#L20>)
 
 ```go
-func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration
+func NewPipelineConfiguration(ledger, exporterID string) PipelineConfiguration
 ```
 
 

@@ -10,9 +10,9 @@ import (
 )
 
 func Register(driversRegistry *drivers.Registry) {
-	driversRegistry.RegisterConnector("elasticsearch", elasticsearch.NewConnector)
-	driversRegistry.RegisterConnector("clickhouse", clickhouse.NewConnector)
-	driversRegistry.RegisterConnector("stdout", stdout.NewConnector)
-	driversRegistry.RegisterConnector("http", http.NewConnector)
-	driversRegistry.RegisterConnector("noop", noop.NewConnector)
+	driversRegistry.RegisterDriver("elasticsearch", elasticsearch.NewDriver)
+	driversRegistry.RegisterDriver("clickhouse", clickhouse.NewDriver)
+	driversRegistry.RegisterDriver("stdout", stdout.NewDriver)
+	driversRegistry.RegisterDriver("http", http.NewDriver)
+	driversRegistry.RegisterDriver("noop", noop.NewDriver)
 }

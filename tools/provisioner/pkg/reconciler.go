@@ -32,7 +32,7 @@ func (r Reconciler) Reconcile(ctx context.Context, cfg Config) error {
 	}()
 	state.setDefaults()
 
-	if err := r.handleConnectors(ctx, cfg, state); err != nil {
+	if err := r.handleExporters(ctx, cfg, state); err != nil {
 		return err
 	}
 
@@ -43,53 +43,53 @@ func (r Reconciler) Reconcile(ctx context.Context, cfg Config) error {
 	return nil
 }
 
-func (r Reconciler) handleConnectors(ctx context.Context, cfg Config, state *State) error {
-	for connectorName, connectorConfig := range cfg.Connectors {
-		existingConnectorState, ok := state.Connectors[connectorName]
+func (r Reconciler) handleExporters(ctx context.Context, cfg Config, state *State) error {
+	for exporterName, exporterConfig := range cfg.Exporters {
+		existingExporterState, ok := state.Exporters[exporterName]
 		if ok {
-			if !cmp.Equal(connectorConfig, existingConnectorState.Config, cmpopts.EquateEmpty()) {
-				fmt.Printf("Config for connector %s has changed, deleting connector...\r\n", connectorName)
-				_, err := r.ledgerClient.Ledger.V2.DeleteConnector(ctx, operations.V2DeleteConnectorRequest{
-					ConnectorID: existingConnectorState.ID,
+			if !cmp.Equal(exporterConfig, existingExporterState.Config, cmpopts.EquateEmpty()) {
+				fmt.Printf("Config for exporter %s has changed, deleting exporter...\r\n", exporterName)
+				_, err := r.ledgerClient.Ledger.V2.DeleteExporter(ctx, operations.V2DeleteExporterRequest{
+					ExporterID: existingExporterState.ID,
 				})
 				if err != nil {
-					return fmt.Errorf("failed to delete connector %s: %w", connectorName, err)
+					return fmt.Errorf("failed to delete exporter %s: %w", exporterName, err)
 				}
 			} else {
-				fmt.Printf("Config for connector %s is up to date\r\n", connectorName)
+				fmt.Printf("Config for exporter %s is up to date\r\n", exporterName)
 				continue
 			}
 		}
 
-		fmt.Printf("Creating connector %s...\r\n", connectorName)
-		ret, err := r.ledgerClient.Ledger.V2.CreateConnector(ctx, components.V2ConnectorConfiguration{
-			Driver: connectorConfig.Driver,
-			Config: connectorConfig.Config,
+		fmt.Printf("Creating exporter %s...\r\n", exporterName)
+		ret, err := r.ledgerClient.Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
+			Driver: exporterConfig.Driver,
+			Config: exporterConfig.Config,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create connector %s: %w", connectorName, err)
+			return fmt.Errorf("failed to create exporter %s: %w", exporterName, err)
 		}
-		fmt.Printf("Connector %s created.\r\n", connectorName)
+		fmt.Printf("Exporter %s created.\r\n", exporterName)
 
-		state.Connectors[connectorName] = &ConnectorState{
-			ID:     ret.V2CreateConnectorResponse.Data.ID,
-			Config: connectorConfig,
+		state.Exporters[exporterName] = &ExporterState{
+			ID:     ret.V2CreateExporterResponse.Data.ID,
+			Config: exporterConfig,
 		}
 	}
 
-	if state.Connectors != nil {
-		for connectorName, connectorState := range state.Connectors {
-			_, configExists := cfg.Connectors[connectorName]
+	if state.Exporters != nil {
+		for exporterName, exporterState := range state.Exporters {
+			_, configExists := cfg.Exporters[exporterName]
 			if !configExists {
-				fmt.Printf("Connector %s removed\r\n", connectorName)
-				_, err := r.ledgerClient.Ledger.V2.DeleteConnector(ctx, operations.V2DeleteConnectorRequest{
-					ConnectorID: connectorState.ID,
+				fmt.Printf("Exporter %s removed\r\n", exporterName)
+				_, err := r.ledgerClient.Ledger.V2.DeleteExporter(ctx, operations.V2DeleteExporterRequest{
+					ExporterID: exporterState.ID,
 				})
 				if err != nil {
-					return fmt.Errorf("failed to delete connector %s: %w", connectorName, err)
+					return fmt.Errorf("failed to delete exporter %s: %w", exporterName, err)
 				}
 
-				state.removeConnector(connectorName)
+				state.removeExporter(exporterName)
 			}
 		}
 	}
@@ -102,7 +102,7 @@ func (r Reconciler) handleLedgers(ctx context.Context, cfg Config, state *State)
 		ledgerState, ok := state.Ledgers[ledgerName]
 		if !ok {
 			ledgerState = &LedgerState{
-				Connectors: map[string]string{},
+				Exporters: map[string]string{},
 			}
 			state.Ledgers[ledgerName] = ledgerState
 
@@ -129,52 +129,52 @@ func (r Reconciler) handleLedgers(ctx context.Context, cfg Config, state *State)
 			}
 		}
 
-		for _, connector := range ledgerConfig.Connectors {
-			if slices.Contains(Keys(ledgerState.Connectors), connector) {
+		for _, exporter := range ledgerConfig.Exporters {
+			if slices.Contains(Keys(ledgerState.Exporters), exporter) {
 				continue
 			}
 
 			fmt.Printf(
-				"Detect new connector binding for ledger %s and connector %s, creating a new pipeline...\r\n",
+				"Detect new exporter binding for ledger %s and exporter %s, creating a new pipeline...\r\n",
 				ledgerName,
-				connector,
+				exporter,
 			)
 
 			ret, err := r.ledgerClient.Ledger.V2.CreatePipeline(ctx, operations.V2CreatePipelineRequest{
 				Ledger: ledgerName,
 				V2CreatePipelineRequest: &components.V2CreatePipelineRequest{
-					ConnectorID: state.Connectors[connector].ID,
+					ExporterID: state.Exporters[exporter].ID,
 				},
 			})
 			if err != nil {
-				return fmt.Errorf("failed to create pipeline for ledger %s and connector %s: %w", ledgerName, connector, err)
+				return fmt.Errorf("failed to create pipeline for ledger %s and exporter %s: %w", ledgerName, exporter, err)
 			}
 			fmt.Printf("Pipeline %s created.\r\n", ret.V2CreatePipelineResponse.Data.ID)
 
-			ledgerState.Connectors[connector] = ret.V2CreatePipelineResponse.Data.ID
+			ledgerState.Exporters[exporter] = ret.V2CreatePipelineResponse.Data.ID
 		}
 
-		for _, connector := range Keys(ledgerState.Connectors) {
-			if slices.Contains(ledgerConfig.Connectors, connector) {
+		for _, exporter := range Keys(ledgerState.Exporters) {
+			if slices.Contains(ledgerConfig.Exporters, exporter) {
 				continue
 			}
 
 			fmt.Printf(
-				"Detect removed connector binding for ledger %s and connector %s, deleting pipeline %s...\r\n",
+				"Detect removed exporter binding for ledger %s and exporter %s, deleting pipeline %s...\r\n",
 				ledgerName,
-				connector,
-				ledgerState.Connectors[connector],
+				exporter,
+				ledgerState.Exporters[exporter],
 			)
 
 			_, err := r.ledgerClient.Ledger.V2.DeletePipeline(ctx, operations.V2DeletePipelineRequest{
 				Ledger:     ledgerName,
-				PipelineID: ledgerState.Connectors[connector],
+				PipelineID: ledgerState.Exporters[exporter],
 			})
 			if err != nil {
-				return fmt.Errorf("failed to delete pipeline for ledger %s and connector %s: %w", ledgerName, connector, err)
+				return fmt.Errorf("failed to delete pipeline for ledger %s and exporter %s: %w", ledgerName, exporter, err)
 			}
 
-			ledgerState.removeConnectorBinding(connector)
+			ledgerState.removeExporterBinding(exporter)
 		}
 	}
 

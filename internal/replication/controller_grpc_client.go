@@ -16,18 +16,18 @@ type ThroughGRPCBackend struct {
 	client grpc.ReplicationClient
 }
 
-func (t ThroughGRPCBackend) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	ret, err := t.client.ListConnectors(ctx, &grpc.ListConnectorsRequest{})
+func (t ThroughGRPCBackend) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	ret, err := t.client.ListExporters(ctx, &grpc.ListExportersRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	return mapCursorFromGRPC(ret.Cursor, Map(ret.Data, mapConnectorFromGRPC)), nil
+	return mapCursorFromGRPC(ret.Cursor, Map(ret.Data, mapExporterFromGRPC)), nil
 }
 
-func (t ThroughGRPCBackend) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
-	connector, err := t.client.CreateConnector(ctx, &grpc.CreateConnectorRequest{
-		Config: mapConnectorConfiguration(configuration),
+func (t ThroughGRPCBackend) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
+	exporter, err := t.client.CreateExporter(ctx, &grpc.CreateExporterRequest{
+		Config: mapExporterConfiguration(configuration),
 	})
 	if err != nil {
 		if status.Code(err) != codes.InvalidArgument {
@@ -37,31 +37,31 @@ func (t ThroughGRPCBackend) CreateConnector(ctx context.Context, configuration l
 		return nil, err
 	}
 
-	return pointer.For(mapConnectorFromGRPC(connector.Connector)), nil
+	return pointer.For(mapExporterFromGRPC(exporter.Exporter)), nil
 }
 
-func (t ThroughGRPCBackend) DeleteConnector(ctx context.Context, id string) error {
-	_, err := t.client.DeleteConnector(ctx, &grpc.DeleteConnectorRequest{
+func (t ThroughGRPCBackend) DeleteExporter(ctx context.Context, id string) error {
+	_, err := t.client.DeleteExporter(ctx, &grpc.DeleteExporterRequest{
 		Id: id,
 	})
 	if err != nil && status.Code(err) == codes.NotFound {
-		return system.NewErrConnectorNotFound(id)
+		return system.NewErrExporterNotFound(id)
 	}
 	return err
 }
 
-func (t ThroughGRPCBackend) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
-	connector, err := t.client.GetConnector(ctx, &grpc.GetConnectorRequest{
+func (t ThroughGRPCBackend) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	exporter, err := t.client.GetExporter(ctx, &grpc.GetExporterRequest{
 		Id: id,
 	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			return nil, system.NewErrConnectorNotFound(id)
+			return nil, system.NewErrExporterNotFound(id)
 		}
 		return nil, err
 	}
 
-	return pointer.For(mapConnectorFromGRPC(connector.Connector)), nil
+	return pointer.For(mapExporterFromGRPC(exporter.Exporter)), nil
 }
 
 func (t ThroughGRPCBackend) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {

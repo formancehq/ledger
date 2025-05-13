@@ -38,19 +38,19 @@ func enabledReplicationDrivers() []string {
 	return strings.Split(fromEnv, ",")
 }
 
-func withDriver(name string, connectorFactory func() Driver, fn func(p *deferred.Deferred[Driver])) {
+func withDriver(name string, exporterFactory func() Driver, fn func(p *deferred.Deferred[Driver])) {
 	Context(fmt.Sprintf("with driver '%s'", name), func() {
 		ret := deferred.New[Driver]()
 		BeforeEach(func() {
 			ret.Reset()
-			ret.SetValue(connectorFactory())
+			ret.SetValue(exporterFactory())
 		})
 		fn(ret)
 	})
 }
 
-// driversSetup allow to define a ginkgo node factory function for each connector
-// This allows to configure the environment for the connector
+// driversSetup allow to define a ginkgo node factory function for each exporter
+// This allows to configure the environment for the exporter
 var driversSetup = map[string]func(func(d *deferred.Deferred[Driver])){
 	"http": func(fn func(d *deferred.Deferred[Driver])) {
 		withDriver("http", func() Driver {
@@ -80,7 +80,7 @@ var _ = Context("Pipelines API tests", func() {
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
 				ExperimentalFeaturesInstrumentation(),
-				ExperimentalConnectorsInstrumentation(),
+				ExperimentalExportersInstrumentation(),
 				ExperimentalEnableWorker(),
 				ExperimentalPipelinesPullIntervalInstrumentation(100*time.Millisecond),
 				ExperimentalPipelinesPushRetryPeriodInstrumentation(100*time.Millisecond),
@@ -99,7 +99,7 @@ var _ = Context("Pipelines API tests", func() {
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
 				ExperimentalFeaturesInstrumentation(),
-				ExperimentalConnectorsInstrumentation(),
+				ExperimentalExportersInstrumentation(),
 				ExperimentalPipelinesPullIntervalInstrumentation(100*time.Millisecond),
 				ExperimentalPipelinesPushRetryPeriodInstrumentation(100*time.Millisecond),
 			),
@@ -113,7 +113,7 @@ var _ = Context("Pipelines API tests", func() {
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
 				ExperimentalFeaturesInstrumentation(),
-				ExperimentalConnectorsInstrumentation(),
+				ExperimentalExportersInstrumentation(),
 				WorkerAddressInstrumentation(DeferMap(worker, func(from *testservice.Service) string {
 					return grpcserver.Address(from.GetContext())
 				})),
@@ -132,11 +132,11 @@ func runPipelinesTests(ctx context.Context, testServer *deferred.Deferred[*tests
 			Fail(fmt.Sprintf("Driver '%s' not exists", driverName))
 		}
 		setup(func(driver *deferred.Deferred[Driver]) {
-			When("creating a new connector", func() {
+			When("creating a new exporter", func() {
 				var (
-					createConnectorRequest  components.V2ConnectorConfiguration
-					createConnectorResponse *operations.V2CreateConnectorResponse
-					err                     error
+					createExporterRequest  components.V2ExporterConfiguration
+					createExporterResponse *operations.V2CreateExporterResponse
+					err                    error
 				)
 				BeforeEach(func() {
 					config := driver.GetValue().Config()
@@ -144,13 +144,13 @@ func runPipelinesTests(ctx context.Context, testServer *deferred.Deferred[*tests
 					config["batching"] = map[string]any{
 						"maxItems": 1,
 					}
-					createConnectorRequest = components.V2ConnectorConfiguration{
+					createExporterRequest = components.V2ExporterConfiguration{
 						Driver: driverName,
 						Config: config,
 					}
 				})
 				BeforeEach(func(specContext SpecContext) {
-					createConnectorResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateConnector(ctx, createConnectorRequest)
+					createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, createExporterRequest)
 				})
 				It("should be ok", func() {
 					Expect(err).To(BeNil())
@@ -169,7 +169,7 @@ func runPipelinesTests(ctx context.Context, testServer *deferred.Deferred[*tests
 						createPipelineResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreatePipeline(ctx, operations.V2CreatePipelineRequest{
 							Ledger: "default",
 							V2CreatePipelineRequest: &components.V2CreatePipelineRequest{
-								ConnectorID: createConnectorResponse.V2CreateConnectorResponse.Data.ID,
+								ExporterID: createExporterResponse.V2CreateExporterResponse.Data.ID,
 							},
 						})
 					})

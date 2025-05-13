@@ -24,10 +24,10 @@ import (
 )
 
 type ReplicationBackend interface {
-	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
-	CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error)
-	DeleteConnector(ctx context.Context, id string) error
-	GetConnector(ctx context.Context, id string) (*ledger.Connector, error)
+	ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)
+	CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error)
+	DeleteExporter(ctx context.Context, id string) error
+	GetExporter(ctx context.Context, id string) (*ledger.Exporter, error)
 
 	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
 	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
@@ -70,30 +70,30 @@ type DefaultController struct {
 	enableFeatures bool
 }
 
-func (ctrl *DefaultController) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	return ctrl.replicationBackend.ListConnectors(ctx)
+func (ctrl *DefaultController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	return ctrl.replicationBackend.ListExporters(ctx)
 }
 
-// CreateConnector can return following errors:
+// CreateExporter can return following errors:
 // * ErrInvalidDriverConfiguration
-func (ctrl *DefaultController) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
-	ret, err := ctrl.replicationBackend.CreateConnector(ctx, configuration)
+func (ctrl *DefaultController) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
+	ret, err := ctrl.replicationBackend.CreateExporter(ctx, configuration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connector: %w", err)
+		return nil, fmt.Errorf("failed to create exporter: %w", err)
 	}
 	return ret, nil
 }
 
-// DeleteConnector can return following errors:
-// ErrConnectorNotFound
-func (ctrl *DefaultController) DeleteConnector(ctx context.Context, id string) error {
-	return ctrl.replicationBackend.DeleteConnector(ctx, id)
+// DeleteExporter can return following errors:
+// ErrExporterNotFound
+func (ctrl *DefaultController) DeleteExporter(ctx context.Context, id string) error {
+	return ctrl.replicationBackend.DeleteExporter(ctx, id)
 }
 
-// GetConnector can return following errors:
-// ErrConnectorNotFound
-func (ctrl *DefaultController) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
-	return ctrl.replicationBackend.GetConnector(ctx, id)
+// GetExporter can return following errors:
+// ErrExporterNotFound
+func (ctrl *DefaultController) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	return ctrl.replicationBackend.GetExporter(ctx, id)
 }
 
 func (ctrl *DefaultController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {

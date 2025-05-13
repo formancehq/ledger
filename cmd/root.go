@@ -15,8 +15,8 @@ const (
 
 	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
 	NumscriptInterpreterFlagsToPass = "experimental-numscript-interpreter-flags"
-	ExperimentalFeaturesFlag        = "experimental-features"
-	ExperimentalConnectors          = "experimental-connectors"
+	ExperimentalFeaturesFlag = "experimental-features"
+	ExperimentalExporters    = "experimental-exporters"
 )
 
 var (
@@ -36,7 +36,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	root.PersistentFlags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	root.PersistentFlags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
-	root.PersistentFlags().Bool(ExperimentalConnectors, false, "Enable connectors support")
+	root.PersistentFlags().Bool(ExperimentalExporters, false, "Enable exporters support")
 
 	root.AddCommand(NewServeCommand())
 	root.AddCommand(NewBucketsCommand())

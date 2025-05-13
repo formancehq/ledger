@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	clickhouseconnector "github.com/formancehq/ledger/internal/replication/drivers/clickhouse"
+	clickhousedriver "github.com/formancehq/ledger/internal/replication/drivers/clickhouse"
 	"github.com/pkg/errors"
 	"sync"
 	"testing"
@@ -26,7 +26,7 @@ func (h *ClickhouseDriver) initClient() error {
 
 	if h.client == nil {
 		var err error
-		h.client, err = clickhouseconnector.OpenDB(h.logger, h.dsn, testing.Verbose())
+		h.client, err = clickhousedriver.OpenDB(h.logger, h.dsn, testing.Verbose())
 		if err != nil {
 			return err
 		}

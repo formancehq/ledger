@@ -11,27 +11,27 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Connector struct {
+type Driver struct {
 	config Config
 	client *elastic.Client
 	logger logging.Logger
 }
 
-func (connector *Connector) Stop(_ context.Context) error {
-	connector.client.Stop()
+func (driver *Driver) Stop(_ context.Context) error {
+	driver.client.Stop()
 	return nil
 }
 
-func (connector *Connector) Start(_ context.Context) error {
+func (driver *Driver) Start(_ context.Context) error {
 	options := []elastic.ClientOptionFunc{
-		elastic.SetURL(connector.config.Endpoint),
+		elastic.SetURL(driver.config.Endpoint),
 	}
-	if connector.config.Authentication != nil {
-		options = append(options, elastic.SetBasicAuth(connector.config.Authentication.Username, connector.config.Authentication.Password))
+	if driver.config.Authentication != nil {
+		options = append(options, elastic.SetBasicAuth(driver.config.Authentication.Username, driver.config.Authentication.Password))
 	}
 
 	var err error
-	connector.client, err = elastic.NewClient(options...)
+	driver.client, err = elastic.NewClient(options...)
 	if err != nil {
 		return errors.Wrap(err, "building es client")
 	}
@@ -39,13 +39,13 @@ func (connector *Connector) Start(_ context.Context) error {
 	return nil
 }
 
-func (connector *Connector) Client() *elastic.Client {
-	return connector.client
+func (driver *Driver) Client() *elastic.Client {
+	return driver.client
 }
 
-func (connector *Connector) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
+func (driver *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 
-	bulk := connector.client.Bulk().Refresh("true")
+	bulk := driver.client.Bulk().Refresh("true")
 	for _, log := range logs {
 
 		data, err := json.Marshal(log.Data)
@@ -68,7 +68,7 @@ func (connector *Connector) Accept(ctx context.Context, logs ...drivers.LogWithL
 
 		bulk.Add(
 			elastic.NewBulkIndexRequest().
-				Index(connector.config.Index).
+				Index(driver.config.Index).
 				Id(doc.ID).
 				Doc(doc),
 		)
@@ -92,14 +92,14 @@ func (connector *Connector) Accept(ctx context.Context, logs ...drivers.LogWithL
 	return ret, nil
 }
 
-func NewConnector(config Config, logger logging.Logger) (*Connector, error) {
-	return &Connector{
+func NewDriver(config Config, logger logging.Logger) (*Driver, error) {
+	return &Driver{
 		config: config,
 		logger: logger,
 	}, nil
 }
 
-var _ drivers.Driver = (*Connector)(nil)
+var _ drivers.Driver = (*Driver)(nil)
 
 type DocID struct {
 	LogID  uint64 `json:"logID"`

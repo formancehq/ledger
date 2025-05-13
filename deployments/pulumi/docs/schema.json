@@ -41,9 +41,9 @@
           "type": "boolean",
           "description": "ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter"
         },
-        "experimental-connectors": {
+        "experimental-exporters": {
           "type": "boolean",
-          "description": "ExperimentalConnectors is whether to enable experimental connectors"
+          "description": "ExperimentalExporters is whether to enable experimental exporter"
         }
       },
       "additionalProperties": false,
@@ -83,9 +83,9 @@
           "$ref": "#/$defs/Worker",
           "description": "Worker is the worker configuration for the ledger"
         },
-        "connectors": {
-          "$ref": "#/$defs/Connectors",
-          "description": "Connectors is the connectors configuration for the ledger"
+        "exporters": {
+          "$ref": "#/$defs/Exporters",
+          "description": "Exporters is the exporters configuration for the ledger"
         },
         "ingress": {
           "$ref": "#/$defs/Ingress",
@@ -140,22 +140,22 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "Connector": {
+    "Exporter": {
       "properties": {
         "driver": {
           "type": "string",
-          "description": "Driver is the driver for the connector"
+          "description": "Driver is the driver for the exporter"
         },
         "config": {
-          "description": "Config is the configuration for the connector"
+          "description": "Config is the configuration for the exporter"
         }
       },
       "additionalProperties": false,
       "type": "object"
     },
-    "Connectors": {
+    "Exporters": {
       "additionalProperties": {
-        "$ref": "#/$defs/Connector"
+        "$ref": "#/$defs/Exporter"
       },
       "type": "object"
     },
@@ -240,12 +240,12 @@
           "type": "object",
           "description": "Features is the features for the ledger"
         },
-        "connectors": {
+        "exporters": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "Connectors are the connector to bound to this ledger"
+          "description": "Exporters are the exporter to bound to this ledger"
         }
       },
       "additionalProperties": false,
@@ -564,6 +564,23 @@
         "disable-upgrade": {
           "type": "boolean",
           "description": "DisableUpgrade is whether to disable upgrades for the database"
+        },
+        "service": {
+          "$ref": "#/$defs/StorageService",
+          "description": "Service is the service configuration for the database"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "StorageService": {
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Annotations is the annotations for the service"
         }
       },
       "additionalProperties": false,

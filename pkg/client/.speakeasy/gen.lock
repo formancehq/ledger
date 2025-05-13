@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 213eb099f774d9fc4cbcdc0e1caeb8c3
+  docChecksum: 77d37caa48d62d9c5d05c522901abce0
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -83,16 +83,16 @@ generatedFiles:
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
   - /models/components/v2configinforesponse.go
-  - /models/components/v2connector.go
-  - /models/components/v2connectorconfiguration.go
-  - /models/components/v2createconnectorresponse.go
+  - /models/components/v2createexporterresponse.go
   - /models/components/v2createledgerrequest.go
   - /models/components/v2createpipelinerequest.go
   - /models/components/v2createpipelineresponse.go
   - /models/components/v2createtransactionresponse.go
   - /models/components/v2errorresponse.go
   - /models/components/v2errorsenum.go
-  - /models/components/v2getconnectorstateresponse.go
+  - /models/components/v2exporter.go
+  - /models/components/v2exporterconfiguration.go
+  - /models/components/v2getexporterstateresponse.go
   - /models/components/v2getledgerresponse.go
   - /models/components/v2getpipelinestateresponse.go
   - /models/components/v2gettransactionresponse.go
@@ -100,7 +100,7 @@ generatedFiles:
   - /models/components/v2ledgerinfo.go
   - /models/components/v2ledgerinforesponse.go
   - /models/components/v2ledgerlistresponse.go
-  - /models/components/v2listconnectorsresponse.go
+  - /models/components/v2listexportersresponse.go
   - /models/components/v2listpipelinesresponse.go
   - /models/components/v2log.go
   - /models/components/v2logscursorresponse.go
@@ -145,19 +145,19 @@ generatedFiles:
   - /models/operations/v2countaccounts.go
   - /models/operations/v2counttransactions.go
   - /models/operations/v2createbulk.go
-  - /models/operations/v2createconnector.go
+  - /models/operations/v2createexporter.go
   - /models/operations/v2createledger.go
   - /models/operations/v2createpipeline.go
   - /models/operations/v2createtransaction.go
   - /models/operations/v2deleteaccountmetadata.go
-  - /models/operations/v2deleteconnector.go
+  - /models/operations/v2deleteexporter.go
   - /models/operations/v2deleteledgermetadata.go
   - /models/operations/v2deletepipeline.go
   - /models/operations/v2deletetransactionmetadata.go
   - /models/operations/v2exportlogs.go
   - /models/operations/v2getaccount.go
   - /models/operations/v2getbalancesaggregated.go
-  - /models/operations/v2getconnectorstate.go
+  - /models/operations/v2getexporterstate.go
   - /models/operations/v2getinfo.go
   - /models/operations/v2getledger.go
   - /models/operations/v2getledgerinfo.go
@@ -166,7 +166,7 @@ generatedFiles:
   - /models/operations/v2getvolumeswithbalances.go
   - /models/operations/v2importlogs.go
   - /models/operations/v2listaccounts.go
-  - /models/operations/v2listconnectors.go
+  - /models/operations/v2listexporters.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2listlogs.go
   - /models/operations/v2listpipelines.go
@@ -245,16 +245,16 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
   - docs/models/components/v2configinforesponse.md
-  - docs/models/components/v2connector.md
-  - docs/models/components/v2connectorconfiguration.md
-  - docs/models/components/v2createconnectorresponse.md
+  - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
   - docs/models/components/v2createpipelinerequest.md
   - docs/models/components/v2createpipelineresponse.md
   - docs/models/components/v2createtransactionresponse.md
   - docs/models/components/v2errorresponse.md
   - docs/models/components/v2errorsenum.md
-  - docs/models/components/v2getconnectorstateresponse.md
+  - docs/models/components/v2exporter.md
+  - docs/models/components/v2exporterconfiguration.md
+  - docs/models/components/v2getexporterstateresponse.md
   - docs/models/components/v2getledgerresponse.md
   - docs/models/components/v2getpipelinestateresponse.md
   - docs/models/components/v2gettransactionresponse.md
@@ -264,9 +264,9 @@ generatedFiles:
   - docs/models/components/v2ledgerinfostorage.md
   - docs/models/components/v2ledgerlistresponse.md
   - docs/models/components/v2ledgerlistresponsecursor.md
-  - docs/models/components/v2listconnectorsresponse.md
-  - docs/models/components/v2listconnectorsresponsecursor.md
-  - docs/models/components/v2listconnectorsresponsecursorcursor.md
+  - docs/models/components/v2listexportersresponse.md
+  - docs/models/components/v2listexportersresponsecursor.md
+  - docs/models/components/v2listexportersresponsecursorcursor.md
   - docs/models/components/v2listpipelinesresponse.md
   - docs/models/components/v2listpipelinesresponsecursor.md
   - docs/models/components/v2listpipelinesresponsecursorcursor.md
@@ -346,7 +346,7 @@ generatedFiles:
   - docs/models/operations/v2counttransactionsresponse.md
   - docs/models/operations/v2createbulkrequest.md
   - docs/models/operations/v2createbulkresponse.md
-  - docs/models/operations/v2createconnectorresponse.md
+  - docs/models/operations/v2createexporterresponse.md
   - docs/models/operations/v2createledgerrequest.md
   - docs/models/operations/v2createledgerresponse.md
   - docs/models/operations/v2createpipelinerequest.md
@@ -355,8 +355,8 @@ generatedFiles:
   - docs/models/operations/v2createtransactionresponse.md
   - docs/models/operations/v2deleteaccountmetadatarequest.md
   - docs/models/operations/v2deleteaccountmetadataresponse.md
-  - docs/models/operations/v2deleteconnectorrequest.md
-  - docs/models/operations/v2deleteconnectorresponse.md
+  - docs/models/operations/v2deleteexporterrequest.md
+  - docs/models/operations/v2deleteexporterresponse.md
   - docs/models/operations/v2deleteledgermetadatarequest.md
   - docs/models/operations/v2deleteledgermetadataresponse.md
   - docs/models/operations/v2deletepipelinerequest.md
@@ -369,8 +369,8 @@ generatedFiles:
   - docs/models/operations/v2getaccountresponse.md
   - docs/models/operations/v2getbalancesaggregatedrequest.md
   - docs/models/operations/v2getbalancesaggregatedresponse.md
-  - docs/models/operations/v2getconnectorstaterequest.md
-  - docs/models/operations/v2getconnectorstateresponse.md
+  - docs/models/operations/v2getexporterstaterequest.md
+  - docs/models/operations/v2getexporterstateresponse.md
   - docs/models/operations/v2getinforesponse.md
   - docs/models/operations/v2getledgerinforequest.md
   - docs/models/operations/v2getledgerinforesponse.md
@@ -386,7 +386,7 @@ generatedFiles:
   - docs/models/operations/v2importlogsresponse.md
   - docs/models/operations/v2listaccountsrequest.md
   - docs/models/operations/v2listaccountsresponse.md
-  - docs/models/operations/v2listconnectorsresponse.md
+  - docs/models/operations/v2listexportersresponse.md
   - docs/models/operations/v2listledgersrequest.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2listlogsrequest.md
@@ -1044,7 +1044,7 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"ledger": "<value>", "connectorID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreatePipeline:
@@ -1054,7 +1054,7 @@ examples:
           ledger: "ledger001"
       responses:
         "201":
-          application/json: {"data": {"ledger": "<value>", "connectorID": "<id>", "id": "<id>", "createdAt": "2023-10-13T04:07:21.184Z"}}
+          application/json: {"data": {"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-10-13T04:07:21.184Z"}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetPipelineState:
@@ -1065,7 +1065,7 @@ examples:
           pipelineID: "<id>"
       responses:
         "200":
-          application/json: {"data": {"ledger": "<value>", "connectorID": "<id>", "id": "<id>", "createdAt": "2024-06-04T21:05:32.605Z"}}
+          application/json: {"data": {"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2024-06-04T21:05:32.605Z"}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2DeletePipeline:
@@ -1101,6 +1101,40 @@ examples:
         path:
           ledger: "ledger001"
           pipelineID: "<id>"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2ListExporters:
+    speakeasy-default-v2-list-exporters:
+      responses:
+        "200":
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2CreateExporter:
+    speakeasy-default-v2-create-exporter:
+      requestBody:
+        application/json: {"driver": "<value>", "config": {"key": "<value>"}}
+      responses:
+        "201":
+          application/json: {"data": {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}, "id": "<id>", "createdAt": "2023-09-20T22:58:09.492Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2GetExporterState:
+    speakeasy-default-v2-get-exporter-state:
+      parameters:
+        path:
+          exporterID: "<id>"
+      responses:
+        "200":
+          application/json: {"data": {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}, "id": "<id>", "createdAt": "2025-12-16T02:14:09.876Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeleteExporter:
+    speakeasy-default-v2-delete-exporter:
+      parameters:
+        path:
+          exporterID: "<id>"
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}

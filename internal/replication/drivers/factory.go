@@ -11,7 +11,7 @@ import (
 //go:generate mockgen -source factory.go -destination factory_generated.go -package drivers . Factory
 type Factory interface {
 	// Create can return following errors:
-	// * ErrConnectorNotFound
+	// * ErrExporterNotFound
 	Create(ctx context.Context, id string) (Driver, json.RawMessage, error)
 }
 
@@ -21,7 +21,7 @@ type DriverFactoryWithBatching struct {
 }
 
 func (c *DriverFactoryWithBatching) Create(ctx context.Context, id string) (Driver, json.RawMessage, error) {
-	connector, rawConfig, err := c.underlying.Create(ctx, id)
+	exporter, rawConfig, err := c.underlying.Create(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -39,12 +39,12 @@ func (c *DriverFactoryWithBatching) Create(ctx context.Context, id string) (Driv
 		return nil, nil, errors.Wrap(err, "validating batching config")
 	}
 
-	return newBatcher(connector, bh.Batching, c.logger), rawConfig, nil
+	return newBatcher(exporter, bh.Batching, c.logger), rawConfig, nil
 }
 
 var _ Factory = (*DriverFactoryWithBatching)(nil)
 
-func NewWithBatchingConnectorFactory(underlying Factory, logger logging.Logger) *DriverFactoryWithBatching {
+func NewWithBatchingDriverFactory(underlying Factory, logger logging.Logger) *DriverFactoryWithBatching {
 	return &DriverFactoryWithBatching{
 		underlying: underlying,
 		logger:     logger,

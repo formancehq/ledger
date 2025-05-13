@@ -2,47 +2,47 @@ package provisionner
 
 import . "github.com/formancehq/go-libs/v3/collectionutils"
 
-type ConnectorState struct {
-	ID     string          `yaml:"id"`
-	Config ConnectorConfig `yaml:"config"`
+type ExporterState struct {
+	ID     string         `yaml:"id"`
+	Config ExporterConfig `yaml:"config"`
 }
 
 type LedgerState struct {
 	Config LedgerConfig `yaml:"config"`
 
-	// Map the connector name to the pipeline id
-	Connectors map[string]string `yaml:"connectors"`
+	// Map the exporter name to the pipeline id
+	Exporters map[string]string `yaml:"exporters"`
 }
 
-func (state *LedgerState) removeConnectorBinding(connectorName string) {
-	delete(state.Connectors, connectorName)
-	state.Config.Connectors = Filter(state.Config.Connectors, FilterNot(FilterEq(connectorName)))
+func (state *LedgerState) removeExporterBinding(exporterName string) {
+	delete(state.Exporters, exporterName)
+	state.Config.Exporters = Filter(state.Config.Exporters, FilterNot(FilterEq(exporterName)))
 }
 
 type State struct {
-	Ledgers    map[string]*LedgerState    `yaml:"ledgers"`
-	Connectors map[string]*ConnectorState `yaml:"connectors"`
+	Ledgers   map[string]*LedgerState   `yaml:"ledgers"`
+	Exporters map[string]*ExporterState `yaml:"exporters"`
 }
 
 func (s *State) setDefaults() {
 	if s.Ledgers == nil {
 		s.Ledgers = make(map[string]*LedgerState)
 	}
-	if s.Connectors == nil {
-		s.Connectors = make(map[string]*ConnectorState)
+	if s.Exporters == nil {
+		s.Exporters = make(map[string]*ExporterState)
 	}
 }
 
-func (s *State) removeConnector(name string) {
-	delete(s.Connectors, name)
+func (s *State) removeExporter(name string) {
+	delete(s.Exporters, name)
 	for _, ledger := range s.Ledgers {
-		ledger.removeConnectorBinding(name)
+		ledger.removeExporterBinding(name)
 	}
 }
 
 func newState() State {
 	return State{
-		Ledgers:    make(map[string]*LedgerState),
-		Connectors: make(map[string]*ConnectorState),
+		Ledgers:   make(map[string]*LedgerState),
+		Exporters: make(map[string]*ExporterState),
 	}
 }

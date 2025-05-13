@@ -34,9 +34,9 @@ func ExperimentalFeaturesInstrumentation() testservice.InstrumentationFunc {
 	}
 }
 
-func ExperimentalConnectorsInstrumentation() testservice.InstrumentationFunc {
+func ExperimentalExportersInstrumentation() testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
-		runConfiguration.AppendArgs("--" + cmd.ExperimentalConnectors)
+		runConfiguration.AppendArgs("--" + cmd.ExperimentalExporters)
 		return nil
 	}
 }

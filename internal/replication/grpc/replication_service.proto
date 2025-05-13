@@ -6,10 +6,10 @@ import "google/protobuf/timestamp.proto";
 package replication;
 
 service Replication {
-  rpc CreateConnector(CreateConnectorRequest) returns (CreateConnectorResponse);
-  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse);
-  rpc GetConnector(GetConnectorRequest) returns (GetConnectorResponse);
-  rpc DeleteConnector(DeleteConnectorRequest) returns (DeleteConnectorResponse);
+  rpc CreateExporter(CreateExporterRequest) returns (CreateExporterResponse);
+  rpc ListExporters(ListExportersRequest) returns (ListExportersResponse);
+  rpc GetExporter(GetExporterRequest) returns (GetExporterResponse);
+  rpc DeleteExporter(DeleteExporterRequest) returns (DeleteExporterResponse);
   rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse);
   rpc GetPipeline(GetPipelineRequest) returns (GetPipelineResponse);
   rpc CreatePipeline(CreatePipelineRequest) returns (CreatePipelineResponse);
@@ -25,46 +25,46 @@ message Cursor {
   string prev = 3;
 }
 
-message ListConnectorsRequest {
+message ListExportersRequest {
   string cursor = 1;
 }
 
-message ListConnectorsResponse {
-  repeated Connector data = 1;
+message ListExportersResponse {
+  repeated Exporter data = 1;
   Cursor cursor = 2;
 }
 
-message Connector {
+message Exporter {
   string id = 1;
   google.protobuf.Timestamp created_at = 2;
-  ConnectorConfiguration config = 3;
+  ExporterConfiguration config = 3;
 }
 
-message GetConnectorRequest {
+message GetExporterRequest {
   string id = 1;
 }
 
-message GetConnectorResponse {
-  Connector connector = 1;
+message GetExporterResponse {
+  Exporter exporter = 1;
 }
 
-message DeleteConnectorRequest {
+message DeleteExporterRequest {
   string id = 1;
 }
 
-message DeleteConnectorResponse {}
+message DeleteExporterResponse {}
 
-message ConnectorConfiguration {
+message ExporterConfiguration {
   string driver = 1;
   string config = 2;
 }
 
-message CreateConnectorRequest {
-  ConnectorConfiguration config = 1;
+message CreateExporterRequest {
+  ExporterConfiguration config = 1;
 }
 
-message CreateConnectorResponse {
-  Connector connector = 1;
+message CreateExporterResponse {
+  Exporter exporter = 1;
 }
 
 message ListPipelinesRequest {
@@ -77,7 +77,7 @@ message ListPipelinesResponse {
 }
 
 message PipelineConfiguration {
-  string connector_id = 1;
+  string exporter_id = 1;
   string ledger = 2;
 }
 

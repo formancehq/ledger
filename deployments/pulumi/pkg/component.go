@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/connectors"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
@@ -24,7 +24,7 @@ type ComponentArgs struct {
 	Storage       storage.Args
 	Ingress       *api.IngressArgs
 	API           api.Args
-	Connectors    connectors.Args
+	Exporters     exporters.Args
 	Worker        worker.Args
 	Provision     provision.Args
 	Generator     *generator.Args
@@ -43,14 +43,14 @@ func (args *ComponentArgs) SetDefaults() {
 type Component struct {
 	pulumi.ResourceState
 
-	API        *api.Component
-	Worker     *worker.Component
-	Storage    *storage.Component
-	Namespace  *corev1.Namespace
-	Devbox     *devbox.Component
-	Connectors *connectors.Component
-	Provision  *provision.Component
-	Generator  *generator.Component
+	API       *api.Component
+	Worker    *worker.Component
+	Storage   *storage.Component
+	Namespace *corev1.Namespace
+	Devbox    *devbox.Component
+	Exporters *exporters.Component
+	Provision *provision.Component
+	Generator *generator.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -115,28 +115,28 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		Args:       args.API,
 		Storage:    cmp.Storage,
 		Ingress:    args.Ingress,
-		Worker: cmp.Worker,
+		Worker:     cmp.Worker,
 	}, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(args.Connectors.Connectors) > 0 {
-		cmp.Connectors, err = connectors.NewComponent(ctx, "connectors", connectors.ComponentArgs{
+	if len(args.Exporters.Exporters) > 0 {
+		cmp.Exporters, err = exporters.NewComponent(ctx, "exporters", exporters.ComponentArgs{
 			CommonArgs: args.CommonArgs,
-			Args:       args.Connectors,
+			Args:       args.Exporters,
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if len(args.Provision.Ledgers) > 0 || cmp.Connectors != nil {
+	if len(args.Provision.Ledgers) > 0 || cmp.Exporters != nil {
 		cmp.Provision, err = provision.NewComponent(ctx, "provisioner", provision.ComponentArgs{
 			CommonArgs: args.CommonArgs,
 			API:        cmp.API,
 			Args:       args.Provision,
-			Connectors: cmp.Connectors,
+			Exporters:  cmp.Exporters,
 		}, options...)
 		if err != nil {
 			return nil, err
@@ -171,7 +171,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 			CommonArgs: args.CommonArgs,
 			Storage:    cmp.Storage,
 			API:        cmp.API,
-			Connectors: cmp.Connectors,
+			Exporters:  cmp.Exporters,
 		}, options...)
 		if err != nil {
 			return nil, err

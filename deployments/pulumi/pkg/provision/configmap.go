@@ -11,26 +11,26 @@ import (
 )
 
 func createConfigMap(ctx *pulumi.Context, cmp *Component, args ComponentArgs) (*corev1.ConfigMap, error) {
-	connectors := make(map[string]any)
-	if args.Connectors != nil && args.Connectors.Connectors != nil {
-		for connectorName, connectorComponent := range args.Connectors.Connectors {
-			config, err := internals.UnsafeAwaitOutput(ctx.Context(), connectorComponent.Component.GetConfig())
+	exporters := make(map[string]any)
+	if args.Exporters != nil && args.Exporters.Exporters != nil {
+		for exporterName, exporterComponent := range args.Exporters.Exporters {
+			config, err := internals.UnsafeAwaitOutput(ctx.Context(), exporterComponent.Component.GetConfig())
 			if err != nil {
 				return nil, err
 			}
-			connectors[connectorName] = map[string]any{
-				"driver": connectorComponent.Driver,
+			exporters[exporterName] = map[string]any{
+				"driver": exporterComponent.Driver,
 				"config": config.Value,
 			}
 		}
 	}
 
 	marshalledConfig, err := json.Marshal(struct {
-		Ledgers    map[string]LedgerConfigArgs `json:"ledgers"`
-		Connectors map[string]any              `json:"connectors"`
+		Ledgers   map[string]LedgerConfigArgs `json:"ledgers"`
+		Exporters map[string]any              `json:"exporters"`
 	}{
-		Ledgers:    args.Ledgers,
-		Connectors: connectors,
+		Ledgers:   args.Ledgers,
+		Exporters: exporters,
 	})
 	if err != nil {
 		return nil, err

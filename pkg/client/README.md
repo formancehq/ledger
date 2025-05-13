@@ -152,10 +152,10 @@ func main() {
 * [ListLogs](docs/sdks/v2/README.md#listlogs) - List the logs from a ledger
 * [ImportLogs](docs/sdks/v2/README.md#importlogs)
 * [ExportLogs](docs/sdks/v2/README.md#exportlogs) - Export logs
-* [ListConnectors](docs/sdks/v2/README.md#listconnectors) - List connectors
-* [CreateConnector](docs/sdks/v2/README.md#createconnector) - Create connector
-* [GetConnectorState](docs/sdks/v2/README.md#getconnectorstate) - Get connector state
-* [DeleteConnector](docs/sdks/v2/README.md#deleteconnector) - Delete connector
+* [ListExporters](docs/sdks/v2/README.md#listexporters) - List exporters
+* [CreateExporter](docs/sdks/v2/README.md#createexporter) - Create exporter
+* [GetExporterState](docs/sdks/v2/README.md#getexporterstate) - Get exporter state
+* [DeleteExporter](docs/sdks/v2/README.md#deleteexporter) - Delete exporter
 * [ListPipelines](docs/sdks/v2/README.md#listpipelines) - List pipelines
 * [CreatePipeline](docs/sdks/v2/README.md#createpipeline) - Create pipeline
 * [GetPipelineState](docs/sdks/v2/README.md#getpipelinestate) - Get pipeline state

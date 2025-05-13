@@ -58,19 +58,19 @@ func TestBatcher(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	connector := NewMockDriver(ctrl)
+	driver := NewMockDriver(ctrl)
 	logger := logging.Testing()
 	ctx := context.TODO()
 
 	log := NewLogWithLedger("module1", ledger.Log{})
 
-	connector.EXPECT().Start(gomock.Any()).Return(nil)
-	connector.EXPECT().Stop(gomock.Any()).Return(nil)
-	connector.EXPECT().
+	driver.EXPECT().Start(gomock.Any()).Return(nil)
+	driver.EXPECT().Stop(gomock.Any()).Return(nil)
+	driver.EXPECT().
 		Accept(gomock.Any(), log).
 		Return([]error{nil}, nil)
 
-	batcher := newBatcher(connector, Batching{
+	batcher := newBatcher(driver, Batching{
 		MaxItems:      5,
 		FlushInterval: 50 * time.Millisecond,
 	}, logger)

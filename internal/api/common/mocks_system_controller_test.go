@@ -43,19 +43,19 @@ func (m *MockReplicationBackend) EXPECT() *MockReplicationBackendMockRecorder {
 	return m.recorder
 }
 
-// CreateConnector mocks base method.
-func (m *MockReplicationBackend) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
+// CreateExporter mocks base method.
+func (m *MockReplicationBackend) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateConnector", ctx, configuration)
-	ret0, _ := ret[0].(*ledger.Connector)
+	ret := m.ctrl.Call(m, "CreateExporter", ctx, configuration)
+	ret0, _ := ret[0].(*ledger.Exporter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CreateConnector indicates an expected call of CreateConnector.
-func (mr *MockReplicationBackendMockRecorder) CreateConnector(ctx, configuration any) *gomock.Call {
+// CreateExporter indicates an expected call of CreateExporter.
+func (mr *MockReplicationBackendMockRecorder) CreateExporter(ctx, configuration any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateConnector", reflect.TypeOf((*MockReplicationBackend)(nil).CreateConnector), ctx, configuration)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExporter", reflect.TypeOf((*MockReplicationBackend)(nil).CreateExporter), ctx, configuration)
 }
 
 // CreatePipeline mocks base method.
@@ -73,18 +73,18 @@ func (mr *MockReplicationBackendMockRecorder) CreatePipeline(ctx, pipelineConfig
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*MockReplicationBackend)(nil).CreatePipeline), ctx, pipelineConfiguration)
 }
 
-// DeleteConnector mocks base method.
-func (m *MockReplicationBackend) DeleteConnector(ctx context.Context, id string) error {
+// DeleteExporter mocks base method.
+func (m *MockReplicationBackend) DeleteExporter(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteConnector", ctx, id)
+	ret := m.ctrl.Call(m, "DeleteExporter", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteConnector indicates an expected call of DeleteConnector.
-func (mr *MockReplicationBackendMockRecorder) DeleteConnector(ctx, id any) *gomock.Call {
+// DeleteExporter indicates an expected call of DeleteExporter.
+func (mr *MockReplicationBackendMockRecorder) DeleteExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockReplicationBackend)(nil).DeleteConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExporter", reflect.TypeOf((*MockReplicationBackend)(nil).DeleteExporter), ctx, id)
 }
 
 // DeletePipeline mocks base method.
@@ -101,19 +101,19 @@ func (mr *MockReplicationBackendMockRecorder) DeletePipeline(ctx, id any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*MockReplicationBackend)(nil).DeletePipeline), ctx, id)
 }
 
-// GetConnector mocks base method.
-func (m *MockReplicationBackend) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+// GetExporter mocks base method.
+func (m *MockReplicationBackend) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ledger.Connector)
+	ret := m.ctrl.Call(m, "GetExporter", ctx, id)
+	ret0, _ := ret[0].(*ledger.Exporter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetConnector indicates an expected call of GetConnector.
-func (mr *MockReplicationBackendMockRecorder) GetConnector(ctx, id any) *gomock.Call {
+// GetExporter indicates an expected call of GetExporter.
+func (mr *MockReplicationBackendMockRecorder) GetExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnector", reflect.TypeOf((*MockReplicationBackend)(nil).GetConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExporter", reflect.TypeOf((*MockReplicationBackend)(nil).GetExporter), ctx, id)
 }
 
 // GetPipeline mocks base method.
@@ -131,19 +131,19 @@ func (mr *MockReplicationBackendMockRecorder) GetPipeline(ctx, id any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).GetPipeline), ctx, id)
 }
 
-// ListConnectors mocks base method.
-func (m *MockReplicationBackend) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
+// ListExporters mocks base method.
+func (m *MockReplicationBackend) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListConnectors", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Connector])
+	ret := m.ctrl.Call(m, "ListExporters", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListConnectors indicates an expected call of ListConnectors.
-func (mr *MockReplicationBackendMockRecorder) ListConnectors(ctx any) *gomock.Call {
+// ListExporters indicates an expected call of ListExporters.
+func (mr *MockReplicationBackendMockRecorder) ListExporters(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConnectors", reflect.TypeOf((*MockReplicationBackend)(nil).ListConnectors), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListExporters", reflect.TypeOf((*MockReplicationBackend)(nil).ListExporters), ctx)
 }
 
 // ListPipelines mocks base method.
@@ -227,19 +227,19 @@ func (m *SystemController) EXPECT() *SystemControllerMockRecorder {
 	return m.recorder
 }
 
-// CreateConnector mocks base method.
-func (m *SystemController) CreateConnector(ctx context.Context, configuration ledger.ConnectorConfiguration) (*ledger.Connector, error) {
+// CreateExporter mocks base method.
+func (m *SystemController) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateConnector", ctx, configuration)
-	ret0, _ := ret[0].(*ledger.Connector)
+	ret := m.ctrl.Call(m, "CreateExporter", ctx, configuration)
+	ret0, _ := ret[0].(*ledger.Exporter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CreateConnector indicates an expected call of CreateConnector.
-func (mr *SystemControllerMockRecorder) CreateConnector(ctx, configuration any) *gomock.Call {
+// CreateExporter indicates an expected call of CreateExporter.
+func (mr *SystemControllerMockRecorder) CreateExporter(ctx, configuration any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateConnector", reflect.TypeOf((*SystemController)(nil).CreateConnector), ctx, configuration)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExporter", reflect.TypeOf((*SystemController)(nil).CreateExporter), ctx, configuration)
 }
 
 // CreateLedger mocks base method.
@@ -271,18 +271,18 @@ func (mr *SystemControllerMockRecorder) CreatePipeline(ctx, pipelineConfiguratio
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*SystemController)(nil).CreatePipeline), ctx, pipelineConfiguration)
 }
 
-// DeleteConnector mocks base method.
-func (m *SystemController) DeleteConnector(ctx context.Context, id string) error {
+// DeleteExporter mocks base method.
+func (m *SystemController) DeleteExporter(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteConnector", ctx, id)
+	ret := m.ctrl.Call(m, "DeleteExporter", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteConnector indicates an expected call of DeleteConnector.
-func (mr *SystemControllerMockRecorder) DeleteConnector(ctx, id any) *gomock.Call {
+// DeleteExporter indicates an expected call of DeleteExporter.
+func (mr *SystemControllerMockRecorder) DeleteExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*SystemController)(nil).DeleteConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExporter", reflect.TypeOf((*SystemController)(nil).DeleteExporter), ctx, id)
 }
 
 // DeleteLedgerMetadata mocks base method.
@@ -313,19 +313,19 @@ func (mr *SystemControllerMockRecorder) DeletePipeline(ctx, id any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*SystemController)(nil).DeletePipeline), ctx, id)
 }
 
-// GetConnector mocks base method.
-func (m *SystemController) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+// GetExporter mocks base method.
+func (m *SystemController) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ledger.Connector)
+	ret := m.ctrl.Call(m, "GetExporter", ctx, id)
+	ret0, _ := ret[0].(*ledger.Exporter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetConnector indicates an expected call of GetConnector.
-func (mr *SystemControllerMockRecorder) GetConnector(ctx, id any) *gomock.Call {
+// GetExporter indicates an expected call of GetExporter.
+func (mr *SystemControllerMockRecorder) GetExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnector", reflect.TypeOf((*SystemController)(nil).GetConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExporter", reflect.TypeOf((*SystemController)(nil).GetExporter), ctx, id)
 }
 
 // GetLedger mocks base method.
@@ -373,19 +373,19 @@ func (mr *SystemControllerMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*SystemController)(nil).GetPipeline), ctx, id)
 }
 
-// ListConnectors mocks base method.
-func (m *SystemController) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
+// ListExporters mocks base method.
+func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListConnectors", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Connector])
+	ret := m.ctrl.Call(m, "ListExporters", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListConnectors indicates an expected call of ListConnectors.
-func (mr *SystemControllerMockRecorder) ListConnectors(ctx any) *gomock.Call {
+// ListExporters indicates an expected call of ListExporters.
+func (mr *SystemControllerMockRecorder) ListExporters(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConnectors", reflect.TypeOf((*SystemController)(nil).ListConnectors), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListExporters", reflect.TypeOf((*SystemController)(nil).ListExporters), ctx)
 }
 
 // ListLedgers mocks base method.
