@@ -1348,7 +1348,7 @@ paths:
       security:
         - Authorization:
             - ledger:write
-  /v2/_system/exporters:
+  /v2/_/exporters:
     get:
       summary: List exporters
       operationId: v2ListExporters
@@ -1385,7 +1385,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
-  /v2/_system/exporters/{exporterID}:
+  /v2/_/exporters/{exporterID}:
     parameters:
       - name: exporterID
         description: The exporter id

@@ -35,7 +35,7 @@ func NewRouter(
 
 		router.Get("/_info", v1.GetInfo(systemController, version))
 
-		router.Route("/_system", func(router chi.Router) {
+		router.Route("/_", func(router chi.Router) {
 			if routerOptions.exporters {
 				router.Route("/exporters", func(router chi.Router) {
 					router.Get("/", listExporters(systemController))

@@ -5249,7 +5249,7 @@ func (s *V2) ListExporters(ctx context.Context, opts ...operations.Option) (*ope
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := url.JoinPath(baseURL, "/v2/_system/exporters")
+	opURL, err := url.JoinPath(baseURL, "/v2/_/exporters")
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5457,7 +5457,7 @@ func (s *V2) CreateExporter(ctx context.Context, request components.V2ExporterCo
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := url.JoinPath(baseURL, "/v2/_system/exporters")
+	opURL, err := url.JoinPath(baseURL, "/v2/_/exporters")
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5672,7 +5672,7 @@ func (s *V2) GetExporterState(ctx context.Context, request operations.V2GetExpor
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_system/exporters/{exporterID}", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_/exporters/{exporterID}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5880,7 +5880,7 @@ func (s *V2) DeleteExporter(ctx context.Context, request operations.V2DeleteExpo
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_system/exporters/{exporterID}", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_/exporters/{exporterID}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
