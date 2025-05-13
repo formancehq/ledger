@@ -17,8 +17,8 @@ type GRPCServiceImpl struct {
 	manager *Manager
 }
 
-func (srv GRPCServiceImpl) CreateConnector(ctx context.Context, request *grpc.CreateConnectorRequest) (*grpc.CreateConnectorResponse, error) {
-	connector, err := srv.manager.CreateConnector(ctx, ledger.ConnectorConfiguration{
+func (srv GRPCServiceImpl) CreateExporter(ctx context.Context, request *grpc.CreateExporterRequest) (*grpc.CreateExporterResponse, error) {
+	exporter, err := srv.manager.CreateExporter(ctx, ledger.ExporterConfiguration{
 		Driver: request.Config.Driver,
 		Config: json.RawMessage(request.Config.Config),
 	})
@@ -36,49 +36,49 @@ func (srv GRPCServiceImpl) CreateConnector(ctx context.Context, request *grpc.Cr
 		}
 	}
 
-	return &grpc.CreateConnectorResponse{
-		Connector: mapConnector(*connector),
+	return &grpc.CreateExporterResponse{
+		Exporter: mapExporter(*exporter),
 	}, nil
 }
 
-func (srv GRPCServiceImpl) ListConnectors(ctx context.Context, _ *grpc.ListConnectorsRequest) (*grpc.ListConnectorsResponse, error) {
-	ret, err := srv.manager.ListConnectors(ctx)
+func (srv GRPCServiceImpl) ListExporters(ctx context.Context, _ *grpc.ListExportersRequest) (*grpc.ListExportersResponse, error) {
+	ret, err := srv.manager.ListExporters(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &grpc.ListConnectorsResponse{
-		Data:   collectionutils.Map(ret.Data, mapConnector),
+	return &grpc.ListExportersResponse{
+		Data:   collectionutils.Map(ret.Data, mapExporter),
 		Cursor: mapCursor(ret),
 	}, nil
 }
 
-func (srv GRPCServiceImpl) GetConnector(ctx context.Context, request *grpc.GetConnectorRequest) (*grpc.GetConnectorResponse, error) {
-	ret, err := srv.manager.GetConnector(ctx, request.Id)
+func (srv GRPCServiceImpl) GetExporter(ctx context.Context, request *grpc.GetExporterRequest) (*grpc.GetExporterResponse, error) {
+	ret, err := srv.manager.GetExporter(ctx, request.Id)
 	if err != nil {
 		switch {
-		case errors.Is(err, system.ErrConnectorNotFound("")):
+		case errors.Is(err, system.ErrExporterNotFound("")):
 			return nil, status.Errorf(codes.NotFound, "%s", err.Error())
 		default:
 			return nil, err
 		}
 	}
 
-	return &grpc.GetConnectorResponse{
-		Connector: mapConnector(*ret),
+	return &grpc.GetExporterResponse{
+		Exporter: mapExporter(*ret),
 	}, nil
 }
 
-func (srv GRPCServiceImpl) DeleteConnector(ctx context.Context, request *grpc.DeleteConnectorRequest) (*grpc.DeleteConnectorResponse, error) {
-	if err := srv.manager.DeleteConnector(ctx, request.Id); err != nil {
+func (srv GRPCServiceImpl) DeleteExporter(ctx context.Context, request *grpc.DeleteExporterRequest) (*grpc.DeleteExporterResponse, error) {
+	if err := srv.manager.DeleteExporter(ctx, request.Id); err != nil {
 		switch {
-		case errors.Is(err, system.ErrConnectorNotFound("")):
+		case errors.Is(err, system.ErrExporterNotFound("")):
 			return nil, status.Errorf(codes.NotFound, "%s", err.Error())
 		default:
 			return nil, err
 		}
 	}
-	return &grpc.DeleteConnectorResponse{}, nil
+	return &grpc.DeleteExporterResponse{}, nil
 }
 
 func (srv GRPCServiceImpl) ListPipelines(ctx context.Context, _ *grpc.ListPipelinesRequest) (*grpc.ListPipelinesResponse, error) {

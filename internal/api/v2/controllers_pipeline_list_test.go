@@ -16,14 +16,14 @@ func TestListPipelines(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, true)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithConnectors(true))
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines", nil)
 	rec := httptest.NewRecorder()
 
 	pipelines := []ledger.Pipeline{
-		ledger.NewPipeline(ledger.NewPipelineConfiguration("module1", "connector1")),
-		ledger.NewPipeline(ledger.NewPipelineConfiguration("module2", "connector2")),
+		ledger.NewPipeline(ledger.NewPipelineConfiguration("module1", "exporter1")),
+		ledger.NewPipeline(ledger.NewPipelineConfiguration("module2", "exporter2")),
 	}
 	systemController.EXPECT().
 		ListPipelines(gomock.Any()).

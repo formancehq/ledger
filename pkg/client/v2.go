@@ -5117,8 +5117,8 @@ func (s *V2) ExportLogs(ctx context.Context, request operations.V2ExportLogsRequ
 
 }
 
-// ListConnectors - List connectors
-func (s *V2) ListConnectors(ctx context.Context, opts ...operations.Option) (*operations.V2ListConnectorsResponse, error) {
+// ListExporters - List exporters
+func (s *V2) ListExporters(ctx context.Context, opts ...operations.Option) (*operations.V2ListExportersResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
 		operations.SupportedOptionRetries,
@@ -5137,7 +5137,7 @@ func (s *V2) ListConnectors(ctx context.Context, opts ...operations.Option) (*op
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := url.JoinPath(baseURL, "/v2/_system/connectors")
+	opURL, err := url.JoinPath(baseURL, "/v2/_system/exporters")
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5145,7 +5145,7 @@ func (s *V2) ListConnectors(ctx context.Context, opts ...operations.Option) (*op
 	hookCtx := hooks.HookContext{
 		BaseURL:        baseURL,
 		Context:        ctx,
-		OperationID:    "v2ListConnectors",
+		OperationID:    "v2ListExporters",
 		OAuth2Scopes:   []string{"ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
 	}
@@ -5265,7 +5265,7 @@ func (s *V2) ListConnectors(ctx context.Context, opts ...operations.Option) (*op
 		}
 	}
 
-	res := &operations.V2ListConnectorsResponse{
+	res := &operations.V2ListExportersResponse{
 		HTTPMeta: components.HTTPMetadata{
 			Request:  req,
 			Response: httpRes,
@@ -5281,12 +5281,12 @@ func (s *V2) ListConnectors(ctx context.Context, opts ...operations.Option) (*op
 				return nil, err
 			}
 
-			var out components.V2ListConnectorsResponse
+			var out components.V2ListExportersResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.V2ListConnectorsResponse = &out
+			res.V2ListExportersResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {
@@ -5321,8 +5321,8 @@ func (s *V2) ListConnectors(ctx context.Context, opts ...operations.Option) (*op
 
 }
 
-// CreateConnector - Create connector
-func (s *V2) CreateConnector(ctx context.Context, request components.V2CreateConnectorRequest, opts ...operations.Option) (*operations.V2CreateConnectorResponse, error) {
+// CreateExporter - Create exporter
+func (s *V2) CreateExporter(ctx context.Context, request components.V2CreateExporterRequest, opts ...operations.Option) (*operations.V2CreateExporterResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
 		operations.SupportedOptionRetries,
@@ -5341,7 +5341,7 @@ func (s *V2) CreateConnector(ctx context.Context, request components.V2CreateCon
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := url.JoinPath(baseURL, "/v2/_system/connectors")
+	opURL, err := url.JoinPath(baseURL, "/v2/_system/exporters")
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5349,7 +5349,7 @@ func (s *V2) CreateConnector(ctx context.Context, request components.V2CreateCon
 	hookCtx := hooks.HookContext{
 		BaseURL:        baseURL,
 		Context:        ctx,
-		OperationID:    "v2CreateConnector",
+		OperationID:    "v2CreateExporter",
 		OAuth2Scopes:   []string{"ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
 	}
@@ -5476,7 +5476,7 @@ func (s *V2) CreateConnector(ctx context.Context, request components.V2CreateCon
 		}
 	}
 
-	res := &operations.V2CreateConnectorResponse{
+	res := &operations.V2CreateExporterResponse{
 		HTTPMeta: components.HTTPMetadata{
 			Request:  req,
 			Response: httpRes,
@@ -5492,12 +5492,12 @@ func (s *V2) CreateConnector(ctx context.Context, request components.V2CreateCon
 				return nil, err
 			}
 
-			var out components.V2CreateConnectorResponse
+			var out components.V2CreateExporterResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.V2CreateConnectorResponse = &out
+			res.V2CreateExporterResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {
@@ -5532,8 +5532,8 @@ func (s *V2) CreateConnector(ctx context.Context, request components.V2CreateCon
 
 }
 
-// GetConnectorState - Get connector state
-func (s *V2) GetConnectorState(ctx context.Context, request operations.V2GetConnectorStateRequest, opts ...operations.Option) (*operations.V2GetConnectorStateResponse, error) {
+// GetExporterState - Get exporter state
+func (s *V2) GetExporterState(ctx context.Context, request operations.V2GetExporterStateRequest, opts ...operations.Option) (*operations.V2GetExporterStateResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
 		operations.SupportedOptionRetries,
@@ -5552,7 +5552,7 @@ func (s *V2) GetConnectorState(ctx context.Context, request operations.V2GetConn
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_system/connectors/{connectorID}", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_system/exporters/{exporterID}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5560,7 +5560,7 @@ func (s *V2) GetConnectorState(ctx context.Context, request operations.V2GetConn
 	hookCtx := hooks.HookContext{
 		BaseURL:        baseURL,
 		Context:        ctx,
-		OperationID:    "v2GetConnectorState",
+		OperationID:    "v2GetExporterState",
 		OAuth2Scopes:   []string{"ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
 	}
@@ -5680,7 +5680,7 @@ func (s *V2) GetConnectorState(ctx context.Context, request operations.V2GetConn
 		}
 	}
 
-	res := &operations.V2GetConnectorStateResponse{
+	res := &operations.V2GetExporterStateResponse{
 		HTTPMeta: components.HTTPMetadata{
 			Request:  req,
 			Response: httpRes,
@@ -5696,12 +5696,12 @@ func (s *V2) GetConnectorState(ctx context.Context, request operations.V2GetConn
 				return nil, err
 			}
 
-			var out components.V2GetConnectorStateResponse
+			var out components.V2GetExporterStateResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.V2GetConnectorStateResponse = &out
+			res.V2GetExporterStateResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {
@@ -5736,8 +5736,8 @@ func (s *V2) GetConnectorState(ctx context.Context, request operations.V2GetConn
 
 }
 
-// DeleteConnector - Delete connector
-func (s *V2) DeleteConnector(ctx context.Context, request operations.V2DeleteConnectorRequest, opts ...operations.Option) (*operations.V2DeleteConnectorResponse, error) {
+// DeleteExporter - Delete exporter
+func (s *V2) DeleteExporter(ctx context.Context, request operations.V2DeleteExporterRequest, opts ...operations.Option) (*operations.V2DeleteExporterResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
 		operations.SupportedOptionRetries,
@@ -5756,7 +5756,7 @@ func (s *V2) DeleteConnector(ctx context.Context, request operations.V2DeleteCon
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_system/connectors/{connectorID}", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/v2/_system/exporters/{exporterID}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -5764,7 +5764,7 @@ func (s *V2) DeleteConnector(ctx context.Context, request operations.V2DeleteCon
 	hookCtx := hooks.HookContext{
 		BaseURL:        baseURL,
 		Context:        ctx,
-		OperationID:    "v2DeleteConnector",
+		OperationID:    "v2DeleteExporter",
 		OAuth2Scopes:   []string{"ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
 	}
@@ -5884,7 +5884,7 @@ func (s *V2) DeleteConnector(ctx context.Context, request operations.V2DeleteCon
 		}
 	}
 
-	res := &operations.V2DeleteConnectorResponse{
+	res := &operations.V2DeleteExporterResponse{
 		HTTPMeta: components.HTTPMetadata{
 			Request:  req,
 			Response: httpRes,

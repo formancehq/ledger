@@ -3,34 +3,34 @@ package drivers
 import "fmt"
 
 type ErrMalformedConfiguration struct {
-	connector string
-	err       error
+	exporter string
+	err      error
 }
 
 func (e *ErrMalformedConfiguration) Error() string {
-	return fmt.Sprintf("connector '%s' has malformed configuration: %s", e.connector, e.err)
+	return fmt.Sprintf("exporter '%s' has malformed configuration: %s", e.exporter, e.err)
 }
 
-func NewErrMalformedConfiguration(connector string, err error) *ErrMalformedConfiguration {
+func NewErrMalformedConfiguration(exporter string, err error) *ErrMalformedConfiguration {
 	return &ErrMalformedConfiguration{
-		connector: connector,
-		err:       err,
+		exporter: exporter,
+		err:      err,
 	}
 }
 
 type ErrInvalidConfiguration struct {
-	connector string
-	err       error
+	exporter string
+	err      error
 }
 
 func (e *ErrInvalidConfiguration) Error() string {
-	return fmt.Sprintf("connector '%s' has invalid configuration: %s", e.connector, e.err)
+	return fmt.Sprintf("exporter '%s' has invalid configuration: %s", e.exporter, e.err)
 }
 
-func NewErrInvalidConfiguration(connector string, err error) *ErrInvalidConfiguration {
+func NewErrInvalidConfiguration(exporter string, err error) *ErrInvalidConfiguration {
 	return &ErrInvalidConfiguration{
-		connector: connector,
-		err:       err,
+		exporter: exporter,
+		err:      err,
 	}
 }
 
@@ -42,18 +42,18 @@ func (e *ErrDriverNotFound) Error() string {
 	return fmt.Sprintf("driver '%s' not found", e.driver)
 }
 
-func NewErrDriverNotFound(connector string) *ErrDriverNotFound {
+func NewErrDriverNotFound(driver string) *ErrDriverNotFound {
 	return &ErrDriverNotFound{
-		driver: connector,
+		driver: driver,
 	}
 }
 
-type ErrConnectorNotFound string
+type ErrExporterNotFound string
 
-func (e ErrConnectorNotFound) Error() string {
-	return fmt.Sprintf("connector '%s' not found", string(e))
+func (e ErrExporterNotFound) Error() string {
+	return fmt.Sprintf("exporter '%s' not found", string(e))
 }
 
-func NewErrConnectorNotFound(id string) ErrConnectorNotFound {
-	return ErrConnectorNotFound(id)
+func NewErrExporterNotFound(id string) ErrExporterNotFound {
+	return ErrExporterNotFound(id)
 }

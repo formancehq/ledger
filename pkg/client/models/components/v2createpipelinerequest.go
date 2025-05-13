@@ -3,12 +3,12 @@
 package components
 
 type V2CreatePipelineRequest struct {
-	ConnectorID string `json:"connectorID"`
+	ExporterID string `json:"exporterID"`
 }
 
-func (o *V2CreatePipelineRequest) GetConnectorID() string {
+func (o *V2CreatePipelineRequest) GetExporterID() string {
 	if o == nil {
 		return ""
 	}
-	return o.ConnectorID
+	return o.ExporterID
 }

@@ -82,7 +82,7 @@ func NewRouter(
 		v2.WithBulkerFactory(routerOptions.bulkerFactory),
 		v2.WithDefaultBulkHandlerFactories(routerOptions.bulkMaxSize),
 		v2.WithPaginationConfig(routerOptions.paginationConfig),
-		v2.WithConnectors(routerOptions.connectors),
+		v2.WithExporters(routerOptions.exporters),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -104,7 +104,7 @@ type routerOptions struct {
 	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
 	paginationConfig common.PaginationConfig
-	connectors       bool
+	exporters        bool
 }
 
 type RouterOption func(ro *routerOptions)
@@ -133,9 +133,9 @@ func WithPaginationConfiguration(paginationConfig common.PaginationConfig) Route
 	}
 }
 
-func WithConnectors(v bool) RouterOption {
+func WithExporters(v bool) RouterOption {
 	return func(ro *routerOptions) {
-		ro.connectors = v
+		ro.exporters = v
 	}
 }
 

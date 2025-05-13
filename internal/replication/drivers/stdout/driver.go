@@ -11,38 +11,38 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
-type Connector struct {
+type Driver struct {
 	output io.Writer
 }
 
-func (connector *Connector) Stop(_ context.Context) error {
+func (driver *Driver) Stop(_ context.Context) error {
 	return nil
 }
 
-func (connector *Connector) Start(_ context.Context) error {
+func (driver *Driver) Start(_ context.Context) error {
 	return nil
 }
 
-func (connector *Connector) ClearData(_ context.Context, _ string) error {
+func (driver *Driver) ClearData(_ context.Context, _ string) error {
 	return nil
 }
 
-func (connector *Connector) Accept(_ context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
+func (driver *Driver) Accept(_ context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 	for _, log := range logs {
 		data, err := json.MarshalIndent(log, "", "  ")
 		if err != nil {
 			return nil, err
 		}
-		_, _ = fmt.Fprintln(connector.output, string(data))
+		_, _ = fmt.Fprintln(driver.output, string(data))
 	}
 
 	return make([]error, len(logs)), nil
 }
 
-func NewConnector(_ struct{}, _ logging.Logger) (*Connector, error) {
-	return &Connector{
+func NewDriver(_ struct{}, _ logging.Logger) (*Driver, error) {
+	return &Driver{
 		output: os.Stdout,
 	}, nil
 }
 
-var _ drivers.Driver = (*Connector)(nil)
+var _ drivers.Driver = (*Driver)(nil)

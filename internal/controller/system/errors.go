@@ -32,20 +32,20 @@ func newErrInvalidLedgerConfiguration(err error) ErrInvalidLedgerConfiguration {
 	}
 }
 
-// ErrConnectorNotFound denotes an attempt to use a not found connector
-type ErrConnectorNotFound string
+// ErrExporterNotFound denotes an attempt to use a not found exporter
+type ErrExporterNotFound string
 
-func (e ErrConnectorNotFound) Error() string {
-	return fmt.Sprintf("connector '%s' not found", string(e))
+func (e ErrExporterNotFound) Error() string {
+	return fmt.Sprintf("exporter '%s' not found", string(e))
 }
 
-func (e ErrConnectorNotFound) Is(err error) bool {
-	_, ok := err.(ErrConnectorNotFound)
+func (e ErrExporterNotFound) Is(err error) bool {
+	_, ok := err.(ErrExporterNotFound)
 	return ok
 }
 
-func NewErrConnectorNotFound(connectorID string) ErrConnectorNotFound {
-	return ErrConnectorNotFound(connectorID)
+func NewErrExporterNotFound(exporterID string) ErrExporterNotFound {
+	return ErrExporterNotFound(exporterID)
 }
 
 type ErrInvalidDriverConfiguration struct {
@@ -73,18 +73,17 @@ func NewErrInvalidDriverConfiguration(name string, err error) ErrInvalidDriverCo
 	}
 }
 
-type ErrConnectorUsed string
+type ErrExporterUsed string
 
-func (e ErrConnectorUsed) Error() string {
-	return fmt.Sprintf("connector '%s' actually used by an existing pipeline", string(e))
+func (e ErrExporterUsed) Error() string {
+	return fmt.Sprintf("exporter '%s' actually used by an existing pipeline", string(e))
 }
 
-func (e ErrConnectorUsed) Is(err error) bool {
-	_, ok := err.(ErrConnectorUsed)
+func (e ErrExporterUsed) Is(err error) bool {
+	_, ok := err.(ErrExporterUsed)
 	return ok
 }
 
-func NewErrConnectorUsed(id string) ErrConnectorUsed {
-	return ErrConnectorUsed(id)
+func NewErrExporterUsed(id string) ErrExporterUsed {
+	return ErrExporterUsed(id)
 }
-
