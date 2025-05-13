@@ -32,7 +32,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 		defer close(c.startingChan)
 		for {
 			if err := c.Start(c.startContext); err != nil {
-				c.logger.Errorf("unable to start connector: %s", err)
+				c.logger.Errorf("unable to start exporter: %s", err)
 				if errors.Is(err, context.Canceled) {
 					return
 				}
@@ -80,7 +80,7 @@ func (c *DriverFacade) Accept(ctx context.Context, logs ...drivers.LogWithLedger
 	case <-c.readyChan:
 		return c.Driver.Accept(ctx, logs...)
 	default:
-		return nil, errors.New("not ready connector")
+		return nil, errors.New("not ready exporter")
 	}
 }
 

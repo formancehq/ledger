@@ -19,16 +19,16 @@ func startRunner(
 	t *testing.T,
 	ctx context.Context,
 	storageDriver Storage,
-	connectorFactory drivers.Factory,
-	connectorsConfigValidator ConfigValidator,
+	driverFactory drivers.Factory,
+	exportersConfigValidator ConfigValidator,
 ) *Manager {
 	t.Helper()
 
 	runner := NewManager(
 		storageDriver,
-		connectorFactory,
+		driverFactory,
 		logging.Testing(),
-		connectorsConfigValidator,
+		exportersConfigValidator,
 	)
 	go runner.Run(ctx)
 	t.Cleanup(func() {
@@ -48,17 +48,17 @@ func TestManager(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	storage := NewMockStorage(ctrl)
 	logFetcher := NewMockLogFetcher(ctrl)
-	connectorConfigValidator := NewMockConfigValidator(ctrl)
-	connectorFactory := drivers.NewMockFactory(ctrl)
-	connector := drivers.NewMockDriver(ctrl)
+	exporterConfigValidator := NewMockConfigValidator(ctrl)
+	exporterFactory := drivers.NewMockFactory(ctrl)
+	exporter := drivers.NewMockDriver(ctrl)
 
-	pipelineConfiguration := ledger.NewPipelineConfiguration("module1", "connector")
+	pipelineConfiguration := ledger.NewPipelineConfiguration("module1", "exporter")
 	pipeline := ledger.NewPipeline(pipelineConfiguration)
 
-	connectorFactory.EXPECT().
-		Create(gomock.Any(), pipelineConfiguration.ConnectorID).
-		Return(connector, nil, nil)
-	connector.EXPECT().Start(gomock.Any()).Return(nil)
+	exporterFactory.EXPECT().
+		Create(gomock.Any(), pipelineConfiguration.ExporterID).
+		Return(exporter, nil, nil)
+	exporter.EXPECT().Start(gomock.Any()).Return(nil)
 
 	log := ledger.NewLog(ledger.CreatedTransaction{
 		Transaction: ledger.NewTransaction(),
@@ -109,7 +109,7 @@ func TestManager(t *testing.T) {
 		StorePipelineState(gomock.Any(), pipeline.ID, uint64(1)).
 		Return(nil)
 
-	connector.EXPECT().
+	exporter.EXPECT().
 		Accept(gomock.Any(), drivers.NewLogWithLedger(pipelineConfiguration.Ledger, log)).
 		Return([]error{nil}, nil)
 
@@ -117,8 +117,8 @@ func TestManager(t *testing.T) {
 		t,
 		ctx,
 		storage,
-		connectorFactory,
-		connectorConfigValidator,
+		exporterFactory,
+		exporterConfigValidator,
 	)
 	<-runner.Started()
 
@@ -126,13 +126,13 @@ func TestManager(t *testing.T) {
 	require.Error(t, err)
 
 	require.Eventually(t, func() bool {
-		return runner.GetDriver("connector") != nil
+		return runner.GetDriver("exporter") != nil
 	}, 5*time.Second, 10*time.Millisecond)
 
 	select {
-	case <-runner.GetDriver("connector").Ready():
+	case <-runner.GetDriver("exporter").Ready():
 	case <-time.After(time.Second):
-		require.Fail(t, "connector should be ready")
+		require.Fail(t, "exporter should be ready")
 	}
 
 	close(deliver)
@@ -141,5 +141,5 @@ func TestManager(t *testing.T) {
 
 	// notes(gfyrag): add this expectation AFTER the previous Eventually.
 	// If configured before the Eventually, it will never finish as the stop call is made in a t.Cleanup defined earlier
-	connector.EXPECT().Stop(gomock.Any()).Return(nil)
+	exporter.EXPECT().Stop(gomock.Any()).Return(nil)
 }

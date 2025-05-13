@@ -82,27 +82,27 @@ func (x *Cursor) GetPrev() string {
 	return ""
 }
 
-type ListConnectorsRequest struct {
+type ListExportersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cursor        string                 `protobuf:"bytes,1,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListConnectorsRequest) Reset() {
-	*x = ListConnectorsRequest{}
+func (x *ListExportersRequest) Reset() {
+	*x = ListExportersRequest{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListConnectorsRequest) String() string {
+func (x *ListExportersRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListConnectorsRequest) ProtoMessage() {}
+func (*ListExportersRequest) ProtoMessage() {}
 
-func (x *ListConnectorsRequest) ProtoReflect() protoreflect.Message {
+func (x *ListExportersRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -114,40 +114,40 @@ func (x *ListConnectorsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListConnectorsRequest.ProtoReflect.Descriptor instead.
-func (*ListConnectorsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListExportersRequest.ProtoReflect.Descriptor instead.
+func (*ListExportersRequest) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ListConnectorsRequest) GetCursor() string {
+func (x *ListExportersRequest) GetCursor() string {
 	if x != nil {
 		return x.Cursor
 	}
 	return ""
 }
 
-type ListConnectorsResponse struct {
+type ListExportersResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []*Connector           `protobuf:"bytes,1,rep,name=data,proto3" json:"data,omitempty"`
+	Data          []*Exporter            `protobuf:"bytes,1,rep,name=data,proto3" json:"data,omitempty"`
 	Cursor        *Cursor                `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListConnectorsResponse) Reset() {
-	*x = ListConnectorsResponse{}
+func (x *ListExportersResponse) Reset() {
+	*x = ListExportersResponse{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListConnectorsResponse) String() string {
+func (x *ListExportersResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListConnectorsResponse) ProtoMessage() {}
+func (*ListExportersResponse) ProtoMessage() {}
 
-func (x *ListConnectorsResponse) ProtoReflect() protoreflect.Message {
+func (x *ListExportersResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -159,48 +159,48 @@ func (x *ListConnectorsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListConnectorsResponse.ProtoReflect.Descriptor instead.
-func (*ListConnectorsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListExportersResponse.ProtoReflect.Descriptor instead.
+func (*ListExportersResponse) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ListConnectorsResponse) GetData() []*Connector {
+func (x *ListExportersResponse) GetData() []*Exporter {
 	if x != nil {
 		return x.Data
 	}
 	return nil
 }
 
-func (x *ListConnectorsResponse) GetCursor() *Cursor {
+func (x *ListExportersResponse) GetCursor() *Cursor {
 	if x != nil {
 		return x.Cursor
 	}
 	return nil
 }
 
-type Connector struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Id            string                  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	CreatedAt     *timestamppb.Timestamp  `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Config        *ConnectorConfiguration `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
+type Exporter struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Config        *ExporterConfiguration `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Connector) Reset() {
-	*x = Connector{}
+func (x *Exporter) Reset() {
+	*x = Exporter{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Connector) String() string {
+func (x *Exporter) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Connector) ProtoMessage() {}
+func (*Exporter) ProtoMessage() {}
 
-func (x *Connector) ProtoReflect() protoreflect.Message {
+func (x *Exporter) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -212,53 +212,53 @@ func (x *Connector) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Connector.ProtoReflect.Descriptor instead.
-func (*Connector) Descriptor() ([]byte, []int) {
+// Deprecated: Use Exporter.ProtoReflect.Descriptor instead.
+func (*Exporter) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *Connector) GetId() string {
+func (x *Exporter) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *Connector) GetCreatedAt() *timestamppb.Timestamp {
+func (x *Exporter) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *Connector) GetConfig() *ConnectorConfiguration {
+func (x *Exporter) GetConfig() *ExporterConfiguration {
 	if x != nil {
 		return x.Config
 	}
 	return nil
 }
 
-type GetConnectorRequest struct {
+type GetExporterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetConnectorRequest) Reset() {
-	*x = GetConnectorRequest{}
+func (x *GetExporterRequest) Reset() {
+	*x = GetExporterRequest{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetConnectorRequest) String() string {
+func (x *GetExporterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetConnectorRequest) ProtoMessage() {}
+func (*GetExporterRequest) ProtoMessage() {}
 
-func (x *GetConnectorRequest) ProtoReflect() protoreflect.Message {
+func (x *GetExporterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -270,39 +270,39 @@ func (x *GetConnectorRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetConnectorRequest.ProtoReflect.Descriptor instead.
-func (*GetConnectorRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetExporterRequest.ProtoReflect.Descriptor instead.
+func (*GetExporterRequest) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GetConnectorRequest) GetId() string {
+func (x *GetExporterRequest) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-type GetConnectorResponse struct {
+type GetExporterResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Connector     *Connector             `protobuf:"bytes,1,opt,name=connector,proto3" json:"connector,omitempty"`
+	Exporter      *Exporter              `protobuf:"bytes,1,opt,name=exporter,proto3" json:"exporter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetConnectorResponse) Reset() {
-	*x = GetConnectorResponse{}
+func (x *GetExporterResponse) Reset() {
+	*x = GetExporterResponse{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetConnectorResponse) String() string {
+func (x *GetExporterResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetConnectorResponse) ProtoMessage() {}
+func (*GetExporterResponse) ProtoMessage() {}
 
-func (x *GetConnectorResponse) ProtoReflect() protoreflect.Message {
+func (x *GetExporterResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -314,39 +314,39 @@ func (x *GetConnectorResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetConnectorResponse.ProtoReflect.Descriptor instead.
-func (*GetConnectorResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetExporterResponse.ProtoReflect.Descriptor instead.
+func (*GetExporterResponse) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *GetConnectorResponse) GetConnector() *Connector {
+func (x *GetExporterResponse) GetExporter() *Exporter {
 	if x != nil {
-		return x.Connector
+		return x.Exporter
 	}
 	return nil
 }
 
-type DeleteConnectorRequest struct {
+type DeleteExporterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteConnectorRequest) Reset() {
-	*x = DeleteConnectorRequest{}
+func (x *DeleteExporterRequest) Reset() {
+	*x = DeleteExporterRequest{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteConnectorRequest) String() string {
+func (x *DeleteExporterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteConnectorRequest) ProtoMessage() {}
+func (*DeleteExporterRequest) ProtoMessage() {}
 
-func (x *DeleteConnectorRequest) ProtoReflect() protoreflect.Message {
+func (x *DeleteExporterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -358,38 +358,38 @@ func (x *DeleteConnectorRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteConnectorRequest.ProtoReflect.Descriptor instead.
-func (*DeleteConnectorRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeleteExporterRequest.ProtoReflect.Descriptor instead.
+func (*DeleteExporterRequest) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *DeleteConnectorRequest) GetId() string {
+func (x *DeleteExporterRequest) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-type DeleteConnectorResponse struct {
+type DeleteExporterResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteConnectorResponse) Reset() {
-	*x = DeleteConnectorResponse{}
+func (x *DeleteExporterResponse) Reset() {
+	*x = DeleteExporterResponse{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteConnectorResponse) String() string {
+func (x *DeleteExporterResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteConnectorResponse) ProtoMessage() {}
+func (*DeleteExporterResponse) ProtoMessage() {}
 
-func (x *DeleteConnectorResponse) ProtoReflect() protoreflect.Message {
+func (x *DeleteExporterResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -401,12 +401,12 @@ func (x *DeleteConnectorResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteConnectorResponse.ProtoReflect.Descriptor instead.
-func (*DeleteConnectorResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use DeleteExporterResponse.ProtoReflect.Descriptor instead.
+func (*DeleteExporterResponse) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{7}
 }
 
-type ConnectorConfiguration struct {
+type ExporterConfiguration struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Driver        string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`
 	Config        string                 `protobuf:"bytes,2,opt,name=config,proto3" json:"config,omitempty"`
@@ -414,20 +414,20 @@ type ConnectorConfiguration struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ConnectorConfiguration) Reset() {
-	*x = ConnectorConfiguration{}
+func (x *ExporterConfiguration) Reset() {
+	*x = ExporterConfiguration{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ConnectorConfiguration) String() string {
+func (x *ExporterConfiguration) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ConnectorConfiguration) ProtoMessage() {}
+func (*ExporterConfiguration) ProtoMessage() {}
 
-func (x *ConnectorConfiguration) ProtoReflect() protoreflect.Message {
+func (x *ExporterConfiguration) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -439,46 +439,46 @@ func (x *ConnectorConfiguration) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ConnectorConfiguration.ProtoReflect.Descriptor instead.
-func (*ConnectorConfiguration) Descriptor() ([]byte, []int) {
+// Deprecated: Use ExporterConfiguration.ProtoReflect.Descriptor instead.
+func (*ExporterConfiguration) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *ConnectorConfiguration) GetDriver() string {
+func (x *ExporterConfiguration) GetDriver() string {
 	if x != nil {
 		return x.Driver
 	}
 	return ""
 }
 
-func (x *ConnectorConfiguration) GetConfig() string {
+func (x *ExporterConfiguration) GetConfig() string {
 	if x != nil {
 		return x.Config
 	}
 	return ""
 }
 
-type CreateConnectorRequest struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Config        *ConnectorConfiguration `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+type CreateExporterRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Config        *ExporterConfiguration `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateConnectorRequest) Reset() {
-	*x = CreateConnectorRequest{}
+func (x *CreateExporterRequest) Reset() {
+	*x = CreateExporterRequest{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateConnectorRequest) String() string {
+func (x *CreateExporterRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateConnectorRequest) ProtoMessage() {}
+func (*CreateExporterRequest) ProtoMessage() {}
 
-func (x *CreateConnectorRequest) ProtoReflect() protoreflect.Message {
+func (x *CreateExporterRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -490,39 +490,39 @@ func (x *CreateConnectorRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateConnectorRequest.ProtoReflect.Descriptor instead.
-func (*CreateConnectorRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreateExporterRequest.ProtoReflect.Descriptor instead.
+func (*CreateExporterRequest) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *CreateConnectorRequest) GetConfig() *ConnectorConfiguration {
+func (x *CreateExporterRequest) GetConfig() *ExporterConfiguration {
 	if x != nil {
 		return x.Config
 	}
 	return nil
 }
 
-type CreateConnectorResponse struct {
+type CreateExporterResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Connector     *Connector             `protobuf:"bytes,1,opt,name=connector,proto3" json:"connector,omitempty"`
+	Exporter      *Exporter              `protobuf:"bytes,1,opt,name=exporter,proto3" json:"exporter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateConnectorResponse) Reset() {
-	*x = CreateConnectorResponse{}
+func (x *CreateExporterResponse) Reset() {
+	*x = CreateExporterResponse{}
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateConnectorResponse) String() string {
+func (x *CreateExporterResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateConnectorResponse) ProtoMessage() {}
+func (*CreateExporterResponse) ProtoMessage() {}
 
-func (x *CreateConnectorResponse) ProtoReflect() protoreflect.Message {
+func (x *CreateExporterResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_replication_grpc_replication_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -534,14 +534,14 @@ func (x *CreateConnectorResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateConnectorResponse.ProtoReflect.Descriptor instead.
-func (*CreateConnectorResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreateExporterResponse.ProtoReflect.Descriptor instead.
+func (*CreateExporterResponse) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *CreateConnectorResponse) GetConnector() *Connector {
+func (x *CreateExporterResponse) GetExporter() *Exporter {
 	if x != nil {
-		return x.Connector
+		return x.Exporter
 	}
 	return nil
 }
@@ -644,7 +644,7 @@ func (x *ListPipelinesResponse) GetCursor() *Cursor {
 
 type PipelineConfiguration struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ConnectorId   string                 `protobuf:"bytes,1,opt,name=connector_id,json=connectorId,proto3" json:"connector_id,omitempty"`
+	ExporterId    string                 `protobuf:"bytes,1,opt,name=exporter_id,json=exporterId,proto3" json:"exporter_id,omitempty"`
 	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -680,9 +680,9 @@ func (*PipelineConfiguration) Descriptor() ([]byte, []int) {
 	return file_internal_replication_grpc_replication_service_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *PipelineConfiguration) GetConnectorId() string {
+func (x *PipelineConfiguration) GetExporterId() string {
 	if x != nil {
-		return x.ConnectorId
+		return x.ExporterId
 	}
 	return ""
 }
@@ -1282,38 +1282,39 @@ const file_internal_replication_grpc_replication_service_proto_rawDesc = "" +
 	"\x06Cursor\x12\x12\n" +
 	"\x04next\x18\x01 \x01(\tR\x04next\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x12\n" +
-	"\x04prev\x18\x03 \x01(\tR\x04prev\"/\n" +
-	"\x15ListConnectorsRequest\x12\x16\n" +
-	"\x06cursor\x18\x01 \x01(\tR\x06cursor\"q\n" +
-	"\x16ListConnectorsResponse\x12*\n" +
-	"\x04data\x18\x01 \x03(\v2\x16.replication.ConnectorR\x04data\x12+\n" +
-	"\x06cursor\x18\x02 \x01(\v2\x13.replication.CursorR\x06cursor\"\x93\x01\n" +
-	"\tConnector\x12\x0e\n" +
+	"\x04prev\x18\x03 \x01(\tR\x04prev\".\n" +
+	"\x14ListExportersRequest\x12\x16\n" +
+	"\x06cursor\x18\x01 \x01(\tR\x06cursor\"o\n" +
+	"\x15ListExportersResponse\x12)\n" +
+	"\x04data\x18\x01 \x03(\v2\x15.replication.ExporterR\x04data\x12+\n" +
+	"\x06cursor\x18\x02 \x01(\v2\x13.replication.CursorR\x06cursor\"\x91\x01\n" +
+	"\bExporter\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
 	"\n" +
-	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12;\n" +
-	"\x06config\x18\x03 \x01(\v2#.replication.ConnectorConfigurationR\x06config\"%\n" +
-	"\x13GetConnectorRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"L\n" +
-	"\x14GetConnectorResponse\x124\n" +
-	"\tconnector\x18\x01 \x01(\v2\x16.replication.ConnectorR\tconnector\"(\n" +
-	"\x16DeleteConnectorRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x19\n" +
-	"\x17DeleteConnectorResponse\"H\n" +
-	"\x16ConnectorConfiguration\x12\x16\n" +
+	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12:\n" +
+	"\x06config\x18\x03 \x01(\v2\".replication.ExporterConfigurationR\x06config\"$\n" +
+	"\x12GetExporterRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"H\n" +
+	"\x13GetExporterResponse\x121\n" +
+	"\bexporter\x18\x01 \x01(\v2\x15.replication.ExporterR\bexporter\"'\n" +
+	"\x15DeleteExporterRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x18\n" +
+	"\x16DeleteExporterResponse\"G\n" +
+	"\x15ExporterConfiguration\x12\x16\n" +
 	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x16\n" +
-	"\x06config\x18\x02 \x01(\tR\x06config\"U\n" +
-	"\x16CreateConnectorRequest\x12;\n" +
-	"\x06config\x18\x01 \x01(\v2#.replication.ConnectorConfigurationR\x06config\"O\n" +
-	"\x17CreateConnectorResponse\x124\n" +
-	"\tconnector\x18\x01 \x01(\v2\x16.replication.ConnectorR\tconnector\".\n" +
+	"\x06config\x18\x02 \x01(\tR\x06config\"S\n" +
+	"\x15CreateExporterRequest\x12:\n" +
+	"\x06config\x18\x01 \x01(\v2\".replication.ExporterConfigurationR\x06config\"K\n" +
+	"\x16CreateExporterResponse\x121\n" +
+	"\bexporter\x18\x01 \x01(\v2\x15.replication.ExporterR\bexporter\".\n" +
 	"\x14ListPipelinesRequest\x12\x16\n" +
 	"\x06cursor\x18\x01 \x01(\tR\x06cursor\"o\n" +
 	"\x15ListPipelinesResponse\x12)\n" +
 	"\x04data\x18\x01 \x03(\v2\x15.replication.PipelineR\x04data\x12+\n" +
-	"\x06cursor\x18\x02 \x01(\v2\x13.replication.CursorR\x06cursor\"R\n" +
-	"\x15PipelineConfiguration\x12!\n" +
-	"\fconnector_id\x18\x01 \x01(\tR\vconnectorId\x12\x16\n" +
+	"\x06cursor\x18\x02 \x01(\v2\x13.replication.CursorR\x06cursor\"P\n" +
+	"\x15PipelineConfiguration\x12\x1f\n" +
+	"\vexporter_id\x18\x01 \x01(\tR\n" +
+	"exporterId\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"\xf1\x01\n" +
 	"\bPipeline\x12:\n" +
 	"\x06config\x18\x01 \x01(\v2\".replication.PipelineConfigurationR\x06config\x128\n" +
@@ -1343,12 +1344,12 @@ const file_internal_replication_grpc_replication_service_proto_rawDesc = "" +
 	"\x14StopPipelineResponse\"&\n" +
 	"\x14ResetPipelineRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x17\n" +
-	"\x15ResetPipelineResponse2\xde\a\n" +
-	"\vReplication\x12\\\n" +
-	"\x0fCreateConnector\x12#.replication.CreateConnectorRequest\x1a$.replication.CreateConnectorResponse\x12Y\n" +
-	"\x0eListConnectors\x12\".replication.ListConnectorsRequest\x1a#.replication.ListConnectorsResponse\x12S\n" +
-	"\fGetConnector\x12 .replication.GetConnectorRequest\x1a!.replication.GetConnectorResponse\x12\\\n" +
-	"\x0fDeleteConnector\x12#.replication.DeleteConnectorRequest\x1a$.replication.DeleteConnectorResponse\x12V\n" +
+	"\x15ResetPipelineResponse2\xd2\a\n" +
+	"\vReplication\x12Y\n" +
+	"\x0eCreateExporter\x12\".replication.CreateExporterRequest\x1a#.replication.CreateExporterResponse\x12V\n" +
+	"\rListExporters\x12!.replication.ListExportersRequest\x1a\".replication.ListExportersResponse\x12P\n" +
+	"\vGetExporter\x12\x1f.replication.GetExporterRequest\x1a .replication.GetExporterResponse\x12Y\n" +
+	"\x0eDeleteExporter\x12\".replication.DeleteExporterRequest\x1a#.replication.DeleteExporterResponse\x12V\n" +
 	"\rListPipelines\x12!.replication.ListPipelinesRequest\x1a\".replication.ListPipelinesResponse\x12P\n" +
 	"\vGetPipeline\x12\x1f.replication.GetPipelineRequest\x1a .replication.GetPipelineResponse\x12Y\n" +
 	"\x0eCreatePipeline\x12\".replication.CreatePipelineRequest\x1a#.replication.CreatePipelineResponse\x12Y\n" +
@@ -1371,43 +1372,43 @@ func file_internal_replication_grpc_replication_service_proto_rawDescGZIP() []by
 
 var file_internal_replication_grpc_replication_service_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_internal_replication_grpc_replication_service_proto_goTypes = []any{
-	(*Cursor)(nil),                  // 0: replication.Cursor
-	(*ListConnectorsRequest)(nil),   // 1: replication.ListConnectorsRequest
-	(*ListConnectorsResponse)(nil),  // 2: replication.ListConnectorsResponse
-	(*Connector)(nil),               // 3: replication.Connector
-	(*GetConnectorRequest)(nil),     // 4: replication.GetConnectorRequest
-	(*GetConnectorResponse)(nil),    // 5: replication.GetConnectorResponse
-	(*DeleteConnectorRequest)(nil),  // 6: replication.DeleteConnectorRequest
-	(*DeleteConnectorResponse)(nil), // 7: replication.DeleteConnectorResponse
-	(*ConnectorConfiguration)(nil),  // 8: replication.ConnectorConfiguration
-	(*CreateConnectorRequest)(nil),  // 9: replication.CreateConnectorRequest
-	(*CreateConnectorResponse)(nil), // 10: replication.CreateConnectorResponse
-	(*ListPipelinesRequest)(nil),    // 11: replication.ListPipelinesRequest
-	(*ListPipelinesResponse)(nil),   // 12: replication.ListPipelinesResponse
-	(*PipelineConfiguration)(nil),   // 13: replication.PipelineConfiguration
-	(*Pipeline)(nil),                // 14: replication.Pipeline
-	(*GetPipelineRequest)(nil),      // 15: replication.GetPipelineRequest
-	(*GetPipelineResponse)(nil),     // 16: replication.GetPipelineResponse
-	(*CreatePipelineRequest)(nil),   // 17: replication.CreatePipelineRequest
-	(*CreatePipelineResponse)(nil),  // 18: replication.CreatePipelineResponse
-	(*DeletePipelineRequest)(nil),   // 19: replication.DeletePipelineRequest
-	(*DeletePipelineResponse)(nil),  // 20: replication.DeletePipelineResponse
-	(*StartPipelineRequest)(nil),    // 21: replication.StartPipelineRequest
-	(*StartPipelineResponse)(nil),   // 22: replication.StartPipelineResponse
-	(*StopPipelineRequest)(nil),     // 23: replication.StopPipelineRequest
-	(*StopPipelineResponse)(nil),    // 24: replication.StopPipelineResponse
-	(*ResetPipelineRequest)(nil),    // 25: replication.ResetPipelineRequest
-	(*ResetPipelineResponse)(nil),   // 26: replication.ResetPipelineResponse
-	(*timestamppb.Timestamp)(nil),   // 27: google.protobuf.Timestamp
+	(*Cursor)(nil),                 // 0: replication.Cursor
+	(*ListExportersRequest)(nil),   // 1: replication.ListExportersRequest
+	(*ListExportersResponse)(nil),  // 2: replication.ListExportersResponse
+	(*Exporter)(nil),               // 3: replication.Exporter
+	(*GetExporterRequest)(nil),     // 4: replication.GetExporterRequest
+	(*GetExporterResponse)(nil),    // 5: replication.GetExporterResponse
+	(*DeleteExporterRequest)(nil),  // 6: replication.DeleteExporterRequest
+	(*DeleteExporterResponse)(nil), // 7: replication.DeleteExporterResponse
+	(*ExporterConfiguration)(nil),  // 8: replication.ExporterConfiguration
+	(*CreateExporterRequest)(nil),  // 9: replication.CreateExporterRequest
+	(*CreateExporterResponse)(nil), // 10: replication.CreateExporterResponse
+	(*ListPipelinesRequest)(nil),   // 11: replication.ListPipelinesRequest
+	(*ListPipelinesResponse)(nil),  // 12: replication.ListPipelinesResponse
+	(*PipelineConfiguration)(nil),  // 13: replication.PipelineConfiguration
+	(*Pipeline)(nil),               // 14: replication.Pipeline
+	(*GetPipelineRequest)(nil),     // 15: replication.GetPipelineRequest
+	(*GetPipelineResponse)(nil),    // 16: replication.GetPipelineResponse
+	(*CreatePipelineRequest)(nil),  // 17: replication.CreatePipelineRequest
+	(*CreatePipelineResponse)(nil), // 18: replication.CreatePipelineResponse
+	(*DeletePipelineRequest)(nil),  // 19: replication.DeletePipelineRequest
+	(*DeletePipelineResponse)(nil), // 20: replication.DeletePipelineResponse
+	(*StartPipelineRequest)(nil),   // 21: replication.StartPipelineRequest
+	(*StartPipelineResponse)(nil),  // 22: replication.StartPipelineResponse
+	(*StopPipelineRequest)(nil),    // 23: replication.StopPipelineRequest
+	(*StopPipelineResponse)(nil),   // 24: replication.StopPipelineResponse
+	(*ResetPipelineRequest)(nil),   // 25: replication.ResetPipelineRequest
+	(*ResetPipelineResponse)(nil),  // 26: replication.ResetPipelineResponse
+	(*timestamppb.Timestamp)(nil),  // 27: google.protobuf.Timestamp
 }
 var file_internal_replication_grpc_replication_service_proto_depIdxs = []int32{
-	3,  // 0: replication.ListConnectorsResponse.data:type_name -> replication.Connector
-	0,  // 1: replication.ListConnectorsResponse.cursor:type_name -> replication.Cursor
-	27, // 2: replication.Connector.created_at:type_name -> google.protobuf.Timestamp
-	8,  // 3: replication.Connector.config:type_name -> replication.ConnectorConfiguration
-	3,  // 4: replication.GetConnectorResponse.connector:type_name -> replication.Connector
-	8,  // 5: replication.CreateConnectorRequest.config:type_name -> replication.ConnectorConfiguration
-	3,  // 6: replication.CreateConnectorResponse.connector:type_name -> replication.Connector
+	3,  // 0: replication.ListExportersResponse.data:type_name -> replication.Exporter
+	0,  // 1: replication.ListExportersResponse.cursor:type_name -> replication.Cursor
+	27, // 2: replication.Exporter.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 3: replication.Exporter.config:type_name -> replication.ExporterConfiguration
+	3,  // 4: replication.GetExporterResponse.exporter:type_name -> replication.Exporter
+	8,  // 5: replication.CreateExporterRequest.config:type_name -> replication.ExporterConfiguration
+	3,  // 6: replication.CreateExporterResponse.exporter:type_name -> replication.Exporter
 	14, // 7: replication.ListPipelinesResponse.data:type_name -> replication.Pipeline
 	0,  // 8: replication.ListPipelinesResponse.cursor:type_name -> replication.Cursor
 	13, // 9: replication.Pipeline.config:type_name -> replication.PipelineConfiguration
@@ -1415,10 +1416,10 @@ var file_internal_replication_grpc_replication_service_proto_depIdxs = []int32{
 	14, // 11: replication.GetPipelineResponse.pipeline:type_name -> replication.Pipeline
 	13, // 12: replication.CreatePipelineRequest.config:type_name -> replication.PipelineConfiguration
 	14, // 13: replication.CreatePipelineResponse.pipeline:type_name -> replication.Pipeline
-	9,  // 14: replication.Replication.CreateConnector:input_type -> replication.CreateConnectorRequest
-	1,  // 15: replication.Replication.ListConnectors:input_type -> replication.ListConnectorsRequest
-	4,  // 16: replication.Replication.GetConnector:input_type -> replication.GetConnectorRequest
-	6,  // 17: replication.Replication.DeleteConnector:input_type -> replication.DeleteConnectorRequest
+	9,  // 14: replication.Replication.CreateExporter:input_type -> replication.CreateExporterRequest
+	1,  // 15: replication.Replication.ListExporters:input_type -> replication.ListExportersRequest
+	4,  // 16: replication.Replication.GetExporter:input_type -> replication.GetExporterRequest
+	6,  // 17: replication.Replication.DeleteExporter:input_type -> replication.DeleteExporterRequest
 	11, // 18: replication.Replication.ListPipelines:input_type -> replication.ListPipelinesRequest
 	15, // 19: replication.Replication.GetPipeline:input_type -> replication.GetPipelineRequest
 	17, // 20: replication.Replication.CreatePipeline:input_type -> replication.CreatePipelineRequest
@@ -1426,10 +1427,10 @@ var file_internal_replication_grpc_replication_service_proto_depIdxs = []int32{
 	21, // 22: replication.Replication.StartPipeline:input_type -> replication.StartPipelineRequest
 	23, // 23: replication.Replication.StopPipeline:input_type -> replication.StopPipelineRequest
 	25, // 24: replication.Replication.ResetPipeline:input_type -> replication.ResetPipelineRequest
-	10, // 25: replication.Replication.CreateConnector:output_type -> replication.CreateConnectorResponse
-	2,  // 26: replication.Replication.ListConnectors:output_type -> replication.ListConnectorsResponse
-	5,  // 27: replication.Replication.GetConnector:output_type -> replication.GetConnectorResponse
-	7,  // 28: replication.Replication.DeleteConnector:output_type -> replication.DeleteConnectorResponse
+	10, // 25: replication.Replication.CreateExporter:output_type -> replication.CreateExporterResponse
+	2,  // 26: replication.Replication.ListExporters:output_type -> replication.ListExportersResponse
+	5,  // 27: replication.Replication.GetExporter:output_type -> replication.GetExporterResponse
+	7,  // 28: replication.Replication.DeleteExporter:output_type -> replication.DeleteExporterResponse
 	12, // 29: replication.Replication.ListPipelines:output_type -> replication.ListPipelinesResponse
 	16, // 30: replication.Replication.GetPipeline:output_type -> replication.GetPipelineResponse
 	18, // 31: replication.Replication.CreatePipeline:output_type -> replication.CreatePipelineResponse

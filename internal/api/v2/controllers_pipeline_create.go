@@ -13,19 +13,19 @@ import (
 )
 
 type PipelineConfiguration struct {
-	ConnectorID string `json:"connectorID"`
+	ExporterID string `json:"exporterID"`
 }
 
 func createPipeline(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		common.WithBody[PipelineConfiguration](w, r, func(req PipelineConfiguration) {
 			p, err := systemController.CreatePipeline(r.Context(), ledger.PipelineConfiguration{
-				ConnectorID: req.ConnectorID,
-				Ledger:      common.LedgerFromContext(r.Context()).Info().Name,
+				ExporterID: req.ExporterID,
+				Ledger:     common.LedgerFromContext(r.Context()).Info().Name,
 			})
 			if err != nil {
 				switch {
-				case errors.Is(err, systemcontroller.ErrConnectorNotFound("")) ||
+				case errors.Is(err, systemcontroller.ErrExporterNotFound("")) ||
 					errors.Is(err, ledger.ErrPipelineAlreadyExists{}) ||
 					errors.Is(err, ledgercontroller.ErrInUsePipeline("")):
 					api.BadRequest(w, "VALIDATION", err)

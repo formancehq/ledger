@@ -8,12 +8,12 @@ import (
 )
 
 type V2Pipeline struct {
-	Ledger      string    `json:"ledger"`
-	ConnectorID string    `json:"connectorID"`
-	ID          string    `json:"id"`
-	CreatedAt   time.Time `json:"createdAt"`
-	LastLogID   *int64    `json:"lastLogID,omitempty"`
-	Enabled     *bool     `json:"enabled,omitempty"`
+	Ledger     string    `json:"ledger"`
+	ExporterID string    `json:"exporterID"`
+	ID         string    `json:"id"`
+	CreatedAt  time.Time `json:"createdAt"`
+	LastLogID  *int64    `json:"lastLogID,omitempty"`
+	Enabled    *bool     `json:"enabled,omitempty"`
 }
 
 func (v V2Pipeline) MarshalJSON() ([]byte, error) {
@@ -34,11 +34,11 @@ func (o *V2Pipeline) GetLedger() string {
 	return o.Ledger
 }
 
-func (o *V2Pipeline) GetConnectorID() string {
+func (o *V2Pipeline) GetExporterID() string {
 	if o == nil {
 		return ""
 	}
-	return o.ConnectorID
+	return o.ExporterID
 }
 
 func (o *V2Pipeline) GetID() string {

@@ -80,7 +80,7 @@ func (b *Batcher) Start(ctx context.Context) error {
 	b.logger.Infof("starting batching with parameters: maxItems=%d, flushInterval=%s", b.batching.MaxItems, b.batching.FlushInterval)
 
 	if err := b.Driver.Start(ctx); err != nil {
-		return errors.Wrap(err, "failed to start connector")
+		return errors.Wrap(err, "failed to start exporter")
 	}
 
 	ctx, b.cancel = context.WithCancel(ctx)
@@ -110,9 +110,9 @@ func (b *Batcher) Stop(ctx context.Context) error {
 	}
 }
 
-func newBatcher(connector Driver, batching Batching, logger logging.Logger) *Batcher {
+func newBatcher(driver Driver, batching Batching, logger logging.Logger) *Batcher {
 	ret := &Batcher{
-		Driver:   connector,
+		Driver:   driver,
 		batching: batching,
 		logger: logger.WithFields(map[string]any{
 			"component": "batcher",
