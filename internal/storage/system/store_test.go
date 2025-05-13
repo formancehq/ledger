@@ -157,15 +157,15 @@ func TestListEnabledPipelines(t *testing.T) {
 
 	store := newStore(t)
 
-	// Create a connector
-	connector := ledger.NewConnector(
-		ledger.NewConnectorConfiguration("connector1", json.RawMessage("")),
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
 	)
-	require.NoError(t, store.CreateConnector(ctx, connector))
+	require.NoError(t, store.CreateExporter(ctx, exporter))
 
 	// Creating a pair which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module1", connector.ID),
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
 	)
 
 	// Save a state
@@ -173,7 +173,7 @@ func TestListEnabledPipelines(t *testing.T) {
 
 	// Creating a pair which will be marked as stopped
 	stoppedPipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module2", connector.ID),
+		ledger.NewPipelineConfiguration("module2", exporter.ID),
 	)
 	stoppedPipeline.Enabled = false
 
@@ -193,15 +193,15 @@ func TestCreatePipeline(t *testing.T) {
 
 	store := newStore(t)
 
-	// Create a connector
-	connector := ledger.NewConnector(
-		ledger.NewConnectorConfiguration("connector1", json.RawMessage("")),
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
 	)
-	require.NoError(t, store.CreateConnector(ctx, connector))
+	require.NoError(t, store.CreateExporter(ctx, exporter))
 
 	// Creating a pipeline which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module1", connector.ID),
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
 	)
 
 	// Save a state
@@ -212,7 +212,7 @@ func TestCreatePipeline(t *testing.T) {
 
 	// Try to create another pipeline with the same configuration
 	newPipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module1", connector.ID),
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
 	)
 	require.IsType(t, ledger.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, newPipeline))
 }
@@ -224,15 +224,15 @@ func TestDeletePipeline(t *testing.T) {
 	// Create the store
 	store := newStore(t)
 
-	// Create a connector
-	connector := ledger.NewConnector(
-		ledger.NewConnectorConfiguration("connector1", json.RawMessage("")),
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
 	)
-	require.NoError(t, store.CreateConnector(ctx, connector))
+	require.NoError(t, store.CreateExporter(ctx, exporter))
 
 	// Creating a pair which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module1", connector.ID),
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
 	)
 
 	// Save a state
@@ -249,15 +249,15 @@ func TestUpdatePipeline(t *testing.T) {
 	// Create the store
 	store := newStore(t)
 
-	// Create a connector
-	connector := ledger.NewConnector(
-		ledger.NewConnectorConfiguration("connector1", json.RawMessage("")),
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
 	)
-	require.NoError(t, store.CreateConnector(ctx, connector))
+	require.NoError(t, store.CreateExporter(ctx, exporter))
 
 	// Creating a pair which will be marked as ready
 	alivePipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module1", connector.ID),
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
 	)
 
 	// Save a state
@@ -277,28 +277,28 @@ func TestUpdatePipeline(t *testing.T) {
 	require.Equal(t, alivePipeline, *pipelineFromDB)
 }
 
-func TestDeleteConnector(t *testing.T) {
+func TestDeleteExporter(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	// Create the store
 	store := newStore(t)
 
-	// Create a connector
-	connector := ledger.NewConnector(
-		ledger.NewConnectorConfiguration("connector1", json.RawMessage("")),
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
 	)
-	require.NoError(t, store.CreateConnector(ctx, connector))
+	require.NoError(t, store.CreateExporter(ctx, exporter))
 
 	// Creating a pipeline which will be marked as ready
 	pipeline := ledger.NewPipeline(
-		ledger.NewPipelineConfiguration("module1", connector.ID),
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
 	)
 
 	// Save a state
 	require.NoError(t, store.CreatePipeline(ctx, pipeline))
 
 	// Pipelines should be deleted in cascade
-	err := store.DeleteConnector(ctx, pipeline.ConnectorID)
+	err := store.DeleteExporter(ctx, pipeline.ExporterID)
 	require.NoError(t, err)
 }
 

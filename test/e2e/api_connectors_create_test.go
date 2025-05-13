@@ -16,7 +16,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Context("Connectors API tests", func() {
+var _ = Context("Exporters API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
@@ -29,20 +29,20 @@ var _ = Context("Connectors API tests", func() {
 			testservice.DebugInstrumentation(debug),
 			testservice.OutputInstrumentation(GinkgoWriter),
 			ExperimentalFeaturesInstrumentation(),
-			ExperimentalConnectorsInstrumentation(),
+			ExperimentalExportersInstrumentation(),
 			ExperimentalEnableWorker(),
 		),
 		testservice.WithLogger(GinkgoT()),
 	)
 
-	When("creating a new connector", func() {
+	When("creating a new exporter", func() {
 		var (
-			createConnectorRequest  components.V2ConnectorConfiguration
-			createConnectorResponse *operations.V2CreateConnectorResponse
-			err                     error
+			createExporterRequest  components.V2ExporterConfiguration
+			createExporterResponse *operations.V2CreateExporterResponse
+			err                    error
 		)
 		BeforeEach(func() {
-			createConnectorRequest = components.V2ConnectorConfiguration{
+			createExporterRequest = components.V2ExporterConfiguration{
 				Driver: "clickhouse",
 				Config: map[string]any{
 					"dsn": "clickhouse://localhost:9000",
@@ -50,7 +50,7 @@ var _ = Context("Connectors API tests", func() {
 			}
 		})
 		BeforeEach(func(specContext SpecContext) {
-			createConnectorResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateConnector(ctx, createConnectorRequest)
+			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, createExporterRequest)
 		})
 		It("should be ok", func() {
 			Expect(err).To(BeNil())
@@ -58,8 +58,8 @@ var _ = Context("Connectors API tests", func() {
 		Context("then deleting it", func() {
 			BeforeEach(func(specContext SpecContext) {
 				Expect(err).To(BeNil())
-				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteConnector(ctx, operations.V2DeleteConnectorRequest{
-					ConnectorID: createConnectorResponse.V2CreateConnectorResponse.Data.ID,
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteExporter(ctx, operations.V2DeleteExporterRequest{
+					ExporterID: createExporterResponse.V2CreateExporterResponse.Data.ID,
 				})
 			})
 			It("Should be ok", func() {

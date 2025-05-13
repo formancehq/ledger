@@ -155,31 +155,31 @@ var defaultOptions = []Option{
 	WithTracer(noop.Tracer{}),
 }
 
-func (d *DefaultStore) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	return bunpaginate.UsingOffset[struct{}, ledger.Connector](
+func (d *DefaultStore) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	return bunpaginate.UsingOffset[struct{}, ledger.Exporter](
 		ctx,
 		d.db.NewSelect(),
 		bunpaginate.OffsetPaginatedQuery[struct{}]{},
 	)
 }
 
-func (d *DefaultStore) CreateConnector(ctx context.Context, connector ledger.Connector) error {
+func (d *DefaultStore) CreateExporter(ctx context.Context, exporter ledger.Exporter) error {
 	_, err := d.db.NewInsert().
-		Model(&connector).
+		Model(&exporter).
 		Exec(ctx)
 	return err
 }
 
-func (d *DefaultStore) DeleteConnector(ctx context.Context, id string) error {
+func (d *DefaultStore) DeleteExporter(ctx context.Context, id string) error {
 	ret, err := d.db.NewDelete().
-		Model(&ledger.Connector{}).
+		Model(&ledger.Exporter{}).
 		Where("id = ?", id).
 		Exec(ctx)
 	if err != nil {
 		switch err := err.(type) {
 		case *pq.Error:
-			if err.Constraint == "pipelines_connector_id_fkey" {
-				return ledger.NewErrConnectorUsed(id)
+			if err.Constraint == "pipelines_exporter_id_fkey" {
+				return ledger.NewErrExporterUsed(id)
 			}
 			return err
 		default:
@@ -198,8 +198,8 @@ func (d *DefaultStore) DeleteConnector(ctx context.Context, id string) error {
 	return err
 }
 
-func (d *DefaultStore) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
-	ret := &ledger.Connector{}
+func (d *DefaultStore) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	ret := &ledger.Exporter{}
 	err := d.db.NewSelect().
 		Model(ret).
 		Where("id = ?", id).

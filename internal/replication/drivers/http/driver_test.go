@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHTTPConnector(t *testing.T) {
+func TestHTTPDriver(t *testing.T) {
 	t.Parallel()
 
 	messages := make(chan []drivers.LogWithLedger, 1)
@@ -26,8 +26,8 @@ func TestHTTPConnector(t *testing.T) {
 	}))
 	t.Cleanup(testServer.Close)
 
-	// Create our connector
-	connector, err := NewConnector(Config{
+	// Create our driver
+	driver, err := NewDriver(Config{
 		URL: testServer.URL,
 	}, logging.Testing())
 	require.NoError(t, err)
@@ -47,8 +47,8 @@ func TestHTTPConnector(t *testing.T) {
 		)
 	}
 
-	// Send all logs to the connector
-	itemsErrors, err := connector.Accept(context.TODO(), logs...)
+	// Send all logs to the driver
+	itemsErrors, err := driver.Accept(context.TODO(), logs...)
 	require.NoError(t, err)
 	require.Len(t, itemsErrors, numberOfLogs)
 	for index := range logs {

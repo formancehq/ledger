@@ -44,8 +44,8 @@ func getPipelineID(r *http.Request) string {
 	return chi.URLParam(r, "pipelineID")
 }
 
-func getConnectorID(r *http.Request) string {
-	return chi.URLParam(r, "connectorID")
+func getExporterID(r *http.Request) string {
+	return chi.URLParam(r, "exporterID")
 }
 
 func getQueryBuilder(r *http.Request) (query.Builder, error) {

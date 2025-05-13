@@ -8,7 +8,7 @@ import (
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/connectors"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/monitoring"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
@@ -326,8 +326,8 @@ type API struct {
 	// ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter
 	ExperimentalNumscriptInterpreter bool `json:"experimental-numscript-interpreter" yaml:"experimental-numscript-interpreter"`
 
-	// ExperimentalConnectors is whether to enable experimental connectors
-	ExperimentalConnectors bool `json:"experimental-connectors" yaml:"experimental-connectors"`
+	// ExperimentalExporters is whether to enable experimental exporter
+	ExperimentalExporters bool `json:"experimental-exporters" yaml:"experimental-exporters"`
 }
 
 func (d API) toInput() api.Args {
@@ -341,53 +341,53 @@ func (d API) toInput() api.Args {
 		TerminationGracePeriodSeconds:    pulumix.Val(d.TerminationGracePeriodSeconds),
 		ExperimentalFeatures:             pulumix.Val(d.ExperimentalFeatures),
 		ExperimentalNumscriptInterpreter: pulumix.Val(d.ExperimentalNumscriptInterpreter),
-		ExperimentalConnectors:           pulumix.Val(d.ExperimentalConnectors),
+		ExperimentalExporters:            pulumix.Val(d.ExperimentalExporters),
 	}
 }
 
-type Connector struct {
-	// Driver is the driver for the connector
+type Exporter struct {
+	// Driver is the driver for the exporter
 	Driver string `json:"driver" yaml:"driver"`
 
-	// Config is the configuration for the connector
+	// Config is the configuration for the exporter
 	Config any `json:"config" yaml:"config"`
 }
 
-func (c Connector) toInput() connectors.ConnectorArgs {
-	return connectors.ConnectorArgs{
+func (c Exporter) toInput() exporters.ExporterArgs {
+	return exporters.ExporterArgs{
 		Driver: c.Driver,
 		Config: c.Config,
 	}
 }
 
-type Connectors map[string]Connector
+type Exporters map[string]Exporter
 
-func (c *Connectors) UnmarshalJSON(data []byte) error {
+func (c *Exporters) UnmarshalJSON(data []byte) error {
 	asMap := make(map[string]json.RawMessage, 0)
 	if err := json.Unmarshal(data, &asMap); err != nil {
-		return fmt.Errorf("error unmarshalling connectors into an array: %w", err)
+		return fmt.Errorf("error unmarshalling exporters into an array: %w", err)
 	}
 
-	*c = make(map[string]Connector)
+	*c = make(map[string]Exporter)
 	for id, elem := range asMap {
 		type def struct {
 			Driver string `json:"driver" yaml:"driver"`
 		}
 		d := def{}
 		if err := json.Unmarshal(elem, &d); err != nil {
-			return fmt.Errorf("error unmarshalling connector definition %s: %w", id, err)
+			return fmt.Errorf("error unmarshalling exporter definition %s: %w", id, err)
 		}
 
-		cfg, err := connectors.GetConnectorConfig(d.Driver)
+		cfg, err := exporters.GetExporterConfig(d.Driver)
 		if err != nil {
 			return err
 		}
 
 		if err := json.Unmarshal(elem, cfg); err != nil {
-			return fmt.Errorf("error unmarshalling connector config %s: %w", id, err)
+			return fmt.Errorf("error unmarshalling exporter config %s: %w", id, err)
 		}
 
-		(*c)[id] = Connector{
+		(*c)[id] = Exporter{
 			Driver: d.Driver,
 			Config: reflect.ValueOf(cfg).Elem().Interface(),
 		}
@@ -396,9 +396,9 @@ func (c *Connectors) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (c *Connectors) toInput() connectors.Args {
-	return connectors.Args{
-		Connectors: ConvertMap(*c, Connector.toInput),
+func (c *Exporters) toInput() exporters.Args {
+	return exporters.Args{
+		Exporters: ConvertMap(*c, Exporter.toInput),
 	}
 }
 
@@ -597,16 +597,16 @@ type LedgerConfig struct {
 	// Features is the features for the ledger
 	Features map[string]string `json:"features" yaml:"features"`
 
-	// Connectors are the connector to bound to this ledger
-	Connectors []string `json:"connectors" yaml:"connectors"`
+	// Exporters are the exporter to bound to this ledger
+	Exporters []string `json:"exporters" yaml:"exporters"`
 }
 
 func (c LedgerConfig) toInput() provision.LedgerConfigArgs {
 	return provision.LedgerConfigArgs{
-		Bucket:     c.Bucket,
-		Metadata:   c.Metadata,
-		Features:   c.Features,
-		Connectors: c.Connectors,
+		Bucket:    c.Bucket,
+		Metadata:  c.Metadata,
+		Features:  c.Features,
+		Exporters: c.Exporters,
 	}
 }
 
@@ -687,8 +687,8 @@ type Config struct {
 	// Worker is the worker configuration for the ledger
 	Worker *Worker `json:"worker,omitempty" yaml:"worker,omitempty"`
 
-	// Connectors is the connectors configuration for the ledger
-	Connectors Connectors `json:"connectors" yaml:"connectors"`
+	// Exporters is the exporters configuration for the ledger
+	Exporters Exporters `json:"exporters" yaml:"exporters"`
 
 	// Ingress is the ingress configuration for the ledger
 	Ingress *Ingress `json:"ingress,omitempty" yaml:"ingress,omitempty"`
@@ -716,7 +716,7 @@ func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 		Ingress:       cfg.Ingress.toInput(),
 		InstallDevBox: pulumix.Val(cfg.InstallDevBox),
 		Provision:     cfg.Provision.toInput(),
-		Connectors:    cfg.Connectors.toInput(),
+		Exporters:     cfg.Exporters.toInput(),
 		Generator:     cfg.Generator.toInput(),
 	}
 }
@@ -762,8 +762,8 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
-	connectors := Connectors{}
-	if err := config.GetObject(ctx, "connectors", &connectors); err != nil {
+	exporters := Exporters{}
+	if err := config.GetObject(ctx, "exporters", &exporters); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, err
 		}
@@ -810,7 +810,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		API:           api,
 		Worker:        worker,
 		Ingress:       ingress,
-		Connectors:    connectors,
+		Exporters:     exporters,
 		Provision:     provision,
 		Generator:     generator,
 	}, nil

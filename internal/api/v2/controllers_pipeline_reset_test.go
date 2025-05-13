@@ -57,14 +57,14 @@ func TestResetPipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithConnectors(true))
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
-			connectorID := uuid.NewString()
-			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+connectorID+"/reset", nil)
+			exporterID := uuid.NewString()
+			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+exporterID+"/reset", nil)
 			rec := httptest.NewRecorder()
 
 			systemController.EXPECT().
-				ResetPipeline(gomock.Any(), connectorID).
+				ResetPipeline(gomock.Any(), exporterID).
 				Return(testCase.returnError)
 
 			router.ServeHTTP(rec, req)

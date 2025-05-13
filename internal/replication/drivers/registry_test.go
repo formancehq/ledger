@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRegisterConnector(t *testing.T) {
+func TestRegisterDriver(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
@@ -74,8 +74,8 @@ func TestRegisterConnector(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockStore := NewMockStore(ctrl)
 
-			connectorRegistry := NewRegistry(logging.Testing(), mockStore)
-			err := connectorRegistry.registerConnector("testing", testCase.fn)
+			exporterRegistry := NewRegistry(logging.Testing(), mockStore)
+			err := exporterRegistry.registerDriver("testing", testCase.fn)
 			if testCase.expectError == "" {
 				require.NoError(t, err)
 			} else {
