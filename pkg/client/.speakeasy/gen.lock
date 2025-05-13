@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 2d8f4181402576bb8ac4f4ce71d6e596
-  docVersion: v2
+  docChecksum: 00a81254f175054ea801e080fe20f368
+  docVersion: v1
   speakeasyVersion: 1.517.3
   generationVersion: 2.548.6
-  releaseVersion: 0.8.0
-  configChecksum: 1e3419c5398b20fa22be24c9c224d2dc
+  releaseVersion: 0.10.0
+  configChecksum: c9179278f298050305024f57220c7da8
 features:
   go:
     additionalDependencies: 0.1.0
@@ -717,10 +717,10 @@ examples:
           atomic: true
           parallel: true
       requestBody:
-        application/json: [{"action": "<value>", "data": {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}}}}]
+        application/json: [{"action": "<value>", "data": {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}}}]
       responses:
         "200":
-          application/json: {"data": [{"responseType": "<value>", "logID": 642842, "data": {"timestamp": "2023-05-07T17:50:11.166Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 860718, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
+          application/json: {"data": [{"responseType": "<value>", "logID": 53724}], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
         "400":
           application/json: {"data": [], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
         default:
@@ -833,7 +833,7 @@ examples:
           force: true
         header: {}
       requestBody:
-        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}}}
+        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}}
       responses:
         "200":
           application/json: {"data": {"timestamp": "2023-02-04T12:27:33.271Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 979078, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
