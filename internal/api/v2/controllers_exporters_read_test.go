@@ -62,7 +62,7 @@ func TestReadExporter(t *testing.T) {
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
-			req := httptest.NewRequest(http.MethodGet, "/_system/exporters/"+exporterID, nil)
+			req := httptest.NewRequest(http.MethodGet, "/_/exporters/"+exporterID, nil)
 			req = req.WithContext(logging.TestingContext())
 			rec := httptest.NewRecorder()
 

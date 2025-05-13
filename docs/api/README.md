@@ -2086,13 +2086,13 @@ Authorization ( Scopes: ledger:write )
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/_system/exporters HTTP/1.1
+GET http://localhost:8080/v2/_/exporters HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/_system/exporters`
+`GET /v2/_/exporters`
 
 > Example responses
 
@@ -2188,14 +2188,14 @@ This operation does not require authentication
 > Code samples
 
 ```http
-POST http://localhost:8080/v2/_system/exporters HTTP/1.1
+POST http://localhost:8080/v2/_/exporters HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
 
 ```
 
-`POST /v2/_system/exporters`
+`POST /v2/_/exporters`
 
 > Body parameter
 
@@ -2269,13 +2269,13 @@ This operation does not require authentication
 > Code samples
 
 ```http
-GET http://localhost:8080/v2/_system/exporters/{exporterID} HTTP/1.1
+GET http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`GET /v2/_system/exporters/{exporterID}`
+`GET /v2/_/exporters/{exporterID}`
 
 <h3 id="get-exporter-state-parameters">Parameters</h3>
 
@@ -2340,13 +2340,13 @@ This operation does not require authentication
 > Code samples
 
 ```http
-DELETE http://localhost:8080/v2/_system/exporters/{exporterID} HTTP/1.1
+DELETE http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
 
 ```
 
-`DELETE /v2/_system/exporters/{exporterID}`
+`DELETE /v2/_/exporters/{exporterID}`
 
 <h3 id="delete-exporter-parameters">Parameters</h3>
 
