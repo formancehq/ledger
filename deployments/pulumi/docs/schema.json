@@ -40,6 +40,10 @@
         "experimental-numscript-interpreter": {
           "type": "boolean",
           "description": "ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter"
+        },
+        "experimental-exporters": {
+          "type": "boolean",
+          "description": "ExperimentalExporters is whether to enable experimental exporter"
         }
       },
       "additionalProperties": false,
@@ -78,6 +82,10 @@
         "worker": {
           "$ref": "#/$defs/Worker",
           "description": "Worker is the worker configuration for the ledger"
+        },
+        "exporters": {
+          "$ref": "#/$defs/Exporters",
+          "description": "Exporters is the exporters configuration for the ledger"
         },
         "ingress": {
           "$ref": "#/$defs/Ingress",
@@ -130,6 +138,25 @@
         }
       },
       "additionalProperties": false,
+      "type": "object"
+    },
+    "Exporter": {
+      "properties": {
+        "driver": {
+          "type": "string",
+          "description": "Driver is the driver for the exporter"
+        },
+        "config": {
+          "description": "Config is the configuration for the exporter"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Exporters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Exporter"
+      },
       "type": "object"
     },
     "Generator": {
@@ -212,6 +239,13 @@
           },
           "type": "object",
           "description": "Features is the features for the ledger"
+        },
+        "exporters": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Exporters are the exporter to bound to this ledger"
         }
       },
       "additionalProperties": false,
@@ -530,6 +564,23 @@
         "disable-upgrade": {
           "type": "boolean",
           "description": "DisableUpgrade is whether to disable upgrades for the database"
+        },
+        "service": {
+          "$ref": "#/$defs/StorageService",
+          "description": "Service is the service configuration for the database"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "StorageService": {
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "Annotations is the annotations for the service"
         }
       },
       "additionalProperties": false,

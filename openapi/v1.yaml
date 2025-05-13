@@ -1849,6 +1849,7 @@ components:
         - TIMEOUT
       example: INSUFFICIENT_FUND
     LedgerInfoResponse:
+      type: object
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'

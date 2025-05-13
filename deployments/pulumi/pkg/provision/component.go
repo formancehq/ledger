@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -20,7 +21,8 @@ type Component struct {
 type LedgerConfigArgs struct {
 	Bucket   string            `json:"bucket"`
 	Metadata map[string]string `json:"metadata"`
-	Features map[string]string `json:"features"`
+	Features  map[string]string `json:"features"`
+	Exporters []string          `json:"exporters"`
 }
 
 type Args struct {
@@ -30,7 +32,8 @@ type Args struct {
 
 type ComponentArgs struct {
 	common.CommonArgs
-	API *api.Component
+	API       *api.Component
+	Exporters *exporters.Component
 	Args
 }
 

@@ -3,14 +3,12 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
@@ -33,11 +31,11 @@ var _ = Context("Ledger revert transactions API tests", func() {
 	var (
 		db      = UseTemplatedDatabase()
 		ctx     = logging.TestingContext()
-		natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
@@ -146,7 +144,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Expect(err).To(Succeed())
 			})
 			It("should trigger a new event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(ledgerevents.RevertedTransaction{
 					Ledger: "default",
 					RevertTransaction: ledger.Transaction{
 						ID: pointer.For(newTransaction.V2RevertTransactionResponse.Data.ID.Uint64()),

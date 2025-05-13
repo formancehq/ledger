@@ -10,13 +10,11 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"github.com/nats-io/nats.go"
@@ -40,11 +38,11 @@ var _ = Context("Ledger engine tests", func() {
 		events       chan *nats.Msg
 		bulkResponse *operations.V2CreateBulkResponse
 		bulkMaxSize  = 100
-		natsURL      = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL      = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
@@ -326,7 +324,7 @@ var _ = Context("Ledger engine tests", func() {
 			})
 
 			By("Should have sent one event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(ledgerevents.CommittedTransactions{
 					Ledger:          "default",
 					Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultCreateTransaction.Data)},
 					AccountMetadata: ledger.AccountMetadata{},

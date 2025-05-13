@@ -152,6 +152,17 @@ func main() {
 * [ListLogs](docs/sdks/v2/README.md#listlogs) - List the logs from a ledger
 * [ImportLogs](docs/sdks/v2/README.md#importlogs)
 * [ExportLogs](docs/sdks/v2/README.md#exportlogs) - Export logs
+* [ListExporters](docs/sdks/v2/README.md#listexporters) - List exporters
+* [CreateExporter](docs/sdks/v2/README.md#createexporter) - Create exporter
+* [GetExporterState](docs/sdks/v2/README.md#getexporterstate) - Get exporter state
+* [DeleteExporter](docs/sdks/v2/README.md#deleteexporter) - Delete exporter
+* [ListPipelines](docs/sdks/v2/README.md#listpipelines) - List pipelines
+* [CreatePipeline](docs/sdks/v2/README.md#createpipeline) - Create pipeline
+* [GetPipelineState](docs/sdks/v2/README.md#getpipelinestate) - Get pipeline state
+* [DeletePipeline](docs/sdks/v2/README.md#deletepipeline) - Delete pipeline
+* [ResetPipeline](docs/sdks/v2/README.md#resetpipeline) - Reset pipeline
+* [StartPipeline](docs/sdks/v2/README.md#startpipeline) - Start pipeline
+* [StopPipeline](docs/sdks/v2/README.md#stoppipeline) - Stop pipeline
 
 </details>
 <!-- End Available Resources and Operations [operations] -->

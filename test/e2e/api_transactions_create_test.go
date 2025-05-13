@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
@@ -16,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	. "github.com/formancehq/go-libs/v3/testing/api"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -41,7 +39,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 			var (
 				db      = UseTemplatedDatabase()
 				ctx     = logging.TestingContext()
-				natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+				natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 			)
 			instruments := []testservice.Instrumentation{
 				testservice.NatsInstrumentation(natsURL),
@@ -52,7 +50,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 				instruments = append(instruments, ExperimentalNumscriptRewriteInstrumentation())
 			}
 			testServer := DeferTestServer(
-				ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+				DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 				testservice.WithInstruments(instruments...),
 				testservice.WithLogger(GinkgoT()),
 			)
@@ -280,7 +278,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							},
 						}))
 						By("should trigger a new event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(ledgerevents.CommittedTransactions{
 								Ledger:          "default",
 								Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&rsp.V2CreateTransactionResponse.Data)},
 								AccountMetadata: ledger.AccountMetadata{},

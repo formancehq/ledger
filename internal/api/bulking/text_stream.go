@@ -27,8 +27,8 @@ func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {
 				parts := strings.Split(text, ",")
 				for _, part := range parts {
 					parts2 := strings.Split(part, "=")
-					switch {
-					case parts2[0] == "ik":
+					switch parts2[0] {
+					case "ik":
 						if bulkElement.IdempotencyKey != "" {
 							return nil, errors.New("invalid header, idempotency key already set")
 						}

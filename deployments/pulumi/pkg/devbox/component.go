@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -19,7 +20,8 @@ type Component struct {
 type ComponentArgs struct {
 	common.CommonArgs
 	Storage    *storage.Component
-	API        *api.Component
+	API       *api.Component
+	Exporters *exporters.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -32,6 +34,12 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 	containers := corev1.ContainerArray{
 		args.Storage.GetDevBoxContainer(ctx.Context()),
 		args.API.GetDevBoxContainer(ctx.Context()),
+	}
+
+	if args.Exporters != nil {
+		for _, exporter := range args.Exporters.Exporters {
+			containers = append(containers, exporter.Component.GetDevBoxContainer(ctx.Context()))
+		}
 	}
 
 	cmp.Deployment, err = appsv1.NewDeployment(ctx, "ledger-devbox", &appsv1.DeploymentArgs{

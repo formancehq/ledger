@@ -1,6 +1,7 @@
 package system
 
 import (
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -28,11 +29,16 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 		fx.Provide(func(controller *DefaultController) Controller {
 			return controller
 		}),
+		fx.Provide(func(store *systemstore.DefaultStore) Store {
+			return store
+		}),
+		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(Driver)))),
 		fx.Provide(func(
-			store Store,
+			driver Driver,
 			listener ledgercontroller.Listener,
 			meterProvider metric.MeterProvider,
 			tracerProvider trace.TracerProvider,
+			replicationBackend ReplicationBackend,
 		) *DefaultController {
 			var (
 				machineParser     ledgercontroller.NumscriptParser = ledgercontroller.NewDefaultNumscriptParser()
@@ -54,8 +60,9 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 			}
 
 			return NewDefaultController(
-				store,
+				driver,
 				listener,
+				replicationBackend,
 				WithParser(parser, machineParser, interpreterParser),
 				WithDatabaseRetryConfiguration(configuration.DatabaseRetryConfiguration),
 				WithMeterProvider(meterProvider),
