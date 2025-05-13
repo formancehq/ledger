@@ -16,13 +16,13 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, connector drivers.Driver) (*PipelineHandler, <-chan uint64) {
+func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, driver drivers.Driver) (*PipelineHandler, <-chan uint64) {
 	t.Helper()
 
 	handler := NewPipelineHandler(
 		pipeline,
 		store,
-		connector,
+		driver,
 		logging.Testing(),
 	)
 
@@ -42,7 +42,7 @@ func TestPipeline(t *testing.T) {
 	ctx := logging.TestingContext()
 	ctrl := gomock.NewController(t)
 	logFetcher := NewMockLogFetcher(ctrl)
-	connector := drivers.NewMockDriver(ctrl)
+	driver := drivers.NewMockDriver(ctrl)
 	log := ledger.NewLog(
 		ledger.CreatedTransaction{
 			Transaction: ledger.NewTransaction(),
@@ -78,14 +78,14 @@ func TestPipeline(t *testing.T) {
 			return &bunpaginate.Cursor[ledger.Log]{}, nil
 		})
 
-	connector.EXPECT().
+	driver.EXPECT().
 		Accept(gomock.Any(), drivers.NewLogWithLedger("testing", log)).
 		Return([]error{nil}, nil)
 
 	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
 	pipeline := ledger.NewPipeline(pipelineConfiguration)
 
-	_, lastLogIDChannel := runPipeline(t, ctx, pipeline, logFetcher, connector)
+	_, lastLogIDChannel := runPipeline(t, ctx, pipeline, logFetcher, driver)
 
 	close(deliver)
 

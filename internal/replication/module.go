@@ -24,8 +24,8 @@ func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 		fx.Provide(fx.Annotate(NewStorageAdapter, fx.As(new(Storage)))),
 		fx.Provide(func(
 			storageDriver Storage,
-			connectorFactory drivers.Factory,
-			connectorsConfigValidator ConfigValidator,
+			driverFactory drivers.Factory,
+			exportersConfigValidator ConfigValidator,
 			logger logging.Logger,
 		) *Manager {
 			options := make([]Option, 0)
@@ -49,9 +49,9 @@ func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 			}
 			return NewManager(
 				storageDriver,
-				connectorFactory,
+				driverFactory,
 				logger,
-				connectorsConfigValidator,
+				exportersConfigValidator,
 				options...,
 			)
 		}),
@@ -61,7 +61,7 @@ func NewWorkerFXModule(cfg WorkerModuleConfig) fx.Option {
 		// decorate the original Factory (implemented by *Registry)
 		// to abstract the fact we want to batch logs
 		fx.Decorate(fx.Annotate(
-			drivers.NewWithBatchingConnectorFactory,
+			drivers.NewWithBatchingDriverFactory,
 			fx.As(new(drivers.Factory)),
 		)),
 		fx.Provide(fx.Annotate(NewReplicationServiceImpl, fx.As(new(innergrpc.ReplicationServer)))),

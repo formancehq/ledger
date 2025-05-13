@@ -11,17 +11,17 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Connector struct {
+type Driver struct {
 	db     driver.Conn
 	config Config
 	logger logging.Logger
 }
 
-func (c *Connector) Stop(_ context.Context) error {
+func (c *Driver) Stop(_ context.Context) error {
 	return c.db.Close()
 }
 
-func (c *Connector) Start(ctx context.Context) error {
+func (c *Driver) Start(ctx context.Context) error {
 
 	var err error
 	c.db, err = OpenDB(c.logger, c.config.DSN, false)
@@ -39,7 +39,7 @@ func (c *Connector) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *Connector) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
+func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 
 	batch, err := c.db.PrepareBatch(ctx, "insert into logs(ledger, id, type, date, data)")
 	if err != nil {
@@ -70,14 +70,14 @@ func (c *Connector) Accept(ctx context.Context, logs ...drivers.LogWithLedger) (
 	return make([]error, len(logs)), errors.Wrap(batch.Send(), "failed to commit transaction")
 }
 
-func NewConnector(config Config, logger logging.Logger) (*Connector, error) {
-	return &Connector{
+func NewDriver(config Config, logger logging.Logger) (*Driver, error) {
+	return &Driver{
 		config: config,
 		logger: logger,
 	}, nil
 }
 
-var _ drivers.Driver = (*Connector)(nil)
+var _ drivers.Driver = (*Driver)(nil)
 
 type Config struct {
 	DSN string `json:"dsn"`

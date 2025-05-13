@@ -40,19 +40,19 @@ func newErrInvalidBucketName(bucket string, err error) ErrInvalidBucketName {
 	return ErrInvalidBucketName{err: err, bucket: bucket}
 }
 
-type ErrConnectorUsed string
+type ErrExporterUsed string
 
-func (e ErrConnectorUsed) Error() string {
-	return fmt.Sprintf("connector '%s' actually used by an existing pipeline", string(e))
+func (e ErrExporterUsed) Error() string {
+	return fmt.Sprintf("exporter '%s' actually used by an existing pipeline", string(e))
 }
 
-func (e ErrConnectorUsed) Is(err error) bool {
-	_, ok := err.(ErrConnectorUsed)
+func (e ErrExporterUsed) Is(err error) bool {
+	_, ok := err.(ErrExporterUsed)
 	return ok
 }
 
-func NewErrConnectorUsed(id string) ErrConnectorUsed {
-	return ErrConnectorUsed(id)
+func NewErrExporterUsed(id string) ErrExporterUsed {
+	return ErrExporterUsed(id)
 }
 
 // ErrPipelineAlreadyExists denotes a pipeline already created
@@ -60,7 +60,7 @@ func NewErrConnectorUsed(id string) ErrConnectorUsed {
 type ErrPipelineAlreadyExists PipelineConfiguration
 
 func (e ErrPipelineAlreadyExists) Error() string {
-	return fmt.Sprintf("pipeline '%s/%s' already exists", e.Ledger, e.ConnectorID)
+	return fmt.Sprintf("pipeline '%s/%s' already exists", e.Ledger, e.ExporterID)
 }
 
 func (e ErrPipelineAlreadyExists) Is(err error) bool {

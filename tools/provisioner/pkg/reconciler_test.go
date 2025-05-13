@@ -35,8 +35,8 @@ func TestReconciler(t *testing.T) {
 			steps: []step{{
 				cfg: Config{},
 				expectedState: State{
-					Ledgers:    map[string]*LedgerState{},
-					Connectors: map[string]*ConnectorState{},
+					Ledgers:   map[string]*LedgerState{},
+					Exporters: map[string]*ExporterState{},
 				},
 			}},
 		},
@@ -55,10 +55,10 @@ func TestReconciler(t *testing.T) {
 					},
 				},
 				expectedState: State{
-					Connectors: map[string]*ConnectorState{},
+					Exporters: map[string]*ExporterState{},
 					Ledgers: map[string]*LedgerState{
 						"ledger1": {
-							Connectors: map[string]string{},
+							Exporters: map[string]string{},
 							Config: LedgerConfig{
 								LedgerCreateConfig: LedgerCreateConfig{
 									Features: map[string]string{
@@ -82,26 +82,26 @@ func TestReconciler(t *testing.T) {
 					},
 				},
 				expectedState: State{
-					Connectors: map[string]*ConnectorState{},
+					Exporters: map[string]*ExporterState{},
 					Ledgers: map[string]*LedgerState{
 						"ledger1": {
-							Connectors: map[string]string{},
+							Exporters: map[string]string{},
 						},
 						"ledger2": {
-							Connectors: map[string]string{},
+							Exporters: map[string]string{},
 						},
 						"ledger3": {
-							Connectors: map[string]string{},
+							Exporters: map[string]string{},
 						},
 					},
 				},
 			}},
 		},
 		{
-			name: "2 connectors",
+			name: "2 exporters",
 			steps: []step{{
 				cfg: Config{
-					Connectors: map[string]ConnectorConfig{
+					Exporters: map[string]ExporterConfig{
 						"clickhouse1": {
 							Driver: "clickhouse",
 							Config: map[string]any{
@@ -117,9 +117,9 @@ func TestReconciler(t *testing.T) {
 					},
 				},
 				expectedState: State{
-					Connectors: map[string]*ConnectorState{
+					Exporters: map[string]*ExporterState{
 						"clickhouse1": {
-							Config: ConnectorConfig{
+							Config: ExporterConfig{
 								Driver: "clickhouse",
 								Config: map[string]any{
 									"dsn": "clickhouse://srv1:8123",
@@ -127,7 +127,7 @@ func TestReconciler(t *testing.T) {
 							},
 						},
 						"clickhouse2": {
-							Config: ConnectorConfig{
+							Config: ExporterConfig{
 								Driver: "clickhouse",
 								Config: map[string]any{
 									"dsn": "clickhouse://srv2:8123",
@@ -140,10 +140,10 @@ func TestReconciler(t *testing.T) {
 			}},
 		},
 		{
-			name: "1 connector and a ledger bounded to it",
+			name: "1 exporter and a ledger bounded to it",
 			steps: []step{{
 				cfg: Config{
-					Connectors: map[string]ConnectorConfig{
+					Exporters: map[string]ExporterConfig{
 						"clickhouse1": {
 							Driver: "clickhouse",
 							Config: map[string]any{
@@ -153,14 +153,14 @@ func TestReconciler(t *testing.T) {
 					},
 					Ledgers: map[string]LedgerConfig{
 						"ledger1": {
-							Connectors: []string{"clickhouse1"},
+							Exporters: []string{"clickhouse1"},
 						},
 					},
 				},
 				expectedState: State{
-					Connectors: map[string]*ConnectorState{
+					Exporters: map[string]*ExporterState{
 						"clickhouse1": {
-							Config: ConnectorConfig{
+							Config: ExporterConfig{
 								Driver: "clickhouse",
 								Config: map[string]any{
 									"dsn": "clickhouse://srv1:8123",
@@ -171,9 +171,9 @@ func TestReconciler(t *testing.T) {
 					Ledgers: map[string]*LedgerState{
 						"ledger1": {
 							Config: LedgerConfig{
-								Connectors: []string{"clickhouse1"},
+								Exporters: []string{"clickhouse1"},
 							},
-							Connectors: map[string]string{
+							Exporters: map[string]string{
 								"clickhouse1": "",
 							},
 						},
@@ -182,11 +182,11 @@ func TestReconciler(t *testing.T) {
 			}},
 		},
 		{
-			name: "removing connector binding",
+			name: "removing exporter binding",
 			steps: []step{
 				{
 					cfg: Config{
-						Connectors: map[string]ConnectorConfig{
+						Exporters: map[string]ExporterConfig{
 							"clickhouse1": {
 								Driver: "clickhouse",
 								Config: map[string]any{
@@ -196,14 +196,14 @@ func TestReconciler(t *testing.T) {
 						},
 						Ledgers: map[string]LedgerConfig{
 							"ledger1": {
-								Connectors: []string{"clickhouse1"},
+								Exporters: []string{"clickhouse1"},
 							},
 						},
 					},
 					expectedState: State{
-						Connectors: map[string]*ConnectorState{
+						Exporters: map[string]*ExporterState{
 							"clickhouse1": {
-								Config: ConnectorConfig{
+								Config: ExporterConfig{
 									Driver: "clickhouse",
 									Config: map[string]any{
 										"dsn": "clickhouse://srv1:8123",
@@ -214,9 +214,9 @@ func TestReconciler(t *testing.T) {
 						Ledgers: map[string]*LedgerState{
 							"ledger1": {
 								Config: LedgerConfig{
-									Connectors: []string{"clickhouse1"},
+									Exporters: []string{"clickhouse1"},
 								},
-								Connectors: map[string]string{
+								Exporters: map[string]string{
 									"clickhouse1": "",
 								},
 							},
@@ -225,7 +225,7 @@ func TestReconciler(t *testing.T) {
 				},
 				{
 					cfg: Config{
-						Connectors: map[string]ConnectorConfig{
+						Exporters: map[string]ExporterConfig{
 							"clickhouse1": {
 								Driver: "clickhouse",
 								Config: map[string]any{
@@ -238,9 +238,9 @@ func TestReconciler(t *testing.T) {
 						},
 					},
 					expectedState: State{
-						Connectors: map[string]*ConnectorState{
+						Exporters: map[string]*ExporterState{
 							"clickhouse1": {
-								Config: ConnectorConfig{
+								Config: ExporterConfig{
 									Driver: "clickhouse",
 									Config: map[string]any{
 										"dsn": "clickhouse://srv1:8123",
@@ -251,9 +251,9 @@ func TestReconciler(t *testing.T) {
 						Ledgers: map[string]*LedgerState{
 							"ledger1": {
 								Config: LedgerConfig{
-									Connectors: []string{},
+									Exporters: []string{},
 								},
-								Connectors: map[string]string{},
+								Exporters: map[string]string{},
 							},
 						},
 					},
@@ -261,11 +261,11 @@ func TestReconciler(t *testing.T) {
 			},
 		},
 		{
-			name: "removing connector without binding",
+			name: "removing exporter without binding",
 			steps: []step{
 				{
 					cfg: Config{
-						Connectors: map[string]ConnectorConfig{
+						Exporters: map[string]ExporterConfig{
 							"clickhouse1": {
 								Driver: "clickhouse",
 								Config: map[string]any{
@@ -276,9 +276,9 @@ func TestReconciler(t *testing.T) {
 						Ledgers: map[string]LedgerConfig{},
 					},
 					expectedState: State{
-						Connectors: map[string]*ConnectorState{
+						Exporters: map[string]*ExporterState{
 							"clickhouse1": {
-								Config: ConnectorConfig{
+								Config: ExporterConfig{
 									Driver: "clickhouse",
 									Config: map[string]any{
 										"dsn": "clickhouse://srv1:8123",
@@ -291,22 +291,22 @@ func TestReconciler(t *testing.T) {
 				},
 				{
 					cfg: Config{
-						Connectors: map[string]ConnectorConfig{},
-						Ledgers:    map[string]LedgerConfig{},
+						Exporters: map[string]ExporterConfig{},
+						Ledgers:   map[string]LedgerConfig{},
 					},
 					expectedState: State{
-						Connectors: map[string]*ConnectorState{},
-						Ledgers:    map[string]*LedgerState{},
+						Exporters: map[string]*ExporterState{},
+						Ledgers:   map[string]*LedgerState{},
 					},
 				},
 			},
 		},
 		{
-			name: "removing connector with binding",
+			name: "removing exporter with binding",
 			steps: []step{
 				{
 					cfg: Config{
-						Connectors: map[string]ConnectorConfig{
+						Exporters: map[string]ExporterConfig{
 							"clickhouse1": {
 								Driver: "clickhouse",
 								Config: map[string]any{
@@ -316,14 +316,14 @@ func TestReconciler(t *testing.T) {
 						},
 						Ledgers: map[string]LedgerConfig{
 							"ledger1": {
-								Connectors: []string{"clickhouse1"},
+								Exporters: []string{"clickhouse1"},
 							},
 						},
 					},
 					expectedState: State{
-						Connectors: map[string]*ConnectorState{
+						Exporters: map[string]*ExporterState{
 							"clickhouse1": {
-								Config: ConnectorConfig{
+								Config: ExporterConfig{
 									Driver: "clickhouse",
 									Config: map[string]any{
 										"dsn": "clickhouse://srv1:8123",
@@ -334,9 +334,9 @@ func TestReconciler(t *testing.T) {
 						Ledgers: map[string]*LedgerState{
 							"ledger1": {
 								Config: LedgerConfig{
-									Connectors: []string{"clickhouse1"},
+									Exporters: []string{"clickhouse1"},
 								},
-								Connectors: map[string]string{
+								Exporters: map[string]string{
 									"clickhouse1": "",
 								},
 							},
@@ -345,21 +345,21 @@ func TestReconciler(t *testing.T) {
 				},
 				{
 					cfg: Config{
-						Connectors: map[string]ConnectorConfig{},
+						Exporters: map[string]ExporterConfig{},
 						Ledgers: map[string]LedgerConfig{
 							"ledger1": {
-								Connectors: []string{},
+								Exporters: []string{},
 							},
 						},
 					},
 					expectedState: State{
-						Connectors: map[string]*ConnectorState{},
+						Exporters: map[string]*ExporterState{},
 						Ledgers: map[string]*LedgerState{
 							"ledger1": {
 								Config: LedgerConfig{
-									Connectors: []string{},
+									Exporters: []string{},
 								},
-								Connectors: map[string]string{},
+								Exporters: map[string]string{},
 							},
 						},
 					},
@@ -375,7 +375,7 @@ func TestReconciler(t *testing.T) {
 			srv := testserver.NewTestServer(deferred.FromValue(db.ConnectionOptions()),
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(os.Getenv("DEBUG") == "true"),
-					testserver.ExperimentalConnectorsInstrumentation(),
+					testserver.ExperimentalExportersInstrumentation(),
 					testserver.ExperimentalFeaturesInstrumentation(),
 				),
 			)
@@ -388,17 +388,17 @@ func TestReconciler(t *testing.T) {
 
 				storedState := store.state
 				expectedState := step.expectedState
-				for connector := range storedState.Connectors {
-					if _, ok := expectedState.Connectors[connector]; ok {
-						expectedState.Connectors[connector].ID = storedState.Connectors[connector].ID
+				for exporter := range storedState.Exporters {
+					if _, ok := expectedState.Exporters[exporter]; ok {
+						expectedState.Exporters[exporter].ID = storedState.Exporters[exporter].ID
 					}
 				}
 
 				for ledgerName, ledgerState := range storedState.Ledgers {
-					for connectorName, pipelineID := range ledgerState.Connectors {
+					for exporterName, pipelineID := range ledgerState.Exporters {
 						if expectedLedgerState, ok := expectedState.Ledgers[ledgerName]; ok {
-							if _, ok := expectedLedgerState.Connectors[connectorName]; ok {
-								expectedLedgerState.Connectors[connectorName] = pipelineID
+							if _, ok := expectedLedgerState.Exporters[exporterName]; ok {
+								expectedLedgerState.Exporters[exporterName] = pipelineID
 							}
 						}
 					}

@@ -41,17 +41,17 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
 }
 
-// GetConnector mocks base method.
-func (m *MockStore) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+// GetExporter mocks base method.
+func (m *MockStore) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ledger.Connector)
+	ret := m.ctrl.Call(m, "GetExporter", ctx, id)
+	ret0, _ := ret[0].(*ledger.Exporter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetConnector indicates an expected call of GetConnector.
-func (mr *MockStoreMockRecorder) GetConnector(ctx, id any) *gomock.Call {
+// GetExporter indicates an expected call of GetExporter.
+func (mr *MockStoreMockRecorder) GetExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnector", reflect.TypeOf((*MockStore)(nil).GetConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExporter", reflect.TypeOf((*MockStore)(nil).GetExporter), ctx, id)
 }

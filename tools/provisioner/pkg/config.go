@@ -8,24 +8,24 @@ type LedgerCreateConfig struct {
 
 type LedgerConfig struct {
 	LedgerCreateConfig `yaml:",inline"`
-	Connectors         []string `yaml:"connectors"`
+	Exporters          []string `yaml:"exporters"`
 }
 
-type ConnectorConfig struct {
+type ExporterConfig struct {
 	Driver string         `yaml:"driver"`
 	Config map[string]any `yaml:"config"`
 }
 
 type Config struct {
-	Ledgers    map[string]LedgerConfig    `yaml:"ledgers"`
-	Connectors map[string]ConnectorConfig `yaml:"connectors"`
+	Ledgers   map[string]LedgerConfig   `yaml:"ledgers"`
+	Exporters map[string]ExporterConfig `yaml:"exporters"`
 }
 
 func (cfg *Config) setDefaults() {
 	if cfg.Ledgers == nil {
 		cfg.Ledgers = map[string]LedgerConfig{}
 	}
-	if cfg.Connectors == nil {
-		cfg.Connectors = map[string]ConnectorConfig{}
+	if cfg.Exporters == nil {
+		cfg.Exporters = map[string]ExporterConfig{}
 	}
 }

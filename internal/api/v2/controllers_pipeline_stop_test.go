@@ -59,15 +59,15 @@ func TestStopPipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithConnectors(true))
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
-			connectorID := uuid.NewString()
-			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+connectorID+"/stop", nil)
+			exporterID := uuid.NewString()
+			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+exporterID+"/stop", nil)
 			req = req.WithContext(ctx)
 			rec := httptest.NewRecorder()
 
 			systemController.EXPECT().
-				StopPipeline(gomock.Any(), connectorID).
+				StopPipeline(gomock.Any(), exporterID).
 				Return(testCase.returnError)
 
 			router.ServeHTTP(rec, req)

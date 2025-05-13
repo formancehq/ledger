@@ -27,10 +27,10 @@ type Storage interface {
 	OpenLedger(context.Context, string) (LogFetcher, *ledger.Ledger, error)
 	StorePipelineState(ctx context.Context, id string, lastLogID uint64) error
 
-	ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error)
-	CreateConnector(ctx context.Context, connector ledger.Connector) error
-	DeleteConnector(ctx context.Context, id string) error
-	GetConnector(ctx context.Context, id string) (*ledger.Connector, error)
+	ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)
+	CreateExporter(ctx context.Context, exporter ledger.Exporter) error
+	DeleteExporter(ctx context.Context, id string) error
+	GetExporter(ctx context.Context, id string) (*ledger.Exporter, error)
 
 	CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error
 	DeletePipeline(ctx context.Context, id string) error

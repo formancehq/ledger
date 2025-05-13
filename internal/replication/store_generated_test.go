@@ -80,18 +80,18 @@ func (m *MockStorage) EXPECT() *MockStorageMockRecorder {
 	return m.recorder
 }
 
-// CreateConnector mocks base method.
-func (m *MockStorage) CreateConnector(ctx context.Context, connector ledger.Connector) error {
+// CreateExporter mocks base method.
+func (m *MockStorage) CreateExporter(ctx context.Context, exporter ledger.Exporter) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateConnector", ctx, connector)
+	ret := m.ctrl.Call(m, "CreateExporter", ctx, exporter)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// CreateConnector indicates an expected call of CreateConnector.
-func (mr *MockStorageMockRecorder) CreateConnector(ctx, connector any) *gomock.Call {
+// CreateExporter indicates an expected call of CreateExporter.
+func (mr *MockStorageMockRecorder) CreateExporter(ctx, exporter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateConnector", reflect.TypeOf((*MockStorage)(nil).CreateConnector), ctx, connector)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExporter", reflect.TypeOf((*MockStorage)(nil).CreateExporter), ctx, exporter)
 }
 
 // CreatePipeline mocks base method.
@@ -108,18 +108,18 @@ func (mr *MockStorageMockRecorder) CreatePipeline(ctx, pipeline any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*MockStorage)(nil).CreatePipeline), ctx, pipeline)
 }
 
-// DeleteConnector mocks base method.
-func (m *MockStorage) DeleteConnector(ctx context.Context, id string) error {
+// DeleteExporter mocks base method.
+func (m *MockStorage) DeleteExporter(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteConnector", ctx, id)
+	ret := m.ctrl.Call(m, "DeleteExporter", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteConnector indicates an expected call of DeleteConnector.
-func (mr *MockStorageMockRecorder) DeleteConnector(ctx, id any) *gomock.Call {
+// DeleteExporter indicates an expected call of DeleteExporter.
+func (mr *MockStorageMockRecorder) DeleteExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockStorage)(nil).DeleteConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExporter", reflect.TypeOf((*MockStorage)(nil).DeleteExporter), ctx, id)
 }
 
 // DeletePipeline mocks base method.
@@ -136,19 +136,19 @@ func (mr *MockStorageMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*MockStorage)(nil).DeletePipeline), ctx, id)
 }
 
-// GetConnector mocks base method.
-func (m *MockStorage) GetConnector(ctx context.Context, id string) (*ledger.Connector, error) {
+// GetExporter mocks base method.
+func (m *MockStorage) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetConnector", ctx, id)
-	ret0, _ := ret[0].(*ledger.Connector)
+	ret := m.ctrl.Call(m, "GetExporter", ctx, id)
+	ret0, _ := ret[0].(*ledger.Exporter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetConnector indicates an expected call of GetConnector.
-func (mr *MockStorageMockRecorder) GetConnector(ctx, id any) *gomock.Call {
+// GetExporter indicates an expected call of GetExporter.
+func (mr *MockStorageMockRecorder) GetExporter(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConnector", reflect.TypeOf((*MockStorage)(nil).GetConnector), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExporter", reflect.TypeOf((*MockStorage)(nil).GetExporter), ctx, id)
 }
 
 // GetPipeline mocks base method.
@@ -166,21 +166,6 @@ func (mr *MockStorageMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*MockStorage)(nil).GetPipeline), ctx, id)
 }
 
-// ListConnectors mocks base method.
-func (m *MockStorage) ListConnectors(ctx context.Context) (*bunpaginate.Cursor[ledger.Connector], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListConnectors", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Connector])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListConnectors indicates an expected call of ListConnectors.
-func (mr *MockStorageMockRecorder) ListConnectors(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConnectors", reflect.TypeOf((*MockStorage)(nil).ListConnectors), ctx)
-}
-
 // ListEnabledPipelines mocks base method.
 func (m *MockStorage) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error) {
 	m.ctrl.T.Helper()
@@ -194,6 +179,21 @@ func (m *MockStorage) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeli
 func (mr *MockStorageMockRecorder) ListEnabledPipelines(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListEnabledPipelines", reflect.TypeOf((*MockStorage)(nil).ListEnabledPipelines), ctx)
+}
+
+// ListExporters mocks base method.
+func (m *MockStorage) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListExporters", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListExporters indicates an expected call of ListExporters.
+func (mr *MockStorageMockRecorder) ListExporters(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListExporters", reflect.TypeOf((*MockStorage)(nil).ListExporters), ctx)
 }
 
 // ListPipelines mocks base method.

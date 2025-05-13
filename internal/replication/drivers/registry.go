@@ -21,13 +21,13 @@ type Registry struct {
 	store        Store
 }
 
-func (c *Registry) RegisterConnector(name string, constructor any) {
-	if err := c.registerConnector(name, constructor); err != nil {
+func (c *Registry) RegisterDriver(name string, constructor any) {
+	if err := c.registerDriver(name, constructor); err != nil {
 		panic(err)
 	}
 }
 
-func (c *Registry) registerConnector(name string, constructor any) error {
+func (c *Registry) registerDriver(name string, constructor any) error {
 	typeOfConstructor := reflect.TypeOf(constructor)
 	if typeOfConstructor.Kind() != reflect.Func {
 		return errors.New("constructor must be a func")
@@ -50,9 +50,9 @@ func (c *Registry) registerConnector(name string, constructor any) error {
 		return fmt.Errorf("return 1 must be of kind %s", errorType.String())
 	}
 
-	connectorType := reflect.TypeOf(new(Driver)).Elem()
-	if !typeOfConstructor.Out(0).AssignableTo(connectorType) {
-		return fmt.Errorf("return 0 must be of kind %s", connectorType.String())
+	driverType := reflect.TypeOf(new(Driver)).Elem()
+	if !typeOfConstructor.Out(0).AssignableTo(driverType) {
+		return fmt.Errorf("return 0 must be of kind %s", driverType.String())
 	}
 
 	c.constructors[name] = constructor
@@ -65,23 +65,23 @@ func (c *Registry) extractConfigType(constructor any) any {
 }
 
 func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessage, error) {
-	connector, err := c.store.GetConnector(ctx, id)
+	exporter, err := c.store.GetExporter(ctx, id)
 	if err != nil {
 		switch {
 		case errors.Is(err, common.ErrNotFound):
-			return nil, nil, NewErrConnectorNotFound(id)
+			return nil, nil, NewErrExporterNotFound(id)
 		default:
 			return nil, nil, err
 		}
 	}
 
-	driverConstructor, ok := c.constructors[connector.Driver]
+	driverConstructor, ok := c.constructors[exporter.Driver]
 	if !ok {
-		return nil, nil, fmt.Errorf("cannot build connector '%s', not exists", id)
+		return nil, nil, fmt.Errorf("cannot build exporter '%s', not exists", id)
 	}
 	driverConfig := c.extractConfigType(driverConstructor)
 
-	if err := json.Unmarshal(connector.Config, driverConfig); err != nil {
+	if err := json.Unmarshal(exporter.Config, driverConfig); err != nil {
 		return nil, nil, err
 	}
 
@@ -97,33 +97,33 @@ func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessa
 		return nil, nil, ret[1].Interface().(error)
 	}
 
-	return ret[0].Interface().(Driver), connector.Config, nil
+	return ret[0].Interface().(Driver), exporter.Config, nil
 }
 
-func (c *Registry) GetConfigType(connectorName string) (any, error) {
-	connectorConstructor, ok := c.constructors[connectorName]
+func (c *Registry) GetConfigType(driverName string) (any, error) {
+	driverConstructor, ok := c.constructors[driverName]
 	if !ok {
-		return nil, NewErrDriverNotFound(connectorName)
+		return nil, NewErrDriverNotFound(driverName)
 	}
-	return c.extractConfigType(connectorConstructor), nil
+	return c.extractConfigType(driverConstructor), nil
 }
 
-func (c *Registry) ValidateConfig(connectorName string, rawConnectorConfig json.RawMessage) error {
+func (c *Registry) ValidateConfig(driverName string, rawDriverConfig json.RawMessage) error {
 
-	connectorConfig, err := c.GetConfigType(connectorName)
+	driverConfig, err := c.GetConfigType(driverName)
 	if err != nil {
-		return errors.Wrapf(err, "validating config for connector '%s'", connectorName)
+		return errors.Wrapf(err, "validating config for exporter '%s'", driverName)
 	}
 
-	if err := json.Unmarshal(rawConnectorConfig, connectorConfig); err != nil {
-		return NewErrMalformedConfiguration(connectorName, err)
+	if err := json.Unmarshal(rawDriverConfig, driverConfig); err != nil {
+		return NewErrMalformedConfiguration(driverName, err)
 	}
-	if v, ok := connectorConfig.(config.Defaulter); ok {
+	if v, ok := driverConfig.(config.Defaulter); ok {
 		v.SetDefaults()
 	}
-	if v, ok := connectorConfig.(config.Validator); ok {
+	if v, ok := driverConfig.(config.Validator); ok {
 		if err := v.Validate(); err != nil {
-			return NewErrInvalidConfiguration(connectorName, err)
+			return NewErrInvalidConfiguration(driverName, err)
 		}
 	}
 
@@ -132,14 +132,14 @@ func (c *Registry) ValidateConfig(connectorName string, rawConnectorConfig json.
 	}
 
 	bh := batchingHolder{}
-	if err := json.Unmarshal(rawConnectorConfig, &bh); err != nil {
-		return NewErrMalformedConfiguration(connectorName, err)
+	if err := json.Unmarshal(rawDriverConfig, &bh); err != nil {
+		return NewErrMalformedConfiguration(driverName, err)
 	}
 
 	bh.Batching.SetDefaults()
 
 	if err := bh.Batching.Validate(); err != nil {
-		return NewErrInvalidConfiguration(connectorName, err)
+		return NewErrInvalidConfiguration(driverName, err)
 	}
 
 	return nil

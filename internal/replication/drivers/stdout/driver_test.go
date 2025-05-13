@@ -11,19 +11,19 @@ import (
 	"testing"
 )
 
-func TestStdoutConnector(t *testing.T) {
+func TestStdoutDriver(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.TODO()
 
-	// Create our connector
-	connector, err := NewConnector(struct{}{}, logging.Testing())
+	// Create our driver
+	driver, err := NewDriver(struct{}{}, logging.Testing())
 	require.NoError(t, err)
-	connector.output = io.Discard
+	driver.output = io.Discard
 
-	require.NoError(t, connector.Start(ctx))
+	require.NoError(t, driver.Start(ctx))
 	t.Cleanup(func() {
-		require.NoError(t, connector.Stop(ctx))
+		require.NoError(t, driver.Stop(ctx))
 	})
 
 	// We will insert numberOfLogs logs split across numberOfModules modules
@@ -41,8 +41,8 @@ func TestStdoutConnector(t *testing.T) {
 		)
 	}
 
-	// Send all logs to the connector
-	itemsErrors, err := connector.Accept(ctx, logs...)
+	// Send all logs to the driver
+	itemsErrors, err := driver.Accept(ctx, logs...)
 	require.NoError(t, err)
 	require.Len(t, itemsErrors, numberOfLogs)
 	for index := range logs {

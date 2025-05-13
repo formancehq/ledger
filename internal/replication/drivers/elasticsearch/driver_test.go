@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-func TestElasticSearchConnector(t *testing.T) {
+func TestElasticSearchDriver(t *testing.T) {
 	t.Parallel()
 
 	dockerPool := docker.NewPool(t, logging.Testing())
@@ -27,11 +27,11 @@ func TestElasticSearchConnector(t *testing.T) {
 		Endpoint: srv.Endpoint(),
 	}
 	esConfig.SetDefaults()
-	connector, err := NewConnector(esConfig, logging.Testing())
+	driver, err := NewDriver(esConfig, logging.Testing())
 	require.NoError(t, err)
-	require.NoError(t, connector.Start(ctx))
+	require.NoError(t, driver.Start(ctx))
 	t.Cleanup(func() {
-		require.NoError(t, connector.Stop(ctx))
+		require.NoError(t, driver.Stop(ctx))
 	})
 
 	const (
@@ -48,7 +48,7 @@ func TestElasticSearchConnector(t *testing.T) {
 				Transaction: ledger.NewTransaction(),
 			})
 			log.ID = pointer.For(uint64(i))
-			itemsErrors, err := connector.Accept(ctx, drivers.NewLogWithLedger(ledgerName, log))
+			itemsErrors, err := driver.Accept(ctx, drivers.NewLogWithLedger(ledgerName, log))
 			require.NoError(t, err)
 			require.Len(t, itemsErrors, 1)
 			require.Nil(t, itemsErrors[0])
@@ -58,7 +58,7 @@ func TestElasticSearchConnector(t *testing.T) {
 
 	// Ensure all documents has been inserted
 	require.Eventually(t, func() bool {
-		rsp, err := connector.Client().Search(DefaultIndex).Do(ctx)
+		rsp, err := driver.Client().Search(DefaultIndex).Do(ctx)
 		require.NoError(t, err)
 
 		return int64(numberOfEvents) == rsp.Hits.TotalHits.Value

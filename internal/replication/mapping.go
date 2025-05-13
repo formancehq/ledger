@@ -9,28 +9,28 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func mapConnector(connector ledger.Connector) *grpc.Connector {
-	return &grpc.Connector{
-		Id: connector.ID,
+func mapExporter(exporter ledger.Exporter) *grpc.Exporter {
+	return &grpc.Exporter{
+		Id: exporter.ID,
 		CreatedAt: &timestamppb.Timestamp{
-			Seconds: connector.CreatedAt.Unix(),
-			Nanos:   int32(connector.CreatedAt.Nanosecond()),
+			Seconds: exporter.CreatedAt.Unix(),
+			Nanos:   int32(exporter.CreatedAt.Nanosecond()),
 		},
-		Config: mapConnectorConfiguration(connector.ConnectorConfiguration),
+		Config: mapExporterConfiguration(exporter.ExporterConfiguration),
 	}
 }
 
 func mapPipelineConfiguration(cfg ledger.PipelineConfiguration) *grpc.PipelineConfiguration {
 	return &grpc.PipelineConfiguration{
-		ConnectorId: cfg.ConnectorID,
+		ExporterId: cfg.ExporterID,
 		Ledger:      cfg.Ledger,
 	}
 }
 
 func mapPipelineConfigurationFromGRPC(cfg *grpc.PipelineConfiguration) ledger.PipelineConfiguration {
 	return ledger.PipelineConfiguration{
-		ConnectorID: cfg.ConnectorId,
-		Ledger:      cfg.Ledger,
+		ExporterID: cfg.ExporterId,
+		Ledger:     cfg.Ledger,
 	}
 }
 
@@ -76,23 +76,23 @@ func mapCursorFromGRPC[V any](ret *grpc.Cursor, data []V) *bunpaginate.Cursor[V]
 	}
 }
 
-func mapConnectorFromGRPC(connector *grpc.Connector) ledger.Connector {
-	return ledger.Connector{
-		ID:                     connector.Id,
-		CreatedAt:              time.New(connector.CreatedAt.AsTime()),
-		ConnectorConfiguration: mapConnectorConfigurationFromGRPC(connector.Config),
+func mapExporterFromGRPC(exporter *grpc.Exporter) ledger.Exporter {
+	return ledger.Exporter{
+		ID:                    exporter.Id,
+		CreatedAt:             time.New(exporter.CreatedAt.AsTime()),
+		ExporterConfiguration: mapExporterConfigurationFromGRPC(exporter.Config),
 	}
 }
 
-func mapConnectorConfigurationFromGRPC(from *grpc.ConnectorConfiguration) ledger.ConnectorConfiguration {
-	return ledger.ConnectorConfiguration{
+func mapExporterConfigurationFromGRPC(from *grpc.ExporterConfiguration) ledger.ExporterConfiguration {
+	return ledger.ExporterConfiguration{
 		Driver: from.Driver,
 		Config: json.RawMessage(from.Config),
 	}
 }
 
-func mapConnectorConfiguration(configuration ledger.ConnectorConfiguration) *grpc.ConnectorConfiguration {
-	return &grpc.ConnectorConfiguration{
+func mapExporterConfiguration(configuration ledger.ExporterConfiguration) *grpc.ExporterConfiguration {
+	return &grpc.ExporterConfiguration{
 		Driver: configuration.Driver,
 		Config: string(configuration.Config),
 	}

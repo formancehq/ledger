@@ -7,26 +7,26 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
-type Connector struct{}
+type Driver struct{}
 
-func (connector *Connector) Stop(_ context.Context) error {
+func (driver *Driver) Stop(_ context.Context) error {
 	return nil
 }
 
-func (connector *Connector) Start(_ context.Context) error {
+func (driver *Driver) Start(_ context.Context) error {
 	return nil
 }
 
-func (connector *Connector) ClearData(_ context.Context, _ string) error {
+func (driver *Driver) ClearData(_ context.Context, _ string) error {
 	return nil
 }
 
-func (connector *Connector) Accept(_ context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
+func (driver *Driver) Accept(_ context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 	return make([]error, len(logs)), nil
 }
 
-func NewConnector(_ struct{}, _ logging.Logger) (*Connector, error) {
-	return &Connector{}, nil
+func NewDriver(_ struct{}, _ logging.Logger) (*Driver, error) {
+	return &Driver{}, nil
 }
 
-var _ drivers.Driver = (*Connector)(nil)
+var _ drivers.Driver = (*Driver)(nil)

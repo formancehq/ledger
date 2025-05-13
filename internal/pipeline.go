@@ -9,18 +9,18 @@ import (
 )
 
 type PipelineConfiguration struct {
-	Ledger      string `json:"ledger" bun:"ledger"`
-	ConnectorID string `json:"connectorID" bun:"connector_id"`
+	Ledger     string `json:"ledger" bun:"ledger"`
+	ExporterID string `json:"exporterID" bun:"exporter_id"`
 }
 
 func (p PipelineConfiguration) String() string {
-	return fmt.Sprintf("%s/%s", p.Ledger, p.ConnectorID)
+	return fmt.Sprintf("%s/%s", p.Ledger, p.ExporterID)
 }
 
-func NewPipelineConfiguration(ledger, connectorID string) PipelineConfiguration {
+func NewPipelineConfiguration(ledger, exporterID string) PipelineConfiguration {
 	return PipelineConfiguration{
-		Ledger:      ledger,
-		ConnectorID: connectorID,
+		Ledger:     ledger,
+		ExporterID: exporterID,
 	}
 }
 

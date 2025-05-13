@@ -57,7 +57,7 @@ type PipelineHandler struct {
 	pipeline       ledger.Pipeline
 	stopChannel    chan chan error
 	store          LogFetcher
-	connector      drivers.Driver
+	exporter       drivers.Driver
 	pipelineConfig PipelineHandlerConfig
 	logger         logging.Logger
 }
@@ -98,14 +98,14 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			}
 
 			for {
-				_, err := p.connector.Accept(ctx, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
+				_, err := p.exporter.Accept(ctx, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
 					return drivers.LogWithLedger{
 						Log:    log,
 						Ledger: p.pipeline.Ledger,
 					}
 				})...)
 				if err != nil {
-					p.logger.Errorf("Error pushing data on connector: %s, waiting for: %s", err, p.pipelineConfig.PushRetryPeriod)
+					p.logger.Errorf("Error pushing data on exporter: %s, waiting for: %s", err, p.pipelineConfig.PushRetryPeriod)
 					select {
 					case <-ctx.Done():
 						return
@@ -154,7 +154,7 @@ func (p *PipelineHandler) Shutdown(ctx context.Context) error {
 func NewPipelineHandler(
 	pipeline ledger.Pipeline,
 	store LogFetcher,
-	connector drivers.Driver,
+	driver drivers.Driver,
 	logger logging.Logger,
 	opts ...PipelineOption,
 ) *PipelineHandler {
@@ -167,11 +167,11 @@ func NewPipelineHandler(
 		pipeline:       pipeline,
 		stopChannel:    make(chan chan error, 1),
 		store:          store,
-		connector:      connector,
+		exporter:       driver,
 		pipelineConfig: config,
 		logger: logger.
 			WithField("component", "pipeline").
 			WithField("module", pipeline.Ledger).
-			WithField("connector", pipeline.ConnectorID),
+			WithField("driver", pipeline.ExporterID),
 	}
 }
