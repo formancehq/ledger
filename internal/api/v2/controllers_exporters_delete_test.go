@@ -63,7 +63,7 @@ func TestDeleteExporter(t *testing.T) {
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
-			req := httptest.NewRequest(http.MethodDelete, "/_system/exporters/"+exporterID, nil)
+			req := httptest.NewRequest(http.MethodDelete, "/_/exporters/"+exporterID, nil)
 			req = req.WithContext(ctx)
 			rsp := httptest.NewRecorder()
 

@@ -29,7 +29,7 @@ func TestListExporters(t *testing.T) {
 
 	router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
 
-	req := httptest.NewRequest(http.MethodGet, "/_system/exporters", nil)
+	req := httptest.NewRequest(http.MethodGet, "/_/exporters", nil)
 	rec := httptest.NewRecorder()
 	req = req.WithContext(logging.TestingContext())
 

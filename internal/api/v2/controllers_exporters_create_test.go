@@ -68,7 +68,7 @@ func TestCreateExporter(t *testing.T) {
 			data, err := json.Marshal(testCase.exporterConfiguration)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodPost, "/_system/exporters", bytes.NewBuffer(data))
+			req := httptest.NewRequest(http.MethodPost, "/_/exporters", bytes.NewBuffer(data))
 			req = req.WithContext(ctx)
 			rsp := httptest.NewRecorder()
 
