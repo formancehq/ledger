@@ -124,6 +124,40 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(rsp.Data).To(Equal(expectedTxs))
 			})
 		})
+		When("listing transactions using a page size of 5", func() {
+			var (
+				rsp *components.V2TransactionsCursorResponseCursor
+				err error
+			)
+			JustBeforeEach(func() {
+				rsp, err = ListTransactions(
+					ctx,
+					testServer.GetValue(),
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(int64(5)),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			When("using next page with a page size of 10", func() {
+				JustBeforeEach(func() {
+					rsp, err = ListTransactions(
+						ctx,
+						testServer.GetValue(),
+						operations.V2ListTransactionsRequest{
+							Ledger:   "default",
+							Cursor:   rsp.Next,
+							PageSize: pointer.For(int64(10)),
+						},
+					)
+					Expect(err).ToNot(HaveOccurred())
+				})
+				It("Should return 10 elements", func() {
+					Expect(rsp.Data).To(HaveLen(10))
+				})
+			})
+		})
 		When(fmt.Sprintf("listing transactions using page size of %d", pageSize), func() {
 			var (
 				rsp *components.V2TransactionsCursorResponseCursor
