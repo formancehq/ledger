@@ -19,7 +19,12 @@ func listTransactions(paginationConfig common.PaginationConfig) http.HandlerFunc
 			paginationColumn = "timestamp"
 		}
 
-		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, paginationColumn, bunpaginate.OrderDesc)
+		order := bunpaginate.Order(bunpaginate.OrderDesc)
+		if api.QueryParamBool(r, "reverse") {
+			order = bunpaginate.OrderAsc
+		}
+
+		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, paginationColumn, order)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
