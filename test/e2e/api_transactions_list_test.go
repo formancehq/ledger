@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"math/big"
+	"slices"
 	"sort"
 	"time"
 
@@ -102,6 +103,29 @@ var _ = Context("Ledger transactions list API tests", func() {
 		})
 		AfterEach(func() {
 			transactions = nil
+		})
+		When("listing transaction using reverse option", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Expand:   pointer.For("volumes,effectiveVolumes"),
+						Reverse:  pointer.For(true),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("Should be ok", func() {
+				expectedTxs := transactions[pageSize:]
+				slices.Reverse(expectedTxs)
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(expectedTxs))
+			})
 		})
 		When(fmt.Sprintf("listing transactions using page size of %d", pageSize), func() {
 			var (
