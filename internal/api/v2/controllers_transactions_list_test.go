@@ -151,7 +151,9 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{})},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{},
+			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+			},
 		},
 		{
 			name: "using invalid cursor",
