@@ -63,36 +63,22 @@ func getExpand(r *http.Request) []string {
 }
 
 func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, modifiers ...func(*v) error) (*ledgercontroller.OffsetPaginatedQuery[v], error) {
-	return bunpaginate.Extract[ledgercontroller.OffsetPaginatedQuery[v]](r, func() (*ledgercontroller.OffsetPaginatedQuery[v], error) {
+	ret, err := bunpaginate.Extract[ledgercontroller.OffsetPaginatedQuery[v]](r, func() (*ledgercontroller.OffsetPaginatedQuery[v], error) {
 		rq, err := getResourceQuery[v](r, modifiers...)
-		if err != nil {
-			return nil, err
-		}
-
-		pageSize, err := bunpaginate.GetPageSize(
-			r,
-			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
-			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
-		)
 		if err != nil {
 			return nil, err
 		}
 
 		return &ledgercontroller.OffsetPaginatedQuery[v]{
-			PageSize: pageSize,
-			Options:  *rq,
+			Options: *rq,
 		}, nil
 	})
-}
+	if err != nil {
+		return nil, err
+	}
 
-func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
-	return bunpaginate.Extract[ledgercontroller.ColumnPaginatedQuery[v]](r, func() (*ledgercontroller.ColumnPaginatedQuery[v], error) {
-		rq, err := getResourceQuery[v](r, modifiers...)
-		if err != nil {
-			return nil, err
-		}
-
-		pageSize, err := bunpaginate.GetPageSize(
+	if ret.PageSize == 0 || r.URL.Query().Get(bunpaginate.QueryKeyPageSize) != "" {
+		ret.PageSize, err = bunpaginate.GetPageSize(
 			r,
 			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
 			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
@@ -100,14 +86,40 @@ func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.Pag
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	return ret, nil
+}
+
+func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+	ret, err := bunpaginate.Extract[ledgercontroller.ColumnPaginatedQuery[v]](r, func() (*ledgercontroller.ColumnPaginatedQuery[v], error) {
+		rq, err := getResourceQuery[v](r, modifiers...)
+		if err != nil {
+			return nil, err
+		}
 
 		return &ledgercontroller.ColumnPaginatedQuery[v]{
-			PageSize: pageSize,
-			Column:   defaultPaginationColumn,
-			Order:    pointer.For(order),
-			Options:  *rq,
+			Column:  defaultPaginationColumn,
+			Order:   pointer.For(order),
+			Options: *rq,
 		}, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	if ret.PageSize == 0 || r.URL.Query().Get(bunpaginate.QueryKeyPageSize) != "" {
+		ret.PageSize, err = bunpaginate.GetPageSize(
+			r,
+			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ret, nil
 }
 
 func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*ledgercontroller.ResourceQuery[v], error) {
