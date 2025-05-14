@@ -13,7 +13,12 @@ import (
 func deleteLedgerMetadata(b system.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := b.DeleteLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), chi.URLParam(r, "key")); err != nil {
-			common.HandleCommonErrors(w, r, err)
+			switch {
+			case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+				api.BadRequest(w, common.ErrValidation, err)
+			default:
+				common.HandleCommonErrors(w, r, err)
+			}
 			return
 		}
 

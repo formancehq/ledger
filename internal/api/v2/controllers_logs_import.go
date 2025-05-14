@@ -30,6 +30,8 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrImport{}):
 			api.BadRequest(w, "IMPORT", err)
+		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

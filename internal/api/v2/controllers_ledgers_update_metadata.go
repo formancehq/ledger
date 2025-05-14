@@ -22,7 +22,12 @@ func updateLedgerMetadata(systemController systemcontroller.Controller) http.Han
 		}
 
 		if err := systemController.UpdateLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), m); err != nil {
-			common.HandleCommonErrors(w, r, err)
+			switch {
+			case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+				api.BadRequest(w, common.ErrValidation, err)
+			default:
+				common.HandleCommonErrors(w, r, err)
+			}
 			return
 		}
 
