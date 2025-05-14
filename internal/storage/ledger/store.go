@@ -10,7 +10,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
@@ -140,14 +139,12 @@ func (store *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
 }
 
-func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {
+func validateAddressFilter(operator string, value any) error {
 	if operator != "$match" {
 		return fmt.Errorf("'address' column can only be used with $match, operator used is: %s", operator)
 	}
-	if value, ok := value.(string); !ok {
+	if _, ok := value.(string); !ok {
 		return fmt.Errorf("invalid 'address' filter")
-	} else if isSegmentedAddress(value) && !ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
-		return fmt.Errorf("feature %s must be 'ON' to use segments address", features.FeatureIndexAddressSegments)
 	}
 
 	return nil

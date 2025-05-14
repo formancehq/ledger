@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
@@ -28,7 +27,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 		natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
-	testServer := ginkgo.DeferTestServer(
+	testServer := DeferTestServer(
 		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),

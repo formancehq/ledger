@@ -31,8 +31,8 @@ func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext
 }
 
 func (h logsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
-	switch {
-	case property == "date" || property == "id":
+	switch property {
+	case "date", "id":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	default:
 		return "", nil, fmt.Errorf("unknown key '%s' when building query", property)

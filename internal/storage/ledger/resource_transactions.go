@@ -24,7 +24,7 @@ func (h transactionsResourceHandler) Filters() []common.Filter {
 			Name: "account",
 			Validators: []common.PropertyValidator{
 				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(h.store.ledger, operator, value)
+					return validateAddressFilter(operator, value)
 				}),
 			},
 		},
@@ -32,7 +32,7 @@ func (h transactionsResourceHandler) Filters() []common.Filter {
 			Name: "source",
 			Validators: []common.PropertyValidator{
 				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(h.store.ledger, operator, value)
+					return validateAddressFilter(operator, value)
 				}),
 			},
 		},
@@ -40,7 +40,7 @@ func (h transactionsResourceHandler) Filters() []common.Filter {
 			Name: "destination",
 			Validators: []common.PropertyValidator{
 				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(h.store.ledger, operator, value)
+					return validateAddressFilter(operator, value)
 				}),
 			},
 		},
