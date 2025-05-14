@@ -48,11 +48,11 @@ var _ = Context("Idempotency key error handling tests", func() {
 	Context("when reusing an idempotency key with a different request body", func() {
 		var (
 			err       error
-			idempKey  = "test-idempotency-key"
 			timestamp = time.Now().Round(time.Second).UTC()
 		)
 
 		It("should return a 400 Bad Request error", func(specContext SpecContext) {
+			idempKey := "test-idempotency-key-tx"
 			firstReq := operations.V2CreateTransactionRequest{
 				IdempotencyKey: pointer.For(idempKey),
 				V2PostTransaction: components.V2PostTransaction{
@@ -95,6 +95,7 @@ var _ = Context("Idempotency key error handling tests", func() {
 		})
 
 		It("should return a 400 Bad Request when adding metadata with reused idempotency key", func(specContext SpecContext) {
+			idempKey := "test-idempotency-key-meta"
 			createReq := operations.V2CreateTransactionRequest{
 				V2PostTransaction: components.V2PostTransaction{
 					Postings: []components.V2Posting{
