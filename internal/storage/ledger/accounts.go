@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	. "github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"regexp"
+	"strings"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -31,7 +33,8 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 
 			type AccountWithLedger struct {
 				ledger.Account `bun:",extend"`
-				Ledger         string `bun:"ledger,type:varchar"`
+				Ledger         string   `bun:"ledger,type:varchar"`
+				AddressArray   []string `bun:"address_array,type:jsonb"`
 			}
 
 			accounts := make([]AccountWithLedger, 0)
@@ -42,6 +45,7 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 						Address:  account,
 						Metadata: accountMetadata,
 					},
+					AddressArray: strings.Split(account, ":"),
 				})
 			}
 
@@ -99,8 +103,18 @@ func (store *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Acco
 			span := trace.SpanFromContext(ctx)
 			span.SetAttributes(attribute.StringSlice("accounts", Map(accounts, (*ledger.Account).GetAddress)))
 
+			type account struct {
+				*ledger.Account `bun:",extend"`
+				AddressArray    []string `bun:"address_array,type:jsonb"`
+			}
+
 			ret, err := store.db.NewInsert().
-				Model(&accounts).
+				Model(pointer.For(Map(accounts, func(from *ledger.Account) account {
+					return account{
+						Account:      from,
+						AddressArray: strings.Split(from.Address, ":"),
+					}
+				}))).
 				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				On("conflict (ledger, address) do update").
 				Set("first_usage = case when excluded.first_usage < accounts.first_usage then excluded.first_usage else accounts.first_usage end").

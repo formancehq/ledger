@@ -116,8 +116,27 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		store.tracer,
 		store.insertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
+			type transaction struct {
+				*ledger.Transaction `bun:",extend"`
+				Sources             []string         `bun:"sources,notnull"`
+				Destinations        []string         `bun:"destinations,notnull"`
+				SourcesArrays       []map[string]any `bun:"sources_arrays,notnull"`
+				DestinationsArrays  []map[string]any `bun:"destinations_arrays,notnull"`
+			}
+
+			sources := Map(tx.Postings, ledger.Posting.GetSource)
+			sourcesArrays := Map(sources, explodeAddress)
+			destinations := Map(tx.Postings, ledger.Posting.GetDestination)
+			destinationsArrays := Map(destinations, explodeAddress)
+
 			query := store.db.NewInsert().
-				Model(tx).
+				Model(&transaction{
+					Transaction:        tx,
+					Sources:            sources,
+					Destinations:       destinations,
+					SourcesArrays:      sourcesArrays,
+					DestinationsArrays: destinationsArrays,
+				}).
 				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Value("ledger", "?", store.ledger.Name).
 				Returning("id, timestamp, inserted_at, updated_at")

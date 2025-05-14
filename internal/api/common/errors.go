@@ -40,5 +40,6 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	otlp.RecordError(r.Context(), err)
 	logging.FromContext(r.Context()).Error(err)
+	//nolint:staticcheck
 	api.WriteErrorResponse(w, http.StatusInternalServerError, api.ErrorInternal, errors.New("Internal error. Consult logs/traces to have more details."))
 }

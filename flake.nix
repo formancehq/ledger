@@ -1,5 +1,5 @@
 {
-  description = "A Nix-flake-based Go 1.23 development environment";
+  description = "A Nix-flake-based Go 1.24 development environment";
 
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
@@ -12,7 +12,7 @@
 
   outputs = { self, nixpkgs, nur }:
     let
-      goVersion = 23;
+      goVersion = 24;
 
       supportedSystems = [
         "x86_64-linux"
