@@ -4,6 +4,8 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/pointer"
+	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
@@ -162,6 +164,189 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					}))
 				})
 			})
+		})
+	})
+
+	When("using idempotency keys with account metadata", func() {
+		var (
+			metadata = map[string]string{
+				"type": "checking",
+				"tier": "premium",
+			}
+		)
+
+		It("should succeed when using the same idempotency key with same data", func() {
+			// First call with idempotency key
+			err := AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody:    metadata,
+					Address:        "account-ik-test",
+					Ledger:         "default",
+					IdempotencyKey: pointer.For("account-meta-key-1"),
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Second call with same idempotency key and same data
+			err = AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody:    metadata,
+					Address:        "account-ik-test",
+					Ledger:         "default",
+					IdempotencyKey: pointer.For("account-meta-key-1"),
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify metadata was set correctly
+			response, err := GetAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2GetAccountRequest{
+					Address: "account-ik-test",
+					Ledger:  "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Metadata).Should(Equal(metadata))
+		})
+
+		It("should fail when using the same idempotency key with different data", func() {
+			// First call with idempotency key
+			err := AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody:    metadata,
+					Address:        "account-ik-test-2",
+					Ledger:         "default",
+					IdempotencyKey: pointer.For("account-meta-key-2"),
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Second call with same idempotency key but different data
+			err = AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody: map[string]string{
+						"type": "savings",
+						"tier": "basic",
+					},
+					Address:        "account-ik-test-2",
+					Ledger:         "default",
+					IdempotencyKey: pointer.For("account-meta-key-2"),
+				},
+			)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+		})
+
+		It("should succeed when deleting metadata with idempotency key", func() {
+			// First add metadata
+			err := AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody: metadata,
+					Address:     "account-ik-delete-test",
+					Ledger:      "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			ikPtr := pointer.For("account-delete-key-1")
+			// Enregistrer l'idempotency key
+			RegisterAccountMetadataIK("default", "account-ik-delete-test", "type", ikPtr)
+
+			// Delete metadata with idempotency key
+			err = DeleteAccountMetadataWithIK(
+				ctx,
+				testServer.GetValue(),
+				operations.V2DeleteAccountMetadataRequest{
+					Address: "account-ik-delete-test",
+					Ledger:  "default",
+					Key:     "type",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Second delete with same idempotency key should succeed (idempotent)
+			err = DeleteAccountMetadataWithIK(
+				ctx,
+				testServer.GetValue(),
+				operations.V2DeleteAccountMetadataRequest{
+					Address: "account-ik-delete-test",
+					Ledger:  "default",
+					Key:     "type",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify metadata was partially deleted
+			response, err := GetAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2GetAccountRequest{
+					Address: "account-ik-delete-test",
+					Ledger:  "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Metadata).Should(Equal(map[string]string{
+				"tier": "premium",
+			}))
+		})
+
+		It("should fail when deleting metadata with same idempotency key but different parameters", func() {
+			// First add metadata
+			err := AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody: metadata,
+					Address:     "account-ik-delete-test-2",
+					Ledger:      "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			ikPtr := pointer.For("account-delete-key-2")
+			// Enregistrer l'idempotency key pour "type"
+			RegisterAccountMetadataIK("default", "account-ik-delete-test-2", "type", ikPtr)
+
+			// Delete "type" metadata with idempotency key
+			err = DeleteAccountMetadataWithIK(
+				ctx,
+				testServer.GetValue(),
+				operations.V2DeleteAccountMetadataRequest{
+					Address: "account-ik-delete-test-2",
+					Ledger:  "default",
+					Key:     "type",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Enregistrer la même idempotency key mais pour "tier"
+			RegisterAccountMetadataIK("default", "account-ik-delete-test-2", "tier", ikPtr)
+
+			// Try to delete "tier" with same idempotency key should fail
+			err = DeleteAccountMetadataWithIK(
+				ctx,
+				testServer.GetValue(),
+				operations.V2DeleteAccountMetadataRequest{
+					Address: "account-ik-delete-test-2",
+					Ledger:  "default",
+					Key:     "tier", // Different key
+				},
+			)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 		})
 	})
 })

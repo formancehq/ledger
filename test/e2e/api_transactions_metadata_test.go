@@ -3,13 +3,15 @@
 package test_suite
 
 import (
+	"math/big"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/logging"
+	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	"math/big"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -119,6 +121,160 @@ var _ = Context("Ledger accounts list API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.Metadata).Should(Equal(metadata))
+			})
+
+			When("deleting a metadata with idempotency key", func() {
+				It("should succeed on first call and be idempotent on second call", func() {
+					ikPtr := pointer.For("delete-key-1")
+					// Enregistrer l'idempotency key
+					RegisterTransactionMetadataIK("default", rsp.ID, "foo", ikPtr)
+
+					// First call to delete metadata with idempotency key
+					err := DeleteTransactionMetadataWithIK(
+						ctx,
+						testServer.GetValue(),
+						operations.V2DeleteTransactionMetadataRequest{
+							Ledger: "default",
+							ID:     rsp.ID,
+							Key:    "foo",
+						},
+					)
+					Expect(err).To(Succeed())
+
+					// Verify metadata was deleted
+					response, err := GetTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2GetTransactionRequest{
+							Ledger: "default",
+							ID:     rsp.ID,
+						},
+					)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(response.Metadata).Should(BeEmpty())
+
+					// Second call with same idempotency key should succeed
+					err = DeleteTransactionMetadataWithIK(
+						ctx,
+						testServer.GetValue(),
+						operations.V2DeleteTransactionMetadataRequest{
+							Ledger: "default",
+							ID:     rsp.ID,
+							Key:    "foo",
+						},
+					)
+					Expect(err).To(Succeed())
+				})
+
+				It("should fail when using the same idempotency key with different parameters", func() {
+					// Add two metadata entries
+					err := AddMetadataToTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataOnTransactionRequest{
+							RequestBody: map[string]string{
+								"foo": "bar",
+								"baz": "qux",
+							},
+							Ledger: "default",
+							ID:     rsp.ID,
+						},
+					)
+					Expect(err).To(Succeed())
+
+					ikPtr := pointer.For("delete-key-2")
+					// Enregistrer l'idempotency key pour "foo"
+					RegisterTransactionMetadataIK("default", rsp.ID, "foo", ikPtr)
+
+					// First call to delete "foo" with idempotency key
+					err = DeleteTransactionMetadataWithIK(
+						ctx,
+						testServer.GetValue(),
+						operations.V2DeleteTransactionMetadataRequest{
+							Ledger: "default",
+							ID:     rsp.ID,
+							Key:    "foo",
+						},
+					)
+					Expect(err).To(Succeed())
+
+					// Enregistrer la même idempotency key mais pour "baz"
+					RegisterTransactionMetadataIK("default", rsp.ID, "baz", ikPtr)
+
+					// Second call with same idempotency key but different key to delete
+					err = DeleteTransactionMetadataWithIK(
+						ctx,
+						testServer.GetValue(),
+						operations.V2DeleteTransactionMetadataRequest{
+							Ledger: "default",
+							ID:     rsp.ID,
+							Key:    "baz", // Different key
+						},
+					)
+					Expect(err).To(HaveOccurred())
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
+			})
+
+			When("using the same idempotency key with same data", func() {
+				It("should succeed and return the same result", func() {
+					err := AddMetadataToTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataOnTransactionRequest{
+							RequestBody:    metadata,
+							Ledger:         "default",
+							ID:             rsp.ID,
+							IdempotencyKey: pointer.For("test-idempotency-key"),
+						},
+					)
+					Expect(err).To(Succeed())
+
+					// Second call with same idempotency key and same data
+					err = AddMetadataToTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataOnTransactionRequest{
+							RequestBody:    metadata,
+							Ledger:         "default",
+							ID:             rsp.ID,
+							IdempotencyKey: pointer.For("test-idempotency-key"),
+						},
+					)
+					Expect(err).To(Succeed())
+				})
+			})
+
+			When("using the same idempotency key with different data", func() {
+				It("should fail with ValidationError", func() {
+					err := AddMetadataToTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataOnTransactionRequest{
+							RequestBody:    metadata,
+							Ledger:         "default",
+							ID:             rsp.ID,
+							IdempotencyKey: pointer.For("test-idempotency-key-2"),
+						},
+					)
+					Expect(err).To(Succeed())
+
+					// Second call with same idempotency key but different data
+					err = AddMetadataToTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataOnTransactionRequest{
+							RequestBody: map[string]string{
+								"foo": "different-value",
+							},
+							Ledger:         "default",
+							ID:             rsp.ID,
+							IdempotencyKey: pointer.For("test-idempotency-key-2"),
+						},
+					)
+					Expect(err).To(HaveOccurred())
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
 			})
 		})
 	})

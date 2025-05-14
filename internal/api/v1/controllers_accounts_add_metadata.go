@@ -2,12 +2,14 @@ package v1
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/pkg/accounts"
 	"net/http"
 	"net/url"
 
+	"github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/pkg/accounts"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -38,7 +40,14 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		common.HandleCommonErrors(w, r, err)
+		switch {
+		case errors.Is(err, ledger.ErrIdempotencyKeyConflict{}):
+			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
+		case errors.Is(err, ledger.ErrInvalidIdempotencyInput{}):
+			api.BadRequest(w, common.ErrValidation, err)
+		default:
+			common.HandleCommonErrors(w, r, err)
+		}
 		return
 	}
 
