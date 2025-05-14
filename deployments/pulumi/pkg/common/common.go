@@ -12,6 +12,7 @@ type CommonArgs struct {
 	Tag             pulumix.Input[string]
 	ImagePullPolicy pulumix.Input[string]
 	Debug           pulumix.Input[bool]
+	Registry        pulumix.Input[string]
 }
 
 func (args *CommonArgs) SetDefaults() {

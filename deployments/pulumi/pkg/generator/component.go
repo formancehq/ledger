@@ -149,7 +149,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 				corev1.ContainerArgs{
 					Name: pulumi.String("generator"),
 					Args: generatorArgs.ToOutput(ctx.Context()).Untyped().(pulumi.StringArrayOutput),
-					Image: utils.GetImage(pulumi.String("ledger-generator"), pulumix.Apply2(args.GeneratorVersion, args.Tag, func(generatorVersion string, ledgerVersion string) string {
+					Image: utils.GetImage(args.Registry, pulumi.String("ledger-generator"), pulumix.Apply2(args.GeneratorVersion, args.Tag, func(generatorVersion string, ledgerVersion string) string {
 						if generatorVersion == "" {
 							return ledgerVersion
 						}

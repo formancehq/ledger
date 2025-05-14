@@ -69,7 +69,7 @@ func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
 	}
 	return &storage.RDSPostMigrateSnapshotArgs{
 		SnapshotIdentifier: pulumi.String(a.SnapshotIdentifier),
-		RetainsOnDelete: a.RetainsOnDelete,
+		RetainsOnDelete:    a.RetainsOnDelete,
 	}
 }
 
@@ -139,7 +139,7 @@ func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
 		InstanceClass:              pulumix.Val(rds.InstanceType(a.InstanceClass)),
 		Engine:                     pulumi.String(a.Engine),
 		EngineVersion:              pulumi.String(a.EngineVersion),
-		RetainsOnDelete: a.RetainsOnDelete,
+		RetainsOnDelete:            a.RetainsOnDelete,
 	}
 }
 
@@ -246,7 +246,7 @@ func (s Storage) toInput() storage.Args {
 		RDS:                      s.RDS.toInput(),
 		ConnectivityDatabaseArgs: s.Connectivity.toInput(),
 		DisableUpgrade:           pulumix.Val(s.DisableUpgrade),
-		Service: 				s.Service.toInput(),
+		Service:                  s.Service.toInput(),
 	}
 }
 
@@ -460,6 +460,9 @@ type Common struct {
 
 	// Debug is whether to enable debug mode
 	Debug bool `json:"debug" yaml:"debug"`
+
+	// Registry is the registry for the ledger
+	Registry string `json:"registry" yaml:"registry"`
 }
 
 func (c Common) toInput() common.CommonArgs {
@@ -469,6 +472,7 @@ func (c Common) toInput() common.CommonArgs {
 		Tag:             pulumix.Val(c.Tag),
 		ImagePullPolicy: pulumix.Val(c.ImagePullPolicy),
 		Debug:           pulumix.Val(c.Debug),
+		Registry:        pulumix.Val(c.Registry),
 	}
 }
 

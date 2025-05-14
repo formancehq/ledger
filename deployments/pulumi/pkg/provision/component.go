@@ -126,7 +126,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 								pulumi.String("--state-store"),
 								pulumi.Sprintf("k8s:///%s/provisioner", args.Namespace),
 							},
-							Image: utils.GetImage(pulumi.String("ledger-provisioner"), pulumix.Apply2(args.Tag, args.ProvisionerVersion, func(ledgerVersion, provisionerVersion string) string {
+							Image: utils.GetImage(args.Registry, pulumi.String("ledger-provisioner"), pulumix.Apply2(args.Tag, args.ProvisionerVersion, func(ledgerVersion, provisionerVersion string) string {
 								if provisionerVersion != "" {
 									return provisionerVersion
 								}

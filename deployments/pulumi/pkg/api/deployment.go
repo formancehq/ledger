@@ -153,7 +153,7 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:            pulumi.String("ledger-api"),
-							Image:           utils.GetMainImage(args.Tag),
+							Image:           utils.GetMainImage(args.Registry, args.Tag),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 							Args: pulumi.StringArray{
 								pulumi.String("serve"),
