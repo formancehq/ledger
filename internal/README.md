@@ -72,6 +72,8 @@ import "github.com/formancehq/ledger/internal"
   - [func \(a PostCommitVolumes\) Merge\(volumes PostCommitVolumes\) PostCommitVolumes](<#PostCommitVolumes.Merge>)
 - [type Posting](<#Posting>)
   - [func NewPosting\(source string, destination string, asset string, amount \*big.Int\) Posting](<#NewPosting>)
+  - [func \(p Posting\) GetDestination\(\) string](<#Posting.GetDestination>)
+  - [func \(p Posting\) GetSource\(\) string](<#Posting.GetSource>)
 - [type Postings](<#Postings>)
   - [func \(p Postings\) Reverse\(\) Postings](<#Postings.Reverse>)
   - [func \(p Postings\) Validate\(\) \(int, error\)](<#Postings.Validate>)
@@ -798,7 +800,7 @@ type Posting struct {
 ```
 
 <a name="NewPosting"></a>
-### func [NewPosting](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L18>)
+### func [NewPosting](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L26>)
 
 ```go
 func NewPosting(source string, destination string, asset string, amount *big.Int) Posting
@@ -806,8 +808,26 @@ func NewPosting(source string, destination string, asset string, amount *big.Int
 
 
 
+<a name="Posting.GetDestination"></a>
+### func \(Posting\) [GetDestination](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L22>)
+
+```go
+func (p Posting) GetDestination() string
+```
+
+
+
+<a name="Posting.GetSource"></a>
+### func \(Posting\) [GetSource](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L18>)
+
+```go
+func (p Posting) GetSource() string
+```
+
+
+
 <a name="Postings"></a>
-## type [Postings](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L27>)
+## type [Postings](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L35>)
 
 
 
@@ -816,7 +836,7 @@ type Postings []Posting
 ```
 
 <a name="Postings.Reverse"></a>
-### func \(Postings\) [Reverse](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L29>)
+### func \(Postings\) [Reverse](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L37>)
 
 ```go
 func (p Postings) Reverse() Postings
@@ -825,7 +845,7 @@ func (p Postings) Reverse() Postings
 
 
 <a name="Postings.Validate"></a>
-### func \(Postings\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L44>)
+### func \(Postings\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/posting.go#L52>)
 
 ```go
 func (p Postings) Validate() (int, error)

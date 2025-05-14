@@ -9,5 +9,5 @@ import (
 func TestFeatures(t *testing.T) {
 	f := features.MinimalFeatureSet.With(features.FeatureMovesHistory, "DISABLED")
 	require.Equal(t, "DISABLED", f[features.FeatureMovesHistory])
-	require.Equal(t, "AMH=DISABLED,HL=DISABLED,IAS=OFF,ITA=OFF,MH=DISABLED,MHPCEV=DISABLED,TMH=DISABLED", f.String())
+	require.Equal(t, "AMH=DISABLED,HL=DISABLED,MH=DISABLED,MHPCEV=DISABLED,TMH=DISABLED", f.String())
 }

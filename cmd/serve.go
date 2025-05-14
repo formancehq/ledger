@@ -151,8 +151,8 @@ func NewServeCommand() *cobra.Command {
 
 			if cfg.WorkerEnabled {
 				options = append(options, worker.NewFXModule(worker.ModuleConfig{
-					Schedule:     cfg.WorkerConfiguration.HashLogsBlockCRONSpec,
-					MaxBlockSize: cfg.WorkerConfiguration.HashLogsBlockMaxSize,
+					Schedule:     cfg.HashLogsBlockCRONSpec,
+					MaxBlockSize: cfg.HashLogsBlockMaxSize,
 				}))
 			}
 

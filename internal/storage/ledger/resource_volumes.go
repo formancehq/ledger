@@ -21,7 +21,7 @@ func (h volumesResourceHandler) Filters() []common.Filter {
 			Aliases: []string{"account"},
 			Validators: []common.PropertyValidator{
 				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(h.store.ledger, operator, value)
+					return validateAddressFilter(operator, value)
 				}),
 			},
 		},

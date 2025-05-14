@@ -18,7 +18,7 @@ import (
 const MinimalSchemaVersion = 26
 
 type DefaultBucket struct {
-	name   string
+	name string
 
 	tracer trace.Tracer
 }
@@ -140,37 +140,6 @@ var ledgerSetups = []ledgerSetup{
 	},
 	{
 		requireFeatures: features.FeatureSet{
-			features.FeatureIndexTransactionAccounts: "ON",
-		},
-		script: `
-		create trigger "transaction_set_addresses_{{.ID}}"
-		before insert
-		on "{{.Bucket}}"."transactions"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".set_transaction_addresses();	
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments:     "ON",
-			features.FeatureIndexTransactionAccounts: "ON",
-		},
-		script: `
-		create trigger "transaction_set_addresses_segments_{{.ID}}"
-		before insert
-		on "{{.Bucket}}"."transactions"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".set_transaction_addresses_segments();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
 			features.FeatureAccountMetadataHistory: "SYNC",
 		},
 		script: `
@@ -197,21 +166,6 @@ var ledgerSetups = []ledgerSetup{
 			new.ledger = '{{.Name}}'
 		)
 		execute procedure "{{.Bucket}}".insert_account_metadata_history();
-		`,
-	},
-	{
-		requireFeatures: features.FeatureSet{
-			features.FeatureIndexAddressSegments: "ON",
-		},
-		script: `
-		create trigger "accounts_set_address_array_{{.ID}}"
-		before insert
-		on "{{.Bucket}}"."accounts"
-		for each row
-		when (
-			new.ledger = '{{.Name}}'
-		)
-		execute procedure "{{.Bucket}}".set_address_array_for_account();
 		`,
 	},
 	{

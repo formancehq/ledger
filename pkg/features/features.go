@@ -22,11 +22,6 @@ const (
 	FeatureAccountMetadataHistory = "ACCOUNT_METADATA_HISTORY"
 	// FeatureTransactionMetadataHistory is used to defined it the transaction metadata must be historized.
 	FeatureTransactionMetadataHistory = "TRANSACTION_METADATA_HISTORY"
-	// FeatureIndexAddressSegments is used to defined it we want to index segments of accounts address.
-	// Without this feature, the ledger will not allow filtering on partial account address.
-	FeatureIndexAddressSegments = "INDEX_ADDRESS_SEGMENTS"
-	// FeatureIndexTransactionAccounts is used to defined it we want to index accounts used in a transaction.
-	FeatureIndexTransactionAccounts = "INDEX_TRANSACTION_ACCOUNTS"
 )
 
 var (
@@ -36,8 +31,6 @@ var (
 		FeatureHashLogs:                               "SYNC",
 		FeatureAccountMetadataHistory:                 "SYNC",
 		FeatureTransactionMetadataHistory:             "SYNC",
-		FeatureIndexAddressSegments:                   "ON",
-		FeatureIndexTransactionAccounts:               "ON",
 	}
 	MinimalFeatureSet = FeatureSet{
 		FeatureMovesHistory:                           "OFF",
@@ -45,8 +38,6 @@ var (
 		FeatureHashLogs:                               "DISABLED",
 		FeatureAccountMetadataHistory:                 "DISABLED",
 		FeatureTransactionMetadataHistory:             "DISABLED",
-		FeatureIndexAddressSegments:                   "OFF",
-		FeatureIndexTransactionAccounts:               "OFF",
 	}
 	// notes: keep the default value as first option for benchmarks
 	FeatureConfigurations = map[string][]string{
@@ -55,8 +46,6 @@ var (
 		FeatureHashLogs:                               {"SYNC", "ASYNC", "DISABLED"},
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
-		FeatureIndexAddressSegments:                   {"ON", "OFF"},
-		FeatureIndexTransactionAccounts:               {"ON", "OFF"},
 	}
 )
 

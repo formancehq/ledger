@@ -72,7 +72,8 @@ func LedgerMiddleware(
 					return
 				}
 				if !isUpToDate {
-					api.BadRequest(w, ErrOutdatedSchema, errors.New("You need to upgrade your ledger schema to the last version"))
+					//nolint:staticcheck
+					api.BadRequest(w, ErrOutdatedSchema, errors.New("You need to upgrade your ledger schema to the last version."))
 					return
 				}
 			}

@@ -4,7 +4,6 @@ package test_suite
 
 import (
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
@@ -23,11 +22,11 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 	var (
 		db      = UseTemplatedDatabase()
 		ctx     = logging.TestingContext()
-		natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
