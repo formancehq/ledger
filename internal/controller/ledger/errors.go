@@ -237,10 +237,6 @@ func (e ErrInvalidIdempotencyInput) Error() string {
 
 func (e ErrInvalidIdempotencyInput) Is(err error) bool {
 	_, ok := err.(ErrInvalidIdempotencyInput)
-	if ok {
-		return true
-	}
-	_, ok = err.(*ErrInvalidIdempotencyInput)
 	return ok
 }
 
