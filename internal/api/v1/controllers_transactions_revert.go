@@ -37,6 +37,8 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 			api.BadRequest(w, common.ErrAlreadyRevert, err)
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
+		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}

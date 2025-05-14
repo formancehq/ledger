@@ -36,6 +36,8 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
+		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)
 		}
