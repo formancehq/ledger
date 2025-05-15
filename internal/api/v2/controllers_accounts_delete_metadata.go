@@ -27,7 +27,7 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 				Key:     chi.URLParam(r, "key"),
 			}),
 		); err != nil {
-		common.HandleCommonErrors(w, r, err)
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 

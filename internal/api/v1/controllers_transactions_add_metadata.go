@@ -37,7 +37,7 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ledgercontroller.ErrNotFound) {
 			api.NotFound(w, err)
 		} else {
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
 	}

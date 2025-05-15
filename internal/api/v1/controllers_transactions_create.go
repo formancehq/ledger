@@ -98,7 +98,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 			default:
-				common.HandleCommonErrors(w, r, err)
+				common.HandleCommonWriteErrors(w, r, err)
 			}
 			return
 		}
@@ -132,7 +132,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 		default:
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
 	}

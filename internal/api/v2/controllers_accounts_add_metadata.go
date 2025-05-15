@@ -41,7 +41,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		common.HandleCommonErrors(w, r, err)
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 

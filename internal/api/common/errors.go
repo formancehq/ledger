@@ -30,14 +30,28 @@ const (
 	ErrScriptMetadataOverride  = "METADATA_OVERRIDE"
 )
 
-func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
+// HandleCommonWriteErrors gère spécifiquement les erreurs liées aux opérations d'écriture
+// telles que les erreurs d'idempotence
+func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, postgres.ErrTooManyClient{}):
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 	case errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}):
 		api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
 		api.BadRequest(w, ErrValidation, err)
+	case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
+		api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
+	case errors.Is(err, ledgercontroller.ErrNotFound):
+		api.NotFound(w, err)
+	default:
+		HandleCommonErrors(w, r, err)
+	}
+}
+
+// HandleCommonErrors gère les erreurs communes plus générales
+func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, postgres.ErrTooManyClient{}):
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 	default:
 		InternalServerError(w, r, err)
 	}

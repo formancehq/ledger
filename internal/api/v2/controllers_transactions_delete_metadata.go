@@ -8,8 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"errors"
-
 	"github.com/formancehq/ledger/internal/api/common"
 
 	"github.com/formancehq/go-libs/v2/api"
@@ -30,11 +28,7 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		TransactionID: int(txID),
 		Key:           metadataKey,
 	})); err != nil {
-		if errors.Is(err, ledgercontroller.ErrNotFound) {
-			api.NotFound(w, err)
-		} else {
-			common.HandleCommonErrors(w, r, err)
-		}
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 

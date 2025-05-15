@@ -130,7 +130,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 					RegisterTransactionMetadataIK("default", rsp.ID, "foo", ikPtr)
 
 					// First call to delete metadata with idempotency key
-					err := DeleteTransactionMetadataWithIK(
+					Expect(DeleteTransactionMetadataWithIK(
 						ctx,
 						testServer.GetValue(),
 						operations.V2DeleteTransactionMetadataRequest{
@@ -138,8 +138,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 							ID:     rsp.ID,
 							Key:    "foo",
 						},
-					)
-					Expect(err).To(Succeed())
+					)).To(Succeed())
 
 					// Verify metadata was deleted
 					response, err := GetTransaction(
@@ -154,7 +153,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 					Expect(response.Metadata).Should(BeEmpty())
 
 					// Second call with same idempotency key should succeed
-					err = DeleteTransactionMetadataWithIK(
+					Expect(DeleteTransactionMetadataWithIK(
 						ctx,
 						testServer.GetValue(),
 						operations.V2DeleteTransactionMetadataRequest{
@@ -162,8 +161,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 							ID:     rsp.ID,
 							Key:    "foo",
 						},
-					)
-					Expect(err).To(Succeed())
+					)).To(Succeed())
 				})
 
 				It("should fail when using the same idempotency key with different parameters", func() {
@@ -187,7 +185,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 					RegisterTransactionMetadataIK("default", rsp.ID, "foo", ikPtr)
 
 					// First call to delete "foo" with idempotency key
-					err = DeleteTransactionMetadataWithIK(
+					Expect(DeleteTransactionMetadataWithIK(
 						ctx,
 						testServer.GetValue(),
 						operations.V2DeleteTransactionMetadataRequest{
@@ -195,7 +193,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 							ID:     rsp.ID,
 							Key:    "foo",
 						},
-					)
+					)).To(Succeed())
 					// Register the idempotency key for "foo"
 
 					// Register the same idempotency key but for "baz"

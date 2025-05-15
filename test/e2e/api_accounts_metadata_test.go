@@ -265,7 +265,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			RegisterAccountMetadataIK("default", "account-ik-delete-test", "type", ikPtr)
 
 			// Delete metadata with idempotency key
-			err = DeleteAccountMetadataWithIK(
+			Expect(DeleteAccountMetadataWithIK(
 				ctx,
 				testServer.GetValue(),
 				operations.V2DeleteAccountMetadataRequest{
@@ -273,11 +273,10 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					Ledger:  "default",
 					Key:     "type",
 				},
-			)
-			Expect(err).ToNot(HaveOccurred())
+			)).ToNot(HaveOccurred())
 
 			// Second delete with same idempotency key should succeed (idempotent)
-			err = DeleteAccountMetadataWithIK(
+			Expect(DeleteAccountMetadataWithIK(
 				ctx,
 				testServer.GetValue(),
 				operations.V2DeleteAccountMetadataRequest{
@@ -285,8 +284,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					Ledger:  "default",
 					Key:     "type",
 				},
-			)
-			Expect(err).ToNot(HaveOccurred())
+			)).ToNot(HaveOccurred())
 
 			// Verify metadata was partially deleted
 			response, err := GetAccount(
@@ -321,7 +319,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			RegisterAccountMetadataIK("default", "account-ik-delete-test-2", "type", ikPtr)
 
 			// Delete "type" metadata with idempotency key
-			err = DeleteAccountMetadataWithIK(
+			Expect(DeleteAccountMetadataWithIK(
 				ctx,
 				testServer.GetValue(),
 				operations.V2DeleteAccountMetadataRequest{
@@ -329,7 +327,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					Ledger:  "default",
 					Key:     "type",
 				},
-			)
+			)).ToNot(HaveOccurred())
 			// Register the idempotency key for "type"
 
 			// Register the same idempotency key but for "tier"
