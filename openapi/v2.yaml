@@ -597,6 +597,11 @@ paths:
           schema:
             type: string
             example: foo
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       responses:
         2XX:
           description: Key deleted
@@ -976,6 +981,11 @@ paths:
           schema:
             type: string
             example: foo
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       responses:
         2XX:
           description: Key deleted
