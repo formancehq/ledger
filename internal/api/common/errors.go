@@ -30,16 +30,14 @@ const (
 	ErrScriptMetadataOverride  = "METADATA_OVERRIDE"
 )
 
-// HandleCommonWriteErrors gère spécifiquement les erreurs liées aux opérations d'écriture
-// telles que les erreurs d'idempotence
+// HandleCommonWriteErrors specifically handles errors related to write operations
+// such as idempotency errors
 func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}):
 		api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
 		api.BadRequest(w, ErrValidation, err)
-	case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
-		api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 	case errors.Is(err, ledgercontroller.ErrNotFound):
 		api.NotFound(w, err)
 	default:
@@ -47,7 +45,7 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 	}
 }
 
-// HandleCommonErrors gère les erreurs communes plus générales
+// HandleCommonErrors handles more general common errors
 func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, postgres.ErrTooManyClient{}):

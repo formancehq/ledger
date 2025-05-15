@@ -50,6 +50,8 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			api.BadRequest(w, common.ErrMetadataOverride, err)
 		case errors.Is(err, ledgercontroller.ErrNoPostings):
 			api.BadRequest(w, common.ErrNoPostings, err)
+		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
+			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 		case errors.Is(err, ledgercontroller.ErrParsing{}):
 			api.BadRequest(w, common.ErrInterpreterParse, err)
 		case errors.Is(err, ledgercontroller.ErrRuntime{}):
