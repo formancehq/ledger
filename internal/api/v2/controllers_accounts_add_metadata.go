@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/pkg/accounts"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -22,11 +21,6 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	address, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
 		api.BadRequestWithDetails(w, common.ErrValidation, err, err.Error())
-		return
-	}
-
-	if !accounts.ValidateAddress(address) {
-		api.BadRequest(w, common.ErrValidation, errors.New("invalid account address format"))
 		return
 	}
 
