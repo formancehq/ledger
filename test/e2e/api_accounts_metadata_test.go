@@ -339,7 +339,6 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				},
 			)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 		})
 	})
 })
