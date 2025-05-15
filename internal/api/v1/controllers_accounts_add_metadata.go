@@ -40,14 +40,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		switch {
-		case errors.Is(err, ledger.ErrIdempotencyKeyConflict{}):
-			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
-		case errors.Is(err, ledger.ErrInvalidIdempotencyInput{}):
-			api.BadRequest(w, common.ErrValidation, err)
-		default:
-			common.HandleCommonErrors(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

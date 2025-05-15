@@ -8,8 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"errors"
-
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/api/common"
 )
@@ -29,14 +27,7 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 				Key:     chi.URLParam(r, "key"),
 			}),
 		); err != nil {
-		switch {
-		case errors.Is(err, ledger.ErrIdempotencyKeyConflict{}):
-			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
-		case errors.Is(err, ledger.ErrInvalidIdempotencyInput{}):
-			api.BadRequest(w, common.ErrValidation, err)
-		default:
-			common.HandleCommonErrors(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

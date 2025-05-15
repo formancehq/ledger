@@ -9,6 +9,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/time"
@@ -92,8 +93,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 				api.BadRequest(w, common.ErrScriptCompilationFailed, err)
 			case errors.Is(err, &ledgercontroller.ErrMetadataOverride{}):
 				api.BadRequest(w, common.ErrScriptMetadataOverride, err)
-			case errors.Is(err, ledgercontroller.ErrNoPostings) ||
-				errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+			case errors.Is(err, ledgercontroller.ErrNoPostings):
 				api.BadRequest(w, common.ErrValidation, err)
 			case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
@@ -127,7 +127,6 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) ||
 			errors.Is(err, ledgercontroller.ErrCompilationFailed{}) ||
 			errors.Is(err, &ledgercontroller.ErrMetadataOverride{}) ||
-			errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
 			errors.Is(err, ledgercontroller.ErrNoPostings):
 			api.BadRequest(w, common.ErrValidation, err)
 		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):

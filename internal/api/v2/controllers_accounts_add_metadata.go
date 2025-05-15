@@ -1,17 +1,18 @@
+//go:build !wasm
+
 package v2
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
-
-	"github.com/formancehq/ledger/internal/controller/ledger"
-
-	"errors"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/pkg/accounts"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,6 +22,11 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	address, err := url.PathUnescape(chi.URLParam(r, "address"))
 	if err != nil {
 		api.BadRequestWithDetails(w, common.ErrValidation, err, err.Error())
+		return
+	}
+
+	if !accounts.ValidateAddress(address) {
+		api.BadRequest(w, common.ErrValidation, errors.New("invalid account address format"))
 		return
 	}
 
@@ -35,14 +41,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		switch {
-		case errors.Is(err, ledger.ErrIdempotencyKeyConflict{}):
-			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
-		case errors.Is(err, ledger.ErrInvalidIdempotencyInput{}):
-			api.BadRequest(w, common.ErrValidation, err)
-		default:
-			common.HandleCommonErrors(w, r, err)
-		}
+		common.HandleCommonErrors(w, r, err)
 		return
 	}
 

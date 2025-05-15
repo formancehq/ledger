@@ -30,14 +30,9 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		TransactionID: int(txID),
 		Key:           metadataKey,
 	})); err != nil {
-		switch {
-		case errors.Is(err, ledgercontroller.ErrNotFound):
+		if errors.Is(err, ledgercontroller.ErrNotFound) {
 			api.NotFound(w, err)
-		case errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}):
-			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
-		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
-			api.BadRequest(w, common.ErrValidation, err)
-		default:
+		} else {
 			common.HandleCommonErrors(w, r, err)
 		}
 		return

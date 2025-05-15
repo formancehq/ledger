@@ -2,11 +2,13 @@ package common
 
 import (
 	"errors"
+	"net/http"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/otlp"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
-	"net/http"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 const (
@@ -32,6 +34,10 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+	case errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}):
+		api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
+	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+		api.BadRequest(w, ErrValidation, err)
 	default:
 		InternalServerError(w, r, err)
 	}
