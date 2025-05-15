@@ -164,54 +164,49 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 					Expect(err).ToNot(HaveOccurred())
 				})
 
-				// Note: Cette fonctionnalité nécessite des modifications dans le backend
-				// pour la vérification des clés d'idempotence avec des paramètres différents
-				// Ce test est désactivé car le backend ne vérifie pas encore ces cas
-				/*
-					It("should fail when using the same idempotency key with different parameters", func() {
-						// Add two metadata entries
-						err := AddMetadataToTransaction(
-							ctx,
-							testServer.GetValue(),
-							operations.V2AddMetadataOnTransactionRequest{
-								RequestBody: map[string]string{
-									"foo": "bar",
-									"baz": "qux",
-								},
-								Ledger: "default",
-								ID:     rsp.ID,
+				It("should fail when using the same idempotency key with different parameters", func() {
+					// Add two metadata entries
+					err := AddMetadataToTransaction(
+						ctx,
+						testServer.GetValue(),
+						operations.V2AddMetadataOnTransactionRequest{
+							RequestBody: map[string]string{
+								"foo": "bar",
+								"baz": "qux",
 							},
-						)
-						Expect(err).To(Succeed())
+							Ledger: "default",
+							ID:     rsp.ID,
+						},
+					)
+					Expect(err).To(Succeed())
 
-						ikPtr := pointer.For("delete-key-2")
+					ikPtr := pointer.For("delete-key-2")
 
-						// First call to delete "foo" with idempotency key
-						_, err = testServer.GetValue().Client().Ledger.V2.DeleteTransactionMetadata(
-							ctx,
-							operations.V2DeleteTransactionMetadataRequest{
-								Ledger:         "default",
-								ID:             rsp.ID,
-								Key:            "foo",
-								IdempotencyKey: ikPtr,
-							},
-						)
-						Expect(err).ToNot(HaveOccurred())
+					// First call to delete "foo" with idempotency key
+					_, err = testServer.GetValue().Client().Ledger.V2.DeleteTransactionMetadata(
+						ctx,
+						operations.V2DeleteTransactionMetadataRequest{
+							Ledger:         "default",
+							ID:             rsp.ID,
+							Key:            "foo",
+							IdempotencyKey: ikPtr,
+						},
+					)
+					Expect(err).ToNot(HaveOccurred())
 
-						// Second call with same idempotency key but different key to delete
-						_, err = testServer.GetValue().Client().Ledger.V2.DeleteTransactionMetadata(
-							ctx,
-							operations.V2DeleteTransactionMetadataRequest{
-								Ledger:         "default",
-								ID:             rsp.ID,
-								Key:            "baz", // Different key
-								IdempotencyKey: ikPtr,
-							},
-						)
-						Expect(err).To(HaveOccurred())
-						Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
-					})
-				*/
+					// Second call with same idempotency key but different key to delete
+					_, err = testServer.GetValue().Client().Ledger.V2.DeleteTransactionMetadata(
+						ctx,
+						operations.V2DeleteTransactionMetadataRequest{
+							Ledger:         "default",
+							ID:             rsp.ID,
+							Key:            "baz", // Different key
+							IdempotencyKey: ikPtr,
+						},
+					)
+					Expect(err).To(HaveOccurred())
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
 			})
 
 			When("using the same idempotency key with same data", func() {

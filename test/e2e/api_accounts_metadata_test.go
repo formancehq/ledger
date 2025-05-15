@@ -301,50 +301,45 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			}))
 		})
 
-		// Note: Cette fonctionnalité nécessite des modifications dans le backend
-		// pour la vérification des clés d'idempotence avec des paramètres différents
-		// Ce test est désactivé car le backend ne vérifie pas encore ces cas
-		/*
-			It("should fail when deleting metadata with same idempotency key but different parameters", func() {
-				// First add metadata
-				err := AddMetadataToAccount(
-					ctx,
-					testServer.GetValue(),
-					operations.V2AddMetadataToAccountRequest{
-						RequestBody: metadata,
-						Address:     "account-ik-delete-test-2",
-						Ledger:      "default",
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
+		It("should fail when deleting metadata with same idempotency key but different parameters", func() {
+			// First add metadata
+			err := AddMetadataToAccount(
+				ctx,
+				testServer.GetValue(),
+				operations.V2AddMetadataToAccountRequest{
+					RequestBody: metadata,
+					Address:     "account-ik-delete-test-2",
+					Ledger:      "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
 
-				ikPtr := pointer.For("account-delete-key-2")
+			ikPtr := pointer.For("account-delete-key-2")
 
-				// Delete "type" metadata with idempotency key
-				_, err = testServer.GetValue().Client().Ledger.V2.DeleteAccountMetadata(
-					ctx,
-					operations.V2DeleteAccountMetadataRequest{
-						Address:        "account-ik-delete-test-2",
-						Ledger:         "default",
-						Key:            "type",
-						IdempotencyKey: ikPtr,
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
+			// Delete "type" metadata with idempotency key
+			_, err = testServer.GetValue().Client().Ledger.V2.DeleteAccountMetadata(
+				ctx,
+				operations.V2DeleteAccountMetadataRequest{
+					Address:        "account-ik-delete-test-2",
+					Ledger:         "default",
+					Key:            "type",
+					IdempotencyKey: ikPtr,
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
 
-				// Try to delete "tier" with same idempotency key should fail
-				_, err = testServer.GetValue().Client().Ledger.V2.DeleteAccountMetadata(
-					ctx,
-					operations.V2DeleteAccountMetadataRequest{
-						Address:        "account-ik-delete-test-2",
-						Ledger:         "default",
-						Key:            "tier", // Different key
-						IdempotencyKey: ikPtr,
-					},
-				)
-				Expect(err).To(HaveOccurred())
-				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
-			})
-		*/
+			// Try to delete "tier" with same idempotency key should fail
+			_, err = testServer.GetValue().Client().Ledger.V2.DeleteAccountMetadata(
+				ctx,
+				operations.V2DeleteAccountMetadataRequest{
+					Address:        "account-ik-delete-test-2",
+					Ledger:         "default",
+					Key:            "tier", // Different key
+					IdempotencyKey: ikPtr,
+				},
+			)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+		})
 	})
 })
