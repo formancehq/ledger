@@ -1,8 +1,9 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
+
+	"github.com/formancehq/ledger/internal/api/common"
 
 	"github.com/formancehq/ledger/internal/controller/system"
 
@@ -13,7 +14,7 @@ import (
 func deleteLedgerMetadata(b system.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := b.DeleteLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), chi.URLParam(r, "key")); err != nil {
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 			return
 		}
 
