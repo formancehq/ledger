@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 00a81254f175054ea801e080fe20f368
+  docChecksum: 612f84e1d567e4948ea077055668e142
   docVersion: v1
   speakeasyVersion: 1.517.3
   generationVersion: 2.548.6
-  releaseVersion: 0.10.0
-  configChecksum: c9179278f298050305024f57220c7da8
+  releaseVersion: 0.10.1
+  configChecksum: b01006afdbcf61b2b0550e25c38a1c55
 features:
   go:
     additionalDependencies: 0.1.0
@@ -784,6 +784,7 @@ examples:
           ledger: "ledger001"
           address: "96609 Cummings Canyon"
           key: "foo"
+        header: {}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -872,6 +873,7 @@ examples:
           ledger: "ledger001"
           id: 1234
           key: "foo"
+        header: {}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
