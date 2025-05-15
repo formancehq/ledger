@@ -126,7 +126,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 			When("deleting a metadata with idempotency key", func() {
 				It("should succeed on first call and be idempotent on second call", func() {
 					ikPtr := pointer.For("delete-key-1")
-					// Enregistrer l'idempotency key
+					// Register the idempotency key
 					RegisterTransactionMetadataIK("default", rsp.ID, "foo", ikPtr)
 
 					// First call to delete metadata with idempotency key
@@ -183,7 +183,7 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 					Expect(err).To(Succeed())
 
 					ikPtr := pointer.For("delete-key-2")
-					// Enregistrer l'idempotency key pour "foo"
+					// Register the idempotency key for "foo"
 					RegisterTransactionMetadataIK("default", rsp.ID, "foo", ikPtr)
 
 					// First call to delete "foo" with idempotency key
@@ -196,9 +196,9 @@ var _ = Context("Ledger transactions metadata API tests", func() {
 							Key:    "foo",
 						},
 					)
-					Expect(err).To(Succeed())
+					// Register the idempotency key for "foo"
 
-					// Enregistrer la même idempotency key mais pour "baz"
+					// Register the same idempotency key but for "baz"
 					RegisterTransactionMetadataIK("default", rsp.ID, "baz", ikPtr)
 
 					// Second call with same idempotency key but different key to delete

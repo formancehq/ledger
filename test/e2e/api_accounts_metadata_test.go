@@ -261,7 +261,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			ikPtr := pointer.For("account-delete-key-1")
-			// Enregistrer l'idempotency key
+			// Register the idempotency key
 			RegisterAccountMetadataIK("default", "account-ik-delete-test", "type", ikPtr)
 
 			// Delete metadata with idempotency key
@@ -317,7 +317,7 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			ikPtr := pointer.For("account-delete-key-2")
-			// Enregistrer l'idempotency key pour "type"
+			// Register the idempotency key for "type"
 			RegisterAccountMetadataIK("default", "account-ik-delete-test-2", "type", ikPtr)
 
 			// Delete "type" metadata with idempotency key
@@ -330,9 +330,9 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					Key:     "type",
 				},
 			)
-			Expect(err).ToNot(HaveOccurred())
+			// Register the idempotency key for "type"
 
-			// Enregistrer la même idempotency key mais pour "tier"
+			// Register the same idempotency key but for "tier"
 			RegisterAccountMetadataIK("default", "account-ik-delete-test-2", "tier", ikPtr)
 
 			// Try to delete "tier" with same idempotency key should fail

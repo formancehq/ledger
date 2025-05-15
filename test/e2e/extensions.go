@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/formancehq/go-libs/v2/api"
 	httpcomponents "github.com/formancehq/ledger/pkg/client/models/components"
@@ -18,19 +19,26 @@ import (
 
 // Variables globales pour contourner les problèmes d'API
 var (
-	// Map pour stocker les valeurs IdempotencyKey
-	transactionMetadataIK = make(map[string]*string)
-	accountMetadataIK     = make(map[string]*string)
+	// Map to store IdempotencyKey values
+	transactionMetadataIKMutex sync.RWMutex
+	accountMetadataIKMutex     sync.RWMutex
+	transactionMetadataIK      = make(map[string]*string)
+	accountMetadataIK          = make(map[string]*string)
+	httpClient                 = &http.Client{} // Create a shared HTTP client at package level
 )
 
 // Enregistre une idempotency key pour une opération de suppression de métadonnées de transaction
 func RegisterTransactionMetadataIK(ledger string, id *big.Int, key string, idempotencyKey *string) {
+	transactionMetadataIKMutex.Lock()
+	defer transactionMetadataIKMutex.Unlock()
 	mapKey := fmt.Sprintf("%s:%s:%s", ledger, id.String(), key)
 	transactionMetadataIK[mapKey] = idempotencyKey
 }
 
 // Enregistre une idempotency key pour une opération de suppression de métadonnées de compte
 func RegisterAccountMetadataIK(ledger string, address string, key string, idempotencyKey *string) {
+	accountMetadataIKMutex.Lock()
+	defer accountMetadataIKMutex.Unlock()
 	mapKey := fmt.Sprintf("%s:%s:%s", ledger, address, key)
 	accountMetadataIK[mapKey] = idempotencyKey
 }
@@ -45,15 +53,21 @@ func DeleteTransactionMetadataWithIK(ctx context.Context, srv *testserver.Server
 	}
 
 	// Vérifier si une idempotency key a été enregistrée
+	transactionMetadataIKMutex.RLock()
 	mapKey := fmt.Sprintf("%s:%s:%s", request.Ledger, request.ID.String(), request.Key)
-	if ik, ok := transactionMetadataIK[mapKey]; ok && ik != nil {
+	ik, ok := transactionMetadataIK[mapKey]
+	transactionMetadataIKMutex.RUnlock()
+
+	if ok && ik != nil {
 		// Si la clé existe déjà dans notre map, cela signifie que le premier appel a réussi
 		// Pour le second appel, si c'est avec les mêmes paramètres, on simule le succès de l'idempotence
 		// Si c'est avec des paramètres différents, on simule une erreur de validation
 
 		// Vérifier si nous essayons d'utiliser cette idempotency key avec un chemin différent
+		transactionMetadataIKMutex.RLock()
 		for storedKey, storedIK := range transactionMetadataIK {
 			if storedIK != nil && *storedIK == *ik && storedKey != mapKey {
+				transactionMetadataIKMutex.RUnlock()
 				// Même idempotency key mais chemin différent, c'est une erreur de validation
 				return api.ErrorResponse{
 					ErrorCode:    string(httpcomponents.V2ErrorsEnumValidation),
@@ -61,6 +75,7 @@ func DeleteTransactionMetadataWithIK(ctx context.Context, srv *testserver.Server
 				}
 			}
 		}
+		transactionMetadataIKMutex.RUnlock()
 
 		// Construire une URL personnalisée avec l'Idempotency-Key en header
 		baseURL := srv.ServerURL()
@@ -83,8 +98,7 @@ func DeleteTransactionMetadataWithIK(ctx context.Context, srv *testserver.Server
 		req.Header.Set("Idempotency-Key", *ik)
 
 		// Exécuter la requête
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return err
 		}
@@ -114,15 +128,21 @@ func DeleteAccountMetadataWithIK(ctx context.Context, srv *testserver.Server, re
 	}
 
 	// Vérifier si une idempotency key a été enregistrée
+	accountMetadataIKMutex.RLock()
 	mapKey := fmt.Sprintf("%s:%s:%s", request.Ledger, request.Address, request.Key)
-	if ik, ok := accountMetadataIK[mapKey]; ok && ik != nil {
+	ik, ok := accountMetadataIK[mapKey]
+	accountMetadataIKMutex.RUnlock()
+
+	if ok && ik != nil {
 		// Si la clé existe déjà dans notre map, cela signifie que le premier appel a réussi
 		// Pour le second appel, si c'est avec les mêmes paramètres, on simule le succès de l'idempotence
 		// Si c'est avec des paramètres différents, on simule une erreur de validation
 
 		// Vérifier si nous essayons d'utiliser cette idempotency key avec un chemin différent
+		accountMetadataIKMutex.RLock()
 		for storedKey, storedIK := range accountMetadataIK {
 			if storedIK != nil && *storedIK == *ik && storedKey != mapKey {
+				accountMetadataIKMutex.RUnlock()
 				// Même idempotency key mais chemin différent, c'est une erreur de validation
 				return api.ErrorResponse{
 					ErrorCode:    string(httpcomponents.V2ErrorsEnumValidation),
@@ -130,6 +150,7 @@ func DeleteAccountMetadataWithIK(ctx context.Context, srv *testserver.Server, re
 				}
 			}
 		}
+		accountMetadataIKMutex.RUnlock()
 
 		// Construire une URL personnalisée avec l'Idempotency-Key en header
 		baseURL := srv.ServerURL()
@@ -152,8 +173,7 @@ func DeleteAccountMetadataWithIK(ctx context.Context, srv *testserver.Server, re
 		req.Header.Set("Idempotency-Key", *ik)
 
 		// Exécuter la requête
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return err
 		}
