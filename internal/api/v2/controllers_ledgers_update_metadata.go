@@ -2,10 +2,12 @@ package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
+	"github.com/formancehq/ledger/internal/api/common"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/metadata"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
@@ -22,7 +24,7 @@ func updateLedgerMetadata(systemController systemcontroller.Controller) http.Han
 		}
 
 		if err := systemController.UpdateLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), m); err != nil {
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 			return
 		}
 

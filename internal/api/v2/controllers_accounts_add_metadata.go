@@ -1,15 +1,17 @@
+//go:build !wasm
+
 package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/controller/ledger"
+	"errors"
 	"net/http"
 	"net/url"
 
-	"errors"
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,7 +35,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		common.HandleCommonErrors(w, r, err)
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 

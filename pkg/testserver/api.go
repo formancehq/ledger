@@ -93,9 +93,17 @@ func DeleteAccountMetadata(ctx context.Context, srv *Server, request operations.
 	return mapSDKError(err)
 }
 
+func DeleteMetadataFromAccount(ctx context.Context, srv *Server, request operations.V2DeleteAccountMetadataRequest) error {
+	return DeleteAccountMetadata(ctx, srv, request)
+}
+
 func DeleteTransactionMetadata(ctx context.Context, srv *Server, request operations.V2DeleteTransactionMetadataRequest) error {
 	_, err := srv.Client().Ledger.V2.DeleteTransactionMetadata(ctx, request)
 	return mapSDKError(err)
+}
+
+func DeleteMetadataFromTransaction(ctx context.Context, srv *Server, request operations.V2DeleteTransactionMetadataRequest) error {
+	return DeleteTransactionMetadata(ctx, srv, request)
 }
 
 func RevertTransaction(ctx context.Context, srv *Server, request operations.V2RevertTransactionRequest) (*components.V2Transaction, error) {

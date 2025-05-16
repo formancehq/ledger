@@ -1,9 +1,10 @@
 package v1
 
 import (
-	"github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/url"
+
+	"github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -25,7 +26,7 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 				Key:     chi.URLParam(r, "key"),
 			}),
 		); err != nil {
-		common.HandleCommonErrors(w, r, err)
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 

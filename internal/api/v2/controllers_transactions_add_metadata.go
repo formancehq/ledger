@@ -8,6 +8,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -33,12 +34,7 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		TransactionID: int(txID),
 		Metadata:      m,
 	})); err != nil {
-		switch {
-		case errors.Is(err, ledgercontroller.ErrNotFound):
-			api.NotFound(w, err)
-		default:
-			common.HandleCommonErrors(w, r, err)
-		}
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 
