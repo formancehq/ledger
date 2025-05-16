@@ -7,6 +7,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/go-chi/chi/v5"
@@ -27,12 +28,7 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		TransactionID: transactionID,
 		Key:           metadataKey,
 	})); err != nil {
-		switch {
-		case errors.Is(err, ledgercontroller.ErrNotFound):
-			api.NotFound(w, err)
-		default:
-			common.HandleCommonErrors(w, r, err)
-		}
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 
