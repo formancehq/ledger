@@ -2,8 +2,9 @@ package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/api/bulking"
 	"net/http"
+
+	"github.com/formancehq/ledger/internal/api/bulking"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
@@ -51,14 +52,12 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			api.BadRequest(w, common.ErrNoPostings, err)
 		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
-		case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
-			api.BadRequest(w, common.ErrValidation, err)
 		case errors.Is(err, ledgercontroller.ErrParsing{}):
 			api.BadRequest(w, common.ErrInterpreterParse, err)
 		case errors.Is(err, ledgercontroller.ErrRuntime{}):
 			api.BadRequest(w, common.ErrInterpreterRuntime, err)
 		default:
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
 	}

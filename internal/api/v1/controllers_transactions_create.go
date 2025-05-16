@@ -9,6 +9,7 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
@@ -100,7 +101,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 			default:
-				common.HandleCommonErrors(w, r, err)
+				common.HandleCommonWriteErrors(w, r, err)
 			}
 			return
 		}
@@ -135,7 +136,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 		default:
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
 	}

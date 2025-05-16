@@ -2,11 +2,13 @@ package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/controller/ledger"
 	"net/http"
 	"net/url"
 
+	"github.com/formancehq/ledger/internal/controller/ledger"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -33,7 +35,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		Metadata: m,
 	}))
 	if err != nil {
-		common.HandleCommonErrors(w, r, err)
+		common.HandleCommonWriteErrors(w, r, err)
 		return
 	}
 
