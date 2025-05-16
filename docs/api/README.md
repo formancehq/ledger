@@ -966,6 +966,7 @@ Authorization ( Scopes: ledger:write )
 DELETE http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
+Idempotency-Key: string
 
 ```
 
@@ -980,6 +981,7 @@ Delete metadata by key
 |ledger|path|string|true|Name of the ledger.|
 |id|path|integer(bigint)|true|Transaction ID.|
 |key|path|string|true|The key to remove.|
+|Idempotency-Key|header|string|false|Use an idempotency key|
 
 > Example responses
 
