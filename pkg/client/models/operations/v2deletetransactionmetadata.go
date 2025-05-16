@@ -15,6 +15,8 @@ type V2DeleteTransactionMetadataRequest struct {
 	ID *big.Int `pathParam:"style=simple,explode=false,name=id"`
 	// The key to remove.
 	Key string `pathParam:"style=simple,explode=false,name=key"`
+	// Use an idempotency key
+	IdempotencyKey *string `header:"style=simple,explode=false,name=Idempotency-Key"`
 }
 
 func (v V2DeleteTransactionMetadataRequest) MarshalJSON() ([]byte, error) {
@@ -47,6 +49,13 @@ func (o *V2DeleteTransactionMetadataRequest) GetKey() string {
 		return ""
 	}
 	return o.Key
+}
+
+func (o *V2DeleteTransactionMetadataRequest) GetIdempotencyKey() *string {
+	if o == nil {
+		return nil
+	}
+	return o.IdempotencyKey
 }
 
 type V2DeleteTransactionMetadataResponse struct {
