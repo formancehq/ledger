@@ -10,8 +10,8 @@ import (
 )
 
 type RDSComponentArgs struct {
-	CreateCluster   *RDSClusterCreateArgs
-	Database        pulumix.Input[string]
+	CreateCluster *RDSClusterCreateArgs
+	Database      pulumix.Input[string]
 }
 
 type RDSDatabaseComponent struct {
@@ -130,6 +130,8 @@ func newRDSDatabaseComponent(ctx *pulumi.Context, args *RDSComponentArgs, opts .
 	if err != nil {
 		return nil, fmt.Errorf("creating RDS instance: %w", err)
 	}
+
+	ctx.Export("rds-cluster-id", cmp.Cluster.ID())
 
 	if err := ctx.RegisterResourceOutputs(cmp, pulumi.Map{}); err != nil {
 		return nil, fmt.Errorf("registering outputs: %w", err)
