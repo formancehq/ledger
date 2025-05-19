@@ -36,7 +36,7 @@ require (
 	github.com/cyphar/filepath-securejoin v0.3.6 // indirect
 	github.com/djherbis/times v1.5.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/formancehq/go-libs/v3 v3.0.0-20250407102820-68fa020e67bb // indirect
+	github.com/formancehq/go-libs/v3 v3.0.0-20250422113236-ec98813a1539 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.1 // indirect
