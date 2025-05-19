@@ -50,7 +50,7 @@ require (
 )
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0-20250408113106-7b3525e0b25b
+	github.com/formancehq/go-libs/v3 v3.0.0-20250422113236-ec98813a1539
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
 	gopkg.in/yaml.v3 v3.0.1
