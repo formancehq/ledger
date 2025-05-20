@@ -348,6 +348,39 @@ var _ = Context("Ledger engine tests", func() {
 							Expect(err).To(Succeed())
 
 							Expect(accountsFromOriginalLedger.V2AccountsCursorResponse.Cursor.Data).To(Equal(accountsFromNewLedger.V2AccountsCursorResponse.Cursor.Data))
+
+							By("Checking sequence restoration by creating a new transaction with dry run", func() {
+								tx, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+									Ledger: createLedgerRequest.Ledger,
+									DryRun: pointer.For(true),
+									V2PostTransaction: components.V2PostTransaction{
+										Postings: []components.V2Posting{{
+											Source:      "world",
+											Destination: "dst",
+											Asset:       "USD",
+											Amount:      big.NewInt(100),
+										}},
+									},
+								})
+								Expect(err).To(BeNil())
+								Expect(tx.V2CreateTransactionResponse.Data.ID.Uint64()).To(Equal(transactionsFromOriginalLedger.V2TransactionsCursorResponse.Cursor.Data[0].ID.Uint64() + 1))
+							})
+
+							By("Checking sequence restoration by creating a new transaction", func() {
+								tx, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+									Ledger: createLedgerRequest.Ledger,
+									V2PostTransaction: components.V2PostTransaction{
+										Postings: []components.V2Posting{{
+											Source:      "world",
+											Destination: "dst",
+											Asset:       "USD",
+											Amount:      big.NewInt(100),
+										}},
+									},
+								})
+								Expect(err).To(BeNil())
+								Expect(tx.V2CreateTransactionResponse.Data.ID.Uint64()).To(Equal(transactionsFromOriginalLedger.V2TransactionsCursorResponse.Cursor.Data[0].ID.Uint64() + 2))
+							})
 						})
 					})
 					Context("with state to 'in-use'", func() {
@@ -425,12 +458,13 @@ var _ = Context("Ledger engine tests", func() {
 							}).Should(Equal(1))
 
 							// check postgres locks
-							// since we have locked the 'logs' table, the insertion of the log must block
+							// since we have locked the 'logs' table,
+							// the attempt to define the value of the transaction sequence by reading the max log id block
 							Eventually(func(g Gomega) int {
 								count, err := db.NewSelect().
 									Table("pg_stat_activity").
 									Where("state <> 'idle' and pid <> pg_backend_pid()").
-									Where(`query like 'INSERT INTO "_default".logs%'`).
+									Where(`query like '%select setval%'`).
 									Count(ctx)
 								g.Expect(err).To(BeNil())
 								return count
