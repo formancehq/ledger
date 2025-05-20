@@ -116,8 +116,8 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				}).
 					WithTimeout(10 * time.Second).
 					// Once all the transactions are in pending state, and since the ledger is still in an 'initializing' state
-					// we should have countTransactions+1 (+1 for the advisory lock used for logs sync hashing) active advisory locks
-					Should(BeNumerically("==", countTransactions+1))
+					// we should have countTransactions active advisory locks
+					Should(BeNumerically("==", countTransactions))
 			})
 			When("restarting the service", func() {
 				BeforeEach(func() {

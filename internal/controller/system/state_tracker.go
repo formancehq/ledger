@@ -9,15 +9,21 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
+	"sync"
 )
 
 type controllerFacade struct {
 	ledgercontroller.Controller
+	mu     sync.RWMutex
 	ledger ledger.Ledger
 }
 
 func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func(ctrl ledgercontroller.Controller) error) error {
-	if dryRun || c.ledger.State == ledger.StateInUse {
+	c.mu.RLock()
+	l := c.ledger
+	c.mu.RUnlock()
+
+	if dryRun || l.State == ledger.StateInUse {
 		return fn(c.Controller)
 	}
 
@@ -30,24 +36,70 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 	}()
 
 	if err := withLock(ctx, ctrl, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
-		return fn(ctrl)
+
+		// todo: remove that in a later version
+		ret, err := tx.NewUpdate().
+			Model(&c.ledger).
+			Set("state = ?", l.State).
+			Where("id = ? and state = ?", l.ID, ledger.StateInitializing).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		rowsAffected, err := ret.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rowsAffected > 0 {
+			_, err := tx.NewRaw(
+				fmt.Sprintf(`
+					select setval(
+						'"%s"."transaction_id_%d"', 
+						(
+							select max(id) from "%s".transactions where ledger = '%s'
+						)::bigint
+					)
+				`, l.Bucket, l.ID, l.Bucket, l.Name),
+			).Exec(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to update transactions sequence value: %w", err)
+			}
+
+			_, err = tx.NewRaw(
+				fmt.Sprintf(`
+					select setval(
+						'"%s"."log_id_%d"', 
+						(
+							select max(id) from "%s".logs where ledger = '%s'
+						)::bigint
+					)
+				`, l.Bucket, l.ID, l.Bucket, l.Name),
+			).Exec(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to update logs sequence value: %w", err)
+			}
+		}
+
+		if err := fn(ctrl); err != nil {
+			return err
+		}
+
+		return nil
 	}); err != nil {
 		return err
 	}
 
-	c.ledger.State = ledger.StateInUse
-
-	// todo: remove that in a later version
-	_, err = tx.NewUpdate().
-		Model(&c.ledger).
-		Set("state = ?", c.ledger.State).
-		Where("id = ?", c.ledger.ID).
-		Exec(ctx)
-	if err != nil {
-		return err
+	if err := ctrl.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return ctrl.Commit(ctx)
+	c.mu.Lock()
+	c.ledger.State = ledger.StateInUse
+	c.mu.Unlock()
+
+	return nil
 }
 
 func (c *controllerFacade) CreateTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.RunScript]) (*ledger.Log, *ledger.CreatedTransaction, error) {
