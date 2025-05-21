@@ -20,6 +20,9 @@ type ColumnPaginator[ResourceType, OptionsType any] struct {
 func (o ColumnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.DefaultPaginationColumn
+	if query.Column != "" {
+		paginationColumn = query.Column
+	}
 	originalOrder := o.DefaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order
