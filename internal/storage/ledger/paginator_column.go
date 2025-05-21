@@ -21,6 +21,9 @@ type columnPaginator[ResourceType, OptionsType any] struct {
 func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery, query ledgercontroller.ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.defaultPaginationColumn
+	if query.Column != "" {
+		paginationColumn = query.Column
+	}
 	originalOrder := o.defaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order
