@@ -64,6 +64,7 @@ type V2PostTransaction struct {
 	Reference       *string                      `json:"reference,omitempty"`
 	Metadata        map[string]string            `json:"metadata"`
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
+	Force           *bool                        `json:"force,omitempty"`
 }
 
 func (v V2PostTransaction) MarshalJSON() ([]byte, error) {
@@ -124,4 +125,11 @@ func (o *V2PostTransaction) GetAccountMetadata() map[string]map[string]string {
 		return nil
 	}
 	return o.AccountMetadata
+}
+
+func (o *V2PostTransaction) GetForce() *bool {
+	if o == nil {
+		return nil
+	}
+	return o.Force
 }

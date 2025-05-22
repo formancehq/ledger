@@ -514,7 +514,8 @@ Accept: application/json
         "property2": {
           "admin": "true"
         }
-      }
+      },
+      "force": true
     }
   }
 ]
@@ -1329,7 +1330,8 @@ Idempotency-Key: string
     "property2": {
       "admin": "true"
     }
-  }
+  },
+  "force": true
 }
 ```
 
@@ -2721,7 +2723,8 @@ Authorization ( Scopes: ledger:write )
     "property2": {
       "admin": "true"
     }
-  }
+  },
+  "force": true
 }
 
 ```
@@ -2741,6 +2744,7 @@ Authorization ( Scopes: ledger:write )
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 |accountMetadata|object|false|none|none|
 |» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
+|force|boolean|false|none|none|
 
 #### Enumerated Values
 
@@ -3443,7 +3447,8 @@ Authorization ( Scopes: ledger:write )
         "property2": {
           "admin": "true"
         }
-      }
+      },
+      "force": true
     }
   }
 ]
@@ -3517,7 +3522,8 @@ Authorization ( Scopes: ledger:write )
       "property2": {
         "admin": "true"
       }
-    }
+    },
+    "force": true
   }
 }
 
@@ -3588,7 +3594,8 @@ xor
       "property2": {
         "admin": "true"
       }
-    }
+    },
+    "force": true
   }
 }
 
