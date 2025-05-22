@@ -16,6 +16,9 @@ type OffsetPaginator[ResourceType, OptionsType any] struct {
 func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.DefaultPaginationColumn
+	if query.Column != "" {
+		paginationColumn = query.Column
+	}
 	originalOrder := o.DefaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order

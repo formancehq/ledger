@@ -212,11 +212,13 @@ var _ = Context("Ledger transactions list API tests", func() {
 				})
 				It("Should be ok, and returns transactions ordered by effective timestamp", func() {
 					Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
-					sorted := transactions[:pageSize]
-					sort.SliceStable(sorted, func(i, j int) bool {
-						return sorted[i].Timestamp.After(sorted[j].Timestamp)
+					sortedByTimestamp := transactions[:]
+					sort.SliceStable(sortedByTimestamp, func(i, j int) bool {
+						return sortedByTimestamp[i].Timestamp.Before(sortedByTimestamp[j].Timestamp)
 					})
-					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(sorted))
+					page := sortedByTimestamp[pageSize:]
+					slices.Reverse(page)
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
 				})
 			})
 			It("Should be ok", func() {
