@@ -1,27 +1,21 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: "/"
+    directories:
+    - /
+    - /deployments/pulumi
+    - /tools/generator
+    - /tools/provisioner
     schedule:
       interval: daily
     open-pull-requests-limit: 40
     labels: [ "dependencies" ]
     # Groups are updated together in one pull request
     groups:
-      otel:
+      all:
         patterns:
-          - "go.opentelemetry.io/otel*"
-      otel-collector:
-        patterns:
-          - "go.opentelemetry.io/collector*"
-          - "github.com/open-telemetry/o*-collector-contrib/*"
-      otel-instrumentation:
-        patterns:
-          - "go.opentelemetry.io/contrib/instrumentation/*"
-      go-openapi:
-        patterns:
-          - "github.com/go-openapi/*"
-    
+          - "*"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
