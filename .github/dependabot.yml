@@ -1,7 +1,11 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: "/"
+    directories:
+    - /
+    - /deployments/pulumi
+    - /tools/generator
+    - /tools/provisioner
     schedule:
       interval: daily
     open-pull-requests-limit: 40
