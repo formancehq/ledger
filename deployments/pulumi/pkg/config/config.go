@@ -604,7 +604,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
-	timeout, err := config.TryInt(ctx, "timeout")
+	timeout, err := cfg.TryInt("timeout")
 	if err != nil {
 		if errors.Is(err, config.ErrMissingVar) {
 			timeout = 60
@@ -614,7 +614,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	}
 
 	storage := &Storage{}
-	if err := config.GetObject(ctx, "storage", storage); err != nil {
+	if err := cfg.GetObject("storage", storage); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, err
 		}
@@ -622,14 +622,14 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	}
 
 	api := &API{}
-	if err := config.GetObject(ctx, "api", api); err != nil {
+	if err := cfg.GetObject("api", api); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, err
 		}
 	}
 
 	monitoring := &Monitoring{}
-	if err := config.GetObject(ctx, "monitoring", monitoring); err != nil {
+	if err := cfg.GetObject("monitoring", monitoring); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, err
 		}
@@ -650,7 +650,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		generator = nil
 	}
 
-	namespace := config.Get(ctx, "namespace")
+	namespace := cfg.Get("namespace")
 	if namespace == "" {
 		namespace = ctx.Stack()
 	}
@@ -658,12 +658,13 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	return &Config{
 		Timeout: timeout,
 		Common: Common{
-			Debug:      config.GetBool(ctx, "debug"),
-			Namespace:  namespace,
-			Tag:        config.Get(ctx, "version"),
-			Monitoring: monitoring,
+			Debug:           cfg.GetBool("debug"),
+			Namespace:       namespace,
+			Tag:             cfg.Get("version"),
+			Monitoring:      monitoring,
+			ImagePullPolicy: cfg.Get("image-pull-policy"),
 		},
-		InstallDevBox: config.GetBool(ctx, "install-dev-box"),
+		InstallDevBox: cfg.GetBool("install-dev-box"),
 		Storage:       storage,
 		API:           api,
 		Ingress:       ingress,
