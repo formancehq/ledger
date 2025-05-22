@@ -60,7 +60,30 @@ var _ = Context("Ledger engine tests", func() {
 		Expect(err).To(BeNil())
 		_, events = Subscribe(specContext, testServer, natsURL)
 	})
-	When("creating a bulk on a ledger", func() {
+	When("creating a bulk on a ledger with force parameter", func() {
+		It("should be ok", func(specContext SpecContext) {
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
+				RequestBody: []components.V2BulkElement{
+					components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+						Data: &components.V2PostTransaction{
+							Metadata: map[string]string{},
+							Postings: []components.V2Posting{{
+								Amount:      big.NewInt(100),
+								Asset:       "USD/2",
+								Destination: "user:1",
+								Source:      "user:2",
+							}},
+							Timestamp: &now,
+							Force:     pointer.For(true),
+						},
+					}),
+				},
+				Ledger: "default",
+			})
+			Expect(err).To(Succeed())
+		})
+	})
+	When("creating a valid bulk on a ledger", func() {
 		var (
 			now              = time.Now().Round(time.Microsecond).UTC()
 			items            []components.V2BulkElement

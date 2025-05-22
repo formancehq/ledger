@@ -102,9 +102,10 @@ type TransactionRequest struct {
 	Metadata        metadata.Metadata            `json:"metadata" swaggertype:"object"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 	Runtime         ledgercontroller.RuntimeType `json:"runtime,omitempty"`
+	Force bool `json:"force"`
 }
 
-func (req TransactionRequest) ToCore(allowUnboundedOverdrafts bool) (*ledgercontroller.CreateTransaction, error) {
+func (req TransactionRequest) ToCore() (*ledgercontroller.CreateTransaction, error) {
 
 	if _, err := req.Postings.Validate(); err != nil {
 		return nil, err
@@ -119,7 +120,7 @@ func (req TransactionRequest) ToCore(allowUnboundedOverdrafts bool) (*ledgercont
 			Metadata:  req.Metadata,
 		}
 
-		runScript = ledgercontroller.TxToScriptData(txData, allowUnboundedOverdrafts)
+		runScript = ledgercontroller.TxToScriptData(txData, req.Force)
 	} else {
 		runScript = ledgercontroller.RunScript{
 			Script:    req.Script.ToCore(),

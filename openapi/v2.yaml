@@ -818,6 +818,7 @@ paths:
         - name: force
           in: query
           description: Disable balance checks when passing postings
+          deprecated: true
           schema:
             type: boolean
             example: true
@@ -1656,6 +1657,8 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/V2Metadata"
+        force:
+          type: boolean
     V2Stats:
       type: object
       properties:

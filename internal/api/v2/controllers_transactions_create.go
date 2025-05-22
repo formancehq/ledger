@@ -33,7 +33,14 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		api.BadRequest(w, common.ErrNoPostings, errors.New("you need to pass either a posting array or a numscript script"))
 		return
 	}
-	createTransaction, err := payload.ToCore(api.QueryParamBool(r, "force"))
+
+	// nodes(gfyrag): parameter 'force' initially sent using a query param
+	// while we still support the feature, we can also send the 'force' parameter
+	// in the request payload.
+	// it allows to leverage the feature on bulk endpoint
+	payload.Force = payload.Force || api.QueryParamBool(r, "force")
+
+	createTransaction, err := payload.ToCore()
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
