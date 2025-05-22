@@ -30,7 +30,6 @@ func TestLedgersList(t *testing.T) {
 
 	type testCase struct {
 		name               string
-		expectQuery        storagecommon.ColumnPaginatedQuery[systemstore.ListLedgersQueryPayload]
 		queryParams        url.Values
 		returnData         []ledger.Ledger
 		returnErr          error
