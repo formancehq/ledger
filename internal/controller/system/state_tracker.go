@@ -40,7 +40,7 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		// todo: remove that in a later version
 		ret, err := tx.NewUpdate().
 			Model(&c.ledger).
-			Set("state = ?", l.State).
+			Set("state = ?", ledger.StateInUse).
 			Where("id = ? and state = ?", l.ID, ledger.StateInitializing).
 			Exec(ctx)
 		if err != nil {
