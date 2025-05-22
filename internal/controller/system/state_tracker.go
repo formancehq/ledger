@@ -21,7 +21,7 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		return fn(c.Controller)
 	}
 
-	ctrl, tx, err := c.Controller.BeginTX(ctx, nil)
+	ctrl, tx, err := c.BeginTX(ctx, nil)
 	if err != nil {
 		return err
 	}

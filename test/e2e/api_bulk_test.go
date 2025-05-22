@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
@@ -40,11 +39,11 @@ var _ = Context("Ledger engine tests", func() {
 		events       chan *nats.Msg
 		bulkResponse *operations.V2CreateBulkResponse
 		bulkMaxSize  = 100
-		natsURL      = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL      = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),

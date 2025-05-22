@@ -15,6 +15,14 @@ type Posting struct {
 	Asset       string   `json:"asset"`
 }
 
+func (p Posting) GetSource() string {
+	return p.Source
+}
+
+func (p Posting) GetDestination() string {
+	return p.Destination
+}
+
 func NewPosting(source string, destination string, asset string, amount *big.Int) Posting {
 	return Posting{
 		Source:      source,

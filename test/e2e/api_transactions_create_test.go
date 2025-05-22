@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
@@ -41,7 +40,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 			var (
 				db      = UseTemplatedDatabase()
 				ctx     = logging.TestingContext()
-				natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+				natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 			)
 			instruments := []testservice.Instrumentation{
 				testservice.NatsInstrumentation(natsURL),
@@ -52,7 +51,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 				instruments = append(instruments, ExperimentalNumscriptRewriteInstrumentation())
 			}
 			testServer := DeferTestServer(
-				ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+				DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 				testservice.WithInstruments(instruments...),
 				testservice.WithLogger(GinkgoT()),
 			)

@@ -1,0 +1,9 @@
+version: "2"
+linters:
+  settings:
+    staticcheck:
+      dot-import-whitelist:
+        - github.com/formancehq/go-libs/v3/testing/deferred/ginkgo
+        - github.com/formancehq/go-libs/v3/collectionutils
+        - github.com/formancehq/go-libs/v3/testing/testservice/ginkgo
+        - github.com/onsi/gomega

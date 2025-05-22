@@ -40,3 +40,14 @@ func filterAccountAddress(address, key string) string {
 func isPartialAddress(address any) bool {
 	return isSegmentedAddress(address.(string))
 }
+
+func explodeAddress(address string) map[string]any {
+	parts := strings.Split(address, ":")
+	ret := make(map[string]any, len(parts)+1)
+	for i, part := range parts {
+		ret[fmt.Sprint(i)] = part
+	}
+	ret[fmt.Sprint(len(parts))] = nil
+
+	return ret
+}
