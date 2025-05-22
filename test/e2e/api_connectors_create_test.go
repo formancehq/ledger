@@ -1,0 +1,70 @@
+//go:build it
+
+package test_suite
+
+import (
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	. "github.com/formancehq/ledger/pkg/testserver"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
+
+var _ = Context("Exporters API tests", func() {
+	var (
+		db  = UseTemplatedDatabase()
+		ctx = logging.TestingContext()
+	)
+
+	testServer := DeferTestServer(
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		testservice.WithInstruments(
+			testservice.NatsInstrumentation(DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			ExperimentalFeaturesInstrumentation(),
+			ExperimentalExportersInstrumentation(),
+			ExperimentalEnableWorker(),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
+	When("creating a new exporter", func() {
+		var (
+			createExporterRequest  components.V2CreateExporterRequest
+			createExporterResponse *operations.V2CreateExporterResponse
+			err                    error
+		)
+		BeforeEach(func() {
+			createExporterRequest = components.V2CreateExporterRequest{
+				Driver: "clickhouse",
+				Config: map[string]any{
+					"dsn": "clickhouse://localhost:9000",
+				},
+			}
+		})
+		BeforeEach(func(specContext SpecContext) {
+			createExporterResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateExporter(ctx, createExporterRequest)
+		})
+		It("should be ok", func() {
+			Expect(err).To(BeNil())
+		})
+		Context("then deleting it", func() {
+			BeforeEach(func(specContext SpecContext) {
+				Expect(err).To(BeNil())
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteExporter(ctx, operations.V2DeleteExporterRequest{
+					ExporterID: createExporterResponse.V2CreateExporterResponse.Data.ID,
+				})
+			})
+			It("Should be ok", func() {
+				Expect(err).To(BeNil())
+			})
+		})
+	})
+})

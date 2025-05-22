@@ -157,3 +157,5 @@ func (a PostCommitVolumes) Merge(volumes PostCommitVolumes) PostCommitVolumes {
 type AggregatedVolumes struct {
 	Aggregated VolumesByAssets `bun:"aggregated,type:jsonb"`
 }
+
+type Balances = map[string]map[string]*big.Int

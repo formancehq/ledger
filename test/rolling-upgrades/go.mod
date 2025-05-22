@@ -10,7 +10,7 @@ replace github.com/formancehq/ledger/deployments/pulumi => ../../deployments/pul
 
 require (
 	dario.cat/mergo v1.0.2
-	github.com/formancehq/ledger/deployments/pulumi v0.0.0-20250522105551-0e75504c8519
+	github.com/formancehq/ledger/deployments/pulumi v0.0.0-20250522125118-07406c497fbe
 	github.com/pterm/pterm v0.12.80
 	github.com/pulumi/pulumi/sdk/v3 v3.171.0
 	github.com/spf13/cobra v1.9.1
