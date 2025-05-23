@@ -74,7 +74,9 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Where("effective_date <= ?", query.PIT)
 		}
 
-		if query.UseFilter("address", isPartialAddress) {
+		if query.UseFilter("address", func(value any) bool {
+			return isPartialAddress(value.(string))
+		}) {
 			subQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
@@ -108,7 +110,9 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes").
 			Where("ledger = ?", h.store.ledger.Name)
 
-		if query.UseFilter("metadata") || query.UseFilter("address", isPartialAddress) {
+		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
+			return isPartialAddress(value.(string))
+		}) {
 			subQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").

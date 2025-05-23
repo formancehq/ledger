@@ -66,7 +66,9 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 
 	var selectVolumes *bun.SelectQuery
 
-	needAddressSegments := query.UseFilter("address", isPartialAddress)
+	needAddressSegments := query.UseFilter("address", func(value any) bool {
+		return isPartialAddress(value.(string))
+	})
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = h.store.db.NewSelect().
 			Column("asset", "input", "output").
