@@ -1,8 +1,18 @@
 speakeasyVersion: 1.517.3
-sources: {}
+sources:
+    Formance-OAS:
+        sourceNamespace: formance-oas
+        sourceRevisionDigest: sha256:e70b84d8ee1b07eb0836738c2e5f042b71da9adc7a7b1310e3132b2aca5b26dc
+        sourceBlobDigest: sha256:f0c99b4208ed1eef9c8f919ae149f6bc117fb64168467c3726b39bdc0b42cfaf
+        tags:
+            - latest
+            - v2
 targets:
     formance:
         source: Formance-OAS
+        sourceNamespace: formance-oas
+        sourceRevisionDigest: sha256:e70b84d8ee1b07eb0836738c2e5f042b71da9adc7a7b1310e3132b2aca5b26dc
+        sourceBlobDigest: sha256:f0c99b4208ed1eef9c8f919ae149f6bc117fb64168467c3726b39bdc0b42cfaf
 workflow:
     workflowVersion: 1.0.0
     speakeasyVersion: v1.517.3
@@ -11,7 +21,7 @@ workflow:
             inputs:
                 - location: ../../openapi.yaml
             registry:
-                location: registry.speakeasyapi.dev/formance/gfyrag/formance-oas
+                location: registry.speakeasyapi.dev/formance/formance/formance-oas
     targets:
         formance:
             target: go
