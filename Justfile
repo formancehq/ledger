@@ -14,7 +14,6 @@ lint:
         popd; \
     done
     cd {{justfile_directory()}}/deployments/pulumi && golangci-lint run --fix --build-tags it --timeout 5m
-    cd {{justfile_directory()}}/test/rolling-upgrades && golangci-lint run --fix --build-tags it --timeout 5m
 
 tidy:
     for d in $(ls tools); do \
@@ -24,8 +23,6 @@ tidy:
     done
     go mod tidy
     cd {{justfile_directory()}}/deployments/pulumi && go mod tidy
-    cd {{justfile_directory()}}/test/performance && go mod tidy
-    cd {{justfile_directory()}}/test/rolling-upgrades && go mod tidy
 
 generate:
     rm $(find ./internal -name '*_generated_test.go') || true

@@ -3,10 +3,8 @@ updates:
   - package-ecosystem: gomod
     directories:
     - /
-    - /deployments/pulumi
     - /tools/generator
     - /tools/provisioner
-    - /test/rolling-upgrades
     schedule:
       interval: daily
     open-pull-requests-limit: 40
