@@ -778,6 +778,15 @@ func TestTransactionsList(t *testing.T) {
 			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
+			name: "address filter using segment and unbounded segment list",
+			query: common.ColumnPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "users:..."),
+				},
+			},
+			expected: []ledger.Transaction{tx5, tx4, tx3},
+		},
+		{
 			name: "filter using metadata",
 			query: common.ColumnPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{

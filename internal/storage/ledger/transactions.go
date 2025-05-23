@@ -297,25 +297,21 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id uint64, ke
 func filterAccountAddressOnTransactions(address string, source, destination bool) string {
 	src := strings.Split(address, ":")
 
-	needSegmentCheck := false
-	for _, segment := range src {
-		needSegmentCheck = segment == ""
-		if needSegmentCheck {
-			break
-		}
-	}
-
-	if needSegmentCheck {
-		m := map[string]any{
-			fmt.Sprint(len(src)): nil,
-		}
+	if isPartialAddress(address) {
+		m := map[string]any{}
 		parts := make([]string, 0)
 
 		for i, segment := range src {
 			if len(segment) == 0 {
 				continue
 			}
+			if i == len(src)-1 && segment == "..." {
+				break
+			}
 			m[fmt.Sprint(i)] = segment
+		}
+		if src[len(src)-1] != "..." {
+			m[fmt.Sprint(len(src))] = nil
 		}
 
 		data, err := json.Marshal([]any{m})
