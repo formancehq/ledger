@@ -179,6 +179,16 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
 	})
+	t.Run("list using filter on address and unbounded length", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Match("address", "account:..."),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 3)
+	})
 	t.Run("list using filter on multiple address", func(t *testing.T) {
 		t.Parallel()
 		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{

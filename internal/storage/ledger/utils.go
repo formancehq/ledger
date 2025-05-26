@@ -5,11 +5,14 @@ import (
 	"strings"
 )
 
-func isSegmentedAddress(address string) bool {
+func isPartialAddress(address string) bool {
 	src := strings.Split(address, ":")
 
-	for _, segment := range src {
+	for index, segment := range src {
 		if segment == "" {
+			return true
+		}
+		if segment == "..." && index == len(src)-1 {
 			return true
 		}
 	}
@@ -22,10 +25,12 @@ func filterAccountAddress(address, key string) string {
 
 	if isPartialAddress(address) {
 		src := strings.Split(address, ":")
-		parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = %d", key, len(src)))
+		if src[len(src)-1] != "" {
+			parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = %d", key, len(src)))
+		}
 
 		for i, segment := range src {
-			if len(segment) == 0 {
+			if len(segment) == 0 || segment == "..." {
 				continue
 			}
 			parts = append(parts, fmt.Sprintf("%s_array @@ ('$[%d] == \"%s\"')::jsonpath", key, i, segment))
@@ -35,10 +40,6 @@ func filterAccountAddress(address, key string) string {
 	}
 
 	return strings.Join(parts, " and ")
-}
-
-func isPartialAddress(address any) bool {
-	return isSegmentedAddress(address.(string))
 }
 
 func explodeAddress(address string) map[string]any {
