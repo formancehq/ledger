@@ -20,12 +20,12 @@ func (d *DefaultStorageDriverAdapter) OpenLedger(ctx context.Context, name strin
 		return nil, nil, err
 	}
 
-	isUpToDate, err := store.GetBucket().IsUpToDate(ctx, d.db)
+	lastVersion, err := store.GetBucket().GetLastVersion(ctx, d.db)
 	if err != nil {
 		return nil, nil, fmt.Errorf("checking if bucket is up to date: %w", err)
 	}
 
-	return ledgerstore.NewDefaultStoreAdapter(isUpToDate, store), l, nil
+	return ledgerstore.NewDefaultStoreAdapter(lastVersion >= 26, store), l, nil
 }
 
 func (d *DefaultStorageDriverAdapter) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
