@@ -49,8 +49,8 @@ do $$
 								    ), '{}'::json)
 								))::varchar
 								when logs.type = 'SET_METADATA' then public.json_compact(json_build_object(
-								    'targetType', logs.data->>'targetType',
-								    'targetId', (logs.data->>'targetId')::json,
+								    'targetType', logs.data->'targetType',
+								    'targetId', logs.data->'targetId',
 								    'metadata', (
 								        select json_object_agg(key, value order by key)
 								        from json_each_text((logs.data->'metadata')::json)
@@ -94,4 +94,3 @@ do $$
 		drop table if exists txs_view;
 	end
 $$;
-
