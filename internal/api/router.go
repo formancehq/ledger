@@ -44,7 +44,6 @@ func NewRouter(
 			},
 			AllowCredentials: true,
 		}).Handler,
-		common.LogID(),
 		func(next http.Handler) http.Handler {
 			fn := func(w http.ResponseWriter, r *http.Request) {
 				defer func() {
