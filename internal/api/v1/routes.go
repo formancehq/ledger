@@ -33,8 +33,9 @@ func NewRouter(
 
 	router.Group(func(router chi.Router) {
 		router.Use(routerOptions.middlewares...)
-		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
+		router.Use(common.LogID())
+		router.Use(auth.Middleware(authenticator))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {

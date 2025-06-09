@@ -35,8 +35,9 @@ func NewRouter(
 
 	router.Group(func(router chi.Router) {
 		router.Use(routerOptions.middlewares...)
-		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
+		router.Use(common.LogID())
+		router.Use(auth.Middleware(authenticator))
 
 		router.Get("/_info", v1.GetInfo(systemController, version))
 
