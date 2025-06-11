@@ -34,5 +34,5 @@ func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, balances)
+	api.Ok(w, renderBalancesByAssets(r, balances))
 }

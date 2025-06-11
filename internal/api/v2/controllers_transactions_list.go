@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -41,6 +42,8 @@ func listTransactions(paginationConfig common.PaginationConfig) http.HandlerFunc
 			return
 		}
 
-		api.RenderCursor(w, *cursor)
+		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(tx ledger.Transaction) any {
+			return renderTransaction(r, tx)
+		}))
 	}
 }

@@ -61,7 +61,7 @@ func TestCreateTransaction(t *testing.T) {
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-			return x.(*ledger.Log).Type == ledger.NewLogType
+			return x.(*ledger.Log).Type == ledger.NewTransactionLogType
 		})).
 		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
 			log.ID = pointer.For(uint64(0))

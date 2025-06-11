@@ -2,9 +2,8 @@ package v2
 
 import (
 	"encoding/json"
-	"net/http"
-
 	"github.com/formancehq/ledger/internal/api/bulking"
+	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
@@ -69,5 +68,5 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, res.Transaction)
+	api.Ok(w, renderTransaction(r, res.Transaction))
 }

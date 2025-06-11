@@ -3,6 +3,8 @@ package v2
 import (
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -30,6 +32,8 @@ func listAccounts(paginationConfig common.PaginationConfig) http.HandlerFunc {
 			return
 		}
 
-		api.RenderCursor(w, *cursor)
+		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(account ledger.Account) any {
+			return renderAccount(r, account)
+		}))
 	}
 }

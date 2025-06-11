@@ -117,6 +117,19 @@ func (v VolumesByAssets) copy() VolumesByAssets {
 
 type PostCommitVolumes map[string]VolumesByAssets
 
+func (a PostCommitVolumes) SubtractPostings(postings Postings) PostCommitVolumes {
+	if len(a) == 0 {
+		return PostCommitVolumes{}
+	}
+	ret := a.Copy()
+	for _, posting := range postings {
+		ret.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+		ret.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
+	}
+
+	return ret
+}
+
 func (a PostCommitVolumes) AddInput(account, asset string, input *big.Int) {
 	volumes := a[account][asset].Copy()
 	volumes.Input.Add(volumes.Input, input)
