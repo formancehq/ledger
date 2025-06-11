@@ -19,7 +19,7 @@ import (
 
 const (
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
-	NewLogType                                // "NEW_TRANSACTION"
+	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
 )
@@ -54,7 +54,7 @@ func (lt LogType) String() string {
 	switch lt {
 	case SetMetadataLogType:
 		return "SET_METADATA"
-	case NewLogType:
+	case NewTransactionLogType:
 		return "NEW_TRANSACTION"
 	case RevertedTransactionLogType:
 		return "REVERTED_TRANSACTION"
@@ -70,7 +70,7 @@ func LogTypeFromString(logType string) LogType {
 	case "SET_METADATA":
 		return SetMetadataLogType
 	case "NEW_TRANSACTION":
-		return NewLogType
+		return NewTransactionLogType
 	case "REVERTED_TRANSACTION":
 		return RevertedTransactionLogType
 	case "DELETE_METADATA":
@@ -93,6 +93,12 @@ type Log struct {
 	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
 	Hash            []byte  `json:"hash" bun:"hash,type:bytea"`
+}
+
+func (l Log) WithDate(date time.Time) Log {
+	l.Date = date
+
+	return l
 }
 
 func (l Log) WithIdempotencyKey(key string) Log {
@@ -196,7 +202,7 @@ type CreatedTransaction struct {
 }
 
 func (p CreatedTransaction) Type() LogType {
-	return NewLogType
+	return NewTransactionLogType
 }
 
 var _ LogPayload = (*CreatedTransaction)(nil)
@@ -362,7 +368,7 @@ var _ Memento = (*RevertedTransaction)(nil)
 func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
 	switch _type {
-	case NewLogType:
+	case NewTransactionLogType:
 		payload = &CreatedTransaction{}
 	case SetMetadataLogType:
 		payload = &SavedMetadata{}

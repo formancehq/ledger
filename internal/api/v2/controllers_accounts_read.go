@@ -42,5 +42,5 @@ func readAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, acc)
+	api.Ok(w, renderAccount(r, *acc))
 }

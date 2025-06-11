@@ -3,6 +3,8 @@ package v2
 import (
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -61,6 +63,8 @@ func readVolumes(paginationConfig common.PaginationConfig) http.HandlerFunc {
 			return
 		}
 
-		api.RenderCursor(w, *cursor)
+		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(volumes ledger.VolumesWithBalanceByAssetByAccount) any {
+			return renderVolumesWithBalances(r, volumes)
+		}))
 	}
 }
