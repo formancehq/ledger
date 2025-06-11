@@ -181,6 +181,16 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			It("should be ok", shouldBeOk)
 		})
+		Context("with atomic and parallel", func() {
+			BeforeEach(func() {
+				atomic = true
+				parallel = true
+			})
+			It("should return an error", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+			})
+		})
 		Context("with exceeded batch size", func() {
 			BeforeEach(func() {
 				items = make([]components.V2BulkElement, 0)
