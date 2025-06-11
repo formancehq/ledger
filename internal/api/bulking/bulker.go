@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 )
 
+var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
+
 type Bulker struct {
 	ctrl        ledgercontroller.Controller
 	parallelism int
@@ -93,7 +95,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	defer span.End()
 
 	if err := bulkOptions.Validate(); err != nil {
-		return fmt.Errorf("validating bulk options: %s", err)
+		return fmt.Errorf("validating bulk options: %w", err)
 	}
 
 	ctrl := b.ctrl
@@ -287,7 +289,7 @@ type BulkingOptions struct {
 
 func (opts BulkingOptions) Validate() error {
 	if opts.Atomic && opts.Parallel {
-		return errors.New("atomic and parallel options are mutually exclusive")
+		return ErrAtomicParallelConflict
 	}
 
 	return nil

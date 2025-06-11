@@ -43,7 +43,12 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 			},
 		)
 		if err != nil {
-			common.InternalServerError(w, r, err)
+			switch {
+			case errors.Is(err, bulking.ErrAtomicParallelConflict):
+				api.WriteErrorResponse(w, http.StatusPreconditionFailed, common.ErrValidation, err)
+			default:
+				common.InternalServerError(w, r, err)
+			}
 			return
 		}
 
