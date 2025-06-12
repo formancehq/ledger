@@ -106,8 +106,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/go-libs/v3 v3.0.0-20250422113236-ec98813a1539 h1:6kUkmD2GiZGB7TDpGaPas2ipaAKqP/os3PVk4XFVrpI=
 github.com/formancehq/go-libs/v3 v3.0.0-20250422113236-ec98813a1539/go.mod h1:mRr5/y0I64iJ4I+BXNkUy49izwrh3SA5L+MTWD1d/7Q=
-github.com/formancehq/numscript v0.0.16 h1:kNNpPTmTvhRUrMXonZPMwUXUpJ06Io1WwC56Yf3nr1E=
-github.com/formancehq/numscript v0.0.16/go.mod h1:8WhBIqcK6zu27njxy7ZG7CaDX0MHtI9qF9Ggfj07wfU=
+github.com/formancehq/numscript v0.0.17 h1:/69oJ9MAmfJCRdJhx79F9mTxeTf8OIcMDglRoFF4xyI=
+github.com/formancehq/numscript v0.0.17/go.mod h1:8WhBIqcK6zu27njxy7ZG7CaDX0MHtI9qF9Ggfj07wfU=
 github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=
 github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
 github.com/gkampitakis/ciinfo v0.3.0 h1:gWZlOC2+RYYttL0hBqcoQhM7h1qNkVqvRCV1fOvpAv8=
