@@ -70,7 +70,7 @@ func (o *V2RevertTransactionRequest) GetDryRun() *bool {
 type V2RevertTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
-	V2RevertTransactionResponse *components.V2RevertTransactionResponse
+	V2CreateTransactionResponse *components.V2CreateTransactionResponse
 }
 
 func (o *V2RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -80,9 +80,9 @@ func (o *V2RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
 	return o.HTTPMeta
 }
 
-func (o *V2RevertTransactionResponse) GetV2RevertTransactionResponse() *components.V2RevertTransactionResponse {
+func (o *V2RevertTransactionResponse) GetV2CreateTransactionResponse() *components.V2CreateTransactionResponse {
 	if o == nil {
 		return nil
 	}
-	return o.V2RevertTransactionResponse
+	return o.V2CreateTransactionResponse
 }

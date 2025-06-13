@@ -1,11 +1,11 @@
-speakeasyVersion: 1.517.3
+speakeasyVersion: 1.563.0
 sources: {}
 targets:
     formance:
         source: Formance-OAS
 workflow:
     workflowVersion: 1.0.0
-    speakeasyVersion: v1.517.3
+    speakeasyVersion: v1.563.0
     sources:
         Formance-OAS:
             inputs:
