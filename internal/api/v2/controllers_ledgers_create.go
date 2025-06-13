@@ -35,7 +35,8 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 			switch {
 			case errors.Is(err, system.ErrInvalidLedgerConfiguration{}) ||
 				errors.Is(err, ledger.ErrInvalidLedgerName{}) ||
-				errors.Is(err, ledger.ErrInvalidBucketName{}):
+				errors.Is(err, ledger.ErrInvalidBucketName{}) ||
+				errors.Is(err, system.ErrExperimentalFeaturesDisabled):
 				api.BadRequest(w, common.ErrValidation, err)
 			case errors.Is(err, system.ErrBucketOutdated):
 				api.BadRequest(w, common.ErrOutdatedSchema, err)
