@@ -339,7 +339,6 @@ func main() {
         },
         Balance: client.Int64(2400),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        PaginationToken: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
     })
     if err != nil {
         log.Fatal(err)
@@ -462,6 +461,8 @@ func main() {
         Address: "users:001",
         RequestBody: map[string]any{
             "key": "<value>",
+            "key1": "<value>",
+            "key2": "<value>",
         },
     })
     if err != nil {
@@ -581,18 +582,7 @@ func main() {
 
     res, err := s.Ledger.V1.UpdateMapping(ctx, operations.UpdateMappingRequest{
         Ledger: "ledger001",
-        Mapping: &components.Mapping{
-            Contracts: []components.Contract{
-                components.Contract{
-                    Account: client.String("users:001"),
-                    Expr: components.Expr{},
-                },
-                components.Contract{
-                    Account: client.String("users:001"),
-                    Expr: components.Expr{},
-                },
-            },
-        },
+        Mapping: nil,
     })
     if err != nil {
         log.Fatal(err)
@@ -928,18 +918,6 @@ func main() {
                     Destination: "users:002",
                     Source: "users:001",
                 },
-                components.Posting{
-                    Amount: big.NewInt(100),
-                    Asset: "COIN",
-                    Destination: "users:002",
-                    Source: "users:001",
-                },
-                components.Posting{
-                    Amount: big.NewInt(100),
-                    Asset: "COIN",
-                    Destination: "users:002",
-                    Source: "users:001",
-                },
             },
             Script: &components.PostTransactionScript{
                 Plain: "vars {\n" +
@@ -1079,7 +1057,7 @@ func main() {
         Ledger: "ledger001",
         Txid: big.NewInt(1234),
         RequestBody: map[string]any{
-            "key": "<value>",
+
         },
     })
     if err != nil {
@@ -1206,18 +1184,6 @@ func main() {
             Transactions: []components.TransactionData{
                 components.TransactionData{
                     Postings: []components.Posting{
-                        components.Posting{
-                            Amount: big.NewInt(100),
-                            Asset: "COIN",
-                            Destination: "users:002",
-                            Source: "users:001",
-                        },
-                        components.Posting{
-                            Amount: big.NewInt(100),
-                            Asset: "COIN",
-                            Destination: "users:002",
-                            Source: "users:001",
-                        },
                         components.Posting{
                             Amount: big.NewInt(100),
                             Asset: "COIN",

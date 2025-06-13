@@ -64,6 +64,8 @@ func main() {
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
         RequestBody: map[string]any{
             "key": "<value>",
+            "key1": "<value>",
+            "key2": "<value>",
         },
     })
     if err != nil {
@@ -412,7 +414,6 @@ import(
 	"os"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client"
-	"math/big"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"log"
 )
@@ -433,9 +434,9 @@ func main() {
         Atomic: client.Bool(true),
         Parallel: client.Bool(true),
         RequestBody: []components.V2BulkElement{
-            components.CreateV2BulkElementRevertTransaction(
-                components.V2BulkElementRevertTransaction{
-                    Action: "<value>",
+            components.CreateV2BulkElementDeleteMetadata(
+                components.V2BulkElementDeleteMetadata{
+                    Action: "DELETE_METADATA",
                 },
             ),
         },
@@ -500,6 +501,7 @@ func main() {
         Ledger: "ledger001",
         RequestBody: map[string]any{
             "key": "<value>",
+            "key1": "<value>",
         },
     })
     if err != nil {
@@ -748,7 +750,7 @@ func main() {
 
     res, err := s.Ledger.V2.DeleteAccountMetadata(ctx, operations.V2DeleteAccountMetadataRequest{
         Ledger: "ledger001",
-        Address: "96609 Cummings Canyon",
+        Address: "6753 S Washington Street",
         Key: "foo",
     })
     if err != nil {
@@ -871,7 +873,6 @@ func main() {
         Ledger: "ledger001",
         RequestBody: map[string]any{
             "key": "<value>",
-            "key1": "<value>",
         },
     })
     if err != nil {
@@ -998,15 +999,8 @@ func main() {
     res, err := s.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
         Ledger: "ledger001",
         DryRun: client.Bool(true),
-        Force: client.Bool(true),
         V2PostTransaction: components.V2PostTransaction{
             Postings: []components.V2Posting{
-                components.V2Posting{
-                    Amount: big.NewInt(100),
-                    Asset: "COIN",
-                    Destination: "users:002",
-                    Source: "users:001",
-                },
                 components.V2Posting{
                     Amount: big.NewInt(100),
                     Asset: "COIN",
@@ -1036,6 +1030,9 @@ func main() {
                     "admin": "true",
                 },
                 "key1": map[string]string{
+                    "admin": "true",
+                },
+                "key2": map[string]string{
                     "admin": "true",
                 },
             },
@@ -1294,7 +1291,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2RevertTransactionResponse != nil {
+    if res.V2CreateTransactionResponse != nil {
         // handle response
     }
 }
@@ -1351,6 +1348,8 @@ func main() {
         Ledger: "ledger001",
         RequestBody: map[string]any{
             "key": "<value>",
+            "key1": "<value>",
+            "key2": "<value>",
         },
     })
     if err != nil {
@@ -1479,7 +1478,7 @@ func main() {
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
         RequestBody: map[string]any{
-            "key": "<value>",
+
         },
     })
     if err != nil {
@@ -1536,15 +1535,14 @@ func main() {
         }),
     )
 
-    v2ImportLogsRequest, fileErr := os.Open("example.file")
+    example, fileErr := os.Open("example.file")
     if fileErr != nil {
         panic(fileErr)
     }
 
-
     res, err := s.Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
         Ledger: "ledger001",
-        V2ImportLogsRequest: v2ImportLogsRequest,
+        V2ImportLogsRequest: example,
     })
     if err != nil {
         log.Fatal(err)

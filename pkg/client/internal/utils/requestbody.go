@@ -7,8 +7,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
+	"net/textproto"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"regexp"
 )
@@ -166,9 +169,21 @@ func encodeMultipartFormData(w io.Writer, data interface{}) (string, error) {
 
 		tag := parseMultipartFormTag(field)
 		if tag.File {
-			if err := encodeMultipartFormDataFile(writer, tag.Name, fieldType, valType); err != nil {
-				writer.Close()
-				return "", err
+			switch fieldType.Kind() {
+			case reflect.Slice, reflect.Array:
+				for i := 0; i < valType.Len(); i++ {
+					arrayVal := valType.Index(i)
+
+					if err := encodeMultipartFormDataFile(writer, tag.Name+"[]", arrayVal.Type(), arrayVal); err != nil {
+						writer.Close()
+						return "", err
+					}
+				}
+			default:
+				if err := encodeMultipartFormDataFile(writer, tag.Name, fieldType, valType); err != nil {
+					writer.Close()
+					return "", err
+				}
 			}
 		} else if tag.JSON {
 			jw, err := writer.CreateFormField(tag.Name)
@@ -243,12 +258,28 @@ func encodeMultipartFormDataFile(w *multipart.Writer, fieldName string, fieldTyp
 		return fmt.Errorf("invalid multipart/form-data file")
 	}
 
-	fw, err := w.CreateFormFile(fieldName, fileName)
+	// Detect content type based on file extension
+	contentType := mime.TypeByExtension(filepath.Ext(fileName))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// Create multipart header with proper content type
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fileName))
+	h.Set("Content-Type", contentType)
+
+	fw, err := w.CreatePart(h)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(fw, reader); err != nil {
 		return err
+	}
+
+	// Reset seek position to 0 if the reader supports seeking
+	if seeker, ok := reader.(io.Seeker); ok {
+		_, _ = seeker.Seek(0, io.SeekStart)
 	}
 
 	return nil

@@ -212,14 +212,14 @@ func CreateV2BulkElementResultDeleteMetadata(deleteMetadata V2BulkElementResultD
 	}
 }
 
-func CreateV2BulkElementResultError(error V2BulkElementResultError) V2BulkElementResult {
+func CreateV2BulkElementResultError(errorT V2BulkElementResultError) V2BulkElementResult {
 	typ := V2BulkElementResultTypeError
 
 	typStr := string(typ)
-	error.ResponseType = typStr
+	errorT.ResponseType = typStr
 
 	return V2BulkElementResult{
-		V2BulkElementResultError: &error,
+		V2BulkElementResultError: &errorT,
 		Type:                     typ,
 	}
 }

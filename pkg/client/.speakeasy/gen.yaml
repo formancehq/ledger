@@ -7,6 +7,7 @@ generation:
   maintainOpenAPIOrder: true
   usageSnippets:
     optionalPropertyRendering: withExample
+    sdkInitStyle: constructor
   useClassNamesForArrayFields: true
   fixes:
     nameResolutionDec2023: true
@@ -14,6 +15,7 @@ generation:
     parameterOrderingFeb2024: true
     requestResponseComponentNamesFeb2024: true
     securityFeb2025: false
+    sharedErrorComponentsApr2025: false
   auth:
     oAuth2ClientCredentialsEnabled: true
     oAuth2PasswordEnabled: false
@@ -21,6 +23,7 @@ go:
   version: 0.8.0
   additionalDependencies: {}
   allowUnknownFieldsInWeakUnions: false
+  baseErrorName: FormanceError
   clientServerStatusCodesAsErrors: true
   defaultErrorName: SDKError
   envVarPrefix: FORMANCE

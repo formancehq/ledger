@@ -148,7 +148,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
 					Ledger: "default",
 					RevertTransaction: ledger.Transaction{
-						ID: pointer.For(newTransaction.V2RevertTransactionResponse.Data.ID.Uint64()),
+						ID: pointer.For(newTransaction.V2CreateTransactionResponse.Data.ID.Uint64()),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{
 								"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
@@ -156,8 +156,8 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							Postings: []ledger.Posting{
 								ledger.NewPosting("alice", "world", "USD", big.NewInt(100)),
 							},
-							InsertedAt: libtime.New(*newTransaction.V2RevertTransactionResponse.Data.InsertedAt),
-							Timestamp:  libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp),
+							InsertedAt: libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
+							Timestamp:  libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp),
 						},
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
@@ -198,7 +198,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
 							Timestamp:  libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
 						},
-						RevertedAt: pointer.For(libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp)),
+						RevertedAt: pointer.For(libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp)),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
 								"USD": {
@@ -233,7 +233,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						ctx,
 						operations.V2GetTransactionRequest{
 							Ledger: "default",
-							ID:     newTransaction.V2RevertTransactionResponse.Data.ID,
+							ID:     newTransaction.V2CreateTransactionResponse.Data.ID,
 						},
 					)
 					Expect(err).NotTo(HaveOccurred())

@@ -1,5 +1,5 @@
 workflowVersion: 1.0.0
-speakeasyVersion: v1.517.3
+speakeasyVersion: v1.563.0
 sources:
     Formance-OAS:
         inputs:
