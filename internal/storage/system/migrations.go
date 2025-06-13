@@ -228,6 +228,15 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 			},
 		},
 		migrations.Migration{
+			Name: "Add json_compact function",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, jsonCompact)
+					return err
+				})
+			},
+		},
+		migrations.Migration{
 			Name: "set default metadata on ledgers",
 			Up: func(ctx context.Context, db bun.IDB) error {
 				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
@@ -235,15 +244,6 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 						alter table _system.ledgers
 						alter column metadata set default '{}'::jsonb;
 					`)
-					return err
-				})
-			},
-		},
-		migrations.Migration{
-			Name: "Add json_compact function",
-			Up: func(ctx context.Context, db bun.IDB) error {
-				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-					_, err := tx.ExecContext(ctx, jsonCompact)
 					return err
 				})
 			},
