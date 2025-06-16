@@ -102,6 +102,7 @@ func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository(&ledgersResourceHandler{store: d}, common.ColumnPaginator[ledger.Ledger, any]{
 		DefaultPaginationColumn: "id",
 		DefaultOrder:            bunpaginate.OrderAsc,
+		Table:                   d.db.Dialect().Tables().ByName("_system.ledgers"),
 	})
 }
 

@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/schema"
 	"math/big"
 	"reflect"
 	"strings"
@@ -14,6 +15,7 @@ import (
 type ColumnPaginator[ResourceType, OptionsType any] struct {
 	DefaultPaginationColumn string
 	DefaultOrder            bunpaginate.Order
+	Table                   *schema.Table
 }
 
 //nolint:unused
@@ -23,6 +25,7 @@ func (o ColumnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 	if query.Column != "" {
 		paginationColumn = query.Column
 	}
+
 	originalOrder := o.DefaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order
@@ -42,24 +45,37 @@ func (o ColumnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
 	if query.PaginationID != nil {
+		paginationID := convertPaginationIDToSQLType(
+			o.Table.FieldMap[paginationColumn].DiscoveredSQLType,
+			query.PaginationID,
+		)
 		if query.Reverse {
 			switch originalOrder {
 			case bunpaginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), paginationID)
 			case bunpaginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), paginationID)
 			}
 		} else {
 			switch originalOrder {
 			case bunpaginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), paginationID)
 			case bunpaginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), paginationID)
 			}
 		}
 	}
 
 	return sb, nil
+}
+
+func convertPaginationIDToSQLType(sqlType string, id *big.Int) any {
+	switch sqlType {
+	case "timestamp without time zone", "timestamp":
+		return libtime.UnixMicro(id.Int64())
+	default:
+		return id
+	}
 }
 
 //nolint:unused

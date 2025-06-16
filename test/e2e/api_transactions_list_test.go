@@ -220,6 +220,21 @@ var _ = Context("Ledger transactions list API tests", func() {
 					slices.Reverse(page)
 					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
 				})
+				When("using next page", func() {
+					JustBeforeEach(func(specContext SpecContext) {
+						rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+							ctx,
+							operations.V2ListTransactionsRequest{
+								Ledger: "default",
+								Cursor: rsp.V2TransactionsCursorResponse.Cursor.Next,
+							},
+						)
+						Expect(err).ToNot(HaveOccurred())
+					})
+					It("Should return next elements", func() {
+						Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(int(pageSize)))
+					})
+				})
 			})
 			It("Should be ok", func() {
 				Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
