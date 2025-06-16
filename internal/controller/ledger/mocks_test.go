@@ -110,20 +110,6 @@ func (mr *MockRepositoryHandlerMockRecorder[Opts]) Expand(query, property any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Expand", reflect.TypeOf((*MockRepositoryHandler[Opts])(nil).Expand), query, property)
 }
 
-// Filters mocks base method.
-func (m *MockRepositoryHandler[Opts]) Filters() []common.Filter {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Filters")
-	ret0, _ := ret[0].([]common.Filter)
-	return ret0
-}
-
-// Filters indicates an expected call of Filters.
-func (mr *MockRepositoryHandlerMockRecorder[Opts]) Filters() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Filters", reflect.TypeOf((*MockRepositoryHandler[Opts])(nil).Filters))
-}
-
 // Project mocks base method.
 func (m *MockRepositoryHandler[Opts]) Project(query common.ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	m.ctrl.T.Helper()
@@ -153,6 +139,20 @@ func (m *MockRepositoryHandler[Opts]) ResolveFilter(query common.ResourceQuery[O
 func (mr *MockRepositoryHandlerMockRecorder[Opts]) ResolveFilter(query, operator, property, value any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveFilter", reflect.TypeOf((*MockRepositoryHandler[Opts])(nil).ResolveFilter), query, operator, property, value)
+}
+
+// Schema mocks base method.
+func (m *MockRepositoryHandler[Opts]) Schema() common.EntitySchema {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Schema")
+	ret0, _ := ret[0].(common.EntitySchema)
+	return ret0
+}
+
+// Schema indicates an expected call of Schema.
+func (mr *MockRepositoryHandlerMockRecorder[Opts]) Schema() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Schema", reflect.TypeOf((*MockRepositoryHandler[Opts])(nil).Schema))
 }
 
 // MockResource is a mock of Resource interface.
@@ -276,4 +276,70 @@ func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) 
 func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType]) Paginate(ctx, paginationOptions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Paginate", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType])(nil).Paginate), ctx, paginationOptions)
+}
+
+// MockFieldType is a mock of FieldType interface.
+type MockFieldType struct {
+	ctrl     *gomock.Controller
+	recorder *MockFieldTypeMockRecorder
+	isgomock struct{}
+}
+
+// MockFieldTypeMockRecorder is the mock recorder for MockFieldType.
+type MockFieldTypeMockRecorder struct {
+	mock *MockFieldType
+}
+
+// NewMockFieldType creates a new mock instance.
+func NewMockFieldType(ctrl *gomock.Controller) *MockFieldType {
+	mock := &MockFieldType{ctrl: ctrl}
+	mock.recorder = &MockFieldTypeMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFieldType) EXPECT() *MockFieldTypeMockRecorder {
+	return m.recorder
+}
+
+// IsIndexable mocks base method.
+func (m *MockFieldType) IsIndexable() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsIndexable")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsIndexable indicates an expected call of IsIndexable.
+func (mr *MockFieldTypeMockRecorder) IsIndexable() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsIndexable", reflect.TypeOf((*MockFieldType)(nil).IsIndexable))
+}
+
+// Operators mocks base method.
+func (m *MockFieldType) Operators() []string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Operators")
+	ret0, _ := ret[0].([]string)
+	return ret0
+}
+
+// Operators indicates an expected call of Operators.
+func (mr *MockFieldTypeMockRecorder) Operators() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Operators", reflect.TypeOf((*MockFieldType)(nil).Operators))
+}
+
+// ValidateValue mocks base method.
+func (m *MockFieldType) ValidateValue(value any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateValue", value)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateValue indicates an expected call of ValidateValue.
+func (mr *MockFieldTypeMockRecorder) ValidateValue(value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateValue", reflect.TypeOf((*MockFieldType)(nil).ValidateValue), value)
 }
