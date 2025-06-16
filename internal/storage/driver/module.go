@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
@@ -21,6 +22,15 @@ func NewFXModule() fx.Option {
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
 		})),
+		fx.Invoke(func(db *bun.DB) {
+			db.Dialect().Tables().Register(
+				&ledger.Transaction{},
+				&ledger.Log{},
+				&ledger.Account{},
+				&ledger.Move{},
+				&ledger.Ledger{},
+			)
+		}),
 		fx.Provide(func(params struct {
 			fx.In
 
