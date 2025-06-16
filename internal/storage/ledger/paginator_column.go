@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v2/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/schema"
 	"math/big"
 	"reflect"
 	"strings"
@@ -15,6 +16,7 @@ import (
 type columnPaginator[ResourceType, OptionsType any] struct {
 	defaultPaginationColumn string
 	defaultOrder            bunpaginate.Order
+	Table                   *schema.Table
 }
 
 //nolint:unused
@@ -24,6 +26,7 @@ func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 	if query.Column != "" {
 		paginationColumn = query.Column
 	}
+
 	originalOrder := o.defaultOrder
 	if query.Order != nil {
 		originalOrder = *query.Order
@@ -43,24 +46,38 @@ func (o columnPaginator[ResourceType, OptionsType]) paginate(sb *bun.SelectQuery
 	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
 	if query.PaginationID != nil {
+		paginationID := convertPaginationIDToSQLType(
+			o.Table.FieldMap[paginationColumn].DiscoveredSQLType,
+			query.PaginationID,
+		)
 		if query.Reverse {
 			switch originalOrder {
 			case bunpaginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), paginationID)
 			case bunpaginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), paginationID)
 			}
 		} else {
 			switch originalOrder {
 			case bunpaginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), paginationID)
 			case bunpaginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), paginationID)
 			}
 		}
 	}
 
 	return sb, nil
+}
+
+//nolint:unused
+func convertPaginationIDToSQLType(sqlType string, id *big.Int) any {
+	switch sqlType {
+	case "timestamp without time zone", "timestamp":
+		return libtime.UnixMicro(id.Int64())
+	default:
+		return id
+	}
 }
 
 //nolint:unused

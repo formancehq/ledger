@@ -65,6 +65,7 @@ func (store *Store) Transactions() ledgercontroller.PaginatedResource[
 	return newPaginatedResourceRepository(store, store.ledger, &transactionsResourceHandler{}, columnPaginator[ledger.Transaction, any]{
 		defaultPaginationColumn: "id",
 		defaultOrder:            bunpaginate.OrderDesc,
+		Table:                   store.db.Dialect().Tables().ByName("transactions"),
 	})
 }
 
@@ -75,6 +76,7 @@ func (store *Store) Logs() ledgercontroller.PaginatedResource[
 	return newPaginatedResourceRepositoryMapper[ledger.Log, Log, any, ledgercontroller.ColumnPaginatedQuery[any]](store, store.ledger, &logsResourceHandler{}, columnPaginator[Log, any]{
 		defaultPaginationColumn: "id",
 		defaultOrder:            bunpaginate.OrderDesc,
+		Table:                   store.db.Dialect().Tables().ByName("logs"),
 	})
 }
 
