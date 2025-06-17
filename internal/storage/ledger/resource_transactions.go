@@ -12,59 +12,17 @@ type transactionsResourceHandler struct {
 	store *Store
 }
 
-func (h transactionsResourceHandler) Filters() []common.Filter {
-	return []common.Filter{
-		{
-			Name: "reverted",
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$match"),
-			},
-		},
-		{
-			Name: "account",
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(operator, value)
-				}),
-			},
-		},
-		{
-			Name: "source",
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(operator, value)
-				}),
-			},
-		},
-		{
-			Name: "destination",
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(operator, value)
-				}),
-			},
-		},
-		{
-			// todo: add validators
-			Name: "timestamp",
-		},
-		{
-			Name: "metadata",
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$exists"),
-			},
-		},
-		{
-			Name: `metadata\[.*]`,
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$match"),
-			},
-		},
-		{
-			Name: "id",
-		},
-		{
-			Name: "reference",
+func (h transactionsResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"reverted": common.NewBooleanField(),
+			"account": common.NewStringField(),
+			"source": common.NewStringField(),
+			"destination": common.NewStringField(),
+			"timestamp": common.NewDateField(),
+			"metadata": common.NewStringMapField(),
+			"id": common.NewNumericField(),
+			"reference": common.NewStringField(),
 		},
 	}
 }
@@ -123,7 +81,7 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 	return ret, nil
 }
 
-func (h transactionsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
@@ -155,11 +113,11 @@ func (h transactionsResourceHandler) ResolveFilter(opts common.ResourceQuery[any
 	}
 }
 
-func (h transactionsResourceHandler) Project(query common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) Project(_ common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) Expand(opts common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}

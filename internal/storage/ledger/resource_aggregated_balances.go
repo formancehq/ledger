@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"errors"
-	"fmt"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
@@ -13,37 +12,11 @@ type aggregatedBalancesResourceRepositoryHandler struct {
 	store *Store
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Filters() []common.Filter {
-	return []common.Filter{
-		{
-			Name: "address",
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(operator, value)
-				}),
-			},
-		},
-		{
-			Name: "metadata",
-			Matchers: []func(string) bool{
-				func(key string) bool {
-					return key == "metadata" || common.MetadataRegex.Match([]byte(key))
-				},
-			},
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					if key == "metadata" {
-						if operator != "$exists" {
-							return fmt.Errorf("unsupported operator %s for metadata", operator)
-						}
-						return nil
-					}
-					if operator != "$match" {
-						return fmt.Errorf("unsupported operator %s for metadata", operator)
-					}
-					return nil
-				}),
-			},
+func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address": common.NewStringField(),
+			"metadata": common.NewStringMapField(),
 		},
 	}
 }
@@ -136,7 +109,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], _, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "accounts_address"), nil, nil

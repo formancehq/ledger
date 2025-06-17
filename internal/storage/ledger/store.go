@@ -141,17 +141,6 @@ func (store *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
 }
 
-func validateAddressFilter(operator string, value any) error {
-	if operator != "$match" {
-		return fmt.Errorf("'address' column can only be used with $match, operator used is: %s", operator)
-	}
-	if _, ok := value.(string); !ok {
-		return fmt.Errorf("invalid 'address' filter")
-	}
-
-	return nil
-}
-
 func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() error, error) {
 	storeCp := *store
 	switch db := store.db.(type) {

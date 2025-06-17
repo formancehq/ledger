@@ -11,23 +11,23 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/uptrace/bun"
 	"math/big"
-	"regexp"
 	"slices"
+	"strings"
 )
 
 func ConvertOperatorToSQL(operator string) string {
 	switch operator {
-	case "$match":
+	case OperatorMatch:
 		return "="
-	case "$lt":
+	case OperatorLT:
 		return "<"
-	case "$gt":
+	case OperatorGT:
 		return ">"
-	case "$lte":
+	case OperatorLTE:
 		return "<="
-	case "$gte":
+	case OperatorGTE:
 		return ">="
-	case "$like":
+	case OperatorLike:
 		return "like"
 	}
 	panic("unreachable")
@@ -56,11 +56,8 @@ func AcceptOperators(operators ...string) PropertyValidator {
 	})
 }
 
-type Filter struct {
-	Name       string
-	Aliases    []string
-	Matchers   []func(key string) bool
-	Validators []PropertyValidator
+type EntitySchema struct {
+	Fields map[string]Field
 }
 
 type RepositoryHandlerBuildContext[Opts any] struct {
@@ -83,7 +80,7 @@ func (ctx RepositoryHandlerBuildContext[Opts]) UseFilter(v string, matchers ...f
 }
 
 type RepositoryHandler[Opts any] interface {
-	Filters() []Filter
+	Schema() EntitySchema
 	BuildDataset(query RepositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	ResolveFilter(query ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	Project(query ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
@@ -100,45 +97,32 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	}
 
 	ret := make(map[string]any)
-	properties := r.resourceHandler.Filters()
+	properties := r.resourceHandler.Schema().Fields
 	if err := builder.Walk(func(operator string, key string, value any) (err error) {
 
-		found := false
-		for _, property := range properties {
-			if len(property.Matchers) > 0 {
-				for _, matcher := range property.Matchers {
-					if found = matcher(key); found {
-						break
-					}
-				}
-			} else {
-				options := append([]string{property.Name}, property.Aliases...)
-				for _, option := range options {
-					if found, err = regexp.MatchString("^"+option+"$", key); err != nil {
-						return fmt.Errorf("failed to match regex for key '%s': %w", key, err)
-					} else if found {
-						break
-					}
-				}
+		for name, property := range properties {
+			key := key
+			if property.Type.IsIndexable() {
+				key = strings.Split(key, "[")[0]
 			}
-			if !found {
+			if !property.matchKey(name, key) {
 				continue
 			}
 
-			for _, validator := range property.Validators {
-				if err := validator.Validate(operator, key, value); err != nil {
-					return err
-				}
+			if !slices.Contains(property.Type.Operators(), operator) {
+				return NewErrInvalidQuery("operator '%s' is not allowed for property '%s'", operator, name)
 			}
-			ret[property.Name] = value
-			break
+
+			if err := property.Type.ValidateValue(value); err != nil {
+				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", value, name, err)
+			}
+
+			ret[name] = value
+
+			return nil
 		}
 
-		if !found {
-			return NewErrInvalidQuery("unknown key '%s' when building query", key)
-		}
-
-		return nil
+		return NewErrInvalidQuery("unknown key '%s' when building query", key)
 	}); err != nil {
 		return nil, err
 	}
@@ -422,3 +406,230 @@ type PaginatedResource[ResourceType, OptionsType any, PaginationQueryType Pagina
 	Resource[ResourceType, OptionsType]
 	Paginate(ctx context.Context, paginationOptions PaginationQueryType) (*bunpaginate.Cursor[ResourceType], error)
 }
+
+const (
+	OperatorMatch  = "$match"
+	OperatorExists = "$exists"
+	OperatorLike   = "$like"
+	OperatorLT     = "$lt"
+	OperatorGT     = "$gt"
+	OperatorLTE    = "$lte"
+	OperatorGTE    = "$gte"
+)
+
+type FieldType interface {
+	Operators() []string
+	ValidateValue(value any) error
+	IsIndexable() bool
+}
+
+type Field struct {
+	Aliases []string
+	Type    FieldType
+}
+
+func (f Field) WithAliases(aliases ...string) Field {
+	f.Aliases = append(f.Aliases, aliases...)
+	return f
+}
+
+func (f Field) matchKey(name, key string) bool {
+	if key == name {
+		return true
+	}
+	for _, alias := range f.Aliases {
+		if key == alias {
+			return true
+		}
+	}
+
+	return false
+}
+
+func NewField(t FieldType) Field {
+	return Field{
+		Aliases: []string{},
+		Type:    t,
+	}
+}
+
+// NewStringField creates a new field with TypeString as its type.
+func NewStringField() Field {
+	return NewField(NewTypeString())
+}
+
+// NewDateField creates a new field with TypeDate as its type.
+func NewDateField() Field {
+	return NewField(NewTypeDate())
+}
+
+// NewMapField creates a new field with TypeMap as its type, using the provided underlying type.
+func NewMapField(underlyingType FieldType) Field {
+	return NewField(NewTypeMap(underlyingType))
+}
+
+// NewNumericField creates a new field with TypeNumeric as its type.
+func NewNumericField() Field {
+	return NewField(NewTypeNumeric())
+}
+
+// NewBooleanField creates a new field with TypeBoolean as its type.
+func NewBooleanField() Field {
+	return NewField(NewTypeBoolean())
+}
+
+// NewStringMapField creates a new field with TypeMap as its type, using TypeString as the underlying type.
+func NewStringMapField() Field {
+	return NewMapField(NewTypeString())
+}
+
+// NewNumericMapField creates a new field with TypeMap as its type, using TypeNumeric as the underlying type.
+func NewNumericMapField() Field {
+	return NewMapField(NewTypeNumeric())
+}
+
+type TypeString struct{}
+
+func (t TypeString) IsIndexable() bool {
+	return false
+}
+
+func (t TypeString) Operators() []string {
+	return []string{
+		OperatorMatch,
+		OperatorLike,
+	}
+}
+
+func (t TypeString) ValidateValue(value any) error {
+	_, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected string value, got %T", value)
+	}
+	return nil
+}
+
+var _ FieldType = (*TypeString)(nil)
+
+func NewTypeString() TypeString {
+	return TypeString{}
+}
+
+type TypeDate struct{}
+
+func (t TypeDate) IsIndexable() bool {
+	return false
+}
+
+func (t TypeDate) Operators() []string {
+	return []string{
+		OperatorMatch,
+		OperatorLT,
+		OperatorGT,
+		OperatorLTE,
+		OperatorGTE,
+	}
+}
+
+func (t TypeDate) ValidateValue(value any) error {
+	switch value := value.(type) {
+	case string:
+		_, err := time.ParseTime(value)
+		if err != nil {
+			return fmt.Errorf("invalid date value: %w", err)
+		}
+	case time.Time, *time.Time:
+	default:
+		return fmt.Errorf("expected string, time.Time, or *time.Time value, got %T", value)
+	}
+	return nil
+}
+
+func NewTypeDate() TypeDate {
+	return TypeDate{}
+}
+
+var _ FieldType = (*TypeDate)(nil)
+
+type TypeMap struct {
+	underlyingType FieldType
+}
+
+func (t TypeMap) IsIndexable() bool {
+	return true
+}
+
+func (t TypeMap) Operators() []string {
+	return append(t.underlyingType.Operators(), OperatorMatch, OperatorExists)
+}
+
+func (t TypeMap) ValidateValue(value any) error {
+	return t.underlyingType.ValidateValue(value)
+}
+
+func NewTypeMap(underlyingType FieldType) TypeMap {
+	return TypeMap{
+		underlyingType: underlyingType,
+	}
+}
+
+var _ FieldType = (*TypeMap)(nil)
+
+type TypeNumeric struct{}
+
+func (t TypeNumeric) IsIndexable() bool {
+	return false
+}
+
+func (t TypeNumeric) Operators() []string {
+	return []string{
+		OperatorMatch,
+		OperatorLT,
+		OperatorGT,
+		OperatorLTE,
+		OperatorGTE,
+	}
+}
+
+func (t TypeNumeric) ValidateValue(value any) error {
+	switch value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float64, float32,
+		*int, *int8, *int16, *int32, *int64, *uint, *uint8, *uint16, *uint32, *uint64, *float64, *float32:
+		return nil
+	default:
+		return fmt.Errorf("expected numeric value, got %T", value)
+	}
+}
+
+func NewTypeNumeric() TypeNumeric {
+	return TypeNumeric{}
+}
+
+var _ FieldType = (*TypeNumeric)(nil)
+
+type TypeBoolean struct{}
+
+func (t TypeBoolean) IsIndexable() bool {
+	return false
+}
+
+func (t TypeBoolean) Operators() []string {
+	return []string{
+		OperatorMatch,
+	}
+}
+
+func (t TypeBoolean) ValidateValue(value any) error {
+	_, ok := value.(bool)
+	if !ok {
+		return fmt.Errorf("expected boolean value, got %T", value)
+	}
+
+	return nil
+}
+
+func NewTypeBoolean() TypeBoolean {
+	return TypeBoolean{}
+}
+
+var _ FieldType = (*TypeBoolean)(nil)

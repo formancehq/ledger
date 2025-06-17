@@ -14,50 +14,14 @@ type volumesResourceHandler struct {
 	store *Store
 }
 
-func (h volumesResourceHandler) Filters() []common.Filter {
-	return []common.Filter{
-		{
-			Name:    "address",
-			Aliases: []string{"account"},
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(operator, value)
-				}),
-			},
-		},
-		{
-			Name: `balance(\[.*])?`,
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
-			},
-		},
-		{
-			Name: "first_usage",
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
-			},
-		},
-		{
-			Name: "metadata",
-			Matchers: []func(string) bool{
-				func(key string) bool {
-					return key == "metadata" || common.MetadataRegex.Match([]byte(key))
-				},
-			},
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					if key == "metadata" {
-						if operator != "$exists" {
-							return fmt.Errorf("unsupported operator %s for metadata", operator)
-						}
-						return nil
-					}
-					if operator != "$match" {
-						return fmt.Errorf("unsupported operator %s for metadata", operator)
-					}
-					return nil
-				}),
-			},
+func (h volumesResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address": common.NewStringField().
+				WithAliases("account"),
+			"balance": common.NewNumericMapField(),
+			"first_usage": common.NewDateField(),
+			"metadata": common.NewStringMapField(),
 		},
 	}
 }
