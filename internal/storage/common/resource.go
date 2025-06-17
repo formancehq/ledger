@@ -105,19 +105,7 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 			if property.Type.IsIndexable() {
 				key = strings.Split(key, "[")[0]
 			}
-			match := func() bool {
-				if key == name {
-					return true
-				}
-				for _, alias := range property.Aliases {
-					if key == alias {
-						return true
-					}
-				}
-
-				return false
-			}()
-			if !match {
+			if !property.matchKey(name, key) {
 				continue
 			}
 
@@ -443,6 +431,19 @@ type Field struct {
 func (f Field) WithAliases(aliases ...string) Field {
 	f.Aliases = append(f.Aliases, aliases...)
 	return f
+}
+
+func (f Field) matchKey(name, key string) bool {
+	if key == name {
+		return true
+	}
+	for _, alias := range f.Aliases {
+		if key == alias {
+			return true
+		}
+	}
+
+	return false
 }
 
 func NewField(t FieldType) Field {
