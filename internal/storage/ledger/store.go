@@ -67,6 +67,7 @@ func (store *Store) Transactions() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository(&transactionsResourceHandler{store: store}, common.ColumnPaginator[ledger.Transaction, any]{
 		DefaultPaginationColumn: "id",
 		DefaultOrder:            bunpaginate.OrderDesc,
+		Table:                   store.db.Dialect().Tables().ByName("transactions"),
 	})
 }
 
@@ -79,6 +80,7 @@ func (store *Store) Logs() common.PaginatedResource[
 	}, common.ColumnPaginator[Log, any]{
 		DefaultPaginationColumn: "id",
 		DefaultOrder:            bunpaginate.OrderDesc,
+		Table:                   store.db.Dialect().Tables().ByName("logs"),
 	})
 }
 
