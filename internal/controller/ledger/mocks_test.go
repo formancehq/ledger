@@ -209,32 +209,68 @@ func (mr *MockResourceMockRecorder[ResourceType, OptionsType]) GetOne(ctx, query
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOne", reflect.TypeOf((*MockResource[ResourceType, OptionsType])(nil).GetOne), ctx, query)
 }
 
-// MockPaginatedResource is a mock of PaginatedResource interface.
-type MockPaginatedResource[ResourceType any, OptionsType any, PaginationQueryType common.PaginatedQuery[OptionsType]] struct {
+// MockPaginatedQuery is a mock of PaginatedQuery interface.
+type MockPaginatedQuery[OptionsType any] struct {
 	ctrl     *gomock.Controller
-	recorder *MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType]
+	recorder *MockPaginatedQueryMockRecorder[OptionsType]
 	isgomock struct{}
 }
 
-// MockPaginatedResourceMockRecorder is the mock recorder for MockPaginatedResource.
-type MockPaginatedResourceMockRecorder[ResourceType any, OptionsType any, PaginationQueryType common.PaginatedQuery[OptionsType]] struct {
-	mock *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]
+// MockPaginatedQueryMockRecorder is the mock recorder for MockPaginatedQuery.
+type MockPaginatedQueryMockRecorder[OptionsType any] struct {
+	mock *MockPaginatedQuery[OptionsType]
 }
 
-// NewMockPaginatedResource creates a new mock instance.
-func NewMockPaginatedResource[ResourceType any, OptionsType any, PaginationQueryType common.PaginatedQuery[OptionsType]](ctrl *gomock.Controller) *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType] {
-	mock := &MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]{ctrl: ctrl}
-	mock.recorder = &MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType]{mock}
+// NewMockPaginatedQuery creates a new mock instance.
+func NewMockPaginatedQuery[OptionsType any](ctrl *gomock.Controller) *MockPaginatedQuery[OptionsType] {
+	mock := &MockPaginatedQuery[OptionsType]{ctrl: ctrl}
+	mock.recorder = &MockPaginatedQueryMockRecorder[OptionsType]{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) EXPECT() *MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType] {
+func (m *MockPaginatedQuery[OptionsType]) EXPECT() *MockPaginatedQueryMockRecorder[OptionsType] {
+	return m.recorder
+}
+
+// isPaginatedQuery mocks base method.
+func (m *MockPaginatedQuery[OptionsType]) isPaginatedQuery() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "isPaginatedQuery")
+}
+
+// isPaginatedQuery indicates an expected call of isPaginatedQuery.
+func (mr *MockPaginatedQueryMockRecorder[OptionsType]) isPaginatedQuery() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "isPaginatedQuery", reflect.TypeOf((*MockPaginatedQuery[OptionsType])(nil).isPaginatedQuery))
+}
+
+// MockPaginatedResource is a mock of PaginatedResource interface.
+type MockPaginatedResource[ResourceType any, OptionsType any] struct {
+	ctrl     *gomock.Controller
+	recorder *MockPaginatedResourceMockRecorder[ResourceType, OptionsType]
+	isgomock struct{}
+}
+
+// MockPaginatedResourceMockRecorder is the mock recorder for MockPaginatedResource.
+type MockPaginatedResourceMockRecorder[ResourceType any, OptionsType any] struct {
+	mock *MockPaginatedResource[ResourceType, OptionsType]
+}
+
+// NewMockPaginatedResource creates a new mock instance.
+func NewMockPaginatedResource[ResourceType any, OptionsType any](ctrl *gomock.Controller) *MockPaginatedResource[ResourceType, OptionsType] {
+	mock := &MockPaginatedResource[ResourceType, OptionsType]{ctrl: ctrl}
+	mock.recorder = &MockPaginatedResourceMockRecorder[ResourceType, OptionsType]{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPaginatedResource[ResourceType, OptionsType]) EXPECT() *MockPaginatedResourceMockRecorder[ResourceType, OptionsType] {
 	return m.recorder
 }
 
 // Count mocks base method.
-func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) Count(ctx context.Context, query common.ResourceQuery[OptionsType]) (int, error) {
+func (m *MockPaginatedResource[ResourceType, OptionsType]) Count(ctx context.Context, query common.ResourceQuery[OptionsType]) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Count", ctx, query)
 	ret0, _ := ret[0].(int)
@@ -243,13 +279,13 @@ func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) 
 }
 
 // Count indicates an expected call of Count.
-func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType]) Count(ctx, query any) *gomock.Call {
+func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType]) Count(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType])(nil).Count), ctx, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType])(nil).Count), ctx, query)
 }
 
 // GetOne mocks base method.
-func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) GetOne(ctx context.Context, query common.ResourceQuery[OptionsType]) (*ResourceType, error) {
+func (m *MockPaginatedResource[ResourceType, OptionsType]) GetOne(ctx context.Context, query common.ResourceQuery[OptionsType]) (*ResourceType, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOne", ctx, query)
 	ret0, _ := ret[0].(*ResourceType)
@@ -258,13 +294,13 @@ func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) 
 }
 
 // GetOne indicates an expected call of GetOne.
-func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType]) GetOne(ctx, query any) *gomock.Call {
+func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType]) GetOne(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOne", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType])(nil).GetOne), ctx, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOne", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType])(nil).GetOne), ctx, query)
 }
 
 // Paginate mocks base method.
-func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) Paginate(ctx context.Context, paginationOptions PaginationQueryType) (*bunpaginate.Cursor[ResourceType], error) {
+func (m *MockPaginatedResource[ResourceType, OptionsType]) Paginate(ctx context.Context, paginationOptions common.PaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Paginate", ctx, paginationOptions)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ResourceType])
@@ -273,73 +309,7 @@ func (m *MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType]) 
 }
 
 // Paginate indicates an expected call of Paginate.
-func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType, PaginationQueryType]) Paginate(ctx, paginationOptions any) *gomock.Call {
+func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType]) Paginate(ctx, paginationOptions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Paginate", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType, PaginationQueryType])(nil).Paginate), ctx, paginationOptions)
-}
-
-// MockFieldType is a mock of FieldType interface.
-type MockFieldType struct {
-	ctrl     *gomock.Controller
-	recorder *MockFieldTypeMockRecorder
-	isgomock struct{}
-}
-
-// MockFieldTypeMockRecorder is the mock recorder for MockFieldType.
-type MockFieldTypeMockRecorder struct {
-	mock *MockFieldType
-}
-
-// NewMockFieldType creates a new mock instance.
-func NewMockFieldType(ctrl *gomock.Controller) *MockFieldType {
-	mock := &MockFieldType{ctrl: ctrl}
-	mock.recorder = &MockFieldTypeMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockFieldType) EXPECT() *MockFieldTypeMockRecorder {
-	return m.recorder
-}
-
-// IsIndexable mocks base method.
-func (m *MockFieldType) IsIndexable() bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsIndexable")
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// IsIndexable indicates an expected call of IsIndexable.
-func (mr *MockFieldTypeMockRecorder) IsIndexable() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsIndexable", reflect.TypeOf((*MockFieldType)(nil).IsIndexable))
-}
-
-// Operators mocks base method.
-func (m *MockFieldType) Operators() []string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Operators")
-	ret0, _ := ret[0].([]string)
-	return ret0
-}
-
-// Operators indicates an expected call of Operators.
-func (mr *MockFieldTypeMockRecorder) Operators() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Operators", reflect.TypeOf((*MockFieldType)(nil).Operators))
-}
-
-// ValidateValue mocks base method.
-func (m *MockFieldType) ValidateValue(value any) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateValue", value)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidateValue indicates an expected call of ValidateValue.
-func (mr *MockFieldTypeMockRecorder) ValidateValue(value any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateValue", reflect.TypeOf((*MockFieldType)(nil).ValidateValue), value)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Paginate", reflect.TypeOf((*MockPaginatedResource[ResourceType, OptionsType])(nil).Paginate), ctx, paginationOptions)
 }

@@ -58,11 +58,11 @@ type Store interface {
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 
-	Accounts() common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]]
-	Logs() common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]]
-	Transactions() common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]]
+	Accounts() common.PaginatedResource[ledger.Account, any]
+	Logs() common.PaginatedResource[ledger.Log, any]
+	Transactions() common.PaginatedResource[ledger.Transaction, any]
 	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions]
-	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions]
 }
 
 type vmStoreAdapter struct {
@@ -87,8 +87,8 @@ func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	}
 }
 
-func NewListLedgersQuery(pageSize uint64) common.ColumnPaginatedQuery[any] {
-	return common.ColumnPaginatedQuery[any]{
+func NewListLedgersQuery(pageSize uint64) common.InitialPaginatedQuery[any] {
+	return common.InitialPaginatedQuery[any]{
 		PageSize: pageSize,
 		Column:   "id",
 		Order:    (*bunpaginate.Order)(pointer.For(bunpaginate.OrderAsc)),

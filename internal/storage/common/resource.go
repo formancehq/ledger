@@ -60,6 +60,16 @@ type EntitySchema struct {
 	Fields map[string]Field
 }
 
+func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
+	for fieldName, field := range s.Fields {
+		if fieldName == name || slices.Contains(field.Aliases, name) {
+			return fieldName, &field
+		}
+	}
+
+	return "", nil
+}
+
 type RepositoryHandlerBuildContext[Opts any] struct {
 	ResourceQuery[Opts]
 	filters map[string]any
@@ -244,21 +254,51 @@ func NewResourceRepository[ResourceType, OptionsType any](
 	}
 }
 
-type PaginatedResourceRepository[ResourceType, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]] struct {
+type PaginatedResourceRepository[ResourceType, OptionsType any] struct {
 	*ResourceRepository[ResourceType, OptionsType]
-	paginator Paginator[ResourceType, PaginationQueryType]
 }
 
-func (r *PaginatedResourceRepository[ResourceType, OptionsType, PaginationQueryType]) Paginate(
+func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	ctx context.Context,
-	paginationOptions PaginationQueryType,
+	paginationQuery PaginatedQuery[OptionsType],
 ) (*bunpaginate.Cursor[ResourceType], error) {
 
-	var resourceQuery ResourceQuery[OptionsType]
-	switch v := any(paginationOptions).(type) {
+	switch v := any(paginationQuery).(type) {
 	case OffsetPaginatedQuery[OptionsType]:
+	case ColumnPaginatedQuery[OptionsType]:
+	case InitialPaginatedQuery[OptionsType]:
+		_, field := r.resourceHandler.Schema().GetFieldByNameOrAlias(v.Column)
+		if field == nil {
+			return nil, fmt.Errorf("invalid property '%s' for pagination", v.Column)
+		}
+
+		if field.Type.IsPaginated() {
+			paginationQuery = ColumnPaginatedQuery[OptionsType]{
+				InitialPaginatedQuery: v,
+			}
+		} else {
+			paginationQuery = OffsetPaginatedQuery[OptionsType]{
+				InitialPaginatedQuery: v,
+			}
+		}
+	default:
+		panic(fmt.Errorf("should not happen, got type when waiting for OffsetPaginatedQuery, ColumnPaginatedQuery, or InitialResourceQuery: %T", paginationQuery))
+	}
+
+	var (
+		paginator     Paginator[ResourceType]
+		resourceQuery ResourceQuery[OptionsType]
+	)
+	switch v := any(paginationQuery).(type) {
+	case OffsetPaginatedQuery[OptionsType]:
+		paginator = newOffsetPaginator[ResourceType, OptionsType](v)
 		resourceQuery = v.Options
 	case ColumnPaginatedQuery[OptionsType]:
+		fieldName, field := r.resourceHandler.Schema().GetFieldByNameOrAlias(v.Column)
+		if field == nil {
+			return nil, fmt.Errorf("invalid property '%s' for pagination", v.Column)
+		}
+		paginator = newColumnPaginator[ResourceType, OptionsType](v, fieldName, field.Type)
 		resourceQuery = v.Options
 	default:
 		panic("should not happen")
@@ -269,7 +309,7 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 		return nil, fmt.Errorf("building filtered dataset: %w", err)
 	}
 
-	finalQuery, err = r.paginator.Paginate(finalQuery, paginationOptions)
+	finalQuery, err = paginator.Paginate(finalQuery)
 	if err != nil {
 		return nil, fmt.Errorf("paginating request: %w", err)
 	}
@@ -286,30 +326,28 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType, PaginationQueryT
 		return nil, fmt.Errorf("scanning results: %w", err)
 	}
 
-	return r.paginator.BuildCursor(ret, paginationOptions)
+	return paginator.BuildCursor(ret)
 }
 
-func NewPaginatedResourceRepository[ResourceType, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]](
+func NewPaginatedResourceRepository[ResourceType, OptionsType any](
 	handler RepositoryHandler[OptionsType],
-	paginator Paginator[ResourceType, PaginationQueryType],
-) *PaginatedResourceRepository[ResourceType, OptionsType, PaginationQueryType] {
-	return &PaginatedResourceRepository[ResourceType, OptionsType, PaginationQueryType]{
+) *PaginatedResourceRepository[ResourceType, OptionsType] {
+	return &PaginatedResourceRepository[ResourceType, OptionsType]{
 		ResourceRepository: NewResourceRepository[ResourceType, OptionsType](handler),
-		paginator:          paginator,
 	}
 }
 
 type PaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType interface {
 	ToCore() ToResourceType
-}, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]] struct {
-	*PaginatedResourceRepository[OriginalResourceType, OptionsType, PaginationQueryType]
+}, OptionsType any] struct {
+	*PaginatedResourceRepository[OriginalResourceType, OptionsType]
 }
 
-func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType, PaginationQueryType]) Paginate(
+func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]) Paginate(
 	ctx context.Context,
-	paginationOptions PaginationQueryType,
+	paginatedQuery PaginatedQuery[OptionsType],
 ) (*bunpaginate.Cursor[ToResourceType], error) {
-	cursor, err := m.PaginatedResourceRepository.Paginate(ctx, paginationOptions)
+	cursor, err := m.PaginatedResourceRepository.Paginate(ctx, paginatedQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +355,7 @@ func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, 
 	return bunpaginate.MapCursor(cursor, OriginalResourceType.ToCore), nil
 }
 
-func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType, PaginationQueryType]) GetOne(
+func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]) GetOne(
 	ctx context.Context,
 	query ResourceQuery[OptionsType],
 ) (*ToResourceType, error) {
@@ -331,12 +369,9 @@ func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, 
 
 func NewPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType interface {
 	ToCore() ToResourceType
-}, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]](
-	handler RepositoryHandler[OptionsType],
-	paginator Paginator[OriginalResourceType, PaginationQueryType],
-) *PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType, PaginationQueryType] {
-	return &PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType, PaginationQueryType]{
-		PaginatedResourceRepository: NewPaginatedResourceRepository(handler, paginator),
+}, OptionsType any](handler RepositoryHandler[OptionsType]) *PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType] {
+	return &PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]{
+		PaginatedResourceRepository: NewPaginatedResourceRepository[OriginalResourceType, OptionsType](handler),
 	}
 }
 
@@ -380,29 +415,43 @@ type Resource[ResourceType, OptionsType any] interface {
 }
 
 type (
-	OffsetPaginatedQuery[OptionsType any] struct {
+	CursorMetadata struct {
+		Previous string
+		Next     string
+		PageSize int
+		HasMore  bool
+	}
+	InitialPaginatedQuery[OptionsType any] struct {
 		Column   string                     `json:"column"`
-		Offset   uint64                     `json:"offset"`
 		Order    *bunpaginate.Order         `json:"order"`
 		PageSize uint64                     `json:"pageSize"`
 		Options  ResourceQuery[OptionsType] `json:"filters"`
 	}
+	OffsetPaginatedQuery[OptionsType any] struct {
+		InitialPaginatedQuery[OptionsType]
+		Offset uint64 `json:"offset"`
+	}
 	ColumnPaginatedQuery[OptionsType any] struct {
-		PageSize     uint64   `json:"pageSize"`
+		InitialPaginatedQuery[OptionsType]
 		Bottom       *big.Int `json:"bottom"`
-		Column       string   `json:"column"`
 		PaginationID *big.Int `json:"paginationID"`
-		// todo: backport in go-libs
-		Order   *bunpaginate.Order         `json:"order"`
-		Options ResourceQuery[OptionsType] `json:"filters"`
-		Reverse bool                       `json:"reverse"`
+		Reverse      bool     `json:"reverse"`
 	}
 	PaginatedQuery[OptionsType any] interface {
-		OffsetPaginatedQuery[OptionsType] | ColumnPaginatedQuery[OptionsType]
+		// Marker
+		isPaginatedQuery()
 	}
 )
 
-type PaginatedResource[ResourceType, OptionsType any, PaginationQueryType PaginatedQuery[OptionsType]] interface {
+func (i InitialPaginatedQuery[OptionsType]) isPaginatedQuery() {}
+
+var _ PaginatedQuery[any] = (*InitialPaginatedQuery[any])(nil)
+
+var _ PaginatedQuery[any] = (*OffsetPaginatedQuery[any])(nil)
+
+var _ PaginatedQuery[any] = (*ColumnPaginatedQuery[any])(nil)
+
+type PaginatedResource[ResourceType, OptionsType any] interface {
 	Resource[ResourceType, OptionsType]
-	Paginate(ctx context.Context, paginationOptions PaginationQueryType) (*bunpaginate.Cursor[ResourceType], error)
+	Paginate(ctx context.Context, paginationOptions PaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error)
 }

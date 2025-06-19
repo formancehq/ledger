@@ -19,6 +19,7 @@ type FieldType interface {
 	Operators() []string
 	ValidateValue(value any) error
 	IsIndexable() bool
+	IsPaginated() bool
 }
 
 type Field struct {
@@ -88,6 +89,10 @@ func NewNumericMapField() Field {
 
 type TypeString struct{}
 
+func (t TypeString) IsPaginated() bool {
+	return false
+}
+
 func (t TypeString) IsIndexable() bool {
 	return false
 }
@@ -114,6 +119,10 @@ func NewTypeString() TypeString {
 }
 
 type TypeDate struct{}
+
+func (t TypeDate) IsPaginated() bool {
+	return true
+}
 
 func (t TypeDate) IsIndexable() bool {
 	return false
@@ -153,6 +162,10 @@ type TypeMap struct {
 	underlyingType FieldType
 }
 
+func (t TypeMap) IsPaginated() bool {
+	return false
+}
+
 func (t TypeMap) IsIndexable() bool {
 	return true
 }
@@ -174,6 +187,10 @@ func NewTypeMap(underlyingType FieldType) TypeMap {
 var _ FieldType = (*TypeMap)(nil)
 
 type TypeNumeric struct{}
+
+func (t TypeNumeric) IsPaginated() bool {
+	return true
+}
 
 func (t TypeNumeric) IsIndexable() bool {
 	return false
@@ -206,6 +223,10 @@ func NewTypeNumeric() TypeNumeric {
 var _ FieldType = (*TypeNumeric)(nil)
 
 type TypeBoolean struct{}
+
+func (t TypeBoolean) IsPaginated() bool {
+	return false
+}
 
 func (t TypeBoolean) IsIndexable() bool {
 	return false

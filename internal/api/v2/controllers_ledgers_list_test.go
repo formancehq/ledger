@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
@@ -21,14 +22,14 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestListLedgers(t *testing.T) {
+func TestLedgersList(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 
 	type testCase struct {
 		name               string
-		expectQuery        storagecommon.ColumnPaginatedQuery[any]
+		expectQuery        storagecommon.PaginatedQuery[any]
 		queryParams        url.Values
 		returnData         []ledger.Ledger
 		returnErr          error
@@ -40,7 +41,7 @@ func TestListLedgers(t *testing.T) {
 	for _, tc := range []testCase{
 		{
 			name:        "nominal",
-			expectQuery: ledgercontroller.NewListLedgersQuery(15),
+			expectQuery: pointer.For(ledgercontroller.NewListLedgersQuery(15)),
 			returnData: []ledger.Ledger{
 				ledger.MustNewWithDefault(uuid.NewString()),
 				ledger.MustNewWithDefault(uuid.NewString()),

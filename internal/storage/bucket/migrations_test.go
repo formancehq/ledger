@@ -3,7 +3,6 @@
 package bucket_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
@@ -91,15 +90,14 @@ func TestMigrations(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		store := ledgerstore.New(db, bucket.NewDefault(noop.Tracer{}, bucketName), ledgers[i])
 
-		require.NoError(t, bunpaginate.Iterate(
+		require.NoError(t, common.Iterate(
 			ctx,
-			common.ColumnPaginatedQuery[any]{
+			common.InitialPaginatedQuery[any]{
 				PageSize: 100,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Column:   "id",
 			},
-			func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
-				return store.Logs().Paginate(ctx, q)
-			},
+			store.Logs().Paginate,
 			func(cursor *bunpaginate.Cursor[ledger.Log]) error {
 				return nil
 			},

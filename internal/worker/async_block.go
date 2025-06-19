@@ -80,12 +80,10 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 	initialQuery := ledgercontroller.NewListLedgersQuery(10)
 	initialQuery.Options.Builder = query.Match(fmt.Sprintf("features[%s]", features.FeatureHashLogs), "ASYNC")
 	systemStore := systemstore.New(r.db)
-	return bunpaginate.Iterate(
+	return common.Iterate(
 		ctx,
 		initialQuery,
-		func(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
-			return systemStore.Ledgers().Paginate(ctx, q)
-		},
+		systemStore.Ledgers().Paginate,
 		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
 			for _, l := range cursor.Data {
 				if err := r.processLedger(ctx, l); err != nil {
