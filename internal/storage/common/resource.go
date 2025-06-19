@@ -255,6 +255,8 @@ func NewResourceRepository[ResourceType, OptionsType any](
 }
 
 type PaginatedResourceRepository[ResourceType, OptionsType any] struct {
+	defaultPaginationColumn string
+	defaultOrder            bunpaginate.Order
 	*ResourceRepository[ResourceType, OptionsType]
 }
 
@@ -267,6 +269,17 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	case OffsetPaginatedQuery[OptionsType]:
 	case ColumnPaginatedQuery[OptionsType]:
 	case InitialPaginatedQuery[OptionsType]:
+
+		if v.Column == "" {
+			v.Column = r.defaultPaginationColumn
+		}
+		if v.Order == nil {
+			v.Order = pointer.For(r.defaultOrder)
+		}
+		if v.PageSize == 0 {
+			v.PageSize = bunpaginate.QueryDefaultPageSize
+		}
+
 		_, field := r.resourceHandler.Schema().GetFieldByNameOrAlias(v.Column)
 		if field == nil {
 			return nil, fmt.Errorf("invalid property '%s' for pagination", v.Column)
@@ -331,9 +344,13 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 
 func NewPaginatedResourceRepository[ResourceType, OptionsType any](
 	handler RepositoryHandler[OptionsType],
+	defaultPaginationColumn string,
+	defaultOrder bunpaginate.Order,
 ) *PaginatedResourceRepository[ResourceType, OptionsType] {
 	return &PaginatedResourceRepository[ResourceType, OptionsType]{
-		ResourceRepository: NewResourceRepository[ResourceType, OptionsType](handler),
+		ResourceRepository:      NewResourceRepository[ResourceType, OptionsType](handler),
+		defaultPaginationColumn: defaultPaginationColumn,
+		defaultOrder:            defaultOrder,
 	}
 }
 
@@ -369,9 +386,13 @@ func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, 
 
 func NewPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType interface {
 	ToCore() ToResourceType
-}, OptionsType any](handler RepositoryHandler[OptionsType]) *PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType] {
+}, OptionsType any](
+	handler RepositoryHandler[OptionsType],
+	defaultPaginationColumn string,
+	defaultOrder bunpaginate.Order,
+) *PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType] {
 	return &PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]{
-		PaginatedResourceRepository: NewPaginatedResourceRepository[OriginalResourceType, OptionsType](handler),
+		PaginatedResourceRepository: NewPaginatedResourceRepository[OriginalResourceType, OptionsType](handler, defaultPaginationColumn, defaultOrder),
 	}
 }
 
@@ -413,43 +434,6 @@ type Resource[ResourceType, OptionsType any] interface {
 	GetOne(ctx context.Context, query ResourceQuery[OptionsType]) (*ResourceType, error)
 	Count(ctx context.Context, query ResourceQuery[OptionsType]) (int, error)
 }
-
-type (
-	CursorMetadata struct {
-		Previous string
-		Next     string
-		PageSize int
-		HasMore  bool
-	}
-	InitialPaginatedQuery[OptionsType any] struct {
-		Column   string                     `json:"column"`
-		Order    *bunpaginate.Order         `json:"order"`
-		PageSize uint64                     `json:"pageSize"`
-		Options  ResourceQuery[OptionsType] `json:"filters"`
-	}
-	OffsetPaginatedQuery[OptionsType any] struct {
-		InitialPaginatedQuery[OptionsType]
-		Offset uint64 `json:"offset"`
-	}
-	ColumnPaginatedQuery[OptionsType any] struct {
-		InitialPaginatedQuery[OptionsType]
-		Bottom       *big.Int `json:"bottom"`
-		PaginationID *big.Int `json:"paginationID"`
-		Reverse      bool     `json:"reverse"`
-	}
-	PaginatedQuery[OptionsType any] interface {
-		// Marker
-		isPaginatedQuery()
-	}
-)
-
-func (i InitialPaginatedQuery[OptionsType]) isPaginatedQuery() {}
-
-var _ PaginatedQuery[any] = (*InitialPaginatedQuery[any])(nil)
-
-var _ PaginatedQuery[any] = (*OffsetPaginatedQuery[any])(nil)
-
-var _ PaginatedQuery[any] = (*ColumnPaginatedQuery[any])(nil)
 
 type PaginatedResource[ResourceType, OptionsType any] interface {
 	Resource[ResourceType, OptionsType]

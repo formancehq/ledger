@@ -99,3 +99,10 @@ func Iterate[OF any, Options any](
 
 	return nil
 }
+
+func encodeCursor[OptionsType any, PaginatedQueryType PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
+	if v == nil {
+		return ""
+	}
+	return bunpaginate.EncodeCursor(v)
+}

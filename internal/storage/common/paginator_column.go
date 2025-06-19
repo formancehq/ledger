@@ -237,14 +237,6 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 	return findPaginationField(v, fields[1:]...)
 }
 
-//nolint:unused
-func encodeCursor[OptionsType any, PaginatedQueryType PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
-	if v == nil {
-		return ""
-	}
-	return bunpaginate.EncodeCursor(v)
-}
-
 func newColumnPaginator[ResourceType, OptionsType any](
 	query ColumnPaginatedQuery[OptionsType],
 	fieldName string,

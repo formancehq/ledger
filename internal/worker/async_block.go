@@ -7,8 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/robfig/cron/v3"
@@ -77,10 +76,13 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 	ctx, span := r.tracer.Start(ctx, "Run")
 	defer span.End()
 
-	initialQuery := ledgercontroller.NewListLedgersQuery(10)
-	initialQuery.Options.Builder = query.Match(fmt.Sprintf("features[%s]", features.FeatureHashLogs), "ASYNC")
+	initialQuery := storagecommon.InitialPaginatedQuery[any]{
+		Options: storagecommon.ResourceQuery[any]{
+			Builder: query.Match(fmt.Sprintf("features[%s]", features.FeatureHashLogs), "ASYNC"),
+		},
+	}
 	systemStore := systemstore.New(r.db)
-	return common.Iterate(
+	return storagecommon.Iterate(
 		ctx,
 		initialQuery,
 		systemStore.Ledgers().Paginate,

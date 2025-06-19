@@ -11,8 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/testing/docker"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
@@ -92,13 +91,15 @@ func TestLedgersList(t *testing.T) {
 		ledgers = append(ledgers, l)
 	}
 
-	cursor, err := store.Ledgers().Paginate(ctx, ledgercontroller.NewListLedgersQuery(pageSize))
+	cursor, err := store.Ledgers().Paginate(ctx, storagecommon.InitialPaginatedQuery[any]{
+		PageSize: pageSize,
+	})
 	require.NoError(t, err)
 	require.Len(t, cursor.Data, int(pageSize))
 	require.Equal(t, ledgers[:pageSize], cursor.Data)
 
 	for i := pageSize; i < count; i += pageSize {
-		query := common.ColumnPaginatedQuery[any]{}
+		query := storagecommon.ColumnPaginatedQuery[any]{}
 		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
 
 		cursor, err = store.Ledgers().Paginate(ctx, query)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -97,7 +98,7 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	ledger.Ledger,
 	any] {
-	return common.NewPaginatedResourceRepository[ledger.Ledger, any](&ledgersResourceHandler{store: d})
+	return common.NewPaginatedResourceRepository[ledger.Ledger, any](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
 }
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {

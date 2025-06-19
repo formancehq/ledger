@@ -8,8 +8,8 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
@@ -102,8 +102,11 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	q := ledgercontroller.NewListLedgersQuery(15)
-	q.Options.Builder = query.Match("bucket", bucket)
+	q := storagecommon.InitialPaginatedQuery[any]{
+		Options: storagecommon.ResourceQuery[any]{
+			Builder: query.Match("bucket", bucket),
+		},
+	}
 
 	cursor, err := d.ListLedgers(ctx, q)
 	require.NoError(t, err)
