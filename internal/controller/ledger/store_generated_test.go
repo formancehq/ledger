@@ -46,10 +46,10 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 }
 
 // Accounts mocks base method.
-func (m *MockStore) Accounts() common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]] {
+func (m *MockStore) Accounts() common.PaginatedResource[ledger.Account, any] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Accounts")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Account, any])
 	return ret0
 }
 
@@ -238,10 +238,10 @@ func (mr *MockStoreMockRecorder) LockLedger(ctx any) *gomock.Call {
 }
 
 // Logs mocks base method.
-func (m *MockStore) Logs() common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]] {
+func (m *MockStore) Logs() common.PaginatedResource[ledger.Log, any] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Logs")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Log, any])
 	return ret0
 }
 
@@ -297,10 +297,10 @@ func (mr *MockStoreMockRecorder) Rollback() *gomock.Call {
 }
 
 // Transactions mocks base method.
-func (m *MockStore) Transactions() common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]] {
+func (m *MockStore) Transactions() common.PaginatedResource[ledger.Transaction, any] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Transactions")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Transaction, any])
 	return ret0
 }
 
@@ -360,10 +360,10 @@ func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomoc
 }
 
 // Volumes mocks base method.
-func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]] {
+func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Volumes")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions])
 	return ret0
 }
 

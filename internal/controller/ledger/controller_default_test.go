@@ -231,12 +231,12 @@ func TestListTransactions(t *testing.T) {
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
 
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Transaction]{}
 	store.EXPECT().Transactions().Return(transactions)
 	transactions.EXPECT().
-		Paginate(gomock.Any(), common.ColumnPaginatedQuery[any]{
+		Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
 			PageSize: bunpaginate.QueryDefaultPageSize,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 			Column:   "id",
@@ -244,7 +244,7 @@ func TestListTransactions(t *testing.T) {
 		Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.ListTransactions(ctx, common.ColumnPaginatedQuery[any]{
+	ret, err := l.ListTransactions(ctx, common.InitialPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		Column:   "id",
@@ -262,7 +262,7 @@ func TestCountAccounts(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
 
 	store.EXPECT().Accounts().Return(accounts)
 	accounts.EXPECT().Count(gomock.Any(), common.ResourceQuery[any]{}).Return(1, nil)
@@ -282,7 +282,7 @@ func TestGetTransaction(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any](ctrl)
 
 	tx := ledger.Transaction{}
 	store.EXPECT().Transactions().Return(transactions)
@@ -307,7 +307,7 @@ func TestGetAccount(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
 
 	account := ledger.Account{}
 	store.EXPECT().Accounts().Return(accounts)
@@ -332,7 +332,7 @@ func TestCountTransactions(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any](ctrl)
 
 	store.EXPECT().Transactions().Return(transactions)
 	transactions.EXPECT().Count(gomock.Any(), common.ResourceQuery[any]{}).Return(1, nil)
@@ -352,17 +352,17 @@ func TestListAccounts(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Account]{}
 	store.EXPECT().Accounts().Return(accounts)
-	accounts.EXPECT().Paginate(gomock.Any(), common.OffsetPaginatedQuery[any]{
+	accounts.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.ListAccounts(ctx, common.OffsetPaginatedQuery[any]{
+	ret, err := l.ListAccounts(ctx, common.InitialPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
@@ -400,18 +400,18 @@ func TestListLogs(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	logs := NewMockPaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]](ctrl)
+	logs := NewMockPaginatedResource[ledger.Log, any](ctrl)
 
 	cursor := &bunpaginate.Cursor[ledger.Log]{}
 	store.EXPECT().Logs().Return(logs)
-	logs.EXPECT().Paginate(gomock.Any(), common.ColumnPaginatedQuery[any]{
+	logs.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		Column:   "id",
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.ListLogs(ctx, common.ColumnPaginatedQuery[any]{
+	ret, err := l.ListLogs(ctx, common.InitialPaginatedQuery[any]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		Column:   "id",
@@ -429,17 +429,17 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]](ctrl)
+	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions](ctrl)
 
 	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
 	store.EXPECT().Volumes().Return(volumes)
-	volumes.EXPECT().Paginate(gomock.Any(), common.OffsetPaginatedQuery[GetVolumesOptions]{
+	volumes.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.GetVolumesWithBalances(ctx, common.OffsetPaginatedQuery[GetVolumesOptions]{
+	ret, err := l.GetVolumesWithBalances(ctx, common.InitialPaginatedQuery[GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})

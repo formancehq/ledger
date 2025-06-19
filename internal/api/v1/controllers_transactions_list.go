@@ -1,6 +1,7 @@
 package v1
 
 import (
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
@@ -11,15 +12,16 @@ import (
 func listTransactions(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	paginatedQuery, err := getColumnPaginatedQuery[any](r, "id", bunpaginate.OrderDesc)
+	paginatedQuery, err := getPaginatedQuery[any](r, "id", bunpaginate.OrderDesc, func(resourceQuery *storagecommon.ResourceQuery[any]) {
+		resourceQuery.Expand = append(resourceQuery.Expand, "volumes")
+		resourceQuery.Builder = buildGetTransactionsQuery(r)
+	})
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
-	paginatedQuery.Options.Builder = buildGetTransactionsQuery(r)
-	paginatedQuery.Options.Expand = []string{"volumes"}
 
-	cursor, err := l.ListTransactions(r.Context(), *paginatedQuery)
+	cursor, err := l.ListTransactions(r.Context(), paginatedQuery)
 	if err != nil {
 		common.HandleCommonErrors(w, r, err)
 		return

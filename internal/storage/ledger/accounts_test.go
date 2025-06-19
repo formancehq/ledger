@@ -4,6 +4,7 @@ package ledger_test
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"testing"
@@ -77,17 +78,23 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list all", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{})
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
+			Column: "address",
+			Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 7)
 	})
 
 	t.Run("list using metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("metadata[category]", "1"),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -95,10 +102,13 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list before date", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				PIT: &now,
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
@@ -107,11 +117,14 @@ func TestAccountsList(t *testing.T) {
 	t.Run("list with volumes", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				Expand:  []string{"volumes"},
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -123,12 +136,15 @@ func TestAccountsList(t *testing.T) {
 	t.Run("list with volumes using PIT", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				PIT:     &now,
 				Expand:  []string{"volumes"},
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -140,11 +156,14 @@ func TestAccountsList(t *testing.T) {
 	t.Run("list with effective volumes", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				Expand:  []string{"effectiveVolumes"},
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -155,12 +174,15 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list with effective volumes using PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				PIT:     &now,
 				Expand:  []string{"effectiveVolumes"},
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -171,51 +193,66 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list using filter on address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:"),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on address and unbounded length", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:..."),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on multiple address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Or(
 					query.Match("address", "account:1"),
 					query.Match("address", "orders:"),
 				),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on balances", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance[USD]", 0),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
 
-		accounts, err = store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err = store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Gt("balance[USD]", 0),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
@@ -224,22 +261,28 @@ func TestAccountsList(t *testing.T) {
 	})
 	t.Run("list using filter on balances[USD] and PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance[USD]", 0),
 				PIT:     &now,
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
 	})
 	t.Run("list using filter on balances and PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance", 0),
 				PIT:     &now,
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
@@ -247,18 +290,23 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list using filter on exists metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Exists("metadata", "foo"),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
 
-		accounts, err = store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err = store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Exists("metadata", "category"),
 			},
+			Column: "address",
+			Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
@@ -266,10 +314,13 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list using filter invalid field", func(t *testing.T) {
 		t.Parallel()
-		_, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		_, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("invalid", 0),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.Error(t, err)
 		require.True(t, errors.Is(err, common.ErrInvalidQuery{}))
@@ -278,10 +329,13 @@ func TestAccountsList(t *testing.T) {
 	t.Run("filter on first_usage", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		ret, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lte("first_usage", now),
 			},
+			PageSize: bunpaginate.QueryDefaultPageSize,
+			Column:   "address",
+			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, ret.Data, 2)

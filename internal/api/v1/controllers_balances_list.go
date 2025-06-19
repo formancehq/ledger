@@ -1,6 +1,7 @@
 package v1
 
 import (
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"net/http"
 
@@ -12,20 +13,22 @@ import (
 func getBalances(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	rq, err := getOffsetPaginatedQuery[any](r)
+	filter, err := buildAccountsFilterQuery(r)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
 
-	rq.Options.Builder, err = buildAccountsFilterQuery(r)
+	rq, err := getPaginatedQuery[any](r, "address", bunpaginate.OrderAsc, func(resourceQuery *storagecommon.ResourceQuery[any]) {
+		resourceQuery.Expand = append(resourceQuery.Expand, "volumes")
+		resourceQuery.Builder = filter
+	})
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
 	}
-	rq.Options.Expand = []string{"volumes"}
 
-	cursor, err := l.ListAccounts(r.Context(), *rq)
+	cursor, err := l.ListAccounts(r.Context(), rq)
 	if err != nil {
 		common.HandleCommonErrors(w, r, err)
 		return

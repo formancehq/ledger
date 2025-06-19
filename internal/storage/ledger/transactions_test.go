@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"slices"
@@ -452,11 +453,13 @@ func TestTransactionsCommit(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		cursor, err := store.Transactions().Paginate(ctx, common.ColumnPaginatedQuery[any]{
+		cursor, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countTx,
 			Options: common.ResourceQuery[any]{
 				Expand: []string{"volumes"},
 			},
+			Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			Column: "id",
 		})
 		require.NoError(t, err)
 		require.Len(t, cursor.Data, countTx)
@@ -746,15 +749,24 @@ func TestTransactionsList(t *testing.T) {
 	}
 	testCases := []testCase{
 		{
-			name:     "nominal",
-			query:    common.ColumnPaginatedQuery[any]{},
+			name: "nominal",
+			query: common.ColumnPaginatedQuery[any]{
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				},
+			},
 			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("account", "bob"),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("account", "bob"),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx2},
@@ -762,8 +774,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "address filter using segments matching two addresses by individual segments",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("account", "users:amazon"),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("account", "users:amazon"),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{},
@@ -771,8 +787,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "address filter using segment",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("account", "users:"),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("account", "users:"),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4, tx3},
@@ -780,8 +800,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "address filter using segment and unbounded segment list",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("account", "users:..."),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("account", "users:..."),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4, tx3},
@@ -789,8 +813,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "filter using metadata",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("metadata[category]", "2"),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("metadata[category]", "2"),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx2},
@@ -798,8 +826,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using point in time",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					PIT: pointer.For(now.Add(-time.Hour)),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						PIT: pointer.For(now.Add(-time.Hour)),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx3BeforeRevert, tx2, tx1},
@@ -807,8 +839,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "filter using invalid key",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("invalid", "2"),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("invalid", "2"),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expectError: common.ErrInvalidQuery{},
@@ -816,8 +852,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "reverted transactions",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("reverted", true),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("reverted", true),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx3},
@@ -825,8 +865,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "filter using exists metadata",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Exists("metadata", "category"),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Exists("metadata", "category"),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx3, tx2, tx1},
@@ -834,9 +878,13 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "filter using metadata and pit",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("metadata[category]", "2"),
-					PIT:     pointer.For(tx3.Timestamp),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("metadata[category]", "2"),
+						PIT:     pointer.For(tx3.Timestamp),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx2},
@@ -844,8 +892,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "filter using not exists metadata",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Not(query.Exists("metadata", "category")),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Not(query.Exists("metadata", "category")),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4},
@@ -853,8 +905,12 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "filter using timestamp",
 			query: common.ColumnPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
+				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+					Options: common.ResourceQuery[any]{
+						Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
+					},
+					Column: "id",
+					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4},

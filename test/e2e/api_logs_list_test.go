@@ -257,7 +257,7 @@ var _ = Context("Ledger logs list API tests", func() {
 		AfterEach(func() {
 			expectedLogs = nil
 		})
-		When(fmt.Sprintf("listing accounts using page size of %d", pageSize), func() {
+		When(fmt.Sprintf("listing logs using page size of %d", pageSize), func() {
 			var (
 				rsp *operations.V2ListLogsResponse
 				err error

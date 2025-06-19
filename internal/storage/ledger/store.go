@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -46,12 +45,11 @@ type Store struct {
 
 func (store *Store) Volumes() common.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
-	ledgercontroller.GetVolumesOptions,
-	common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
-	return common.NewPaginatedResourceRepository(&volumesResourceHandler{store: store}, common.OffsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
-		DefaultPaginationColumn: "account",
-		DefaultOrder:            bunpaginate.OrderAsc,
-	})
+	ledgercontroller.GetVolumesOptions] {
+	return common.NewPaginatedResourceRepository[
+		ledger.VolumesWithBalanceByAssetByAccount,
+		ledgercontroller.GetVolumesOptions,
+	](&volumesResourceHandler{store: store})
 }
 
 func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
@@ -62,37 +60,23 @@ func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes
 
 func (store *Store) Transactions() common.PaginatedResource[
 	ledger.Transaction,
-	any,
-	common.ColumnPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepository(&transactionsResourceHandler{store: store}, common.ColumnPaginator[ledger.Transaction, any]{
-		DefaultPaginationColumn: "id",
-		DefaultOrder:            bunpaginate.OrderDesc,
-		Table:                   store.db.Dialect().Tables().ByName("transactions"),
-	})
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Transaction, any](&transactionsResourceHandler{store: store})
 }
 
 func (store *Store) Logs() common.PaginatedResource[
 	ledger.Log,
-	any,
-	common.ColumnPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any, common.ColumnPaginatedQuery[any]](&logsResourceHandler{
+	any] {
+	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any](&logsResourceHandler{
 		store: store,
-	}, common.ColumnPaginator[Log, any]{
-		DefaultPaginationColumn: "id",
-		DefaultOrder:            bunpaginate.OrderDesc,
-		Table:                   store.db.Dialect().Tables().ByName("logs"),
 	})
 }
 
 func (store *Store) Accounts() common.PaginatedResource[
 	ledger.Account,
-	any,
-	common.OffsetPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepository(&accountsResourceHandler{
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Account, any](&accountsResourceHandler{
 		store: store,
-	}, common.OffsetPaginator[ledger.Account, any]{
-		DefaultPaginationColumn: "address",
-		DefaultOrder:            bunpaginate.OrderAsc,
 	})
 }
 

@@ -211,7 +211,7 @@ func (c *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrati
 	)
 }
 
-func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListTransactions",
@@ -259,7 +259,7 @@ func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a common.Resou
 	)
 }
 
-func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
@@ -295,7 +295,7 @@ func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q comm
 	)
 }
 
-func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListLogs",
@@ -343,7 +343,7 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.OffsetPaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",

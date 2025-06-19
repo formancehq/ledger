@@ -13,7 +13,7 @@ import (
 
 type Store interface {
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
-	ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error)
+	ListLedgers(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error)
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	OpenLedger(context.Context, string) (ledgercontroller.Store, *ledger.Ledger, error)
