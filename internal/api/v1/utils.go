@@ -27,7 +27,7 @@ func getPaginatedQuery[Options any](
 	r *http.Request,
 	defaultColumn string,
 	defaultOrder bunpaginate.Order,
-	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]),
+	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]) error,
 ) (storagecommon.PaginatedQuery[Options], error) {
 
 	return storagecommon.Extract[Options](
@@ -39,7 +39,9 @@ func getPaginatedQuery[Options any](
 			}
 
 			for _, modifier := range modifiers {
-				modifier(rq)
+				if err := modifier(rq); err != nil {
+					return nil, err
+				}
 			}
 
 			pageSize, err := bunpaginate.GetPageSize(

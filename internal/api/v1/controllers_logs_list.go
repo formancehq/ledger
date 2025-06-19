@@ -36,10 +36,15 @@ func buildGetLogsQuery(r *http.Request) query.Builder {
 func getLogs(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-
-	paginatedQuery, err := getPaginatedQuery[any](r, "id", bunpaginate.OrderDesc, func(resourceQuery *storagecommon.ResourceQuery[any]) {
-		resourceQuery.Builder = buildGetLogsQuery(r)
-	})
+	paginatedQuery, err := getPaginatedQuery[any](
+		r,
+		"id",
+		bunpaginate.OrderDesc,
+		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
+			resourceQuery.Builder = buildGetLogsQuery(r)
+			return nil
+		},
+	)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return

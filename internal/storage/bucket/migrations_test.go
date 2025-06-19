@@ -95,7 +95,6 @@ func TestMigrations(t *testing.T) {
 			common.InitialPaginatedQuery[any]{
 				PageSize: 100,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-				Column:   "id",
 			},
 			store.Logs().Paginate,
 			func(cursor *bunpaginate.Cursor[ledger.Log]) error {

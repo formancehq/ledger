@@ -3,8 +3,6 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 
@@ -84,17 +82,6 @@ var _ vm.Store = (*vmStoreAdapter)(nil)
 func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	return &vmStoreAdapter{
 		Store: tx,
-	}
-}
-
-func NewListLedgersQuery(pageSize uint64) common.InitialPaginatedQuery[any] {
-	return common.InitialPaginatedQuery[any]{
-		PageSize: pageSize,
-		Column:   "id",
-		Order:    (*bunpaginate.Order)(pointer.For(bunpaginate.OrderAsc)),
-		Options: common.ResourceQuery[any]{
-			Expand: make([]string, 0),
-		},
 	}
 }
 

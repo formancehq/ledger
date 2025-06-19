@@ -13,16 +13,17 @@ import (
 func getBalances(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	filter, err := buildAccountsFilterQuery(r)
-	if err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
-		return
-	}
-
-	rq, err := getPaginatedQuery[any](r, "address", bunpaginate.OrderAsc, func(resourceQuery *storagecommon.ResourceQuery[any]) {
-		resourceQuery.Expand = append(resourceQuery.Expand, "volumes")
-		resourceQuery.Builder = filter
-	})
+	rq, err := getPaginatedQuery[any](
+		r,
+		"address",
+		bunpaginate.OrderAsc,
+		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
+			var err error
+			resourceQuery.Expand = append(resourceQuery.Expand, "volumes")
+			resourceQuery.Builder, err = buildAccountsFilterQuery(r)
+			return err
+		},
+	)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return

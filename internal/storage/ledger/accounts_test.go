@@ -4,7 +4,6 @@ package ledger_test
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"testing"
@@ -78,10 +77,7 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list all", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
-			Column: "address",
-			Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-		})
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 7)
 	})
@@ -92,9 +88,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("metadata[category]", "1"),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -106,9 +99,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				PIT: &now,
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
@@ -122,9 +112,6 @@ func TestAccountsList(t *testing.T) {
 				Builder: query.Match("address", "account:1"),
 				Expand:  []string{"volumes"},
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -142,9 +129,6 @@ func TestAccountsList(t *testing.T) {
 				PIT:     &now,
 				Expand:  []string{"volumes"},
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -161,9 +145,6 @@ func TestAccountsList(t *testing.T) {
 				Builder: query.Match("address", "account:1"),
 				Expand:  []string{"effectiveVolumes"},
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -180,9 +161,6 @@ func TestAccountsList(t *testing.T) {
 				PIT:     &now,
 				Expand:  []string{"effectiveVolumes"},
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1)
@@ -197,9 +175,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:"),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
@@ -210,9 +185,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:..."),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
@@ -226,9 +198,6 @@ func TestAccountsList(t *testing.T) {
 					query.Match("address", "orders:"),
 				),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
@@ -239,9 +208,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance[USD]", 0),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
@@ -250,9 +216,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Gt("balance[USD]", 0),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
@@ -266,9 +229,6 @@ func TestAccountsList(t *testing.T) {
 				Builder: query.Lt("balance[USD]", 0),
 				PIT:     &now,
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
@@ -280,9 +240,6 @@ func TestAccountsList(t *testing.T) {
 				Builder: query.Lt("balance", 0),
 				PIT:     &now,
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
@@ -294,9 +251,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Exists("metadata", "foo"),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
@@ -305,8 +259,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Exists("metadata", "category"),
 			},
-			Column: "address",
-			Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
@@ -318,9 +270,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("invalid", 0),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.Error(t, err)
 		require.True(t, errors.Is(err, common.ErrInvalidQuery{}))
@@ -333,9 +282,6 @@ func TestAccountsList(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lte("first_usage", now),
 			},
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Column:   "address",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 		require.Len(t, ret.Data, 2)

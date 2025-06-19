@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"slices"
@@ -458,8 +457,6 @@ func TestTransactionsCommit(t *testing.T) {
 			Options: common.ResourceQuery[any]{
 				Expand: []string{"volumes"},
 			},
-			Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-			Column: "id",
 		})
 		require.NoError(t, err)
 		require.Len(t, cursor.Data, countTx)
@@ -743,174 +740,121 @@ func TestTransactionsList(t *testing.T) {
 
 	type testCase struct {
 		name        string
-		query       common.ColumnPaginatedQuery[any]
+		query       common.InitialPaginatedQuery[any]
 		expected    []ledger.Transaction
 		expectError error
 	}
 	testCases := []testCase{
 		{
-			name: "nominal",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				},
-			},
+			name:     "nominal",
+			query:    common.InitialPaginatedQuery[any]{},
 			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("account", "bob"),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "bob"),
 				},
 			},
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "address filter using segments matching two addresses by individual segments",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("account", "users:amazon"),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "users:amazon"),
 				},
 			},
 			expected: []ledger.Transaction{},
 		},
 		{
 			name: "address filter using segment",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("account", "users:"),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "users:"),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
 			name: "address filter using segment and unbounded segment list",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("account", "users:..."),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "users:..."),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
 			name: "filter using metadata",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("metadata[category]", "2"),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("metadata[category]", "2"),
 				},
 			},
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "using point in time",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						PIT: pointer.For(now.Add(-time.Hour)),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			},
 			expected: []ledger.Transaction{tx3BeforeRevert, tx2, tx1},
 		},
 		{
 			name: "filter using invalid key",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("invalid", "2"),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("invalid", "2"),
 				},
 			},
 			expectError: common.ErrInvalidQuery{},
 		},
 		{
 			name: "reverted transactions",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("reverted", true),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("reverted", true),
 				},
 			},
 			expected: []ledger.Transaction{tx3},
 		},
 		{
 			name: "filter using exists metadata",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Exists("metadata", "category"),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Exists("metadata", "category"),
 				},
 			},
 			expected: []ledger.Transaction{tx3, tx2, tx1},
 		},
 		{
 			name: "filter using metadata and pit",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("metadata[category]", "2"),
-						PIT:     pointer.For(tx3.Timestamp),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("metadata[category]", "2"),
+					PIT:     pointer.For(tx3.Timestamp),
 				},
 			},
 			expected: []ledger.Transaction{tx2},
 		},
 		{
 			name: "filter using not exists metadata",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Not(query.Exists("metadata", "category")),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Not(query.Exists("metadata", "category")),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4},
 		},
 		{
 			name: "filter using timestamp",
-			query: common.ColumnPaginatedQuery[any]{
-				InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
-					Options: common.ResourceQuery[any]{
-						Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
-					},
-					Column: "id",
-					Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4},

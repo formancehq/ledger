@@ -189,8 +189,6 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 	// We can import only if the ledger is empty.
 	logs, err := ctrl.store.Logs().Paginate(ctx, storagecommon.InitialPaginatedQuery[any]{
 		PageSize: 1,
-		Column:   "id",
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 	})
 	if err != nil {
 		return fmt.Errorf("error listing logs: %w", err)
@@ -321,7 +319,6 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 		storagecommon.InitialPaginatedQuery[any]{
 			PageSize: 100,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-			Column:   "id",
 		},
 		ctrl.store.Logs().Paginate,
 		func(cursor *bunpaginate.Cursor[ledger.Log]) error {

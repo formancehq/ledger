@@ -64,8 +64,8 @@ func getExpand(r *http.Request) []string {
 func getPaginatedQuery[Options any](
 	r *http.Request,
 	paginationConfig common.PaginationConfig,
-	defaultColumn string,
-	defaultOrder bunpaginate.Order,
+	column string,
+	order bunpaginate.Order,
 	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]),
 ) (storagecommon.PaginatedQuery[Options], error) {
 	return storagecommon.Extract[Options](
@@ -90,8 +90,8 @@ func getPaginatedQuery[Options any](
 			}
 
 			return &storagecommon.InitialPaginatedQuery[Options]{
-				Column:   defaultColumn,
-				Order:    &defaultOrder,
+				Column:   column,
+				Order:    &order,
 				PageSize: pageSize,
 				Options:  *rq,
 			}, nil

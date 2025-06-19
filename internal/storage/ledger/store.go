@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -49,7 +50,7 @@ func (store *Store) Volumes() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository[
 		ledger.VolumesWithBalanceByAssetByAccount,
 		ledgercontroller.GetVolumesOptions,
-	](&volumesResourceHandler{store: store})
+	](&volumesResourceHandler{store: store}, "account", bunpaginate.OrderAsc)
 }
 
 func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
@@ -61,7 +62,7 @@ func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes
 func (store *Store) Transactions() common.PaginatedResource[
 	ledger.Transaction,
 	any] {
-	return common.NewPaginatedResourceRepository[ledger.Transaction, any](&transactionsResourceHandler{store: store})
+	return common.NewPaginatedResourceRepository[ledger.Transaction, any](&transactionsResourceHandler{store: store}, "id", bunpaginate.OrderDesc)
 }
 
 func (store *Store) Logs() common.PaginatedResource[
@@ -69,7 +70,7 @@ func (store *Store) Logs() common.PaginatedResource[
 	any] {
 	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any](&logsResourceHandler{
 		store: store,
-	})
+	}, "id", bunpaginate.OrderDesc)
 }
 
 func (store *Store) Accounts() common.PaginatedResource[
@@ -77,7 +78,7 @@ func (store *Store) Accounts() common.PaginatedResource[
 	any] {
 	return common.NewPaginatedResourceRepository[ledger.Account, any](&accountsResourceHandler{
 		store: store,
-	})
+	}, "address", bunpaginate.OrderAsc)
 }
 
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {

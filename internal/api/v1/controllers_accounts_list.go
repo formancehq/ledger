@@ -14,15 +14,16 @@ import (
 func listAccounts(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	rqBuilder, err := buildAccountsFilterQuery(r)
-	if err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
-		return
-	}
-
-	rq, err := getPaginatedQuery(r, "address", bunpaginate.OrderAsc, func(resourceQuery *storagecommon.ResourceQuery[any]) {
-		resourceQuery.Builder = rqBuilder
-	})
+	rq, err := getPaginatedQuery(
+		r,
+		"address",
+		bunpaginate.OrderAsc,
+		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
+			var err error
+			resourceQuery.Builder, err = buildAccountsFilterQuery(r)
+			return err
+		},
+	)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return

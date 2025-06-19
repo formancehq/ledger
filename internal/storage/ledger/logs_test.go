@@ -133,7 +133,6 @@ func TestLogsInsert(t *testing.T) {
 		logs, err := store.Logs().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countLogs,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-			Column:   "id",
 		})
 		require.NoError(t, err)
 
@@ -221,10 +220,7 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
-		Column: "id",
-		Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-	})
+	cursor, err := store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
@@ -232,8 +228,6 @@ func TestLogsList(t *testing.T) {
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
 	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
-		Column:   "id",
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 		PageSize: 1,
 	})
 	require.NoError(t, err)
@@ -249,7 +243,6 @@ func TestLogsList(t *testing.T) {
 				query.Lt("date", now.Add(-time.Hour)),
 			),
 		},
-		Column: "id",
 		Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
@@ -263,8 +256,6 @@ func TestLogsList(t *testing.T) {
 		Options: common.ResourceQuery[any]{
 			Builder: query.Lt("id", 3),
 		},
-		Column: "id",
-		Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, len(cursor.Data))

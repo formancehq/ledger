@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
@@ -21,6 +22,7 @@ func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) 
 			return
 		}
 
+		spew.Dump(rq)
 		ledgers, err := b.ListLedgers(r.Context(), rq)
 		if err != nil {
 			switch {
