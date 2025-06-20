@@ -2,11 +2,28 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+	"time"
+)
+
 type V2Account struct {
 	Address          string              `json:"address"`
 	Metadata         map[string]string   `json:"metadata"`
+	FirstUsage       *time.Time          `json:"firstUsage,omitempty"`
 	Volumes          map[string]V2Volume `json:"volumes,omitempty"`
 	EffectiveVolumes map[string]V2Volume `json:"effectiveVolumes,omitempty"`
+}
+
+func (v V2Account) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2Account) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (o *V2Account) GetAddress() string {
@@ -21,6 +38,13 @@ func (o *V2Account) GetMetadata() map[string]string {
 		return map[string]string{}
 	}
 	return o.Metadata
+}
+
+func (o *V2Account) GetFirstUsage() *time.Time {
+	if o == nil {
+		return nil
+	}
+	return o.FirstUsage
 }
 
 func (o *V2Account) GetVolumes() map[string]V2Volume {

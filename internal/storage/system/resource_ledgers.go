@@ -23,7 +23,7 @@ func (h ledgersResourceHandler) Schema() common.EntitySchema {
 			"features": common.NewStringMapField(),
 			"metadata": common.NewStringMapField(),
 			"name":     common.NewStringField(),
-			"id":       common.NewNumericField(),
+			"id":       common.NewNumericField().Paginated(),
 		},
 	}
 }

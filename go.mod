@@ -51,6 +51,7 @@ require (
 
 require (
 	github.com/formancehq/go-libs/v3 v3.0.0-20250610201819-3bfa67aab0e2
+	github.com/iancoleman/strcase v0.3.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.20.1
 	gopkg.in/yaml.v3 v3.0.1

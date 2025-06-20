@@ -15,7 +15,11 @@ type V2ListLedgersRequest struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor      *string        `queryParam:"style=form,explode=true,name=cursor"`
+	Cursor *string `queryParam:"style=form,explode=true,name=cursor"`
+	// Sort results using a field name and order (ascending or descending).
+	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+	//
+	Sort        *string        `queryParam:"style=form,explode=true,name=sort"`
 	RequestBody map[string]any `request:"mediaType=application/json"`
 }
 
@@ -31,6 +35,13 @@ func (o *V2ListLedgersRequest) GetCursor() *string {
 		return nil
 	}
 	return o.Cursor
+}
+
+func (o *V2ListLedgersRequest) GetSort() *string {
+	if o == nil {
+		return nil
+	}
+	return o.Sort
 }
 
 func (o *V2ListLedgersRequest) GetRequestBody() map[string]any {

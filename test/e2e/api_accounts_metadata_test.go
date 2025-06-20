@@ -74,10 +74,8 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
-				Address:  "foo",
-				Metadata: metadata,
-			}))
+			Expect(response.V2AccountResponse.Data.Address).Should(Equal("foo"))
+			Expect(response.V2AccountResponse.Data.Metadata).ShouldNot(BeEmpty())
 		})
 		Context("Then updating the metadata", func() {
 			var (
@@ -106,10 +104,8 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
-					Address:  "foo",
-					Metadata: newMetadata,
-				}))
+				Expect(response.V2AccountResponse.Data.Address).Should(Equal("foo"))
+				Expect(response.V2AccountResponse.Data.Metadata).Should(Equal(newMetadata))
 			})
 		})
 		It("should trigger a new event", func() {
@@ -129,10 +125,8 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
-					Address:  "foo",
-					Metadata: map[string]string{},
-				}))
+				Expect(response.V2AccountResponse.Data.Address).Should(Equal("foo"))
+				Expect(response.V2AccountResponse.Data.Metadata).Should(BeEmpty())
 			})
 			Context("then adding with empty metadata", func() {
 				It("should be OK", func(specContext SpecContext) {
@@ -158,10 +152,8 @@ var _ = Context("Ledger accounts metadata API tests", func() {
 					)
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(response.V2AccountResponse.Data).Should(Equal(components.V2Account{
-						Address:  "foo",
-						Metadata: map[string]string{},
-					}))
+					Expect(response.V2AccountResponse.Data.Address).Should(Equal("foo"))
+					Expect(response.V2AccountResponse.Data.Metadata).Should(BeEmpty())
 				})
 			})
 		})

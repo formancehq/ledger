@@ -42,7 +42,7 @@ type Store interface {
 	RevertTransaction(ctx context.Context, id uint64, at time.Time) (*ledger.Transaction, bool, error)
 	UpdateTransactionMetadata(ctx context.Context, transactionID uint64, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error)
 	DeleteTransactionMetadata(ctx context.Context, transactionID uint64, key string, at time.Time) (*ledger.Transaction, bool, error)
-	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error
+	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
 	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error

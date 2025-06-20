@@ -274,7 +274,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 					logging.FromContext(ctx).Debugf("Saving metadata of account %s", payload.TargetID)
 					if err := store.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
 						payload.TargetID.(string): payload.Metadata,
-					}); err != nil {
+					}, log.Date); err != nil {
 						return nil, fmt.Errorf("failed to update account metadata: %w", err)
 					}
 				}

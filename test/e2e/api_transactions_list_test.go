@@ -127,6 +127,35 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(expectedTxs))
 			})
 		})
+		When("listing transaction while paginating on timestamp", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Expand:   pointer.For("volumes,effectiveVolumes"),
+						Reverse:  pointer.For(true),
+						Sort:     pointer.For("timestamp:desc"),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("Should be ok", func() {
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+				sortedByTimestamp := transactions[:]
+				sort.SliceStable(sortedByTimestamp, func(i, j int) bool {
+					return sortedByTimestamp[i].Timestamp.Before(sortedByTimestamp[j].Timestamp)
+				})
+				page := sortedByTimestamp[pageSize:]
+				slices.Reverse(page)
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
+			})
+		})
 		When("listing transactions using a page size of 5", func() {
 			var (
 				rsp *operations.V2ListTransactionsResponse
@@ -208,6 +237,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			Context("with effective ordering", func() {
 				BeforeEach(func() {
+					//nolint:staticcheck
 					req.Order = pointer.For(operations.OrderEffective)
 				})
 				It("Should be ok, and returns transactions ordered by effective timestamp", func() {

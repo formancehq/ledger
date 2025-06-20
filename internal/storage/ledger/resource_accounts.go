@@ -16,8 +16,8 @@ type accountsResourceHandler struct {
 func (h accountsResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"address":     common.NewStringField(),
-			"first_usage": common.NewDateField(),
+			"address":     common.NewStringField().Paginated(),
+			"first_usage": common.NewDateField().Paginated(),
 			"balance":     common.NewNumericMapField(),
 			"metadata":    common.NewStringMapField(),
 		},

@@ -136,6 +136,7 @@ Accept: application/json
 |---|---|---|---|---|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -146,6 +147,9 @@ Accept: application/json
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -737,6 +741,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -747,6 +752,9 @@ List accounts from a ledger, sorted by address in descending order.
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -765,6 +773,7 @@ No other parameters can be set when this parameter is set.
         "metadata": {
           "admin": "true"
         },
+        "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
             "input": 100,
@@ -849,6 +858,7 @@ Accept: application/json
     "metadata": {
       "admin": "true"
     },
+    "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
         "input": 100,
@@ -1151,8 +1161,9 @@ List transactions from a ledger, sorted by id in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|order|query|string|false|none|
+|order|query|string|false|Deprecated: Use sort param|
 |reverse|query|boolean|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1163,6 +1174,9 @@ List transactions from a ledger, sorted by id in descending order.
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
 
@@ -1862,6 +1876,7 @@ Accept: application/json
 |startTime|query|string(date-time)|false|none|
 |insertionDate|query|boolean|false|Use insertion date instead of effective date|
 |groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1872,6 +1887,9 @@ Accept: application/json
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -1941,6 +1959,7 @@ List the logs from a ledger, sorted by ID in descending order.
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |pit|query|string(date-time)|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1951,6 +1970,9 @@ List the logs from a ledger, sorted by ID in descending order.
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -2101,6 +2123,7 @@ Authorization ( Scopes: ledger:write )
         "metadata": {
           "admin": "true"
         },
+        "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
             "input": 100,
@@ -2311,6 +2334,7 @@ Authorization ( Scopes: ledger:write )
     "metadata": {
       "admin": "true"
     },
+    "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
         "input": 100,
@@ -2491,6 +2515,7 @@ Authorization ( Scopes: ledger:write )
   "metadata": {
     "admin": "true"
   },
+  "firstUsage": "2023-01-01T00:00:00Z",
   "volumes": {
     "USD": {
       "input": 100,
@@ -2526,6 +2551,7 @@ Authorization ( Scopes: ledger:write )
 |address|string|true|none|none|
 |metadata|object|true|none|none|
 |» **additionalProperties**|string|false|none|none|
+|firstUsage|string(date-time)|false|none|none|
 |volumes|[V2Volumes](#schemav2volumes)|false|none|none|
 |effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|none|
 

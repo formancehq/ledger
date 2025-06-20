@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
@@ -51,6 +52,18 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 		HandleCommonErrors(w, r, err)
 	}
 }
+
+func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, storagecommon.ErrInvalidQuery{}) ||
+		errors.Is(err, ledgercontroller.ErrMissingFeature{}) ||
+		errors.Is(err, storagecommon.ErrNotPaginatedField{}):
+		api.BadRequest(w, ErrValidation, err)
+	default:
+		HandleCommonErrors(w, r, err)
+	}
+}
+
 
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	otlp.RecordError(r.Context(), err)

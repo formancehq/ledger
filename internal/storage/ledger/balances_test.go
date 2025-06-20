@@ -196,7 +196,7 @@ func TestBalancesAggregates(t *testing.T) {
 		"users:2": {
 			"category": "premium",
 		},
-	}))
+	}, time.Time{}))
 
 	require.NoError(t, store.DeleteAccountMetadata(ctx, "users:2", "category"))
 
@@ -210,7 +210,7 @@ func TestBalancesAggregates(t *testing.T) {
 		"world": {
 			"world": "bar",
 		},
-	}))
+	}, time.Time{}))
 
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
