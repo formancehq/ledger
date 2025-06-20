@@ -5,11 +5,13 @@ import (
 	"fmt"
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"regexp"
 	"strings"
+
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -20,7 +22,7 @@ var (
 	balanceRegex = regexp.MustCompile(`balance\[(.*)]`)
 )
 
-func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
+func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error {
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"UpdateAccountsMetadata",
@@ -44,6 +46,7 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 					Account: ledger.Account{
 						Address:  account,
 						Metadata: accountMetadata,
+						FirstUsage: at,
 					},
 					AddressArray: strings.Split(account, ":"),
 				})
@@ -55,6 +58,7 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 				On("conflict (ledger, address) do update").
 				Set("metadata = accounts.metadata || excluded.metadata").
 				Set("updated_at = excluded.updated_at").
+				Set("first_usage = case when excluded.first_usage < accounts.first_usage then excluded.first_usage else accounts.first_usage end").
 				Where("not accounts.metadata @> excluded.metadata").
 				Exec(ctx)
 			if err != nil {

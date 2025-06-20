@@ -136,10 +136,8 @@ var _ = Context("Ledger accounts list API tests", func() {
 
 			accountsCursorResponse := response.V2AccountsCursorResponse.Cursor.Data
 			Expect(accountsCursorResponse).To(HaveLen(3))
-			Expect(accountsCursorResponse[0]).To(Equal(components.V2Account{
-				Address:  "foo:bar",
-				Metadata: metadata2,
-			}))
+			Expect(accountsCursorResponse[0].Address).To(Equal("foo:bar"))
+			Expect(accountsCursorResponse[0].Metadata).To(Equal(metadata2))
 			Expect(accountsCursorResponse[1]).To(Equal(components.V2Account{
 				Address:  "foo:foo",
 				Metadata: metadata1,
@@ -150,10 +148,12 @@ var _ = Context("Ledger accounts list API tests", func() {
 						Balance: bigInt,
 					},
 				},
+				FirstUsage: &timestamp,
 			}))
 			Expect(accountsCursorResponse[2]).To(Equal(components.V2Account{
-				Address:  "world",
-				Metadata: metadata.Metadata{},
+				Address:    "world",
+				Metadata:   metadata.Metadata{},
+				FirstUsage: &timestamp,
 				Volumes: map[string]components.V2Volume{
 					"USD": {
 						Output:  bigInt,
@@ -163,6 +163,18 @@ var _ = Context("Ledger accounts list API tests", func() {
 				},
 			}))
 		})
+		It("should be listed on api while paginating on first usage", func(specContext SpecContext) {
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
+				ctx,
+				operations.V2ListAccountsRequest{
+					Ledger: "default",
+					Expand: pointer.For("volumes"),
+					Sort:   pointer.For("first_usage:asc"),
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("should be listed on api using address filters", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
 				ctx,
@@ -179,14 +191,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 
 			accountsCursorResponse := response.V2AccountsCursorResponse.Cursor.Data
 			Expect(accountsCursorResponse).To(HaveLen(2))
-			Expect(accountsCursorResponse[0]).To(Equal(components.V2Account{
-				Address:  "foo:bar",
-				Metadata: metadata2,
-			}))
-			Expect(accountsCursorResponse[1]).To(Equal(components.V2Account{
-				Address:  "foo:foo",
-				Metadata: metadata1,
-			}))
+			Expect(accountsCursorResponse[1].Address).To(Equal("foo:foo"))
+			Expect(accountsCursorResponse[1].Metadata).To(Equal(metadata1))
+			Expect(accountsCursorResponse[0].Address).To(Equal("foo:bar"))
+			Expect(accountsCursorResponse[0].Metadata).To(Equal(metadata2))
 
 			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
 				ctx,
@@ -203,10 +211,9 @@ var _ = Context("Ledger accounts list API tests", func() {
 
 			accountsCursorResponse = response.V2AccountsCursorResponse.Cursor.Data
 			Expect(accountsCursorResponse).To(HaveLen(1))
-			Expect(accountsCursorResponse[0]).To(Equal(components.V2Account{
-				Address:  "foo:foo",
-				Metadata: metadata1,
-			}))
+
+			Expect(accountsCursorResponse[0].Address).To(Equal("foo:foo"))
+			Expect(accountsCursorResponse[0].Metadata).To(Equal(metadata1))
 		})
 		It("should be listed on api using metadata filters", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
@@ -224,10 +231,8 @@ var _ = Context("Ledger accounts list API tests", func() {
 
 			accountsCursorResponse := response.V2AccountsCursorResponse.Cursor.Data
 			Expect(accountsCursorResponse).To(HaveLen(1))
-			Expect(accountsCursorResponse[0]).To(Equal(components.V2Account{
-				Address:  "foo:foo",
-				Metadata: metadata1,
-			}))
+			Expect(accountsCursorResponse[0].Address).To(Equal("foo:foo"))
+			Expect(accountsCursorResponse[0].Metadata).To(Equal(metadata1))
 		})
 		It("should be listable on api using $not filter", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
@@ -315,15 +320,30 @@ var _ = Context("Ledger accounts list API tests", func() {
 				response *operations.V2ListAccountsResponse
 				err      error
 			)
-			BeforeEach(func(specContext SpecContext) {
-				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
-					ctx,
-					operations.V2ListAccountsRequest{
-						Ledger:   "default",
-						PageSize: pointer.For(pageSize),
-					},
-				)
+			listAccounts := func(specContext SpecContext, request operations.V2ListAccountsRequest) *operations.V2ListAccountsResponse {
+				GinkgoHelper()
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(ctx, request)
 				Expect(err).ToNot(HaveOccurred())
+
+				// We don't have firstUsage value, so we set it to nil to be able to compare accounts list
+				for ind, account := range response.V2AccountsCursorResponse.Cursor.Data {
+					account.FirstUsage = nil
+					response.V2AccountsCursorResponse.Cursor.Data[ind] = account
+				}
+
+				return response
+			}
+			BeforeEach(func(specContext SpecContext) {
+				response = listAccounts(specContext, operations.V2ListAccountsRequest{
+					Ledger:   "default",
+					PageSize: pointer.For(pageSize),
+				})
+
+				// We don't have firstUsage value, so we set it to nil to be able to compare accounts list
+				for ind, account := range response.V2AccountsCursorResponse.Cursor.Data {
+					account.FirstUsage = nil
+					response.V2AccountsCursorResponse.Cursor.Data[ind] = account
+				}
 
 				Expect(response.V2AccountsCursorResponse.Cursor.HasMore).To(BeTrue())
 				Expect(response.V2AccountsCursorResponse.Cursor.Previous).To(BeNil())
@@ -335,14 +355,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 			})
 			When("following next cursor", func() {
 				BeforeEach(func(specContext SpecContext) {
-					response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
-						ctx,
-						operations.V2ListAccountsRequest{
-							Cursor: response.V2AccountsCursorResponse.Cursor.Next,
-							Ledger: "default",
-						},
-					)
-					Expect(err).ToNot(HaveOccurred())
+					response = listAccounts(specContext, operations.V2ListAccountsRequest{
+						Cursor: response.V2AccountsCursorResponse.Cursor.Next,
+						Ledger: "default",
+					})
 				})
 				It("should return next page", func() {
 					Expect(response.V2AccountsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
@@ -351,14 +367,10 @@ var _ = Context("Ledger accounts list API tests", func() {
 				})
 				When("following previous cursor", func() {
 					BeforeEach(func(specContext SpecContext) {
-						response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
-							ctx,
-							operations.V2ListAccountsRequest{
-								Ledger: "default",
-								Cursor: response.V2AccountsCursorResponse.Cursor.Previous,
-							},
-						)
-						Expect(err).ToNot(HaveOccurred())
+						response = listAccounts(specContext, operations.V2ListAccountsRequest{
+							Ledger: "default",
+							Cursor: response.V2AccountsCursorResponse.Cursor.Previous,
+						})
 					})
 					It("should return first page", func() {
 						Expect(response.V2AccountsCursorResponse.Cursor.PageSize).To(Equal(pageSize))

@@ -19,9 +19,9 @@ func (h transactionsResourceHandler) Schema() common.EntitySchema {
 			"account": common.NewStringField(),
 			"source": common.NewStringField(),
 			"destination": common.NewStringField(),
-			"timestamp": common.NewDateField(),
+			"timestamp": common.NewDateField().Paginated(),
 			"metadata": common.NewStringMapField(),
-			"id": common.NewNumericField(),
+			"id": common.NewNumericField().Paginated(),
 			"reference": common.NewStringField(),
 		},
 	}

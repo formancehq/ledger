@@ -311,17 +311,17 @@ func (mr *MockStoreMockRecorder) Transactions() *gomock.Call {
 }
 
 // UpdateAccountsMetadata mocks base method.
-func (m_2 *MockStore) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error {
+func (m_2 *MockStore) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error {
 	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "UpdateAccountsMetadata", ctx, m)
+	ret := m_2.ctrl.Call(m_2, "UpdateAccountsMetadata", ctx, m, at)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateAccountsMetadata indicates an expected call of UpdateAccountsMetadata.
-func (mr *MockStoreMockRecorder) UpdateAccountsMetadata(ctx, m any) *gomock.Call {
+func (mr *MockStoreMockRecorder) UpdateAccountsMetadata(ctx, m, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAccountsMetadata", reflect.TypeOf((*MockStore)(nil).UpdateAccountsMetadata), ctx, m)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAccountsMetadata", reflect.TypeOf((*MockStore)(nil).UpdateAccountsMetadata), ctx, m, at)
 }
 
 // UpdateTransactionMetadata mocks base method.

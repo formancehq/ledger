@@ -49,7 +49,7 @@ func TestAccountsList(t *testing.T) {
 		"orders:2": {
 			"foo": "bar",
 		},
-	}))
+	}, time.Time{}))
 
 	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
@@ -299,7 +299,7 @@ func TestAccountsUpdateMetadata(t *testing.T) {
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
 		"bank": m,
-	}))
+	}, time.Time{}))
 
 	account, err := store.Accounts().GetOne(context.Background(), common.ResourceQuery[any]{
 		Builder: query.Match("address", "bank"),
@@ -330,7 +330,7 @@ func TestAccountsGet(t *testing.T) {
 		"multi": {
 			"category": "gold",
 		},
-	}))
+	}, time.Time{}))
 
 	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),

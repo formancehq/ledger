@@ -15,7 +15,7 @@ type aggregatedBalancesResourceRepositoryHandler struct {
 func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"address": common.NewStringField(),
+			"address": common.NewStringField().Paginated(),
 			"metadata": common.NewStringMapField(),
 		},
 	}

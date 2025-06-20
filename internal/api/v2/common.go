@@ -1,9 +1,11 @@
 package v2
 
 import (
+	"fmt"
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/iancoleman/strcase"
 	"io"
 	"net/http"
 	"strings"
@@ -87,6 +89,21 @@ func getPaginatedQuery[Options any](
 			)
 			if err != nil {
 				return nil, err
+			}
+
+			if sort := r.URL.Query().Get("sort"); sort != "" {
+				parts := strings.SplitN(sort, ":", 2)
+				column = strcase.ToSnake(parts[0])
+				if len(parts) > 1 {
+					switch {
+					case strings.ToLower(parts[1]) == "desc":
+						order = bunpaginate.OrderDesc
+					case strings.ToLower(parts[1]) == "asc":
+						order = bunpaginate.OrderAsc
+					default:
+						return nil, fmt.Errorf("invalid order: %s", parts[1])
+					}
+				}
 			}
 
 			return &storagecommon.InitialPaginatedQuery[Options]{

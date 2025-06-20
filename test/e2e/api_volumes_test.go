@@ -83,7 +83,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		}
 	})
 
-	When("Get current Volumes and Balances From origin of time till now (insertion-date)", func() {
+	When("Get current volumes and balances from origin of time till now (insertion-date)", func() {
 		It("should be ok", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
@@ -112,7 +112,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances From oot til oot+2 hours (effectiveDate) ", func() {
+	When("Get volumes and balances from oot til oot+2 hours (effectiveDate) ", func() {
 		It("should be ok", func(specContext SpecContext) {
 
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
@@ -140,7 +140,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances Filter by address account", func() {
+	When("Get volumes and balances filter by address account", func() {
 		It("should be ok", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
@@ -167,7 +167,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances Filter by address account a,d and end-time now effective", func() {
+	When("Get volumes and balances filter by address account a,d and end-time now effective", func() {
 		It("should be ok", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
@@ -195,7 +195,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances Filter by address account which doesn't exist", func() {
+	When("Get volumes and balances filter by address account which doesn't exist", func() {
 		It("should be ok", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
@@ -213,7 +213,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances Filter With futures dates empty", func() {
+	When("Get volumes and balances filter With futures dates empty", func() {
 		It("should be ok", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
@@ -228,7 +228,7 @@ var _ = Context("Ledger accounts list API tests", func() {
 		})
 	})
 
-	When("Get Volumes and Balances Filter by address account aggregation by level 1", func() {
+	When("Get volumes and balances filter by address account aggregation by level 1", func() {
 		It("should be ok", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
 				ctx,
