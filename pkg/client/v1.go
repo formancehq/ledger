@@ -611,7 +611,7 @@ func (s *V1) CountAccounts(ctx context.Context, request operations.CountAccounts
 	}
 
 	switch {
-	case httpRes.StatusCode == 200:
+	case httpRes.StatusCode == 204:
 		res.Headers = httpRes.Header
 
 	default:

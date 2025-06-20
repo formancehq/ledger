@@ -26,7 +26,6 @@ func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 	if o.query.Offset > 0 {
 		sb = sb.Offset(int(o.query.Offset))
 	}
-
 	if o.query.PageSize > 0 {
 		sb = sb.Limit(int(o.query.PageSize) + 1)
 	}

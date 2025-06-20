@@ -209,42 +209,6 @@ func (mr *MockResourceMockRecorder[ResourceType, OptionsType]) GetOne(ctx, query
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOne", reflect.TypeOf((*MockResource[ResourceType, OptionsType])(nil).GetOne), ctx, query)
 }
 
-// MockPaginatedQuery is a mock of PaginatedQuery interface.
-type MockPaginatedQuery[OptionsType any] struct {
-	ctrl     *gomock.Controller
-	recorder *MockPaginatedQueryMockRecorder[OptionsType]
-	isgomock struct{}
-}
-
-// MockPaginatedQueryMockRecorder is the mock recorder for MockPaginatedQuery.
-type MockPaginatedQueryMockRecorder[OptionsType any] struct {
-	mock *MockPaginatedQuery[OptionsType]
-}
-
-// NewMockPaginatedQuery creates a new mock instance.
-func NewMockPaginatedQuery[OptionsType any](ctrl *gomock.Controller) *MockPaginatedQuery[OptionsType] {
-	mock := &MockPaginatedQuery[OptionsType]{ctrl: ctrl}
-	mock.recorder = &MockPaginatedQueryMockRecorder[OptionsType]{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockPaginatedQuery[OptionsType]) EXPECT() *MockPaginatedQueryMockRecorder[OptionsType] {
-	return m.recorder
-}
-
-// isPaginatedQuery mocks base method.
-func (m *MockPaginatedQuery[OptionsType]) isPaginatedQuery() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "isPaginatedQuery")
-}
-
-// isPaginatedQuery indicates an expected call of isPaginatedQuery.
-func (mr *MockPaginatedQueryMockRecorder[OptionsType]) isPaginatedQuery() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "isPaginatedQuery", reflect.TypeOf((*MockPaginatedQuery[OptionsType])(nil).isPaginatedQuery))
-}
-
 // MockPaginatedResource is a mock of PaginatedResource interface.
 type MockPaginatedResource[ResourceType any, OptionsType any] struct {
 	ctrl     *gomock.Controller
