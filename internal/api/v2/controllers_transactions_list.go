@@ -25,13 +25,13 @@ func listTransactions(paginationConfig common.PaginationConfig) http.HandlerFunc
 			order = bunpaginate.OrderAsc
 		}
 
-		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, paginationColumn, order)
+		rq, err := getPaginatedQuery[any](r, paginationConfig, paginationColumn, order)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
-		cursor, err := l.ListTransactions(r.Context(), *rq)
+		cursor, err := l.ListTransactions(r.Context(), rq)
 		if err != nil {
 			switch {
 			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):

@@ -14,13 +14,13 @@ func listLogs(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := common.LedgerFromContext(r.Context())
 
-		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, "id", bunpaginate.OrderDesc)
+		rq, err := getPaginatedQuery[any](r, paginationConfig, "id", bunpaginate.OrderDesc)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
-		cursor, err := l.ListLogs(r.Context(), *rq)
+		cursor, err := l.ListLogs(r.Context(), rq)
 		if err != nil {
 			switch {
 			case errors.Is(err, storagecommon.ErrInvalidQuery{}):

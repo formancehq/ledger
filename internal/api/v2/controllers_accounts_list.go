@@ -15,13 +15,13 @@ func listAccounts(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := common.LedgerFromContext(r.Context())
 
-		query, err := getOffsetPaginatedQuery[any](r, paginationConfig)
+		query, err := getPaginatedQuery[any](r, paginationConfig, "address", bunpaginate.OrderAsc)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
-		cursor, err := l.ListAccounts(r.Context(), *query)
+		cursor, err := l.ListAccounts(r.Context(), query)
 		if err != nil {
 			switch {
 			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):

@@ -15,13 +15,13 @@ import (
 func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, "id", bunpaginate.OrderAsc)
+		rq, err := getPaginatedQuery[any](r, paginationConfig, "id", bunpaginate.OrderAsc)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
-		ledgers, err := b.ListLedgers(r.Context(), *rq)
+		ledgers, err := b.ListLedgers(r.Context(), rq)
 		if err != nil {
 			switch {
 			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):

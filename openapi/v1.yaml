@@ -90,7 +90,7 @@ paths:
             additionalProperties: true
           example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
-        '200':
+        '204':
           description: OK
           headers:
             Count:

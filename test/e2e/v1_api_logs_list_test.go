@@ -51,20 +51,20 @@ var _ = Context("Ledger logs list API tests", func() {
 			timestamp1 = time.Date(2023, 4, 11, 10, 0, 0, 0, time.UTC)
 			timestamp2 = time.Date(2023, 4, 12, 10, 0, 0, 0, time.UTC)
 
-			m1 = map[string]string{
+			m1 = map[string]any{
 				"clientType": "silver",
 			}
-			m2 = map[string]string{
+			m2 = map[string]any{
 				"clientType": "gold",
 			}
 		)
 		BeforeEach(func(specContext SpecContext) {
-			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V1.CreateTransaction(
 				ctx,
-				operations.V2CreateTransactionRequest{
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Postings: []components.V2Posting{{
+				operations.CreateTransactionRequest{
+					PostTransaction: components.PostTransaction{
+						Metadata: map[string]any{},
+						Postings: []components.Posting{{
 							Amount:      big.NewInt(100),
 							Asset:       "USD",
 							Source:      "world",
@@ -77,12 +77,12 @@ var _ = Context("Ledger logs list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V1.CreateTransaction(
 				ctx,
-				operations.V2CreateTransactionRequest{
-					V2PostTransaction: components.V2PostTransaction{
-						Metadata: map[string]string{},
-						Postings: []components.V2Posting{{
+				operations.CreateTransactionRequest{
+					PostTransaction: components.PostTransaction{
+						Metadata: map[string]any{},
+						Postings: []components.Posting{{
 							Amount:      big.NewInt(100),
 							Asset:       "USD",
 							Source:      "world",
@@ -95,12 +95,12 @@ var _ = Context("Ledger logs list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V1.CreateTransaction(
 				ctx,
-				operations.V2CreateTransactionRequest{
-					V2PostTransaction: components.V2PostTransaction{
+				operations.CreateTransactionRequest{
+					PostTransaction: components.PostTransaction{
 						Metadata: m1,
-						Postings: []components.V2Posting{{
+						Postings: []components.Posting{{
 							Amount:      big.NewInt(200),
 							Asset:       "USD",
 							Source:      "world",
@@ -113,9 +113,9 @@ var _ = Context("Ledger logs list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.AddMetadataToAccount(
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V1.AddMetadataToAccount(
 				ctx,
-				operations.V2AddMetadataToAccountRequest{
+				operations.AddMetadataToAccountRequest{
 					RequestBody: m2,
 					Address:     "foo:baz",
 					Ledger:      "default",
@@ -124,25 +124,25 @@ var _ = Context("Ledger logs list API tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("should be listed on api with ListLogs", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V1.ListLogs(
 				ctx,
-				operations.V2ListLogsRequest{
+				operations.ListLogsRequest{
 					Ledger: "default",
 				},
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(3))
+			Expect(response.LogsCursorResponse.Cursor.Data).To(HaveLen(3))
 
-			for _, data := range response.V2LogsCursorResponse.Cursor.Data {
+			for _, data := range response.LogsCursorResponse.Cursor.Data {
 				Expect(data.Hash).NotTo(BeEmpty())
 			}
 
 			// Cannot check the date and the hash since they are changing at
 			// every run
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].ID).To(Equal(big.NewInt(3)))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Type).To(Equal(components.V2LogTypeSetMetadata))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data).To(Equal(map[string]any{
+			Expect(response.LogsCursorResponse.Cursor.Data[0].ID).To(Equal(int64(3)))
+			Expect(response.LogsCursorResponse.Cursor.Data[0].Type).To(Equal(components.TypeSetMetadata))
+			Expect(response.LogsCursorResponse.Cursor.Data[0].Data).To(Equal(map[string]any{
 				"targetType": "ACCOUNT",
 				"metadata": map[string]any{
 					"clientType": "gold",
@@ -150,13 +150,13 @@ var _ = Context("Ledger logs list API tests", func() {
 				"targetId": "foo:baz",
 			}))
 
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].ID).To(Equal(big.NewInt(2)))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Type).To(Equal(components.V2LogTypeNewTransaction))
+			Expect(response.LogsCursorResponse.Cursor.Data[1].ID).To(Equal(int64(2)))
+			Expect(response.LogsCursorResponse.Cursor.Data[1].Type).To(Equal(components.TypeNewTransaction))
 			// Cannot check date and txid inside Data since they are changing at
 			// every run
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data["accountMetadata"]).To(Equal(map[string]any{}))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
-			transaction := response.V2LogsCursorResponse.Cursor.Data[1].Data["transaction"].(map[string]any)
+			Expect(response.LogsCursorResponse.Cursor.Data[1].Data["accountMetadata"]).To(Equal(map[string]any{}))
+			Expect(response.LogsCursorResponse.Cursor.Data[1].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
+			transaction := response.LogsCursorResponse.Cursor.Data[1].Data["transaction"].(map[string]any)
 			Expect(transaction["metadata"]).To(Equal(map[string]any{
 				"clientType": "silver",
 			}))
@@ -170,11 +170,11 @@ var _ = Context("Ledger logs list API tests", func() {
 				},
 			}))
 
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].ID).To(Equal(big.NewInt(1)))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Type).To(Equal(components.V2LogTypeNewTransaction))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data["accountMetadata"]).To(Equal(map[string]any{}))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
-			transaction = response.V2LogsCursorResponse.Cursor.Data[2].Data["transaction"].(map[string]any)
+			Expect(response.LogsCursorResponse.Cursor.Data[2].ID).To(Equal(int64(1)))
+			Expect(response.LogsCursorResponse.Cursor.Data[2].Type).To(Equal(components.TypeNewTransaction))
+			Expect(response.LogsCursorResponse.Cursor.Data[2].Data["accountMetadata"]).To(Equal(map[string]any{}))
+			Expect(response.LogsCursorResponse.Cursor.Data[2].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
+			transaction = response.LogsCursorResponse.Cursor.Data[2].Data["transaction"].(map[string]any)
 			Expect(transaction["metadata"]).To(Equal(map[string]any{}))
 			Expect(transaction["timestamp"]).To(Equal("2023-04-11T10:00:00Z"))
 			Expect(transaction["postings"]).To(Equal([]any{
@@ -190,13 +190,13 @@ var _ = Context("Ledger logs list API tests", func() {
 
 	type expectedLog struct {
 		id       *big.Int
-		typ      components.V2LogType
+		typ      components.Type
 		postings []any
 	}
 
 	var (
-		compareLogs = func(log components.V2Log, expected expectedLog) {
-			Expect(log.ID).To(Equal(expected.id))
+		compareLogs = func(log components.Log, expected expectedLog) {
+			Expect(log.ID).To(Equal(expected.id.Int64()))
 			Expect(log.Type).To(Equal(expected.typ))
 			Expect(log.Data["accountMetadata"]).To(Equal(map[string]any{}))
 			Expect(log.Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
@@ -218,12 +218,12 @@ var _ = Context("Ledger logs list API tests", func() {
 			for i := int64(0); i < accountCounts; i++ {
 				now := time.Now().Round(time.Millisecond).UTC()
 
-				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V1.CreateTransaction(
 					ctx,
-					operations.V2CreateTransactionRequest{
-						V2PostTransaction: components.V2PostTransaction{
-							Metadata: map[string]string{},
-							Postings: []components.V2Posting{{
+					operations.CreateTransactionRequest{
+						PostTransaction: components.PostTransaction{
+							Metadata: map[string]any{},
+							Postings: []components.Posting{{
 								Amount:      big.NewInt(100),
 								Asset:       "USD",
 								Source:      "world",
@@ -238,7 +238,7 @@ var _ = Context("Ledger logs list API tests", func() {
 
 				expectedLogs = append(expectedLogs, expectedLog{
 					id:  big.NewInt(i + 1),
-					typ: components.V2LogTypeNewTransaction,
+					typ: components.TypeNewTransaction,
 					postings: []any{
 						map[string]any{
 							"amount":      float64(100),
@@ -259,67 +259,67 @@ var _ = Context("Ledger logs list API tests", func() {
 		})
 		When(fmt.Sprintf("listing logs using page size of %d", pageSize), func() {
 			var (
-				rsp *operations.V2ListLogsResponse
+				rsp *operations.ListLogsResponse
 				err error
 			)
 			BeforeEach(func(specContext SpecContext) {
-				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V1.ListLogs(
 					ctx,
-					operations.V2ListLogsRequest{
+					operations.ListLogsRequest{
 						Ledger:   "default",
 						PageSize: pointer.For(pageSize),
 					},
 				)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(rsp.V2LogsCursorResponse.Cursor.HasMore).To(BeTrue())
-				Expect(rsp.V2LogsCursorResponse.Cursor.Previous).To(BeNil())
-				Expect(rsp.V2LogsCursorResponse.Cursor.Next).NotTo(BeNil())
+				Expect(rsp.LogsCursorResponse.Cursor.HasMore).To(BeTrue())
+				Expect(rsp.LogsCursorResponse.Cursor.Previous).To(BeNil())
+				Expect(rsp.LogsCursorResponse.Cursor.Next).NotTo(BeNil())
 			})
 			It("should return the first page", func() {
-				Expect(rsp.V2LogsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
-				Expect(len(rsp.V2LogsCursorResponse.Cursor.Data)).To(Equal(len(expectedLogs[:pageSize])))
-				for i := range rsp.V2LogsCursorResponse.Cursor.Data {
-					compareLogs(rsp.V2LogsCursorResponse.Cursor.Data[i], expectedLogs[i])
+				Expect(rsp.LogsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+				Expect(len(rsp.LogsCursorResponse.Cursor.Data)).To(Equal(len(expectedLogs[:pageSize])))
+				for i := range rsp.LogsCursorResponse.Cursor.Data {
+					compareLogs(rsp.LogsCursorResponse.Cursor.Data[i], expectedLogs[i])
 				}
 			})
 			When("following next cursor", func() {
 				BeforeEach(func(specContext SpecContext) {
-					rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+					rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V1.ListLogs(
 						ctx,
-						operations.V2ListLogsRequest{
-							Cursor: rsp.V2LogsCursorResponse.Cursor.Next,
+						operations.ListLogsRequest{
+							Cursor: rsp.LogsCursorResponse.Cursor.Next,
 							Ledger: "default",
 						},
 					)
 					Expect(err).ToNot(HaveOccurred())
 				})
 				It("should return next page", func() {
-					Expect(rsp.V2LogsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
-					Expect(len(rsp.V2LogsCursorResponse.Cursor.Data)).To(Equal(len(expectedLogs[pageSize : 2*pageSize])))
-					for i := range rsp.V2LogsCursorResponse.Cursor.Data {
-						compareLogs(rsp.V2LogsCursorResponse.Cursor.Data[i], expectedLogs[int64(i)+pageSize])
+					Expect(rsp.LogsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+					Expect(len(rsp.LogsCursorResponse.Cursor.Data)).To(Equal(len(expectedLogs[pageSize : 2*pageSize])))
+					for i := range rsp.LogsCursorResponse.Cursor.Data {
+						compareLogs(rsp.LogsCursorResponse.Cursor.Data[i], expectedLogs[int64(i)+pageSize])
 					}
-					Expect(rsp.V2LogsCursorResponse.Cursor.Next).To(BeNil())
+					Expect(rsp.LogsCursorResponse.Cursor.Next).To(BeNil())
 				})
 				When("following previous cursor", func() {
 					BeforeEach(func(specContext SpecContext) {
-						rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+						rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V1.ListLogs(
 							ctx,
-							operations.V2ListLogsRequest{
-								Cursor: rsp.V2LogsCursorResponse.Cursor.Previous,
+							operations.ListLogsRequest{
+								Cursor: rsp.LogsCursorResponse.Cursor.Previous,
 								Ledger: "default",
 							},
 						)
 						Expect(err).ToNot(HaveOccurred())
 					})
 					It("should return first page", func() {
-						Expect(rsp.V2LogsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
-						Expect(len(rsp.V2LogsCursorResponse.Cursor.Data)).To(Equal(len(expectedLogs[:pageSize])))
-						for i := range rsp.V2LogsCursorResponse.Cursor.Data {
-							compareLogs(rsp.V2LogsCursorResponse.Cursor.Data[i], expectedLogs[i])
+						Expect(rsp.LogsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+						Expect(len(rsp.LogsCursorResponse.Cursor.Data)).To(Equal(len(expectedLogs[:pageSize])))
+						for i := range rsp.LogsCursorResponse.Cursor.Data {
+							compareLogs(rsp.LogsCursorResponse.Cursor.Data[i], expectedLogs[i])
 						}
-						Expect(rsp.V2LogsCursorResponse.Cursor.Previous).To(BeNil())
+						Expect(rsp.LogsCursorResponse.Cursor.Previous).To(BeNil())
 					})
 				})
 			})

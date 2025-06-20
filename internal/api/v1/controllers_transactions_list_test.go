@@ -27,7 +27,7 @@ func TestTransactionsList(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       storagecommon.ColumnPaginatedQuery[any]
+		expectQuery       storagecommon.PaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -36,7 +36,7 @@ func TestTransactionsList(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -50,7 +50,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -65,7 +65,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -80,7 +80,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -95,7 +95,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -110,7 +110,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -125,7 +125,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -140,7 +140,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
@@ -153,11 +153,21 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{})},
+				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
+					InitialPaginatedQuery: storagecommon.InitialPaginatedQuery[any]{
+						Options: storagecommon.ResourceQuery[any]{
+							Expand: []string{"volumes"},
+						},
+						PageSize: DefaultPageSize,
+					},
+				})},
 			},
 			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
-				Options: storagecommon.ResourceQuery[any]{
-					Expand: []string{"volumes"},
+				InitialPaginatedQuery: storagecommon.InitialPaginatedQuery[any]{
+					Options: storagecommon.ResourceQuery[any]{
+						Expand: []string{"volumes"},
+					},
+					PageSize: DefaultPageSize,
 				},
 			},
 		},
@@ -182,7 +192,7 @@ func TestTransactionsList(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: MaxPageSize,
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",

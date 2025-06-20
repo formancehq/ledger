@@ -5,7 +5,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type Paginator[ResourceType any, PaginationOptions any] interface {
-	Paginate(selectQuery *bun.SelectQuery, opts PaginationOptions) (*bun.SelectQuery, error)
-	BuildCursor(ret []ResourceType, opts PaginationOptions) (*bunpaginate.Cursor[ResourceType], error)
+type Paginator[ResourceType any] interface {
+	Paginate(selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
+	BuildCursor(ret []ResourceType) (*bunpaginate.Cursor[ResourceType], error)
 }

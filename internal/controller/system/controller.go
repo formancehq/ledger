@@ -24,7 +24,7 @@ import (
 type Controller interface {
 	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
-	ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error)
+	ListLedgers(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error)
 	// CreateLedger can return following errors:
 	//  * ErrLedgerAlreadyExists
 	//  * ledger.ErrInvalidLedgerName
@@ -131,7 +131,7 @@ func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*led
 	})
 }
 
-func (ctrl *DefaultController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListLedgers", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Ledger], error) {
 		return ctrl.store.ListLedgers(ctx, query)
 	})

@@ -23,14 +23,14 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestGetLogs(t *testing.T) {
+func TestLogsList(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       storagecommon.ColumnPaginatedQuery[any]
+		expectQuery       storagecommon.PaginatedQuery[any]
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
@@ -41,7 +41,7 @@ func TestGetLogs(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -54,7 +54,7 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using start time",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -68,7 +68,7 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using end time",
 			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(time.DateFormat)),
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -83,15 +83,19 @@ func TestGetLogs(t *testing.T) {
 			name: "using empty cursor",
 			queryParams: url.Values{
 				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
-					PageSize: bunpaginate.QueryDefaultPageSize,
-					Column:   "id",
-					Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+					InitialPaginatedQuery: storagecommon.InitialPaginatedQuery[any]{
+						PageSize: bunpaginate.QueryDefaultPageSize,
+						Column:   "id",
+						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+					},
 				})},
 			},
 			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
-				Column:   "id",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				InitialPaginatedQuery: storagecommon.InitialPaginatedQuery[any]{
+					PageSize: bunpaginate.QueryDefaultPageSize,
+					Column:   "id",
+					Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				},
 			},
 			expectBackendCall: true,
 		},
@@ -120,7 +124,7 @@ func TestGetLogs(t *testing.T) {
 		{
 			name:             "with invalid query",
 			expectStatusCode: http.StatusBadRequest,
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
@@ -135,7 +139,7 @@ func TestGetLogs(t *testing.T) {
 		{
 			name:             "with unexpected error",
 			expectStatusCode: http.StatusInternalServerError,
-			expectQuery: storagecommon.ColumnPaginatedQuery[any]{
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Column:   "id",
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),

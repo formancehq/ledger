@@ -180,7 +180,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	return d.systemStoreFactory.Create(d.db).Ledgers().Paginate(ctx, q)
 }
 

@@ -452,7 +452,7 @@ func TestTransactionsCommit(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		cursor, err := store.Transactions().Paginate(ctx, common.ColumnPaginatedQuery[any]{
+		cursor, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countTx,
 			Options: common.ResourceQuery[any]{
 				Expand: []string{"volumes"},
@@ -740,19 +740,19 @@ func TestTransactionsList(t *testing.T) {
 
 	type testCase struct {
 		name        string
-		query       common.ColumnPaginatedQuery[any]
+		query       common.InitialPaginatedQuery[any]
 		expected    []ledger.Transaction
 		expectError error
 	}
 	testCases := []testCase{
 		{
 			name:     "nominal",
-			query:    common.ColumnPaginatedQuery[any]{},
+			query:    common.InitialPaginatedQuery[any]{},
 			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "bob"),
 				},
@@ -761,7 +761,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "address filter using segments matching two addresses by individual segments",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "users:amazon"),
 				},
@@ -770,7 +770,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "address filter using segment",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "users:"),
 				},
@@ -779,7 +779,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "address filter using segment and unbounded segment list",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "users:..."),
 				},
@@ -788,7 +788,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using metadata",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("metadata[category]", "2"),
 				},
@@ -797,7 +797,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "using point in time",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
@@ -806,7 +806,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using invalid key",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("invalid", "2"),
 				},
@@ -815,7 +815,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "reverted transactions",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("reverted", true),
 				},
@@ -824,7 +824,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using exists metadata",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Exists("metadata", "category"),
 				},
@@ -833,7 +833,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using metadata and pit",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("metadata[category]", "2"),
 					PIT:     pointer.For(tx3.Timestamp),
@@ -843,7 +843,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using not exists metadata",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Not(query.Exists("metadata", "category")),
 				},
@@ -852,7 +852,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using timestamp",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
 				},
