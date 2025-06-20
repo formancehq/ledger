@@ -124,6 +124,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Metadata: map[string]string{
 								"clientType": "silver",
 							},
+							FirstUsage: account.V2AccountResponse.Data.FirstUsage,
 						}))
 
 						account, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
@@ -136,6 +137,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Metadata: map[string]string{
 								"status": "pending",
 							},
+							FirstUsage: account.V2AccountResponse.Data.FirstUsage,
 						}))
 					})
 				})
@@ -277,6 +279,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 									Balance: big.NewInt(100),
 								},
 							},
+							FirstUsage: &response.V2GetTransactionResponse.Data.Timestamp,
 						}))
 						By("should trigger a new event", func() {
 							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{

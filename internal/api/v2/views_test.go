@@ -381,6 +381,7 @@ func TestAccountRender(t *testing.T) {
 						"balance": float64(-100),
 					},
 				},
+				"firstUsage": now.Format(time.RFC3339Nano),
 			},
 		},
 		{
@@ -407,6 +408,7 @@ func TestAccountRender(t *testing.T) {
 						"balance": "-100",
 					},
 				},
+				"firstUsage": now.Format(time.RFC3339Nano),
 			},
 		},
 	} {

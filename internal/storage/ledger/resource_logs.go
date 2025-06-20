@@ -14,8 +14,8 @@ type logsResourceHandler struct {
 func (h logsResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"date": common.NewDateField(),
-			"id":   common.NewNumericField(),
+			"date": common.NewDateField().Paginated(),
+			"id":   common.NewNumericField().Paginated(),
 		},
 	}
 }

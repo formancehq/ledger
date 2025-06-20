@@ -232,7 +232,7 @@ type Account struct {
 
     Address          string            `json:"address" bun:"address"`
     Metadata         metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
-    FirstUsage       time.Time         `json:"-" bun:"first_usage,nullzero"`
+    FirstUsage       time.Time         `json:"firstUsage" bun:"first_usage,nullzero"`
     InsertionDate    time.Time         `json:"-" bun:"insertion_date,nullzero"`
     UpdatedAt        time.Time         `json:"-" bun:"updated_at,nullzero"`
     Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"volumes,scanonly"`

@@ -18,10 +18,11 @@ func (h volumesResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
 			"address": common.NewStringField().
-				WithAliases("account"),
-			"balance": common.NewNumericMapField(),
+				WithAliases("account").
+				Paginated(),
+			"balance":     common.NewNumericMapField(),
 			"first_usage": common.NewDateField(),
-			"metadata": common.NewStringMapField(),
+			"metadata":    common.NewStringMapField(),
 		},
 	}
 }

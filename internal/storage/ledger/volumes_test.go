@@ -46,7 +46,7 @@ func TestVolumesList(t *testing.T) {
 		"world": {
 			"foo": "bar",
 		},
-	}))
+	}, time.Time{}))
 
 	tx1 := ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
@@ -542,7 +542,7 @@ func TestVolumesAggregate(t *testing.T) {
 		"account:1:1": {
 			"foo": "bar",
 		},
-	}))
+	}, time.Time{}))
 
 	t.Run("Aggregation Volumes with balance for GroupLvl 0", func(t *testing.T) {
 		t.Parallel()
