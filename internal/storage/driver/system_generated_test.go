@@ -134,10 +134,10 @@ func (mr *SystemStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 }
 
 // Ledgers mocks base method.
-func (m *SystemStore) Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]] {
+func (m *SystemStore) Ledgers() common.PaginatedResource[ledger.Ledger, any] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ledgers")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.Ledger, any])
 	return ret0
 }
 

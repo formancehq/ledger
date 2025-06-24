@@ -106,7 +106,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with first account usage filter", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Builder: query.Lt("first_usage", now.Add(-3*time.Minute)),
 			},
@@ -135,7 +135,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with first account usage filter and PIT", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Builder: query.Lt("first_usage", now.Add(-3*time.Minute)),
 				PIT:     pointer.For(now.Add(-3 * time.Minute)),
@@ -165,7 +165,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -178,14 +178,14 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for effective date", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{})
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{})
 		require.NoError(t, err)
 		require.Len(t, volumes.Data, 4)
 	})
 
 	t.Run("Get all volumes with balance for insertion date with previous pit", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -209,7 +209,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date with futur pit", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -223,7 +223,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date with previous oot", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -237,7 +237,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date with future oot", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -261,7 +261,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for effective date with previous pit", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				PIT: &previousPIT,
 			},
@@ -282,7 +282,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for effective date with futur pit", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				PIT: &futurPIT,
 			},
@@ -293,7 +293,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for effective date with previous oot", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				OOT: &previousOOT,
 			},
@@ -304,7 +304,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for effective date with futur oot", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				OOT: &futurOOT,
 			},
@@ -325,7 +325,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date with future PIT and now OOT", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -350,7 +350,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date with previous OOT and now PIT", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -375,7 +375,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for effective date with future PIT and now OOT", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				PIT: &futurPIT,
 				OOT: &now,
@@ -397,7 +397,7 @@ func TestVolumesList(t *testing.T) {
 
 	t.Run("Get all volumes with balance for insertion date with previous OOT and now PIT", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				PIT: &now,
 				OOT: &previousOOT,
@@ -421,7 +421,7 @@ func TestVolumesList(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					PIT:     &now,
 					OOT:     &previousOOT,
@@ -447,7 +447,7 @@ func TestVolumesList(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					Builder: query.Match("metadata[foo]", "bar"),
 				},
@@ -461,7 +461,7 @@ func TestVolumesList(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					Builder: query.Exists("metadata", "category"),
 				},
@@ -475,7 +475,7 @@ func TestVolumesList(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					Builder: query.Exists("metadata", "foo"),
 				},
@@ -546,7 +546,7 @@ func TestVolumesAggregate(t *testing.T) {
 
 	t.Run("Aggregation Volumes with balance for GroupLvl 0", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -560,7 +560,7 @@ func TestVolumesAggregate(t *testing.T) {
 
 	t.Run("Aggregation Volumes with balance for GroupLvl 1", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -575,7 +575,7 @@ func TestVolumesAggregate(t *testing.T) {
 
 	t.Run("Aggregation Volumes with balance for GroupLvl 2", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -590,7 +590,7 @@ func TestVolumesAggregate(t *testing.T) {
 
 	t.Run("Aggregation Volumes with balance for GroupLvl 3", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					UseInsertionDate: true,
@@ -606,7 +606,7 @@ func TestVolumesAggregate(t *testing.T) {
 	t.Run("Aggregation Volumes with balance for GroupLvl 1 && PIT && OOT && effectiveDate", func(t *testing.T) {
 		t.Parallel()
 
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					GroupLvl: 1,
@@ -641,7 +641,7 @@ func TestVolumesAggregate(t *testing.T) {
 	t.Run("Aggregation Volumes with balance for GroupLvl 1 && PIT && OOT && effectiveDate && Balance Filter 1", func(t *testing.T) {
 		t.Parallel()
 
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					GroupLvl: 1,
@@ -666,7 +666,7 @@ func TestVolumesAggregate(t *testing.T) {
 
 	t.Run("Aggregation Volumes with balance for GroupLvl 1  && Balance Filter 2", func(t *testing.T) {
 		t.Parallel()
-		volumes, err := store.Volumes().Paginate(ctx, common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 			Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 				Opts: ledgercontroller.GetVolumesOptions{
 					GroupLvl:         2,
@@ -711,7 +711,7 @@ func TestVolumesAggregate(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					Opts: ledgercontroller.GetVolumesOptions{
 						GroupLvl: 1,
@@ -731,7 +731,7 @@ func TestVolumesAggregate(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					Opts: ledgercontroller.GetVolumesOptions{
 						GroupLvl: 1,
@@ -752,7 +752,7 @@ func TestVolumesAggregate(t *testing.T) {
 		t.Parallel()
 
 		volumes, err := store.Volumes().Paginate(ctx,
-			common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+			common.InitialPaginatedQuery[ledgercontroller.GetVolumesOptions]{
 				Options: common.ResourceQuery[ledgercontroller.GetVolumesOptions]{
 					Opts: ledgercontroller.GetVolumesOptions{
 						GroupLvl: 1,

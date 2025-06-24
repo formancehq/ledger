@@ -19,8 +19,8 @@ func TestStats(t *testing.T) {
 	parser := NewMockNumscriptParser(ctrl)
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
-	transactions := NewMockPaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]](ctrl)
-	accounts := NewMockPaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]](ctrl)
+	transactions := NewMockPaginatedResource[ledger.Transaction, any](ctrl)
+	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
 
 	store.EXPECT().Transactions().Return(transactions)
 	transactions.EXPECT().Count(ctx, common.ResourceQuery[any]{}).Return(10, nil)

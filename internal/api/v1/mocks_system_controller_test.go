@@ -101,7 +101,7 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 }
 
 // ListLedgers mocks base method.
-func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (m *SystemController) ListLedgers(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])

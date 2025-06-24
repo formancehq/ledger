@@ -3,8 +3,6 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 
@@ -58,11 +56,11 @@ type Store interface {
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 
-	Accounts() common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]]
-	Logs() common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]]
-	Transactions() common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]]
+	Accounts() common.PaginatedResource[ledger.Account, any]
+	Logs() common.PaginatedResource[ledger.Log, any]
+	Transactions() common.PaginatedResource[ledger.Transaction, any]
 	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions]
-	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions]
 }
 
 type vmStoreAdapter struct {
@@ -84,17 +82,6 @@ var _ vm.Store = (*vmStoreAdapter)(nil)
 func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	return &vmStoreAdapter{
 		Store: tx,
-	}
-}
-
-func NewListLedgersQuery(pageSize uint64) common.ColumnPaginatedQuery[any] {
-	return common.ColumnPaginatedQuery[any]{
-		PageSize: pageSize,
-		Column:   "id",
-		Order:    (*bunpaginate.Order)(pointer.For(bunpaginate.OrderAsc)),
-		Options: common.ResourceQuery[any]{
-			Expand: make([]string, 0),
-		},
 	}
 }
 

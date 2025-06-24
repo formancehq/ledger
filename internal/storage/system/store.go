@@ -21,7 +21,7 @@ type Store interface {
 	CreateLedger(ctx context.Context, l *ledger.Ledger) error
 	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	Ledgers() common.PaginatedResource[ledger.Ledger, any, common.ColumnPaginatedQuery[any]]
+	Ledgers() common.PaginatedResource[ledger.Ledger, any]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 
@@ -97,13 +97,8 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 
 func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	ledger.Ledger,
-	any,
-	common.ColumnPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepository(&ledgersResourceHandler{store: d}, common.ColumnPaginator[ledger.Ledger, any]{
-		DefaultPaginationColumn: "id",
-		DefaultOrder:            bunpaginate.OrderAsc,
-		Table:                   d.db.Dialect().Tables().ByName("_system.ledgers"),
-	})
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Ledger, any](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
 }
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {

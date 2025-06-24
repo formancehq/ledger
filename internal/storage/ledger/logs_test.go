@@ -130,7 +130,7 @@ func TestLogsInsert(t *testing.T) {
 		err := errGroup.Wait()
 		require.NoError(t, err)
 
-		logs, err := store.Logs().Paginate(ctx, common.ColumnPaginatedQuery[any]{
+		logs, err := store.Logs().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countLogs,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
@@ -220,14 +220,14 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{})
+	cursor, err := store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
 		PageSize: 10,
 		Options: common.ResourceQuery[any]{
 			Builder: query.And(
@@ -243,6 +243,7 @@ func TestLogsList(t *testing.T) {
 				query.Lt("date", now.Add(-time.Hour)),
 			),
 		},
+		Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)
@@ -250,7 +251,7 @@ func TestLogsList(t *testing.T) {
 	require.Len(t, cursor.Data, 1)
 	require.EqualValues(t, 2, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
 		PageSize: 10,
 		Options: common.ResourceQuery[any]{
 			Builder: query.Lt("id", 3),
