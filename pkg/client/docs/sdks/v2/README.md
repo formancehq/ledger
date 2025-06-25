@@ -62,6 +62,7 @@ func main() {
     res, err := s.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.String("id:desc"),
         RequestBody: map[string]any{
             "key": "<value>",
             "key1": "<value>",
@@ -564,6 +565,7 @@ func main() {
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.String("id:desc"),
         RequestBody: map[string]any{
 
         },
@@ -935,6 +937,7 @@ func main() {
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.String("id:desc"),
         RequestBody: map[string]any{
 
         },
@@ -1413,6 +1416,7 @@ func main() {
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
         Ledger: "ledger001",
         GroupBy: client.Int64(3),
+        Sort: client.String("id:desc"),
         RequestBody: map[string]any{
             "key": "<value>",
         },
@@ -1477,6 +1481,7 @@ func main() {
         Ledger: "ledger001",
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.String("id:desc"),
         RequestBody: map[string]any{
 
         },

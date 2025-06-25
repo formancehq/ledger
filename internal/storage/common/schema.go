@@ -24,11 +24,17 @@ type FieldType interface {
 
 type Field struct {
 	Aliases []string
-	Type    FieldType
+	Type        FieldType
+	IsPaginated bool
 }
 
 func (f Field) WithAliases(aliases ...string) Field {
 	f.Aliases = append(f.Aliases, aliases...)
+	return f
+}
+
+func (f Field) Paginated() Field {
+	f.IsPaginated = true
 	return f
 }
 

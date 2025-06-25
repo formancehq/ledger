@@ -91,6 +91,7 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -431,6 +432,7 @@ paths:
           schema:
             type: string
             format: date-time
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -756,6 +758,8 @@ paths:
         - name: order
           in: query
           required: false
+          deprecated: true
+          description: "Deprecated: Use sort param"
           schema:
             type: string
             enum:
@@ -765,6 +769,7 @@ paths:
           required: false
           schema:
             type: boolean
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1183,6 +1188,7 @@ paths:
             format: int64
             minimum: 0
             maximum: 1000
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1252,6 +1258,7 @@ paths:
           schema:
             type: string
             format: date-time
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1345,6 +1352,18 @@ components:
           tokenUrl: "/oauth/token"
           refreshUrl: "/oauth/token"
           scopes: {}
+          
+  parameters:
+    sort:
+      name: sort
+      in: query
+      description: |
+        Sort results using a field name and order (ascending or descending). 
+        Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+      required: false
+      schema:
+        type: string
+        example: id:desc
 
   schemas:
     V2AccountsCursorResponse:
@@ -1540,6 +1559,10 @@ components:
             type: string
           example:
             admin: "true"
+        firstUsage:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
         volumes:
           $ref: "#/components/schemas/V2Volumes"
         effectiveVolumes:

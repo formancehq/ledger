@@ -284,6 +284,10 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 			return nil, fmt.Errorf("invalid property '%s' for pagination", v.Column)
 		}
 
+		if !field.IsPaginated {
+			return nil, newErrNotPaginatedField(v.Column)
+		}
+
 		if field.Type.IsPaginated() {
 			paginationQuery = ColumnPaginatedQuery[OptionsType]{
 				InitialPaginatedQuery: v,
