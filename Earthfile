@@ -1,7 +1,8 @@
 VERSION --wildcard-builds 0.8
 PROJECT FormanceHQ/ledger
 
-IMPORT github.com/formancehq/earthly:tags/v0.19.1 AS core
+ARG core=github.com/formancehq/earthly:main
+IMPORT $core AS core
 
 FROM core+base-image
 
