@@ -773,6 +773,8 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
         "metadata": {
           "admin": "true"
         },
+        "insertionDate": "2023-01-01T00:00:00Z",
+        "updatedAt": "2023-01-01T00:00:00Z",
         "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
@@ -858,6 +860,8 @@ Accept: application/json
     "metadata": {
       "admin": "true"
     },
+    "insertionDate": "2023-01-01T00:00:00Z",
+    "updatedAt": "2023-01-01T00:00:00Z",
     "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
@@ -2123,6 +2127,8 @@ Authorization ( Scopes: ledger:write )
         "metadata": {
           "admin": "true"
         },
+        "insertionDate": "2023-01-01T00:00:00Z",
+        "updatedAt": "2023-01-01T00:00:00Z",
         "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
@@ -2334,6 +2340,8 @@ Authorization ( Scopes: ledger:write )
     "metadata": {
       "admin": "true"
     },
+    "insertionDate": "2023-01-01T00:00:00Z",
+    "updatedAt": "2023-01-01T00:00:00Z",
     "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
@@ -2515,6 +2523,8 @@ Authorization ( Scopes: ledger:write )
   "metadata": {
     "admin": "true"
   },
+  "insertionDate": "2023-01-01T00:00:00Z",
+  "updatedAt": "2023-01-01T00:00:00Z",
   "firstUsage": "2023-01-01T00:00:00Z",
   "volumes": {
     "USD": {
@@ -2551,6 +2561,8 @@ Authorization ( Scopes: ledger:write )
 |address|string|true|none|none|
 |metadata|object|true|none|none|
 |» **additionalProperties**|string|false|none|none|
+|insertionDate|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 |firstUsage|string(date-time)|false|none|none|
 |volumes|[V2Volumes](#schemav2volumes)|false|none|none|
 |effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|none|

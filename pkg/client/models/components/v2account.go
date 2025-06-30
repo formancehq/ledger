@@ -10,6 +10,8 @@ import (
 type V2Account struct {
 	Address          string              `json:"address"`
 	Metadata         map[string]string   `json:"metadata"`
+	InsertionDate    *time.Time          `json:"insertionDate,omitempty"`
+	UpdatedAt        *time.Time          `json:"updatedAt,omitempty"`
 	FirstUsage       *time.Time          `json:"firstUsage,omitempty"`
 	Volumes          map[string]V2Volume `json:"volumes,omitempty"`
 	EffectiveVolumes map[string]V2Volume `json:"effectiveVolumes,omitempty"`
@@ -38,6 +40,20 @@ func (o *V2Account) GetMetadata() map[string]string {
 		return map[string]string{}
 	}
 	return o.Metadata
+}
+
+func (o *V2Account) GetInsertionDate() *time.Time {
+	if o == nil {
+		return nil
+	}
+	return o.InsertionDate
+}
+
+func (o *V2Account) GetUpdatedAt() *time.Time {
+	if o == nil {
+		return nil
+	}
+	return o.UpdatedAt
 }
 
 func (o *V2Account) GetFirstUsage() *time.Time {

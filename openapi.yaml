@@ -3391,6 +3391,14 @@ components:
             type: string
           example:
             admin: "true"
+        insertionDate:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
         firstUsage:
           type: string
           format: date-time
