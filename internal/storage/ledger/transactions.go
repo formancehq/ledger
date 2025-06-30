@@ -221,8 +221,8 @@ func (store *Store) RevertTransaction(ctx context.Context, id uint64, at time.Ti
 				Returning("*")
 			if at.IsZero() {
 				query = query.
-					Set("reverted_at = (now() at time zone 'utc')").
-					Set("updated_at = (now() at time zone 'utc')")
+					Set("reverted_at = " + store.GetPrefixedRelationName("transaction_date") + "()").
+					Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
 			} else {
 				query = query.
 					Set("reverted_at = ?", at).

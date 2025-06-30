@@ -226,6 +226,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 						Expect(response.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
 							Timestamp:  rsp.V2CreateTransactionResponse.Data.Timestamp,
 							InsertedAt: rsp.V2CreateTransactionResponse.Data.InsertedAt,
+							UpdatedAt:  rsp.V2CreateTransactionResponse.Data.UpdatedAt,
 							Postings:   rsp.V2CreateTransactionResponse.Data.Postings,
 							Reference:  rsp.V2CreateTransactionResponse.Data.Reference,
 							Metadata:   rsp.V2CreateTransactionResponse.Data.Metadata,

@@ -156,9 +156,10 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							Postings: []ledger.Posting{
 								ledger.NewPosting("alice", "world", "USD", big.NewInt(100)),
 							},
-							InsertedAt: libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
-							Timestamp:  libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp),
+							Timestamp: libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp),
 						},
+						InsertedAt: libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
+						UpdatedAt:  libtime.New(*newTransaction.V2CreateTransactionResponse.Data.UpdatedAt),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
 								"USD": {
@@ -195,9 +196,10 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							Postings: []ledger.Posting{
 								ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
 							},
-							InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
-							Timestamp:  libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
+							Timestamp: libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
 						},
+						InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
+						UpdatedAt:  libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
 						RevertedAt: pointer.For(libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp)),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {

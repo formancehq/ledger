@@ -11,10 +11,9 @@ import (
 func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 	return ledger.Transaction{
 		TransactionData: ledger.TransactionData{
-			Postings:   collectionutils.Map(tx.Postings, ConvertSDKPostingToCorePosting),
-			Timestamp:  time.New(tx.Timestamp),
-			InsertedAt: time.New(*tx.InsertedAt),
-			Metadata:   tx.Metadata,
+			Postings:  collectionutils.Map(tx.Postings, ConvertSDKPostingToCorePosting),
+			Timestamp: time.New(tx.Timestamp),
+			Metadata:  tx.Metadata,
 			Reference: func() string {
 				if tx.Reference == nil {
 					return ""
@@ -22,6 +21,8 @@ func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 				return *tx.Reference
 			}(),
 		},
+		InsertedAt:                 time.New(*tx.InsertedAt),
+		UpdatedAt:                  time.New(*tx.UpdatedAt),
 		ID:                         pointer.For(tx.ID.Uint64()),
 		PostCommitVolumes:          ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitVolumes),
 		PostCommitEffectiveVolumes: ConvertSDKPostCommitVolumesToCorePostCommitVolumes(tx.PostCommitEffectiveVolumes),
