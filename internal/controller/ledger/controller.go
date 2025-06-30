@@ -100,6 +100,7 @@ type RevertTransaction struct {
 	Force           bool
 	AtEffectiveDate bool
 	TransactionID   uint64
+	Metadata metadata.Metadata
 }
 
 type SaveTransactionMetadata struct {

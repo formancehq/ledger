@@ -1,6 +1,8 @@
 package v2
 
 import (
+	"encoding/json"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"net/http"
 	"strconv"
 
@@ -22,12 +24,26 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type X struct {
+		Metadata metadata.Metadata `json:"metadata,omitempty"`
+	}
+
+	x := X{}
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&x); err != nil {
+			api.BadRequest(w, common.ErrValidation, errors.New("expected JSON body with metadata"))
+			return
+		}
+	}
+
+
 	_, ret, err := l.RevertTransaction(
 		r.Context(),
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "force"),
 			AtEffectiveDate: api.QueryParamBool(r, "atEffectiveDate"),
 			TransactionID:   txId,
+			Metadata: x.Metadata,
 		}),
 	)
 	if err != nil {
