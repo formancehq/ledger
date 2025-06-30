@@ -18,7 +18,8 @@ type V2RevertTransactionRequest struct {
 	// Revert transaction at effective date of the original tx
 	AtEffectiveDate *bool `queryParam:"style=form,explode=true,name=atEffectiveDate"`
 	// Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
-	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
+	DryRun                     *bool                                  `queryParam:"style=form,explode=true,name=dryRun"`
+	V2RevertTransactionRequest *components.V2RevertTransactionRequest `request:"mediaType=application/json"`
 }
 
 func (v V2RevertTransactionRequest) MarshalJSON() ([]byte, error) {
@@ -65,6 +66,13 @@ func (o *V2RevertTransactionRequest) GetDryRun() *bool {
 		return nil
 	}
 	return o.DryRun
+}
+
+func (o *V2RevertTransactionRequest) GetV2RevertTransactionRequest() *components.V2RevertTransactionRequest {
+	if o == nil {
+		return nil
+	}
+	return o.V2RevertTransactionRequest
 }
 
 type V2RevertTransactionResponse struct {
