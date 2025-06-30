@@ -21,6 +21,7 @@ func TestTransactionRender(t *testing.T) {
 			ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
 		).
 		WithInsertedAt(now).
+		WithUpdatedAt(now).
 		WithTimestamp(now).
 		WithMetadata(map[string]string{
 			"foo": "bar",
@@ -73,6 +74,7 @@ func TestTransactionRender(t *testing.T) {
 				"timestamp":  now.Format(time.RFC3339Nano),
 				"reference":  "ref1",
 				"insertedAt": now.Format(time.RFC3339Nano),
+				"updatedAt":  now.Format(time.RFC3339Nano),
 				"id":         float64(10),
 				"revertedAt": now.Format(time.RFC3339Nano),
 				"postings": []any{
@@ -162,6 +164,7 @@ func TestTransactionRender(t *testing.T) {
 				"timestamp":  now.Format(time.RFC3339Nano),
 				"reference":  "ref1",
 				"insertedAt": now.Format(time.RFC3339Nano),
+				"updatedAt":  now.Format(time.RFC3339Nano),
 				"id":         float64(10),
 				"revertedAt": now.Format(time.RFC3339Nano),
 				"postings": []any{
@@ -456,6 +459,7 @@ func TestLogRender(t *testing.T) {
 					Transaction: ledger.NewTransaction().
 						WithPostings(ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100))).
 						WithTimestamp(now).
+						WithUpdatedAt(now).
 						WithInsertedAt(now),
 				}).
 				WithID(10).
@@ -475,6 +479,7 @@ func TestLogRender(t *testing.T) {
 						"metadata":   map[string]any{},
 						"timestamp":  now.Format(time.RFC3339Nano),
 						"insertedAt": now.Format(time.RFC3339Nano),
+						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         nil,
 						"reverted":   false,
 					},
@@ -497,6 +502,7 @@ func TestLogRender(t *testing.T) {
 					Transaction: ledger.NewTransaction().
 						WithPostings(ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100))).
 						WithTimestamp(now).
+						WithUpdatedAt(now).
 						WithInsertedAt(now),
 				}).
 				WithID(10).
@@ -516,6 +522,7 @@ func TestLogRender(t *testing.T) {
 						"metadata":   map[string]any{},
 						"timestamp":  now.Format(time.RFC3339Nano),
 						"insertedAt": now.Format(time.RFC3339Nano),
+						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         nil,
 						"reverted":   false,
 					},
@@ -535,11 +542,13 @@ func TestLogRender(t *testing.T) {
 					RevertedTransaction: ledger.NewTransaction().
 						WithPostings(ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100))).
 						WithTimestamp(now).
+						WithUpdatedAt(now).
 						WithInsertedAt(now).
 						WithID(1),
 					RevertTransaction: ledger.NewTransaction().
 						WithPostings(ledger.NewPosting("bank", "world", "USD/2", big.NewInt(100))).
 						WithTimestamp(now).
+						WithUpdatedAt(now).
 						WithInsertedAt(now).
 						WithID(2),
 				}).
@@ -560,6 +569,7 @@ func TestLogRender(t *testing.T) {
 						"metadata":   map[string]any{},
 						"timestamp":  now.Format(time.RFC3339Nano),
 						"insertedAt": now.Format(time.RFC3339Nano),
+						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(1),
 						"reverted":   false,
 					},
@@ -575,6 +585,7 @@ func TestLogRender(t *testing.T) {
 						"metadata":   map[string]any{},
 						"timestamp":  now.Format(time.RFC3339Nano),
 						"insertedAt": now.Format(time.RFC3339Nano),
+						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(2),
 						"reverted":   false,
 					},
@@ -596,11 +607,13 @@ func TestLogRender(t *testing.T) {
 					RevertedTransaction: ledger.NewTransaction().
 						WithPostings(ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100))).
 						WithTimestamp(now).
+						WithUpdatedAt(now).
 						WithInsertedAt(now).
 						WithID(1),
 					RevertTransaction: ledger.NewTransaction().
 						WithPostings(ledger.NewPosting("bank", "world", "USD/2", big.NewInt(100))).
 						WithTimestamp(now).
+						WithUpdatedAt(now).
 						WithInsertedAt(now).
 						WithID(2),
 				}).
@@ -621,6 +634,7 @@ func TestLogRender(t *testing.T) {
 						"metadata":   map[string]any{},
 						"timestamp":  now.Format(time.RFC3339Nano),
 						"insertedAt": now.Format(time.RFC3339Nano),
+						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(1),
 						"reverted":   false,
 					},
@@ -636,6 +650,7 @@ func TestLogRender(t *testing.T) {
 						"metadata":   map[string]any{},
 						"timestamp":  now.Format(time.RFC3339Nano),
 						"insertedAt": now.Format(time.RFC3339Nano),
+						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(2),
 						"reverted":   false,
 					},

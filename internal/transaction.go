@@ -20,7 +20,6 @@ type TransactionData struct {
 	Metadata   metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
 	Timestamp  time.Time         `json:"timestamp" bun:"timestamp,type:timestamp without time zone,nullzero"`
 	Reference  string            `json:"reference,omitempty" bun:"reference,type:varchar,unique,nullzero"`
-	InsertedAt time.Time         `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
 }
 
 func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -39,6 +38,8 @@ type Transaction struct {
 
 	TransactionData
 	ID         *uint64    `json:"id" bun:"id,type:numeric"`
+	InsertedAt time.Time         `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
+	UpdatedAt  time.Time         `json:"updatedAt,omitempty" bun:"updated_at,type:timestamp without time zone,nullzero"`
 	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.
@@ -213,6 +214,12 @@ func (tx Transaction) WithPostCommitVolumes(volumes PostCommitVolumes) Transacti
 
 func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) Transaction {
 	tx.PostCommitEffectiveVolumes = volumes
+
+	return tx
+}
+
+func (tx Transaction) WithUpdatedAt(at time.Time) Transaction {
+	tx.UpdatedAt = at
 
 	return tx
 }

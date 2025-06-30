@@ -89,11 +89,14 @@
         "reference": {
           "type": "string"
         },
+        "id": {
+          "type": "integer"
+        },
         "insertedAt": {
           "$ref": "#/$defs/Time"
         },
-        "id": {
-          "type": "integer"
+        "updatedAt": {
+          "$ref": "#/$defs/Time"
         },
         "revertedAt": {
           "$ref": "#/$defs/Time"

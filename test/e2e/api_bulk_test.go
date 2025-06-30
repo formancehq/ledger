@@ -166,6 +166,7 @@ var _ = Context("Ledger engine tests", func() {
 				RevertedAt: &reversedTx.V2GetTransactionResponse.Data.Timestamp,
 				Timestamp:  now,
 				InsertedAt: tx.V2GetTransactionResponse.Data.InsertedAt,
+				UpdatedAt:  tx.V2GetTransactionResponse.Data.UpdatedAt,
 			}))
 			By("It should send events", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions)))

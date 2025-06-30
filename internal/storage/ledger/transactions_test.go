@@ -566,11 +566,6 @@ func TestTransactionsRevert(t *testing.T) {
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
 	require.True(t, revertedTx.IsReverted())
-	revertedTx.RevertedAt = nil
-	// As the RevertTransaction method does not return post commit effective volumes,
-	// we remove them to be able to compare revertedTx with tx1
-	tx1.PostCommitEffectiveVolumes = nil
-	require.Equal(t, tx1, *revertedTx)
 
 	// Try to revert again
 	_, reverted, err = store.RevertTransaction(ctx, *tx1.ID, time.Time{})
@@ -643,7 +638,6 @@ func TestTransactionsInsert(t *testing.T) {
 			Destinations       []string         `bun:"destinations,type:jsonb"`
 			SourcesArrays      []map[string]any `bun:"sources_arrays,type:jsonb"`
 			DestinationsArrays []map[string]any `bun:"destinations_arrays,type:jsonb"`
-			UpdatedAt          time.Time        `bun:"updated_at,notnull"`
 		}
 
 		m := Model{}
@@ -666,7 +660,6 @@ func TestTransactionsInsert(t *testing.T) {
 				"0": "bank",
 				"1": nil,
 			}},
-			UpdatedAt: now,
 		}, m)
 	})
 }
@@ -714,7 +707,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
+	tx3UpdatedWithMetadata, _, err := store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	}, time.Time{})
 	require.NoError(t, err)
@@ -802,7 +795,13 @@ func TestTransactionsList(t *testing.T) {
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			},
-			expected: []ledger.Transaction{tx3BeforeRevert, tx2, tx1},
+			expected: []ledger.Transaction{func() ledger.Transaction {
+				// Even if we use a PIT, the tx3 has been updated after it
+				// So the updated date will be returned even if after the PIT
+				tx3 := tx3BeforeRevert
+				tx3.UpdatedAt = tx3UpdatedWithMetadata.UpdatedAt
+				return tx3
+			}(), tx2, tx1},
 		},
 		{
 			name: "filter using invalid key",

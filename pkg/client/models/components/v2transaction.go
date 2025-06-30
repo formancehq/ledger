@@ -10,6 +10,7 @@ import (
 
 type V2Transaction struct {
 	InsertedAt                 *time.Time                     `json:"insertedAt,omitempty"`
+	UpdatedAt                  *time.Time                     `json:"updatedAt,omitempty"`
 	Timestamp                  time.Time                      `json:"timestamp"`
 	Postings                   []V2Posting                    `json:"postings"`
 	Reference                  *string                        `json:"reference,omitempty"`
@@ -39,6 +40,13 @@ func (o *V2Transaction) GetInsertedAt() *time.Time {
 		return nil
 	}
 	return o.InsertedAt
+}
+
+func (o *V2Transaction) GetUpdatedAt() *time.Time {
+	if o == nil {
+		return nil
+	}
+	return o.UpdatedAt
 }
 
 func (o *V2Transaction) GetTimestamp() time.Time {

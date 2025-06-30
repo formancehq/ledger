@@ -23,6 +23,8 @@ func (h transactionsResourceHandler) Schema() common.EntitySchema {
 			"metadata": common.NewStringMapField(),
 			"id": common.NewNumericField().Paginated(),
 			"reference": common.NewStringField(),
+			"inserted_at": common.NewDateField().Paginated(),
+			"updated_at": common.NewDateField().Paginated(),
 		},
 	}
 }
@@ -85,7 +87,7 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
-	case property == "reference" || property == "timestamp":
+	case property == "reference" || property == "timestamp" || property == "inserted_at" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
 		ret := "reverted_at is"
