@@ -119,12 +119,15 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Ledger:  "default",
 						})
 						Expect(err).ToNot(HaveOccurred())
+
 						Expect(account.V2AccountResponse.Data).Should(Equal(components.V2Account{
 							Address: "alice",
 							Metadata: map[string]string{
 								"clientType": "silver",
 							},
-							FirstUsage: account.V2AccountResponse.Data.FirstUsage,
+							FirstUsage:    account.V2AccountResponse.Data.FirstUsage,
+							InsertionDate: account.V2AccountResponse.Data.InsertionDate,
+							UpdatedAt:     account.V2AccountResponse.Data.UpdatedAt,
 						}))
 
 						account, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
@@ -137,7 +140,9 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Metadata: map[string]string{
 								"status": "pending",
 							},
-							FirstUsage: account.V2AccountResponse.Data.FirstUsage,
+							FirstUsage:    account.V2AccountResponse.Data.FirstUsage,
+							InsertionDate: account.V2AccountResponse.Data.InsertionDate,
+							UpdatedAt:     account.V2AccountResponse.Data.UpdatedAt,
 						}))
 					})
 				})
@@ -279,7 +284,9 @@ var _ = Context("Ledger transactions create API tests", func() {
 									Balance: big.NewInt(100),
 								},
 							},
-							FirstUsage: &response.V2GetTransactionResponse.Data.Timestamp,
+							InsertionDate: response.V2GetTransactionResponse.Data.InsertedAt,
+							UpdatedAt:     response.V2GetTransactionResponse.Data.InsertedAt,
+							FirstUsage:    &response.V2GetTransactionResponse.Data.Timestamp,
 						}))
 						By("should trigger a new event", func() {
 							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{

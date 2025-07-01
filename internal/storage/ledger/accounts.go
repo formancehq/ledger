@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 
-
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
@@ -44,9 +43,11 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 				accounts = append(accounts, AccountWithLedger{
 					Ledger: store.ledger.Name,
 					Account: ledger.Account{
-						Address:  account,
-						Metadata: accountMetadata,
-						FirstUsage: at,
+						Address:       account,
+						Metadata:      accountMetadata,
+						FirstUsage:    at,
+						InsertionDate: at,
+						UpdatedAt:     at,
 					},
 					AddressArray: strings.Split(account, ":"),
 				})

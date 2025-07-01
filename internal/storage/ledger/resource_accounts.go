@@ -16,10 +16,12 @@ type accountsResourceHandler struct {
 func (h accountsResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"address":     common.NewStringField().Paginated(),
-			"first_usage": common.NewDateField().Paginated(),
-			"balance":     common.NewNumericMapField(),
-			"metadata":    common.NewStringMapField(),
+			"address":        common.NewStringField().Paginated(),
+			"first_usage":    common.NewDateField().Paginated(),
+			"balance":        common.NewNumericMapField(),
+			"metadata":       common.NewStringMapField(),
+			"insertion_date": common.NewDateField().Paginated(),
+			"updated_at": common.NewDateField().Paginated(),
 		},
 	}
 }
@@ -60,8 +62,8 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
-	case property == "first_usage":
-		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case property == "first_usage" || property == "insertion_date" || property == "updated_at":
+		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 
 		selectBalance := h.store.db.NewSelect().

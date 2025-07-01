@@ -381,7 +381,9 @@ func TestAccountRender(t *testing.T) {
 						"balance": float64(-100),
 					},
 				},
-				"firstUsage": now.Format(time.RFC3339Nano),
+				"firstUsage":    now.Format(time.RFC3339Nano),
+				"insertionDate": now.Format(time.RFC3339Nano),
+				"updatedAt":     now.Format(time.RFC3339Nano),
 			},
 		},
 		{
@@ -408,7 +410,9 @@ func TestAccountRender(t *testing.T) {
 						"balance": "-100",
 					},
 				},
-				"firstUsage": now.Format(time.RFC3339Nano),
+				"firstUsage":    now.Format(time.RFC3339Nano),
+				"insertionDate": now.Format(time.RFC3339Nano),
+				"updatedAt":     now.Format(time.RFC3339Nano),
 			},
 		},
 	} {
