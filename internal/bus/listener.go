@@ -27,7 +27,7 @@ func NewLedgerListener(publisher message.Publisher) *LedgerListener {
 
 func (lis *LedgerListener) CommittedTransactions(ctx context.Context, l string, txs ledger.Transaction, accountMetadata ledger.AccountMetadata) {
 	lis.publish(ctx, events.EventTypeCommittedTransactions,
-		newEventCommittedTransactions(CommittedTransactions{
+		events.NewEventCommittedTransactions(events.CommittedTransactions{
 			Ledger:          l,
 			Transactions:    []ledger.Transaction{txs},
 			AccountMetadata: accountMetadata,
@@ -36,7 +36,7 @@ func (lis *LedgerListener) CommittedTransactions(ctx context.Context, l string, 
 
 func (lis *LedgerListener) SavedMetadata(ctx context.Context, l string, targetType, targetID string, metadata metadata.Metadata) {
 	lis.publish(ctx, events.EventTypeSavedMetadata,
-		newEventSavedMetadata(SavedMetadata{
+		events.NewEventSavedMetadata(events.SavedMetadata{
 			Ledger:     l,
 			TargetType: targetType,
 			TargetID:   targetID,
@@ -46,7 +46,7 @@ func (lis *LedgerListener) SavedMetadata(ctx context.Context, l string, targetTy
 
 func (lis *LedgerListener) RevertedTransaction(ctx context.Context, l string, reverted, revert ledger.Transaction) {
 	lis.publish(ctx, events.EventTypeRevertedTransaction,
-		newEventRevertedTransaction(RevertedTransaction{
+		events.NewEventRevertedTransaction(events.RevertedTransaction{
 			Ledger:              l,
 			RevertedTransaction: reverted,
 			RevertTransaction:   revert,
@@ -55,7 +55,7 @@ func (lis *LedgerListener) RevertedTransaction(ctx context.Context, l string, re
 
 func (lis *LedgerListener) DeletedMetadata(ctx context.Context, l string, targetType string, targetID any, key string) {
 	lis.publish(ctx, events.EventTypeDeletedMetadata,
-		newEventDeletedMetadata(DeletedMetadata{
+		events.NewEventDeletedMetadata(events.DeletedMetadata{
 			Ledger:     l,
 			TargetType: targetType,
 			TargetID:   targetID,

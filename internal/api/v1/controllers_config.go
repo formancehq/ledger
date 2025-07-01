@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -35,7 +36,7 @@ func GetInfo(systemController system.Controller, version string) func(w http.Res
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ledgerNames := make([]string, 0)
-		if err := storagecommon.Iterate(r.Context(), storagecommon.InitialPaginatedQuery[any]{
+		if err := storagecommon.Iterate(r.Context(), storagecommon.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
 			PageSize: 100,
 		},
 			systemController.ListLedgers,

@@ -5,6 +5,8 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,7 +18,6 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -74,7 +75,7 @@ func TestLedgersList(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
-			returnErr:          ledgercontroller.ErrMissingFeature{},
+			returnErr:          ledgerstore.ErrMissingFeature{},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -84,11 +85,11 @@ func TestLedgersList(t *testing.T) {
 
 			if tc.expectBackendCall {
 				systemController.EXPECT().
-					ListLedgers(gomock.Any(), storagecommon.InitialPaginatedQuery[any]{
+					ListLedgers(gomock.Any(), storagecommon.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
 						PageSize: 15,
 						Column:   "id",
 						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-						Options: storagecommon.ResourceQuery[any]{
+						Options: storagecommon.ResourceQuery[systemstore.ListLedgersQueryPayload]{
 							Expand: []string{},
 						},
 					}).
