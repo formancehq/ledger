@@ -69,7 +69,7 @@ func (a *RDSPostMigrateSnapshot) toInput() *storage.RDSPostMigrateSnapshotArgs {
 	}
 	return &storage.RDSPostMigrateSnapshotArgs{
 		SnapshotIdentifier: pulumi.String(a.SnapshotIdentifier),
-		RetainsOnDelete: a.RetainsOnDelete,
+		RetainsOnDelete:    a.RetainsOnDelete,
 	}
 }
 
@@ -129,7 +129,10 @@ type RDSClusterCreate struct {
 	RetainsOnDelete bool `json:"retains-on-delete" yaml:"retains-on-delete"`
 }
 
-func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
+func (a *RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
+	if a == nil {
+		return nil
+	}
 	return &storage.RDSClusterCreateArgs{
 		UseSubnetGroupName:         pulumi.String(a.UseSubnetGroupName),
 		MasterUsername:             pulumi.String(a.MasterUsername),
@@ -139,7 +142,7 @@ func (a RDSClusterCreate) toInput() *storage.RDSClusterCreateArgs {
 		InstanceClass:              pulumix.Val(rds.InstanceType(a.InstanceClass)),
 		Engine:                     pulumi.String(a.Engine),
 		EngineVersion:              pulumi.String(a.EngineVersion),
-		RetainsOnDelete: a.RetainsOnDelete,
+		RetainsOnDelete:            a.RetainsOnDelete,
 	}
 }
 
@@ -246,7 +249,7 @@ func (s Storage) toInput() storage.Args {
 		RDS:                      s.RDS.toInput(),
 		ConnectivityDatabaseArgs: s.Connectivity.toInput(),
 		DisableUpgrade:           pulumix.Val(s.DisableUpgrade),
-		Service: 				s.Service.toInput(),
+		Service:                  s.Service.toInput(),
 	}
 }
 
