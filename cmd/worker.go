@@ -11,21 +11,37 @@ import (
 	"github.com/formancehq/ledger/internal/worker"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+	"reflect"
+	"strconv"
 )
-
-const (
-	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
-	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
-)
-
-type WorkerConfiguration struct {
-	HashLogsBlockMaxSize  int    `mapstructure:"worker-async-block-hasher-max-block-size"`
-	HashLogsBlockCRONSpec string `mapstructure:"worker-async-block-hasher-schedule"`
-}
 
 func addWorkerFlags(cmd *cobra.Command) {
-	cmd.Flags().Int(WorkerAsyncBlockHasherMaxBlockSizeFlag, 1000, "Max block size")
-	cmd.Flags().String(WorkerAsyncBlockHasherScheduleFlag, "0 * * * * *", "Schedule")
+	for _, runnerFactory := range worker.AllRunnerFactories() {
+		typeOfRunnerFactory := reflect.TypeOf(runnerFactory)
+		method, _ := typeOfRunnerFactory.MethodByName("CreateRunner")
+		configType := method.Type.In(1)
+
+		for i := 0; i < configType.NumField(); i++ {
+			field := configType.Field(i)
+			fieldTag := field.Tag
+			flag := field.Tag.Get("mapstructure")
+			description := fieldTag.Get("description")
+			defaultValue := fieldTag.Get("default")
+
+			switch field.Type.Kind() {
+			case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
+				defaultValue, err := strconv.ParseInt(defaultValue, 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				cmd.Flags().Int(flag, int(defaultValue), description)
+			case reflect.String:
+				cmd.Flags().String(flag, defaultValue, description)
+			default:
+				panic(fmt.Sprintf("cannot config flag %s as type %T is not handled", flag, field.Type))
+			}
+		}
+	}
 }
 
 func NewWorkerCommand() *cobra.Command {
@@ -38,9 +54,11 @@ func NewWorkerCommand() *cobra.Command {
 				return err
 			}
 
-			cfg, err := LoadConfig[WorkerConfiguration](cmd)
+			workerModule, err := worker.NewFXModule(func(v any) error {
+				return MapConfig(cmd, v)
+			})
 			if err != nil {
-				return fmt.Errorf("loading config: %w", err)
+				return fmt.Errorf("creating worker module: %w", err)
 			}
 
 			return service.New(cmd.OutOrStdout(),
@@ -50,10 +68,7 @@ func NewWorkerCommand() *cobra.Command {
 				otlpmetrics.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
-				worker.NewFXModule(worker.ModuleConfig{
-					MaxBlockSize: cfg.HashLogsBlockMaxSize,
-					Schedule:     cfg.HashLogsBlockCRONSpec,
-				}),
+				workerModule,
 			).Run(cmd)
 		},
 	}
