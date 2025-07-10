@@ -1,4 +1,4 @@
-package worker
+package storage
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/internal"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/worker"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/robfig/cron/v3"
 	"github.com/uptrace/bun"
@@ -19,16 +20,17 @@ import (
 )
 
 type AsyncBlockRunnerConfig struct {
-	MaxBlockSize int
-	Schedule     cron.Schedule
+	HashLogsBlockMaxSize  int    `mapstructure:"worker-async-block-hasher-max-block-size" description:"Max block size" default:"1000"`
+	HashLogsBlockCRONSpec string `mapstructure:"worker-async-block-hasher-schedule" description:"Schedule" default:"0 * * * * *"`
 }
 
 type AsyncBlockRunner struct {
-	stopChannel chan chan struct{}
-	logger      logging.Logger
-	db          *bun.DB
-	cfg         AsyncBlockRunnerConfig
-	tracer      trace.Tracer
+	stopChannel  chan chan struct{}
+	logger       logging.Logger
+	db           *bun.DB
+	tracer       trace.Tracer
+	maxBlockSize int
+	schedule     cron.Schedule
 }
 
 func (r *AsyncBlockRunner) Name() string {
@@ -38,7 +40,7 @@ func (r *AsyncBlockRunner) Name() string {
 func (r *AsyncBlockRunner) Run(ctx context.Context) error {
 
 	now := time.Now()
-	next := r.cfg.Schedule.Next(now).Sub(now)
+	next := r.schedule.Next(now).Sub(now)
 
 	for {
 		select {
@@ -48,7 +50,7 @@ func (r *AsyncBlockRunner) Run(ctx context.Context) error {
 			}
 
 			now = time.Now()
-			next = r.cfg.Schedule.Next(now).Sub(now)
+			next = r.schedule.Next(now).Sub(now)
 		case ch := <-r.stopChannel:
 			close(ch)
 			return nil
@@ -106,17 +108,24 @@ func (r *AsyncBlockRunner) processLedger(ctx context.Context, l ledger.Ledger) e
 	var err error
 	_, err = r.db.NewRaw(fmt.Sprintf(`
 			call "%s".create_blocks(?, ?)
-		`, l.Bucket), l.Name, r.cfg.MaxBlockSize).
+		`, l.Bucket), l.Name, r.maxBlockSize).
 		Exec(ctx)
 	return err
 }
 
-func NewAsyncBlockRunner(logger logging.Logger, db *bun.DB, cfg AsyncBlockRunnerConfig, opts ...Option) *AsyncBlockRunner {
+func NewAsyncBlockRunner(
+	logger logging.Logger,
+	db *bun.DB,
+	schedule cron.Schedule,
+	maxBlockSize int,
+	opts ...Option,
+) *AsyncBlockRunner {
 	ret := &AsyncBlockRunner{
-		stopChannel: make(chan chan struct{}),
-		logger:      logger,
-		db:          db,
-		cfg:         cfg,
+		stopChannel:  make(chan chan struct{}),
+		logger:       logger,
+		db:           db,
+		schedule:     schedule,
+		maxBlockSize: maxBlockSize,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -136,4 +145,34 @@ func WithTracer(tracer trace.Tracer) Option {
 
 var defaultOptions = []Option{
 	WithTracer(noop.Tracer{}),
+}
+
+type AsyncBlockRunnerFactory struct{}
+
+func (f *AsyncBlockRunnerFactory) CreateRunner(config AsyncBlockRunnerConfig) (any, error) {
+	return func(
+		logger logging.Logger,
+		db *bun.DB,
+		traceProvider trace.TracerProvider,
+	) (worker.Runner, error) {
+		parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err := parser.Parse(config.HashLogsBlockCRONSpec)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewAsyncBlockRunner(
+			logger,
+			db,
+			schedule,
+			config.HashLogsBlockMaxSize,
+			WithTracer(traceProvider.Tracer("AsyncBlockRunner")),
+		), nil
+	}, nil
+}
+
+var _ worker.RunnerFactory[AsyncBlockRunnerConfig] = (*AsyncBlockRunnerFactory)(nil)
+
+func init() {
+	worker.RegisterRunnerFactory(&AsyncBlockRunnerFactory{})
 }

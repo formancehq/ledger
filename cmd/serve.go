@@ -38,8 +38,6 @@ import (
 )
 
 type ServeConfig struct {
-	WorkerConfiguration `mapstructure:",squash"`
-
 	Bind                        string   `mapstructure:"bind"`
 	BallastSizeInBytes          uint     `mapstructure:"ballast-size"`
 	NumscriptCacheMaxCount      uint     `mapstructure:"numscript-cache-max-count"`
@@ -150,10 +148,13 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			if cfg.WorkerEnabled {
-				options = append(options, worker.NewFXModule(worker.ModuleConfig{
-					Schedule:     cfg.HashLogsBlockCRONSpec,
-					MaxBlockSize: cfg.HashLogsBlockMaxSize,
-				}))
+				workerModule, err := worker.NewFXModule(func(v any) error {
+					return MapConfig(cmd, v)
+				})
+				if err != nil {
+					return fmt.Errorf("creating worker module: %w", err)
+				}
+				options = append(options, workerModule)
 			}
 
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
