@@ -6,7 +6,7 @@ import (
 
 type LogWithLedger struct {
 	ledger.Log
-	Ledger string
+	Ledger string `json:"ledger"`
 }
 
 func NewLogWithLedger(ledger string, log ledger.Log) LogWithLedger {
