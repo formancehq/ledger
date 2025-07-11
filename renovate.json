@@ -2,5 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
-  ]
+  ],
+  "enabledManagers": ["gomod"],
+  "ignorePaths": ["**/pkg/client/**"],
+  "postUpgradeTasks": {
+    "commands": [
+      "just pc"
+    ]
+  }
 }
