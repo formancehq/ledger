@@ -3,10 +3,5 @@
   "extends": [
     "config:recommended"
   ],
-  "enabledManagers": ["gomod"],
-  "goGetDirs": [
-    "./...",
-    "./tools/generator/...",
-    "./tools/provisioner/..."
-  ]
+  "enabledManagers": ["gomod"]
 }
