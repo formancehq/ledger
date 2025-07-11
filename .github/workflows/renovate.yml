@@ -11,9 +11,6 @@ concurrency:
 jobs:
   Renovate:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
-    env:
-      GOPATH: /tmp/go
-      GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     permissions:
       contents: write
       security-events: read
@@ -30,7 +27,7 @@ jobs:
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: >
-          nix develop --impure --command just renovate
+          renovate $GITHUB_REPOSITORY --allowed-commands 'just tidy'
         env:
           RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LOG_LEVEL: debug

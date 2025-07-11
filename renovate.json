@@ -1,20 +1,52 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "group:all",
-    "group:pulumi",
-    "security:only-security-updates"
+    "config:recommended"
   ],
-  "enabledManagers": ["gomod"],
-  "ignorePaths": ["**/pkg/client/**"],
-  "baseBranches": ["main", "/^release\\/.*/"],
-  "ignoreDeps": ["github.com/formancehq/ledger/pkg/client"],
-  "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "groupName": "all patched dependencies",
+      "groupSlug": "all-patch",
+      "matchPackageNames": [
+        "*"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "digest"
+      ]
+    },
+    {
+      "matchPackageNames": [
+        "*"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    }
+  ],
+  "enabledManagers": [
+    "gomod"
+  ],
+  "ignorePaths": [
+    "**/pkg/client/**"
+  ],
+  "baseBranches": [
+    "main",
+    "/^release\\/.*/"
+  ],
+  "ignoreDeps": [
+    "github.com/formancehq/ledger/pkg/client"
+  ],
   "postUpgradeTasks": {
-    "commands": ["just tidy"],
+    "commands": [
+      "just tidy"
+    ],
     "executionMode": "branch",
-    "fileFilters": ["**/*"]
+    "fileFilters": [
+      "**/*"
+    ]
   },
   "rebaseWhen": "behind-base-branch",
   "automerge": true
