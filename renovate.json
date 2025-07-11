@@ -3,5 +3,6 @@
   "extends": [
     "config:recommended"
   ],
-  "enabledManagers": ["gomod"]
+  "enabledManagers": ["gomod"],
+  "ignorePaths": ["**/pkg/client/**"]
 }
