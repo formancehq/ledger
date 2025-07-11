@@ -9,5 +9,6 @@
     "commands": [
       "just pc"
     ]
-  }
+  },
+  "baseBranches": ["main"]
 }
