@@ -10,5 +10,6 @@
       "just pc"
     ]
   },
-  "baseBranches": ["main"]
+  "baseBranches": ["main"],
+  "ignoreDeps": ["github.com/formancehq/ledger/pkg/client"]
 }
