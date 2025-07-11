@@ -103,6 +103,7 @@
               nodejs_22
               self.packages.${system}.speakeasy
               goperf
+              renovate
             ];
           };
         }

@@ -1,8 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "group:all",
+    "group:pulumi",
+    "security:only-security-updates"
   ],
   "enabledManagers": ["gomod"],
-  "ignorePaths": ["**/pkg/client/**"]
+  "ignorePaths": ["**/pkg/client/**"],
+  "baseBranches": ["main", "/^release\\/.*/"],
+  "ignoreDeps": ["github.com/formancehq/ledger/pkg/client"],
+  "postUpdateOptions": ["gomodTidy"],
+  "postUpgradeTasks": {
+    "commands": ["just tidy"],
+    "executionMode": "branch",
+    "fileFilters": ["**/*"]
+  },
+  "rebaseWhen": "behind-base-branch",
+  "automerge": true
 }

@@ -56,3 +56,6 @@ release-ci:
 
 release:
     @goreleaser release --clean
+
+renovate:
+    @renovate formancehq/ledger-cp --allowed-commands 'just tidy'

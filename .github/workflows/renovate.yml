@@ -1,0 +1,36 @@
+name: Renovate
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 2 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-renovate
+  cancel-in-progress: true
+
+jobs:
+  Renovate:
+    runs-on: "shipfox-4vcpu-ubuntu-2404"
+    env:
+      GOPATH: /tmp/go
+      GOLANGCI_LINT_CACHE: /tmp/golangci-lint
+    permissions:
+      contents: write
+      security-events: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      statuses: read
+    steps:
+      - uses: 'actions/checkout@v4'
+        with:
+          fetch-depth: 0
+      - name: Setup Env
+        uses: ./.github/actions/default
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - run: >
+          nix develop --impure --command just renovate
+        env:
+          RENOVATE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOG_LEVEL: debug
