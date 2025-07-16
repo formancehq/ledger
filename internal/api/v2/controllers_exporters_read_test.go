@@ -34,10 +34,6 @@ func TestReadExporter(t *testing.T) {
 			expectSuccess: true,
 		},
 		{
-			name:          "nominal",
-			expectSuccess: true,
-		},
-		{
 			name:             "not found",
 			returnError:      systemcontroller.NewErrExporterNotFound(""),
 			expectStatusCode: http.StatusNotFound,
