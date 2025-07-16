@@ -8,8 +8,7 @@
   ],
   "baseBranchPatterns": [
     "main",
-    "/^release\\/.*/",
-    "!/^release\\/v1.*/"
+    "/^release\\/v2\\.[2-9]|[0-9]{2,}/"
   ],
   "postUpgradeTasks": {
     "commands": [
