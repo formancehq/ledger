@@ -31,7 +31,7 @@ type Manager struct {
 	pipelineOptions          []PipelineOption
 	exportersConfigValidator ConfigValidator
 	syncPeriod               time.Duration
-	started                   chan struct{}
+	started                  chan struct{}
 }
 
 func (m *Manager) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
@@ -101,7 +101,7 @@ func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (
 	ctx = logging.ContextWithLogger(
 		ctx,
 		m.logger.WithFields(map[string]any{
-			"ledger":    pipeline.Ledger,
+			"ledger":   pipeline.Ledger,
 			"exporter": pipeline.ExporterID,
 		}),
 	)
@@ -222,6 +222,7 @@ func (m *Manager) synchronizePipelines(ctx context.Context) error {
 		}
 	}
 
+	// Stop pipelines that are now disabled (or deleted)
 l:
 	for id := range m.pipelines {
 		for _, pipeline := range pipelines {
