@@ -6,7 +6,7 @@
   "ignoreDeps": [
     "github.com/formancehq/ledger/pkg/client"
   ],
-  "baseBranchPatterns": [
+  "baseBranches": [
     "main",
     "/^release\\/v2\\.2/"
   ],
