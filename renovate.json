@@ -10,8 +10,8 @@
     "main",
     "/^release\\/.*/",
     "!/^release\\/v1.*/",
-    "!/^release\\/v2\.0/",
-    "!/^release\\/v2\.1/"
+    "!/^release\\/v2\\.0/",
+    "!/^release\\/v2\\.1/"
   ],
   "postUpgradeTasks": {
     "commands": [
