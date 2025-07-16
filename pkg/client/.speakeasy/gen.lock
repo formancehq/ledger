@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 57791e55791395e191ae00df11e3d8aa
+  docChecksum: 565875306e4312cdc9fe1d263bb59897
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -763,7 +763,7 @@ examples:
           address: "users:001"
       responses:
         "200":
-          application/json: {"data": {"address": "users:001", "metadata": {"admin": "true"}, "firstUsage": "2023-01-01T00:00:00Z", "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}}
+          application/json: {"data": {"address": "users:001", "metadata": {"admin": "true"}, "insertionDate": "2023-01-01T00:00:00Z", "updatedAt": "2023-01-01T00:00:00Z", "firstUsage": "2023-01-01T00:00:00Z", "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2AddMetadataToAccount:

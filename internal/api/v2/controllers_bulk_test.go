@@ -575,6 +575,7 @@ func TestBulk(t *testing.T) {
 					switch data := from.Data.(type) {
 					case map[string]any:
 						delete(data, "insertedAt")
+						delete(data, "updatedAt")
 					}
 					return from
 				})

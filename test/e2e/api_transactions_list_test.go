@@ -156,6 +156,40 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
 			})
 		})
+		When("listing transaction while paginating and filtering on insertion date", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Expand:   pointer.For("volumes,effectiveVolumes"),
+						Reverse:  pointer.For(true),
+						Sort:     pointer.For("inserted_at:desc"),
+						RequestBody: map[string]any{
+							"$lte": map[string]any{
+								"inserted_at": time.Now(),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("Should be ok", func() {
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+				sortedByInsertionDate := transactions[:]
+				sort.SliceStable(sortedByInsertionDate, func(i, j int) bool {
+					return sortedByInsertionDate[i].Timestamp.Before(sortedByInsertionDate[j].Timestamp)
+				})
+				page := sortedByInsertionDate[pageSize:]
+				slices.Reverse(page)
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
+			})
+		})
 		When("listing transactions using a page size of 5", func() {
 			var (
 				rsp *operations.V2ListTransactionsResponse

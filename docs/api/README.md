@@ -547,6 +547,7 @@ Accept: application/json
       "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -773,6 +774,8 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
         "metadata": {
           "admin": "true"
         },
+        "insertionDate": "2023-01-01T00:00:00Z",
+        "updatedAt": "2023-01-01T00:00:00Z",
         "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
@@ -858,6 +861,8 @@ Accept: application/json
     "metadata": {
       "admin": "true"
     },
+    "insertionDate": "2023-01-01T00:00:00Z",
+    "updatedAt": "2023-01-01T00:00:00Z",
     "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
@@ -1198,6 +1203,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -1373,6 +1379,7 @@ Idempotency-Key: string
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -1501,6 +1508,7 @@ Accept: application/json
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -1691,6 +1699,7 @@ Accept: application/json
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -2123,6 +2132,8 @@ Authorization ( Scopes: ledger:write )
         "metadata": {
           "admin": "true"
         },
+        "insertionDate": "2023-01-01T00:00:00Z",
+        "updatedAt": "2023-01-01T00:00:00Z",
         "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
@@ -2183,6 +2194,7 @@ Authorization ( Scopes: ledger:write )
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -2334,6 +2346,8 @@ Authorization ( Scopes: ledger:write )
     "metadata": {
       "admin": "true"
     },
+    "insertionDate": "2023-01-01T00:00:00Z",
+    "updatedAt": "2023-01-01T00:00:00Z",
     "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
@@ -2515,6 +2529,8 @@ Authorization ( Scopes: ledger:write )
   "metadata": {
     "admin": "true"
   },
+  "insertionDate": "2023-01-01T00:00:00Z",
+  "updatedAt": "2023-01-01T00:00:00Z",
   "firstUsage": "2023-01-01T00:00:00Z",
   "volumes": {
     "USD": {
@@ -2551,6 +2567,8 @@ Authorization ( Scopes: ledger:write )
 |address|string|true|none|none|
 |metadata|object|true|none|none|
 |» **additionalProperties**|string|false|none|none|
+|insertionDate|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 |firstUsage|string(date-time)|false|none|none|
 |volumes|[V2Volumes](#schemav2volumes)|false|none|none|
 |effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|none|
@@ -2612,6 +2630,7 @@ Authorization ( Scopes: ledger:write )
 ```json
 {
   "insertedAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z",
   "timestamp": "2019-08-24T14:15:22Z",
   "postings": [
     {
@@ -2701,6 +2720,7 @@ Authorization ( Scopes: ledger:write )
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |insertedAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 |timestamp|string(date-time)|true|none|none|
 |postings|[[V2Posting](#schemav2posting)]|true|none|none|
 |reference|string|false|none|none|
@@ -2849,6 +2869,7 @@ Authorization ( Scopes: ledger:write )
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -2951,6 +2972,7 @@ Authorization ( Scopes: ledger:write )
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -3051,6 +3073,7 @@ Authorization ( Scopes: ledger:write )
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -3826,6 +3849,7 @@ and
       "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -3936,6 +3960,7 @@ and
   "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -4088,6 +4113,7 @@ xor
   "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -4220,6 +4246,7 @@ and
   "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
