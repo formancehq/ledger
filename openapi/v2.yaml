@@ -1056,6 +1056,11 @@ paths:
           schema:
             type: boolean
             example: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2RevertTransactionRequest"
       responses:
         "201":
           description: OK
@@ -2143,3 +2148,10 @@ components:
         file:
           type: string
           format: binary
+    V2RevertTransactionRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string

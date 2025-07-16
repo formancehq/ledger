@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 565875306e4312cdc9fe1d263bb59897
+  docChecksum: fbf40df3867b8013e4b4946cc473e499
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -98,6 +98,7 @@ generatedFiles:
   - /models/components/v2migrationinfo.go
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
+  - /models/components/v2reverttransactionrequest.go
   - /models/components/v2stats.go
   - /models/components/v2statsresponse.go
   - /models/components/v2targetid.go
@@ -244,6 +245,7 @@ generatedFiles:
   - docs/models/components/v2posting.md
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
+  - docs/models/components/v2reverttransactionrequest.md
   - docs/models/components/v2stats.md
   - docs/models/components/v2statsresponse.md
   - docs/models/components/v2targetid.md

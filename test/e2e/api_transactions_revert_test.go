@@ -133,13 +133,20 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 		When("reverting it", func() {
-			var newTransaction *operations.V2RevertTransactionResponse
+			var (
+				newTransaction *operations.V2RevertTransactionResponse
+				request        components.V2RevertTransactionRequest
+			)
 			BeforeEach(func(specContext SpecContext) {
+				request = components.V2RevertTransactionRequest{}
+			})
+			JustBeforeEach(func(specContext SpecContext) {
 				newTransaction, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 					ctx,
 					operations.V2RevertTransactionRequest{
-						Ledger: "default",
-						ID:     tx.V2CreateTransactionResponse.Data.ID,
+						Ledger:                     "default",
+						ID:                         tx.V2CreateTransactionResponse.Data.ID,
+						V2RevertTransactionRequest: &request,
 					},
 				)
 				Expect(err).To(Succeed())
@@ -241,6 +248,27 @@ var _ = Context("Ledger revert transactions API tests", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(response.V2GetTransactionResponse.Data.Metadata).To(Equal(map[string]string{
 						"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
+					}))
+				})
+			})
+			Context("with additional metadata", func() {
+				BeforeEach(func() {
+					request.Metadata = map[string]string{
+						"foo": "bar",
+					}
+				})
+				It("should add these metadata on the newly created transaction", func(specContext SpecContext) {
+					response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
+						ctx,
+						operations.V2GetTransactionRequest{
+							Ledger: "default",
+							ID:     newTransaction.V2CreateTransactionResponse.Data.ID,
+						},
+					)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(response.V2GetTransactionResponse.Data.Metadata).To(Equal(map[string]string{
+						"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
+						"foo":                             "bar",
 					}))
 				})
 			})

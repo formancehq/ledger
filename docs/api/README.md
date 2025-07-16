@@ -1675,11 +1675,23 @@ Authorization ( Scopes: ledger:write )
 ```http
 POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert HTTP/1.1
 Host: localhost:8080
+Content-Type: application/json
 Accept: application/json
 
 ```
 
 `POST /v2/{ledger}/transactions/{id}/revert`
+
+> Body parameter
+
+```json
+{
+  "metadata": {
+    "property1": "string",
+    "property2": "string"
+  }
+}
+```
 
 <h3 id="revert-a-ledger-transaction-by-its-id-parameters">Parameters</h3>
 
@@ -1690,6 +1702,7 @@ Accept: application/json
 |force|query|boolean|false|Force revert|
 |atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
 
 > Example responses
 
@@ -4581,4 +4594,28 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |file|string(binary)|true|none|none|
+
+<h2 id="tocS_V2RevertTransactionRequest">V2RevertTransactionRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2reverttransactionrequest"></a>
+<a id="schema_V2RevertTransactionRequest"></a>
+<a id="tocSv2reverttransactionrequest"></a>
+<a id="tocsv2reverttransactionrequest"></a>
+
+```json
+{
+  "metadata": {
+    "property1": "string",
+    "property2": "string"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|metadata|object|false|none|none|
+|» **additionalProperties**|string|false|none|none|
 
