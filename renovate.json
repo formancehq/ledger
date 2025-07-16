@@ -7,8 +7,7 @@
     "github.com/formancehq/ledger/pkg/client"
   ],
   "baseBranches": [
-    "main",
-    "/^release\\/v2\\.2/"
+    "main"
   ],
   "postUpgradeTasks": {
     "commands": [
