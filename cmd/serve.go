@@ -5,8 +5,8 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/replication"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/drivers/all"
+	drivers "github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/worker"
 	"google.golang.org/grpc"
@@ -99,7 +99,7 @@ func NewServeCommand() *cobra.Command {
 					AutoUpgrade: cfg.AutoUpgrade,
 				}),
 				drivers.NewFXModule(),
-				fx.Invoke(all.Register),
+				fx.Invoke(alldrivers.Register),
 				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
 					NumscriptInterpreter:      cfg.NumscriptInterpreter,
 					NumscriptInterpreterFlags: cfg.NumscriptInterpreterFlags,

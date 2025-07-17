@@ -1,4 +1,4 @@
-package all
+package alldrivers
 
 import (
 	"github.com/formancehq/ledger/internal/replication/drivers"

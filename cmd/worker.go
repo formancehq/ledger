@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/drivers/all"
+	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/worker"
 	"github.com/robfig/cron/v3"
@@ -84,7 +84,7 @@ func NewWorkerCommand() *cobra.Command {
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
 				drivers.NewFXModule(),
-				fx.Invoke(all.Register),
+				fx.Invoke(alldrivers.Register),
 				newWorkerModule(cfg.WorkerConfiguration),
 				worker.NewGRPCServerFXModule(worker.GRPCServerModuleConfig{
 					Address: cfg.Address,
