@@ -144,21 +144,21 @@ func (b Batching) MarshalJSON() ([]byte, error) {
 
 func (b *Batching) UnmarshalJSON(data []byte) error {
 	type Aux Batching
-	x := struct {
+	batchingConfig := struct {
 		Aux
 		FlushInterval string `json:"flushInterval,omitempty"`
 	}{}
-	if err := json.Unmarshal(data, &x); err != nil {
+	if err := json.Unmarshal(data, &batchingConfig); err != nil {
 		return err
 	}
 
 	*b = Batching{
-		MaxItems: x.MaxItems,
+		MaxItems: batchingConfig.MaxItems,
 	}
 
-	if x.FlushInterval != "" {
+	if batchingConfig.FlushInterval != "" {
 		var err error
-		b.FlushInterval, err = time.ParseDuration(x.FlushInterval)
+		b.FlushInterval, err = time.ParseDuration(batchingConfig.FlushInterval)
 		if err != nil {
 			return err
 		}
