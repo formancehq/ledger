@@ -223,11 +223,11 @@ func (m *Manager) synchronizePipelines(ctx context.Context) error {
 	}
 
 	// Stop pipelines that are now disabled (or deleted)
-l:
+outerLoop:
 	for id := range m.pipelines {
 		for _, pipeline := range pipelines {
 			if id == pipeline.ID {
-				continue l
+				continue outerLoop
 			}
 		}
 
