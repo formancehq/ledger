@@ -215,9 +215,6 @@ func (d *DefaultStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipel
 		Model(&pipeline).
 		Exec(ctx)
 	if err != nil {
-		// notes(gfyrag): it is not safe to check errors like that
-		// but *pq.Error does not implement standard go utils for errors
-		// so, we don't have choice
 		err := postgres.ResolveError(err)
 		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
 			return ledger.NewErrPipelineAlreadyExists(pipeline.PipelineConfiguration)
