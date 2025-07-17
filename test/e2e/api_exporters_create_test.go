@@ -17,7 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Context("Exporters API tests", func() {
+var _ = Context("Exporters creation API tests", func() {
 	var (
 		db  = UseTemplatedDatabase()
 		ctx = logging.TestingContext()
