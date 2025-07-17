@@ -38,7 +38,7 @@ tests:
         -coverprofile coverage.txt \
         -tags it \
         ./...
-    cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
+    cat coverage.txt | grep -v debug.go | grep -v "/machine/" | grep -v "pb.go" > coverage2.txt
     mv coverage2.txt coverage.txt
 
 openapi:
