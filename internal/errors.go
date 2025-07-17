@@ -40,21 +40,6 @@ func newErrInvalidBucketName(bucket string, err error) ErrInvalidBucketName {
 	return ErrInvalidBucketName{err: err, bucket: bucket}
 }
 
-type ErrExporterUsed string
-
-func (e ErrExporterUsed) Error() string {
-	return fmt.Sprintf("exporter '%s' actually used by an existing pipeline", string(e))
-}
-
-func (e ErrExporterUsed) Is(err error) bool {
-	_, ok := err.(ErrExporterUsed)
-	return ok
-}
-
-func NewErrExporterUsed(id string) ErrExporterUsed {
-	return ErrExporterUsed(id)
-}
-
 // ErrPipelineAlreadyExists denotes a pipeline already created
 // The store is in charge of returning this error on a failing call on Store.CreatePipeline
 type ErrPipelineAlreadyExists PipelineConfiguration

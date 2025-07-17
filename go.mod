@@ -53,7 +53,6 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/formancehq/go-libs/v3 v3.0.0
 	github.com/iancoleman/strcase v0.3.0
-	github.com/lib/pq v1.10.9
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/olivere/elastic/v7 v7.0.32
 	github.com/robfig/cron/v3 v3.0.1

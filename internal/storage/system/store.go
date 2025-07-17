@@ -12,7 +12,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/lib/pq"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -176,15 +175,7 @@ func (d *DefaultStore) DeleteExporter(ctx context.Context, id string) error {
 		Where("id = ?", id).
 		Exec(ctx)
 	if err != nil {
-		switch err := err.(type) {
-		case *pq.Error:
-			if err.Constraint == "pipelines_exporter_id_fkey" {
-				return ledger.NewErrExporterUsed(id)
-			}
-			return err
-		default:
-			return err
-		}
+		return postgres.ResolveError(err)
 	}
 
 	rowsAffected, err := ret.RowsAffected()
