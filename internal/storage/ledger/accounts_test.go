@@ -167,6 +167,19 @@ func TestAccountsList(t *testing.T) {
 		require.Equal(t, ledger.VolumesByAssets{
 			"USD": ledger.NewVolumesInt64(200, 0),
 		}, accounts.Data[0].EffectiveVolumes)
+
+		accounts, err = store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Match("address", "account:1"),
+				PIT:     pointer.For(now.Add(3 * time.Minute)),
+				Expand:  []string{"effectiveVolumes"},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 1)
+		require.Equal(t, ledger.VolumesByAssets{
+			"USD": ledger.NewVolumesInt64(200, 50),
+		}, accounts.Data[0].EffectiveVolumes)
 	})
 
 	t.Run("list using filter on address", func(t *testing.T) {
