@@ -21,7 +21,7 @@ func (a Authentication) Validate() error {
 		a.Username != "" && a.Password == "":
 		return errors.New("username and password must be defined together")
 	case a.AWSEnabled && a.Username != "":
-		return errors.New("username and password defined while aws is enabled")
+		return newErrIncorrectIAMConfiguration()
 	}
 	return nil
 }

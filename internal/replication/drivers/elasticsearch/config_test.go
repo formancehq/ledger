@@ -78,7 +78,7 @@ func TestConfig(t *testing.T) {
 				},
 				Index: "index",
 			},
-			expectError: "authentication configuration is invalid: username and password defined while aws is enabled",
+			expectError: "authentication configuration is invalid: incorrect IAM configuration: username and password should not be set when IAM is enabled",
 		},
 	} {
 		testCase := testCase
