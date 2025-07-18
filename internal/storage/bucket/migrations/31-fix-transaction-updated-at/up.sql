@@ -7,7 +7,7 @@ do $$
 
 		drop table if exists txs_view;
 
-		create temp table txs_view as
+		create table txs_view as
 		select *
 		from transactions
 		where updated_at is null;
@@ -15,6 +15,8 @@ do $$
 		if (select count(*) from txs_view) = 0 then
 			return;
 		end if;
+		-- speed up hash join when updating rows later
+		alter table txs_view add foreign key(seq) references transactions(seq);
 
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || (select count(*) from txs_view));
 
@@ -29,8 +31,7 @@ do $$
 			update transactions
 			set updated_at = transactions.inserted_at
 			from data
-			where transactions.seq = data.seq and
-			      transactions.ledger = data.ledger;
+			where transactions.seq = data.seq;
 
 			exit when not found;
 
