@@ -23,8 +23,10 @@ func DeferTestWorker(postgresConnectionOptions *deferred.Deferred[bunconnect.Con
 		cmd.NewRootCommand,
 		append([]testservice.Option{
 			testservice.WithInstruments(
+				testservice.GRPCServerInstrumentation(),
 				testservice.AppendArgsInstrumentation("worker"),
 				testservice.PostgresInstrumentation(postgresConnectionOptions),
+				testserver.GRPCAddressInstrumentation(":0"),
 			),
 		}, options...)...,
 	)

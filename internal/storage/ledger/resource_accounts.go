@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/stoewer/go-strcase"
@@ -72,7 +71,7 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 
 		if opts.PIT != nil && !opts.PIT.IsZero() {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-				return "", nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+				return "", nil, NewErrMissingFeature(features.FeatureMovesHistory)
 			}
 			selectBalance = selectBalance.
 				ModelTableExpr(h.store.GetPrefixedRelationName("moves")).

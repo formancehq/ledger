@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -110,7 +111,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 				))
 				continue
 			// A log with the IK could have been inserted in the meantime, read again the database to retrieve it
-			case errors.Is(err, ErrIdempotencyKeyConflict{}):
+			case errors.Is(err, ledgerstore.ErrIdempotencyKeyConflict{}):
 				log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 				if err != nil {
 					return nil, nil, err

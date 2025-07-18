@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
@@ -23,6 +24,7 @@ type ComponentArgs struct {
 	Storage       storage.Args
 	Ingress       *api.IngressArgs
 	API           api.Args
+	Exporters     exporters.Args
 	Worker        worker.Args
 	Provision     provision.Args
 	Generator     *generator.Args
@@ -42,10 +44,11 @@ type Component struct {
 	pulumi.ResourceState
 
 	API       *api.Component
-	Worker     *worker.Component
+	Worker    *worker.Component
 	Storage   *storage.Component
 	Namespace *corev1.Namespace
 	Devbox    *devbox.Component
+	Exporters *exporters.Component
 	Provision *provision.Component
 	Generator *generator.Component
 }
@@ -63,6 +66,9 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		pulumi.Parent(cmp),
 	}
 
+	// todo: need to add on options to retains on delete
+	// otherwise, even if the retains on delete option is set on the installed resources,
+	// the pulumi will still delete the resources
 	cmp.Namespace, err = corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name: args.Namespace.
@@ -95,31 +101,42 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		cmp.Storage.Service,
 	}))
 
+	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
+		CommonArgs: args.CommonArgs,
+		Args:       args.Worker,
+		Database:   cmp.Storage,
+	}, options...)
+	if err != nil {
+		return nil, err
+	}
+
 	cmp.API, err = api.NewComponent(ctx, "api", api.ComponentArgs{
 		CommonArgs: args.CommonArgs,
 		Args:       args.API,
 		Storage:    cmp.Storage,
 		Ingress:    args.Ingress,
+		Worker:     cmp.Worker,
 	}, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	cmp.Worker, err = worker.NewComponent(ctx, "worker", worker.ComponentArgs{
-		CommonArgs: args.CommonArgs,
-		Args:       args.Worker,
-		Database:   cmp.Storage,
-		API:        cmp.API,
-	}, options...)
-	if err != nil {
-		return nil, err
+	if len(args.Exporters.Exporters) > 0 {
+		cmp.Exporters, err = exporters.NewComponent(ctx, "exporters", exporters.ComponentArgs{
+			CommonArgs: args.CommonArgs,
+			Args:       args.Exporters,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	if len(args.Provision.Ledgers) > 0 {
+	if len(args.Provision.Ledgers) > 0 || cmp.Exporters != nil {
 		cmp.Provision, err = provision.NewComponent(ctx, "provisioner", provision.ComponentArgs{
 			CommonArgs: args.CommonArgs,
 			API:        cmp.API,
 			Args:       args.Provision,
+			Exporters:  cmp.Exporters,
 		}, options...)
 		if err != nil {
 			return nil, err
@@ -154,6 +171,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 			CommonArgs: args.CommonArgs,
 			Storage:    cmp.Storage,
 			API:        cmp.API,
+			Exporters:  cmp.Exporters,
 		}, options...)
 		if err != nil {
 			return nil, err

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -44,6 +45,7 @@ type ComponentArgs struct {
 	Args
 	Storage *storage.Component
 	Ingress *IngressArgs
+	Worker  *worker.Component
 }
 
 func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...pulumi.ResourceOption) (*Component, error) {
@@ -57,6 +59,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		CommonArgs: args.CommonArgs,
 		Args:       args.Args,
 		Database:   args.Storage,
+		Worker: 	args.Worker,
 	}, pulumi.Parent(cmp))
 	if err != nil {
 		return nil, fmt.Errorf("creating deployment: %w", err)

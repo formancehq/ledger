@@ -298,7 +298,13 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 			}
 		}
 	default:
-		panic(fmt.Errorf("should not happen, got type when waiting for OffsetPaginatedQuery, ColumnPaginatedQuery, or InitialResourceQuery: %T", paginationQuery))
+		panic(fmt.Errorf(
+			"should not happen, got type when waiting for %T, %T, or %T: %T",
+			InitialPaginatedQuery[OptionsType]{},
+			OffsetPaginatedQuery[OptionsType]{},
+			ColumnPaginatedQuery[OptionsType]{},
+			paginationQuery,
+		))
 	}
 
 	var (

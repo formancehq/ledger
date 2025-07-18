@@ -5,6 +5,7 @@ import (
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/go-chi/chi/v5"
 	"github.com/iancoleman/strcase"
 	"io"
 	"net/http"
@@ -37,6 +38,14 @@ func getPIT(r *http.Request) (*time.Time, error) {
 
 func getOOT(r *http.Request) (*time.Time, error) {
 	return getDate(r, "oot")
+}
+
+func getPipelineID(r *http.Request) string {
+	return chi.URLParam(r, "pipelineID")
+}
+
+func getExporterID(r *http.Request) string {
+	return chi.URLParam(r, "exporterID")
 }
 
 func getQueryBuilder(r *http.Request) (query.Builder, error) {

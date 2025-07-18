@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -9,7 +10,6 @@ import (
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
@@ -21,7 +21,7 @@ type Store interface {
 	CreateLedger(ctx context.Context, l *ledger.Ledger) error
 	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	Ledgers() common.PaginatedResource[ledger.Ledger, any]
+	Ledgers() common.PaginatedResource[ledger.Ledger, ListLedgersQueryPayload]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 
@@ -32,6 +32,10 @@ type Store interface {
 
 const (
 	SchemaSystem = "_system"
+)
+
+var (
+	ErrLedgerAlreadyExists = errors.New("ledger already exists")
 )
 
 type DefaultStore struct {
@@ -69,7 +73,7 @@ func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error
 		Exec(ctx)
 	if err != nil {
 		if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-			return systemcontroller.ErrLedgerAlreadyExists
+			return ErrLedgerAlreadyExists
 		}
 		return postgres.ResolveError(err)
 	}
@@ -97,8 +101,8 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 
 func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	ledger.Ledger,
-	any] {
-	return common.NewPaginatedResourceRepository[ledger.Ledger, any](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
+	ListLedgersQueryPayload] {
+	return common.NewPaginatedResourceRepository[ledger.Ledger, ListLedgersQueryPayload](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
 }
 
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
@@ -148,4 +152,158 @@ func WithTracer(tracer trace.Tracer) Option {
 
 var defaultOptions = []Option{
 	WithTracer(noop.Tracer{}),
+}
+
+func (d *DefaultStore) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	return bunpaginate.UsingOffset[struct{}, ledger.Exporter](
+		ctx,
+		d.db.NewSelect(),
+		bunpaginate.OffsetPaginatedQuery[struct{}]{},
+	)
+}
+
+func (d *DefaultStore) CreateExporter(ctx context.Context, exporter ledger.Exporter) error {
+	_, err := d.db.NewInsert().
+		Model(&exporter).
+		Exec(ctx)
+	return err
+}
+
+func (d *DefaultStore) DeleteExporter(ctx context.Context, id string) error {
+	ret, err := d.db.NewDelete().
+		Model(&ledger.Exporter{}).
+		Where("id = ?", id).
+		Exec(ctx)
+	if err != nil {
+		return postgres.ResolveError(err)
+	}
+
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return err
+}
+
+func (d *DefaultStore) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	ret := &ledger.Exporter{}
+	err := d.db.NewSelect().
+		Model(ret).
+		Where("id = ?", id).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (d *DefaultStore) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	return bunpaginate.UsingOffset[struct{}, ledger.Pipeline](
+		ctx,
+		d.db.NewSelect(),
+		bunpaginate.OffsetPaginatedQuery[struct{}]{},
+	)
+}
+
+func (d *DefaultStore) CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error {
+	_, err := d.db.NewInsert().
+		Model(&pipeline).
+		Exec(ctx)
+	if err != nil {
+		err := postgres.ResolveError(err)
+		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
+			return ledger.NewErrPipelineAlreadyExists(pipeline.PipelineConfiguration)
+		}
+
+		return err
+	}
+	return nil
+}
+
+func (d *DefaultStore) UpdatePipeline(ctx context.Context, id string, o map[string]any) (*ledger.Pipeline, error) {
+	updateQuery := d.db.NewUpdate().
+		Table("_system.pipelines")
+	for k, v := range o {
+		updateQuery = updateQuery.Set(k+" = ?", v)
+	}
+	updateQuery = updateQuery.
+		Set("version = version + 1").
+		Where("id = ?", id).
+		Returning("*")
+
+	ret := &ledger.Pipeline{}
+	_, err := updateQuery.Exec(ctx, ret)
+	if err != nil {
+		return nil, postgres.ResolveError(err)
+	}
+	return ret, nil
+}
+
+func (d *DefaultStore) DeletePipeline(ctx context.Context, id string) error {
+	ret, err := d.db.NewDelete().
+		Model(&ledger.Pipeline{}).
+		Where("id = ?", id).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return err
+}
+
+func (d *DefaultStore) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	ret := &ledger.Pipeline{}
+	err := d.db.NewSelect().
+		Model(ret).
+		Where("id = ?", id).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (d *DefaultStore) ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error) {
+	ret := make([]ledger.Pipeline, 0)
+	if err := d.db.NewSelect().
+		Model(&ret).
+		Where("enabled").
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLogID uint64) error {
+	ret, err := d.db.NewUpdate().
+		Model(&ledger.Pipeline{}).
+		Where("id = ?", id).
+		Set("last_log_id = ?", lastLogID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("updating state in database: %w", err)
+	}
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

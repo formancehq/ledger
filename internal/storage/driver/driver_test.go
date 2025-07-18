@@ -12,7 +12,7 @@ import (
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/formancehq/ledger/internal/storage/system"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"math/rand"
@@ -28,7 +28,7 @@ func TestLedgersCreate(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	buckets := []string{"bucket1", "bucket2"}
@@ -81,7 +81,7 @@ func TestLedgersList(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	bucket := uuid.NewString()[:8]
@@ -102,8 +102,8 @@ func TestLedgersList(t *testing.T) {
 	_, err = d.CreateLedger(ctx, l2)
 	require.NoError(t, err)
 
-	q := storagecommon.InitialPaginatedQuery[any]{
-		Options: storagecommon.ResourceQuery[any]{
+	q := storagecommon.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
+		Options: storagecommon.ResourceQuery[systemstore.ListLedgersQueryPayload]{
 			Builder: query.Match("bucket", bucket),
 		},
 	}
@@ -123,7 +123,7 @@ func TestLedgerUpdateMetadata(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString())
@@ -145,7 +145,7 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 		db,
 		ledgerstore.NewFactory(db),
 		bucket.NewDefaultFactory(),
-		system.NewStoreFactory(),
+		systemstore.NewStoreFactory(),
 	)
 
 	l := ledger.MustNewWithDefault(uuid.NewString()).WithMetadata(metadata.Metadata{

@@ -4,6 +4,7 @@ package system
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/bun/bundebug"
@@ -91,7 +92,7 @@ func TestLedgersList(t *testing.T) {
 		ledgers = append(ledgers, l)
 	}
 
-	cursor, err := store.Ledgers().Paginate(ctx, storagecommon.InitialPaginatedQuery[any]{
+	cursor, err := store.Ledgers().Paginate(ctx, storagecommon.InitialPaginatedQuery[ListLedgersQueryPayload]{
 		PageSize: pageSize,
 	})
 	require.NoError(t, err)
@@ -99,7 +100,7 @@ func TestLedgersList(t *testing.T) {
 	require.Equal(t, ledgers[:pageSize], cursor.Data)
 
 	for i := pageSize; i < count; i += pageSize {
-		query := storagecommon.ColumnPaginatedQuery[any]{}
+		query := storagecommon.ColumnPaginatedQuery[ListLedgersQueryPayload]{}
 		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
 
 		cursor, err = store.Ledgers().Paginate(ctx, query)
@@ -151,7 +152,157 @@ func TestLedgerDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{}, ledgerFromDB.Metadata)
 }
 
-func newStore(t docker.T) Store {
+func TestListEnabledPipelines(t *testing.T) {
+	ctx := logging.TestingContext()
+
+	store := newStore(t)
+
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
+	)
+	require.NoError(t, store.CreateExporter(ctx, exporter))
+
+	// Creating a pair which will be marked as ready
+	alivePipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
+	)
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
+
+	// Creating a pair which will be marked as stopped
+	stoppedPipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module2", exporter.ID),
+	)
+	stoppedPipeline.Enabled = false
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, stoppedPipeline))
+
+	// Read all states
+	states, err := store.ListEnabledPipelines(ctx)
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	require.Equal(t, alivePipeline, states[0])
+}
+
+func TestCreatePipeline(t *testing.T) {
+
+	ctx := logging.TestingContext()
+
+	store := newStore(t)
+
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
+	)
+	require.NoError(t, store.CreateExporter(ctx, exporter))
+
+	// Creating a pipeline which will be marked as ready
+	alivePipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
+	)
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
+
+	// Try to create the same pipeline again
+	require.IsType(t, ledger.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, alivePipeline))
+
+	// Try to create another pipeline with the same configuration
+	newPipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
+	)
+	require.IsType(t, ledger.ErrPipelineAlreadyExists{}, store.CreatePipeline(ctx, newPipeline))
+}
+
+func TestDeletePipeline(t *testing.T) {
+
+	ctx := logging.TestingContext()
+
+	// Create the store
+	store := newStore(t)
+
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
+	)
+	require.NoError(t, store.CreateExporter(ctx, exporter))
+
+	// Creating a pair which will be marked as ready
+	alivePipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
+	)
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
+
+	// Try to create the same pipeline again
+	require.NoError(t, store.DeletePipeline(ctx, alivePipeline.ID))
+}
+
+func TestUpdatePipeline(t *testing.T) {
+
+	ctx := logging.TestingContext()
+
+	// Create the store
+	store := newStore(t)
+
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
+	)
+	require.NoError(t, store.CreateExporter(ctx, exporter))
+
+	// Creating a pair which will be marked as ready
+	alivePipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
+	)
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, alivePipeline))
+
+	// Try to create the same pipeline again
+	_, err := store.UpdatePipeline(ctx, alivePipeline.ID, map[string]any{
+		"enabled": false,
+	})
+	require.NoError(t, err)
+
+	pipelineFromDB, err := store.GetPipeline(ctx, alivePipeline.ID)
+	require.NoError(t, err)
+	require.False(t, pipelineFromDB.Enabled)
+
+	pipelineFromDB.Enabled = true
+	require.Equal(t, alivePipeline, *pipelineFromDB)
+}
+
+func TestDeleteExporter(t *testing.T) {
+	ctx := logging.TestingContext()
+
+	// Create the store
+	store := newStore(t)
+
+	// Create a exporter
+	exporter := ledger.NewExporter(
+		ledger.NewExporterConfiguration("exporter1", json.RawMessage("")),
+	)
+	require.NoError(t, store.CreateExporter(ctx, exporter))
+
+	// Creating a pipeline which will be marked as ready
+	pipeline := ledger.NewPipeline(
+		ledger.NewPipelineConfiguration("module1", exporter.ID),
+	)
+
+	// Save a state
+	require.NoError(t, store.CreatePipeline(ctx, pipeline))
+
+	// Pipelines should be deleted in cascade
+	err := store.DeleteExporter(ctx, pipeline.ExporterID)
+	require.NoError(t, err)
+}
+
+func newStore(t docker.T) *DefaultStore {
 	t.Helper()
 
 	ctx := logging.TestingContext()

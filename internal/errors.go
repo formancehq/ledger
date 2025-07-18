@@ -1,6 +1,8 @@
 package ledger
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type ErrInvalidLedgerName struct {
 	err  error
@@ -36,4 +38,51 @@ func (e ErrInvalidBucketName) Is(err error) bool {
 
 func newErrInvalidBucketName(bucket string, err error) ErrInvalidBucketName {
 	return ErrInvalidBucketName{err: err, bucket: bucket}
+}
+
+// ErrPipelineAlreadyExists denotes a pipeline already created
+// The store is in charge of returning this error on a failing call on Store.CreatePipeline
+type ErrPipelineAlreadyExists PipelineConfiguration
+
+func (e ErrPipelineAlreadyExists) Error() string {
+	return fmt.Sprintf("pipeline '%s/%s' already exists", e.Ledger, e.ExporterID)
+}
+
+func (e ErrPipelineAlreadyExists) Is(err error) bool {
+	_, ok := err.(ErrPipelineAlreadyExists)
+	return ok
+}
+
+func NewErrPipelineAlreadyExists(pipelineConfiguration PipelineConfiguration) ErrPipelineAlreadyExists {
+	return ErrPipelineAlreadyExists(pipelineConfiguration)
+}
+
+type ErrPipelineNotFound string
+
+func (e ErrPipelineNotFound) Error() string {
+	return fmt.Sprintf("pipeline '%s' not found", string(e))
+}
+
+func (e ErrPipelineNotFound) Is(err error) bool {
+	_, ok := err.(ErrPipelineNotFound)
+	return ok
+}
+
+func NewErrPipelineNotFound(id string) ErrPipelineNotFound {
+	return ErrPipelineNotFound(id)
+}
+
+type ErrAlreadyStarted string
+
+func (e ErrAlreadyStarted) Error() string {
+	return fmt.Sprintf("pipeline '%s' already started", string(e))
+}
+
+func (e ErrAlreadyStarted) Is(err error) bool {
+	_, ok := err.(ErrAlreadyStarted)
+	return ok
+}
+
+func NewErrAlreadyStarted(id string) ErrAlreadyStarted {
+	return ErrAlreadyStarted(id)
 }

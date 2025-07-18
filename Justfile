@@ -38,7 +38,7 @@ tests:
         -coverprofile coverage.txt \
         -tags it \
         ./...
-    cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
+    cat coverage.txt | grep -v debug.go | grep -v "/machine/" | grep -v "pb.go" > coverage2.txt
     mv coverage2.txt coverage.txt
 
 openapi:
@@ -56,3 +56,8 @@ release-ci:
 
 release:
     @goreleaser release --clean
+
+generate-grpc-replication:
+    protoc --go_out=. --go_opt=paths=source_relative \
+        --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+        ./internal/replication/grpc/replication_service.proto

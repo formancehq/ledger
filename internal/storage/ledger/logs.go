@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 // Log override ledger.Log to be able to properly read/write payload which is jsonb
@@ -97,7 +96,7 @@ func (store *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 				switch {
 				case errors.Is(err, postgres.ErrConstraintsFailed{}):
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "logs_idempotency_key" {
-						return ledgercontroller.NewErrIdempotencyKeyConflict(log.IdempotencyKey)
+						return NewErrIdempotencyKeyConflict(log.IdempotencyKey)
 					}
 				default:
 					return fmt.Errorf("inserting log: %w", err)

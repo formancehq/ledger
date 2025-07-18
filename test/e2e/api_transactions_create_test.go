@@ -15,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	. "github.com/formancehq/go-libs/v3/testing/api"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -290,7 +289,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							FirstUsage:    &response.V2GetTransactionResponse.Data.Timestamp,
 						}))
 						By("should trigger a new event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(ledgerevents.CommittedTransactions{
 								Ledger:          "default",
 								Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&rsp.V2CreateTransactionResponse.Data)},
 								AccountMetadata: ledger.AccountMetadata{},
