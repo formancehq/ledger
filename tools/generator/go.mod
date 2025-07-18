@@ -66,7 +66,7 @@ require (
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
-	github.com/uptrace/bun v1.2.14 // indirect
+	github.com/uptrace/bun v1.2.15 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.3.2 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.3.2 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
@@ -93,7 +93,7 @@ require (
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect

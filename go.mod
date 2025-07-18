@@ -34,9 +34,9 @@ require (
 	github.com/spf13/pflag v1.0.7
 	github.com/stoewer/go-strcase v1.3.1
 	github.com/stretchr/testify v1.10.0
-	github.com/uptrace/bun v1.2.14
-	github.com/uptrace/bun/dialect/pgdialect v1.2.14
-	github.com/uptrace/bun/extra/bundebug v1.2.14
+	github.com/uptrace/bun v1.2.15
+	github.com/uptrace/bun/dialect/pgdialect v1.2.15
+	github.com/uptrace/bun/extra/bundebug v1.2.15
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/xo/dburl v0.23.8
 	go.opentelemetry.io/otel v1.37.0
@@ -234,7 +234,7 @@ require (
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.34.0 // indirect
