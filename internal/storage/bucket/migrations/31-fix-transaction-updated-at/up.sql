@@ -13,6 +13,7 @@ do $$
 		where updated_at is null;
 
 		if (select count(*) from txs_view) = 0 then
+			drop table txs_view;
 			return;
 		end if;
 		-- speed up hash join when updating rows later
@@ -33,7 +34,10 @@ do $$
 			from data
 			where transactions.seq = data.seq;
 
-			exit when not found;
+			if not found then
+				drop table txs_view;
+				exit;
+			end if;
 
 			_offset = _offset + _batch_size;
 
