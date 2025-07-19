@@ -81,7 +81,9 @@ do $$
 			from data
 			where logs.seq = data.seq;
 
-			exit when not found;
+			if _offset >= (select max(seq) from logs) then
+				exit;
+			end if;
 
 			_offset = _offset + _batch_size;
 
@@ -89,7 +91,5 @@ do $$
 
 			commit;
 		end loop;
-
-		drop table if exists txs_view;
 	end
 $$;
