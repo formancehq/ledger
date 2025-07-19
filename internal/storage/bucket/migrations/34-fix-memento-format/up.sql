@@ -1,7 +1,7 @@
 do $$
 	declare
 		_offset integer := 0;
-		_batch_size integer := 1000;
+		_batch_size integer := 10000;
 	begin
 		set search_path = '{{ .Schema }}';
 
@@ -15,9 +15,8 @@ do $$
 			with data as (
 				select *
 				from logs
+				where seq >= _offset and seq < _offset + _batch_size
 				order by seq
-				offset _offset
-				limit _batch_size
 			)
 			update logs
 			set memento = convert_to(
