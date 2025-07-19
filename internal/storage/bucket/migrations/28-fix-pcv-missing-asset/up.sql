@@ -31,6 +31,7 @@ do $$
 		alter table moves_view add foreign key(transactions_seq) references transactions(seq);
 
 		if (select count(*) from moves_view) = 0 then
+			drop table moves_view;
 			return;
 		end if;
 
@@ -48,7 +49,10 @@ do $$
 			from data
 			where transactions.seq = data.transactions_seq;
 
-			exit when not found;
+			if not found then
+				drop table moves_view;
+				exit;
+			end if;
 
 			_offset = _offset + _batch_size;
 
