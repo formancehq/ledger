@@ -17,6 +17,7 @@ do $$
 			return;
 		end if;
 		-- speed up hash join when updating rows later
+		create index txs_view_seq_idx on txs_view(seq);
 		alter table txs_view add foreign key(seq) references transactions(seq);
 
 		perform pg_notify('migrations-{{ .Schema }}', 'init: ' || (select count(*) from txs_view));
