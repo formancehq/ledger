@@ -76,6 +76,9 @@ jobs:
 
   GoReleaser:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
+    permissions:
+      id-token: write
+      attestations: write
     if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
     steps:
       - name: Set up QEMU
@@ -112,6 +115,21 @@ jobs:
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
+      # TODO(@sylr): Move this to the Release workflow when proven working.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: ./dist/*_checksums.txt # Generate attestations for the goreleaser output archives
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ./dist/*/**                 # Generate attestations for the goreleaser output binaries
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          retention-days: 5
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
 
   Deploy:
     runs-on: "shipfox-2vcpu-ubuntu-2404"
