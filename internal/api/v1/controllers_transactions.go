@@ -59,11 +59,22 @@ func buildGetTransactionsQuery(r *http.Request) query.Builder {
 		clauses = append(clauses, query.Lt("id", after))
 	}
 
-	if startTime := r.URL.Query().Get("start_time"); startTime != "" {
-		clauses = append(clauses, query.Gte("date", startTime))
+	// Support both startTime (new) and start_time (deprecated) parameters
+	startTime := r.URL.Query().Get("startTime")
+	if startTime == "" {
+		startTime = r.URL.Query().Get("start_time") // fallback to deprecated parameter
 	}
-	if endTime := r.URL.Query().Get("end_time"); endTime != "" {
-		clauses = append(clauses, query.Lt("date", endTime))
+	if startTime != "" {
+		clauses = append(clauses, query.Gte("timestamp", startTime))
+	}
+
+	// Support both endTime (new) and end_time (deprecated) parameters  
+	endTime := r.URL.Query().Get("endTime")
+	if endTime == "" {
+		endTime = r.URL.Query().Get("end_time") // fallback to deprecated parameter
+	}
+	if endTime != "" {
+		clauses = append(clauses, query.Lt("timestamp", endTime))
 	}
 
 	if reference := r.URL.Query().Get("reference"); reference != "" {
