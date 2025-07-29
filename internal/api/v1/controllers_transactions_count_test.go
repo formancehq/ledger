@@ -45,19 +45,57 @@ func TestCountTransactions(t *testing.T) {
 		{
 			name: "using startTime",
 			queryParams: url.Values{
-				"start_time": []string{now.Format(time.DateFormat)},
+				"startTime": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: storagecommon.ResourceQuery[any]{
-				Builder: query.Gte("date", now.Format(time.DateFormat)),
+				Builder: query.Gte("timestamp", now.Format(time.DateFormat)),
 			},
 		},
 		{
 			name: "using endTime",
 			queryParams: url.Values{
+				"endTime": []string{now.Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.ResourceQuery[any]{
+				Builder: query.Lt("timestamp", now.Format(time.DateFormat)),
+			},
+		},
+		{
+			name: "using deprecated start_time",
+			queryParams: url.Values{
+				"start_time": []string{now.Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.ResourceQuery[any]{
+				Builder: query.Gte("timestamp", now.Format(time.DateFormat)),
+			},
+		},
+		{
+			name: "using deprecated end_time",
+			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: storagecommon.ResourceQuery[any]{
-				Builder: query.Lt("date", now.Format(time.DateFormat)),
+				Builder: query.Lt("timestamp", now.Format(time.DateFormat)),
+			},
+		},
+		{
+			name: "startTime takes precedence over start_time",
+			queryParams: url.Values{
+				"startTime":  []string{now.Format(time.DateFormat)},
+				"start_time": []string{now.Add(-time.Hour).Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.ResourceQuery[any]{
+				Builder: query.Gte("timestamp", now.Format(time.DateFormat)),
+			},
+		},
+		{
+			name: "endTime takes precedence over end_time",
+			queryParams: url.Values{
+				"endTime":  []string{now.Format(time.DateFormat)},
+				"end_time": []string{now.Add(-time.Hour).Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.ResourceQuery[any]{
+				Builder: query.Lt("timestamp", now.Format(time.DateFormat)),
 			},
 		},
 		{

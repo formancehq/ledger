@@ -63,6 +63,36 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name: "using startTime",
 			queryParams: url.Values{
+				"startTime": []string{now.Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: storagecommon.ResourceQuery[any]{
+					Builder: query.Gte("timestamp", now.Format(time.DateFormat)),
+					Expand:  []string{"volumes"},
+				},
+			},
+		},
+		{
+			name: "using endTime",
+			queryParams: url.Values{
+				"endTime": []string{now.Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: storagecommon.ResourceQuery[any]{
+					Builder: query.Lt("timestamp", now.Format(time.DateFormat)),
+					Expand:  []string{"volumes"},
+				},
+			},
+		},
+		{
+			name: "using deprecated start_time",
+			queryParams: url.Values{
 				"start_time": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
@@ -70,13 +100,13 @@ func TestTransactionsList(t *testing.T) {
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
 				Options: storagecommon.ResourceQuery[any]{
-					Builder: query.Gte("date", now.Format(time.DateFormat)),
+					Builder: query.Gte("timestamp", now.Format(time.DateFormat)),
 					Expand:  []string{"volumes"},
 				},
 			},
 		},
 		{
-			name: "using endTime",
+			name: "using deprecated end_time",
 			queryParams: url.Values{
 				"end_time": []string{now.Format(time.DateFormat)},
 			},
@@ -85,7 +115,39 @@ func TestTransactionsList(t *testing.T) {
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Column:   "id",
 				Options: storagecommon.ResourceQuery[any]{
-					Builder: query.Lt("date", now.Format(time.DateFormat)),
+					Builder: query.Lt("timestamp", now.Format(time.DateFormat)),
+					Expand:  []string{"volumes"},
+				},
+			},
+		},
+		{
+			name: "startTime takes precedence over start_time",
+			queryParams: url.Values{
+				"startTime":  []string{now.Format(time.DateFormat)},
+				"start_time": []string{now.Add(-time.Hour).Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: storagecommon.ResourceQuery[any]{
+					Builder: query.Gte("timestamp", now.Format(time.DateFormat)),
+					Expand:  []string{"volumes"},
+				},
+			},
+		},
+		{
+			name: "endTime takes precedence over end_time",
+			queryParams: url.Values{
+				"endTime":  []string{now.Format(time.DateFormat)},
+				"end_time": []string{now.Add(-time.Hour).Format(time.DateFormat)},
+			},
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
+				PageSize: DefaultPageSize,
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Column:   "id",
+				Options: storagecommon.ResourceQuery[any]{
+					Builder: query.Lt("timestamp", now.Format(time.DateFormat)),
 					Expand:  []string{"volumes"},
 				},
 			},
