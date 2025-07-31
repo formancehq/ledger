@@ -9,7 +9,7 @@ replace github.com/formancehq/ledger => ../..
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v3 v3.0.0
+	github.com/formancehq/go-libs/v3 v3.0.1
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.9.1
@@ -97,7 +97,7 @@ require (
 	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
-	google.golang.org/grpc v1.73.0 // indirect
+	google.golang.org/grpc v1.74.2 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
