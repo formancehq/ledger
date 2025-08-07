@@ -2,7 +2,7 @@ module github.com/formancehq/ledger/tools/generator
 
 go 1.24
 
-toolchain go1.24.5
+toolchain go1.24.6
 
 replace github.com/formancehq/ledger => ../..
 
