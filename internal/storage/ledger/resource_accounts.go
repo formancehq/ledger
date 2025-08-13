@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/stoewer/go-strcase"
@@ -13,48 +12,21 @@ type accountsResourceHandler struct {
 	store *Store
 }
 
-func (h accountsResourceHandler) Filters() []common.Filter {
-	return []common.Filter{
-		{
-			Name: "address",
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(h.store.ledger, operator, value)
-				}),
-			},
-		},
-		{
-			Name: "first_usage",
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
-			},
-		},
-		{
-			Name: `balance(\[.*])?`,
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
-			},
-		},
-		{
-			Name: "metadata",
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$exists"),
-			},
-		},
-		{
-			Name: `metadata\[.*]`,
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$match"),
-			},
+func (h accountsResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address":        common.NewStringField().Paginated(),
+			"first_usage":    common.NewDateField().Paginated(),
+			"balance":        common.NewNumericMapField(),
+			"metadata":       common.NewStringMapField(),
+			"insertion_date": common.NewDateField().Paginated(),
+			"updated_at": common.NewDateField().Paginated(),
 		},
 	}
 }
 
 func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	ret := h.store.db.NewSelect()
-
-	// Build the query
-	ret = ret.
+	ret := h.store.db.NewSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("accounts")).
 		Column("address", "address_array", "first_usage", "insertion_date", "updated_at").
 		Where("ledger = ?", h.store.ledger.Name)
@@ -89,8 +61,8 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
-	case property == "first_usage":
-		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case property == "first_usage" || property == "insertion_date" || property == "updated_at":
+		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 
 		selectBalance := h.store.db.NewSelect().
@@ -99,7 +71,7 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 
 		if opts.PIT != nil && !opts.PIT.IsZero() {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-				return "", nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+				return "", nil, NewErrMissingFeature(features.FeatureMovesHistory)
 			}
 			selectBalance = selectBalance.
 				ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
@@ -134,7 +106,7 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 	}
 }
 
-func (h accountsResourceHandler) Project(query common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) Project(_ common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
@@ -164,7 +136,7 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 				Where("insertion_date <= ?", opts.PIT)
 		} else {
 			selectRowsQuery = selectRowsQuery.
-				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as volumes").
+				ColumnExpr("first_value(post_commit_effective_volumes) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as volumes").
 				Where("effective_date <= ?", opts.PIT)
 		}
 	} else {

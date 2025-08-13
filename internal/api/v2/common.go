@@ -1,9 +1,12 @@
 package v2
 
 import (
+	"fmt"
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/go-chi/chi/v5"
+	"github.com/iancoleman/strcase"
 	"io"
 	"net/http"
 	"strings"
@@ -11,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/query"
 )
 
@@ -38,6 +40,14 @@ func getOOT(r *http.Request) (*time.Time, error) {
 	return getDate(r, "oot")
 }
 
+func getPipelineID(r *http.Request) string {
+	return chi.URLParam(r, "pipelineID")
+}
+
+func getExporterID(r *http.Request) string {
+	return chi.URLParam(r, "exporterID")
+}
+
 func getQueryBuilder(r *http.Request) (query.Builder, error) {
 	q := r.URL.Query().Get("query")
 	if q == "" {
@@ -62,52 +72,66 @@ func getExpand(r *http.Request) []string {
 	)
 }
 
-func getOffsetPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, modifiers ...func(*v) error) (*storagecommon.OffsetPaginatedQuery[v], error) {
-	return bunpaginate.Extract[storagecommon.OffsetPaginatedQuery[v]](r, func() (*storagecommon.OffsetPaginatedQuery[v], error) {
-		rq, err := getResourceQuery[v](r, modifiers...)
-		if err != nil {
-			return nil, err
-		}
+func getPaginatedQuery[Options any](
+	r *http.Request,
+	paginationConfig common.PaginationConfig,
+	column string,
+	order bunpaginate.Order,
+	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]),
+) (storagecommon.PaginatedQuery[Options], error) {
+	return storagecommon.Extract[Options](
+		r,
+		func() (*storagecommon.InitialPaginatedQuery[Options], error) {
+			rq, err := getResourceQuery[Options](r)
+			if err != nil {
+				return nil, err
+			}
 
-		pageSize, err := bunpaginate.GetPageSize(
-			r,
-			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
-			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
-		)
-		if err != nil {
-			return nil, err
-		}
+			for _, modifier := range modifiers {
+				modifier(rq)
+			}
 
-		return &storagecommon.OffsetPaginatedQuery[v]{
-			PageSize: pageSize,
-			Options:  *rq,
-		}, nil
-	})
-}
+			pageSize, err := bunpaginate.GetPageSize(
+				r,
+				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+				bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+			)
+			if err != nil {
+				return nil, err
+			}
 
-func getColumnPaginatedQuery[v any](r *http.Request, paginationConfig common.PaginationConfig, defaultPaginationColumn string, order bunpaginate.Order, modifiers ...func(*v) error) (*storagecommon.ColumnPaginatedQuery[v], error) {
-	return bunpaginate.Extract[storagecommon.ColumnPaginatedQuery[v]](r, func() (*storagecommon.ColumnPaginatedQuery[v], error) {
-		rq, err := getResourceQuery[v](r, modifiers...)
-		if err != nil {
-			return nil, err
-		}
+			if sort := r.URL.Query().Get("sort"); sort != "" {
+				parts := strings.SplitN(sort, ":", 2)
+				column = strcase.ToSnake(parts[0])
+				if len(parts) > 1 {
+					switch {
+					case strings.ToLower(parts[1]) == "desc":
+						order = bunpaginate.OrderDesc
+					case strings.ToLower(parts[1]) == "asc":
+						order = bunpaginate.OrderAsc
+					default:
+						return nil, fmt.Errorf("invalid order: %s", parts[1])
+					}
+				}
+			}
 
-		pageSize, err := bunpaginate.GetPageSize(
-			r,
-			bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
-			bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		return &storagecommon.ColumnPaginatedQuery[v]{
-			PageSize: pageSize,
-			Column:   defaultPaginationColumn,
-			Order:    pointer.For(order),
-			Options:  *rq,
-		}, nil
-	})
+			return &storagecommon.InitialPaginatedQuery[Options]{
+				Column:   column,
+				Order:    &order,
+				PageSize: pageSize,
+				Options:  *rq,
+			}, nil
+		},
+		func(query *storagecommon.InitialPaginatedQuery[Options]) error {
+			var err error
+			query.PageSize, err = bunpaginate.GetPageSize(
+				r,
+				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+				bunpaginate.WithDefaultPageSize(query.PageSize),
+			)
+			return err
+		},
+	)
 }
 
 func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*storagecommon.ResourceQuery[v], error) {

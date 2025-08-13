@@ -19,7 +19,7 @@ import (
 
 const (
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
-	NewLogType                                // "NEW_TRANSACTION"
+	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
 )
@@ -54,7 +54,7 @@ func (lt LogType) String() string {
 	switch lt {
 	case SetMetadataLogType:
 		return "SET_METADATA"
-	case NewLogType:
+	case NewTransactionLogType:
 		return "NEW_TRANSACTION"
 	case RevertedTransactionLogType:
 		return "REVERTED_TRANSACTION"
@@ -70,7 +70,7 @@ func LogTypeFromString(logType string) LogType {
 	case "SET_METADATA":
 		return SetMetadataLogType
 	case "NEW_TRANSACTION":
-		return NewLogType
+		return NewTransactionLogType
 	case "REVERTED_TRANSACTION":
 		return RevertedTransactionLogType
 	case "DELETE_METADATA":
@@ -90,9 +90,15 @@ type Log struct {
 	IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
 	// IdempotencyHash is a signature used when using IdempotencyKey.
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
-	IdempotencyHash string `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
-	ID              *int   `json:"id" bun:"id,unique,type:numeric"`
-	Hash            []byte `json:"hash" bun:"hash,type:bytea"`
+	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
+	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
+	Hash            []byte  `json:"hash" bun:"hash,type:bytea"`
+}
+
+func (l Log) WithDate(date time.Time) Log {
+	l.Date = date
+
+	return l
 }
 
 func (l Log) WithIdempotencyKey(key string) Log {
@@ -106,7 +112,7 @@ func (l Log) ChainLog(previous *Log) Log {
 	if previous != nil {
 		ret.ID = pointer.For(*previous.ID + 1)
 	} else {
-		ret.ID = pointer.For(1)
+		ret.ID = pointer.For(uint64(1))
 	}
 	return ret
 }
@@ -168,7 +174,7 @@ func (l *Log) ComputeHash(previous *Log) {
 	l.Hash = digest.Sum(nil)
 }
 
-func (l Log) WithID(i int) Log {
+func (l Log) WithID(i uint64) Log {
 	l.ID = pointer.For(i)
 	return l
 }
@@ -196,7 +202,7 @@ type CreatedTransaction struct {
 }
 
 func (p CreatedTransaction) Type() LogType {
-	return NewLogType
+	return NewTransactionLogType
 }
 
 var _ LogPayload = (*CreatedTransaction)(nil)
@@ -209,7 +215,7 @@ func (p CreatedTransaction) GetMemento() any {
 		Metadata  metadata.Metadata `json:"metadata"`
 		Timestamp time.Time         `json:"timestamp"`
 		Reference string            `json:"reference,omitempty"`
-		ID        *int              `json:"id"`
+		ID        *uint64           `json:"id"`
 		Reverted  bool              `json:"reverted"`
 	}
 
@@ -259,8 +265,7 @@ func (s *SavedMetadata) UnmarshalJSON(data []byte) error {
 		id = ""
 		err = json.Unmarshal(x.TargetID, &id)
 	case strings.ToUpper(MetaTargetTypeTransaction):
-		id, err = strconv.ParseInt(string(x.TargetID), 10, 64)
-		id = int(id.(int64))
+		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 	default:
 		panic("unknown type")
 	}
@@ -305,8 +310,7 @@ func (s *DeletedMetadata) UnmarshalJSON(data []byte) error {
 		id = ""
 		err = json.Unmarshal(x.TargetID, &id)
 	case strings.ToUpper(MetaTargetTypeTransaction):
-		id, err = strconv.ParseInt(string(x.TargetID), 10, 64)
-		id = int(id.(int64))
+		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
 	default:
 		return fmt.Errorf("unknown type '%s'", x.TargetType)
 	}
@@ -340,12 +344,12 @@ func (r RevertedTransaction) GetMemento() any {
 		Metadata  metadata.Metadata `json:"metadata"`
 		Timestamp time.Time         `json:"timestamp"`
 		Reference string            `json:"reference,omitempty"`
-		ID        *int              `json:"id"`
+		ID        *uint64           `json:"id"`
 		Reverted  bool              `json:"reverted"`
 	}
 
 	return struct {
-		RevertedTransactionID int               `json:"revertedTransactionID"`
+		RevertedTransactionID uint64            `json:"revertedTransactionID"`
 		RevertTransaction     transactionResume `json:"transaction"`
 	}{
 		RevertedTransactionID: *r.RevertedTransaction.ID,
@@ -364,7 +368,7 @@ var _ Memento = (*RevertedTransaction)(nil)
 func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
 	switch _type {
-	case NewLogType:
+	case NewTransactionLogType:
 		payload = &CreatedTransaction{}
 	case SetMetadataLogType:
 		payload = &SavedMetadata{}

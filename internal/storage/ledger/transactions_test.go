@@ -8,15 +8,14 @@ import (
 	"fmt"
 	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"slices"
 	"testing"
 
+	"errors"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
-	"errors"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -238,7 +237,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx1, nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, *tx1.ID)
+		require.Equal(t, uint64(1), *tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:1": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -260,7 +259,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err = store.CommitTransaction(ctx, &tx2, nil)
 		require.NoError(t, err)
-		require.Equal(t, 2, *tx2.ID)
+		require.Equal(t, uint64(2), *tx2.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:2": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -286,7 +285,7 @@ func TestTransactionsCommit(t *testing.T) {
 		)
 		err := store.CommitTransaction(ctx, &tx3, nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, *tx3.ID)
+		require.Equal(t, uint64(1), *tx3.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:x": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -319,7 +318,7 @@ func TestTransactionsCommit(t *testing.T) {
 		t.Cleanup(cancel)
 		go func() {
 			// Simulate a transaction with bounded sources by asking for balances before calling CommitTransaction
-			_, err := storeWithTxWithAccount1AsSource.GetBalances(tx1Context, ledgercontroller.BalanceQuery{
+			_, err := storeWithTxWithAccount1AsSource.GetBalances(tx1Context, ledgerstore.BalanceQuery{
 				"account:1": {"USD"},
 			})
 			require.NoError(t, err)
@@ -358,7 +357,7 @@ func TestTransactionsCommit(t *testing.T) {
 		t.Cleanup(cancel)
 		go func() {
 			// Simulate a transaction with bounded sources by asking for balances before calling CommitTransaction
-			_, err := storeWithTxWithAccount2AsSource.GetBalances(tx2Context, ledgercontroller.BalanceQuery{
+			_, err := storeWithTxWithAccount2AsSource.GetBalances(tx2Context, ledgerstore.BalanceQuery{
 				"account:2": {"USD"},
 			})
 			require.NoError(t, err)
@@ -452,7 +451,7 @@ func TestTransactionsCommit(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		cursor, err := store.Transactions().Paginate(ctx, common.ColumnPaginatedQuery[any]{
+		cursor, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countTx,
 			Options: common.ResourceQuery[any]{
 				Expand: []string{"volumes"},
@@ -465,7 +464,7 @@ func TestTransactionsCommit(t *testing.T) {
 		slices.Reverse(txs)
 
 		for i := range countTx {
-			require.Equal(t, i+1, *txs[i].ID)
+			require.Equal(t, uint64(i)+1, *txs[i].ID)
 			require.Equalf(t, ledger.PostCommitVolumes{
 				"world": {
 					"USD": {
@@ -566,11 +565,6 @@ func TestTransactionsRevert(t *testing.T) {
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
 	require.True(t, revertedTx.IsReverted())
-	revertedTx.RevertedAt = nil
-	// As the RevertTransaction method does not return post commit effective volumes,
-	// we remove them to be able to compare revertedTx with tx1
-	tx1.PostCommitEffectiveVolumes = nil
-	require.Equal(t, tx1, *revertedTx)
 
 	// Try to revert again
 	_, reverted, err = store.RevertTransaction(ctx, *tx1.ID, time.Time{})
@@ -620,7 +614,7 @@ func TestTransactionsInsert(t *testing.T) {
 		}
 		err = store.InsertTransaction(ctx, &tx2)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}))
+		require.True(t, errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}))
 	})
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()
@@ -643,7 +637,6 @@ func TestTransactionsInsert(t *testing.T) {
 			Destinations       []string         `bun:"destinations,type:jsonb"`
 			SourcesArrays      []map[string]any `bun:"sources_arrays,type:jsonb"`
 			DestinationsArrays []map[string]any `bun:"destinations_arrays,type:jsonb"`
-			UpdatedAt          time.Time        `bun:"updated_at,notnull"`
 		}
 
 		m := Model{}
@@ -666,7 +659,6 @@ func TestTransactionsInsert(t *testing.T) {
 				"0": "bank",
 				"1": nil,
 			}},
-			UpdatedAt: now,
 		}, m)
 	})
 }
@@ -714,7 +706,7 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
-	_, _, err = store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
+	tx3UpdatedWithMetadata, _, err := store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	}, time.Time{})
 	require.NoError(t, err)
@@ -740,19 +732,19 @@ func TestTransactionsList(t *testing.T) {
 
 	type testCase struct {
 		name        string
-		query       common.ColumnPaginatedQuery[any]
+		query       common.InitialPaginatedQuery[any]
 		expected    []ledger.Transaction
 		expectError error
 	}
 	testCases := []testCase{
 		{
 			name:     "nominal",
-			query:    common.ColumnPaginatedQuery[any]{},
+			query:    common.InitialPaginatedQuery[any]{},
 			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "bob"),
 				},
@@ -761,7 +753,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "address filter using segments matching two addresses by individual segments",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "users:amazon"),
 				},
@@ -770,7 +762,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "address filter using segment",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("account", "users:"),
 				},
@@ -778,8 +770,17 @@ func TestTransactionsList(t *testing.T) {
 			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
+			name: "address filter using segment and unbounded segment list",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "users:..."),
+				},
+			},
+			expected: []ledger.Transaction{tx5, tx4, tx3},
+		},
+		{
 			name: "filter using metadata",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("metadata[category]", "2"),
 				},
@@ -788,16 +789,22 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "using point in time",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			},
-			expected: []ledger.Transaction{tx3BeforeRevert, tx2, tx1},
+			expected: []ledger.Transaction{func() ledger.Transaction {
+				// Even if we use a PIT, the tx3 has been updated after it
+				// So the updated date will be returned even if after the PIT
+				tx3 := tx3BeforeRevert
+				tx3.UpdatedAt = tx3UpdatedWithMetadata.UpdatedAt
+				return tx3
+			}(), tx2, tx1},
 		},
 		{
 			name: "filter using invalid key",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("invalid", "2"),
 				},
@@ -806,7 +813,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "reverted transactions",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("reverted", true),
 				},
@@ -815,7 +822,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using exists metadata",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Exists("metadata", "category"),
 				},
@@ -824,7 +831,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using metadata and pit",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("metadata[category]", "2"),
 					PIT:     pointer.For(tx3.Timestamp),
@@ -834,7 +841,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using not exists metadata",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Not(query.Exists("metadata", "category")),
 				},
@@ -843,7 +850,7 @@ func TestTransactionsList(t *testing.T) {
 		},
 		{
 			name: "filter using timestamp",
-			query: common.ColumnPaginatedQuery[any]{
+			query: common.InitialPaginatedQuery[any]{
 				Options: common.ResourceQuery[any]{
 					Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
 				},

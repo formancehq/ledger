@@ -8,13 +8,12 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"golang.org/x/sync/errgroup"
 	"math/big"
 	"testing"
 
 	"errors"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
 
@@ -45,7 +44,7 @@ func TestLogsInsert(t *testing.T) {
 		err := store.InsertLog(ctx, &log1)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, *log1.ID)
+		require.Equal(t, uint64(1), *log1.ID)
 		require.NotZero(t, log1.Hash)
 		require.NotEmpty(t, log1.Date)
 
@@ -65,7 +64,7 @@ func TestLogsInsert(t *testing.T) {
 		log2Copy := log2
 		err = store.InsertLog(ctx, &log2)
 		require.NoError(t, err)
-		require.Equal(t, 2, *log2.ID)
+		require.Equal(t, uint64(2), *log2.ID)
 		require.NotZero(t, log2.Hash)
 		require.NotZero(t, log2.Date)
 
@@ -98,7 +97,7 @@ func TestLogsInsert(t *testing.T) {
 			WithIdempotencyKey("foo")
 		err = store.InsertLog(ctx, &logTx)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}))
+		require.True(t, errors.Is(err, ledgerstore.ErrIdempotencyKeyConflict{}))
 	})
 
 	t.Run("hash consistency over high concurrency", func(t *testing.T) {
@@ -130,7 +129,7 @@ func TestLogsInsert(t *testing.T) {
 		err := errGroup.Wait()
 		require.NoError(t, err)
 
-		logs, err := store.Logs().Paginate(ctx, common.ColumnPaginatedQuery[any]{
+		logs, err := store.Logs().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countLogs,
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		})
@@ -141,7 +140,7 @@ func TestLogsInsert(t *testing.T) {
 			expectedHash := log.Hash
 			expectedID := *log.ID
 			log.Hash = nil
-			log.ID = pointer.For(0)
+			log.ID = pointer.For(uint64(0))
 			chainedLog := log.ChainLog(previous)
 			require.Equal(t, expectedHash, chainedLog.Hash, "checking log hash %d", expectedID)
 			previous = &chainedLog
@@ -220,14 +219,14 @@ func TestLogsList(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cursor, err := store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{})
+	cursor, err := store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{})
 	require.NoError(t, err)
 	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
 		PageSize: 1,
 	})
 	require.NoError(t, err)
@@ -235,7 +234,7 @@ func TestLogsList(t *testing.T) {
 	require.Equal(t, 1, cursor.PageSize)
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
 		PageSize: 10,
 		Options: common.ResourceQuery[any]{
 			Builder: query.And(
@@ -243,6 +242,7 @@ func TestLogsList(t *testing.T) {
 				query.Lt("date", now.Add(-time.Hour)),
 			),
 		},
+		Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)
@@ -250,7 +250,7 @@ func TestLogsList(t *testing.T) {
 	require.Len(t, cursor.Data, 1)
 	require.EqualValues(t, 2, *cursor.Data[0].ID)
 
-	cursor, err = store.Logs().Paginate(context.Background(), common.ColumnPaginatedQuery[any]{
+	cursor, err = store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{
 		PageSize: 10,
 		Options: common.ResourceQuery[any]{
 			Builder: query.Lt("id", 3),

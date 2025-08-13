@@ -88,7 +88,7 @@ paths:
             additionalProperties: true
           example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
-        '200':
+        '204':
           description: OK
           headers:
             Count:
@@ -1352,6 +1352,7 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1692,6 +1693,7 @@ paths:
           schema:
             type: string
             format: date-time
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -1864,6 +1866,11 @@ paths:
           schema:
             type: string
             example: foo
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       responses:
         2XX:
           description: Key deleted
@@ -2011,6 +2018,8 @@ paths:
         - name: order
           in: query
           required: false
+          deprecated: true
+          description: "Deprecated: Use sort param"
           schema:
             type: string
             enum:
@@ -2020,6 +2029,7 @@ paths:
           required: false
           schema:
             type: boolean
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -2072,6 +2082,7 @@ paths:
         - name: force
           in: query
           description: Disable balance checks when passing postings
+          deprecated: true
           schema:
             type: boolean
             example: true
@@ -2241,6 +2252,11 @@ paths:
           schema:
             type: string
             example: foo
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       responses:
         2XX:
           description: Key deleted
@@ -2297,6 +2313,11 @@ paths:
           schema:
             type: boolean
             example: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2RevertTransactionRequest"
       responses:
         "201":
           description: OK
@@ -2429,6 +2450,7 @@ paths:
             format: int64
             minimum: 0
             maximum: 1000
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -2498,6 +2520,7 @@ paths:
           schema:
             type: string
             format: date-time
+        - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
         content:
@@ -2582,6 +2605,260 @@ paths:
       security:
         - Authorization:
             - ledger:write
+  /v2/_/exporters:
+    get:
+      summary: List exporters
+      operationId: v2ListExporters
+      x-speakeasy-name-override: ListExporters
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2ListExportersResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    post:
+      summary: Create exporter
+      operationId: v2CreateExporter
+      x-speakeasy-name-override: CreateExporter
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreateExporterRequest'
+      responses:
+        "201":
+          $ref: '#/components/responses/V2CreateExporterResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/_/exporters/{exporterID}:
+    parameters:
+      - name: exporterID
+        description: The exporter id
+        in: path
+        schema:
+          type: string
+        required: true
+    get:
+      summary: Get exporter state
+      operationId: v2GetExporterState
+      x-speakeasy-name-override: GetExporterState
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2GetExporterStateResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    delete:
+      summary: Delete exporter
+      operationId: v2DeleteExporter
+      x-speakeasy-name-override: DeleteExporter
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: Exporter deleted
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    get:
+      summary: List pipelines
+      operationId: v2ListPipelines
+      x-speakeasy-name-override: ListPipelines
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2ListPipelinesResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    post:
+      summary: Create pipeline
+      operationId: v2CreatePipeline
+      x-speakeasy-name-override: CreatePipeline
+      tags:
+        - ledger.v2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreatePipelineRequest'
+      responses:
+        "201":
+          $ref: '#/components/responses/V2CreatePipelineResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    get:
+      summary: Get pipeline state
+      operationId: v2GetPipelineState
+      x-speakeasy-name-override: GetPipelineState
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2GetPipelineStateResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    delete:
+      summary: Delete pipeline
+      operationId: v2DeletePipeline
+      x-speakeasy-name-override: DeletePipeline
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: Pipeline deleted
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/reset:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Reset pipeline
+      operationId: v2ResetPipeline
+      x-speakeasy-name-override: ResetPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline reset
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/start:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Start pipeline
+      operationId: v2StartPipeline
+      x-speakeasy-name-override: StartPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline started
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/stop:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Stop pipeline
+      operationId: v2StopPipeline
+      x-speakeasy-name-override: StopPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline stopped
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
   x-speakeasy-errors:
     statusCodes:
       - default
@@ -3145,6 +3422,7 @@ components:
         - TIMEOUT
       example: INSUFFICIENT_FUND
     LedgerInfoResponse:
+      type: object
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
@@ -3179,6 +3457,68 @@ components:
           enum:
             - TO DO
             - DONE
+    V2ExportersCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Exporter"
+    V2PipelinesCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Pipeline"
     V2AccountsCursorResponse:
       type: object
       required:
@@ -3372,6 +3712,18 @@ components:
             type: string
           example:
             admin: "true"
+        insertionDate:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        firstUsage:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
         volumes:
           $ref: "#/components/schemas/V2Volumes"
         effectiveVolumes:
@@ -3410,6 +3762,9 @@ components:
       type: object
       properties:
         insertedAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
         timestamp:
@@ -3489,6 +3844,8 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/V2Metadata"
+        force:
+          type: boolean
     V2Stats:
       type: object
       properties:
@@ -3939,5 +4296,157 @@ components:
         file:
           type: string
           format: binary
+    V2RevertTransactionRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    V2CreatePipelineRequest:
+      type: object
+      properties:
+        exporterID:
+          type: string
+      required:
+        - exporterID
+    V2CreateExporterRequest:
+      $ref: '#/components/schemas/V2ExporterConfiguration'
+    V2PipelineConfiguration:
+      properties:
+        ledger:
+          type: string
+        exporterID:
+          type: string
+      required:
+        - ledger
+        - exporterID
+    V2ExporterConfiguration:
+      type: object
+      properties:
+        driver:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+      required:
+        - driver
+        - config
+    V2Exporter:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/V2ExporterConfiguration'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+          required:
+            - id
+            - createdAt
+    V2Pipeline:
+      allOf:
+        - $ref: '#/components/schemas/V2PipelineConfiguration'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+            lastLogID:
+              type: integer
+            enabled:
+              type: boolean
+          required:
+            - id
+            - createdAt
+  parameters:
+    sort:
+      name: sort
+      in: query
+      description: "Sort results using a field name and order (ascending or descending). \nFormat: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.\n"
+      required: false
+      schema:
+        type: string
+        example: id:desc
+  responses:
+    V2CreatePipelineResponse:
+      description: Created ipeline
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Pipeline'
+            required:
+              - data
+    V2ListPipelinesResponse:
+      description: Pipelines list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              cursor:
+                allOf:
+                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/V2Pipeline'
+    V2GetPipelineStateResponse:
+      description: Pipeline information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Pipeline'
+            required:
+              - data
+    V2CreateExporterResponse:
+      description: Created exporter
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Exporter'
+            required:
+              - data
+    V2ListExportersResponse:
+      description: Exporters list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              cursor:
+                allOf:
+                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/V2Exporter'
+    V2GetExporterStateResponse:
+      description: Exporter information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Exporter'
+            required:
+              - data
 servers:
   - url: http://localhost:8080/

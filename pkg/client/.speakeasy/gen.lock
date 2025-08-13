@@ -1,17 +1,17 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: ba1cd35a327e7c3ca6b907a3a850d1ac
+  docChecksum: c50a52ba0c7c954ed72ca2bb8bfd9a7a
   docVersion: v2
-  speakeasyVersion: 1.517.3
-  generationVersion: 2.548.6
-  releaseVersion: 0.8.0
-  configChecksum: 1e3419c5398b20fa22be24c9c224d2dc
+  speakeasyVersion: 1.563.0
+  generationVersion: 2.629.1
+  releaseVersion: 0.10.2
+  configChecksum: 35cbf6139f56bdfe432013ffe7cea5be
 features:
   go:
     additionalDependencies: 0.1.0
     bigint: 0.0.2
-    core: 3.7.2
+    core: 3.8.1
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.3
     devContainers: 2.90.0
@@ -21,16 +21,16 @@ features:
     getRequestBodies: 2.81.1
     globalSecurity: 2.82.11
     globalSecurityCallbacks: 0.1.0
-    globalServerURLs: 2.82.2
+    globalServerURLs: 2.82.3
     ignores: 2.81.1
     intellisenseMarkdownSupport: 0.1.0
     nameOverrides: 2.81.2
     nullables: 0.1.1
-    oauth2ClientCredentials: 0.2.2
+    oauth2ClientCredentials: 0.3.1
     responseFormat: 0.1.2
-    retries: 2.83.2
-    sdkHooks: 0.1.0
-    unions: 2.85.10
+    retries: 2.83.3
+    sdkHooks: 0.2.0
+    unions: 2.85.11
     uploadStreams: 0.1.0
 generatedFiles:
   - .devcontainer/README.md
@@ -83,22 +83,32 @@ generatedFiles:
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
   - /models/components/v2configinforesponse.go
+  - /models/components/v2createexporterresponse.go
   - /models/components/v2createledgerrequest.go
+  - /models/components/v2createpipelinerequest.go
+  - /models/components/v2createpipelineresponse.go
   - /models/components/v2createtransactionresponse.go
   - /models/components/v2errorresponse.go
   - /models/components/v2errorsenum.go
+  - /models/components/v2exporter.go
+  - /models/components/v2exporterconfiguration.go
+  - /models/components/v2getexporterstateresponse.go
   - /models/components/v2getledgerresponse.go
+  - /models/components/v2getpipelinestateresponse.go
   - /models/components/v2gettransactionresponse.go
   - /models/components/v2ledger.go
   - /models/components/v2ledgerinfo.go
   - /models/components/v2ledgerinforesponse.go
   - /models/components/v2ledgerlistresponse.go
+  - /models/components/v2listexportersresponse.go
+  - /models/components/v2listpipelinesresponse.go
   - /models/components/v2log.go
   - /models/components/v2logscursorresponse.go
   - /models/components/v2migrationinfo.go
+  - /models/components/v2pipeline.go
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
-  - /models/components/v2reverttransactionresponse.go
+  - /models/components/v2reverttransactionrequest.go
   - /models/components/v2stats.go
   - /models/components/v2statsresponse.go
   - /models/components/v2targetid.go
@@ -135,26 +145,37 @@ generatedFiles:
   - /models/operations/v2countaccounts.go
   - /models/operations/v2counttransactions.go
   - /models/operations/v2createbulk.go
+  - /models/operations/v2createexporter.go
   - /models/operations/v2createledger.go
+  - /models/operations/v2createpipeline.go
   - /models/operations/v2createtransaction.go
   - /models/operations/v2deleteaccountmetadata.go
+  - /models/operations/v2deleteexporter.go
   - /models/operations/v2deleteledgermetadata.go
+  - /models/operations/v2deletepipeline.go
   - /models/operations/v2deletetransactionmetadata.go
   - /models/operations/v2exportlogs.go
   - /models/operations/v2getaccount.go
   - /models/operations/v2getbalancesaggregated.go
+  - /models/operations/v2getexporterstate.go
   - /models/operations/v2getinfo.go
   - /models/operations/v2getledger.go
   - /models/operations/v2getledgerinfo.go
+  - /models/operations/v2getpipelinestate.go
   - /models/operations/v2gettransaction.go
   - /models/operations/v2getvolumeswithbalances.go
   - /models/operations/v2importlogs.go
   - /models/operations/v2listaccounts.go
+  - /models/operations/v2listexporters.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2listlogs.go
+  - /models/operations/v2listpipelines.go
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
+  - /models/operations/v2resetpipeline.go
   - /models/operations/v2reverttransaction.go
+  - /models/operations/v2startpipeline.go
+  - /models/operations/v2stoppipeline.go
   - /models/operations/v2updateledgermetadata.go
   - /models/sdkerrors/errorresponse.go
   - /models/sdkerrors/v2errorresponse.go
@@ -224,11 +245,18 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
   - docs/models/components/v2configinforesponse.md
+  - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
+  - docs/models/components/v2createpipelinerequest.md
+  - docs/models/components/v2createpipelineresponse.md
   - docs/models/components/v2createtransactionresponse.md
   - docs/models/components/v2errorresponse.md
   - docs/models/components/v2errorsenum.md
+  - docs/models/components/v2exporter.md
+  - docs/models/components/v2exporterconfiguration.md
+  - docs/models/components/v2getexporterstateresponse.md
   - docs/models/components/v2getledgerresponse.md
+  - docs/models/components/v2getpipelinestateresponse.md
   - docs/models/components/v2gettransactionresponse.md
   - docs/models/components/v2ledger.md
   - docs/models/components/v2ledgerinfo.md
@@ -236,16 +264,23 @@ generatedFiles:
   - docs/models/components/v2ledgerinfostorage.md
   - docs/models/components/v2ledgerlistresponse.md
   - docs/models/components/v2ledgerlistresponsecursor.md
+  - docs/models/components/v2listexportersresponse.md
+  - docs/models/components/v2listexportersresponsecursor.md
+  - docs/models/components/v2listexportersresponsecursorcursor.md
+  - docs/models/components/v2listpipelinesresponse.md
+  - docs/models/components/v2listpipelinesresponsecursor.md
+  - docs/models/components/v2listpipelinesresponsecursorcursor.md
   - docs/models/components/v2log.md
   - docs/models/components/v2logscursorresponse.md
   - docs/models/components/v2logscursorresponsecursor.md
   - docs/models/components/v2logtype.md
   - docs/models/components/v2migrationinfo.md
   - docs/models/components/v2migrationinfostate.md
+  - docs/models/components/v2pipeline.md
   - docs/models/components/v2posting.md
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
-  - docs/models/components/v2reverttransactionresponse.md
+  - docs/models/components/v2reverttransactionrequest.md
   - docs/models/components/v2stats.md
   - docs/models/components/v2statsresponse.md
   - docs/models/components/v2targetid.md
@@ -311,14 +346,21 @@ generatedFiles:
   - docs/models/operations/v2counttransactionsresponse.md
   - docs/models/operations/v2createbulkrequest.md
   - docs/models/operations/v2createbulkresponse.md
+  - docs/models/operations/v2createexporterresponse.md
   - docs/models/operations/v2createledgerrequest.md
   - docs/models/operations/v2createledgerresponse.md
+  - docs/models/operations/v2createpipelinerequest.md
+  - docs/models/operations/v2createpipelineresponse.md
   - docs/models/operations/v2createtransactionrequest.md
   - docs/models/operations/v2createtransactionresponse.md
   - docs/models/operations/v2deleteaccountmetadatarequest.md
   - docs/models/operations/v2deleteaccountmetadataresponse.md
+  - docs/models/operations/v2deleteexporterrequest.md
+  - docs/models/operations/v2deleteexporterresponse.md
   - docs/models/operations/v2deleteledgermetadatarequest.md
   - docs/models/operations/v2deleteledgermetadataresponse.md
+  - docs/models/operations/v2deletepipelinerequest.md
+  - docs/models/operations/v2deletepipelineresponse.md
   - docs/models/operations/v2deletetransactionmetadatarequest.md
   - docs/models/operations/v2deletetransactionmetadataresponse.md
   - docs/models/operations/v2exportlogsrequest.md
@@ -327,11 +369,15 @@ generatedFiles:
   - docs/models/operations/v2getaccountresponse.md
   - docs/models/operations/v2getbalancesaggregatedrequest.md
   - docs/models/operations/v2getbalancesaggregatedresponse.md
+  - docs/models/operations/v2getexporterstaterequest.md
+  - docs/models/operations/v2getexporterstateresponse.md
   - docs/models/operations/v2getinforesponse.md
   - docs/models/operations/v2getledgerinforequest.md
   - docs/models/operations/v2getledgerinforesponse.md
   - docs/models/operations/v2getledgerrequest.md
   - docs/models/operations/v2getledgerresponse.md
+  - docs/models/operations/v2getpipelinestaterequest.md
+  - docs/models/operations/v2getpipelinestateresponse.md
   - docs/models/operations/v2gettransactionrequest.md
   - docs/models/operations/v2gettransactionresponse.md
   - docs/models/operations/v2getvolumeswithbalancesrequest.md
@@ -340,16 +386,25 @@ generatedFiles:
   - docs/models/operations/v2importlogsresponse.md
   - docs/models/operations/v2listaccountsrequest.md
   - docs/models/operations/v2listaccountsresponse.md
+  - docs/models/operations/v2listexportersresponse.md
   - docs/models/operations/v2listledgersrequest.md
   - docs/models/operations/v2listledgersresponse.md
   - docs/models/operations/v2listlogsrequest.md
   - docs/models/operations/v2listlogsresponse.md
+  - docs/models/operations/v2listpipelinesrequest.md
+  - docs/models/operations/v2listpipelinesresponse.md
   - docs/models/operations/v2listtransactionsrequest.md
   - docs/models/operations/v2listtransactionsresponse.md
   - docs/models/operations/v2readstatsrequest.md
   - docs/models/operations/v2readstatsresponse.md
+  - docs/models/operations/v2resetpipelinerequest.md
+  - docs/models/operations/v2resetpipelineresponse.md
   - docs/models/operations/v2reverttransactionrequest.md
   - docs/models/operations/v2reverttransactionresponse.md
+  - docs/models/operations/v2startpipelinerequest.md
+  - docs/models/operations/v2startpipelineresponse.md
+  - docs/models/operations/v2stoppipelinerequest.md
+  - docs/models/operations/v2stoppipelineresponse.md
   - docs/models/operations/v2updateledgermetadatarequest.md
   - docs/models/operations/v2updateledgermetadataresponse.md
   - docs/models/sdkerrors/errorresponse.md
@@ -360,6 +415,7 @@ generatedFiles:
   - docs/sdks/v2/README.md
   - formance.go
   - go.mod
+  - internal/config/sdkconfiguration.go
   - internal/hooks/clientcredentials.go
   - internal/hooks/hooks.go
   - internal/utils/contenttype.go
@@ -367,6 +423,8 @@ generatedFiles:
   - internal/utils/form.go
   - internal/utils/headers.go
   - internal/utils/json.go
+  - internal/utils/oauth2_credentials.go
+  - internal/utils/oauth2_sessions.go
   - internal/utils/pathparams.go
   - internal/utils/queryparams.go
   - internal/utils/requestbody.go
@@ -405,7 +463,7 @@ examples:
     speakeasy-default-get-info:
       responses:
         "200":
-          application/json: {"data": {"config": {"storage": {"driver": "<value>", "ledgers": ["<value>", "<value>"]}}, "server": "<value>", "version": "<value>"}}
+          application/json: {"data": {"config": {"storage": {"driver": "<value>", "ledgers": ["<value 1>"]}}, "server": "<value>", "version": "<value>"}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   getLedgerInfo:
@@ -419,18 +477,18 @@ examples:
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   countAccounts:
-    "":
+    speakeasy-default-count-accounts:
       parameters:
         path:
           ledger: "ledger001"
         query:
           address: "users:.+"
-          metadata: {"0": "m", "1": "e", "2": "t", "3": "a", "4": "d", "5": "a", "6": "t", "7": "a", "8": "[", "9": "k", "10": "e", "11": "y", "12": "]", "13": "=", "14": "v", "15": "a", "16": "l", "17": "u", "18": "e", "19": "1", "20": "&", "21": "m", "22": "e", "23": "t", "24": "a", "25": "d", "26": "a", "27": "t", "28": "a", "29": "[", "30": "a", "31": ".", "32": "n", "33": "e", "34": "s", "35": "t", "36": "e", "37": "d", "38": ".", "39": "k", "40": "e", "41": "y", "42": "]", "43": "=", "44": "v", "45": "a", "46": "l", "47": "u", "48": "e", "49": "2"}
+          metadata: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   listAccounts:
-    "":
+    speakeasy-default-list-accounts:
       parameters:
         path:
           ledger: "ledger001"
@@ -438,13 +496,12 @@ examples:
           pageSize: 100
           after: "users:003"
           address: "users:.+"
-          metadata: {"0": "m", "1": "e", "2": "t", "3": "a", "4": "d", "5": "a", "6": "t", "7": "a", "8": "[", "9": "k", "10": "e", "11": "y", "12": "]", "13": "=", "14": "v", "15": "a", "16": "l", "17": "u", "18": "e", "19": "1", "20": "&", "21": "m", "22": "e", "23": "t", "24": "a", "25": "d", "26": "a", "27": "t", "28": "a", "29": "[", "30": "a", "31": ".", "32": "n", "33": "e", "34": "s", "35": "t", "36": "e", "37": "d", "38": ".", "39": "k", "40": "e", "41": "y", "42": "]", "43": "=", "44": "v", "45": "a", "46": "l", "47": "u", "48": "e", "49": "2"}
+          metadata: {"key": "<value>"}
           balance: 2400
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
-          pagination_token: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"address": "users:001", "type": "virtual", "metadata": {"admin": true, "a": {"nested": {"key": "value"}}}}, {"address": "users:001", "type": "virtual", "metadata": {"admin": true, "a": {"nested": {"key": "value"}}}}, {"address": "users:001", "type": "virtual", "metadata": {"admin": true, "a": {"nested": {"key": "value"}}}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
         "404":
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
         default:
@@ -457,7 +514,7 @@ examples:
           address: "users:001"
       responses:
         "200":
-          application/json: {"data": {"address": "users:001", "type": "virtual", "metadata": {"admin": true, "a": {"nested": {"key": "value"}}}, "volumes": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "balances": {"COIN": 100}}}
+          application/json: {"data": {"address": "users:001", "type": "virtual", "metadata": {"admin": true, "a": {"nested": {"key": "value"}}}, "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "balances": {"COIN": 100}}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   addMetadataToAccount:
@@ -466,6 +523,8 @@ examples:
         path:
           ledger: "ledger001"
           address: "users:001"
+      requestBody:
+        application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -485,10 +544,10 @@ examples:
         path:
           ledger: "ledger001"
       requestBody:
-        application/json: {"contracts": [{"account": "users:001", "expr": {}}, {"account": "users:001", "expr": {}}]}
+        application/json: null
       responses:
         "200":
-          application/json: {"data": {"contracts": [{"account": "users:001", "expr": {}}, {"account": "users:001", "expr": {}}]}}
+          application/json: {"data": {"contracts": []}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   runScript:
@@ -502,7 +561,7 @@ examples:
         application/json: {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}, "reference": "order_1234"}
       responses:
         "200":
-          application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9", "transaction": {"timestamp": "2023-02-26T16:55:50.546Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 737293, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
+          application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9", "transaction": {"timestamp": "2023-02-27T15:28:00.705Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 831969, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
   readStats:
     speakeasy-default-read-stats:
       parameters:
@@ -510,11 +569,11 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"data": {"accounts": 939446, "transactions": 895732}}
+          application/json: {"data": {"accounts": 205778, "transactions": 637809}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   countTransactions:
-    "":
+    speakeasy-default-count-transactions:
       parameters:
         path:
           ledger: "ledger001"
@@ -523,11 +582,12 @@ examples:
           account: "users:001"
           source: "users:001"
           destination: "users:001"
+          metadata: {}
       responses:
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   listTransactions:
-    "":
+    speakeasy-default-list-transactions:
       parameters:
         path:
           ledger: "ledger001"
@@ -541,7 +601,7 @@ examples:
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"timestamp": "2024-12-03T18:07:06.185Z", "postings": [], "reference": "ref:001", "txid": 533792, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}, {"timestamp": "2025-12-05T13:46:42.487Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 711700, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"timestamp": "2023-04-30T06:28:04.101Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 981936, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   createTransaction:
@@ -552,10 +612,10 @@ examples:
         query:
           preview: true
       requestBody:
-        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001"}
+        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001"}
       responses:
         "200":
-          application/json: {"data": [{"timestamp": "2023-10-30T20:06:44.579Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 339139, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}, {"timestamp": "2025-09-29T12:46:15.904Z", "postings": [], "reference": "ref:001", "txid": 159068, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}, {"timestamp": "2025-12-21T17:17:11.747Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 992364, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}]}
+          application/json: {"data": [{"timestamp": "2024-01-31T20:48:20.900Z", "postings": [], "reference": "ref:001", "txid": 156492, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   getTransaction:
@@ -566,7 +626,7 @@ examples:
           txid: 1234
       responses:
         "200":
-          application/json: {"data": {"timestamp": "2024-05-16T19:16:55.632Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 921043, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
+          application/json: {"data": {"timestamp": "2024-12-11T10:19:36.265Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 806070, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   addMetadataOnTransaction:
@@ -576,7 +636,7 @@ examples:
           ledger: "ledger001"
           txid: 1234
       requestBody:
-        application/json: {"key": "<value>"}
+        application/json: {}
       responses:
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -586,10 +646,9 @@ examples:
         path:
           ledger: "ledger001"
           txid: 1234
-        query: {}
       responses:
         "201":
-          application/json: {"data": {"timestamp": "2025-07-14T12:09:08.343Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 107968, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
+          application/json: {"data": {"timestamp": "2023-04-23T19:03:33.554Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 376007, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   CreateTransactions:
@@ -598,10 +657,10 @@ examples:
         path:
           ledger: "ledger001"
       requestBody:
-        application/json: {"transactions": [{"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001"}]}
+        application/json: {"transactions": [{"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001"}]}
       responses:
         "200":
-          application/json: {"data": [{"timestamp": "2024-10-07T05:23:11.418Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 969224, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}, {"timestamp": "2023-08-24T07:13:07.644Z", "postings": [], "reference": "ref:001", "txid": 808159, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}, {"timestamp": "2024-09-22T19:47:41.066Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "txid": 117566, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}]}
+          application/json: {"data": []}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   getBalances:
@@ -631,7 +690,7 @@ examples:
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   listLogs:
-    "":
+    speakeasy-default-list-logs:
       parameters:
         path:
           ledger: "ledger001"
@@ -641,20 +700,21 @@ examples:
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2024-10-21T05:08:23.440Z"}, {"id": 1234, "type": "NEW_TRANSACTION", "data": {"key": "<value>", "key1": "<value>", "key2": "<value>"}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-11-25T18:36:55.135Z"}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"id": 1234, "type": "SET_METADATA", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2024-10-19T04:36:46.022Z"}]}}
         default:
           application/json: {"errorCode": "INSUFFICIENT_FUND", "errorMessage": "[INSUFFICIENT_FUND] account had insufficient funds", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListLedgers:
-    "":
+    speakeasy-default-v2-list-ledgers:
       parameters:
         query:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+          sort: "id:desc"
       requestBody:
-        application/json: {"key": "<value>"}
+        application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"name": "<value>", "addedAt": "2025-08-18T14:16:25.795Z", "bucket": "<value>", "metadata": {"admin": "true"}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetLedger:
@@ -664,7 +724,7 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"data": {"name": "<value>", "addedAt": "2024-04-15T03:59:26.558Z", "bucket": "<value>", "metadata": {"admin": "true"}}}
+          application/json: {"data": {"name": "<value>", "addedAt": "2024-01-05T18:51:35.346Z", "bucket": "<value>", "metadata": {"admin": "true"}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateLedger:
@@ -705,7 +765,7 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"data": {"name": "ledger001", "storage": {"migrations": [{"version": "11", "name": "migrations:001"}, {"version": "11", "name": "migrations:001"}, {"version": "11", "name": "migrations:001"}]}}}
+          application/json: {"data": {"name": "ledger001", "storage": {"migrations": [{"version": "11", "name": "migrations:001"}]}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateBulk:
@@ -718,12 +778,12 @@ examples:
           atomic: true
           parallel: true
       requestBody:
-        application/json: [{"action": "<value>", "data": {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}}}}]
+        application/json: [{"action": "DELETE_METADATA"}]
       responses:
         "200":
-          application/json: {"data": [{"responseType": "<value>", "logID": 642842, "data": {"timestamp": "2023-05-07T17:50:11.166Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 860718, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
+          application/json: {"data": [{"responseType": "ADD_METADATA", "logID": 820113}], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
         "400":
-          application/json: {"data": [], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
+          application/json: {"data": [{"responseType": "ADD_METADATA", "logID": 820113}], "errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param"}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CountAccounts:
@@ -731,25 +791,25 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
-        query: {}
       requestBody:
-        application/json: {"key": "<value>"}
+        application/json: {"key": "<value>", "key1": "<value>"}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListAccounts:
-    "":
+    speakeasy-default-v2-list-accounts:
       parameters:
         path:
           ledger: "ledger001"
         query:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+          sort: "id:desc"
       requestBody:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"address": "users:001", "metadata": {"admin": "true"}, "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetAccount:
@@ -758,10 +818,9 @@ examples:
         path:
           ledger: "ledger001"
           address: "users:001"
-        query: {}
       responses:
         "200":
-          application/json: {"data": {"address": "users:001", "metadata": {"admin": "true"}, "volumes": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "effectiveVolumes": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}
+          application/json: {"data": {"address": "users:001", "metadata": {"admin": "true"}, "insertionDate": "2023-01-01T00:00:00Z", "updatedAt": "2023-01-01T00:00:00Z", "firstUsage": "2023-01-01T00:00:00Z", "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2AddMetadataToAccount:
@@ -772,7 +831,6 @@ examples:
           address: "users:001"
         query:
           dryRun: true
-        header: {}
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -783,7 +841,7 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
-          address: "96609 Cummings Canyon"
+          address: "6753 S Washington Street"
           key: "foo"
       responses:
         default:
@@ -795,7 +853,7 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"data": {"accounts": 144691, "transactions": 882277}}
+          application/json: {"data": {"accounts": 441939, "transactions": 686873}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CountTransactions:
@@ -803,25 +861,25 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
-        query: {}
       requestBody:
-        application/json: {"key": "<value>", "key1": "<value>"}
+        application/json: {"key": "<value>"}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListTransactions:
-    "":
+    speakeasy-default-v2-list-transactions:
       parameters:
         path:
           ledger: "ledger001"
         query:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+          sort: "id:desc"
       requestBody:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateTransaction:
@@ -831,13 +889,11 @@ examples:
           ledger: "ledger001"
         query:
           dryRun: true
-          force: true
-        header: {}
       requestBody:
-        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}, {"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}}}
+        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
       responses:
         "200":
-          application/json: {"data": {"timestamp": "2023-02-04T12:27:33.271Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 979078, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
+          application/json: {"data": {"timestamp": "2024-06-10T07:40:23.819Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 339560, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetTransaction:
@@ -846,10 +902,9 @@ examples:
         path:
           ledger: "ledger001"
           id: 1234
-        query: {}
       responses:
         "200":
-          application/json: {"data": {"timestamp": "2024-08-21T15:58:06.771Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 190555, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
+          application/json: {"data": {"timestamp": "2024-10-06T11:21:14.840Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 232775, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2AddMetadataOnTransaction:
@@ -860,7 +915,6 @@ examples:
           id: 1234
         query:
           dryRun: true
-        header: {}
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -886,7 +940,7 @@ examples:
           dryRun: true
       responses:
         "201":
-          application/json: {"data": {"timestamp": "2024-11-04T19:28:24.256Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 57131, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}, "orders:2": {"USD": {"input": 100, "output": 20, "balance": 80}, "EUR": {"input": 100, "output": 20, "balance": 80}}}}}
+          application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetBalancesAggregated:
@@ -894,16 +948,15 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
-        query: {}
       requestBody:
-        application/json: {"key": "<value>"}
+        application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
         "200":
           application/json: {"data": {"USD": 100, "EUR": 12}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetVolumesWithBalances:
-    "":
+    speakeasy-default-v2-get-volumes-with-balances:
       parameters:
         path:
           ledger: "ledger001"
@@ -911,43 +964,31 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           groupBy: 3
+          sort: "id:desc"
       requestBody:
         application/json: {"key": "<value>"}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"account": "60079609", "asset": "<value>", "input": 992275, "output": 894289, "balance": 625394}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListLogs:
-    "":
+    speakeasy-default-v2-list-logs:
       parameters:
         path:
           ledger: "ledger001"
         query:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+          sort: "id:desc"
       requestBody:
-        application/json: {"key": "<value>"}
+        application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {"key": "<value>"}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2024-10-10T20:20:15.085Z"}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ImportLogs:
-    speakeasy-default-v2-import-logs-string:
-      parameters:
-        path:
-          ledger: "ledger001"
-      responses:
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-    speakeasy-default-v2-import-logs-multipart:
-      parameters:
-        path:
-          ledger: "ledger001"
-      responses:
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
     speakeasy-default-v2-import-logs:
       parameters:
         path:
@@ -962,8 +1003,140 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
+  v2ListConnectors:
+    speakeasy-default-v2-list-connectors:
+      responses:
+        "200":
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2CreateConnector:
+    speakeasy-default-v2-create-connector:
+      requestBody:
+        application/json: {"driver": "<value>", "config": {"key": "<value>"}}
+      responses:
+        "201":
+          application/json: {"data": {"driver": "<value>", "config": {"key": "<value>"}, "id": "<id>", "createdAt": "2024-12-18T11:04:15.792Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2GetConnectorState:
+    speakeasy-default-v2-get-connector-state:
+      parameters:
+        path:
+          connectorID: "<id>"
+      responses:
+        "200":
+          application/json: {"data": {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}, "id": "<id>", "createdAt": "2024-09-05T17:17:53.664Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeleteConnector:
+    speakeasy-default-v2-delete-connector:
+      parameters:
+        path:
+          connectorID: "<id>"
       responses:
         default:
-          application/octet-stream: "x-file: example.file"
-examplesVersion: 1.0.0
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2ListPipelines:
+    speakeasy-default-v2-list-pipelines:
+      parameters:
+        path:
+          ledger: "ledger001"
+      responses:
+        "200":
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2CreatePipeline:
+    speakeasy-default-v2-create-pipeline:
+      parameters:
+        path:
+          ledger: "ledger001"
+      responses:
+        "201":
+          application/json: {"data": {"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-10-13T04:07:21.184Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2GetPipelineState:
+    speakeasy-default-v2-get-pipeline-state:
+      parameters:
+        path:
+          ledger: "ledger001"
+          pipelineID: "<id>"
+      responses:
+        "200":
+          application/json: {"data": {"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2024-06-04T21:05:32.605Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeletePipeline:
+    speakeasy-default-v2-delete-pipeline:
+      parameters:
+        path:
+          ledger: "ledger001"
+          pipelineID: "<id>"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2ResetPipeline:
+    speakeasy-default-v2-reset-pipeline:
+      parameters:
+        path:
+          ledger: "ledger001"
+          pipelineID: "<id>"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2StartPipeline:
+    speakeasy-default-v2-start-pipeline:
+      parameters:
+        path:
+          ledger: "ledger001"
+          pipelineID: "<id>"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2StopPipeline:
+    speakeasy-default-v2-stop-pipeline:
+      parameters:
+        path:
+          ledger: "ledger001"
+          pipelineID: "<id>"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2ListExporters:
+    speakeasy-default-v2-list-exporters:
+      responses:
+        "200":
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2CreateExporter:
+    speakeasy-default-v2-create-exporter:
+      requestBody:
+        application/json: {"driver": "<value>", "config": {"key": "<value>"}}
+      responses:
+        "201":
+          application/json: {"data": {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}, "id": "<id>", "createdAt": "2023-09-20T22:58:09.492Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2GetExporterState:
+    speakeasy-default-v2-get-exporter-state:
+      parameters:
+        path:
+          exporterID: "<id>"
+      responses:
+        "200":
+          application/json: {"data": {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}, "id": "<id>", "createdAt": "2025-12-16T02:14:09.876Z"}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeleteExporter:
+    speakeasy-default-v2-delete-exporter:
+      parameters:
+        path:
+          exporterID: "<id>"
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+examplesVersion: 1.0.2
 generatedTests: {}

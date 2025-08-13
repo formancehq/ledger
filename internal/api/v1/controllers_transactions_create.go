@@ -3,12 +3,14 @@ package v1
 import (
 	"encoding/json"
 	"fmt"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"net/http"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
@@ -97,10 +99,10 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, ledgercontroller.ErrNoPostings) ||
 				errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
 				api.BadRequest(w, common.ErrValidation, err)
-			case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
+			case errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 			default:
-				common.HandleCommonErrors(w, r, err)
+				common.HandleCommonWriteErrors(w, r, err)
 			}
 			return
 		}
@@ -132,10 +134,10 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
 			errors.Is(err, ledgercontroller.ErrNoPostings):
 			api.BadRequest(w, common.ErrValidation, err)
-		case errors.Is(err, ledgercontroller.ErrTransactionReferenceConflict{}):
+		case errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}):
 			api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 		default:
-			common.HandleCommonErrors(w, r, err)
+			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
 	}

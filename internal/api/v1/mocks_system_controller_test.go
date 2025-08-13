@@ -15,8 +15,193 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
+	system "github.com/formancehq/ledger/internal/storage/system"
 	gomock "go.uber.org/mock/gomock"
 )
+
+// MockReplicationBackend is a mock of ReplicationBackend interface.
+type MockReplicationBackend struct {
+	ctrl     *gomock.Controller
+	recorder *MockReplicationBackendMockRecorder
+	isgomock struct{}
+}
+
+// MockReplicationBackendMockRecorder is the mock recorder for MockReplicationBackend.
+type MockReplicationBackendMockRecorder struct {
+	mock *MockReplicationBackend
+}
+
+// NewMockReplicationBackend creates a new mock instance.
+func NewMockReplicationBackend(ctrl *gomock.Controller) *MockReplicationBackend {
+	mock := &MockReplicationBackend{ctrl: ctrl}
+	mock.recorder = &MockReplicationBackendMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockReplicationBackend) EXPECT() *MockReplicationBackendMockRecorder {
+	return m.recorder
+}
+
+// CreateExporter mocks base method.
+func (m *MockReplicationBackend) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateExporter", ctx, configuration)
+	ret0, _ := ret[0].(*ledger.Exporter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateExporter indicates an expected call of CreateExporter.
+func (mr *MockReplicationBackendMockRecorder) CreateExporter(ctx, configuration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExporter", reflect.TypeOf((*MockReplicationBackend)(nil).CreateExporter), ctx, configuration)
+}
+
+// CreatePipeline mocks base method.
+func (m *MockReplicationBackend) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePipeline", ctx, pipelineConfiguration)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePipeline indicates an expected call of CreatePipeline.
+func (mr *MockReplicationBackendMockRecorder) CreatePipeline(ctx, pipelineConfiguration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*MockReplicationBackend)(nil).CreatePipeline), ctx, pipelineConfiguration)
+}
+
+// DeleteExporter mocks base method.
+func (m *MockReplicationBackend) DeleteExporter(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteExporter", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteExporter indicates an expected call of DeleteExporter.
+func (mr *MockReplicationBackendMockRecorder) DeleteExporter(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExporter", reflect.TypeOf((*MockReplicationBackend)(nil).DeleteExporter), ctx, id)
+}
+
+// DeletePipeline mocks base method.
+func (m *MockReplicationBackend) DeletePipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePipeline indicates an expected call of DeletePipeline.
+func (mr *MockReplicationBackendMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*MockReplicationBackend)(nil).DeletePipeline), ctx, id)
+}
+
+// GetExporter mocks base method.
+func (m *MockReplicationBackend) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExporter", ctx, id)
+	ret0, _ := ret[0].(*ledger.Exporter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExporter indicates an expected call of GetExporter.
+func (mr *MockReplicationBackendMockRecorder) GetExporter(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExporter", reflect.TypeOf((*MockReplicationBackend)(nil).GetExporter), ctx, id)
+}
+
+// GetPipeline mocks base method.
+func (m *MockReplicationBackend) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPipeline", ctx, id)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPipeline indicates an expected call of GetPipeline.
+func (mr *MockReplicationBackendMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).GetPipeline), ctx, id)
+}
+
+// ListExporters mocks base method.
+func (m *MockReplicationBackend) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListExporters", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListExporters indicates an expected call of ListExporters.
+func (mr *MockReplicationBackendMockRecorder) ListExporters(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListExporters", reflect.TypeOf((*MockReplicationBackend)(nil).ListExporters), ctx)
+}
+
+// ListPipelines mocks base method.
+func (m *MockReplicationBackend) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPipelines", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPipelines indicates an expected call of ListPipelines.
+func (mr *MockReplicationBackendMockRecorder) ListPipelines(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPipelines", reflect.TypeOf((*MockReplicationBackend)(nil).ListPipelines), ctx)
+}
+
+// ResetPipeline mocks base method.
+func (m *MockReplicationBackend) ResetPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetPipeline indicates an expected call of ResetPipeline.
+func (mr *MockReplicationBackendMockRecorder) ResetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).ResetPipeline), ctx, id)
+}
+
+// StartPipeline mocks base method.
+func (m *MockReplicationBackend) StartPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartPipeline indicates an expected call of StartPipeline.
+func (mr *MockReplicationBackendMockRecorder) StartPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).StartPipeline), ctx, id)
+}
+
+// StopPipeline mocks base method.
+func (m *MockReplicationBackend) StopPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StopPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StopPipeline indicates an expected call of StopPipeline.
+func (mr *MockReplicationBackendMockRecorder) StopPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).StopPipeline), ctx, id)
+}
 
 // SystemController is a mock of Controller interface.
 type SystemController struct {
@@ -42,6 +227,21 @@ func (m *SystemController) EXPECT() *SystemControllerMockRecorder {
 	return m.recorder
 }
 
+// CreateExporter mocks base method.
+func (m *SystemController) CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateExporter", ctx, configuration)
+	ret0, _ := ret[0].(*ledger.Exporter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateExporter indicates an expected call of CreateExporter.
+func (mr *SystemControllerMockRecorder) CreateExporter(ctx, configuration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExporter", reflect.TypeOf((*SystemController)(nil).CreateExporter), ctx, configuration)
+}
+
 // CreateLedger mocks base method.
 func (m *SystemController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
 	m.ctrl.T.Helper()
@@ -56,6 +256,35 @@ func (mr *SystemControllerMockRecorder) CreateLedger(ctx, name, configuration an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLedger", reflect.TypeOf((*SystemController)(nil).CreateLedger), ctx, name, configuration)
 }
 
+// CreatePipeline mocks base method.
+func (m *SystemController) CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePipeline", ctx, pipelineConfiguration)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePipeline indicates an expected call of CreatePipeline.
+func (mr *SystemControllerMockRecorder) CreatePipeline(ctx, pipelineConfiguration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*SystemController)(nil).CreatePipeline), ctx, pipelineConfiguration)
+}
+
+// DeleteExporter mocks base method.
+func (m *SystemController) DeleteExporter(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteExporter", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteExporter indicates an expected call of DeleteExporter.
+func (mr *SystemControllerMockRecorder) DeleteExporter(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExporter", reflect.TypeOf((*SystemController)(nil).DeleteExporter), ctx, id)
+}
+
 // DeleteLedgerMetadata mocks base method.
 func (m *SystemController) DeleteLedgerMetadata(ctx context.Context, param, key string) error {
 	m.ctrl.T.Helper()
@@ -68,6 +297,35 @@ func (m *SystemController) DeleteLedgerMetadata(ctx context.Context, param, key 
 func (mr *SystemControllerMockRecorder) DeleteLedgerMetadata(ctx, param, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedgerMetadata", reflect.TypeOf((*SystemController)(nil).DeleteLedgerMetadata), ctx, param, key)
+}
+
+// DeletePipeline mocks base method.
+func (m *SystemController) DeletePipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePipeline indicates an expected call of DeletePipeline.
+func (mr *SystemControllerMockRecorder) DeletePipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePipeline", reflect.TypeOf((*SystemController)(nil).DeletePipeline), ctx, id)
+}
+
+// GetExporter mocks base method.
+func (m *SystemController) GetExporter(ctx context.Context, id string) (*ledger.Exporter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExporter", ctx, id)
+	ret0, _ := ret[0].(*ledger.Exporter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExporter indicates an expected call of GetExporter.
+func (mr *SystemControllerMockRecorder) GetExporter(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExporter", reflect.TypeOf((*SystemController)(nil).GetExporter), ctx, id)
 }
 
 // GetLedger mocks base method.
@@ -100,8 +358,38 @@ func (mr *SystemControllerMockRecorder) GetLedgerController(ctx, name any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerController", reflect.TypeOf((*SystemController)(nil).GetLedgerController), ctx, name)
 }
 
+// GetPipeline mocks base method.
+func (m *SystemController) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPipeline", ctx, id)
+	ret0, _ := ret[0].(*ledger.Pipeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPipeline indicates an expected call of GetPipeline.
+func (mr *SystemControllerMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*SystemController)(nil).GetPipeline), ctx, id)
+}
+
+// ListExporters mocks base method.
+func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListExporters", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListExporters indicates an expected call of ListExporters.
+func (mr *SystemControllerMockRecorder) ListExporters(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListExporters", reflect.TypeOf((*SystemController)(nil).ListExporters), ctx)
+}
+
 // ListLedgers mocks base method.
-func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (m *SystemController) ListLedgers(ctx context.Context, query common.PaginatedQuery[system.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])
@@ -113,6 +401,63 @@ func (m *SystemController) ListLedgers(ctx context.Context, query common.ColumnP
 func (mr *SystemControllerMockRecorder) ListLedgers(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*SystemController)(nil).ListLedgers), ctx, query)
+}
+
+// ListPipelines mocks base method.
+func (m *SystemController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPipelines", ctx)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPipelines indicates an expected call of ListPipelines.
+func (mr *SystemControllerMockRecorder) ListPipelines(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPipelines", reflect.TypeOf((*SystemController)(nil).ListPipelines), ctx)
+}
+
+// ResetPipeline mocks base method.
+func (m *SystemController) ResetPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetPipeline indicates an expected call of ResetPipeline.
+func (mr *SystemControllerMockRecorder) ResetPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPipeline", reflect.TypeOf((*SystemController)(nil).ResetPipeline), ctx, id)
+}
+
+// StartPipeline mocks base method.
+func (m *SystemController) StartPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartPipeline indicates an expected call of StartPipeline.
+func (mr *SystemControllerMockRecorder) StartPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartPipeline", reflect.TypeOf((*SystemController)(nil).StartPipeline), ctx, id)
+}
+
+// StopPipeline mocks base method.
+func (m *SystemController) StopPipeline(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StopPipeline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StopPipeline indicates an expected call of StopPipeline.
+func (mr *SystemControllerMockRecorder) StopPipeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*SystemController)(nil).StopPipeline), ctx, id)
 }
 
 // UpdateLedgerMetadata mocks base method.

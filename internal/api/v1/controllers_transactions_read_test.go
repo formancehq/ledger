@@ -26,7 +26,7 @@ func TestTransactionsRead(t *testing.T) {
 	systemController, ledgerController := newTestingSystemController(t, true)
 	ledgerController.EXPECT().
 		GetTransaction(gomock.Any(), storagecommon.ResourceQuery[any]{
-			Builder: query.Match("id", int64(0)),
+			Builder: query.Match("id", uint64(0)),
 		}).
 		Return(&tx, nil)
 

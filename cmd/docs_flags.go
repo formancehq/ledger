@@ -34,7 +34,7 @@ func NewDocFlagsCommand() *cobra.Command {
 				return err
 			}
 			for _, key := range allKeys {
-				asEnvVar := strings.ToUpper(strings.Replace(key, "-", "_", -1))
+				asEnvVar := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
 				flag := serveCommand.Flags().Lookup(key)
 				if flag == nil {
 					continue

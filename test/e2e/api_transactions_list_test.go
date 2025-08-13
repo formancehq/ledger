@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"math/big"
+	"slices"
 	"sort"
 	"time"
 
@@ -103,6 +104,124 @@ var _ = Context("Ledger transactions list API tests", func() {
 		AfterEach(func() {
 			transactions = nil
 		})
+		When("listing transaction using reverse option", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Expand:   pointer.For("volumes,effectiveVolumes"),
+						Reverse:  pointer.For(true),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("Should be ok", func() {
+				expectedTxs := transactions[pageSize:]
+				slices.Reverse(expectedTxs)
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(expectedTxs))
+			})
+		})
+		When("listing transaction while paginating on timestamp", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Expand:   pointer.For("volumes,effectiveVolumes"),
+						Reverse:  pointer.For(true),
+						Sort:     pointer.For("timestamp:desc"),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("Should be ok", func() {
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+				sortedByTimestamp := transactions[:]
+				sort.SliceStable(sortedByTimestamp, func(i, j int) bool {
+					return sortedByTimestamp[i].Timestamp.Before(sortedByTimestamp[j].Timestamp)
+				})
+				page := sortedByTimestamp[pageSize:]
+				slices.Reverse(page)
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
+			})
+		})
+		When("listing transaction while paginating and filtering on insertion date", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Expand:   pointer.For("volumes,effectiveVolumes"),
+						Reverse:  pointer.For(true),
+						Sort:     pointer.For("inserted_at:desc"),
+						RequestBody: map[string]any{
+							"$lte": map[string]any{
+								"inserted_at": time.Now(),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("Should be ok", func() {
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
+				sortedByInsertionDate := transactions[:]
+				sort.SliceStable(sortedByInsertionDate, func(i, j int) bool {
+					return sortedByInsertionDate[i].Timestamp.Before(sortedByInsertionDate[j].Timestamp)
+				})
+				page := sortedByInsertionDate[pageSize:]
+				slices.Reverse(page)
+				Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
+			})
+		})
+		When("listing transactions using a page size of 5", func() {
+			var (
+				rsp *operations.V2ListTransactionsResponse
+				err error
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger:   "default",
+						PageSize: pointer.For(int64(5)),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			When("using next page with a page size of 10", func() {
+				JustBeforeEach(func(specContext SpecContext) {
+					rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+						ctx,
+						operations.V2ListTransactionsRequest{
+							Ledger:   "default",
+							Cursor:   rsp.V2TransactionsCursorResponse.Cursor.Next,
+							PageSize: pointer.For(int64(10)),
+						},
+					)
+					Expect(err).ToNot(HaveOccurred())
+				})
+				It("Should return 10 elements", func() {
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(10))
+				})
+			})
+		})
 		When(fmt.Sprintf("listing transactions using page size of %d", pageSize), func() {
 			var (
 				rsp *operations.V2ListTransactionsResponse
@@ -152,15 +271,33 @@ var _ = Context("Ledger transactions list API tests", func() {
 			})
 			Context("with effective ordering", func() {
 				BeforeEach(func() {
+					//nolint:staticcheck
 					req.Order = pointer.For(operations.OrderEffective)
 				})
 				It("Should be ok, and returns transactions ordered by effective timestamp", func() {
 					Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
-					sorted := transactions[:pageSize]
-					sort.SliceStable(sorted, func(i, j int) bool {
-						return sorted[i].Timestamp.After(sorted[j].Timestamp)
+					sortedByTimestamp := transactions[:]
+					sort.SliceStable(sortedByTimestamp, func(i, j int) bool {
+						return sortedByTimestamp[i].Timestamp.Before(sortedByTimestamp[j].Timestamp)
 					})
-					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(sorted))
+					page := sortedByTimestamp[pageSize:]
+					slices.Reverse(page)
+					Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(Equal(page))
+				})
+				When("using next page", func() {
+					JustBeforeEach(func(specContext SpecContext) {
+						rsp, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+							ctx,
+							operations.V2ListTransactionsRequest{
+								Ledger: "default",
+								Cursor: rsp.V2TransactionsCursorResponse.Cursor.Next,
+							},
+						)
+						Expect(err).ToNot(HaveOccurred())
+					})
+					It("Should return next elements", func() {
+						Expect(rsp.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(int(pageSize)))
+					})
 				})
 			})
 			It("Should be ok", func() {

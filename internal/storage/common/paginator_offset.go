@@ -8,45 +8,40 @@ import (
 )
 
 type OffsetPaginator[ResourceType, OptionsType any] struct {
-	DefaultPaginationColumn string
-	DefaultOrder            bunpaginate.Order
+	query OffsetPaginatedQuery[OptionsType]
 }
 
 //nolint:unused
-func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query OffsetPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery) (*bun.SelectQuery, error) {
 
-	paginationColumn := o.DefaultPaginationColumn
-	originalOrder := o.DefaultOrder
-	if query.Order != nil {
-		originalOrder = *query.Order
-	}
+	paginationColumn := o.query.Column
+	originalOrder := *o.query.Order
 
 	orderExpression := fmt.Sprintf("%s %s", paginationColumn, originalOrder)
 	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
-	if query.Offset > math.MaxInt32 {
+	if o.query.Offset > math.MaxInt32 {
 		return nil, fmt.Errorf("offset value exceeds maximum allowed value")
 	}
-	if query.Offset > 0 {
-		sb = sb.Offset(int(query.Offset))
+	if o.query.Offset > 0 {
+		sb = sb.Offset(int(o.query.Offset))
 	}
-
-	if query.PageSize > 0 {
-		sb = sb.Limit(int(query.PageSize) + 1)
+	if o.query.PageSize > 0 {
+		sb = sb.Limit(int(o.query.PageSize) + 1)
 	}
 
 	return sb, nil
 }
 
 //nolint:unused
-func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType, query OffsetPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType) (*bunpaginate.Cursor[ResourceType], error) {
 
 	var previous, next *OffsetPaginatedQuery[OptionsType]
 
 	// Page with transactions before
-	if query.Offset > 0 {
-		cp := query
-		offset := int(query.Offset) - int(query.PageSize)
+	if o.query.Offset > 0 {
+		cp := o.query
+		offset := int(o.query.Offset) - int(o.query.PageSize)
 		if offset < 0 {
 			offset = 0
 		}
@@ -55,19 +50,19 @@ func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	}
 
 	// Page with transactions after
-	if query.PageSize != 0 && len(ret) > int(query.PageSize) {
-		cp := query
+	if o.query.PageSize != 0 && len(ret) > int(o.query.PageSize) {
+		cp := o.query
 		// Check for potential overflow
-		if query.Offset > math.MaxUint64-query.PageSize {
+		if o.query.Offset > math.MaxUint64-o.query.PageSize {
 			return nil, fmt.Errorf("offset overflow")
 		}
-		cp.Offset = query.Offset + query.PageSize
+		cp.Offset = o.query.Offset + o.query.PageSize
 		next = &cp
 		ret = ret[:len(ret)-1]
 	}
 
 	return &bunpaginate.Cursor[ResourceType]{
-		PageSize: int(query.PageSize),
+		PageSize: int(o.query.PageSize),
 		HasMore:  next != nil,
 		Previous: encodeCursor[OptionsType, OffsetPaginatedQuery[OptionsType]](previous),
 		Next:     encodeCursor[OptionsType, OffsetPaginatedQuery[OptionsType]](next),
@@ -75,4 +70,10 @@ func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	}, nil
 }
 
-var _ Paginator[any, OffsetPaginatedQuery[any]] = &OffsetPaginator[any, any]{}
+var _ Paginator[any] = &OffsetPaginator[any, any]{}
+
+func newOffsetPaginator[ResourceType, OptionsType any](
+	query OffsetPaginatedQuery[OptionsType],
+) OffsetPaginator[ResourceType, OptionsType] {
+	return OffsetPaginator[ResourceType, OptionsType]{query: query}
+}

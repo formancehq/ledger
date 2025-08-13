@@ -1,0 +1,8 @@
+version: "2"
+linters:
+  settings:
+    staticcheck:
+      dot-import-whitelist:
+        - github.com/formancehq/ledger/deployments/pulumi/pkg/common
+        - github.com/formancehq/ledger/deployments/pulumi/pkg/utils
+        - github.com/formancehq/go-libs/v3/collectionutils

@@ -5,15 +5,14 @@ package ledger_test
 import (
 	"database/sql"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 
 	libtime "time"
 
@@ -47,7 +46,7 @@ func TestBalancesGet(t *testing.T) {
 	t.Run("get balances of not existing account should create an empty row", func(t *testing.T) {
 		t.Parallel()
 
-		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
+		balances, err := store.GetBalances(ctx, ledgerstore.BalanceQuery{
 			"orders:1234": []string{"USD"},
 		})
 		require.NoError(t, err)
@@ -87,7 +86,7 @@ func TestBalancesGet(t *testing.T) {
 		})
 		store2 := store.WithDB(tx2)
 
-		bq := ledgercontroller.BalanceQuery{
+		bq := ledgerstore.BalanceQuery{
 			"world": []string{"USD"},
 		}
 
@@ -137,7 +136,7 @@ func TestBalancesGet(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
-		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
+		balances, err := store.GetBalances(ctx, ledgerstore.BalanceQuery{
 			"world":        {"USD"},
 			"not-existing": {"USD"},
 		})
@@ -196,7 +195,7 @@ func TestBalancesAggregates(t *testing.T) {
 		"users:2": {
 			"category": "premium",
 		},
-	}))
+	}, time.Time{}))
 
 	require.NoError(t, store.DeleteAccountMetadata(ctx, "users:2", "category"))
 
@@ -210,12 +209,12 @@ func TestBalancesAggregates(t *testing.T) {
 		"world": {
 			"world": "bar",
 		},
-	}))
+	}, time.Time{}))
 
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{})
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{})
 		require.NoError(t, err)
 		RequireEqual(t, ledger.AggregatedVolumes{
 			Aggregated: ledger.VolumesByAssets{
@@ -239,7 +238,7 @@ func TestBalancesAggregates(t *testing.T) {
 	t.Run("filter on address", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.Match("address", "users:"),
 		})
 		require.NoError(t, err)
@@ -257,7 +256,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using pit on effective date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.Match("address", "users:"),
 			PIT:     pointer.For(now.Add(-time.Second)),
 		})
@@ -276,10 +275,10 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using pit on insertion date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.Match("address", "users:"),
 			PIT:     pointer.For(now),
-			Opts: ledgercontroller.GetAggregatedVolumesOptions{
+			Opts: ledgerstore.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},
 		})
@@ -298,7 +297,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using a metadata and pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			PIT:     pointer.For(now.Add(time.Minute)),
 			Builder: query.Match("metadata[category]", "premium"),
 		})
@@ -317,7 +316,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.Match("metadata[category]", "premium"),
 		})
 		require.NoError(t, err)
@@ -333,7 +332,7 @@ func TestBalancesAggregates(t *testing.T) {
 	})
 	t.Run("when no matching", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.Match("metadata[category]", "guest"),
 		})
 		require.NoError(t, err)
@@ -344,7 +343,7 @@ func TestBalancesAggregates(t *testing.T) {
 
 	t.Run("using a filter exist on metadata", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.Exists("metadata", "category"),
 		})
 		require.NoError(t, err)
@@ -363,7 +362,7 @@ func TestBalancesAggregates(t *testing.T) {
 
 	t.Run("using a filter on metadata and on address", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
 			Builder: query.And(
 				query.Match("address", "users:"),
 				query.Match("metadata[category]", "premium"),

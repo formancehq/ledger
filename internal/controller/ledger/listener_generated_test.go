@@ -41,49 +41,49 @@ func (m *MockListener) EXPECT() *MockListenerMockRecorder {
 }
 
 // CommittedTransactions mocks base method.
-func (m *MockListener) CommittedTransactions(ctx context.Context, ledger string, res ledger.Transaction, accountMetadata ledger.AccountMetadata) {
+func (m *MockListener) CommittedTransactions(ctx context.Context, arg1 string, res ledger.Transaction, accountMetadata ledger.AccountMetadata) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "CommittedTransactions", ctx, ledger, res, accountMetadata)
+	m.ctrl.Call(m, "CommittedTransactions", ctx, arg1, res, accountMetadata)
 }
 
 // CommittedTransactions indicates an expected call of CommittedTransactions.
-func (mr *MockListenerMockRecorder) CommittedTransactions(ctx, ledger, res, accountMetadata any) *gomock.Call {
+func (mr *MockListenerMockRecorder) CommittedTransactions(ctx, arg1, res, accountMetadata any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommittedTransactions", reflect.TypeOf((*MockListener)(nil).CommittedTransactions), ctx, ledger, res, accountMetadata)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommittedTransactions", reflect.TypeOf((*MockListener)(nil).CommittedTransactions), ctx, arg1, res, accountMetadata)
 }
 
 // DeletedMetadata mocks base method.
-func (m *MockListener) DeletedMetadata(ctx context.Context, ledger, targetType string, targetID any, key string) {
+func (m *MockListener) DeletedMetadata(ctx context.Context, arg1, targetType string, targetID any, key string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeletedMetadata", ctx, ledger, targetType, targetID, key)
+	m.ctrl.Call(m, "DeletedMetadata", ctx, arg1, targetType, targetID, key)
 }
 
 // DeletedMetadata indicates an expected call of DeletedMetadata.
-func (mr *MockListenerMockRecorder) DeletedMetadata(ctx, ledger, targetType, targetID, key any) *gomock.Call {
+func (mr *MockListenerMockRecorder) DeletedMetadata(ctx, arg1, targetType, targetID, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletedMetadata", reflect.TypeOf((*MockListener)(nil).DeletedMetadata), ctx, ledger, targetType, targetID, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletedMetadata", reflect.TypeOf((*MockListener)(nil).DeletedMetadata), ctx, arg1, targetType, targetID, key)
 }
 
 // RevertedTransaction mocks base method.
-func (m *MockListener) RevertedTransaction(ctx context.Context, ledger string, reverted, revert ledger.Transaction) {
+func (m *MockListener) RevertedTransaction(ctx context.Context, arg1 string, reverted, revert ledger.Transaction) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RevertedTransaction", ctx, ledger, reverted, revert)
+	m.ctrl.Call(m, "RevertedTransaction", ctx, arg1, reverted, revert)
 }
 
 // RevertedTransaction indicates an expected call of RevertedTransaction.
-func (mr *MockListenerMockRecorder) RevertedTransaction(ctx, ledger, reverted, revert any) *gomock.Call {
+func (mr *MockListenerMockRecorder) RevertedTransaction(ctx, arg1, reverted, revert any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertedTransaction", reflect.TypeOf((*MockListener)(nil).RevertedTransaction), ctx, ledger, reverted, revert)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertedTransaction", reflect.TypeOf((*MockListener)(nil).RevertedTransaction), ctx, arg1, reverted, revert)
 }
 
 // SavedMetadata mocks base method.
-func (m *MockListener) SavedMetadata(ctx context.Context, ledger, targetType, id string, metadata metadata.Metadata) {
+func (m *MockListener) SavedMetadata(ctx context.Context, arg1, targetType, id string, arg4 metadata.Metadata) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SavedMetadata", ctx, ledger, targetType, id, metadata)
+	m.ctrl.Call(m, "SavedMetadata", ctx, arg1, targetType, id, arg4)
 }
 
 // SavedMetadata indicates an expected call of SavedMetadata.
-func (mr *MockListenerMockRecorder) SavedMetadata(ctx, ledger, targetType, id, metadata any) *gomock.Call {
+func (mr *MockListenerMockRecorder) SavedMetadata(ctx, arg1, targetType, id, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavedMetadata", reflect.TypeOf((*MockListener)(nil).SavedMetadata), ctx, ledger, targetType, id, metadata)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavedMetadata", reflect.TypeOf((*MockListener)(nil).SavedMetadata), ctx, arg1, targetType, id, arg4)
 }

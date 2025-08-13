@@ -3,7 +3,7 @@
 The project use [Go standard layout](https://github.com/golang-standards/project-layout), please respect it.
 Also, the project use [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/) style for commits.
 
-Development commands involve the usage of [Earthly](https://earthly.dev/) as well as docker for end-to-end testing.
+Development commands involve the usage of [Just](https://github.com/casey/just) as well as docker for end-to-end testing.
 
 ## Getting started
 
@@ -30,7 +30,7 @@ $ curl -X POST http://localhost:3068/quickstart/transactions -d '{"postings": [{
       "timestamp": "2024-10-03T08:10:37.109371Z",
       "insertedAt": "2024-10-03T08:10:37.109371Z",
       "id": 1,
-      ...wiudd
+      ...
     }
   ]
 }
@@ -74,8 +74,6 @@ $ curl http://localhost:3068/v2 | jq
         "features": {
           "ACCOUNT_METADATA_HISTORY": "SYNC",
           "HASH_LOGS": "SYNC",
-          "INDEX_ADDRESS_SEGMENTS": "ON",
-          "INDEX_TRANSACTION_ACCOUNTS": "ON",
           "MOVES_HISTORY": "ON",
           "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES": "SYNC",
           "TRANSACTION_METADATA_HISTORY": "SYNC"
@@ -90,8 +88,6 @@ $ curl http://localhost:3068/v2 | jq
         "features": {
           "ACCOUNT_METADATA_HISTORY": "SYNC",
           "HASH_LOGS": "SYNC",
-          "INDEX_ADDRESS_SEGMENTS": "ON",
-          "INDEX_TRANSACTION_ACCOUNTS": "ON",
           "MOVES_HISTORY": "ON",
           "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES": "SYNC",
           "TRANSACTION_METADATA_HISTORY": "SYNC"
@@ -169,8 +165,6 @@ $ curl http://localhost:3068/v2/testing2 | jq
     "features": {
       "ACCOUNT_METADATA_HISTORY": "SYNC",
       "HASH_LOGS": "DISABLED",
-      "INDEX_ADDRESS_SEGMENTS": "ON",
-      "INDEX_TRANSACTION_ACCOUNTS": "ON",
       "MOVES_HISTORY": "ON",
       "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES": "SYNC",
       "TRANSACTION_METADATA_HISTORY": "SYNC"
@@ -194,8 +188,6 @@ Current set of features:
 | ACCOUNT_METADATA_HISTORY     | SYNC          | SYNC \| DISABLED       | Historize metadata changes on accounts                           |
 | TRANSACTION_METADATA_HISTORY | SYNC          | SYNC \| DISABLED       | Historize metadata changes on transactions                       |
 | HASH_LOGS                    | SYNC          | SYNC \| DISABLED       | [Hash logs](#hashed-log)                                         |
-| INDEX_ADDRESS_SEGMENTS       | ON            | ON \| OFF              | Index accounts addresses segments                                |
-| INDEX_TRANSACTION_ACCOUNTS   | ON            | ON \| OFF              | Index transactions accounts set                                  |
 | MOVES_HISTORY                | ON            | ON \| OFF              | [Historize funds movements by account](#funds-movements-history) |
 | MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES | SYNC          | SYNC \| DISABLED       | Compute and maintains post commit effective volumes              |
  
@@ -392,14 +384,14 @@ Tests are split in different scopes :
 ## API changes
 
 Openapi specification at [root](./openapi.yaml) must not be edited directly as it is generated.
-Update [v2 spec](./openapi/v2.yaml) and regenerate the client using `earthly +pre-commit` or `earthly +generate-client`.
+Update [v2 spec](./openapi/v2.yaml) and regenerate the client using `just pre-commit` or `just generate-client`.
 
 ## Dev commands
 
 ### Before commit
 
 ```shell
-$ earthly +pre-commit
+$ just pre-commit
 ```
 
 This command will :
@@ -412,12 +404,7 @@ This command will :
 ### Run tests
 
 ```shell
-$ earthly -P +tests
-```
-
-Additionally, the flag ```--coverage=true``` can be passed to generate coverage :
-```shell
-$ earthly -P +tests --coverage=true # Generated under cover.out
+$ just tests
 ```
 
 ## API reference

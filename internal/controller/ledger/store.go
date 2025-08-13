@@ -3,9 +3,9 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/uptrace/bun"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/migrations"
@@ -16,16 +16,12 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/uptrace/bun"
 )
 
 type Balance struct {
 	Asset   string
 	Balance *big.Int
 }
-
-type BalanceQuery = vm.BalanceQuery
-type Balances = vm.Balances
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . Store
 type Store interface {
@@ -34,17 +30,17 @@ type Store interface {
 	Rollback() error
 
 	// GetBalances must returns balance and lock account until the end of the TX
-	GetBalances(ctx context.Context, query BalanceQuery) (Balances, error)
+	GetBalances(ctx context.Context, query ledgerstore.BalanceQuery) (ledger.Balances, error)
 	CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error
 	// RevertTransaction revert the transaction with identifier id
 	// It returns :
 	//  * the reverted transaction
 	//  * a boolean indicating if the transaction has been reverted. false indicates an already reverted transaction (unless error != nil)
 	//  * an error
-	RevertTransaction(ctx context.Context, id int, at time.Time) (*ledger.Transaction, bool, error)
-	UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error)
-	DeleteTransactionMetadata(ctx context.Context, transactionID int, key string, at time.Time) (*ledger.Transaction, bool, error)
-	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error
+	RevertTransaction(ctx context.Context, id uint64, at time.Time) (*ledger.Transaction, bool, error)
+	UpdateTransactionMetadata(ctx context.Context, transactionID uint64, m metadata.Metadata, at time.Time) (*ledger.Transaction, bool, error)
+	DeleteTransactionMetadata(ctx context.Context, transactionID uint64, key string, at time.Time) (*ledger.Transaction, bool, error)
+	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
 	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
@@ -52,21 +48,24 @@ type Store interface {
 
 	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)
 
-	GetDB() bun.IDB
 	ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error)
 
 	IsUpToDate(ctx context.Context) (bool, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 
-	Accounts() common.PaginatedResource[ledger.Account, any, common.OffsetPaginatedQuery[any]]
-	Logs() common.PaginatedResource[ledger.Log, any, common.ColumnPaginatedQuery[any]]
-	Transactions() common.PaginatedResource[ledger.Transaction, any, common.ColumnPaginatedQuery[any]]
-	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions]
-	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, GetVolumesOptions, common.OffsetPaginatedQuery[GetVolumesOptions]]
+	Accounts() common.PaginatedResource[ledger.Account, any]
+	Logs() common.PaginatedResource[ledger.Log, any]
+	Transactions() common.PaginatedResource[ledger.Transaction, any]
+	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions]
 }
 
 type vmStoreAdapter struct {
 	Store
+}
+
+func (v *vmStoreAdapter) GetBalances(ctx context.Context, query vm.BalanceQuery) (vm.Balances, error) {
+	return v.Store.GetBalances(ctx, query)
 }
 
 func (v *vmStoreAdapter) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
@@ -87,17 +86,6 @@ func newVmStoreAdapter(tx Store) *vmStoreAdapter {
 	}
 }
 
-func NewListLedgersQuery(pageSize uint64) common.ColumnPaginatedQuery[any] {
-	return common.ColumnPaginatedQuery[any]{
-		PageSize: pageSize,
-		Column:   "id",
-		Order:    (*bunpaginate.Order)(pointer.For(bunpaginate.OrderAsc)),
-		Options: common.ResourceQuery[any]{
-			Expand: make([]string, 0),
-		},
-	}
-}
-
 // numscript rewrite implementation
 
 var _ numscript.Store = (*numscriptRewriteAdapter)(nil)
@@ -113,12 +101,12 @@ type numscriptRewriteAdapter struct {
 }
 
 func (s *numscriptRewriteAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
-	vmBalances, err := s.Store.GetBalances(ctx, BalanceQuery(q))
+	vmBalances, err := s.Store.GetBalances(ctx, q)
 	if err != nil {
 		return nil, err
 	}
 
-	return numscript.Balances(vmBalances), nil
+	return vmBalances, nil
 }
 
 func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
@@ -136,13 +124,4 @@ func (s *numscriptRewriteAdapter) GetAccountsMetadata(ctx context.Context, q num
 	}
 
 	return m, nil
-}
-
-type GetAggregatedVolumesOptions struct {
-	UseInsertionDate bool `json:"useInsertionDate"`
-}
-
-type GetVolumesOptions struct {
-	UseInsertionDate bool `json:"useInsertionDate"`
-	GroupLvl         int  `json:"groupLvl"`
 }

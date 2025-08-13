@@ -1,12 +1,10 @@
 package v2
 
 import (
-	"errors"
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 )
 
@@ -19,23 +17,25 @@ func listTransactions(paginationConfig common.PaginationConfig) http.HandlerFunc
 			paginationColumn = "timestamp"
 		}
 
-		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, paginationColumn, bunpaginate.OrderDesc)
+		order := bunpaginate.Order(bunpaginate.OrderDesc)
+		if api.QueryParamBool(r, "reverse") {
+			order = bunpaginate.OrderAsc
+		}
+
+		rq, err := getPaginatedQuery[any](r, paginationConfig, paginationColumn, order)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
 		}
 
-		cursor, err := l.ListTransactions(r.Context(), *rq)
+		cursor, err := l.ListTransactions(r.Context(), rq)
 		if err != nil {
-			switch {
-			case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgercontroller.ErrMissingFeature{}):
-				api.BadRequest(w, common.ErrValidation, err)
-			default:
-				common.HandleCommonErrors(w, r, err)
-			}
+			common.HandleCommonPaginationErrors(w, r, err)
 			return
 		}
 
-		api.RenderCursor(w, *cursor)
+		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(tx ledger.Transaction) any {
+			return renderTransaction(r, tx)
+		}))
 	}
 }

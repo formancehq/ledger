@@ -44,7 +44,7 @@ func (s *GeneratorSet) Run(ctx context.Context) error {
 			for {
 				logging.FromContext(ctx).Debugf("Run iteration %d/%d", vu, iteration)
 
-				action, err := generator.Next(vu)
+				action, err := generator.Next(iteration)
 				if err != nil {
 					return fmt.Errorf("iteration %d/%d failed: %w", vu, iteration, err)
 				}

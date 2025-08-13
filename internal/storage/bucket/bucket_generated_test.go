@@ -42,17 +42,17 @@ func (m *MockBucket) EXPECT() *MockBucketMockRecorder {
 }
 
 // AddLedger mocks base method.
-func (m *MockBucket) AddLedger(ctx context.Context, db bun.IDB, ledger ledger.Ledger) error {
+func (m *MockBucket) AddLedger(ctx context.Context, db bun.IDB, arg2 ledger.Ledger) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddLedger", ctx, db, ledger)
+	ret := m.ctrl.Call(m, "AddLedger", ctx, db, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AddLedger indicates an expected call of AddLedger.
-func (mr *MockBucketMockRecorder) AddLedger(ctx, db, ledger any) *gomock.Call {
+func (mr *MockBucketMockRecorder) AddLedger(ctx, db, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLedger", reflect.TypeOf((*MockBucket)(nil).AddLedger), ctx, db, ledger)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLedger", reflect.TypeOf((*MockBucket)(nil).AddLedger), ctx, db, arg2)
 }
 
 // GetLastVersion mocks base method.

@@ -7,17 +7,15 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	"errors"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
 
@@ -47,52 +45,39 @@ type Store struct {
 
 func (store *Store) Volumes() common.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
-	ledgercontroller.GetVolumesOptions,
-	common.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
-	return common.NewPaginatedResourceRepository(&volumesResourceHandler{store: store}, common.OffsetPaginator[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions]{
-		DefaultPaginationColumn: "account",
-		DefaultOrder:            bunpaginate.OrderAsc,
-	})
+	GetVolumesOptions] {
+	return common.NewPaginatedResourceRepository[
+		ledger.VolumesWithBalanceByAssetByAccount,
+		GetVolumesOptions,
+	](&volumesResourceHandler{store: store}, "account", bunpaginate.OrderAsc)
 }
 
-func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] {
-	return common.NewResourceRepository[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
+func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
+	return common.NewResourceRepository[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
 		store: store,
 	})
 }
 
 func (store *Store) Transactions() common.PaginatedResource[
 	ledger.Transaction,
-	any,
-	common.ColumnPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepository(&transactionsResourceHandler{store: store}, common.ColumnPaginator[ledger.Transaction, any]{
-		DefaultPaginationColumn: "id",
-		DefaultOrder:            bunpaginate.OrderDesc,
-	})
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Transaction, any](&transactionsResourceHandler{store: store}, "id", bunpaginate.OrderDesc)
 }
 
 func (store *Store) Logs() common.PaginatedResource[
 	ledger.Log,
-	any,
-	common.ColumnPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any, common.ColumnPaginatedQuery[any]](&logsResourceHandler{
+	any] {
+	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any](&logsResourceHandler{
 		store: store,
-	}, common.ColumnPaginator[Log, any]{
-		DefaultPaginationColumn: "id",
-		DefaultOrder:            bunpaginate.OrderDesc,
-	})
+	}, "id", bunpaginate.OrderDesc)
 }
 
 func (store *Store) Accounts() common.PaginatedResource[
 	ledger.Account,
-	any,
-	common.OffsetPaginatedQuery[any]] {
-	return common.NewPaginatedResourceRepository(&accountsResourceHandler{
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Account, any](&accountsResourceHandler{
 		store: store,
-	}, common.OffsetPaginator[ledger.Account, any]{
-		DefaultPaginationColumn: "address",
-		DefaultOrder:            bunpaginate.OrderAsc,
-	})
+	}, "address", bunpaginate.OrderAsc)
 }
 
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {
@@ -138,19 +123,6 @@ func (store *Store) GetBucket() bucket.Bucket {
 
 func (store *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
-}
-
-func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {
-	if operator != "$match" {
-		return fmt.Errorf("'address' column can only be used with $match, operator used is: %s", operator)
-	}
-	if value, ok := value.(string); !ok {
-		return fmt.Errorf("invalid 'address' filter")
-	} else if isSegmentedAddress(value) && !ledger.HasFeature(features.FeatureIndexAddressSegments, "ON") {
-		return fmt.Errorf("feature %s must be 'ON' to use segments address", features.FeatureIndexAddressSegments)
-	}
-
-	return nil
 }
 
 func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() error, error) {

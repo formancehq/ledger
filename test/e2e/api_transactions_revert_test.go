@@ -3,14 +3,12 @@
 package test_suite
 
 import (
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
@@ -33,11 +31,11 @@ var _ = Context("Ledger revert transactions API tests", func() {
 	var (
 		db      = UseTemplatedDatabase()
 		ctx     = logging.TestingContext()
-		natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+		natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 	)
 
 	testServer := DeferTestServer(
-		ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+		DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 		testservice.WithInstruments(
 			testservice.NatsInstrumentation(natsURL),
 			testservice.DebugInstrumentation(debug),
@@ -134,22 +132,29 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 		When("reverting it", func() {
-			var newTransaction *operations.V2RevertTransactionResponse
+			var (
+				newTransaction *operations.V2RevertTransactionResponse
+				request        components.V2RevertTransactionRequest
+			)
 			BeforeEach(func(specContext SpecContext) {
+				request = components.V2RevertTransactionRequest{}
+			})
+			JustBeforeEach(func(specContext SpecContext) {
 				newTransaction, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 					ctx,
 					operations.V2RevertTransactionRequest{
-						Ledger: "default",
-						ID:     tx.V2CreateTransactionResponse.Data.ID,
+						Ledger:                     "default",
+						ID:                         tx.V2CreateTransactionResponse.Data.ID,
+						V2RevertTransactionRequest: &request,
 					},
 				)
 				Expect(err).To(Succeed())
 			})
 			It("should trigger a new event", func() {
-				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(bus.RevertedTransaction{
+				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(ledgerevents.RevertedTransaction{
 					Ledger: "default",
 					RevertTransaction: ledger.Transaction{
-						ID: pointer.For(int(newTransaction.V2RevertTransactionResponse.Data.ID.Int64())),
+						ID: pointer.For(newTransaction.V2CreateTransactionResponse.Data.ID.Uint64()),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{
 								"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
@@ -157,9 +162,10 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							Postings: []ledger.Posting{
 								ledger.NewPosting("alice", "world", "USD", big.NewInt(100)),
 							},
-							InsertedAt: libtime.New(*newTransaction.V2RevertTransactionResponse.Data.InsertedAt),
-							Timestamp:  libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp),
+							Timestamp: libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp),
 						},
+						InsertedAt: libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
+						UpdatedAt:  libtime.New(*newTransaction.V2CreateTransactionResponse.Data.UpdatedAt),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
 								"USD": {
@@ -190,16 +196,17 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						},
 					},
 					RevertedTransaction: ledger.Transaction{
-						ID: pointer.For(int(tx.V2CreateTransactionResponse.Data.ID.Int64())),
+						ID: pointer.For(tx.V2CreateTransactionResponse.Data.ID.Uint64()),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{},
 							Postings: []ledger.Posting{
 								ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
 							},
-							InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
-							Timestamp:  libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
+							Timestamp: libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
 						},
-						RevertedAt: pointer.For(libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp)),
+						InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
+						UpdatedAt:  libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
+						RevertedAt: pointer.For(libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp)),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
 								"USD": {
@@ -234,12 +241,33 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						ctx,
 						operations.V2GetTransactionRequest{
 							Ledger: "default",
-							ID:     newTransaction.V2RevertTransactionResponse.Data.ID,
+							ID:     newTransaction.V2CreateTransactionResponse.Data.ID,
 						},
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(response.V2GetTransactionResponse.Data.Metadata).To(Equal(map[string]string{
 						"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
+					}))
+				})
+			})
+			Context("with additional metadata", func() {
+				BeforeEach(func() {
+					request.Metadata = map[string]string{
+						"foo": "bar",
+					}
+				})
+				It("should add these metadata on the newly created transaction", func(specContext SpecContext) {
+					response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
+						ctx,
+						operations.V2GetTransactionRequest{
+							Ledger: "default",
+							ID:     newTransaction.V2CreateTransactionResponse.Data.ID,
+						},
+					)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(response.V2GetTransactionResponse.Data.Metadata).To(Equal(map[string]string{
+						"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
+						"foo":                             "bar",
 					}))
 				})
 			})

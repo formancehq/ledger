@@ -6,9 +6,9 @@ import (
 	"context"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
 	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-	. "github.com/formancehq/go-libs/v3/testing/utils"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"io"
@@ -62,11 +62,11 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 	}
 
 	testServer := testserver.NewTestServer(
-		NewValuedDeferred(connectionOptions),
+		deferred.FromValue(connectionOptions),
 		testservice.WithInstruments(
 			testservice.DebugInstrumentation(os.Getenv("DEBUG") == "true"),
 			testservice.OutputInstrumentation(output),
-			testservice.OTLPInstrumentation(NewValuedDeferred(testservice.OTLPConfig{
+			testservice.OTLPInstrumentation(deferred.FromValue(testservice.OTLPConfig{
 				Metrics: &otlpmetrics.ModuleConfig{
 					KeepInMemory:   true,
 					RuntimeMetrics: true,

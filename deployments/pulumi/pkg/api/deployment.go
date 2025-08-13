@@ -2,9 +2,10 @@ package api
 
 import (
 	"fmt"
-	common "github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -23,6 +24,7 @@ type Args struct {
 	TerminationGracePeriodSeconds    pulumix.Input[*int]
 	ExperimentalFeatures             pulumix.Input[bool]
 	ExperimentalNumscriptInterpreter pulumix.Input[bool]
+	ExperimentalExporters            pulumix.Input[bool]
 }
 
 func (args *Args) SetDefaults() {
@@ -59,6 +61,7 @@ type createDeploymentArgs struct {
 	common.CommonArgs
 	Args
 	Database *storage.Component
+	Worker   *worker.Component
 }
 
 func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOptions ...pulumi.ResourceOption) (*appsv1.Deployment, error) {
@@ -117,6 +120,10 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 			Value: utils.BoolToString(args.ExperimentalFeatures).Untyped().(pulumi.StringOutput),
 		},
 		corev1.EnvVarArgs{
+			Name:  pulumi.String("EXPERIMENTAL_EXPORTERS"),
+			Value: utils.BoolToString(args.ExperimentalExporters).Untyped().(pulumi.StringOutput),
+		},
+		corev1.EnvVarArgs{
 			Name: pulumi.String("GRACE_PERIOD"),
 			Value: pulumix.Apply(args.GracePeriod, time.Duration.String).
 				Untyped().(pulumi.StringOutput),
@@ -126,6 +133,13 @@ func createDeployment(ctx *pulumi.Context, args createDeploymentArgs, resourceOp
 	envVars = append(envVars, args.Database.GetEnvVars()...)
 	if otel := args.Monitoring; otel != nil {
 		envVars = append(envVars, args.Monitoring.GetEnvVars(ctx)...)
+	}
+
+	if args.Worker != nil {
+		envVars = append(envVars, corev1.EnvVarArgs{
+			Name:  pulumi.String("WORKER_GRPC_ADDRESS"),
+			Value: pulumi.Sprintf("%s:%d", args.Worker.Service.Metadata.Name().Elem(), 8081),
+		})
 	}
 
 	return appsv1.NewDeployment(ctx, "ledger-api", &appsv1.DeploymentArgs{

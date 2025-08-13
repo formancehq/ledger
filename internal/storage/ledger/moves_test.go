@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -17,7 +18,6 @@ import (
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,8 +171,8 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
-			Opts: ledgercontroller.GetAggregatedVolumesOptions{
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+			Opts: ledgerstore.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},
 		})

@@ -2,8 +2,11 @@ package v2
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,20 +18,18 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func TestListLedgers(t *testing.T) {
+func TestLedgersList(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 
 	type testCase struct {
 		name               string
-		expectQuery        storagecommon.ColumnPaginatedQuery[any]
 		queryParams        url.Values
 		returnData         []ledger.Ledger
 		returnErr          error
@@ -39,8 +40,7 @@ func TestListLedgers(t *testing.T) {
 
 	for _, tc := range []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgercontroller.NewListLedgersQuery(15),
+			name: "nominal",
 			returnData: []ledger.Ledger{
 				ledger.MustNewWithDefault(uuid.NewString()),
 				ledger.MustNewWithDefault(uuid.NewString()),
@@ -48,8 +48,7 @@ func TestListLedgers(t *testing.T) {
 			expectBackendCall: true,
 		},
 		{
-			name:        "invalid page size",
-			expectQuery: ledgercontroller.NewListLedgersQuery(15),
+			name: "invalid page size",
 			queryParams: url.Values{
 				"pageSize": {"-1"},
 			},
@@ -59,7 +58,6 @@ func TestListLedgers(t *testing.T) {
 		},
 		{
 			name:               "error from backend",
-			expectQuery:        ledgercontroller.NewListLedgersQuery(15),
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedErrorCode:  api.ErrorInternal,
 			expectBackendCall:  true,
@@ -71,15 +69,13 @@ func TestListLedgers(t *testing.T) {
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
 			returnErr:          storagecommon.ErrInvalidQuery{},
-			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
 		},
 		{
 			name:               "with missing feature",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  common.ErrValidation,
 			expectBackendCall:  true,
-			returnErr:          ledgercontroller.ErrMissingFeature{},
-			expectQuery:        ledgercontroller.NewListLedgersQuery(bunpaginate.QueryDefaultPageSize),
+			returnErr:          ledgerstore.ErrMissingFeature{},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,7 +85,14 @@ func TestListLedgers(t *testing.T) {
 
 			if tc.expectBackendCall {
 				systemController.EXPECT().
-					ListLedgers(gomock.Any(), ledgercontroller.NewListLedgersQuery(15)).
+					ListLedgers(gomock.Any(), storagecommon.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
+						PageSize: 15,
+						Column:   "id",
+						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+						Options: storagecommon.ResourceQuery[systemstore.ListLedgersQueryPayload]{
+							Expand: []string{},
+						},
+					}).
 					Return(&bunpaginate.Cursor[ledger.Ledger]{
 						Data: tc.returnData,
 					}, tc.returnErr)

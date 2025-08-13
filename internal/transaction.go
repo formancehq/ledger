@@ -5,7 +5,6 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/invopop/jsonschema"
 	"github.com/uptrace/bun"
-	"math/big"
 	"slices"
 	"sort"
 
@@ -21,7 +20,6 @@ type TransactionData struct {
 	Metadata   metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
 	Timestamp  time.Time         `json:"timestamp" bun:"timestamp,type:timestamp without time zone,nullzero"`
 	Reference  string            `json:"reference,omitempty" bun:"reference,type:varchar,unique,nullzero"`
-	InsertedAt time.Time         `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
 }
 
 func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -39,7 +37,9 @@ type Transaction struct {
 	bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
 	TransactionData
-	ID         *int       `json:"id" bun:"id,type:numeric"`
+	ID         *uint64    `json:"id" bun:"id,type:numeric"`
+	InsertedAt time.Time         `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
+	UpdatedAt  time.Time         `json:"updatedAt,omitempty" bun:"updated_at,type:timestamp without time zone,nullzero"`
 	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.
@@ -63,7 +63,7 @@ func (tx Transaction) Reverse() Transaction {
 	return ret
 }
 
-func (tx Transaction) WithID(id int) Transaction {
+func (tx Transaction) WithID(id uint64) Transaction {
 	tx.ID = &id
 	return tx
 }
@@ -182,38 +182,18 @@ func (tx Transaction) VolumeUpdates() []AccountsVolumes {
 
 func (tx Transaction) MarshalJSON() ([]byte, error) {
 	type Aux Transaction
-	type Ret struct {
+
+	return json.Marshal(struct {
 		Aux
 
 		Reverted                  bool              `json:"reverted"`
 		PreCommitVolumes          PostCommitVolumes `json:"preCommitVolumes,omitempty"`
 		PreCommitEffectiveVolumes PostCommitVolumes `json:"preCommitEffectiveVolumes,omitempty"`
-	}
-
-	var (
-		preCommitVolumes          PostCommitVolumes
-		preCommitEffectiveVolumes PostCommitVolumes
-	)
-	if len(tx.PostCommitVolumes) > 0 {
-		preCommitVolumes = tx.PostCommitVolumes.Copy()
-		for _, posting := range tx.Postings {
-			preCommitVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-			preCommitVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-		}
-	}
-	if len(tx.PostCommitEffectiveVolumes) > 0 {
-		preCommitEffectiveVolumes = tx.PostCommitEffectiveVolumes.Copy()
-		for _, posting := range tx.Postings {
-			preCommitEffectiveVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-			preCommitEffectiveVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
-		}
-	}
-
-	return json.Marshal(&Ret{
+	}{
 		Aux:                       Aux(tx),
 		Reverted:                  tx.RevertedAt != nil && !tx.RevertedAt.IsZero(),
-		PreCommitVolumes:          preCommitVolumes,
-		PreCommitEffectiveVolumes: preCommitEffectiveVolumes,
+		PreCommitVolumes:          tx.PostCommitVolumes.SubtractPostings(tx.Postings),
+		PreCommitEffectiveVolumes: tx.PostCommitEffectiveVolumes.SubtractPostings(tx.Postings),
 	})
 }
 
@@ -226,8 +206,20 @@ func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction {
 	return tx
 }
 
+func (tx Transaction) WithPostCommitVolumes(volumes PostCommitVolumes) Transaction {
+	tx.PostCommitVolumes = volumes
+
+	return tx
+}
+
 func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) Transaction {
 	tx.PostCommitEffectiveVolumes = volumes
+
+	return tx
+}
+
+func (tx Transaction) WithUpdatedAt(at time.Time) Transaction {
+	tx.UpdatedAt = at
 
 	return tx
 }

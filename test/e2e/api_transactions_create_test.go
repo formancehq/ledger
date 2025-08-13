@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
@@ -16,7 +15,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	. "github.com/formancehq/go-libs/v3/testing/api"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -41,7 +39,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 			var (
 				db      = UseTemplatedDatabase()
 				ctx     = logging.TestingContext()
-				natsURL = ginkgo.DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
+				natsURL = DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)
 			)
 			instruments := []testservice.Instrumentation{
 				testservice.NatsInstrumentation(natsURL),
@@ -52,7 +50,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 				instruments = append(instruments, ExperimentalNumscriptRewriteInstrumentation())
 			}
 			testServer := DeferTestServer(
-				ginkgo.DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+				DeferMap(db, (*pgtesting.Database).ConnectionOptions),
 				testservice.WithInstruments(instruments...),
 				testservice.WithLogger(GinkgoT()),
 			)
@@ -120,11 +118,15 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Ledger:  "default",
 						})
 						Expect(err).ToNot(HaveOccurred())
+
 						Expect(account.V2AccountResponse.Data).Should(Equal(components.V2Account{
 							Address: "alice",
 							Metadata: map[string]string{
 								"clientType": "silver",
 							},
+							FirstUsage:    account.V2AccountResponse.Data.FirstUsage,
+							InsertionDate: account.V2AccountResponse.Data.InsertionDate,
+							UpdatedAt:     account.V2AccountResponse.Data.UpdatedAt,
 						}))
 
 						account, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
@@ -137,6 +139,9 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Metadata: map[string]string{
 								"status": "pending",
 							},
+							FirstUsage:    account.V2AccountResponse.Data.FirstUsage,
+							InsertionDate: account.V2AccountResponse.Data.InsertionDate,
+							UpdatedAt:     account.V2AccountResponse.Data.UpdatedAt,
 						}))
 					})
 				})
@@ -220,6 +225,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 						Expect(response.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
 							Timestamp:  rsp.V2CreateTransactionResponse.Data.Timestamp,
 							InsertedAt: rsp.V2CreateTransactionResponse.Data.InsertedAt,
+							UpdatedAt:  rsp.V2CreateTransactionResponse.Data.UpdatedAt,
 							Postings:   rsp.V2CreateTransactionResponse.Data.Postings,
 							Reference:  rsp.V2CreateTransactionResponse.Data.Reference,
 							Metadata:   rsp.V2CreateTransactionResponse.Data.Metadata,
@@ -278,9 +284,12 @@ var _ = Context("Ledger transactions create API tests", func() {
 									Balance: big.NewInt(100),
 								},
 							},
+							InsertionDate: response.V2GetTransactionResponse.Data.InsertedAt,
+							UpdatedAt:     response.V2GetTransactionResponse.Data.InsertedAt,
+							FirstUsage:    &response.V2GetTransactionResponse.Data.Timestamp,
 						}))
 						By("should trigger a new event", func() {
-							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(bus.CommittedTransactions{
+							Eventually(events).Should(Receive(Event(ledgerevents.EventTypeCommittedTransactions, WithPayload(ledgerevents.CommittedTransactions{
 								Ledger:          "default",
 								Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&rsp.V2CreateTransactionResponse.Data)},
 								AccountMetadata: ledger.AccountMetadata{},

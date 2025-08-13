@@ -123,6 +123,18 @@ var _ = Context("Ledger logs list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 		})
+		When("paginating on date", func() {
+			It("should be ok", func(specContext SpecContext) {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+					ctx,
+					operations.V2ListLogsRequest{
+						Ledger: "default",
+						Sort:   pointer.For("date:asc"),
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
 		It("should be listed on api with ListLogs", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
 				ctx,
@@ -257,7 +269,7 @@ var _ = Context("Ledger logs list API tests", func() {
 		AfterEach(func() {
 			expectedLogs = nil
 		})
-		When(fmt.Sprintf("listing accounts using page size of %d", pageSize), func() {
+		When(fmt.Sprintf("listing logs using page size of %d", pageSize), func() {
 			var (
 				rsp *operations.V2ListLogsResponse
 				err error

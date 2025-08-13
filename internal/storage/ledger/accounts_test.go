@@ -49,7 +49,7 @@ func TestAccountsList(t *testing.T) {
 		"orders:2": {
 			"foo": "bar",
 		},
-	}))
+	}, time.Time{}))
 
 	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
@@ -77,14 +77,14 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list all", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{})
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 7)
 	})
 
 	t.Run("list using metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("metadata[category]", "1"),
 			},
@@ -95,7 +95,7 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list before date", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				PIT: &now,
 			},
@@ -107,7 +107,7 @@ func TestAccountsList(t *testing.T) {
 	t.Run("list with volumes", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				Expand:  []string{"volumes"},
@@ -123,7 +123,7 @@ func TestAccountsList(t *testing.T) {
 	t.Run("list with volumes using PIT", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				PIT:     &now,
@@ -140,7 +140,7 @@ func TestAccountsList(t *testing.T) {
 	t.Run("list with effective volumes", func(t *testing.T) {
 		t.Parallel()
 
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				Expand:  []string{"effectiveVolumes"},
@@ -155,7 +155,7 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list with effective volumes using PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:1"),
 				PIT:     &now,
@@ -167,11 +167,24 @@ func TestAccountsList(t *testing.T) {
 		require.Equal(t, ledger.VolumesByAssets{
 			"USD": ledger.NewVolumesInt64(200, 0),
 		}, accounts.Data[0].EffectiveVolumes)
+
+		accounts, err = store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Match("address", "account:1"),
+				PIT:     pointer.For(now.Add(3 * time.Minute)),
+				Expand:  []string{"effectiveVolumes"},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 1)
+		require.Equal(t, ledger.VolumesByAssets{
+			"USD": ledger.NewVolumesInt64(200, 50),
+		}, accounts.Data[0].EffectiveVolumes)
 	})
 
 	t.Run("list using filter on address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("address", "account:"),
 			},
@@ -179,9 +192,19 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
 	})
+	t.Run("list using filter on address and unbounded length", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Match("address", "account:..."),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 3)
+	})
 	t.Run("list using filter on multiple address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Or(
 					query.Match("address", "account:1"),
@@ -194,7 +217,7 @@ func TestAccountsList(t *testing.T) {
 	})
 	t.Run("list using filter on balances", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance[USD]", 0),
 			},
@@ -202,7 +225,7 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
 
-		accounts, err = store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err = store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Gt("balance[USD]", 0),
 			},
@@ -214,7 +237,7 @@ func TestAccountsList(t *testing.T) {
 	})
 	t.Run("list using filter on balances[USD] and PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance[USD]", 0),
 				PIT:     &now,
@@ -225,7 +248,7 @@ func TestAccountsList(t *testing.T) {
 	})
 	t.Run("list using filter on balances and PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("balance", 0),
 				PIT:     &now,
@@ -237,7 +260,7 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list using filter on exists metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Exists("metadata", "foo"),
 			},
@@ -245,7 +268,7 @@ func TestAccountsList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
 
-		accounts, err = store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		accounts, err = store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Exists("metadata", "category"),
 			},
@@ -256,7 +279,7 @@ func TestAccountsList(t *testing.T) {
 
 	t.Run("list using filter invalid field", func(t *testing.T) {
 		t.Parallel()
-		_, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		_, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lt("invalid", 0),
 			},
@@ -268,7 +291,7 @@ func TestAccountsList(t *testing.T) {
 	t.Run("filter on first_usage", func(t *testing.T) {
 		t.Parallel()
 
-		ret, err := store.Accounts().Paginate(ctx, common.OffsetPaginatedQuery[any]{
+		ret, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Lte("first_usage", now),
 			},
@@ -289,7 +312,7 @@ func TestAccountsUpdateMetadata(t *testing.T) {
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
 		"bank": m,
-	}))
+	}, time.Time{}))
 
 	account, err := store.Accounts().GetOne(context.Background(), common.ResourceQuery[any]{
 		Builder: query.Match("address", "bank"),
@@ -320,7 +343,7 @@ func TestAccountsGet(t *testing.T) {
 		"multi": {
 			"category": "gold",
 		},
-	}))
+	}, time.Time{}))
 
 	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),

@@ -1,12 +1,15 @@
 package v2
 
 import (
+	"encoding/json"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"net/http"
 	"strconv"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/go-chi/chi/v5"
@@ -15,10 +18,22 @@ import (
 func revertTransaction(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	txId, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	txId, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return
+	}
+
+	type request struct {
+		Metadata metadata.Metadata `json:"metadata,omitempty"`
+	}
+
+	x := request{}
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&x); err != nil {
+			api.BadRequest(w, common.ErrValidation, errors.New("expected JSON body with metadata"))
+			return
+		}
 	}
 
 	_, ret, err := l.RevertTransaction(
@@ -26,7 +41,8 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "force"),
 			AtEffectiveDate: api.QueryParamBool(r, "atEffectiveDate"),
-			TransactionID:   int(txId),
+			TransactionID:   txId,
+			Metadata:        x.Metadata,
 		}),
 	)
 	if err != nil {
@@ -43,5 +59,5 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Created(w, ret.RevertTransaction)
+	api.Created(w, renderTransaction(r, ret.RevertTransaction))
 }

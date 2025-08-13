@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 )
 
+var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
+
 type Bulker struct {
 	ctrl        ledgercontroller.Controller
 	parallelism int
@@ -93,7 +95,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	defer span.End()
 
 	if err := bulkOptions.Validate(); err != nil {
-		return fmt.Errorf("validating bulk options: %s", err)
+		return fmt.Errorf("validating bulk options: %w", err)
 	}
 
 	ctrl := b.ctrl
@@ -123,11 +125,11 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, int, error) {
+func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, uint64, error) {
 
 	switch data.Action {
 	case ActionCreateTransaction:
-		rs, err := data.Data.(TransactionRequest).ToCore(false)
+		rs, err := data.Data.(TransactionRequest).ToCore()
 		if err != nil {
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
@@ -165,7 +167,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				},
 			})
 		case ledger.MetaTargetTypeTransaction:
-			transactionID := 0
+			transactionID := uint64(0)
 			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 				return nil, 0, err
 			}
@@ -225,7 +227,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				},
 			})
 		case ledger.MetaTargetTypeTransaction:
-			transactionID := 0
+			transactionID := uint64(0)
 			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 				return nil, 0, err
 			}
@@ -287,7 +289,7 @@ type BulkingOptions struct {
 
 func (opts BulkingOptions) Validate() error {
 	if opts.Atomic && opts.Parallel {
-		return errors.New("atomic and parallel options are mutually exclusive")
+		return ErrAtomicParallelConflict
 	}
 
 	return nil

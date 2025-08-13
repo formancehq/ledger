@@ -136,6 +136,7 @@ Accept: application/json
 |---|---|---|---|---|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -146,6 +147,9 @@ Accept: application/json
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -514,7 +518,8 @@ Accept: application/json
         "property2": {
           "admin": "true"
         }
-      }
+      },
+      "force": true
     }
   }
 ]
@@ -542,6 +547,7 @@ Accept: application/json
       "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -736,6 +742,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -746,6 +753,9 @@ List accounts from a ledger, sorted by address in descending order.
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -764,6 +774,9 @@ No other parameters can be set when this parameter is set.
         "metadata": {
           "admin": "true"
         },
+        "insertionDate": "2023-01-01T00:00:00Z",
+        "updatedAt": "2023-01-01T00:00:00Z",
+        "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
             "input": 100,
@@ -848,6 +861,9 @@ Accept: application/json
     "metadata": {
       "admin": "true"
     },
+    "insertionDate": "2023-01-01T00:00:00Z",
+    "updatedAt": "2023-01-01T00:00:00Z",
+    "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
         "input": 100,
@@ -966,6 +982,7 @@ Authorization ( Scopes: ledger:write )
 DELETE http://localhost:8080/v2/{ledger}/transactions/{id}/metadata/{key} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
+Idempotency-Key: string
 
 ```
 
@@ -980,6 +997,7 @@ Delete metadata by key
 |ledger|path|string|true|Name of the ledger.|
 |id|path|integer(bigint)|true|Transaction ID.|
 |key|path|string|true|The key to remove.|
+|Idempotency-Key|header|string|false|Use an idempotency key|
 
 > Example responses
 
@@ -1148,8 +1166,9 @@ List transactions from a ledger, sorted by id in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|order|query|string|false|none|
+|order|query|string|false|Deprecated: Use sort param|
 |reverse|query|boolean|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1160,6 +1179,9 @@ List transactions from a ledger, sorted by id in descending order.
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
 
@@ -1181,6 +1203,7 @@ No other parameters can be set when this parameter is set.
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -1327,7 +1350,8 @@ Idempotency-Key: string
     "property2": {
       "admin": "true"
     }
-  }
+  },
+  "force": true
 }
 ```
 
@@ -1355,6 +1379,7 @@ Idempotency-Key: string
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -1483,6 +1508,7 @@ Accept: application/json
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -1649,11 +1675,23 @@ Authorization ( Scopes: ledger:write )
 ```http
 POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert HTTP/1.1
 Host: localhost:8080
+Content-Type: application/json
 Accept: application/json
 
 ```
 
 `POST /v2/{ledger}/transactions/{id}/revert`
+
+> Body parameter
+
+```json
+{
+  "metadata": {
+    "property1": "string",
+    "property2": "string"
+  }
+}
+```
 
 <h3 id="revert-a-ledger-transaction-by-its-id-parameters">Parameters</h3>
 
@@ -1664,6 +1702,7 @@ Accept: application/json
 |force|query|boolean|false|Force revert|
 |atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
 
 > Example responses
 
@@ -1673,6 +1712,7 @@ Accept: application/json
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -1858,6 +1898,7 @@ Accept: application/json
 |startTime|query|string(date-time)|false|none|
 |insertionDate|query|boolean|false|Use insertion date instead of effective date|
 |groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1868,6 +1909,9 @@ Accept: application/json
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -1937,6 +1981,7 @@ List the logs from a ledger, sorted by ID in descending order.
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |pit|query|string(date-time)|false|none|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1947,6 +1992,9 @@ List the logs from a ledger, sorted by ID in descending order.
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**sort**: Sort results using a field name and order (ascending or descending). 
+Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
 
@@ -2075,7 +2123,828 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
+## List exporters
+
+<a id="opIdv2ListExporters"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_/exporters HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_/exporters`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "cursor": {
+      "pageSize": 15,
+      "hasMore": false,
+      "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+      "next": "",
+      "data": [
+        {
+          "driver": "string",
+          "config": {},
+          "id": "string",
+          "createdAt": "2019-08-24T14:15:22Z"
+        }
+      ]
+    },
+    "data": [
+      {
+        "driver": "string",
+        "config": {},
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z"
+      }
+    ]
+  }
+}
+```
+
+<h3 id="list-exporters-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Exporters list|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-exporters-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» cursor|any|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2ExportersCursorResponse](#schemav2exporterscursorresponse)|false|none|none|
+|»»» cursor|object|true|none|none|
+|»»»» pageSize|integer(int64)|true|none|none|
+|»»»» hasMore|boolean|true|none|none|
+|»»»» previous|string|false|none|none|
+|»»»» next|string|false|none|none|
+|»»»» data|[allOf]|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
+|»»»»»» driver|string|true|none|none|
+|»»»»»» config|object|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|object|false|none|none|
+|»»»»»» id|string|true|none|none|
+|»»»»»» createdAt|string(date-time)|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» data|[allOf]|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create exporter
+
+<a id="opIdv2CreateExporter"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/_/exporters HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/_/exporters`
+
+> Body parameter
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+```
+
+<h3 id="create-exporter-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2ExporterConfiguration](#schemav2exporterconfiguration)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "data": {
+    "driver": "string",
+    "config": {},
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z"
+  }
+}
+```
+
+<h3 id="create-exporter-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created exporter|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="create-exporter-responseschema">Response Schema</h3>
+
+Status Code **201**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|[V2Exporter](#schemav2exporter)|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
+|»»» driver|string|true|none|none|
+|»»» config|object|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get exporter state
+
+<a id="opIdv2GetExporterState"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/_/exporters/{exporterID}`
+
+<h3 id="get-exporter-state-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|exporterID|path|string|true|The exporter id|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": {
+    "driver": "string",
+    "config": {},
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z"
+  }
+}
+```
+
+<h3 id="get-exporter-state-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Exporter information|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="get-exporter-state-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|[V2Exporter](#schemav2exporter)|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
+|»»» driver|string|true|none|none|
+|»»» config|object|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete exporter
+
+<a id="opIdv2DeleteExporter"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/_/exporters/{exporterID}`
+
+<h3 id="delete-exporter-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|exporterID|path|string|true|The exporter id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="delete-exporter-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Exporter deleted|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List pipelines
+
+<a id="opIdv2ListPipelines"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/pipelines HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/pipelines`
+
+<h3 id="list-pipelines-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "cursor": {
+      "pageSize": 15,
+      "hasMore": false,
+      "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+      "next": "",
+      "data": [
+        {
+          "id": "string",
+          "createdAt": "2019-08-24T14:15:22Z",
+          "lastLogID": 0,
+          "enabled": true
+        }
+      ]
+    },
+    "data": [
+      {
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z",
+        "lastLogID": 0,
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+<h3 id="list-pipelines-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Pipelines list|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="list-pipelines-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» cursor|any|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[V2PipelinesCursorResponse](#schemav2pipelinescursorresponse)|false|none|none|
+|»»» cursor|object|true|none|none|
+|»»»» pageSize|integer(int64)|true|none|none|
+|»»»» hasMore|boolean|true|none|none|
+|»»»» previous|string|false|none|none|
+|»»»» next|string|false|none|none|
+|»»»» data|[allOf]|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|object|false|none|none|
+|»»»»»» ledger|string|true|none|none|
+|»»»»»» exporterID|string|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|object|false|none|none|
+|»»»»»» id|string|true|none|none|
+|»»»»»» createdAt|string(date-time)|true|none|none|
+|»»»»»» lastLogID|integer|false|none|none|
+|»»»»»» enabled|boolean|false|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» data|[allOf]|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create pipeline
+
+<a id="opIdv2CreatePipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines`
+
+> Body parameter
+
+```json
+{
+  "exporterID": "string"
+}
+```
+
+<h3 id="create-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2CreatePipelineRequest](#schemav2createpipelinerequest)|false|none|
+|ledger|path|string|true|Name of the ledger.|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "data": {
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z",
+    "lastLogID": 0,
+    "enabled": true
+  }
+}
+```
+
+<h3 id="create-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created ipeline|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="create-pipeline-responseschema">Response Schema</h3>
+
+Status Code **201**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|any|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» ledger|string|true|none|none|
+|»»» exporterID|string|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+|»»» lastLogID|integer|false|none|none|
+|»»» enabled|boolean|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get pipeline state
+
+<a id="opIdv2GetPipelineState"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/pipelines/{pipelineID}`
+
+<h3 id="get-pipeline-state-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": {
+    "id": "string",
+    "createdAt": "2019-08-24T14:15:22Z",
+    "lastLogID": 0,
+    "enabled": true
+  }
+}
+```
+
+<h3 id="get-pipeline-state-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Pipeline information|Inline|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<h3 id="get-pipeline-state-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» data|any|true|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» ledger|string|true|none|none|
+|»»» exporterID|string|true|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|true|none|none|
+|»»» createdAt|string(date-time)|true|none|none|
+|»»» lastLogID|integer|false|none|none|
+|»»» enabled|boolean|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete pipeline
+
+<a id="opIdv2DeletePipeline"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/{ledger}/pipelines/{pipelineID} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/{ledger}/pipelines/{pipelineID}`
+
+<h3 id="delete-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="delete-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Pipeline deleted|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Reset pipeline
+
+<a id="opIdv2ResetPipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/reset HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines/{pipelineID}/reset`
+
+<h3 id="reset-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="reset-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|202|[Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)|Pipeline reset|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Start pipeline
+
+<a id="opIdv2StartPipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/start HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines/{pipelineID}/start`
+
+<h3 id="start-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="start-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|202|[Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)|Pipeline started|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Stop pipeline
+
+<a id="opIdv2StopPipeline"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/pipelines/{pipelineID}/stop HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/pipelines/{pipelineID}/stop`
+
+<h3 id="stop-pipeline-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|pipelineID|path|string|true|The pipeline id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="stop-pipeline-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|202|[Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)|Pipeline stopped|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 # Schemas
+
+<h2 id="tocS_V2ExportersCursorResponse">V2ExportersCursorResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2exporterscursorresponse"></a>
+<a id="schema_V2ExportersCursorResponse"></a>
+<a id="tocSv2exporterscursorresponse"></a>
+<a id="tocsv2exporterscursorresponse"></a>
+
+```json
+{
+  "cursor": {
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "",
+    "data": [
+      {
+        "driver": "string",
+        "config": {},
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z"
+      }
+    ]
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Exporter](#schemav2exporter)]|true|none|none|
+
+<h2 id="tocS_V2PipelinesCursorResponse">V2PipelinesCursorResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2pipelinescursorresponse"></a>
+<a id="schema_V2PipelinesCursorResponse"></a>
+<a id="tocSv2pipelinescursorresponse"></a>
+<a id="tocsv2pipelinescursorresponse"></a>
+
+```json
+{
+  "cursor": {
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "",
+    "data": [
+      {
+        "id": "string",
+        "createdAt": "2019-08-24T14:15:22Z",
+        "lastLogID": 0,
+        "enabled": true
+      }
+    ]
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|object|true|none|none|
+|» pageSize|integer(int64)|true|none|none|
+|» hasMore|boolean|true|none|none|
+|» previous|string|false|none|none|
+|» next|string|false|none|none|
+|» data|[[V2Pipeline](#schemav2pipeline)]|true|none|none|
 
 <h2 id="tocS_V2AccountsCursorResponse">V2AccountsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -2097,6 +2966,9 @@ Authorization ( Scopes: ledger:write )
         "metadata": {
           "admin": "true"
         },
+        "insertionDate": "2023-01-01T00:00:00Z",
+        "updatedAt": "2023-01-01T00:00:00Z",
+        "firstUsage": "2023-01-01T00:00:00Z",
         "volumes": {
           "USD": {
             "input": 100,
@@ -2156,6 +3028,7 @@ Authorization ( Scopes: ledger:write )
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -2307,6 +3180,9 @@ Authorization ( Scopes: ledger:write )
     "metadata": {
       "admin": "true"
     },
+    "insertionDate": "2023-01-01T00:00:00Z",
+    "updatedAt": "2023-01-01T00:00:00Z",
+    "firstUsage": "2023-01-01T00:00:00Z",
     "volumes": {
       "USD": {
         "input": 100,
@@ -2487,6 +3363,9 @@ Authorization ( Scopes: ledger:write )
   "metadata": {
     "admin": "true"
   },
+  "insertionDate": "2023-01-01T00:00:00Z",
+  "updatedAt": "2023-01-01T00:00:00Z",
+  "firstUsage": "2023-01-01T00:00:00Z",
   "volumes": {
     "USD": {
       "input": 100,
@@ -2522,6 +3401,9 @@ Authorization ( Scopes: ledger:write )
 |address|string|true|none|none|
 |metadata|object|true|none|none|
 |» **additionalProperties**|string|false|none|none|
+|insertionDate|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
+|firstUsage|string(date-time)|false|none|none|
 |volumes|[V2Volumes](#schemav2volumes)|false|none|none|
 |effectiveVolumes|[V2Volumes](#schemav2volumes)|false|none|none|
 
@@ -2582,6 +3464,7 @@ Authorization ( Scopes: ledger:write )
 ```json
 {
   "insertedAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z",
   "timestamp": "2019-08-24T14:15:22Z",
   "postings": [
     {
@@ -2671,6 +3554,7 @@ Authorization ( Scopes: ledger:write )
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |insertedAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 |timestamp|string(date-time)|true|none|none|
 |postings|[[V2Posting](#schemav2posting)]|true|none|none|
 |reference|string|false|none|none|
@@ -2719,7 +3603,8 @@ Authorization ( Scopes: ledger:write )
     "property2": {
       "admin": "true"
     }
-  }
+  },
+  "force": true
 }
 
 ```
@@ -2739,6 +3624,7 @@ Authorization ( Scopes: ledger:write )
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 |accountMetadata|object|false|none|none|
 |» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
+|force|boolean|false|none|none|
 
 #### Enumerated Values
 
@@ -2817,6 +3703,7 @@ Authorization ( Scopes: ledger:write )
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -2919,6 +3806,7 @@ Authorization ( Scopes: ledger:write )
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -3019,6 +3907,7 @@ Authorization ( Scopes: ledger:write )
 {
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -3441,7 +4330,8 @@ Authorization ( Scopes: ledger:write )
         "property2": {
           "admin": "true"
         }
-      }
+      },
+      "force": true
     }
   }
 ]
@@ -3515,7 +4405,8 @@ Authorization ( Scopes: ledger:write )
       "property2": {
         "admin": "true"
       }
-    }
+    },
+    "force": true
   }
 }
 
@@ -3586,7 +4477,8 @@ xor
       "property2": {
         "admin": "true"
       }
-    }
+    },
+    "force": true
   }
 }
 
@@ -3791,6 +4683,7 @@ and
       "logID": 0,
       "data": {
         "insertedAt": "2019-08-24T14:15:22Z",
+        "updatedAt": "2019-08-24T14:15:22Z",
         "timestamp": "2019-08-24T14:15:22Z",
         "postings": [
           {
@@ -3901,6 +4794,7 @@ and
   "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -4053,6 +4947,7 @@ xor
   "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -4185,6 +5080,7 @@ and
   "logID": 0,
   "data": {
     "insertedAt": "2019-08-24T14:15:22Z",
+    "updatedAt": "2019-08-24T14:15:22Z",
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
       {
@@ -4519,4 +5415,179 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |file|string(binary)|true|none|none|
+
+<h2 id="tocS_V2RevertTransactionRequest">V2RevertTransactionRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2reverttransactionrequest"></a>
+<a id="schema_V2RevertTransactionRequest"></a>
+<a id="tocSv2reverttransactionrequest"></a>
+<a id="tocsv2reverttransactionrequest"></a>
+
+```json
+{
+  "metadata": {
+    "property1": "string",
+    "property2": "string"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|metadata|object|false|none|none|
+|» **additionalProperties**|string|false|none|none|
+
+<h2 id="tocS_V2CreatePipelineRequest">V2CreatePipelineRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2createpipelinerequest"></a>
+<a id="schema_V2CreatePipelineRequest"></a>
+<a id="tocSv2createpipelinerequest"></a>
+<a id="tocsv2createpipelinerequest"></a>
+
+```json
+{
+  "exporterID": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|exporterID|string|true|none|none|
+
+<h2 id="tocS_V2CreateExporterRequest">V2CreateExporterRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2createexporterrequest"></a>
+<a id="schema_V2CreateExporterRequest"></a>
+<a id="tocSv2createexporterrequest"></a>
+<a id="tocsv2createexporterrequest"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+
+```
+
+### Properties
+
+*None*
+
+<h2 id="tocS_V2PipelineConfiguration">V2PipelineConfiguration</h2>
+<!-- backwards compatibility -->
+<a id="schemav2pipelineconfiguration"></a>
+<a id="schema_V2PipelineConfiguration"></a>
+<a id="tocSv2pipelineconfiguration"></a>
+<a id="tocsv2pipelineconfiguration"></a>
+
+```json
+{
+  "ledger": "string",
+  "exporterID": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|ledger|string|true|none|none|
+|exporterID|string|true|none|none|
+
+<h2 id="tocS_V2ExporterConfiguration">V2ExporterConfiguration</h2>
+<!-- backwards compatibility -->
+<a id="schemav2exporterconfiguration"></a>
+<a id="schema_V2ExporterConfiguration"></a>
+<a id="tocSv2exporterconfiguration"></a>
+<a id="tocsv2exporterconfiguration"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|driver|string|true|none|none|
+|config|object|true|none|none|
+
+<h2 id="tocS_V2Exporter">V2Exporter</h2>
+<!-- backwards compatibility -->
+<a id="schemav2exporter"></a>
+<a id="schema_V2Exporter"></a>
+<a id="tocSv2exporter"></a>
+<a id="tocsv2exporter"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {},
+  "id": "string",
+  "createdAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|true|none|none|
+|» createdAt|string(date-time)|true|none|none|
+
+<h2 id="tocS_V2Pipeline">V2Pipeline</h2>
+<!-- backwards compatibility -->
+<a id="schemav2pipeline"></a>
+<a id="schema_V2Pipeline"></a>
+<a id="tocSv2pipeline"></a>
+<a id="tocsv2pipeline"></a>
+
+```json
+{
+  "id": "string",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "lastLogID": 0,
+  "enabled": true
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2PipelineConfiguration](#schemav2pipelineconfiguration)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|true|none|none|
+|» createdAt|string(date-time)|true|none|none|
+|» lastLogID|integer|false|none|none|
+|» enabled|boolean|false|none|none|
 

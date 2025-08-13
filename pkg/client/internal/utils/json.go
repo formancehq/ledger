@@ -186,8 +186,8 @@ func UnmarshalJSON(b []byte, v interface{}, tag reflect.StructTag, topLevel bool
 
 			value, ok := unmarhsaled[fieldName]
 			if !ok {
-				defaultTag := field.Tag.Get("default")
-				if defaultTag != "" {
+				defaultTag, defaultOk := field.Tag.Lookup("default")
+				if defaultOk {
 					value = handleDefaultConstValue(defaultTag, fieldVal.Interface(), field.Tag)
 					ok = true
 				}
@@ -257,8 +257,8 @@ func marshalValue(v interface{}, tag reflect.StructTag) (json.RawMessage, error)
 	}
 
 	if isNil(reflect.TypeOf(v), reflect.ValueOf(v)) {
-		defaultTag := tag.Get("default")
-		if defaultTag != "" {
+		defaultTag, ok := tag.Lookup("default")
+		if ok {
 			return handleDefaultConstValue(defaultTag, v, tag), nil
 		}
 

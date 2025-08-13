@@ -7,14 +7,13 @@ pre-commit: tidy generate lint export-docs-events openapi generate-client
 pc: pre-commit
 
 lint:
-    golangci-lint run --fix --build-tags it --timeout 5m
+    golangci-lint run --fix --build-tags it,local --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \
         golangci-lint run --fix --build-tags it --timeout 5m; \
         popd; \
     done
     cd {{justfile_directory()}}/deployments/pulumi && golangci-lint run --fix --build-tags it --timeout 5m
-    cd {{justfile_directory()}}/test/rolling-upgrades && golangci-lint run --fix --build-tags it --timeout 5m
 
 tidy:
     for d in $(ls tools); do \
@@ -24,8 +23,6 @@ tidy:
     done
     go mod tidy
     cd {{justfile_directory()}}/deployments/pulumi && go mod tidy
-    cd {{justfile_directory()}}/test/performance && go mod tidy
-    cd {{justfile_directory()}}/test/rolling-upgrades && go mod tidy
 
 generate:
     rm $(find ./internal -name '*_generated_test.go') || true
@@ -41,7 +38,7 @@ tests:
         -coverprofile coverage.txt \
         -tags it \
         ./...
-    cat coverage.txt | grep -v debug.go | grep -v "/machine/" > coverage2.txt
+    cat coverage.txt | grep -v debug.go | grep -v "/machine/" | grep -v "pb.go" > coverage2.txt
     mv coverage2.txt coverage.txt
 
 openapi:
@@ -59,3 +56,8 @@ release-ci:
 
 release:
     @goreleaser release --clean
+
+generate-grpc-replication:
+    protoc --go_out=. --go_opt=paths=source_relative \
+        --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+        ./internal/replication/grpc/replication_service.proto

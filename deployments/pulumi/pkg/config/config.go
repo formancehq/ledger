@@ -8,6 +8,7 @@ import (
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/generator"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/monitoring"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
@@ -18,6 +19,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 	"gopkg.in/yaml.v3"
+	"reflect"
 	"time"
 )
 
@@ -231,7 +233,7 @@ func (s StorageService) toInput() storage.Service {
 }
 
 type Storage struct {
-	StorageSource
+	StorageSource `yaml:",inline"`
 
 	// Connectivity is the connectivity configuration for the database
 	Connectivity ConnectivityDatabase `json:"connectivity" yaml:"connectivity"`
@@ -323,6 +325,9 @@ type API struct {
 
 	// ExperimentalNumscriptInterpreter is whether to enable the experimental numscript interpreter
 	ExperimentalNumscriptInterpreter bool `json:"experimental-numscript-interpreter" yaml:"experimental-numscript-interpreter"`
+
+	// ExperimentalExporters is whether to enable experimental exporter
+	ExperimentalExporters bool `json:"experimental-exporters" yaml:"experimental-exporters"`
 }
 
 func (d API) toInput() api.Args {
@@ -336,6 +341,64 @@ func (d API) toInput() api.Args {
 		TerminationGracePeriodSeconds:    pulumix.Val(d.TerminationGracePeriodSeconds),
 		ExperimentalFeatures:             pulumix.Val(d.ExperimentalFeatures),
 		ExperimentalNumscriptInterpreter: pulumix.Val(d.ExperimentalNumscriptInterpreter),
+		ExperimentalExporters:            pulumix.Val(d.ExperimentalExporters),
+	}
+}
+
+type Exporter struct {
+	// Driver is the driver for the exporter
+	Driver string `json:"driver" yaml:"driver"`
+
+	// Config is the configuration for the exporter
+	Config any `json:"config" yaml:"config"`
+}
+
+func (c Exporter) toInput() exporters.ExporterArgs {
+	return exporters.ExporterArgs{
+		Driver: c.Driver,
+		Config: c.Config,
+	}
+}
+
+type Exporters map[string]Exporter
+
+func (c *Exporters) UnmarshalJSON(data []byte) error {
+	asMap := make(map[string]json.RawMessage, 0)
+	if err := json.Unmarshal(data, &asMap); err != nil {
+		return fmt.Errorf("error unmarshalling exporters into an array: %w", err)
+	}
+
+	*c = make(map[string]Exporter)
+	for id, elem := range asMap {
+		type def struct {
+			Driver string `json:"driver" yaml:"driver"`
+		}
+		d := def{}
+		if err := json.Unmarshal(elem, &d); err != nil {
+			return fmt.Errorf("error unmarshalling exporter definition %s: %w", id, err)
+		}
+
+		cfg, err := exporters.GetExporterConfig(d.Driver)
+		if err != nil {
+			return err
+		}
+
+		if err := json.Unmarshal(elem, cfg); err != nil {
+			return fmt.Errorf("error unmarshalling exporter config %s: %w", id, err)
+		}
+
+		(*c)[id] = Exporter{
+			Driver: d.Driver,
+			Config: reflect.ValueOf(cfg).Elem().Interface(),
+		}
+	}
+
+	return nil
+}
+
+func (c *Exporters) toInput() exporters.Args {
+	return exporters.Args{
+		Exporters: ConvertMap(*c, Exporter.toInput),
 	}
 }
 
@@ -533,13 +596,17 @@ type LedgerConfig struct {
 
 	// Features is the features for the ledger
 	Features map[string]string `json:"features" yaml:"features"`
+
+	// Exporters are the exporter to bound to this ledger
+	Exporters []string `json:"exporters" yaml:"exporters"`
 }
 
 func (c LedgerConfig) toInput() provision.LedgerConfigArgs {
 	return provision.LedgerConfigArgs{
-		Bucket:   c.Bucket,
-		Metadata: c.Metadata,
-		Features: c.Features,
+		Bucket:    c.Bucket,
+		Metadata:  c.Metadata,
+		Features:  c.Features,
+		Exporters: c.Exporters,
 	}
 }
 
@@ -620,6 +687,9 @@ type Config struct {
 	// Worker is the worker configuration for the ledger
 	Worker *Worker `json:"worker,omitempty" yaml:"worker,omitempty"`
 
+	// Exporters is the exporters configuration for the ledger
+	Exporters Exporters `json:"exporters" yaml:"exporters"`
+
 	// Ingress is the ingress configuration for the ledger
 	Ingress *Ingress `json:"ingress,omitempty" yaml:"ingress,omitempty"`
 
@@ -638,7 +708,7 @@ type Config struct {
 
 func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 	return pulumi_ledger.ComponentArgs{
-		CommonArgs:    cfg.Common.toInput(),
+		CommonArgs:    cfg.toInput(),
 		Storage:       cfg.Storage.toInput(),
 		API:           cfg.API.toInput(),
 		Worker:        cfg.Worker.toInput(),
@@ -646,6 +716,7 @@ func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 		Ingress:       cfg.Ingress.toInput(),
 		InstallDevBox: pulumix.Val(cfg.InstallDevBox),
 		Provision:     cfg.Provision.toInput(),
+		Exporters:     cfg.Exporters.toInput(),
 		Generator:     cfg.Generator.toInput(),
 	}
 }
@@ -660,7 +731,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		}
 	}
 
-	timeout, err := config.TryInt(ctx, "timeout")
+	timeout, err := cfg.TryInt("timeout")
 	if err != nil {
 		if errors.Is(err, config.ErrMissingVar) {
 			timeout = 60
@@ -670,7 +741,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	}
 
 	storage := &Storage{}
-	if err := config.GetObject(ctx, "storage", storage); err != nil {
+	if err := cfg.GetObject("storage", storage); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, fmt.Errorf("error reading storage config: %w", err)
 		}
@@ -678,21 +749,28 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	}
 
 	api := &API{}
-	if err := config.GetObject(ctx, "api", api); err != nil {
+	if err := cfg.GetObject("api", api); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, fmt.Errorf("error reading api config: %w", err)
 		}
 	}
 
 	worker := &Worker{}
-	if err := config.GetObject(ctx, "worker", worker); err != nil {
+	if err := cfg.GetObject("worker", worker); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, fmt.Errorf("error reading worker config: %w", err)
 		}
 	}
 
+	exporters := Exporters{}
+	if err := config.GetObject(ctx, "exporters", &exporters); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, err
+		}
+	}
+
 	monitoring := &Monitoring{}
-	if err := config.GetObject(ctx, "monitoring", monitoring); err != nil {
+	if err := cfg.GetObject("monitoring", monitoring); err != nil {
 		if !errors.Is(err, config.ErrMissingVar) {
 			return nil, fmt.Errorf("error reading monitoring config: %w", err)
 		}
@@ -713,7 +791,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		generator = nil
 	}
 
-	namespace := config.Get(ctx, "namespace")
+	namespace := cfg.Get("namespace")
 	if namespace == "" {
 		namespace = ctx.Stack()
 	}
@@ -721,16 +799,18 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 	return &Config{
 		Timeout: timeout,
 		Common: Common{
-			Debug:      config.GetBool(ctx, "debug"),
-			Namespace:  namespace,
-			Tag:        config.Get(ctx, "version"),
-			Monitoring: monitoring,
+			Debug:           cfg.GetBool("debug"),
+			Namespace:       namespace,
+			Tag:             cfg.Get("version"),
+			Monitoring:      monitoring,
+			ImagePullPolicy: cfg.Get("image-pull-policy"),
 		},
-		InstallDevBox: config.GetBool(ctx, "install-dev-box"),
+		InstallDevBox: cfg.GetBool("install-dev-box"),
 		Storage:       storage,
 		API:           api,
 		Worker:        worker,
 		Ingress:       ingress,
+		Exporters:     exporters,
 		Provision:     provision,
 		Generator:     generator,
 	}, nil

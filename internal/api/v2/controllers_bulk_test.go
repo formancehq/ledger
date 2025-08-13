@@ -2,6 +2,7 @@ package v2
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger/internal/api/bulking"
@@ -32,13 +33,13 @@ func TestBulk(t *testing.T) {
 	now := time.Now()
 
 	type bulkTestCase struct {
-		name          string
-		queryParams   url.Values
-		body          string
-		expectations  func(mockLedger *LedgerController)
-		expectError   bool
-		expectResults []bulking.APIResult
-		headers       http.Header
+		name             string
+		queryParams      url.Values
+		body             string
+		expectations     func(mockLedger *LedgerController)
+		expectStatusCode int
+		expectResults    []bulking.APIResult
+		headers          http.Header
 	}
 
 	testCases := []bulkTestCase{
@@ -73,10 +74,10 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, &ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{
-							ID: pointer.For(0),
+							ID: pointer.For(uint64(0)),
 							TransactionData: ledger.TransactionData{
 								Postings:  postings,
 								Metadata:  metadata.Metadata{},
@@ -126,7 +127,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 			},
 			expectResults: []bulking.APIResult{{
@@ -156,7 +157,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 			},
 			expectResults: []bulking.APIResult{{
@@ -179,13 +180,13 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, &ledger.RevertedTransaction{
 						RevertedTransaction: ledger.Transaction{
-							ID: pointer.For(0),
+							ID: pointer.For(uint64(0)),
 						},
 						RevertTransaction: ledger.Transaction{
-							ID: pointer.For(0),
+							ID: pointer.For(uint64(0)),
 						},
 					}, nil)
 			},
@@ -219,7 +220,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 			},
 			expectResults: []bulking.APIResult{{
@@ -271,7 +272,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -295,7 +296,7 @@ func TestBulk(t *testing.T) {
 				ErrorDescription: "context canceled",
 				ResponseType:     "ERROR",
 			}},
-			expectError: true,
+			expectStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "error in the middle with continue on failure",
@@ -345,7 +346,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -367,7 +368,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 			},
 			expectResults: []bulking.APIResult{{
@@ -379,7 +380,7 @@ func TestBulk(t *testing.T) {
 			}, {
 				ResponseType: bulking.ActionAddMetadata,
 			}},
-			expectError: true,
+			expectStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "with atomic",
@@ -423,7 +424,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 
 				mockLedger.EXPECT().
@@ -436,7 +437,7 @@ func TestBulk(t *testing.T) {
 						},
 					}).
 					Return(&ledger.Log{
-						ID: pointer.For(0),
+						ID: pointer.For(uint64(0)),
 					}, nil)
 
 				mockLedger.EXPECT().
@@ -448,6 +449,37 @@ func TestBulk(t *testing.T) {
 			}, {
 				ResponseType: bulking.ActionAddMetadata,
 			}},
+		},
+		{
+			name: "with atomic and parallel",
+			body: `[
+				{
+					"action": "ADD_METADATA",
+					"data": {
+						"targetId": "world",
+						"targetType": "ACCOUNT",
+						"metadata": {
+							"foo": "bar"
+						}			
+					}
+				},
+				{
+					"action": "ADD_METADATA",
+					"data": {
+						"targetId": "world",
+						"targetType": "ACCOUNT",
+						"metadata": {
+							"foo2": "bar2"
+						}			
+					}
+				}
+			]`,
+			queryParams: map[string][]string{
+				"atomic":   {"true"},
+				"parallel": {"true"},
+			},
+			expectations:     func(mockLedger *LedgerController) {},
+			expectStatusCode: http.StatusPreconditionFailed,
 		},
 		{
 			name: "with custom content type",
@@ -482,9 +514,9 @@ func TestBulk(t *testing.T) {
 							}, false),
 						},
 					}).
-					Return(&ledger.Log{ID: pointer.For(0)}, &ledger.CreatedTransaction{
+					Return(&ledger.Log{ID: pointer.For(uint64(0))}, &ledger.CreatedTransaction{
 						Transaction: ledger.Transaction{
-							ID: pointer.For(0),
+							ID: pointer.For(uint64(0)),
 							TransactionData: ledger.TransactionData{
 								Postings:  postings,
 								Metadata:  metadata.Metadata{},
@@ -531,21 +563,28 @@ func TestBulk(t *testing.T) {
 
 			router.ServeHTTP(rec, req)
 
-			if testCase.expectError {
-				require.Equal(t, http.StatusBadRequest, rec.Code)
-			} else {
-				require.Equal(t, http.StatusOK, rec.Code)
+			expectedStatusCode := testCase.expectStatusCode
+			if expectedStatusCode == 0 {
+				expectedStatusCode = http.StatusOK
 			}
+			require.Equal(t, expectedStatusCode, rec.Code)
 
-			ret, _ := api.DecodeSingleResponse[[]bulking.APIResult](t, rec.Body)
-			ret = collectionutils.Map(ret, func(from bulking.APIResult) bulking.APIResult {
-				switch data := from.Data.(type) {
-				case map[string]any:
-					delete(data, "insertedAt")
-				}
-				return from
-			})
-			require.Equal(t, testCase.expectResults, ret)
+			if expectedStatusCode == http.StatusOK || expectedStatusCode == http.StatusBadRequest {
+				ret, _ := api.DecodeSingleResponse[[]bulking.APIResult](t, rec.Body)
+				ret = collectionutils.Map(ret, func(from bulking.APIResult) bulking.APIResult {
+					switch data := from.Data.(type) {
+					case map[string]any:
+						delete(data, "insertedAt")
+						delete(data, "updatedAt")
+					}
+					return from
+				})
+				require.Equal(t, testCase.expectResults, ret)
+			} else {
+				errResponse := api.ErrorResponse{}
+				err := json.NewDecoder(rec.Body).Decode(&errResponse)
+				require.NoError(t, err)
+			}
 		})
 	}
 }

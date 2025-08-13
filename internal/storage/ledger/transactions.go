@@ -14,7 +14,6 @@ import (
 
 	"errors"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -116,8 +115,27 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		store.tracer,
 		store.insertTransactionHistogram,
 		func(ctx context.Context) (*ledger.Transaction, error) {
+			type transaction struct {
+				*ledger.Transaction `bun:",extend"`
+				Sources             []string         `bun:"sources,notnull"`
+				Destinations        []string         `bun:"destinations,notnull"`
+				SourcesArrays       []map[string]any `bun:"sources_arrays,notnull"`
+				DestinationsArrays  []map[string]any `bun:"destinations_arrays,notnull"`
+			}
+
+			sources := Map(tx.Postings, ledger.Posting.GetSource)
+			sourcesArrays := Map(sources, explodeAddress)
+			destinations := Map(tx.Postings, ledger.Posting.GetDestination)
+			destinationsArrays := Map(destinations, explodeAddress)
+
 			query := store.db.NewInsert().
-				Model(tx).
+				Model(&transaction{
+					Transaction:        tx,
+					Sources:            sources,
+					Destinations:       destinations,
+					SourcesArrays:      sourcesArrays,
+					DestinationsArrays: destinationsArrays,
+				}).
 				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Value("ledger", "?", store.ledger.Name).
 				Returning("id, timestamp, inserted_at, updated_at")
@@ -132,10 +150,10 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 				switch {
 				case errors.Is(err, postgres.ErrConstraintsFailed{}):
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_reference" {
-						return nil, ledgercontroller.NewErrTransactionReferenceConflict(tx.Reference)
+						return nil, NewErrTransactionReferenceConflict(tx.Reference)
 					}
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_ledger" {
-						return nil, ledgercontroller.NewErrConcurrentTransaction(*tx.ID)
+						return nil, NewErrConcurrentTransaction(*tx.ID)
 					}
 
 					return nil, err
@@ -148,7 +166,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 		},
 		func(ctx context.Context, tx *ledger.Transaction) {
 			trace.SpanFromContext(ctx).SetAttributes(
-				attribute.Int("id", *tx.ID),
+				attribute.String("id", fmt.Sprint(tx.ID)),
 				attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
 			)
 		},
@@ -156,7 +174,7 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 }
 
 // updateTxWithRetrieve try to apply to provided update query and check (if the update return no rows modified), that the row exists
-func (store *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
+func (store *Store) updateTxWithRetrieve(ctx context.Context, id uint64, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
 	type modifiedEntity struct {
 		ledger.Transaction `bun:",extend"`
 		Modified           bool `bun:"modified"`
@@ -186,7 +204,7 @@ func (store *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun
 	return &me.Transaction, me.Modified, postgres.ResolveError(err)
 }
 
-func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) RevertTransaction(ctx context.Context, id uint64, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"RevertTransaction",
@@ -202,8 +220,8 @@ func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time)
 				Returning("*")
 			if at.IsZero() {
 				query = query.
-					Set("reverted_at = (now() at time zone 'utc')").
-					Set("updated_at = (now() at time zone 'utc')")
+					Set("reverted_at = " + store.GetPrefixedRelationName("transaction_date") + "()").
+					Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
 			} else {
 				query = query.
 					Set("reverted_at = ?", at).
@@ -217,7 +235,7 @@ func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time)
 	return tx, modified, err
 }
 
-func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadata.Metadata, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, m metadata.Metadata, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"UpdateTransactionMetadata",
@@ -247,7 +265,7 @@ func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m met
 	return tx, modified, err
 }
 
-func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key string, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
+func (store *Store) DeleteTransactionMetadata(ctx context.Context, id uint64, key string, at time.Time) (tx *ledger.Transaction, modified bool, err error) {
 	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteTransactionMetadata",
@@ -278,25 +296,21 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key s
 func filterAccountAddressOnTransactions(address string, source, destination bool) string {
 	src := strings.Split(address, ":")
 
-	needSegmentCheck := false
-	for _, segment := range src {
-		needSegmentCheck = segment == ""
-		if needSegmentCheck {
-			break
-		}
-	}
-
-	if needSegmentCheck {
-		m := map[string]any{
-			fmt.Sprint(len(src)): nil,
-		}
+	if isPartialAddress(address) {
+		m := map[string]any{}
 		parts := make([]string, 0)
 
 		for i, segment := range src {
 			if len(segment) == 0 {
 				continue
 			}
+			if i == len(src)-1 && segment == "..." {
+				break
+			}
 			m[fmt.Sprint(i)] = segment
+		}
+		if src[len(src)-1] != "..." {
+			m[fmt.Sprint(len(src))] = nil
 		}
 
 		data, err := json.Marshal([]any{m})

@@ -30,7 +30,9 @@ func (cmp *PostgresDatabaseComponent) GetService() *corev1.Service {
 }
 
 func (cmp *PostgresDatabaseComponent) GetOptions() pulumix.Input[map[string]string] {
-	return pulumix.Val(map[string]string{})
+	return pulumix.Val(map[string]string{
+		"sslmode": "disable",
+	})
 }
 
 func (cmp *PostgresDatabaseComponent) GetEndpoint() pulumix.Input[string] {

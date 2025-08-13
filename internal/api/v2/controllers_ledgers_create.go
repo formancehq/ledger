@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/controller/system"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
 	ledger "github.com/formancehq/ledger/internal"
 
@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func createLedger(systemController system.Controller) http.HandlerFunc {
+func createLedger(systemController systemcontroller.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		configuration := ledger.Configuration{}
 		data, err := io.ReadAll(r.Body)
@@ -33,13 +33,14 @@ func createLedger(systemController system.Controller) http.HandlerFunc {
 
 		if err := systemController.CreateLedger(r.Context(), chi.URLParam(r, "ledger"), configuration); err != nil {
 			switch {
-			case errors.Is(err, system.ErrInvalidLedgerConfiguration{}) ||
+			case errors.Is(err, systemcontroller.ErrInvalidLedgerConfiguration{}) ||
 				errors.Is(err, ledger.ErrInvalidLedgerName{}) ||
-				errors.Is(err, ledger.ErrInvalidBucketName{}):
+				errors.Is(err, ledger.ErrInvalidBucketName{}) ||
+				errors.Is(err, systemcontroller.ErrExperimentalFeaturesDisabled):
 				api.BadRequest(w, common.ErrValidation, err)
-			case errors.Is(err, system.ErrBucketOutdated):
+			case errors.Is(err, systemcontroller.ErrBucketOutdated):
 				api.BadRequest(w, common.ErrOutdatedSchema, err)
-			case errors.Is(err, system.ErrLedgerAlreadyExists):
+			case errors.Is(err, systemcontroller.ErrLedgerAlreadyExists):
 				api.BadRequest(w, common.ErrLedgerAlreadyExists, err)
 			default:
 				common.HandleCommonErrors(w, r, err)

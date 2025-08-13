@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/formancehq/ledger/internal/bus/reverted-transaction",
+  "$id": "https://github.com/formancehq/ledger/pkg/events/reverted-transaction",
   "$ref": "#/$defs/RevertedTransaction",
   "$defs": {
     "Int": {
@@ -89,11 +89,14 @@
         "reference": {
           "type": "string"
         },
+        "id": {
+          "type": "integer"
+        },
         "insertedAt": {
           "$ref": "#/$defs/Time"
         },
-        "id": {
-          "type": "integer"
+        "updatedAt": {
+          "$ref": "#/$defs/Time"
         },
         "revertedAt": {
           "$ref": "#/$defs/Time"

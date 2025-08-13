@@ -42,5 +42,5 @@ func readTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Ok(w, tx)
+	api.Ok(w, renderTransaction(r, *tx))
 }

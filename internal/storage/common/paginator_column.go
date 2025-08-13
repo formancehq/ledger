@@ -11,47 +11,47 @@ import (
 	libtime "time"
 )
 
-type ColumnPaginator[ResourceType, OptionsType any] struct {
-	DefaultPaginationColumn string
-	DefaultOrder            bunpaginate.Order
+type columnPaginator[ResourceType, OptionsType any] struct {
+	fieldType FieldType
+	fieldName string
+	query     ColumnPaginatedQuery[OptionsType]
 }
 
 //nolint:unused
-func (o ColumnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery, query ColumnPaginatedQuery[OptionsType]) (*bun.SelectQuery, error) {
+func (o columnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery) (*bun.SelectQuery, error) {
 
-	paginationColumn := o.DefaultPaginationColumn
-	originalOrder := o.DefaultOrder
-	if query.Order != nil {
-		originalOrder = *query.Order
-	}
+	paginationColumn := o.fieldName
+	originalOrder := *o.query.Order
 
-	pageSize := query.PageSize
+	pageSize := o.query.PageSize
 	if pageSize == 0 {
 		pageSize = bunpaginate.QueryDefaultPageSize
 	}
 
 	sb = sb.Limit(int(pageSize) + 1) // Fetch one additional item to find the next token
+
 	order := originalOrder
-	if query.Reverse {
-		order = originalOrder.Reverse()
+	if o.query.Reverse {
+		order = order.Reverse()
 	}
 	orderExpression := fmt.Sprintf("%s %s", paginationColumn, order)
 	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
 
-	if query.PaginationID != nil {
-		if query.Reverse {
+	if o.query.PaginationID != nil {
+		paginationID := convertPaginationIDToSQLType(o.fieldType, o.query.PaginationID)
+		if o.query.Reverse {
 			switch originalOrder {
 			case bunpaginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), paginationID)
 			case bunpaginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), paginationID)
 			}
 		} else {
 			switch originalOrder {
 			case bunpaginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), paginationID)
 			case bunpaginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), query.PaginationID)
+				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), paginationID)
 			}
 		}
 	}
@@ -60,22 +60,16 @@ func (o ColumnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o ColumnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType, query ColumnPaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (o columnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType) (*bunpaginate.Cursor[ResourceType], error) {
 
-	paginationColumn := query.Column
-	if paginationColumn == "" {
-		paginationColumn = o.DefaultPaginationColumn
-	}
+	paginationColumn := o.query.Column
 
-	pageSize := query.PageSize
+	pageSize := o.query.PageSize
 	if pageSize == 0 {
 		pageSize = bunpaginate.QueryDefaultPageSize
 	}
 
-	order := o.DefaultOrder
-	if query.Order != nil {
-		order = *query.Order
-	}
+	order := *o.query.Order
 
 	var v ResourceType
 	fields := findPaginationFieldPath(v, paginationColumn)
@@ -85,8 +79,8 @@ func (o ColumnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	)
 	for _, t := range ret {
 		paginationID := findPaginationField(t, fields...)
-		if query.Bottom == nil {
-			query.Bottom = paginationID
+		if o.query.Bottom == nil {
+			o.query.Bottom = paginationID
 		}
 		paginationIDs = append(paginationIDs, paginationID)
 	}
@@ -95,7 +89,7 @@ func (o ColumnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	if hasMore {
 		ret = ret[:len(ret)-1]
 	}
-	if query.Reverse {
+	if o.query.Reverse {
 		for i := 0; i < len(ret)/2; i++ {
 			ret[i], ret[len(ret)-i-1] = ret[len(ret)-i-1], ret[i]
 		}
@@ -103,25 +97,26 @@ func (o ColumnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 
 	var previous, next *ColumnPaginatedQuery[OptionsType]
 
-	if query.Reverse {
-		cp := query
+	if o.query.Reverse {
+		cp := o.query
 		cp.Reverse = false
 		next = &cp
 
 		if hasMore {
-			cp := query
+			cp := o.query
 			cp.PaginationID = paginationIDs[len(paginationIDs)-2]
 			previous = &cp
 		}
 	} else {
 		if hasMore {
-			cp := query
+			cp := o.query
 			cp.PaginationID = paginationIDs[len(paginationIDs)-1]
 			next = &cp
 		}
-		if query.PaginationID != nil {
-			if (order == bunpaginate.OrderAsc && query.PaginationID.Cmp(query.Bottom) > 0) || (order == bunpaginate.OrderDesc && query.PaginationID.Cmp(query.Bottom) < 0) {
-				cp := query
+		if o.query.PaginationID != nil {
+			if (order == bunpaginate.OrderAsc && o.query.PaginationID.Cmp(o.query.Bottom) > 0) ||
+				(order == bunpaginate.OrderDesc && o.query.PaginationID.Cmp(o.query.Bottom) < 0) {
+				cp := o.query
 				cp.Reverse = true
 				previous = &cp
 			}
@@ -137,7 +132,7 @@ func (o ColumnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	}, nil
 }
 
-var _ Paginator[any, ColumnPaginatedQuery[any]] = &ColumnPaginator[any, any]{}
+var _ Paginator[any] = &columnPaginator[any, any]{}
 
 //nolint:unused
 func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructField {
@@ -226,6 +221,14 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 			return big.NewInt(*rawPaginationID)
 		case *int:
 			return big.NewInt(int64(*rawPaginationID))
+		case uint64:
+			v := new(big.Int)
+			v.SetUint64(rawPaginationID)
+			return v
+		case *uint64:
+			v := new(big.Int)
+			v.SetUint64(*rawPaginationID)
+			return v
 		default:
 			panic(fmt.Sprintf("invalid paginationID, type %T not handled", rawPaginationID))
 		}
@@ -234,10 +237,23 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 	return findPaginationField(v, fields[1:]...)
 }
 
-//nolint:unused
-func encodeCursor[OptionsType any, PaginatedQueryType PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
-	if v == nil {
-		return ""
+func newColumnPaginator[ResourceType, OptionsType any](
+	query ColumnPaginatedQuery[OptionsType],
+	fieldName string,
+	fieldType FieldType,
+) columnPaginator[ResourceType, OptionsType] {
+	return columnPaginator[ResourceType, OptionsType]{
+		query:     query,
+		fieldName: fieldName,
+		fieldType: fieldType,
 	}
-	return bunpaginate.EncodeCursor(v)
+}
+
+func convertPaginationIDToSQLType(fieldType FieldType, id *big.Int) any {
+	switch fieldType.(type) {
+	case TypeDate:
+		return libtime.UnixMicro(id.Int64())
+	default:
+		return id
+	}
 }

@@ -1,7 +1,8 @@
 VERSION --wildcard-builds 0.8
 PROJECT FormanceHQ/ledger
 
-IMPORT github.com/formancehq/earthly:tags/v0.19.1 AS core
+ARG core=github.com/formancehq/earthly:main
+IMPORT $core AS core
 
 FROM core+base-image
 
@@ -50,33 +51,3 @@ deploy:
 
 deploy-staging:
     BUILD --pass-args core+deploy-staging
-
-export-database-schema:
-    FROM +sources
-    RUN go install github.com/roerohan/wait-for-it@latest
-    WITH DOCKER --load=postgres:15-alpine=+postgres --pull schemaspy/schemaspy:6.2.4
-        RUN bash -c '
-            echo "Creating PG server...";
-            postgresContainerID=$(docker run -d --rm -e POSTGRES_USER=root -e POSTGRES_PASSWORD=root -e POSTGRES_DB=formance --net=host postgres:15-alpine);
-            wait-for-it -w 127.0.0.1:5432;
-
-            echo "Creating bucket...";
-            go run main.go buckets upgrade _default --postgres-uri "postgres://root:root@127.0.0.1:5432/formance?sslmode=disable";
-
-            echo "Exporting schemas...";
-            docker run --rm -u root \
-              -v ./docs/database:/output \
-              --net=host \
-              schemaspy/schemaspy:6.2.4 -u root -db formance -t pgsql11 -host 127.0.0.1 -port 5432 -p root -schemas _system,_default;
-
-            docker kill "$postgresContainerID";
-        '
-    END
-    SAVE ARTIFACT docs/database/_system/diagrams AS LOCAL docs/database/_system/diagrams
-    SAVE ARTIFACT docs/database/_default/diagrams AS LOCAL docs/database/_default/diagrams
-
-openapi:
-    FROM core+base-image
-    WORKDIR /src
-    COPY openapi.yaml openapi.yaml
-    SAVE ARTIFACT ./openapi.yaml

@@ -3,7 +3,6 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
@@ -14,59 +13,26 @@ type volumesResourceHandler struct {
 	store *Store
 }
 
-func (h volumesResourceHandler) Filters() []common.Filter {
-	return []common.Filter{
-		{
-			Name:    "address",
-			Aliases: []string{"account"},
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					return validateAddressFilter(h.store.ledger, operator, value)
-				}),
-			},
-		},
-		{
-			Name: `balance(\[.*])?`,
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
-			},
-		},
-		{
-			Name: "first_usage",
-			Validators: []common.PropertyValidator{
-				common.AcceptOperators("$lt", "$gt", "$lte", "$gte", "$match"),
-			},
-		},
-		{
-			Name: "metadata",
-			Matchers: []func(string) bool{
-				func(key string) bool {
-					return key == "metadata" || common.MetadataRegex.Match([]byte(key))
-				},
-			},
-			Validators: []common.PropertyValidator{
-				common.PropertyValidatorFunc(func(operator string, key string, value any) error {
-					if key == "metadata" {
-						if operator != "$exists" {
-							return fmt.Errorf("unsupported operator %s for metadata", operator)
-						}
-						return nil
-					}
-					if operator != "$match" {
-						return fmt.Errorf("unsupported operator %s for metadata", operator)
-					}
-					return nil
-				}),
-			},
+func (h volumesResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address": common.NewStringField().
+				WithAliases("account").
+				Paginated(),
+			"balance":     common.NewNumericMapField(),
+			"first_usage": common.NewDateField(),
+			"metadata":    common.NewStringMapField(),
 		},
 	}
 }
 
-func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
-	needAddressSegments := query.UseFilter("address", isPartialAddress)
+	needAddressSegments := query.UseFilter("address", func(value any) bool {
+		return isPartialAddress(value.(string))
+	})
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = h.store.db.NewSelect().
 			Column("asset", "input", "output").
@@ -101,7 +67,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 		}
 	} else {
 		if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
-			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
+			return nil, NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
 		selectVolumes = h.store.db.NewSelect().
@@ -163,7 +129,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 }
 
 func (h volumesResourceHandler) ResolveFilter(
-	_ common.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	_ common.ResourceQuery[GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
@@ -202,7 +168,7 @@ func (h volumesResourceHandler) ResolveFilter(
 }
 
 func (h volumesResourceHandler) Project(
-	query common.ResourceQuery[ledgercontroller.GetVolumesOptions],
+	query common.ResourceQuery[GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -225,8 +191,8 @@ func (h volumesResourceHandler) Project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) Expand(_ common.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h volumesResourceHandler) Expand(_ common.ResourceQuery[GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ common.RepositoryHandler[ledgercontroller.GetVolumesOptions] = volumesResourceHandler{}
+var _ common.RepositoryHandler[GetVolumesOptions] = volumesResourceHandler{}

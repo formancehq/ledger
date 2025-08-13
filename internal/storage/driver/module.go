@@ -2,13 +2,12 @@ package driver
 
 import (
 	"context"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
 	"github.com/uptrace/bun"
 
@@ -21,6 +20,15 @@ func NewFXModule() fx.Option {
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
 		})),
+		fx.Invoke(func(db *bun.DB) {
+			db.Dialect().Tables().Register(
+				&ledger.Transaction{},
+				&ledger.Log{},
+				&ledger.Account{},
+				&ledger.Move{},
+				&ledger.Ledger{},
+			)
+		}),
 		fx.Provide(func(params struct {
 			fx.In
 
@@ -53,7 +61,6 @@ func NewFXModule() fx.Option {
 				WithTracer(tracerProvider.Tracer("StorageDriver")),
 			), nil
 		}),
-		fx.Provide(fx.Annotate(NewControllerStorageDriverAdapter, fx.As(new(systemcontroller.Store)))),
 		fx.Invoke(func(driver *Driver, lifecycle fx.Lifecycle, logger logging.Logger) error {
 			lifecycle.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {

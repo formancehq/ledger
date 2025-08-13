@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>formancehq/shared-config//renovate/presets/golang"
+  ],
+  "ignoreDeps": [
+    "github.com/formancehq/ledger/pkg/client"
+  ],
+  "baseBranches": [
+    "main"
+  ],
+  "postUpgradeTasks": {
+    "commands": [
+      "just tidy"
+    ],
+    "executionMode": "branch",
+    "fileFilters": [
+      "**/*"
+    ]
+  }
+}

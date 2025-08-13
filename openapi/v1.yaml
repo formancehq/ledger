@@ -90,7 +90,7 @@ paths:
             additionalProperties: true
           example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
-        '200':
+        '204':
           description: OK
           headers:
             Count:
@@ -1849,6 +1849,7 @@ components:
         - TIMEOUT
       example: INSUFFICIENT_FUND
     LedgerInfoResponse:
+      type: object
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'

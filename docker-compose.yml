@@ -74,7 +74,7 @@ services:
       POSTGRES_CONN_MAX_IDLE_TIME: "5m"
 
   ledger:
-    image: golang:1.23-alpine
+    image: golang:1.24-alpine
     entrypoint: go run main.go serve
     volumes:
       - .:/src

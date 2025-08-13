@@ -1,31 +1,25 @@
 package v2
 
 import (
-	"encoding/json"
-	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 
-	"errors"
+	"github.com/formancehq/ledger/internal/api/common"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/metadata"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	"github.com/go-chi/chi/v5"
 )
 
 func updateLedgerMetadata(systemController systemcontroller.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		common.WithBody(w, r, func(m metadata.Metadata) {
+			if err := systemController.UpdateLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), m); err != nil {
+				common.HandleCommonWriteErrors(w, r, err)
+				return
+			}
 
-		m := metadata.Metadata{}
-		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-			api.BadRequest(w, common.ErrValidation, errors.New("invalid format"))
-			return
-		}
-
-		if err := systemController.UpdateLedgerMetadata(r.Context(), chi.URLParam(r, "ledger"), m); err != nil {
-			common.HandleCommonErrors(w, r, err)
-			return
-		}
-
-		api.NoContent(w)
+			api.NoContent(w)
+		})
 	}
 }

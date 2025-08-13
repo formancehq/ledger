@@ -5,5 +5,5 @@ type APIResult struct {
 	ErrorDescription string `json:"errorDescription,omitempty"`
 	Data             any    `json:"data,omitempty"`
 	ResponseType     string `json:"responseType"` // Added for sdk generation (discriminator in oneOf)
-	LogID            int    `json:"logID"`
+	LogID            uint64 `json:"logID"`
 }

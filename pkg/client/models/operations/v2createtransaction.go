@@ -14,6 +14,8 @@ type V2CreateTransactionRequest struct {
 	// Use an idempotency key
 	IdempotencyKey *string `header:"style=simple,explode=false,name=Idempotency-Key"`
 	// Disable balance checks when passing postings
+	//
+	// Deprecated: This will be removed in a future release, please migrate away from it as soon as possible.
 	Force *bool `queryParam:"style=form,explode=true,name=force"`
 	// The request body must contain at least one of the following objects:
 	//   - `postings`: suitable for simple transactions
