@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/backend"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 )
 

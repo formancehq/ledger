@@ -20,7 +20,7 @@ import (
 	driver "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledgerstore"
 	systemstore "github.com/formancehq/ledger/internal/storage/systemstore"
-	bunpaginate "github.com/formancehq/go-libs/bun/bunpaginate"
+	bunpaginate "github.com/formancehq/ledger/internal/storage/bunpaginate"
 	metadata "github.com/formancehq/go-libs/metadata"
 	migrations "github.com/formancehq/go-libs/migrations"
 	gomock "go.uber.org/mock/gomock"

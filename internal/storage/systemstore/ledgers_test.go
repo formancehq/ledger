@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/stretchr/testify/require"

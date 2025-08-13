@@ -5,14 +5,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 	"github.com/pkg/errors"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/go-libs/query"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 )
 

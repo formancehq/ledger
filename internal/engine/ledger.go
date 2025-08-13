@@ -5,8 +5,8 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/engine/chain"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 

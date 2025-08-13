@@ -11,7 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 
 	"github.com/pkg/errors"
 

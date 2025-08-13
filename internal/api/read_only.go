@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/api"
+	api "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/pkg/errors"
 )
 

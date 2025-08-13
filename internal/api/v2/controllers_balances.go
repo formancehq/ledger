@@ -3,8 +3,8 @@ package v2
 import (
 	"net/http"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 )
 

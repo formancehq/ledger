@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/pkg/errors"
@@ -21,10 +21,10 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"

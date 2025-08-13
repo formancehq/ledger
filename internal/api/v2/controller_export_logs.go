@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/formancehq/go-libs/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
+	api "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/formancehq/ledger/internal/engine"
 )
 

@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 )
 

@@ -3,8 +3,8 @@ package engine
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 )
 

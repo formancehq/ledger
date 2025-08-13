@@ -8,8 +8,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/formancehq/go-libs/logging"
 

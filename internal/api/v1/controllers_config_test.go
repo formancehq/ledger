@@ -5,10 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 
 	"github.com/formancehq/ledger/internal/storage/systemstore"

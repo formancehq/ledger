@@ -17,14 +17,14 @@ import (
 
 	"github.com/formancehq/go-libs/pointer"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 	"github.com/pkg/errors"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 )
 
