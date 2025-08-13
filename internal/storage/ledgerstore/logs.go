@@ -134,6 +134,7 @@ func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) 
 func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.ChainedLog], error) {
 	logs, err := paginateWithColumn[PaginatedQueryOptions[any], Logs](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(&q),
+		[]bunpaginate.PaginationColumnOption{},
 		store.logsQueryBuilder(q.Options),
 	)
 	if err != nil {

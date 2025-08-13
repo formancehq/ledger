@@ -290,6 +290,9 @@ func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery)
 
 	transactions, err := paginateWithColumn[PaginatedQueryOptions[PITFilterWithVolumes], ExpandedTransaction](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
+		[]bunpaginate.PaginationColumnOption{
+			bunpaginate.WithNullsOrder(bunpaginate.NullsOrderLast),
+		},
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionListQuery(query, q.Options, where, args)
 		},

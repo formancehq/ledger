@@ -60,13 +60,13 @@ func paginateWithOffsetWithoutModel[FILTERS any, RETURN any](s *Store, ctx conte
 	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
 }
 
-func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
+func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], paginationOptions []bunpaginate.PaginationColumnOption, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
 	query := s.bucket.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
 
-	ret, err := bunpaginate.UsingColumn[FILTERS, RETURN](ctx, query, *q)
+	ret, err := bunpaginate.UsingColumn[FILTERS, RETURN](ctx, query, *q, paginationOptions...)
 	if err != nil {
 		return nil, sqlutils.PostgresError(err)
 	}
