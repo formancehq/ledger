@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/pkg/errors"
 

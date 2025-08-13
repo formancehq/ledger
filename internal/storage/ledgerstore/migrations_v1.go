@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/lib/pq"

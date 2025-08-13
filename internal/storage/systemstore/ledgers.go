@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/pkg/errors"

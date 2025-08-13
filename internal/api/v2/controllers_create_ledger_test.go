@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
+	api "github.com/formancehq/ledger/internal/api/sharedapi"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/google/uuid"

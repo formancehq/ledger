@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 )

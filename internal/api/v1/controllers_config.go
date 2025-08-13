@@ -5,13 +5,13 @@ import (
 	_ "embed"
 	"net/http"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 )
 
 type ConfigInfo struct {
