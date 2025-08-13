@@ -41,4 +41,4 @@ build:
 
     ARG --required ANTITHESIS_REPOSITORY
 
-    SAVE IMAGE --push --no-manifest-list "${ANTITHESIS_REPOSITORY}/ledger:latest"
+    SAVE IMAGE --push --no-manifest-list "${ANTITHESIS_REPOSITORY}/ledger:k8s_test"
