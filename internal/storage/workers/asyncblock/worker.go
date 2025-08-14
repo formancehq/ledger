@@ -1,4 +1,4 @@
-package storage
+package asyncblock
 
 import (
 	"context"
@@ -19,24 +19,24 @@ import (
 	"time"
 )
 
-type AsyncBlockRunnerConfig struct {
+type Config struct {
 	MaxBlockSize int
 	Schedule     cron.Schedule
 }
 
-type AsyncBlockRunner struct {
+type Worker struct {
 	stopChannel chan chan struct{}
 	logger      logging.Logger
-	db          *bun.DB
-	cfg         AsyncBlockRunnerConfig
-	tracer      trace.Tracer
+	db     *bun.DB
+	cfg    Config
+	tracer trace.Tracer
 }
 
-func (r *AsyncBlockRunner) Name() string {
+func (r *Worker) Name() string {
 	return "Async block hasher"
 }
 
-func (r *AsyncBlockRunner) Run(ctx context.Context) error {
+func (r *Worker) Run(ctx context.Context) error {
 
 	now := time.Now()
 	next := r.cfg.Schedule.Next(now).Sub(now)
@@ -57,7 +57,7 @@ func (r *AsyncBlockRunner) Run(ctx context.Context) error {
 	}
 }
 
-func (r *AsyncBlockRunner) Stop(ctx context.Context) error {
+func (r *Worker) Stop(ctx context.Context) error {
 	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
@@ -72,7 +72,7 @@ func (r *AsyncBlockRunner) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (r *AsyncBlockRunner) run(ctx context.Context) error {
+func (r *Worker) run(ctx context.Context) error {
 
 	ctx, span := r.tracer.Start(ctx, "Run")
 	defer span.End()
@@ -98,7 +98,7 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 	)
 }
 
-func (r *AsyncBlockRunner) processLedger(ctx context.Context, l ledger.Ledger) error {
+func (r *Worker) processLedger(ctx context.Context, l ledger.Ledger) error {
 	ctx, span := r.tracer.Start(ctx, "RunForLedger")
 	defer span.End()
 
@@ -112,8 +112,8 @@ func (r *AsyncBlockRunner) processLedger(ctx context.Context, l ledger.Ledger) e
 	return err
 }
 
-func NewAsyncBlockRunner(logger logging.Logger, db *bun.DB, cfg AsyncBlockRunnerConfig, opts ...Option) *AsyncBlockRunner {
-	ret := &AsyncBlockRunner{
+func NewWorker(logger logging.Logger, db *bun.DB, cfg Config, opts ...Option) *Worker {
+	ret := &Worker{
 		stopChannel: make(chan chan struct{}),
 		logger:      logger,
 		db:          db,
@@ -127,10 +127,10 @@ func NewAsyncBlockRunner(logger logging.Logger, db *bun.DB, cfg AsyncBlockRunner
 	return ret
 }
 
-type Option func(*AsyncBlockRunner)
+type Option func(*Worker)
 
 func WithTracer(tracer trace.Tracer) Option {
-	return func(r *AsyncBlockRunner) {
+	return func(r *Worker) {
 		r.tracer = tracer
 	}
 }
@@ -139,12 +139,12 @@ var defaultOptions = []Option{
 	WithTracer(noop.Tracer{}),
 }
 
-func NewAsyncBlockRunnerModule(cfg AsyncBlockRunnerConfig) fx.Option {
+func NewModule(cfg Config) fx.Option {
 	return fx.Options(
-		fx.Provide(func(logger logging.Logger, db *bun.DB) (*AsyncBlockRunner, error) {
-			return NewAsyncBlockRunner(logger, db, cfg), nil
+		fx.Provide(func(logger logging.Logger, db *bun.DB) (*Worker, error) {
+			return NewWorker(logger, db, cfg), nil
 		}),
-		fx.Invoke(func(lc fx.Lifecycle, asyncBlockRunner *AsyncBlockRunner) {
+		fx.Invoke(func(lc fx.Lifecycle, asyncBlockRunner *Worker) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					go func() {
