@@ -43,7 +43,7 @@ services:
       - "16686:16686/tcp"
 
   worker:
-    image: golang:1.23-alpine
+    image: golang:1.24-alpine
     entrypoint: go run main.go worker
     volumes:
       - .:/src

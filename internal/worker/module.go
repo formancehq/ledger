@@ -6,7 +6,8 @@ import (
 	"github.com/formancehq/go-libs/v3/serverport"
 	"github.com/formancehq/ledger/internal/replication"
 	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
-	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/workers/asyncblock"
+	"github.com/formancehq/ledger/internal/storage/workers/lockmonitor"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
@@ -19,16 +20,17 @@ type GRPCServerModuleConfig struct {
 }
 
 type ModuleConfig struct {
-	AsyncBlockRunnerConfig storage.AsyncBlockRunnerConfig
+	AsyncBlockRunnerConfig asyncblock.Config
 	ReplicationConfig      replication.WorkerModuleConfig
+	LockMonitorConfig      lockmonitor.Config
 }
 
 func NewFXModule(cfg ModuleConfig) fx.Option {
 	return fx.Options(
 		// todo: add auto discovery
-		storage.NewAsyncBlockRunnerModule(cfg.AsyncBlockRunnerConfig),
-		// todo: add auto discovery
+		asyncblock.NewModule(cfg.AsyncBlockRunnerConfig),
 		replication.NewWorkerFXModule(cfg.ReplicationConfig),
+		lockmonitor.NewModule(cfg.LockMonitorConfig),
 	)
 }
 

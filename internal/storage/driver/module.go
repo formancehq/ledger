@@ -6,7 +6,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/uptrace/bun"
@@ -22,29 +21,10 @@ func NewFXModule() fx.Option {
 		})),
 		fx.Invoke(func(db *bun.DB) {
 			db.Dialect().Tables().Register(
-				&ledger.Transaction{},
-				&ledger.Log{},
-				&ledger.Account{},
-				&ledger.Move{},
 				&ledger.Ledger{},
 			)
 		}),
-		fx.Provide(func(params struct {
-			fx.In
-
-			DB             *bun.DB
-			TracerProvider trace.TracerProvider `optional:"true"`
-			MeterProvider  metric.MeterProvider `optional:"true"`
-		}) ledgerstore.Factory {
-			options := make([]ledgerstore.Option, 0)
-			if params.TracerProvider != nil {
-				options = append(options, ledgerstore.WithTracer(params.TracerProvider.Tracer("store")))
-			}
-			if params.MeterProvider != nil {
-				options = append(options, ledgerstore.WithMeter(params.MeterProvider.Meter("store")))
-			}
-			return ledgerstore.NewFactory(params.DB, options...)
-		}),
+		ledgerstore.NewModule(),
 		fx.Provide(func(
 			db *bun.DB,
 			bucketFactory bucket.Factory,

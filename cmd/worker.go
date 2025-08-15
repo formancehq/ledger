@@ -11,6 +11,8 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/workers/asyncblock"
+	"github.com/formancehq/ledger/internal/storage/workers/lockmonitor"
 	"github.com/formancehq/ledger/internal/worker"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
@@ -109,9 +111,12 @@ func NewWorkerCommand() *cobra.Command {
 
 func newWorkerModule(configuration WorkerConfiguration) fx.Option {
 	return worker.NewFXModule(worker.ModuleConfig{
-		AsyncBlockRunnerConfig: storage.AsyncBlockRunnerConfig{
+		AsyncBlockRunnerConfig: asyncblock.Config{
 			MaxBlockSize: configuration.HashLogsBlockMaxSize,
 			Schedule:     configuration.HashLogsBlockCRONSpec,
+		},
+		LockMonitorConfig: lockmonitor.Config{
+			Interval: 5 * time.Second, // Default interval for lock monitor
 		},
 		ReplicationConfig: replication.WorkerModuleConfig{
 			PushRetryPeriod: configuration.PushRetryPeriod,
