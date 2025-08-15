@@ -14,6 +14,7 @@ type commonConfig struct {
 	NumscriptInterpreterFlags   []string `mapstructure:"experimental-numscript-interpreter-flags"`
 	ExperimentalFeaturesEnabled bool `mapstructure:"experimental-features"`
 	ExperimentalExporters       bool `mapstructure:"experimental-exporters"`
+	LegacyMetricsNames      bool `mapstructure:"legacy-metrics-names"`
 }
 
 func decodeCronSchedule(sourceType, destType reflect.Type, value any) (any, error) {

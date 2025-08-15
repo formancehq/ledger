@@ -120,11 +120,11 @@ func NewDefaultController(
 	}
 
 	var err error
-	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("numscript.run")
+	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("controller.numscript_run")
 	if err != nil {
 		panic(err)
 	}
-	ret.deadLockCounter, err = ret.meter.Int64Counter("deadlocks")
+	ret.deadLockCounter, err = ret.meter.Int64Counter("controller.deadlocks")
 	if err != nil {
 		panic(err)
 	}

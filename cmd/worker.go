@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
-	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/service"
@@ -78,9 +77,7 @@ func NewWorkerCommand() *cobra.Command {
 
 			return service.New(cmd.OutOrStdout(),
 				fx.NopLogger,
-				otlp.FXModuleFromFlags(cmd),
-				otlptraces.FXModuleFromFlags(cmd),
-				otlpmetrics.FXModuleFromFlags(cmd),
+				otlpModule(cmd, cfg.commonConfig),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
 				drivers.NewFXModule(),

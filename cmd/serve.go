@@ -5,9 +5,10 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/replication"
-	drivers "github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/formancehq/ledger/internal/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -69,6 +70,7 @@ const (
 	DefaultPageSizeFlag = "default-page-size"
 	MaxPageSizeFlag     = "max-page-size"
 	WorkerEnabledFlag   = "worker"
+	LegacyMetricsNames = "legacy-metrics-names"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -89,9 +91,7 @@ func NewServeCommand() *cobra.Command {
 
 			options := []fx.Option{
 				fx.NopLogger,
-				otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
-				otlptraces.FXModuleFromFlags(cmd),
-				otlpmetrics.FXModuleFromFlags(cmd),
+				otlpModule(cmd, cfg.commonConfig),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
@@ -184,6 +184,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
+	cmd.Flags().Bool(LegacyMetricsNames, false, "Use legacy metrics names")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
@@ -244,4 +245,28 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
+}
+
+func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
+	return fx.Options(
+		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
+		otlptraces.FXModuleFromFlags(cmd),
+		otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
+			return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
+				if cfg.LegacyMetricsNames {
+					return metric.Stream{
+						Name:        tracing.LegacyMetricsName(instrument.Name),
+						Description: instrument.Description,
+						Unit:        instrument.Unit,
+					}, true
+				}
+				return metric.Stream{
+					Name:        ServiceName + "." + instrument.Name,
+					Description: instrument.Description,
+					Unit:        instrument.Unit,
+				}, true
+			})
+		}),
+		otlpmetrics.FXModuleFromFlags(cmd),
+	)
 }

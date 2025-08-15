@@ -174,77 +174,77 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 	}
 
 	var err error
-	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.checkBucketSchema")
+		ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.checkLedgerSchema")
+	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.check_ledger_schema")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.updateAccountsMetadata")
+	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.update_accounts_metadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.deleteAccountMetadata")
+	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_account_metadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsertAccounts")
+	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsert_accounts")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.getBalances")
+	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.get_balances")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insertLog")
+	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insert_log")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.readLogWithIdempotencyKey")
+	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.read_log_with_idempotency_key")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insertMoves")
+	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insert_moves")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insertTransaction")
+	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insert_transaction")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revertTransaction")
+	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revert_transaction")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.updateTransactionMetadata")
+	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.update_transaction_metadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.deleteTransactionMetadata")
+	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_transaction_metadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.updateBalances")
+	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.update_balances")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.getVolumesWithBalances")
+	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.get_volumes_with_balances")
 	if err != nil {
 		panic(err)
 	}
