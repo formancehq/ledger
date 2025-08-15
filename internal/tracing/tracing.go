@@ -10,6 +10,91 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+func LegacyMetricsName(operationName string) string {
+	switch operationName {
+	case "numscript_run":
+		return "numscript.run"
+	case "begin_tx":
+		return "BeginTX"
+	case "list_transactions":
+		return "ListTransactions"
+	case "commit":
+		return "Commit"
+	case "rollback":
+		return "Rollback"
+	case "count_transactions":
+		return "CountTransactions"
+	case "get_transaction":
+		return "GetTransaction"
+	case "count_accounts":
+		return "CountAccounts"
+	case "list_accounts":
+		return "ListAccounts"
+	case "get_account":
+		return "GetAccount"
+	case "get_aggregated_balances":
+		return "GetAggregatedBalances"
+	case "list_logs":
+		return "ListLogs"
+	case "import":
+		return "Import"
+	case "export":
+		return "Export"
+	case "is_database_up_to_date":
+		return "IsDatabaseUpToDate"
+	case "get_volumes_with_balances":
+		return "GetVolumesWithBalances"
+	case "get_stats":
+		return "GetStats"
+	case "create_transaction":
+		return "CreateTransaction"
+	case "revert_transaction":
+		return "RevertTransaction"
+	case "save_transaction_metadata":
+		return "SaveTransactionMetadata"
+	case "save_account_metadata":
+		return "SaveAccountMetadata"
+	case "delete_transaction_metadata":
+		return "DeleteTransactionMetadata"
+	case "delete_account_metadata":
+		return "DeleteAccountMetadata"
+	case "lock_ledger":
+		return "LockLedger"
+	case "store.check_bucket_schema":
+		return "store.checkBucketSchema"
+	case "store.check_ledger_schema":
+		return "store.checkLedgerSchema"
+	case "store.update_accounts_metadata":
+		return "store.updateAccountsMetadata"
+	case "store.delete_account_metadata":
+		return "store.deleteAccountMetadata"
+	case "store.upsert_accounts":
+		return "store.upsertAccounts"
+	case "store.get_balances":
+		return "store.getBalances"
+	case "store.insert_log":
+		return "store.insertLog"
+	case "store.read_log_with_idempotency_key":
+		return "store.readLogWithIdempotencyKey"
+	case "store.insert_moves":
+		return "store.insertMoves"
+	case "store.insert_transaction":
+		return "store.insertTransaction"
+	case "store.revert_transaction":
+		return "store.revertTransaction"
+	case "store.update_transaction_metadata":
+		return "store.updateTransactionMetadata"
+	case "store.delete_transaction_metadata":
+		return "store.deleteTransactionMetadata"
+	case "store.update_balances":
+		return "store.updateBalances"
+	case "store.get_volumes_with_balances":
+		return "store.getVolumesWithBalances"
+	default:
+		return operationName
+	}
+}
+
 func TraceWithMetric[RET any](
 	ctx context.Context,
 	operationName string,
