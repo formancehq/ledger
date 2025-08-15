@@ -12,53 +12,55 @@ import (
 
 func LegacyMetricsName(operationName string) string {
 	switch operationName {
-	case "numscript_run":
+	case "controller.numscript_run":
 		return "numscript.run"
-	case "begin_tx":
+	case "controller.deadlocks":
+		return "deadlocks"
+	case "controller.begin_tx":
 		return "BeginTX"
-	case "list_transactions":
+	case "controller.list_transactions":
 		return "ListTransactions"
-	case "commit":
+	case "controller.commit":
 		return "Commit"
-	case "rollback":
+	case "controller.rollback":
 		return "Rollback"
-	case "count_transactions":
+	case "controller.count_transactions":
 		return "CountTransactions"
-	case "get_transaction":
+	case "controller.get_transaction":
 		return "GetTransaction"
-	case "count_accounts":
+	case "controller.count_accounts":
 		return "CountAccounts"
-	case "list_accounts":
+	case "controller.list_accounts":
 		return "ListAccounts"
-	case "get_account":
+	case "controller.get_account":
 		return "GetAccount"
-	case "get_aggregated_balances":
+	case "controller.get_aggregated_balances":
 		return "GetAggregatedBalances"
-	case "list_logs":
+	case "controller.list_logs":
 		return "ListLogs"
-	case "import":
+	case "controller.import":
 		return "Import"
-	case "export":
+	case "controller.export":
 		return "Export"
-	case "is_database_up_to_date":
+	case "controller.is_database_up_to_date":
 		return "IsDatabaseUpToDate"
-	case "get_volumes_with_balances":
+	case "controller.get_volumes_with_balances":
 		return "GetVolumesWithBalances"
-	case "get_stats":
+	case "controller.get_stats":
 		return "GetStats"
-	case "create_transaction":
+	case "controller.create_transaction":
 		return "CreateTransaction"
-	case "revert_transaction":
+	case "controller.revert_transaction":
 		return "RevertTransaction"
-	case "save_transaction_metadata":
+	case "controller.save_transaction_metadata":
 		return "SaveTransactionMetadata"
-	case "save_account_metadata":
+	case "controller.save_account_metadata":
 		return "SaveAccountMetadata"
-	case "delete_transaction_metadata":
+	case "controller.delete_transaction_metadata":
 		return "DeleteTransactionMetadata"
-	case "delete_account_metadata":
+	case "controller.delete_account_metadata":
 		return "DeleteAccountMetadata"
-	case "lock_ledger":
+	case "controller.lock_ledger":
 		return "LockLedger"
 	case "store.check_bucket_schema":
 		return "store.checkBucketSchema"

@@ -91,25 +91,7 @@ func NewServeCommand() *cobra.Command {
 
 			options := []fx.Option{
 				fx.NopLogger,
-				otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
-				otlptraces.FXModuleFromFlags(cmd),
-				otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
-					return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
-						if cfg.LegacyMetricsNames {
-							return metric.Stream{
-								Name:        tracing.LegacyMetricsName(instrument.Name),
-								Description: instrument.Description,
-								Unit:        instrument.Unit,
-							}, true
-						}
-						return metric.Stream{
-							Name:        ServiceName + "." + instrument.Name,
-							Description: instrument.Description,
-							Unit:        instrument.Unit,
-						}, true
-					})
-				}),
-				otlpmetrics.FXModuleFromFlags(cmd),
+				otlpModule(cmd, cfg.commonConfig),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
@@ -263,4 +245,28 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
+}
+
+func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
+	return fx.Options(
+		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
+		otlptraces.FXModuleFromFlags(cmd),
+		otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
+			return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
+				if cfg.LegacyMetricsNames {
+					return metric.Stream{
+						Name:        tracing.LegacyMetricsName(instrument.Name),
+						Description: instrument.Description,
+						Unit:        instrument.Unit,
+					}, true
+				}
+				return metric.Stream{
+					Name:        ServiceName + "." + instrument.Name,
+					Description: instrument.Description,
+					Unit:        instrument.Unit,
+				}, true
+			})
+		}),
+		otlpmetrics.FXModuleFromFlags(cmd),
+	)
 }
