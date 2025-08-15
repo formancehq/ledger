@@ -37,7 +37,7 @@ func NewModule() fx.Option {
 		}),
 		fx.Provide(fx.Annotate(func(db *bun.DB, meterProvider metric.MeterProvider) (lockmonitor.Option, error) {
 			histogram, err := meterProvider.Meter("lockmonitor").
-				Int64Histogram("accounts_volumes_locks", metric.WithDescription("Accounts volumes histogram"))
+				Int64Histogram("lockmonitor.accounts_volumes_locks", metric.WithDescription("Accounts volumes histogram"))
 			if err != nil {
 				return nil, err
 			}
