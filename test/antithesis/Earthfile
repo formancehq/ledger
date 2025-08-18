@@ -1,6 +1,6 @@
 VERSION 0.8
 
-IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
+IMPORT github.com/formancehq/earthly:tags/v0.19.1 AS core
 
 FROM core+base-image
 
@@ -15,7 +15,7 @@ run:
     RUN --no-cache --secret ANTITHESIS_PASSWORD curl \
         --fail \
         --user "$ANTITHESIS_USERNAME:$ANTITHESIS_PASSWORD" \
-        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance -d "{
+        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d "{
           \"params\": {
             \"custom.duration\": \"0.1\",
             \"antithesis.report.recipients\": \"${ANTITHESIS_SLACK_REPORT_RECIPIENT}\",
@@ -35,12 +35,12 @@ run-1h:
     RUN --no-cache --secret ANTITHESIS_PASSWORD curl \
         --fail \
         --user "$ANTITHESIS_USERNAME:$ANTITHESIS_PASSWORD" \
-        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance -d "{
+        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d "{
           \"params\": {
             \"custom.duration\": \"1\",
             \"antithesis.report.recipients\": \"${ANTITHESIS_SLACK_REPORT_RECIPIENT}\",
-            \"antithesis.config_image\": \"antithesis-config:latest\",
-            \"antithesis.images\": \"ledger:k8s_test;workload:latest\"
+            \"antithesis.config_image\": \"antithesis-config:k8s_test\",
+            \"antithesis.images\": \"ledger:k8s_test;workload:latest;ghcr.io/formancehq/gateway:v2.0.0-rc.20;docker.io/library/postgres:15-alpine\"
           }
         }"
 

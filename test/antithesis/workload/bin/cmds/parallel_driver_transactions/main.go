@@ -23,6 +23,7 @@ func main() {
 	if err != nil {
 		ledger = "default"
 		log.Printf("error getting random ledger: %s", err)
+		return
 	}
 
 	const count = 100

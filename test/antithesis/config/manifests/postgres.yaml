@@ -35,7 +35,7 @@ spec:
           value: /data/postgres
       livenessProbe:
         exec:
-          command: ["pg_isready", "-U ledger"]
+          command: ["pg_isready", "-Uledger"]
         initialDelaySeconds: 0
         periodSeconds: 10
         timeoutSeconds: 5

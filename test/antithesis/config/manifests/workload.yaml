@@ -10,5 +10,3 @@ spec:
     - name: workload
       image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload:latest
       imagePullPolicy: IfNotPresent
-  # imagePullSecrets:
-  #   - name: antithesis

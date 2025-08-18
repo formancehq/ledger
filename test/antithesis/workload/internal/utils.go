@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"math/rand"
 	"net/http"
+	"os"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -38,8 +39,12 @@ func AssertAlwaysErrNil(err error, message string, details map[string]any) bool 
 }
 
 func NewClient() *client.Formance {
+	gateway := os.Getenv("GATEWAY_URL")
+	if gateway == "" {
+		gateway = "http://gateway:8080"
+	}
 	return client.New(
-		client.WithServerURL("http://gateway:8080"),
+		client.WithServerURL(gateway),
 		client.WithClient(&http.Client{
 			Timeout: time.Minute,
 		}),

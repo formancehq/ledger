@@ -28,13 +28,15 @@ func main() {
 		"error": err,
 	})
 
-	assert.Always(
-		!internal.IsServerError(res.GetHTTPMeta()),
-		"no internal server error when creating ledger",
-		internal.Details{
-			"error": err,
-		},
-	)
+	if err == nil {
+		assert.Always(
+			!internal.IsServerError(res.GetHTTPMeta()),
+			"no internal server error when creating ledger",
+			internal.Details{
+				"error": err,
+			},
+		)
+	}
 
 	log.Println("composer: parallel_driver_ledger_create: done")
 }

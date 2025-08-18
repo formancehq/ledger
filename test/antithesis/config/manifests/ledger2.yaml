@@ -34,5 +34,3 @@ spec:
           value: "20"
         - name: "POSTGRES_MAX_OPEN_CONNS"
           value: "20"
-  # imagePullSecrets:
-  #   - name: antithesis

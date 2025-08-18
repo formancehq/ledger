@@ -1,6 +1,6 @@
 VERSION 0.8
 
-IMPORT github.com/formancehq/earthly:tags/v0.17.1 AS core
+IMPORT github.com/formancehq/earthly:tags/v0.19.1 AS core
 
 FROM core+base-image
 
@@ -8,7 +8,7 @@ CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
 CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
 compile:
-    FROM --platform=linux/amd64 golang:1.23
+    FROM --platform=linux/amd64 golang:1.24.6
     CACHE --sharing=shared --id go-mod-cache /go/pkg/mod
     CACHE --sharing=shared --id go-cache /root/.cache/go-build
 
