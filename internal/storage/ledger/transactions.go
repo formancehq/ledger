@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"regexp"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -26,6 +27,10 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
+)
+
+var (
+	amountRegex = regexp.MustCompile(`amount\[(.*)]`)
 )
 
 func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {

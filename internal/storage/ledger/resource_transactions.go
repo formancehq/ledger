@@ -25,6 +25,7 @@ func (h transactionsResourceHandler) Schema() common.EntitySchema {
 			"reference": common.NewStringField(),
 			"inserted_at": common.NewDateField().Paginated(),
 			"updated_at": common.NewDateField().Paginated(),
+			"amount": common.NewNumericMapField(),
 		},
 	}
 }
@@ -101,6 +102,20 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		return filterAccountAddressOnTransactions(value.(string), true, false), nil, nil
 	case property == "destination":
 		return filterAccountAddressOnTransactions(value.(string), false, true), nil, nil
+	case amountRegex.Match([]byte(property)):
+		asset := amountRegex.FindStringSubmatch(property)[1]
+
+		selectAmount := h.store.db.NewSelect().
+			ModelTableExpr(fmt.Sprintf("%[1]s, jsonb_array_elements(%[1]s.postings::jsonb) posting", h.store.GetPrefixedRelationName("transactions"))).
+			Where("id = dataset.id").
+			Where("ledger = ?", h.store.ledger.Name).
+			Where("posting->>'asset' = ?", asset).
+			ColumnExpr("sum((posting->'amount')::numeric) amount")
+
+		return h.store.db.NewSelect().
+			TableExpr("(?) amount", selectAmount).
+			ColumnExpr(fmt.Sprintf("amount %s ?", common.ConvertOperatorToSQL(operator)), value).
+			String(), nil, nil
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 

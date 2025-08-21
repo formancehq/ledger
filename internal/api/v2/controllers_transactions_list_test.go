@@ -147,6 +147,20 @@ func TestTransactionsList(t *testing.T) {
 			},
 		},
 		{
+			name: "using amount",
+			body: `{"$lt": {"amount[EUR]": 20}}`,
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: storagecommon.ResourceQuery[any]{
+					PIT:     &now,
+					Builder: query.Lt("EUR", 20),
+					Expand:  make([]string, 0),
+				},
+			},
+		},
+		{
 			name: "using empty cursor",
 			queryParams: url.Values{
 				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
