@@ -13,8 +13,8 @@ type commonConfig struct {
 	NumscriptInterpreter        bool     `mapstructure:"experimental-numscript-interpreter"`
 	NumscriptInterpreterFlags   []string `mapstructure:"experimental-numscript-interpreter-flags"`
 	ExperimentalFeaturesEnabled bool `mapstructure:"experimental-features"`
-	ExperimentalExporters       bool `mapstructure:"experimental-exporters"`
-	LegacyMetricsNames      bool `mapstructure:"legacy-metrics-names"`
+	ExperimentalExporters bool `mapstructure:"experimental-exporters"`
+	SemconvMetricsNames   bool `mapstructure:"semconv-metrics-names"`
 }
 
 func decodeCronSchedule(sourceType, destType reflect.Type, value any) (any, error) {

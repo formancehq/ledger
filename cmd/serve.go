@@ -70,7 +70,7 @@ const (
 	DefaultPageSizeFlag = "default-page-size"
 	MaxPageSizeFlag     = "max-page-size"
 	WorkerEnabledFlag   = "worker"
-	LegacyMetricsNames = "legacy-metrics-names"
+	SemconvMetricsNames = "semconv-metrics-names"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -184,7 +184,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
-	cmd.Flags().Bool(LegacyMetricsNames, false, "Use legacy metrics names")
+	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
@@ -253,15 +253,15 @@ func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
 		otlptraces.FXModuleFromFlags(cmd),
 		otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
 			return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
-				if cfg.LegacyMetricsNames {
+				if cfg.SemconvMetricsNames {
 					return metric.Stream{
-						Name:        tracing.LegacyMetricsName(instrument.Name),
+						Name:        ServiceName + "." + instrument.Name,
 						Description: instrument.Description,
 						Unit:        instrument.Unit,
 					}, true
 				}
 				return metric.Stream{
-					Name:        ServiceName + "." + instrument.Name,
+					Name:        tracing.LegacyMetricsName(instrument.Name),
 					Description: instrument.Description,
 					Unit:        instrument.Unit,
 				}, true
