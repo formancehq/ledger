@@ -129,15 +129,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-						fx.In
+					fx.In
 
-						Handler          chi.Router
-						HealthController *health.HealthController
-						Logger           logging.Logger
+					Handler          chi.Router
+					HealthController *health.HealthController
+					Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-					},
+					MeterProvider *metric.MeterProvider         `optional:"true"`
+					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
@@ -254,11 +254,7 @@ func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
 		otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
 			return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
 				if cfg.SemconvMetricsNames {
-					return metric.Stream{
-						Name:        ServiceName + "." + instrument.Name,
-						Description: instrument.Description,
-						Unit:        instrument.Unit,
-					}, true
+					return metric.Stream{}, false
 				}
 				return metric.Stream{
 					Name:        tracing.LegacyMetricsName(instrument.Name),
