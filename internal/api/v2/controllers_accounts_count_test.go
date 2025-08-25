@@ -2,15 +2,18 @@ package v2
 
 import (
 	"bytes"
-	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/query"
@@ -32,6 +35,7 @@ func TestAccountsCount(t *testing.T) {
 		returnErr         error
 		expectBackendCall bool
 	}
+
 	before := time.Now()
 
 	testCases := []testCase{
@@ -69,7 +73,7 @@ func TestAccountsCount(t *testing.T) {
 			expectBackendCall: true,
 			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
-				Builder: query.Lt("balance[USD/2]", float64(100)),
+				Builder: query.Lt("balance[USD/2]", big.NewInt(100)),
 				Expand:  make([]string, 0),
 			},
 		},
