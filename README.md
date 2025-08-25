@@ -16,7 +16,7 @@ You can find the complete Numary documentation at [docs.formance.com](https://do
 
 ## Community
 
-If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome on our [Slack](https://bit.ly/formance-slack) - looking forward to see you there!
+If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome in our [GitHub Discussions](https://github.com/orgs/formancehq/discussions) - looking forward to see you there!
 
 ## Contributing
 
