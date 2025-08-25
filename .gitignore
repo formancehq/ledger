@@ -8,5 +8,6 @@ worktrees
 dumps
 .env
 !.envrc
+.envrc.*
 Pulumi.*.yaml
 coverage.txt
