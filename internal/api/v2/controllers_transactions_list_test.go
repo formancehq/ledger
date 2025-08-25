@@ -155,7 +155,7 @@ func TestTransactionsList(t *testing.T) {
 				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &now,
-					Builder: query.Lt("EUR", 20),
+					Builder: query.Lt("amount[EUR]", 20.0),
 					Expand:  make([]string, 0),
 				},
 			},
