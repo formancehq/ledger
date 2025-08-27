@@ -41,7 +41,7 @@ func AssertAlwaysErrNil(err error, message string, details map[string]any) bool 
 func NewClient() *client.Formance {
 	gateway := os.Getenv("GATEWAY_URL")
 	if gateway == "" {
-		gateway = "http://gateway:8080"
+		gateway = "http://gateway.stack0:8080/api/ledger"
 	}
 	return client.New(
 		client.WithServerURL(gateway),

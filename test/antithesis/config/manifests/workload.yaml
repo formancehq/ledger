@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: workload
-  namespace: formance-dev
+  namespace: formance-systems
   labels:
     app: workload
 spec:

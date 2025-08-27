@@ -1,0 +1,15 @@
+run-6min: requirements-build
+    curl --fail \
+        --user "formance:$ANTITHESIS_PASSWORD" \
+        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
+          "params": { \
+            "custom.duration": "0.1", \
+            "antithesis.report.recipients": "${ANTITHESIS_SLACK_REPORT_RECIPIENT}", \
+            "antithesis.config_image": "antithesis-config:k8s_test", \
+            "antithesis.images": "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:v2.10.1" \
+          } \
+        }'
+
+requirements-build:
+    just config/
+    earthly --push ./workload+build --ANTITHESIS_REPOSITORY="$ANTITHESIS_REPOSITORY"
