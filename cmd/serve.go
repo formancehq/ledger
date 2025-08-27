@@ -182,7 +182,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
-	cmd.Flags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
+	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 
