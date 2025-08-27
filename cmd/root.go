@@ -35,7 +35,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.PersistentFlags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	root.PersistentFlags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
-	root.PersistentFlags().String(NumscriptInterpreterFlagsToPass, "", "Feature flags to pass to the experimental numscript interpreter")
+	root.PersistentFlags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	root.PersistentFlags().Bool(ExperimentalExporters, false, "Enable exporters support")
 
 	root.AddCommand(NewServeCommand())
