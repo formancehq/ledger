@@ -1015,7 +1015,7 @@ Delete metadata by key
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|2XX|Unknown|Key deleted|None|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Key deleted|None|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <h3 id="delete-metadata-by-key-responseschema">Response Schema</h3>
