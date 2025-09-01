@@ -2502,7 +2502,7 @@ func (s *V2) DeleteAccountMetadata(ctx context.Context, request operations.V2Del
 	}
 
 	switch {
-	case httpRes.StatusCode >= 200 && httpRes.StatusCode < 300:
+	case httpRes.StatusCode == 204:
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -3957,7 +3957,7 @@ func (s *V2) DeleteTransactionMetadata(ctx context.Context, request operations.V
 	}
 
 	switch {
-	case httpRes.StatusCode >= 200 && httpRes.StatusCode < 300:
+	case httpRes.StatusCode == 204:
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
