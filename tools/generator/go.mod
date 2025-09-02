@@ -63,7 +63,7 @@ require (
 	github.com/shomali11/util v0.0.0-20220717175126-f0771b70947f // indirect
 	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/uptrace/bun v1.2.15 // indirect
