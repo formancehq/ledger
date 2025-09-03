@@ -1,6 +1,7 @@
 
 build:
 	rm -f -- tmp/resources.yaml
+	mkdir -p tmp
 	cat manifests/namespace.yaml >> tmp/resources.yaml
 	echo "---" >> tmp/resources.yaml
 	cat manifests/postgres.yaml >> tmp/resources.yaml

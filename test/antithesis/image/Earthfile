@@ -41,4 +41,4 @@ build:
 
     ARG --required ANTITHESIS_REPOSITORY
 
-    SAVE IMAGE --push --no-manifest-list "${ANTITHESIS_REPOSITORY}/ledger:k8s_test"
+    SAVE IMAGE --push ghcr.io/formancehq/ledger-instrumented:k8s_test

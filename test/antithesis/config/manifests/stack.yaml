@@ -1,6 +1,16 @@
 apiVersion: formance.com/v1beta1
 kind: Settings
 metadata:
+  name: formance-setting-ledger-image
+spec:
+  key: registries."ghcr.io".images."formancehq/ledger".rewrite
+  stacks:
+    - "stack0"
+  value: "formancehq/ledger-instrumented"
+---
+apiVersion: formance.com/v1beta1
+kind: Settings
+metadata:
   name: formance-settings
 spec:
   key: postgres.*.uri
@@ -28,3 +38,4 @@ metadata:
   name: stack0
 spec:
   stack: stack0
+  version: k8s_test
