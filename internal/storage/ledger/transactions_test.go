@@ -730,6 +730,24 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx5, nil)
 	require.NoError(t, err)
 
+	tx6 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "users:charlie", "EUR", big.NewInt(30)),
+			ledger.NewPosting("users:charlie", "world", "EUR", big.NewInt(30)),
+		).
+		WithTimestamp(now)
+	err = store.CommitTransaction(ctx, &tx6, nil)
+	require.NoError(t, err)
+
+	tx7 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "users:charlie", "EUR", big.NewInt(30)),
+			ledger.NewPosting("world", "users:charlie", "USD", big.NewInt(30)),
+		).
+		WithTimestamp(now)
+	err = store.CommitTransaction(ctx, &tx7, nil)
+	require.NoError(t, err)
+
 	type testCase struct {
 		name        string
 		query       common.InitialPaginatedQuery[any]
@@ -740,7 +758,7 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name:     "nominal",
 			query:    common.InitialPaginatedQuery[any]{},
-			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
+			expected: []ledger.Transaction{tx7, tx6, tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
@@ -767,7 +785,7 @@ func TestTransactionsList(t *testing.T) {
 					Builder: query.Match("account", "users:"),
 				},
 			},
-			expected: []ledger.Transaction{tx5, tx4, tx3},
+			expected: []ledger.Transaction{tx7, tx6, tx5, tx4, tx3},
 		},
 		{
 			name: "address filter using segment and unbounded segment list",
@@ -776,7 +794,7 @@ func TestTransactionsList(t *testing.T) {
 					Builder: query.Match("account", "users:..."),
 				},
 			},
-			expected: []ledger.Transaction{tx5, tx4, tx3},
+			expected: []ledger.Transaction{tx7, tx6, tx5, tx4, tx3},
 		},
 		{
 			name: "filter using metadata",
@@ -846,7 +864,7 @@ func TestTransactionsList(t *testing.T) {
 					Builder: query.Not(query.Exists("metadata", "category")),
 				},
 			},
-			expected: []ledger.Transaction{tx5, tx4},
+			expected: []ledger.Transaction{tx7, tx6, tx5, tx4},
 		},
 		{
 			name: "filter using timestamp",
@@ -855,7 +873,16 @@ func TestTransactionsList(t *testing.T) {
 					Builder: query.Match("timestamp", tx5.Timestamp.Format(time.RFC3339Nano)),
 				},
 			},
-			expected: []ledger.Transaction{tx5, tx4},
+			expected: []ledger.Transaction{tx7, tx6, tx5, tx4},
+		},
+		{
+			name: "filter using amount",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Gt("amount[EUR]", 50),
+				},
+			},
+			expected: []ledger.Transaction{tx6, tx1},
 		},
 	}
 
