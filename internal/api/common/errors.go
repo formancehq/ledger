@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"errors"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/ledger"
@@ -35,7 +36,14 @@ const (
 func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+		// Set header and status immediately to prevent status=0 if panic occurs
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		// Write the error response body manually since WriteHeader was already called
+		json.NewEncoder(w).Encode(api.ErrorResponse{
+			ErrorCode:    api.ErrorInternal,
+			ErrorMessage: err.Error(),
+		})
 	default:
 		InternalServerError(w, r, err)
 	}
@@ -66,8 +74,17 @@ func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err er
 }
 
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+	// Set header and status immediately to prevent status=0 in logs if a panic occurs
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	
 	otlp.RecordError(r.Context(), err)
 	logging.FromContext(r.Context()).Error(err)
+	
+	// Write the error response body manually since WriteHeader was already called
 	//nolint:staticcheck
-	api.WriteErrorResponse(w, http.StatusInternalServerError, api.ErrorInternal, errors.New("Internal error. Consult logs/traces to have more details."))
+	json.NewEncoder(w).Encode(api.ErrorResponse{
+		ErrorCode:    api.ErrorInternal,
+		ErrorMessage: errors.New("Internal error. Consult logs/traces to have more details.").Error(),
+	})
 }
