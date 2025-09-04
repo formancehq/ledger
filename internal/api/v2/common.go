@@ -87,6 +87,7 @@ func getPaginatedQuery[Options any](
 				return nil, err
 			}
 
+
 			for _, modifier := range modifiers {
 				modifier(rq)
 			}

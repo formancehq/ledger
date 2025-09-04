@@ -35,6 +35,7 @@ func TestVolumesList(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
+
 	before := time.Now()
 
 	testCases := []testCase{
@@ -124,7 +125,7 @@ func TestVolumesList(t *testing.T) {
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledgerstore.GetVolumesOptions]{
 					PIT:     &before,
-					Builder: query.Gte("balance[EUR]", float64(50)),
+					Builder: query.Gte("balance[EUR]", big.NewInt(100)),
 					Expand:  make([]string, 0),
 				},
 				Column: "account",
