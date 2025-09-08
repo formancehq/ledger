@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"math/big"
 
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
@@ -36,6 +37,7 @@ func TestAccountsList(t *testing.T) {
 		expectBackendCall bool
 		returnErr         error
 	}
+
 	before := time.Now()
 
 	testCases := []testCase{
@@ -144,7 +146,7 @@ func TestAccountsList(t *testing.T) {
 				PageSize: bunpaginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[any]{
 					PIT:     &before,
-					Builder: query.Lt("balance[USD/2]", float64(100)),
+					Builder: query.Lt("balance[USD/2]", big.NewInt(100)),
 					Expand:  make([]string, 0),
 				},
 				Column: "address",
