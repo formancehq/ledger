@@ -10,3 +10,11 @@ spec:
     - name: workload
       image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload:latest
       imagePullPolicy: IfNotPresent
+      readinessProbe:
+        exec:
+          command:
+            - sh
+            - -c
+            - "curl -sf http://gateway.stack0.svc.cluster.local:8080/api/ledger/v2"
+        initialDelaySeconds: 3
+        periodSeconds: 3

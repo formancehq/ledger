@@ -39,6 +39,8 @@ build:
     COPY (+compile/out/init) /init
     ENTRYPOINT ["/init"]
 
+    RUN apt-get update && apt-get install -y curl
+
     COPY (+compile/out/cmds/*) /opt/antithesis/test/v1/main/
 
     ARG --required ANTITHESIS_REPOSITORY

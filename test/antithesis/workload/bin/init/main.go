@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/formancehq/ledger/test/antithesis/internal"
@@ -20,6 +21,7 @@ func main() {
 
 		_, err := client.Ledger.GetInfo(ctx)
 		if err != nil {
+			fmt.Printf("Not ready: %s\n", err)
 			continue
 		}
 		break

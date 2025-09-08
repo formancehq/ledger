@@ -1,5 +1,4 @@
-
-build:
+build-manifest:
 	rm -f -- tmp/resources.yaml
 	mkdir -p tmp
 	cat manifests/namespace.yaml >> tmp/resources.yaml
@@ -13,5 +12,6 @@ build:
 	echo "---" >> tmp/resources.yaml
 	cat manifests/workload.yaml >> tmp/resources.yaml
 
+push: build-manifest
 	docker build -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config:k8s_test .
 	docker push $ANTITHESIS_REPOSITORY/antithesis-config:k8s_test

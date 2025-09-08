@@ -39,6 +39,4 @@ build:
     ENTRYPOINT ["/bin/entrypoint.sh"]
     EXPOSE 8080
 
-    ARG --required ANTITHESIS_REPOSITORY
-
     SAVE IMAGE --push ghcr.io/formancehq/ledger-instrumented:k8s_test
