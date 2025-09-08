@@ -456,7 +456,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 					operations.V2ListTransactionsRequest{
 						RequestBody: map[string]interface{}{
 							"$gt": map[string]any{
-								"amount[EUR]": 10,
+								"amount[EUR]": big.NewInt(10),
 							},
 						},
 						Ledger:   "default",
@@ -466,14 +466,13 @@ var _ = Context("Ledger transactions list API tests", func() {
 				)
 				Expect(err).To(BeNil())
 			})
-			_ = response
 			It("Should be ok", func() {
 				Expect(response.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
 				cursor := &common.ColumnPaginatedQuery[any]{}
 				Expect(bunpaginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
 				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
-					Builder: query.Gt("amount[EUR]", float64(10.0)),
+					Builder: query.Gt("amount[EUR]", big.NewInt(10)),
 					PIT:     pointer.For(libtime.New(now)),
 				}))
 			})
