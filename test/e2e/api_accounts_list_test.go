@@ -117,6 +117,30 @@ var _ = Context("Ledger accounts list API tests", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 		})
+		It("should properly filter big ints", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
+				ctx,
+				operations.V2ListAccountsRequest{
+					Ledger: "default",
+					RequestBody: map[string]any{
+						"$and": []map[string]any{
+							{
+								"$gte": map[string]any{
+									"balance[USD]": bigInt,
+								},
+							},
+							{
+								"$lte": map[string]any{
+									"balance[USD]": bigInt,
+								},
+							},
+						},
+					},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(response.V2AccountsCursorResponse.Cursor.Data)).To(Equal(1))
+		})
 		It("should be countable on api", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountAccounts(
 				ctx,
