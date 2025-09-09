@@ -23,7 +23,7 @@ jobs:
     env:
       ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }}
       ANTITHESIS_SLACK_REPORT_RECIPIENT: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
-      ANTITHESIS_REPOSITORY: ${{ secrets.ANTITHESIS_REGISTRY }}
+      ANTITHESIS_REPOSITORY: ${{ secrets.ANTITHESIS_REPOSITORY }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
