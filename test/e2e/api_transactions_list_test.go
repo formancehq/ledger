@@ -399,7 +399,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 				}))
 			})
 		})
-		When("listing transactions using filter on a single match", func() {
+		When("listing transactions using filter on multiple matches", func() {
 			var (
 				err      error
 				response *operations.V2ListTransactionsResponse
@@ -441,6 +441,39 @@ var _ = Context("Ledger transactions list API tests", func() {
 						query.Match("destination", "account:"),
 					),
 					PIT: pointer.For(libtime.New(now)),
+				}))
+			})
+		})
+		When("listing transactions using filter on amount", func() {
+			var (
+				err      error
+				response *operations.V2ListTransactionsResponse
+				now      = time.Now().Round(time.Second).UTC()
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						RequestBody: map[string]interface{}{
+							"$gt": map[string]any{
+								"amount[EUR]": big.NewInt(10),
+							},
+						},
+						Ledger:   "default",
+						PageSize: pointer.For(pageSize),
+						Pit:      &now,
+					},
+				)
+				Expect(err).To(BeNil())
+			})
+			It("Should be ok", func() {
+				Expect(response.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
+				cursor := &common.ColumnPaginatedQuery[any]{}
+				Expect(bunpaginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
+				Expect(cursor.PageSize).To(Equal(uint64(10)))
+				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
+					Builder: query.Gt("amount[EUR]", big.NewInt(10)),
+					PIT:     pointer.For(libtime.New(now)),
 				}))
 			})
 		})
