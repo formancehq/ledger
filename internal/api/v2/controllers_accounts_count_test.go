@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"math/big"
 
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
@@ -69,7 +70,7 @@ func TestAccountsCount(t *testing.T) {
 			expectBackendCall: true,
 			expectQuery: storagecommon.ResourceQuery[any]{
 				PIT:     &before,
-				Builder: query.Lt("balance[USD/2]", float64(100)),
+				Builder: query.Lt("balance[USD/2]", big.NewInt(100)),
 				Expand:  make([]string, 0),
 			},
 		},
