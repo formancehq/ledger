@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"math/big"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
 
@@ -32,18 +34,21 @@ func main() {
 
 	pool := pond.New(10, 10e3)
 
-	for i := 0; i < count; i++ {
+	for range count {
 		amount := internal.RandomBigInt()
 		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
-			res, err := RunTx(ctx, client, Transaction(), ledger)
+			_, err := RunTx(ctx, client, Transaction(), ledger)
 			assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
 				"ledger": ledger,
 			})
-			assert.Always(!internal.IsServerError(res.GetHTTPMeta()), "no internal server error when committing transaction", internal.Details{
-				"ledger": ledger,
-				"error":  err,
-			})
+			if err != nil {
+				var e *sdkerrors.V2ErrorResponse
+				assert.Always(!errors.As(err, &e), "no internal server error when committing transaction", internal.Details{
+					"ledger": ledger,
+					"error":  err,
+				})
+			}
 		})
 	}
 
