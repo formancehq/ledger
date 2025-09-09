@@ -612,7 +612,7 @@ paths:
           schema:
             type: string
       responses:
-        2XX:
+        204:
           description: Key deleted
           content: {}
         default:
@@ -1000,7 +1000,7 @@ paths:
           schema:
             type: string
       responses:
-        2XX:
+        204:
           description: Key deleted
           content: {}
         default:
