@@ -24,11 +24,11 @@ jobs:
       ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }}
       ANTITHESIS_SLACK_REPORT_RECIPIENT: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
       ANTITHESIS_REPOSITORY: ${{ secrets.ANTITHESIS_REPOSITORY }}
-      OPERATOR_TAG: v2.10.1
-      OPERATOR_UTILS_TAG: v2.0.14
-      GATEWAY_TAG: v2.0.24
-      LEDGER_PREVIOUS_TAG: v2.2.47
-      LEDGER_LATEST_TAG: v2.3.0-rc.2
+      OPERATOR_TAG: "v2.10.1"
+      OPERATOR_UTILS_TAG: "v2.0.14"
+      GATEWAY_TAG: "v2.0.24"
+      LEDGER_PREVIOUS_TAG: "v2.2.47"
+      LEDGER_LATEST_TAG: "v2.3.0-rc.2"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
