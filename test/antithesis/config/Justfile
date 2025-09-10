@@ -10,6 +10,8 @@ build-manifest:
 	echo "---" >> tmp/resources.yaml
 	cat manifests/stack.yaml >> tmp/resources.yaml
 	echo "---" >> tmp/resources.yaml
+	yq '.spec.version = strenv(LEDGER_PREVIOUS_TAG)' manifests/ledger.yaml >> tmp/resources.yaml
+	echo "---" >> tmp/resources.yaml
 	cat manifests/workload.yaml >> tmp/resources.yaml
 
 push: build-manifest

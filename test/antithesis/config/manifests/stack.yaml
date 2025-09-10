@@ -31,11 +31,3 @@ metadata:
   name: stack0-gateway
 spec:
   stack: stack0
----
-apiVersion: formance.com/v1beta1
-kind: Ledger
-metadata:
-  name: stack0-ledger
-spec:
-  stack: stack0
-  version: k8s_test

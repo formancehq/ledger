@@ -44,6 +44,8 @@ build:
     COPY (+compile/out/cmds/*) /opt/antithesis/test/v1/main/
 
     ARG --required ANTITHESIS_REPOSITORY
+    ARG --required LEDGER_LATEST_TAG
+
+    RUN echo ${LEDGER_LATEST_TAG} > /ledger_latest_tag
 
     SAVE IMAGE --push --no-manifest-list ${ANTITHESIS_REPOSITORY}/workload:latest
-    # SAVE IMAGE --no-manifest-list ${ANTITHESIS_REPOSITORY}/workload:latest

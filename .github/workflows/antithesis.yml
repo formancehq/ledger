@@ -6,13 +6,13 @@ on:
         description: "Run Antithesis tests after pushing images"
         type: boolean
         default: true
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - "test/antithesis/**"
+  # push:
+  #   branches:
+  #     - main
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
+  #   paths:
+  #     - "test/antithesis/**"
   schedule:
     - cron: "0 10 * * *"
 
@@ -24,6 +24,11 @@ jobs:
       ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }}
       ANTITHESIS_SLACK_REPORT_RECIPIENT: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
       ANTITHESIS_REPOSITORY: ${{ secrets.ANTITHESIS_REPOSITORY }}
+      OPERATOR_TAG: v2.10.1
+      OPERATOR_UTILS_TAG: v2.0.14
+      GATEWAY_TAG: v2.0.24
+      LEDGER_PREVIOUS_TAG: v2.2.47
+      LEDGER_LATEST_TAG: v2.3.0-rc.2
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -69,7 +74,7 @@ jobs:
           just requirements-build
 
       - name: Run Antithesis Tests
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests == true }}
+        # if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests == true }}
         uses: antithesishq/antithesis-trigger-action@v0.8
         with:
           notebook_name: formance-k8s
@@ -77,6 +82,6 @@ jobs:
           username: ${{ secrets.ANTITHESIS_USERNAME }}
           password: ${{ secrets.ANTITHESIS_PASSWORD }}
           github_token: ${{ secrets.ANTITHESIS_GH_PAT }}
-          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:v2.10.1;ghcr.io/formancehq/operator-utils:v2.0.14;ghcr.io/formancehq/gateway:v2.0.24;ghcr.io/formancehq/ledger-instrumented:k8s_test"
+          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:k8s_test"
           config_image: "antithesis-config:k8s_test"
           email_recipients: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
