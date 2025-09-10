@@ -40,29 +40,21 @@ func main() {
 		Resource: "ledgers",
 	}
 
-	obj := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "formance.com/v1beta1",
-			"kind": "Ledger",
-			"metadata": map[string]interface{}{
-				"name": "stack0-ledger",
-			},
-			"spec": map[string]interface{}{
-				"stack": "stack0",
-				"version": string(latest_tag),
-			},
-		},
+	// fetch the previous Ledger resource
+	res, err := dyn.Resource(gvr).Get(context.Background(), "stack0-ledger", metav1.GetOptions{})
+	if err != nil {
+		panic(err)
 	}
 
-	// update Ledger custom resource to next version
-	res, err := dyn.Resource(gvr).Namespace("formance-systems").Update(context.Background(), obj, metav1.UpdateOptions{})
+	// set the version to the latest tag
+	unstructured.SetNestedField(res.Object, string(latest_tag), "spec", "version")
 
-	assert.Sometimes(err == nil, "successfully", internal.Details{
+	res, err = dyn.Resource(gvr).Update(context.Background(), res, metav1.UpdateOptions{})
+
+	assert.Sometimes(err == nil, "stack0-ledger should successfully be updated", internal.Details{
 		"ledger": res,
 	})
 	if err != nil {
 		panic(err)
 	}
-
-	log.Println("placeholder command for anytime_version_upgrade")
 }
