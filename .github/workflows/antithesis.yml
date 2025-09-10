@@ -9,10 +9,10 @@ on:
   # push:
   #   branches:
   #     - main
-  # pull_request:
-  #   types: [opened, synchronize, reopened]
-  #   paths:
-  #     - "test/antithesis/**"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "test/antithesis/**"
   schedule:
     - cron: "0 10 * * *"
 
