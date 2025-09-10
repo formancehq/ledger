@@ -82,6 +82,6 @@ jobs:
           username: ${{ secrets.ANTITHESIS_USERNAME }}
           password: ${{ secrets.ANTITHESIS_PASSWORD }}
           github_token: ${{ secrets.ANTITHESIS_GH_PAT }}
-          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:k8s_test"
+          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:k8s_test"
           config_image: "antithesis-config:k8s_test"
           email_recipients: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
