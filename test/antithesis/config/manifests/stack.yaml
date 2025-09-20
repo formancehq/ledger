@@ -1,0 +1,33 @@
+apiVersion: formance.com/v1beta1
+kind: Settings
+metadata:
+  name: formance-settings
+spec:
+  key: postgres.*.uri
+  stacks:
+    - "stack0"
+  value: postgresql://ledger:ledger@postgres.formance-systems.svc.cluster.local:5432?disableSSLMode=true
+---
+apiVersion: formance.com/v1beta1
+kind: Settings
+metadata:
+  name: formance-setting-ledger-image
+spec:
+  key: registries."ghcr.io".images."formancehq/ledger".rewrite
+  stacks:
+    - "stack0"
+  value: "formancehq/ledger-instrumented"
+---
+apiVersion: formance.com/v1beta1
+kind: Stack
+metadata:
+  name: stack0
+spec:
+  versionsFromFile: v2.0
+---
+apiVersion: formance.com/v1beta1
+kind: Gateway
+metadata:
+  name: stack0-gateway
+spec:
+  stack: stack0
