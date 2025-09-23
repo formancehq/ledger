@@ -27,8 +27,10 @@ jobs:
       OPERATOR_TAG: "v2.10.1"
       OPERATOR_UTILS_TAG: "v2.0.14"
       GATEWAY_TAG: "v2.0.24"
-      LEDGER_PREVIOUS_TAG: "v2.2.47"
-      LEDGER_LATEST_TAG: "v2.3.0-rc.2"
+      # LEDGER_PREVIOUS_TAG: "v2.2.47"
+      # temporary: remove this when support for multiple image versions is added
+      LEDGER_PREVIOUS_TAG: "v2.3.0"
+      LEDGER_LATEST_TAG: "v2.3.0"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -68,10 +70,10 @@ jobs:
         run: |
           echo '${{ secrets.ANTITHESIS_JSON_KEY }}' | docker login -u _json_key https://us-central1-docker.pkg.dev --password-stdin
 
-      # - name: Build and Push Config Image
-      #   run: |
-      #     cd test/antithesis
-      #     just requirements-build
+      - name: Build and Push Config Image
+        run: |
+          cd test/antithesis
+          just requirements-build
 
       - name: Run Antithesis Tests
         # if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests == true }}
@@ -82,6 +84,8 @@ jobs:
           username: ${{ secrets.ANTITHESIS_USERNAME }}
           password: ${{ secrets.ANTITHESIS_PASSWORD }}
           github_token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_PREVIOUS_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
+          # images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_PREVIOUS_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
+          # temporary: remove this when support for multiple image versions is added
+          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
           config_image: "antithesis-config:k8s_test"
           email_recipients: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}

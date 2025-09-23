@@ -17,6 +17,8 @@ import (
 	"github.com/formancehq/ledger/pkg/client/retry"
 )
 
+const USER_ACCOUNT_COUNT uint64 = 1000;
+
 type Details map[string]any
 
 func RandomBigInt() *big.Int {
@@ -92,7 +94,7 @@ func ListLedgers(ctx context.Context, client *client.Formance) ([]string, error)
 func GetRandomLedger(ctx context.Context, client *client.Formance) (string, error) {
 	ledgers, err := ListLedgers(ctx, client)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error listing ledgers: %v", err)
 	}
 
 	if len(ledgers) == 0 {
@@ -102,4 +104,8 @@ func GetRandomLedger(ctx context.Context, client *client.Formance) (string, erro
 	randomIndex := rand.Intn(len(ledgers))
 
 	return ledgers[randomIndex], nil
+}
+
+func GetRandomAddress() string {
+	return random.RandomChoice([]string{"world", fmt.Sprintf("users:%d", random.GetRandom()%USER_ACCOUNT_COUNT)})
 }

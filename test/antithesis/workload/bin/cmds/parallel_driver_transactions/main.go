@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"log"
-	"math/big"
 
 	"github.com/alitto/pond"
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -30,15 +30,11 @@ func main() {
 
 	const count = 100
 
-	totalAmount := big.NewInt(0)
-
 	pool := pond.New(10, 10e3)
 
 	for range count {
-		amount := internal.RandomBigInt()
-		totalAmount = totalAmount.Add(totalAmount, amount)
 		pool.Submit(func() {
-			_, err := RunTx(ctx, client, Transaction(), ledger)
+			_, err := RunTx(ctx, client, RandomPostings(), ledger)
 			assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
 				"ledger": ledger,
 			})
@@ -75,15 +71,22 @@ func RunTx(
 	return res, err
 }
 
-func Transaction() []components.V2Posting {
+func RandomPostings() []components.V2Posting {
 	postings := []components.V2Posting{}
 
-	postings = append(postings, components.V2Posting{
-		Amount:      big.NewInt(100),
-		Asset:       "USD/2",
-		Destination: "orders:1234",
-		Source:      "world",
-	})
+	for range random.GetRandom()%20 {
+		source := internal.GetRandomAddress()
+		destination := internal.GetRandomAddress()
+		amount := internal.RandomBigInt()
+		asset := random.RandomChoice([]string{"USD/2", "EUR/2", "COIN"})
+
+		postings = append(postings, components.V2Posting{
+			Amount:      amount,
+			Asset:       asset,
+			Destination: destination,
+			Source:      source,
+		})
+	}
 
 	return postings
 }
@@ -92,7 +95,7 @@ func Sequence() []Postings {
 	postings := []Postings{}
 
 	for i := 0; i < 10; i++ {
-		postings = append(postings, Transaction())
+		postings = append(postings, RandomPostings())
 	}
 
 	return postings
