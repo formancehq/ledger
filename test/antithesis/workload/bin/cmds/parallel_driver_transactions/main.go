@@ -40,7 +40,7 @@ func main() {
 			})
 			if err != nil {
 				var e *sdkerrors.V2ErrorResponse
-				assert.Always(!errors.As(err, &e), "no internal server error when committing transaction", internal.Details{
+				assert.Always(errors.As(err, &e) && e.ErrorCode == components.V2ErrorsEnumInternal, "no internal server error when committing transaction", internal.Details{
 					"ledger": ledger,
 					"error":  err,
 				})
@@ -74,7 +74,7 @@ func RunTx(
 func RandomPostings() []components.V2Posting {
 	postings := []components.V2Posting{}
 
-	for range random.GetRandom()%20 {
+	for range random.GetRandom()%20+1 {
 		source := internal.GetRandomAddress()
 		destination := internal.GetRandomAddress()
 		amount := internal.RandomBigInt()

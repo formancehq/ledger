@@ -107,14 +107,17 @@ func checkAccountBalances(ctx context.Context, client *client.Formance, ledger s
 
 func checkSequentialTxIDs(ctx context.Context, client *client.Formance, ledger string) {
 	var expectedTxId *big.Int
+	var next *string
 	for {
 		transactions, err := client.Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
 			Ledger: ledger,
+			Cursor: next,
 		})
 		assert.Sometimes(err != nil, "Client can list transactions", internal.Details{
 			"error": err,
 		})
 		if err != nil {
+			fmt.Printf("error listing transactions: %v", err)
 			return
 		}
 		if len(transactions.V2TransactionsCursorResponse.Cursor.Data) == 0 {
@@ -126,6 +129,9 @@ func checkSequentialTxIDs(ctx context.Context, client *client.Formance, ledger s
 		}
 		for _, tx := range transactions.V2TransactionsCursorResponse.Cursor.Data {
 			expectedTxId.Sub(expectedTxId, big.NewInt(1))
+			if tx.ID.Cmp(expectedTxId) != 0 {
+				panic(fmt.Sprintf("oop: expected %v and got %v", expectedTxId, tx.ID))
+			}
 			assert.Always(tx.ID.Cmp(expectedTxId) == 0, "txId should be sequential", internal.Details{
 				"expected": expectedTxId,
 				"actual": tx.ID,
@@ -134,6 +140,7 @@ func checkSequentialTxIDs(ctx context.Context, client *client.Formance, ledger s
 		if !transactions.V2TransactionsCursorResponse.Cursor.HasMore {
 			break
 		}
+		next = transactions.V2TransactionsCursorResponse.Cursor.Next
 	}
 	log.Printf("composer: sequential transaction id check: done for ledger %s", ledger)
 }

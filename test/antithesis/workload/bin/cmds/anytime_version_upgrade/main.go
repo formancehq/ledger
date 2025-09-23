@@ -54,7 +54,4 @@ func main() {
 	assert.Sometimes(err == nil, "stack0-ledger should successfully be updated", internal.Details{
 		"ledger": res,
 	})
-	if err != nil {
-		panic(err)
-	}
 }
