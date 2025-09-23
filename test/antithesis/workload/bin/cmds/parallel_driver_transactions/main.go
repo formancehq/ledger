@@ -40,7 +40,7 @@ func main() {
 			})
 			if err != nil {
 				var e *sdkerrors.V2ErrorResponse
-				assert.Always(errors.As(err, &e) && e.ErrorCode == components.V2ErrorsEnumInternal, "no internal server error when committing transaction", internal.Details{
+				assert.Always(errors.As(err, &e) && e.ErrorCode == components.V2ErrorsEnumInsufficientFund, "no internal server error when committing transaction", internal.Details{
 					"ledger": ledger,
 					"error":  err,
 				})

@@ -113,7 +113,7 @@ func checkSequentialTxIDs(ctx context.Context, client *client.Formance, ledger s
 			Ledger: ledger,
 			Cursor: next,
 		})
-		assert.Sometimes(err != nil, "Client can list transactions", internal.Details{
+		assert.Sometimes(err == nil, "Client can list transactions", internal.Details{
 			"error": err,
 		})
 		if err != nil {
@@ -129,9 +129,6 @@ func checkSequentialTxIDs(ctx context.Context, client *client.Formance, ledger s
 		}
 		for _, tx := range transactions.V2TransactionsCursorResponse.Cursor.Data {
 			expectedTxId.Sub(expectedTxId, big.NewInt(1))
-			if tx.ID.Cmp(expectedTxId) != 0 {
-				panic(fmt.Sprintf("oop: expected %v and got %v", expectedTxId, tx.ID))
-			}
 			assert.Always(tx.ID.Cmp(expectedTxId) == 0, "txId should be sequential", internal.Details{
 				"expected": expectedTxId,
 				"actual": tx.ID,
