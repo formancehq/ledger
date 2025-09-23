@@ -50,4 +50,4 @@ jobs:
       - name: Build and Push Config Image
         run: |
           cd test/antithesis/image
-          earthly --push ./image+build --ANTITHESIS_REPOSITORY="${{ secrets.ANTITHESIS_REPOSITORY }}" --LEDGER_LATEST_TAG="${{ env.GITHUB_REF_NAME }}"
+          earthly --push ./image+build --LEDGER_TAG="${{ env.GITHUB_REF_NAME }}"

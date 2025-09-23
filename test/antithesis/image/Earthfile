@@ -39,4 +39,6 @@ build:
     ENTRYPOINT ["/bin/entrypoint.sh"]
     EXPOSE 8080
 
-    SAVE IMAGE --push ghcr.io/formancehq/ledger-instrumented:latest
+    ARG --required LEDGER_TAG
+
+    SAVE IMAGE --push ghcr.io/formancehq/ledger-instrumented:${LEDGER_TAG}
