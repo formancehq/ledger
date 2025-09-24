@@ -79,6 +79,7 @@ func checkAccountBalances(ctx context.Context, client *client.Formance, ledger s
 			Address: address,
 		})
 		assert.Sometimes(err != nil, "Client can aggregate account balances", internal.Details{
+			"ledger": ledger,
 			"error": err,
 		})
 		if err != nil {
@@ -89,11 +90,13 @@ func checkAccountBalances(ctx context.Context, client *client.Formance, ledger s
 			balance := new(big.Int).Set(volume.Input)
 			balance.Sub(balance, volume.Output)
 			assert.Always(balance.Cmp(volume.Balance) == 0, "Reported balance and volumes should be consistent", internal.Details{
+				"ledger": ledger,
 				"address": address,
 				"asset": asset,
 				"volume": volume,
 			})
 			assert.Always(volume.Balance.Cmp(zero) != -1, "Balance should stay positive when no overdraft is allowed", internal.Details{
+				"ledger": ledger,
 				"address": address,
 				"asset": asset,
 				"volume": volume,

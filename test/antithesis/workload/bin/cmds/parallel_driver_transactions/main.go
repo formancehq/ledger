@@ -34,17 +34,7 @@ func main() {
 
 	for range count {
 		pool.Submit(func() {
-			_, err := RunTx(ctx, client, RandomPostings(), ledger)
-			assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
-				"ledger": ledger,
-			})
-			if err != nil {
-				var e *sdkerrors.V2ErrorResponse
-				assert.Always(errors.As(err, &e) && e.ErrorCode == components.V2ErrorsEnumInsufficientFund, "no internal server error when committing transaction", internal.Details{
-					"ledger": ledger,
-					"error":  err,
-				})
-			}
+			CreateTransaction(ctx, client, ledger)
 		})
 	}
 
@@ -55,12 +45,12 @@ func main() {
 
 type Postings []components.V2Posting
 
-func RunTx(
+func CreateTransaction(
 	ctx context.Context,
 	client *client.Formance,
-	postings Postings,
 	ledger string,
-) (*operations.V2CreateTransactionResponse, error) {
+) {
+	postings := RandomPostings()
 	res, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 		Ledger: ledger,
 		V2PostTransaction: components.V2PostTransaction{
@@ -68,7 +58,20 @@ func RunTx(
 		},
 	})
 
-	return res, err
+	assert.Sometimes(err == nil, "transaction was committed successfully", internal.Details{
+		"ledger": ledger,
+		"postings": postings,
+		"error": err,
+	})
+	if err != nil {
+		var e *sdkerrors.V2ErrorResponse
+		assert.Always(errors.As(err, &e) && e.ErrorCode == components.V2ErrorsEnumInsufficientFund, "no internal server error when committing transaction", internal.Details{
+			"ledger": ledger,
+			"postings": postings,
+			"response": res,
+			"error":  err,
+		})
+	}
 }
 
 func RandomPostings() []components.V2Posting {
