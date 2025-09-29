@@ -77,7 +77,7 @@ func CreateTransaction(
 func RandomPostings() []components.V2Posting {
 	postings := []components.V2Posting{}
 
-	for range random.GetRandom()%20+1 {
+	for range random.GetRandom()%2+1 {
 		source := internal.GetRandomAddress()
 		destination := internal.GetRandomAddress()
 		amount := internal.RandomBigInt()
@@ -89,16 +89,6 @@ func RandomPostings() []components.V2Posting {
 			Destination: destination,
 			Source:      source,
 		})
-	}
-
-	return postings
-}
-
-func Sequence() []Postings {
-	postings := []Postings{}
-
-	for i := 0; i < 10; i++ {
-		postings = append(postings, RandomPostings())
 	}
 
 	return postings

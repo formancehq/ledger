@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"os"
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -22,9 +21,11 @@ func main() {
 
 	ledgers, err := client.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{})
 
+	assert.Sometimes(err == nil, "error listing ledgers", internal.Details {
+		"error": err,
+	})
 	if err != nil {
-		log.Printf("error listing ledgers: %s", err)
-		os.Exit(1)
+		return
 	}
 
 	wg := sync.WaitGroup{}

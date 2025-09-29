@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"math/rand"
 	"net/http"
 	"os"
 
@@ -101,7 +100,7 @@ func GetRandomLedger(ctx context.Context, client *client.Formance) (string, erro
 		return "", fmt.Errorf("no ledgers found")
 	}
 
-	randomIndex := rand.Intn(len(ledgers))
+	randomIndex := random.GetRandom()%uint64(len(ledgers))
 
 	return ledgers[randomIndex], nil
 }
