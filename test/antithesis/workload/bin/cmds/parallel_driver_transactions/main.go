@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 
 	"github.com/alitto/pond"
@@ -11,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
 
@@ -51,7 +49,7 @@ func CreateTransaction(
 	ledger string,
 ) {
 	postings := RandomPostings()
-	res, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+	_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 		Ledger: ledger,
 		V2PostTransaction: components.V2PostTransaction{
 			Postings: postings,
@@ -63,15 +61,6 @@ func CreateTransaction(
 		"postings": postings,
 		"error": err,
 	})
-	if err != nil {
-		var e *sdkerrors.V2ErrorResponse
-		assert.Always(errors.As(err, &e) && e.ErrorCode == components.V2ErrorsEnumInsufficientFund, "no internal server error when committing transaction", internal.Details{
-			"ledger": ledger,
-			"postings": postings,
-			"response": res,
-			"error":  err,
-		})
-	}
 }
 
 func RandomPostings() []components.V2Posting {

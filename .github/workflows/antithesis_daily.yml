@@ -6,9 +6,6 @@ on:
         description: "Run Antithesis tests after pushing images"
         type: boolean
         default: true
-  # push:
-  #   branches:
-  #     - main
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
@@ -77,7 +74,6 @@ jobs:
           just requirements-build
 
       - name: Run Antithesis Tests
-        # if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tests == true }}
         uses: antithesishq/antithesis-trigger-action@v0.8
         with:
           notebook_name: formance-k8s

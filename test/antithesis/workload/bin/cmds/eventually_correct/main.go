@@ -21,9 +21,7 @@ func main() {
 
 	ledgers, err := client.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{})
 
-	assert.Sometimes(err == nil, "error listing ledgers", internal.Details {
-		"error": err,
-	})
+	assert.Sometimes(err == nil, "error listing ledgers", internal.Details {})
 	if err != nil {
 		return
 	}

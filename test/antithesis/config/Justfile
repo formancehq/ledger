@@ -6,7 +6,6 @@ build-manifest:
 	cat manifests/postgres.yaml >> tmp/resources.yaml
 	echo "---" >> tmp/resources.yaml
 	helm template regions oci://ghcr.io/formancehq/helm/regions --version 2.15.2 --namespace formance-systems >> tmp/resources.yaml
-	# helm template operator oci://ghcr.io/formancehq/helm/operator-crds --version v2.8.0 --namespace formance-systems >> tmp/resources.yaml
 	echo "---" >> tmp/resources.yaml
 	cat manifests/stack.yaml >> tmp/resources.yaml
 	echo "---" >> tmp/resources.yaml

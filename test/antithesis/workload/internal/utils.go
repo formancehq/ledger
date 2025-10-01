@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/retry"
 )
 
-const USER_ACCOUNT_COUNT uint64 = 1000;
+const USER_ACCOUNT_COUNT uint64 = 32;
 
 type Details map[string]any
 

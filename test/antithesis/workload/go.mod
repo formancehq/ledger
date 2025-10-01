@@ -8,7 +8,7 @@ replace github.com/formancehq/ledger/pkg/client => ../../../pkg/client
 
 require (
 	github.com/alitto/pond v1.8.3
-	github.com/antithesishq/antithesis-sdk-go v0.4.2
+	github.com/antithesishq/antithesis-sdk-go v0.5.0
 	github.com/formancehq/go-libs/v2 v2.0.1-0.20241114125605-4a3e447246a9
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	golang.org/x/sync v0.12.0 // indirect; indirect, for singleflight package
