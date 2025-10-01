@@ -12,7 +12,7 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 
 	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
@@ -134,6 +134,7 @@ func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) 
 func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.ChainedLog], error) {
 	logs, err := paginateWithColumn[PaginatedQueryOptions[any], Logs](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(&q),
+		[]bunpaginate.PaginationColumnOption{},
 		store.logsQueryBuilder(q.Options),
 	)
 	if err != nil {

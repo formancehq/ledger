@@ -11,11 +11,11 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"

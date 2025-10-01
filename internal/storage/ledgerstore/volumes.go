@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/formancehq/go-libs/bun/bunpaginate"
 	lquery "github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bunpaginate"
 	"github.com/uptrace/bun"
 )
 

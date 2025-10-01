@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	sharedapi "github.com/formancehq/ledger/internal/api/sharedapi"
 
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/machine"
