@@ -4,7 +4,7 @@ import (
 	"regexp"
 )
 
-const Pattern = `[A-Z][A-Z0-9]{0,16}(\/\d{1,6})?`
+const Pattern = `[A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(\/\d{1,6})?`
 
 var Regexp = regexp.MustCompile("^" + Pattern + "$")
 
