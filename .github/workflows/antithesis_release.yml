@@ -5,20 +5,14 @@ on:
       - "*"
 
 jobs:
-  push-antithesis-images:
-    name: Push Images to Antithesis
+  push-instrumented-ledger:
+    name: Push instrumented ledger
     runs-on: shipfox-4vcpu-ubuntu-2404
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Earthly
-        uses: earthly/actions-setup@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "latest"
 
       - name: Setup Just
         uses: extractions/setup-just@v3
