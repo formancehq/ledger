@@ -5,7 +5,7 @@ run-6min: requirements-push
           "params": { \
             "custom.duration": "0.1", \
             "antithesis.report.recipients": "'"$ANTITHESIS_SLACK_REPORT_RECIPIENT"'", \
-            "antithesis.config_image": "antithesis-config:k8s_test", \
+            "antithesis.config_image": "antithesis-config:daily_run", \
             "antithesis.images": "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:v2.10.1;ghcr.io/formancehq/operator-utils:v2.0.14;ghcr.io/formancehq/gateway:v2.0.24;ghcr.io/formancehq/ledger-instrumented:'"$LEDGER_LATEST_TAG"'" \
           } \
         }'
@@ -17,7 +17,7 @@ run-1h: requirements-push
           "params": { \
             "custom.duration": "1", \
             "antithesis.report.recipients": "'"$ANTITHESIS_SLACK_REPORT_RECIPIENT"'", \
-            "antithesis.config_image": "antithesis-config:k8s_test", \
+            "antithesis.config_image": "antithesis-config:daily_run", \
             "antithesis.images": "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:v2.10.1;ghcr.io/formancehq/operator-utils:v2.0.14;ghcr.io/formancehq/gateway:v2.0.24;ghcr.io/formancehq/ledger-instrumented:"'"$LEDGER_LATEST_TAG"'" \
           } \
         }'

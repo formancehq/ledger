@@ -14,5 +14,5 @@ build-manifest:
 	cat manifests/workload.yaml >> tmp/resources.yaml
 
 push: build-manifest
-	docker build -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config:k8s_test .
-	docker push $ANTITHESIS_REPOSITORY/antithesis-config:k8s_test
+	docker build -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config:daily_run .
+	docker push $ANTITHESIS_REPOSITORY/antithesis-config:daily_run

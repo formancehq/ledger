@@ -1,9 +1,10 @@
 push:
 	#!/usr/bin/env bash
+	
+	set -euxo pipefail
 
 	go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@latest
 
-	set -euxo pipefail
 	tmpdir=$(mktemp -d)
 	trap 'rm -rf $tmpdir' EXIT
 	scriptdir=$(pwd)
@@ -16,7 +17,7 @@ push:
 
 	cd "$tmpdir/test/antithesis/workload"
 
-	antithesis-go-instrumentor -assert_only . 
+	$GOPATH/bin/antithesis-go-instrumentor -assert_only .
 
 	mkdir -p out
 	go build -o ./out/init ./bin/init

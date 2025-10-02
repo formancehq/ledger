@@ -83,5 +83,5 @@ jobs:
           # images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_PREVIOUS_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
           # temporary: remove this when support for multiple image versions is added
           images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
-          config_image: "antithesis-config:k8s_test"
+          config_image: "antithesis-config:daily_run"
           email_recipients: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}

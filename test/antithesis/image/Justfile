@@ -1,15 +1,16 @@
 push:
 	#!/usr/bin/env bash
 
+	set -euxo pipefail
+
 	go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@latest
 
-	set -euxo pipefail
 	tmpdir=$(mktemp -d)
 	trap 'rm -rf $tmpdir' EXIT
 	scriptdir=$(pwd)
 
 	mkdir -p "$tmpdir/ledger_instrumented"
-	antithesis-go-instrumentor ../../../ "$tmpdir/ledger_instrumented"
+	$GOPATH/bin/antithesis-go-instrumentor ../../../ "$tmpdir/ledger_instrumented"
 	cd "$tmpdir/ledger_instrumented/customer"
 	go build -race -o ledger
 	cd "$tmpdir/ledger_instrumented"
