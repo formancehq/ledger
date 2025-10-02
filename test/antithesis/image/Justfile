@@ -1,6 +1,8 @@
 push:
 	#!/usr/bin/env bash
-	
+
+	go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@latest
+
 	set -euxo pipefail
 	tmpdir=$(mktemp -d)
 	trap 'rm -rf $tmpdir' EXIT

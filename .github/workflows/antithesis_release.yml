@@ -48,6 +48,8 @@ jobs:
           echo '${{ secrets.ANTITHESIS_JSON_KEY }}' | docker login -u _json_key https://us-central1-docker.pkg.dev --password-stdin
 
       - name: Build and Push Config Image
+        env:
+          LEDGER_TAG: ${{ env.GITHUB_REF_NAME }}
         run: |
           cd test/antithesis/image
-          earthly --push ./image+build --LEDGER_TAG="${{ env.GITHUB_REF_NAME }}"
+          just push
