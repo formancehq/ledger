@@ -50,8 +50,5 @@ jobs:
       - name: Build and Push Config Image
         env:
           LEDGER_TAG: ${{ env.GITHUB_REF_NAME }}
-        run: >
-          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
-          develop --impure --command just
-          --justfile ./test/antithesis/image/Justfile
-          push
+        run: |
+          nix develop --impure --command just --justfile ./test/antithesis/image/Justfile push
