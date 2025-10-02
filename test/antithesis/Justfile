@@ -24,4 +24,4 @@ run-1h: requirements-build
 
 requirements-build:
     just config/push
-    earthly --push ./workload+build --ANTITHESIS_REPOSITORY="$ANTITHESIS_REPOSITORY" --LEDGER_LATEST_TAG="$LEDGER_LATEST_TAG"
+    just workload/push

@@ -1,0 +1,5 @@
+FROM ubuntu:latest
+
+COPY init /init
+COPY cmds/* /opt/antithesis/test/v1/main/
+COPY ledger_latest_tag /ledger_latest_tag

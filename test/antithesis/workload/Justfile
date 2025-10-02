@@ -1,0 +1,28 @@
+push:
+	#!/usr/bin/env bash
+	
+	set -euxo pipefail
+	tmpdir=$(mktemp -d)
+	trap 'rm -rf $tmpdir' EXIT
+	scriptdir=$(pwd)
+
+	mkdir -p "$tmpdir/test/antithesis/workload"
+	mkdir -p "$tmpdir/pkg"
+
+	cp -r go.* bin internal "$tmpdir/test/antithesis/workload"
+	cp -r ../../../pkg/client "$tmpdir/pkg/"
+
+	cd "$tmpdir/test/antithesis/workload"
+
+	antithesis-go-instrumentor -assert_only . 
+
+	mkdir -p out
+	go build -o ./out/init ./bin/init
+	for file in $(ls ./bin/cmds/); do \
+		go build -o ./out/cmds/$file ./bin/cmds/$file; \
+	done
+
+	echo "$LEDGER_LATEST_TAG" > ./out/ledger_latest_tag
+
+	docker build ./out -f "$scriptdir/Dockerfile.workload" -t "$ANTITHESIS_REPOSITORY/workload:latest"
+	docker push "$ANTITHESIS_REPOSITORY/workload:latest"

@@ -1,0 +1,17 @@
+push:
+	#!/usr/bin/env bash
+	
+	set -euxo pipefail
+	tmpdir=$(mktemp -d)
+	trap 'rm -rf $tmpdir' EXIT
+	scriptdir=$(pwd)
+
+	mkdir -p "$tmpdir/ledger_instrumented"
+	antithesis-go-instrumentor ../../../ "$tmpdir/ledger_instrumented"
+	cd "$tmpdir/ledger_instrumented/customer"
+	go build -race -o ledger
+	cd "$tmpdir/ledger_instrumented"
+	cp "$scriptdir/entrypoint.sh" entrypoint.sh
+
+	docker build . -f "$scriptdir/Dockerfile.ledger" -t "ghcr.io/formancehq/ledger-instrumented:$LEDGER_TAG"
+	docker push "ghcr.io/formancehq/ledger-instrumented:$LEDGER_TAG"
