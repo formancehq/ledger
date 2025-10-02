@@ -1,4 +1,4 @@
-run-6min: #requirements-build
+run-6min: requirements-push
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
         -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
@@ -10,7 +10,7 @@ run-6min: #requirements-build
           } \
         }'
 
-run-1h: requirements-build
+run-1h: requirements-push
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
         -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
@@ -22,6 +22,6 @@ run-1h: requirements-build
           } \
         }'
 
-requirements-build:
+requirements-push:
     just config/push
     just workload/push

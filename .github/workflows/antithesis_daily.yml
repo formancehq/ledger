@@ -69,9 +69,11 @@ jobs:
           echo '${{ secrets.ANTITHESIS_JSON_KEY }}' | docker login -u _json_key https://us-central1-docker.pkg.dev --password-stdin
 
       - name: Build and Push Config Image
-        run: |
-          cd test/antithesis
-          just requirements-build
+        run: >
+          /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
+          develop --impure --command just
+          --justfile ./test/antithesis/image/Justfile
+          requirements-push
 
       - name: Run Antithesis Tests
         uses: antithesishq/antithesis-trigger-action@v0.8
