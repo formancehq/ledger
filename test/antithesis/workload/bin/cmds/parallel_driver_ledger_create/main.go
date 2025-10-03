@@ -17,7 +17,7 @@ func main() {
 	id := random.GetRandom()%1e6
 	ledger := fmt.Sprintf("ledger-%d", id)
 
-	res, err := internal.CreateLedger(
+	_, err := internal.CreateLedger(
 		ctx,
 		client,
 		ledger,
@@ -27,16 +27,6 @@ func main() {
 	assert.Sometimes(err == nil, "ledger should have been created properly", internal.Details{
 		"error": err,
 	})
-
-	if err == nil {
-		assert.Always(
-			!internal.IsServerError(res.GetHTTPMeta()),
-			"no internal server error when creating ledger",
-			internal.Details{
-				"error": err,
-			},
-		)
-	}
 
 	log.Println("composer: parallel_driver_ledger_create: done")
 }

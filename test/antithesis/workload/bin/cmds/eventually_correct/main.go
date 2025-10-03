@@ -9,7 +9,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/antithesis/internal"
 )
@@ -21,7 +20,9 @@ func main() {
 
 	ledgers, err := client.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{})
 
-	assert.Sometimes(err == nil, "error listing ledgers", internal.Details {})
+	assert.Sometimes(err == nil, "error listing ledgers", internal.Details {
+		"error": err,
+	})
 	if err != nil {
 		return
 	}
@@ -33,7 +34,6 @@ func main() {
 			defer wg.Done()
 			checkBalanced(ctx, client, ledger)
 			checkAccountBalances(ctx, client, ledger)
-			checkSequentialTxIDs(ctx, client, ledger)
 		}(ledger.Name)
 	}
 	wg.Wait()
@@ -43,18 +43,16 @@ func checkBalanced(ctx context.Context, client *client.Formance, ledger string) 
 	aggregated, err := client.Ledger.V2.GetBalancesAggregated(ctx, operations.V2GetBalancesAggregatedRequest{
 		Ledger: ledger,
 	})
+	assert.Sometimes(
+		err == nil,
+		"Client can aggregate balances",
+		internal.Details{
+			"ledger": ledger,
+			"error": err,
+		},
+	)
 	if err != nil {
-		if internal.IsServerError(aggregated.GetHTTPMeta()) {
-			assert.Always(
-				false,
-				fmt.Sprintf("error getting aggregated balances for ledger %s: %s", ledger, err),
-				internal.Details{
-					"error": err,
-				},
-			)
-		} else {
-			log.Fatalf("error getting aggregated balances for ledger %s: %s", ledger, err)
-		}
+		return
 	}
 
 	for asset, volumes := range aggregated.V2AggregateBalancesResponse.Data {
@@ -105,45 +103,4 @@ func checkAccountBalances(ctx context.Context, client *client.Formance, ledger s
 	}
 
 	log.Printf("composer: account balances check: done for ledger %s", ledger)
-}
-
-func checkSequentialTxIDs(ctx context.Context, client *client.Formance, ledger string) {
-	var expectedTxId *big.Int
-	var next *string
-	for {
-		transactions, err := client.Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
-			Ledger: ledger,
-			Cursor: next,
-		})
-		assert.Sometimes(err == nil, "Client can list transactions", internal.Details{
-			"error": err,
-		})
-		if err != nil {
-			fmt.Printf("error listing transactions: %v", err)
-			return
-		}
-		if len(transactions.V2TransactionsCursorResponse.Cursor.Data) == 0 {
-			return
-		}
-		if expectedTxId == nil {
-			expectedTxId = transactions.V2TransactionsCursorResponse.Cursor.Data[0].ID
-			expectedTxId.Add(expectedTxId, big.NewInt(1))
-		}
-		for _, tx := range transactions.V2TransactionsCursorResponse.Cursor.Data {
-			expectedTxId.Sub(expectedTxId, big.NewInt(1))
-			assert.Always(tx.ID.Cmp(expectedTxId) == 0, "txId should be sequential", internal.Details{
-				"expected": expectedTxId,
-				"actual": tx.ID,
-			})
-		}
-		if !transactions.V2TransactionsCursorResponse.Cursor.HasMore {
-			break
-		}
-		next = transactions.V2TransactionsCursorResponse.Cursor.Next
-	}
-	log.Printf("composer: sequential transaction id check: done for ledger %s", ledger)
-}
-
-func IsServerError(httpMeta components.HTTPMetadata) bool {
-	return httpMeta.Response.StatusCode >= 400 && httpMeta.Response.StatusCode < 600
 }

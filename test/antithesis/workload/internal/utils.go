@@ -61,10 +61,6 @@ func NewClient() *client.Formance {
 	)
 }
 
-func IsServerError(httpMeta components.HTTPMetadata) bool {
-	return httpMeta.Response.StatusCode >= 400 && httpMeta.Response.StatusCode < 600
-}
-
 func CreateLedger(ctx context.Context, client *client.Formance, name string, bucket string) (*operations.V2CreateLedgerResponse, error) {
 	res, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
 		Ledger: name,
