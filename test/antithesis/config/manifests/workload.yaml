@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: workload
+  namespace: formance-systems
+  labels:
+    app: workload
+spec:
+  containers:
+    - name: workload
+      image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload:latest
+      imagePullPolicy: IfNotPresent
+      readinessProbe:
+        exec:
+          command:
+            - sh
+            - -c
+            - "curl -sf http://gateway.stack0.svc.cluster.local:8080/api/ledger/v2"
+        initialDelaySeconds: 3
+        periodSeconds: 3
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ledger-updater
+rules:
+  - apiGroups: ["formance.com"]
+    resources: ["ledgers"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ledger-updater-binding
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: formance-systems
+roleRef:
+  kind: ClusterRole
+  name: ledger-updater
+  apiGroup: rbac.authorization.k8s.io
