@@ -101,18 +101,15 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 		}
 
-		// Step 4: Create a store for interacting with the ledger
 		ret = d.ledgerStoreFactory.Create(b, *l)
 
 		return nil
 	})
 
-	// If any error occurred during the transaction, resolve and return it
 	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}
 
-	// Return the created ledger store
 	return ret, nil
 }
 
