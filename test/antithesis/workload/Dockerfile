@@ -29,4 +29,4 @@ ENTRYPOINT ["/init"]
 
 COPY --from=compiler cmds/* /opt/antithesis/test/v1/main/
 
-RUN echo ${LEDGER_LATEST_TAG} /ledger_latest_tag
+RUN echo ${LEDGER_LATEST_TAG} > /ledger_latest_tag
