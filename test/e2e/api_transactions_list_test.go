@@ -274,7 +274,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 			Context("with effective ordering", func() {
 				BeforeEach(func() {
 					//nolint:staticcheck
-					req.Order = pointer.For(operations.OrderEffective)
+					req.Order = pointer.For(operations.QueryParamOrderEffective)
 				})
 				It("Should be ok, and returns transactions ordered by effective timestamp", func() {
 					Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))

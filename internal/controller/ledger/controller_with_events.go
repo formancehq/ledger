@@ -153,6 +153,20 @@ func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parame
 	return log, nil
 }
 
+func (c *ControllerWithEvents) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+	log, ret, err := c.Controller.UpdateSchema(ctx, parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !parameters.DryRun {
+		c.handleEvent(ctx, func() {
+			c.listener.UpdatedSchema(ctx, c.ledger.Name, ret.Schema)
+		})
+	}
+
+	return log, ret, nil
+}
+
 func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
 	ctrl, tx, err := c.Controller.BeginTX(ctx, options)
 	if err != nil {
