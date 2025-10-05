@@ -7,6 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/query"
@@ -45,6 +46,9 @@ type Store interface {
 	// UpsertAccount returns a boolean indicating if the account was upserted
 	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
+	InsertSchema(ctx context.Context, data *ledger.Schema) error
+	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
+	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
 	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)

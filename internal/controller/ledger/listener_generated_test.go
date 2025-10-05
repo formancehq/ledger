@@ -87,3 +87,15 @@ func (mr *MockListenerMockRecorder) SavedMetadata(ctx, arg1, targetType, id, arg
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavedMetadata", reflect.TypeOf((*MockListener)(nil).SavedMetadata), ctx, arg1, targetType, id, arg4)
 }
+
+// UpdatedSchema mocks base method.
+func (m *MockListener) UpdatedSchema(ctx context.Context, arg1 string, data ledger.Schema) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdatedSchema", ctx, arg1, data)
+}
+
+// UpdatedSchema indicates an expected call of UpdatedSchema.
+func (mr *MockListenerMockRecorder) UpdatedSchema(ctx, arg1, data any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatedSchema", reflect.TypeOf((*MockListener)(nil).UpdatedSchema), ctx, arg1, data)
+}

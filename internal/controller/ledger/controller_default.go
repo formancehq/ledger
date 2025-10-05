@@ -51,6 +51,30 @@ type DefaultController struct {
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
 	deleteTransactionMetadataLp *logProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
+	updateSchemaLp              *logProcessor[UpdateSchema, ledger.UpdatedSchema]
+}
+
+func (ctrl *DefaultController) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+	return ctrl.updateSchemaLp.forgeLog(ctx, ctrl.store, parameters, ctrl.updateSchema)
+}
+
+func (ctrl *DefaultController) updateSchema(ctx context.Context, store Store, parameters Parameters[UpdateSchema]) (*ledger.UpdatedSchema, error) {
+	schema := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
+	if err := store.InsertSchema(ctx, &schema); err != nil {
+		return nil, err
+	}
+
+	return &ledger.UpdatedSchema{
+		Schema: schema,
+	}, nil
+}
+
+func (ctrl *DefaultController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	return ctrl.store.FindSchema(ctx, version)
+}
+
+func (ctrl *DefaultController) ListSchemas(ctx context.Context, query storagecommon.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	return ctrl.store.FindSchemas(ctx, query)
 }
 
 func (ctrl *DefaultController) Info() ledger.Ledger {
@@ -130,6 +154,7 @@ func NewDefaultController(
 	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
 	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter)
 	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter)
+	ret.updateSchemaLp = newLogProcessor[UpdateSchema, ledger.UpdatedSchema]("UpdateSchema", ret.deadLockCounter)
 
 	return ret
 }
@@ -244,6 +269,10 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 		"ImportLog",
 		func(ctx context.Context) (any, error) {
 			switch payload := log.Data.(type) {
+			case ledger.UpdatedSchema:
+				if err := store.InsertSchema(ctx, &payload.Schema); err != nil {
+					return nil, fmt.Errorf("failed to insert schema: %w", err)
+				}
 			case ledger.CreatedTransaction:
 				logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
 				if err := store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {

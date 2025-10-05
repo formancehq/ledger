@@ -315,6 +315,174 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
+## Insert or update a schema for a ledger
+
+<a id="opIdv2InsertSchema"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/schema/{version} HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/schema/{version}`
+
+> Body parameter
+
+```json
+{}
+```
+
+<h3 id="insert-or-update-a-schema-for-a-ledger-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2SchemaData](#schemav2schemadata)|true|none|
+|ledger|path|string|true|Name of the ledger.|
+|version|path|string|true|Schema version.|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="insert-or-update-a-schema-for-a-ledger-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Schema inserted successfully|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
+</aside>
+
+## Get a schema for a ledger by version
+
+<a id="opIdv2GetSchema"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/schema/{version} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/schema/{version}`
+
+<h3 id="get-a-schema-for-a-ledger-by-version-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|version|path|string|true|Schema version.|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": {
+    "version": "v1.0.0",
+    "createdAt": "2023-01-01T00:00:00Z",
+    "data": {}
+  }
+}
+```
+
+<h3 id="get-a-schema-for-a-ledger-by-version-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Schema retrieved successfully|[V2SchemaResponse](#schemav2schemaresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
+## List all schemas for a ledger
+
+<a id="opIdv2ListSchemas"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/schema HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/schema`
+
+<h3 id="list-all-schemas-for-a-ledger-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|cursor|query|string|false|The pagination cursor value|
+|pageSize|query|integer|false|The maximum number of results to return per page|
+|sort|query|string|false|The field to sort by|
+|order|query|string|false|The sort order|
+|ledger|path|string|true|Name of the ledger.|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|sort|created_at|
+|order|asc|
+|order|desc|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "data": [
+      {
+        "version": "v1.0.0",
+        "createdAt": "2023-01-01T00:00:00Z",
+        "data": {}
+      }
+    ],
+    "hasMore": true,
+    "next": "string",
+    "pageSize": 0
+  }
+}
+```
+
+<h3 id="list-all-schemas-for-a-ledger-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Schemas retrieved successfully|[V2SchemasCursorResponse](#schemav2schemascursorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
 ## Update ledger metadata
 
 <a id="opIdv2UpdateLedgerMetadata"></a>
@@ -5395,6 +5563,137 @@ and
 |» errorCode|string|true|none|none|
 |» errorDescription|string|true|none|none|
 |» errorDetails|string|false|none|none|
+
+<h2 id="tocS_V2SchemaData">V2SchemaData</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemadata"></a>
+<a id="schema_V2SchemaData"></a>
+<a id="tocSv2schemadata"></a>
+<a id="tocsv2schemadata"></a>
+
+```json
+{}
+
+```
+
+Schema data structure for ledger schemas
+
+### Properties
+
+*None*
+
+<h2 id="tocS_V2Schema">V2Schema</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schema"></a>
+<a id="schema_V2Schema"></a>
+<a id="tocSv2schema"></a>
+<a id="tocsv2schema"></a>
+
+```json
+{
+  "version": "v1.0.0",
+  "createdAt": "2023-01-01T00:00:00Z",
+  "data": {}
+}
+
+```
+
+Complete schema structure with metadata
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|version|string|true|none|Schema version|
+|createdAt|string(date-time)|true|none|Schema creation timestamp|
+|data|[V2SchemaData](#schemav2schemadata)|true|none|Schema data structure for ledger schemas|
+
+<h2 id="tocS_V2SchemaResponse">V2SchemaResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemaresponse"></a>
+<a id="schema_V2SchemaResponse"></a>
+<a id="tocSv2schemaresponse"></a>
+<a id="tocsv2schemaresponse"></a>
+
+```json
+{
+  "data": {
+    "version": "v1.0.0",
+    "createdAt": "2023-01-01T00:00:00Z",
+    "data": {}
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Schema](#schemav2schema)|true|none|Complete schema structure with metadata|
+
+<h2 id="tocS_V2SchemasCursorResponse">V2SchemasCursorResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemascursorresponse"></a>
+<a id="schema_V2SchemasCursorResponse"></a>
+<a id="tocSv2schemascursorresponse"></a>
+<a id="tocsv2schemascursorresponse"></a>
+
+```json
+{
+  "cursor": {
+    "data": [
+      {
+        "version": "v1.0.0",
+        "createdAt": "2023-01-01T00:00:00Z",
+        "data": {}
+      }
+    ],
+    "hasMore": true,
+    "next": "string",
+    "pageSize": 0
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|[V2SchemasCursor](#schemav2schemascursor)|true|none|none|
+
+<h2 id="tocS_V2SchemasCursor">V2SchemasCursor</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemascursor"></a>
+<a id="schema_V2SchemasCursor"></a>
+<a id="tocSv2schemascursor"></a>
+<a id="tocsv2schemascursor"></a>
+
+```json
+{
+  "data": [
+    {
+      "version": "v1.0.0",
+      "createdAt": "2023-01-01T00:00:00Z",
+      "data": {}
+    }
+  ],
+  "hasMore": true,
+  "next": "string",
+  "pageSize": 0
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[[V2Schema](#schemav2schema)]|true|none|[Complete schema structure with metadata]|
+|hasMore|boolean|true|none|none|
+|next|string|false|none|none|
+|pageSize|integer|true|none|none|
 
 <h2 id="tocS_V2CreateLedgerRequest">V2CreateLedgerRequest</h2>
 <!-- backwards compatibility -->
