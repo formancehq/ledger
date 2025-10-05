@@ -1439,6 +1439,130 @@ paths:
       security:
         - Authorization:
             - ledger:write
+  /v2/{ledger}/schema/{version}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: version
+        in: path
+        description: Schema version.
+        required: true
+        schema:
+          type: string
+          example: v1.0.0
+    post:
+      summary: Insert or update a schema for a ledger
+      operationId: v2InsertSchema
+      x-speakeasy-name-override: InsertSchema
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2SchemaData"
+      responses:
+        "204":
+          description: Schema inserted successfully
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+    get:
+      summary: Get a schema for a ledger by version
+      operationId: v2GetSchema
+      x-speakeasy-name-override: GetSchema
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          description: Schema retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2SchemaResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/schema:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    get:
+      summary: List all schemas for a ledger
+      operationId: v2ListSchemas
+      x-speakeasy-name-override: ListSchemas
+      tags:
+        - ledger.v2
+      parameters:
+        - name: cursor
+          in: query
+          description: The pagination cursor value
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          description: The maximum number of results to return per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 15
+        - name: sort
+          in: query
+          description: The field to sort by
+          schema:
+            type: string
+            enum:
+              - created_at
+            default: created_at
+        - name: order
+          in: query
+          description: The sort order
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: Schemas retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2SchemasCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/metadata:
     parameters:
       - name: ledger
@@ -4317,6 +4441,59 @@ components:
           required:
             - errorCode
             - errorDescription
+    V2SchemaData:
+      type: object
+      description: Schema data structure for ledger schemas
+    V2Schema:
+      type: object
+      description: Complete schema structure with metadata
+      properties:
+        version:
+          type: string
+          description: Schema version
+          example: "v1.0.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: Schema creation timestamp
+          example: "2023-01-01T00:00:00Z"
+        data:
+          $ref: "#/components/schemas/V2SchemaData"
+      required:
+        - version
+        - createdAt
+        - data
+    V2SchemaResponse:
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Schema"
+      type: object
+      required:
+        - data
+    V2SchemasCursorResponse:
+      properties:
+        cursor:
+          $ref: "#/components/schemas/V2SchemasCursor"
+      type: object
+      required:
+        - cursor
+    V2SchemasCursor:
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2Schema"
+        hasMore:
+          type: boolean
+        next:
+          type: string
+        pageSize:
+          type: integer
+      type: object
+      required:
+        - data
+        - hasMore
+        - pageSize
     V2CreateLedgerRequest:
       type: object
       properties:

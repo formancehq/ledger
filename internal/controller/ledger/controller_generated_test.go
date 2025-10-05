@@ -210,6 +210,21 @@ func (mr *MockControllerMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*MockController)(nil).GetMigrationsInfo), ctx)
 }
 
+// GetSchema mocks base method.
+func (m *MockController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSchema", ctx, version)
+	ret0, _ := ret[0].(*ledger.Schema)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSchema indicates an expected call of GetSchema.
+func (mr *MockControllerMockRecorder) GetSchema(ctx, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchema", reflect.TypeOf((*MockController)(nil).GetSchema), ctx, version)
+}
+
 // GetStats mocks base method.
 func (m *MockController) GetStats(ctx context.Context) (Stats, error) {
 	m.ctrl.T.Helper()
@@ -328,6 +343,21 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, query)
 }
 
+// ListSchemas mocks base method.
+func (m *MockController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSchemas indicates an expected call of ListSchemas.
+func (mr *MockControllerMockRecorder) ListSchemas(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSchemas", reflect.TypeOf((*MockController)(nil).ListSchemas), ctx, query)
+}
+
 // ListTransactions mocks base method.
 func (m *MockController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
@@ -418,4 +448,20 @@ func (m *MockController) SaveTransactionMetadata(ctx context.Context, parameters
 func (mr *MockControllerMockRecorder) SaveTransactionMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*MockController)(nil).SaveTransactionMetadata), ctx, parameters)
+}
+
+// UpdateSchema mocks base method.
+func (m *MockController) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSchema", ctx, parameters)
+	ret0, _ := ret[0].(*ledger.Log)
+	ret1, _ := ret[1].(*ledger.UpdatedSchema)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// UpdateSchema indicates an expected call of UpdateSchema.
+func (mr *MockControllerMockRecorder) UpdateSchema(ctx, parameters any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSchema", reflect.TypeOf((*MockController)(nil).UpdateSchema), ctx, parameters)
 }
