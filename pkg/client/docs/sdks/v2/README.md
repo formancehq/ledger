@@ -8,6 +8,9 @@
 * [ListLedgers](#listledgers) - List ledgers
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a ledger
+* [InsertSchema](#insertschema) - Insert or update a schema for a ledger
+* [GetSchema](#getschema) - Get a schema for a ledger by version
+* [ListSchemas](#listschemas) - List all schemas for a ledger
 * [UpdateLedgerMetadata](#updateledgermetadata) - Update ledger metadata
 * [DeleteLedgerMetadata](#deleteledgermetadata) - Delete ledger metadata by key
 * [GetLedgerInfo](#getledgerinfo) - Get information about a ledger
@@ -223,6 +226,186 @@ func main() {
 ### Response
 
 **[*operations.V2CreateLedgerResponse](../../models/operations/v2createledgerresponse.md), error**
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
+
+## InsertSchema
+
+Insert or update a schema for a ledger
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"os"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+        }),
+    )
+
+    res, err := s.Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
+        Ledger: "ledger001",
+        Version: "v1.0.0",
+        V2SchemaData: components.V2SchemaData{},
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                            | Type                                                                                 | Required                                                                             | Description                                                                          |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `ctx`                                                                                | [context.Context](https://pkg.go.dev/context#Context)                                | :heavy_check_mark:                                                                   | The context to use for the request.                                                  |
+| `request`                                                                            | [operations.V2InsertSchemaRequest](../../models/operations/v2insertschemarequest.md) | :heavy_check_mark:                                                                   | The request object to use for the request.                                           |
+| `opts`                                                                               | [][operations.Option](../../models/operations/option.md)                             | :heavy_minus_sign:                                                                   | The options for this request.                                                        |
+
+### Response
+
+**[*operations.V2InsertSchemaResponse](../../models/operations/v2insertschemaresponse.md), error**
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
+
+## GetSchema
+
+Get a schema for a ledger by version
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"os"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+        }),
+    )
+
+    res, err := s.Ledger.V2.GetSchema(ctx, operations.V2GetSchemaRequest{
+        Ledger: "ledger001",
+        Version: "v1.0.0",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2SchemaResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                      | Type                                                                           | Required                                                                       | Description                                                                    |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `ctx`                                                                          | [context.Context](https://pkg.go.dev/context#Context)                          | :heavy_check_mark:                                                             | The context to use for the request.                                            |
+| `request`                                                                      | [operations.V2GetSchemaRequest](../../models/operations/v2getschemarequest.md) | :heavy_check_mark:                                                             | The request object to use for the request.                                     |
+| `opts`                                                                         | [][operations.Option](../../models/operations/option.md)                       | :heavy_minus_sign:                                                             | The options for this request.                                                  |
+
+### Response
+
+**[*operations.V2GetSchemaResponse](../../models/operations/v2getschemaresponse.md), error**
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
+
+## ListSchemas
+
+List all schemas for a ledger
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"os"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+        }),
+    )
+
+    res, err := s.Ledger.V2.ListSchemas(ctx, operations.V2ListSchemasRequest{
+        Ledger: "ledger001",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.V2SchemasCursorResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                          | Type                                                                               | Required                                                                           | Description                                                                        |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `ctx`                                                                              | [context.Context](https://pkg.go.dev/context#Context)                              | :heavy_check_mark:                                                                 | The context to use for the request.                                                |
+| `request`                                                                          | [operations.V2ListSchemasRequest](../../models/operations/v2listschemasrequest.md) | :heavy_check_mark:                                                                 | The request object to use for the request.                                         |
+| `opts`                                                                             | [][operations.Option](../../models/operations/option.md)                           | :heavy_minus_sign:                                                                 | The options for this request.                                                      |
+
+### Response
+
+**[*operations.V2ListSchemasResponse](../../models/operations/v2listschemasresponse.md), error**
 
 ### Errors
 

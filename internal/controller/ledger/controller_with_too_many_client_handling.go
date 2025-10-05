@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"time"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator -typed
@@ -117,6 +120,46 @@ func (c *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.
 	})
 
 	return log, err
+}
+
+func (c *ControllerWithTooManyClientHandling) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+	var (
+		log *ledger.Log
+		err error
+		ret *ledger.UpdatedSchema
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		log, ret, err = c.Controller.UpdateSchema(ctx, parameters)
+		return err
+	})
+
+	return log, ret, err
+}
+
+func (c *ControllerWithTooManyClientHandling) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	var (
+		schema *ledger.Schema
+		err    error
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		schema, err = c.Controller.GetSchema(ctx, version)
+		return err
+	})
+
+	return schema, err
+}
+
+func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	var (
+		schemas *bunpaginate.Cursor[ledger.Schema]
+		err     error
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		schemas, err = c.Controller.ListSchemas(ctx, query)
+		return err
+	})
+
+	return schemas, err
 }
 
 func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {

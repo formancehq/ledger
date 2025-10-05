@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"database/sql"
+
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -42,6 +43,9 @@ type ControllerWithTraces struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	deleteAccountMetadataHistogram     metric.Int64Histogram
 	lockLedgerHistogram                metric.Int64Histogram
+	updateSchemaHistogram              metric.Int64Histogram
+	getSchemaHistogram                 metric.Int64Histogram
+	listSchemasHistogram               metric.Int64Histogram
 }
 
 func (c *ControllerWithTraces) Info() ledger.Ledger {
@@ -144,6 +148,18 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 		panic(err)
 	}
 	ret.lockLedgerHistogram, err = meter.Int64Histogram("controller.lock_ledger")
+	if err != nil {
+		panic(err)
+	}
+	ret.updateSchemaHistogram, err = meter.Int64Histogram("controller.update_schema")
+	if err != nil {
+		panic(err)
+	}
+	ret.getSchemaHistogram, err = meter.Int64Histogram("controller.get_schema")
+	if err != nil {
+		panic(err)
+	}
+	ret.listSchemasHistogram, err = meter.Int64Histogram("controller.list_schemas")
 	if err != nil {
 		panic(err)
 	}
@@ -452,6 +468,73 @@ func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parame
 			return c.underlying.DeleteAccountMetadata(ctx, parameters)
 		},
 	)
+}
+
+func (c *ControllerWithTraces) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+	var (
+		updatedSchema *ledger.UpdatedSchema
+		log           *ledger.Log
+		err           error
+	)
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"UpdatedSchema",
+		c.tracer,
+		c.updateSchemaHistogram,
+		func(ctx context.Context) (any, error) {
+			log, updatedSchema, err = c.underlying.UpdateSchema(ctx, parameters)
+			return nil, err
+		},
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return log, updatedSchema, nil
+}
+
+func (c *ControllerWithTraces) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	var (
+		schema *ledger.Schema
+		err    error
+	)
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"GetSchema",
+		c.tracer,
+		c.getSchemaHistogram,
+		func(ctx context.Context) (any, error) {
+			schema, err = c.underlying.GetSchema(ctx, version)
+			return nil, err
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return schema, nil
+}
+
+func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	var (
+		schemas *bunpaginate.Cursor[ledger.Schema]
+		err     error
+	)
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"ListSchemas",
+		c.tracer,
+		c.listSchemasHistogram,
+		func(ctx context.Context) (any, error) {
+			schemas, err = c.underlying.ListSchemas(ctx, query)
+			return nil, err
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return schemas, nil
 }
 
 func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {

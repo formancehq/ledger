@@ -1,11 +1,12 @@
 package v2
 
 import (
+	"net/http"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"net/http"
 
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 
@@ -67,9 +68,11 @@ func NewRouter(
 					routerOptions.bulkerFactory,
 					routerOptions.bulkHandlerFactories,
 				))
-
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", readStats)
+				router.Post("/schema/{version}", insertSchema)
+				router.Get("/schema/{version}", readSchema)
+				router.Get("/schema", listSchemas(routerOptions.paginationConfig))
 
 				if routerOptions.exporters {
 					router.Route("/pipelines", func(router chi.Router) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -16,6 +17,7 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	"errors"
+
 	"github.com/uptrace/bun"
 )
 
@@ -78,6 +80,14 @@ func (store *Store) Accounts() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository[ledger.Account, any](&accountsResourceHandler{
 		store: store,
 	}, "address", bunpaginate.OrderAsc)
+}
+
+func (store *Store) Schemas() common.PaginatedResource[
+	ledger.Schema,
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Schema, any](&schemasResourceHandler{
+		store: store,
+	}, "created_at", bunpaginate.OrderDesc)
 }
 
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {
@@ -174,7 +184,7 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 	}
 
 	var err error
-		ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema")
+	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema")
 	if err != nil {
 		panic(err)
 	}

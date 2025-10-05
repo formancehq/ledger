@@ -79,6 +79,12 @@ type Controller interface {
 	Import(ctx context.Context, stream chan ledger.Log) error
 	// Export allow to export the logs of a ledger
 	Export(ctx context.Context, w ExportWriter) error
+	// UpdateSchema Update the chart of account
+	UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error)
+	// GetSchema Get the chart of account by version
+	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
+	// ListSchemas List all schemas for the ledger
+	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
 }
 
 type RunScript = vm.RunScript
@@ -102,7 +108,7 @@ type RevertTransaction struct {
 	Force           bool
 	AtEffectiveDate bool
 	TransactionID   uint64
-	Metadata metadata.Metadata
+	Metadata        metadata.Metadata
 }
 
 type SaveTransactionMetadata struct {
@@ -123,4 +129,9 @@ type DeleteTransactionMetadata struct {
 type DeleteAccountMetadata struct {
 	Address string
 	Key     string
+}
+
+type UpdateSchema struct {
+	Version string
+	Data    ledger.SchemaData
 }

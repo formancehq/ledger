@@ -3,10 +3,11 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"math/big"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
-	"math/big"
 
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/numscript"
@@ -16,6 +17,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 )
 
 type Balance struct {
@@ -44,6 +46,9 @@ type Store interface {
 	// UpsertAccount returns a boolean indicating if the account was upserted
 	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
+	InsertSchema(ctx context.Context, data *ledger.Schema) error
+	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
+	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
 	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)
