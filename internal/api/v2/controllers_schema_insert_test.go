@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"net/http"
@@ -67,6 +68,15 @@ func TestInsertSchema(t *testing.T) {
 			expectedErrorCode: "INTERNAL",
 			expectBackendCall: true,
 			returnErr:         errors.New("database error"),
+		},
+		{
+			name:    "schema validation error",
+			version: "v1.0.0",
+			requestBody: map[string]interface{}{},
+			expectStatusCode:  http.StatusBadRequest,
+			expectedErrorCode: "VALIDATION",
+			expectBackendCall: true,
+			returnErr:         ledgercontroller.ErrSchemaValidationError{},
 		},
 	}
 

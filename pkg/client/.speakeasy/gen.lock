@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 920ba5d55ce048f2654006c5aa63a8d5
+  docChecksum: 8c2f32a3ee889608b8633931076c693c
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -799,6 +799,7 @@ examples:
           continueOnFailure: true
           atomic: true
           parallel: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: [{"action": "DELETE_METADATA"}]
       responses:
@@ -853,6 +854,7 @@ examples:
           address: "users:001"
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -911,6 +913,7 @@ examples:
           ledger: "ledger001"
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
       responses:
@@ -937,6 +940,7 @@ examples:
           id: 1234
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -960,6 +964,7 @@ examples:
           id: 1234
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       responses:
         "201":
           application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}

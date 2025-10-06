@@ -45,7 +45,8 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 	switch {
 	case errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}):
 		api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
-	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}) ||
+		errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
 		api.BadRequest(w, ErrValidation, err)
 	case errors.Is(err, ledgercontroller.ErrNotFound):
 		api.NotFound(w, err)

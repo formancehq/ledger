@@ -66,6 +66,18 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 
+	var schema *ledger.Schema
+	if parameters.SchemaVersion != "" {
+		var err error
+		schema, err = store.FindSchema(ctx, parameters.SchemaVersion)
+		if err != nil {
+			if errors.Is(err, postgres.ErrNotFound) {
+				return nil, nil, newErrSchemaNotFound()
+			}
+			return nil, nil, err
+		}
+	}
+
 	output, err := fn(ctx, store, parameters)
 	if err != nil {
 		return nil, nil, err
@@ -73,6 +85,13 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	log := ledger.NewLog(*output)
 	log.IdempotencyKey = parameters.IdempotencyKey
 	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
+	log.SchemaVersion = parameters.SchemaVersion
+
+	if schema != nil {
+		if err := log.ValidateWithSchema(*schema); err != nil {
+			return nil, nil, newErrSchemaValidationError(parameters.SchemaVersion, err)
+		}
+	}
 
 	err = store.InsertLog(ctx, &log)
 	if err != nil {

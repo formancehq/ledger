@@ -628,6 +628,7 @@ func main() {
         ContinueOnFailure: client.Bool(true),
         Atomic: client.Bool(true),
         Parallel: client.Bool(true),
+        SchemaVersion: client.String("v1.0.0"),
         RequestBody: []components.V2BulkElement{
             components.CreateV2BulkElementDeleteMetadata(
                 components.V2BulkElementDeleteMetadata{
@@ -884,6 +885,7 @@ func main() {
         Ledger: "ledger001",
         Address: "users:001",
         DryRun: client.Bool(true),
+        SchemaVersion: client.String("v1.0.0"),
         RequestBody: map[string]string{
             "admin": "true",
         },
@@ -1196,6 +1198,7 @@ func main() {
     res, err := s.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
         Ledger: "ledger001",
         DryRun: client.Bool(true),
+        SchemaVersion: client.String("v1.0.0"),
         V2PostTransaction: components.V2PostTransaction{
             Postings: []components.V2Posting{
                 components.V2Posting{
@@ -1357,6 +1360,7 @@ func main() {
         Ledger: "ledger001",
         ID: big.NewInt(1234),
         DryRun: client.Bool(true),
+        SchemaVersion: client.String("v1.0.0"),
         RequestBody: map[string]string{
             "admin": "true",
         },
@@ -1484,6 +1488,7 @@ func main() {
         Ledger: "ledger001",
         ID: big.NewInt(1234),
         DryRun: client.Bool(true),
+        SchemaVersion: client.String("v1.0.0"),
     })
     if err != nil {
         log.Fatal(err)

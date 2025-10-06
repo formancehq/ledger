@@ -10,5 +10,8 @@ do $$
 		);
 
 		alter type log_type add value 'UPDATED_SCHEMA';
+
+		alter table logs
+		add column schema_version text;
 	end
 $$;

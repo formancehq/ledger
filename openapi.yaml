@@ -1692,6 +1692,12 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: schemaVersion
+          in: query
+          description: Default schema version to use for validation (can be overridden per element)
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         required: true
         content:
@@ -1941,6 +1947,12 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         description: metadata
         content:
@@ -2210,6 +2222,12 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         required: true
         description: |
@@ -2324,6 +2342,12 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         required: true
         description: metadata
@@ -2437,6 +2461,12 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         content:
           application/json:
@@ -3999,6 +4029,7 @@ components:
             - SET_METADATA
             - REVERTED_TRANSACTION
             - DELETE_METADATA
+            - UPDATED_SCHEMA
         data:
           type: object
           properties: {}
@@ -4009,6 +4040,10 @@ components:
         date:
           type: string
           format: date-time
+        schemaVersion:
+          type: string
+          description: Schema version used for validation
+          example: v1.0.0
       required:
         - id
         - type
@@ -4173,6 +4208,10 @@ components:
           type: string
         ik:
           type: string
+        schemaVersion:
+          type: string
+          description: Schema version to use for validation
+          example: v1.0.0
     V2BulkElement:
       type: object
       oneOf:
