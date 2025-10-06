@@ -17,6 +17,8 @@ type V2AddMetadataOnTransactionRequest struct {
 	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
 	// Use an idempotency key
 	IdempotencyKey *string `header:"style=simple,explode=false,name=Idempotency-Key"`
+	// Schema version to use for validation
+	SchemaVersion *string `queryParam:"style=form,explode=true,name=schemaVersion"`
 	// metadata
 	RequestBody map[string]string `request:"mediaType=application/json"`
 }
@@ -58,6 +60,13 @@ func (o *V2AddMetadataOnTransactionRequest) GetIdempotencyKey() *string {
 		return nil
 	}
 	return o.IdempotencyKey
+}
+
+func (o *V2AddMetadataOnTransactionRequest) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }
 
 func (o *V2AddMetadataOnTransactionRequest) GetRequestBody() map[string]string {

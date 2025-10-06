@@ -658,6 +658,7 @@ Accept: application/json
   {
     "action": "string",
     "ik": "string",
+    "schemaVersion": "v1.0.0",
     "data": {
       "timestamp": "2019-08-24T14:15:22Z",
       "postings": [
@@ -701,6 +702,7 @@ Accept: application/json
 |continueOnFailure|query|boolean|false|Continue on failure|
 |atomic|query|boolean|false|Make bulk atomic|
 |parallel|query|boolean|false|Process bulk elements in parallel|
+|schemaVersion|query|string|false|Default schema version to use for validation (can be overridden per element)|
 |body|body|[V2Bulk](#schemav2bulk)|true|none|
 
 > Example responses
@@ -1105,6 +1107,7 @@ Idempotency-Key: string
 |address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
 |dryRun|query|boolean|false|Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 #### Detailed descriptions
@@ -1531,6 +1534,7 @@ Idempotency-Key: string
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |force|query|boolean|false|Disable balance checks when passing postings|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2PostTransaction](#schemav2posttransaction)|true|The request body must contain at least one of the following objects:|
 
 #### Detailed descriptions
@@ -1806,6 +1810,7 @@ Idempotency-Key: string
 |id|path|integer(bigint)|true|Transaction ID.|
 |dryRun|query|boolean|false|Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 > Example responses
@@ -1870,6 +1875,7 @@ Accept: application/json
 |force|query|boolean|false|Force revert|
 |atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
 
 > Example responses
@@ -2181,7 +2187,8 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
         "type": "NEW_TRANSACTION",
         "data": {},
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-        "date": "2019-08-24T14:15:22Z"
+        "date": "2019-08-24T14:15:22Z",
+        "schemaVersion": "v1.0.0"
       }
     ]
   }
@@ -3315,7 +3322,8 @@ This operation does not require authentication
         "type": "NEW_TRANSACTION",
         "data": {},
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-        "date": "2019-08-24T14:15:22Z"
+        "date": "2019-08-24T14:15:22Z",
+        "schemaVersion": "v1.0.0"
       }
     ]
   }
@@ -3836,7 +3844,8 @@ This operation does not require authentication
   "type": "NEW_TRANSACTION",
   "data": {},
   "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-  "date": "2019-08-24T14:15:22Z"
+  "date": "2019-08-24T14:15:22Z",
+  "schemaVersion": "v1.0.0"
 }
 
 ```
@@ -3850,6 +3859,7 @@ This operation does not require authentication
 |data|object|true|none|none|
 |hash|string|true|none|none|
 |date|string(date-time)|true|none|none|
+|schemaVersion|string|false|none|Schema version used for validation|
 
 #### Enumerated Values
 
@@ -3859,6 +3869,7 @@ This operation does not require authentication
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
 |type|DELETE_METADATA|
+|type|UPDATED_SCHEMA|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -4470,6 +4481,7 @@ This operation does not require authentication
   {
     "action": "string",
     "ik": "string",
+    "schemaVersion": "v1.0.0",
     "data": {
       "timestamp": "2019-08-24T14:15:22Z",
       "postings": [
@@ -4522,7 +4534,8 @@ This operation does not require authentication
 ```json
 {
   "action": "string",
-  "ik": "string"
+  "ik": "string",
+  "schemaVersion": "v1.0.0"
 }
 
 ```
@@ -4533,6 +4546,7 @@ This operation does not require authentication
 |---|---|---|---|---|
 |action|string|true|none|none|
 |ik|string|false|none|none|
+|schemaVersion|string|false|none|Schema version to use for validation|
 
 <h2 id="tocS_V2BulkElement">V2BulkElement</h2>
 <!-- backwards compatibility -->
@@ -4545,6 +4559,7 @@ This operation does not require authentication
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
@@ -4617,6 +4632,7 @@ xor
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
@@ -4729,6 +4745,7 @@ xor
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "targetId": "string",
     "targetType": "TRANSACTION",
@@ -4771,6 +4788,7 @@ and
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "id": 0,
     "force": true,
@@ -4809,6 +4827,7 @@ and
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "targetId": "string",
     "targetType": "TRANSACTION",

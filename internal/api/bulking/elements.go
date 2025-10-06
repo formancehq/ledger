@@ -23,6 +23,7 @@ type Bulk chan BulkElement
 type BulkElement struct {
 	Action         string `json:"action"`
 	IdempotencyKey string `json:"ik"`
+	SchemaVersion string `json:"schemaVersion,omitempty"`
 	Data           any    `json:"data"`
 }
 

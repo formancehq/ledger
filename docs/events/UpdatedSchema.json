@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/formancehq/ledger/pkg/events/updated-schema",
+  "$ref": "#/$defs/UpdatedSchema",
+  "$defs": {
+    "Schema": {
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "version",
+        "createdAt"
+      ]
+    },
+    "Time": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Normalized date"
+    },
+    "UpdatedSchema": {
+      "properties": {
+        "ledger": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/$defs/Schema"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ledger",
+        "schema"
+      ]
+    }
+  }
+}

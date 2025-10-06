@@ -245,3 +245,38 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		computedIdempotencyHash: gotIdempotencyHash,
 	}
 }
+type ErrSchemaNotFound struct {}
+
+func (e ErrSchemaNotFound) Error() string {
+	return "schema not found"
+}
+
+func (e ErrSchemaNotFound) Is(err error) bool {
+	_, ok := err.(ErrSchemaNotFound)
+	return ok
+}
+
+func newErrSchemaNotFound() ErrSchemaNotFound {
+	return ErrSchemaNotFound{}
+}
+
+type ErrSchemaValidationError struct {
+	requestedSchema string
+	err             error
+}
+
+func (e ErrSchemaValidationError) Error() string {
+	return fmt.Sprintf("schema validation error: %s", e.err)
+}
+
+func (e ErrSchemaValidationError) Is(err error) bool {
+	_, ok := err.(ErrSchemaValidationError)
+	return ok
+}
+
+func newErrSchemaValidationError(requestedSchema string, err error) ErrSchemaValidationError {
+	return ErrSchemaValidationError{
+		requestedSchema: requestedSchema,
+		err:             err,
+	}
+}

@@ -3,9 +3,11 @@
 package components
 
 type V2BulkElementCreateTransaction struct {
-	Action string             `json:"action"`
-	Ik     *string            `json:"ik,omitempty"`
-	Data   *V2PostTransaction `json:"data,omitempty"`
+	Action string  `json:"action"`
+	Ik     *string `json:"ik,omitempty"`
+	// Schema version to use for validation
+	SchemaVersion *string            `json:"schemaVersion,omitempty"`
+	Data          *V2PostTransaction `json:"data,omitempty"`
 }
 
 func (o *V2BulkElementCreateTransaction) GetAction() string {
@@ -20,6 +22,13 @@ func (o *V2BulkElementCreateTransaction) GetIk() *string {
 		return nil
 	}
 	return o.Ik
+}
+
+func (o *V2BulkElementCreateTransaction) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }
 
 func (o *V2BulkElementCreateTransaction) GetData() *V2PostTransaction {

@@ -13,8 +13,11 @@ begin
 	       '"date":"' || (to_json(r.date::timestamp)#>>'{}') || 'Z",' ||
 	       '"idempotencyKey":"' || coalesce(r.idempotency_key, '') || '",' ||
 	       '"id":0,' ||
-	       '"hash":null' ||
-	       '}' into marshalledAsJSON;
+	       '"hash":null' into marshalledAsJSON;
+	if r.schema_version is not null then
+		marshalledAsJSON := marshalledAsJSON || ',"schemaVersion":"' || r.schema_version || '"';
+	end if;
+	marshalledAsJSON := marshalledAsJSON || '}';
 
 	return (select public.digest(
 			case
