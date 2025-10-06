@@ -141,6 +141,10 @@ func renderAccount(r *http.Request, v ledger.Account) any {
 	return account(v)
 }
 
+func renderSchema(r *http.Request, v ledger.Schema) any {
+	return v
+}
+
 type balancesByAssets ledger.BalancesByAssets
 
 func (v balancesByAssets) MarshalJSON() ([]byte, error) {

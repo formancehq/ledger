@@ -72,3 +72,18 @@ func NewEventDeletedMetadata(deletedMetadata DeletedMetadata) publish.EventMessa
 		Payload: deletedMetadata,
 	}
 }
+
+type UpdatedSchema struct {
+	Ledger string        `json:"ledger"`
+	Schema ledger.Schema `json:"schema"`
+}
+
+func NewEventUpdatedSchema(updatedSchema UpdatedSchema) publish.EventMessage {
+	return publish.EventMessage{
+		Date:    time.Now().Time,
+		App:     EventApp,
+		Version: EventVersion,
+		Type:    EventTypeUpdatedSchema,
+		Payload: updatedSchema,
+	}
+}
