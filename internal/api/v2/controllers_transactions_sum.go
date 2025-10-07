@@ -1,12 +1,17 @@
 package v2
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -70,19 +75,76 @@ func getPaginatedTransactions(
 ) (*bunpaginate.Cursor[ledger.Transaction], bool) {
 	order := bunpaginate.Order(bunpaginate.OrderDesc)
 
+	// Extract query parameters
+	queryParams := r.URL.Query()
+	startTime := queryParams.Get("start_time")
+	endTime := queryParams.Get("end_time")
+
+	fmt.Fprintf(os.Stderr, "[DEBUG] Request URL: %s %s?%s\n", r.Method, r.URL.Path, r.URL.RawQuery)
+	fmt.Fprintf(os.Stderr, "[DEBUG] Query params - start_time: %s, end_time: %s\n", startTime, endTime)
+
 	// Create a new request with the same context to avoid modifying the original
 	req := r.Clone(r.Context())
 
 	rq, err := storagecommon.Extract[any](req, func() (*storagecommon.InitialPaginatedQuery[any], error) {
+		// Create a slice to hold query conditions
+		var conditions []query.Builder
+
+		// Add date range filters if provided
+		if startTime != "" {
+			t, err := time.Parse(time.RFC3339, startTime)
+			if err != nil {
+				return nil, fmt.Errorf("invalid start_time format: %w", err)
+			}
+			conditions = append(conditions, query.Gte("timestamp", t))
+		}
+
+		if endTime != "" {
+			t, err := time.Parse(time.RFC3339, endTime)
+			if err != nil {
+				return nil, fmt.Errorf("invalid end_time format: %w", err)
+			}
+			conditions = append(conditions, query.Lte("timestamp", t))
+		}
+
+		// For test compatibility, if no conditions, don't set the Builder
+		var builder query.Builder
+		if len(conditions) > 0 {
+			builder = query.And(conditions...)
+		}
+
+		queryOptions := storagecommon.ResourceQuery[any]{
+			Expand:  getExpand(req),
+			Builder: builder,
+		}
+
+		// Debug log the query
+		fmt.Fprintf(os.Stderr, "[DEBUG] Number of conditions: %d\n", len(conditions))
+		for i, cond := range conditions {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Condition %d: %+v\n", i+1, cond)
+		}
+
+		queryDebug := map[string]interface{}{
+			"start_time": startTime,
+			"end_time":   endTime,
+			"conditions": conditions,
+			"query":      queryOptions.Builder,
+		}
+
+		if queryJson, err := json.MarshalIndent(queryDebug, "", "  "); err == nil {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Executing query: %s\n", queryJson)
+		} else {
+			fmt.Fprintf(os.Stderr, "[ERROR] Error marshaling query: %v\n", err)
+		}
+
 		return &storagecommon.InitialPaginatedQuery[any]{
 			PageSize: pageSize,
 			Column:   "timestamp",
 			Order:    &order,
-			Options: storagecommon.ResourceQuery[any]{
-				Expand: getExpand(req),
-			},
+			Options:  queryOptions,
 		}, nil
 	})
+
 	if err != nil {
 		api.BadRequest(w, common.ErrValidation, err)
 		return nil, false
