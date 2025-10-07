@@ -2,9 +2,12 @@ package v2
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -206,10 +209,137 @@ func newTestServer(t *testing.T, mockController *LedgerController) http.Handler 
 
 // matchPaginatedQuery is a gomock matcher for paginated queries
 func matchPaginatedQuery(expected storagecommon.InitialPaginatedQuery[any]) gomock.Matcher {
-	return gomock.GotFormatterAdapter(
-		gomock.GotFormatterFunc(func(actual interface{}) string {
-			return ""
-		}),
-		gomock.Eq(expected),
+	return &paginatedQueryMatcher{expected: expected}
+}
+
+type paginatedQueryMatcher struct {
+	expected storagecommon.InitialPaginatedQuery[any]
+}
+
+func (m *paginatedQueryMatcher) Matches(x interface{}) bool {
+	actual, ok := x.(storagecommon.InitialPaginatedQuery[any])
+	if !ok {
+		return false
+	}
+	return reflect.DeepEqual(actual, m.expected)
+}
+
+func (m *paginatedQueryMatcher) String() string {
+	return fmt.Sprintf("matches: %+v", m.expected)
+}
+
+func TestGetPaginatedTransactions(t *testing.T) {
+	t.Parallel()
+
+	// Define test constants
+	const (
+		testAccount    = "expenses:salary"
+		contentType    = "Content-Type"
+		appJSON        = "application/json"
+		transactionsEP = "/transactions/sum"
+		nextPageCursor = "next-page-cursor"
 	)
+
+	t.Run("successful first page", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test data
+		ctrl := gomock.NewController(t)
+		mockLedgerController := NewLedgerController(ctrl)
+
+		// Create a test request with pagination parameters
+		req, err := http.NewRequest(http.MethodGet, transactionsEP, nil)
+		req.Header.Set(contentType, appJSON)
+		require.NoError(t, err)
+
+		// Create a response recorder to capture the response
+		rr := httptest.NewRecorder()
+
+		// Mock the expected ListTransactions call
+		desc := bunpaginate.OrderDesc
+		order := bunpaginate.Order(desc)
+		expectedQuery := storagecommon.InitialPaginatedQuery[any]{
+			PageSize: 100, // Default page size from the function parameter
+			Column:   "timestamp",
+			Order:    &order,
+			Options: storagecommon.ResourceQuery[any]{
+				Expand: []string{},
+			},
+		}
+
+		// Mock the response
+		expectedTransactions := []ledger.Transaction{
+			ledger.NewTransaction().WithPostings(
+				ledger.NewPosting("world", testAccount, "USD", big.NewInt(1000)),
+			),
+		}
+
+		mockLedgerController.EXPECT().
+			ListTransactions(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx interface{}, q storagecommon.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+				// Verify the query parameters match what we expect
+				reqQuery, ok := q.(storagecommon.InitialPaginatedQuery[any])
+				require.True(t, ok, "Expected InitialPaginatedQuery")
+				require.Equal(t, expectedQuery.PageSize, reqQuery.PageSize)
+				require.Equal(t, expectedQuery.Column, reqQuery.Column)
+				require.Equal(t, expectedQuery.Order, reqQuery.Order)
+				require.Equal(t, expectedQuery.Options.Expand, reqQuery.Options.Expand)
+
+				return &bunpaginate.Cursor[ledger.Transaction]{
+					Data:    expectedTransactions,
+					HasMore: true,
+					Next:    nextPageCursor,
+				}, nil
+			})
+
+		// Call the function with the default page size
+		cursor, ok := getPaginatedTransactions(rr, req, mockLedgerController, 100)
+
+		// Verify the results
+		require.True(t, ok, "Expected getPaginatedTransactions to succeed")
+		require.NotNil(t, cursor, "Expected non-nil cursor")
+		require.True(t, cursor.HasMore, "Expected HasMore to be true")
+		require.Equal(t, nextPageCursor, cursor.Next, "Unexpected next cursor value")
+		require.Len(t, cursor.Data, 1, "Expected one transaction")
+	})
+
+	t.Run("error from ListTransactions", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test data
+		ctrl := gomock.NewController(t)
+		mockLedgerController := NewLedgerController(ctrl)
+
+		// Create a test request
+		req, err := http.NewRequest(http.MethodGet, "/transactions/sum", nil)
+		req.Header.Set("Content-Type", "application/json")
+		require.NoError(t, err)
+
+		// Create a response recorder to capture the response
+		rr := httptest.NewRecorder()
+
+		// Mock the ListTransactions call to return an error
+		desc := bunpaginate.OrderDesc
+		order := bunpaginate.Order(desc)
+		expectedQuery := storagecommon.InitialPaginatedQuery[any]{
+			PageSize: 100, // Default page size
+			Column:   "timestamp",
+			Order:    &order,
+			Options: storagecommon.ResourceQuery[any]{
+				Expand: []string{},
+			},
+		}
+
+		expectedError := errors.New("database error")
+		mockLedgerController.EXPECT().
+			ListTransactions(gomock.Any(), matchPaginatedQuery(expectedQuery)).
+			Return(nil, expectedError)
+
+		// Call the function
+		cursor, ok := getPaginatedTransactions(rr, req, mockLedgerController, 100)
+
+		// Verify the results
+		require.False(t, ok, "Expected getPaginatedTransactions to fail")
+		require.Nil(t, cursor, "Expected nil cursor on error")
+	})
 }

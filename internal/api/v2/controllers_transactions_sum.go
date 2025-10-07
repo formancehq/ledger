@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -25,13 +26,13 @@ func processPostings(account string, txs *bunpaginate.Cursor[ledger.Transaction]
 	for _, tx := range txs.Data {
 		for _, posting := range tx.Postings {
 			if posting.Source == account {
-				// Debit from the account (negative amount)
+				// When account is the source, it's a debit (decrease balance)
 				if _, ok := assetSums[posting.Asset]; !ok {
 					assetSums[posting.Asset] = big.NewInt(0)
 				}
 				assetSums[posting.Asset] = new(big.Int).Sub(assetSums[posting.Asset], posting.Amount)
 			} else if posting.Destination == account {
-				// Credit to the account (positive amount)
+				// When account is the destination, it's a credit (increase balance)
 				if _, ok := assetSums[posting.Asset]; !ok {
 					assetSums[posting.Asset] = big.NewInt(0)
 				}
@@ -40,13 +41,21 @@ func processPostings(account string, txs *bunpaginate.Cursor[ledger.Transaction]
 		}
 	}
 
-	// Prepare response
+	// If a specific asset was requested, only include that asset in the response
+	if assetFilter != "" {
+		if amount, ok := assetSums[assetFilter]; ok {
+			return []sumResponse{{
+				Account: account,
+				Asset:   assetFilter,
+				Sum:     amount,
+			}}
+		}
+		return []sumResponse{}
+	}
+
+	// Prepare response for all assets
 	response := make([]sumResponse, 0, len(assetSums))
 	for asset, amount := range assetSums {
-		// If a specific asset was requested, only include that asset in the response
-		if assetFilter != "" && assetFilter != asset {
-			continue
-		}
 		response = append(response, sumResponse{
 			Account: account,
 			Asset:   asset,
@@ -57,6 +66,39 @@ func processPostings(account string, txs *bunpaginate.Cursor[ledger.Transaction]
 	return response
 }
 
+// getPaginatedTransactions fetches a single page of transactions
+func getPaginatedTransactions(
+	w http.ResponseWriter,
+	r *http.Request,
+	ledgerInstance ledgercontroller.Controller,
+	pageSize uint64,
+) (*bunpaginate.Cursor[ledger.Transaction], bool) {
+	order := bunpaginate.Order(bunpaginate.OrderDesc)
+
+	// Use Extract to handle pagination, including cursor tokens
+	rq, err := storagecommon.Extract[any](r, func() (*storagecommon.InitialPaginatedQuery[any], error) {
+		return &storagecommon.InitialPaginatedQuery[any]{
+			PageSize: pageSize,
+			Column:   "timestamp",
+			Order:    &order,
+			Options: storagecommon.ResourceQuery[any]{
+				Expand: getExpand(r),
+			},
+		}, nil
+	})
+	if err != nil {
+		api.BadRequest(w, common.ErrValidation, err)
+		return nil, false
+	}
+
+	txs, err := ledgerInstance.ListTransactions(r.Context(), rq)
+	if err != nil {
+		common.HandleCommonPaginationErrors(w, r, err)
+		return nil, false
+	}
+	return txs, true
+}
+
 func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 	// Get account from query parameters
 	account := r.URL.Query().Get("account")
@@ -65,7 +107,7 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get asset from query parameters (empty means all assets)
+	// Get asset filter if provided
 	assetFilter := r.URL.Query().Get("asset")
 
 	// Get transactions
@@ -75,67 +117,56 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set up initial pagination
-	order := bunpaginate.Order(bunpaginate.OrderDesc)
-	pageSize := uint64(100) // Fixed page size for internal pagination
-	var cursor *string
+	// Use a reasonable default page size
+	const defaultPageSize = 100
+	assetSums := make(map[string]*big.Int)
+	var cursor *bunpaginate.Cursor[ledger.Transaction]
+	var ok bool
 
-	// Collect all transactions across all pages
-	var allTransactions []ledger.Transaction
+	// Process all pages of transactions
 	for {
-		// Create query for the current page
-		query := storagecommon.InitialPaginatedQuery[any]{
-			PageSize: pageSize,
-			Column:   "timestamp",
-			Order:    &order,
-			Options: storagecommon.ResourceQuery[any]{
-				Expand: getExpand(r),
-			},
+		cursor, ok = getPaginatedTransactions(w, r, ledgerInstance, defaultPageSize)
+		if !ok {
+			return // Error already handled
 		}
 
-		// If we have a cursor from the previous page, use it
-		if cursor != nil {
-			query = storagecommon.InitialPaginatedQuery[any]{
-				PageSize: pageSize,
-				Column:   "timestamp",
-				Order:    &order,
-				Options: storagecommon.ResourceQuery[any]{
-					Expand: getExpand(r),
-				},
+		// Process the current page of transactions
+		pageSums := processPostings(account, cursor, "") // Don't filter by asset yet
+
+		// Accumulate sums for each asset
+		for _, ps := range pageSums {
+			if _, exists := assetSums[ps.Asset]; !exists {
+				assetSums[ps.Asset] = big.NewInt(0)
 			}
-			// Note: The actual cursor handling might need to be adjusted based on how your API expects it
-			// This is a placeholder - you'll need to set the cursor in the query appropriately
+			assetSums[ps.Asset] = new(big.Int).Add(assetSums[ps.Asset], ps.Sum)
 		}
 
-		// Fetch the current page of transactions
-		txs, err := ledgerInstance.ListTransactions(r.Context(), query)
-		if err != nil {
-			common.HandleCommonPaginationErrors(w, r, err)
-			return
-		}
-
-		// Add transactions to our collection
-		allTransactions = append(allTransactions, txs.Data...)
-
-		// If there are no more pages, we're done
-		if !txs.HasMore || txs.Next == "" {
+		// If there are no more pages, break the loop
+		if !cursor.HasMore || cursor.Next == "" {
 			break
 		}
-
-		// Set the cursor for the next page
-		cursor = &txs.Next
 	}
 
-	// Process all transactions
-	response := processPostings(account, &bunpaginate.Cursor[ledger.Transaction]{
-		Data: allTransactions,
-	}, assetFilter)
+	// Prepare the response
+	response := make([]sumResponse, 0, len(assetSums))
+	for asset, sum := range assetSums {
+		// Skip if this asset doesn't match the filter (if any)
+		if assetFilter != "" && assetFilter != asset {
+			continue
+		}
+		response = append(response, sumResponse{
+			Account: account,
+			Asset:   asset,
+			Sum:     sum,
+		})
+	}
 
-	// The test expects a single response object in an array
-	if len(response) == 0 {
-		// If no postings match, return an empty array
+	// If we have an asset filter but no matching asset, return empty array
+	if assetFilter != "" && len(response) == 0 {
 		api.Ok(w, []sumResponse{})
 		return
 	}
+
+	// Return the response
 	api.Ok(w, response)
 }
