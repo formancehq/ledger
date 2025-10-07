@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"reflect"
+
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 
@@ -565,8 +566,21 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 }
 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
-	log, _, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteAccountMetadata)
-	return log, err
+	_, err := ctrl.deleteAccountMetadata(ctx, ctrl.store, parameters)
+	if err != nil {
+		return nil, err
+	}
+	// For now, we don't return a log for metadata deletion
+	// as the current implementation doesn't track the full metadata state
+	return nil, nil
+}
+
+func (ctrl *DefaultController) GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSum, error) {
+	return ctrl.store.TransactionsSum(ctx, ctrl.ledger.Name, account)
+}
+
+func (ctrl *DefaultController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSum, error) {
+	return ctrl.store.TransactionsSumWithTimeRange(ctx, ctrl.ledger.Name, account, startTime, endTime)
 }
 
 var _ Controller = (*DefaultController)(nil)

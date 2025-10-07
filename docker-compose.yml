@@ -47,7 +47,7 @@ services:
     entrypoint: go run main.go worker
     volumes:
       - .:/src
-      - ${GOPATH}:/go
+      - /go/pkg/mod:/go/pkg/mod
     working_dir: /src
     depends_on:
       postgres:
@@ -57,7 +57,7 @@ services:
       otel:
         condition: service_started
     environment:
-      GOWORK: off
+      GOWORK: "off"
       DEBUG: "${DEBUG:-false}"
       OTEL_SERVICE_NAME: ledger
       OTEL_METRICS_EXPORTER: "otlp"
@@ -78,7 +78,7 @@ services:
     entrypoint: go run main.go serve
     volumes:
       - .:/src
-      - ${GOPATH}:/go
+      - /go/pkg/mod:/go/pkg/mod
     ports:
       - 3068:3068
     working_dir: /src
@@ -90,7 +90,7 @@ services:
       otel:
         condition: service_started
     environment:
-      GOWORK: off
+      GOWORK: "off"
       DEBUG: "${DEBUG:-false}"
       OTEL_SERVICE_NAME: ledger
       OTEL_METRICS_EXPORTER: "otlp"

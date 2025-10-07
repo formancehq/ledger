@@ -2,11 +2,13 @@ package v2
 
 import (
 	"encoding/json"
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	ledger "github.com/formancehq/ledger/internal"
 	"math/big"
 	"net/http"
 	"strings"
+
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 const HeaderBigIntAsString = "Formance-Bigint-As-String"
@@ -15,12 +17,12 @@ type volumes ledger.Volumes
 
 func (v volumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Input  any `json:"input"`
-		Output any `json:"output"`
+		Input   any `json:"input"`
+		Output  any `json:"output"`
 		Balance any `json:"balance"`
-	} {
-		Input: v.Input.String(),
-		Output: v.Output.String(),
+	}{
+		Input:   v.Input.String(),
+		Output:  v.Output.String(),
 		Balance: (ledger.Volumes)(v).Balance().String(),
 	})
 }
@@ -47,9 +49,9 @@ func (p posting) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ledger.Posting
 		Amount string `json:"amount"`
-	} {
+	}{
 		Posting: ledger.Posting(p),
-		Amount: p.Amount.String(),
+		Amount:  p.Amount.String(),
 	})
 }
 
@@ -69,11 +71,11 @@ func (tx transaction) MarshalJSON() ([]byte, error) {
 		PreCommitVolumes           postCommitVolumes `json:"preCommitVolumes,omitempty"`
 		PreCommitEffectiveVolumes  postCommitVolumes `json:"preCommitEffectiveVolumes,omitempty"`
 	}{
-		Aux:                        Aux(tx),
-		Postings:                   Map(tx.Postings, func(p ledger.Posting) posting {
+		Aux: Aux(tx),
+		Postings: Map(tx.Postings, func(p ledger.Posting) posting {
 			return posting(p)
 		}),
-		PostCommitVolumes: postCommitVolumes(tx.PostCommitVolumes),
+		PostCommitVolumes:          postCommitVolumes(tx.PostCommitVolumes),
 		PostCommitEffectiveVolumes: postCommitVolumes(tx.PostCommitEffectiveVolumes),
 		Reverted:                   tx.RevertedAt != nil && !tx.RevertedAt.IsZero(),
 		PreCommitVolumes: postCommitVolumes(
@@ -102,10 +104,10 @@ func (v volumesWithBalanceByAssetByAccount) MarshalJSON() ([]byte, error) {
 		Input   string `json:"input"`
 		Output  string `json:"output"`
 		Balance string `json:"balance"`
-	} {
-		Aux: Aux(v),
-		Input: v.Input.String(),
-		Output: v.Output.String(),
+	}{
+		Aux:     Aux(v),
+		Input:   v.Input.String(),
+		Output:  v.Output.String(),
 		Balance: v.Balance.String(),
 	})
 }
@@ -124,11 +126,11 @@ func (v account) MarshalJSON() ([]byte, error) {
 	type Aux account
 	return json.Marshal(struct {
 		Aux
-		Volumes          volumesByAssets   `json:"volumes,omitempty"`
-		EffectiveVolumes volumesByAssets   `json:"effectiveVolumes,omitempty"`
-	} {
-		Aux: Aux(v),
-		Volumes: volumesByAssets(v.Volumes),
+		Volumes          volumesByAssets `json:"volumes,omitempty"`
+		EffectiveVolumes volumesByAssets `json:"effectiveVolumes,omitempty"`
+	}{
+		Aux:              Aux(v),
+		Volumes:          volumesByAssets(v.Volumes),
 		EffectiveVolumes: volumesByAssets(v.EffectiveVolumes),
 	})
 }
@@ -163,9 +165,9 @@ func (tx createdTransaction) MarshalJSON() ([]byte, error) {
 	type Aux ledger.CreatedTransaction
 	return json.Marshal(struct {
 		Aux
-		Transaction     transaction     `json:"transaction"`
-	} {
-		Aux: Aux(tx),
+		Transaction transaction `json:"transaction"`
+	}{
+		Aux:         Aux(tx),
 		Transaction: transaction(tx.Transaction),
 	})
 }
@@ -178,8 +180,8 @@ func (tx revertedTransaction) MarshalJSON() ([]byte, error) {
 		Aux
 		RevertedTransaction transaction `json:"revertedTransaction"`
 		RevertTransaction   transaction `json:"transaction"`
-	} {
-		Aux: Aux(tx),
+	}{
+		Aux:                 Aux(tx),
 		RevertedTransaction: transaction(tx.RevertedTransaction),
 		RevertTransaction:   transaction(tx.RevertTransaction),
 	})
@@ -191,8 +193,8 @@ func (l log) MarshalJSON() ([]byte, error) {
 	type Aux ledger.Log
 	return json.Marshal(struct {
 		Aux
-		Data           any `json:"data"`
-	} {
+		Data any `json:"data"`
+	}{
 		Aux: Aux(l),
 		Data: func() any {
 			switch l.Type {
@@ -218,4 +220,25 @@ func renderLog(r *http.Request, v ledger.Log) any {
 func needBigIntAsString(r *http.Request) bool {
 	v := strings.ToLower(r.Header.Get(HeaderBigIntAsString))
 	return v == "true" || v == "yes" || v == "y" || v == "1"
+}
+
+type transactionSum ledgerstore.TransactionsSum
+
+func (ts transactionSum) MarshalJSON() ([]byte, error) {
+	type Aux transactionSum
+	return json.Marshal(struct {
+		Aux
+		Sum string `json:"sum"`
+	}{
+		Aux: Aux(ts),
+		Sum: ts.Sum,
+	})
+}
+
+func renderTransactionSum(r *http.Request, ts ledgerstore.TransactionsSum) any {
+	if !needBigIntAsString(r) {
+		return ts
+	}
+
+	return transactionSum(ts)
 }

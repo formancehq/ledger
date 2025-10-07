@@ -113,8 +113,8 @@ func (store *Store) GetLedger() ledger.Ledger {
 	return store.ledger
 }
 
-func (store *Store) GetDB() bun.IDB {
-	return store.db
+func (s *Store) GetDB() bun.IDB {
+	return s.db
 }
 
 func (store *Store) GetBucket() bucket.Bucket {

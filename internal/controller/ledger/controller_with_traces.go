@@ -3,7 +3,9 @@ package ledger
 import (
 	"context"
 	"database/sql"
+
 	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -42,6 +44,7 @@ type ControllerWithTraces struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	deleteAccountMetadataHistogram     metric.Int64Histogram
 	lockLedgerHistogram                metric.Int64Histogram
+	getTransactionsSumHistogram        metric.Int64Histogram
 }
 
 func (c *ControllerWithTraces) Info() ledger.Ledger {
@@ -144,6 +147,10 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 		panic(err)
 	}
 	ret.lockLedgerHistogram, err = meter.Int64Histogram("controller.lock_ledger")
+	if err != nil {
+		panic(err)
+	}
+	ret.getTransactionsSumHistogram, err = meter.Int64Histogram("controller.get_transactions_sum")
 	if err != nil {
 		panic(err)
 	}
@@ -466,31 +473,59 @@ func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 	)
 }
 
+func (c *ControllerWithTraces) GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSum, error) {
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetTransactionsSum",
+		c.tracer,
+		c.getTransactionsSumHistogram,
+		func(ctx context.Context) ([]ledgerstore.TransactionsSum, error) {
+			return c.underlying.GetTransactionsSum(ctx, account)
+		},
+	)
+}
+
+func (c *ControllerWithTraces) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSum, error) {
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetTransactionsSumWithTimeRange",
+		c.tracer,
+		c.getTransactionsSumHistogram,
+		func(ctx context.Context) ([]ledgerstore.TransactionsSum, error) {
+			return c.underlying.GetTransactionsSumWithTimeRange(ctx, account, startTime, endTime)
+		},
+	)
+}
+
 func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
 	var (
-		controller Controller
-		release    func() error
-		conn       bun.IDB
-		err        error
+		ctrl  Controller
+		db    bun.IDB
+		close func() error
+		err   error
 	)
-	_, err = tracing.TraceWithMetric(
+	ctrl, err = tracing.TraceWithMetric(
 		ctx,
 		"LockLedger",
 		c.tracer,
 		c.lockLedgerHistogram,
-		func(ctx context.Context) (any, error) {
-			controller, conn, release, err = c.underlying.LockLedger(ctx)
-			return nil, err
+		func(ctx context.Context) (Controller, error) {
+			var err error
+			ctrl, db, close, err = c.underlying.LockLedger(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			ret := *c
+			ret.underlying = ctrl
+
+			return &ret, nil
 		},
 	)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
-	cp := *c
-	cp.underlying = controller
-
-	return &cp, conn, release, nil
+	return ctrl, db, close, nil
 }
 
 var _ Controller = (*ControllerWithTraces)(nil)
