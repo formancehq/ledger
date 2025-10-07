@@ -17,8 +17,8 @@ func (s *Store) TransactionsSum(ctx context.Context, ledger string, account stri
 }
 
 func (s *Store) TransactionsSumWithTimeRange(ctx context.Context, ledger string, account string, startTime, endTime *time.Time) ([]TransactionsSum, error) {
-	whereClause := "accounts_address = ?"
-	args := []interface{}{account}
+	whereClause := "ledger = ? AND accounts_address = ?"
+	args := []any{ledger, account}
 
 	if startTime != nil {
 		whereClause += " AND effective_date >= ?"

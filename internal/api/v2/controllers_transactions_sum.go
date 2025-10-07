@@ -45,7 +45,6 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the efficient GetTransactionsSum method instead of loading all transactions
 	var transactionsSum []ledgerstore.TransactionsSum
 	if startTime == nil && endTime == nil {
 		transactionsSum, err = ledgerInstance.GetTransactionsSum(r.Context(), account)
