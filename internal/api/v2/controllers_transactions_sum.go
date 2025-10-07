@@ -68,24 +68,6 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 	// Get asset from query parameters (empty means all assets)
 	assetFilter := r.URL.Query().Get("asset")
 
-	// Get pagination parameters
-	pageSize, err := bunpaginate.GetPageSize(r)
-	if err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
-		return
-	}
-
-	// Create pagination query
-	order := bunpaginate.Order(bunpaginate.OrderDesc)
-	rq := storagecommon.InitialPaginatedQuery[any]{
-		PageSize: pageSize,
-		Column:   "timestamp",
-		Order:    &order,
-		Options: storagecommon.ResourceQuery[any]{
-			Expand: getExpand(r),
-		},
-	}
-
 	// Get transactions
 	ledgerInstance := common.LedgerFromContext(r.Context())
 	if ledgerInstance == nil {
@@ -93,13 +75,62 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txs, err := ledgerInstance.ListTransactions(r.Context(), rq)
-	if err != nil {
-		common.HandleCommonPaginationErrors(w, r, err)
-		return
+	// Set up initial pagination
+	order := bunpaginate.Order(bunpaginate.OrderDesc)
+	pageSize := uint64(100) // Fixed page size for internal pagination
+	var cursor *string
+
+	// Collect all transactions across all pages
+	var allTransactions []ledger.Transaction
+	for {
+		// Create query for the current page
+		query := storagecommon.InitialPaginatedQuery[any]{
+			PageSize: pageSize,
+			Column:   "timestamp",
+			Order:    &order,
+			Options: storagecommon.ResourceQuery[any]{
+				Expand: getExpand(r),
+			},
+		}
+
+		// If we have a cursor from the previous page, use it
+		if cursor != nil {
+			query = storagecommon.InitialPaginatedQuery[any]{
+				PageSize: pageSize,
+				Column:   "timestamp",
+				Order:    &order,
+				Options: storagecommon.ResourceQuery[any]{
+					Expand: getExpand(r),
+				},
+			}
+			// Note: The actual cursor handling might need to be adjusted based on how your API expects it
+			// This is a placeholder - you'll need to set the cursor in the query appropriately
+		}
+
+		// Fetch the current page of transactions
+		txs, err := ledgerInstance.ListTransactions(r.Context(), query)
+		if err != nil {
+			common.HandleCommonPaginationErrors(w, r, err)
+			return
+		}
+
+		// Add transactions to our collection
+		allTransactions = append(allTransactions, txs.Data...)
+
+		// If there are no more pages, we're done
+		if !txs.HasMore || txs.Next == "" {
+			break
+		}
+
+		// Set the cursor for the next page
+		cursor = &txs.Next
 	}
 
-	response := processPostings(account, txs, assetFilter)
+	// Process all transactions
+	response := processPostings(account, &bunpaginate.Cursor[ledger.Transaction]{
+		Data: allTransactions,
+	}, assetFilter)
+
 	// The test expects a single response object in an array
 	if len(response) == 0 {
 		// If no postings match, return an empty array

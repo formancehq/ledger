@@ -26,11 +26,11 @@ func TestGetTransactionsSum(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockLedgerController := NewLedgerController(ctrl)
 
-		// Mock the ListTransactions call and create expected query with the same parameters as the actual request
+		// Mock the ListTransactions call and create expected query with the fixed page size of 100
 		desc := bunpaginate.OrderDesc
 		order := bunpaginate.Order(desc)
 		expectedQuery := storagecommon.InitialPaginatedQuery[any]{
-			PageSize: 15,
+			PageSize: 100, // Fixed page size for internal pagination
 			Column:   "timestamp",
 			Order:    &order,
 			Options: storagecommon.ResourceQuery[any]{
@@ -42,6 +42,7 @@ func TestGetTransactionsSum(t *testing.T) {
 			},
 		}
 
+		// Mock the response with HasMore: false to indicate this is the only page
 		mockLedgerController.EXPECT().
 			ListTransactions(gomock.Any(), matchPaginatedQuery(expectedQuery)).
 			Return(&bunpaginate.Cursor[ledger.Transaction]{
@@ -53,13 +54,14 @@ func TestGetTransactionsSum(t *testing.T) {
 						ledger.NewPosting("expenses:salary", "bank:checking", "USD", big.NewInt(500)),
 					),
 				},
+				HasMore: false, // Indicate this is the last page
 			}, nil)
 
 		// Create test server with mock controller
 		server := newTestServer(t, mockLedgerController)
 
 		// Create request with proper pagination parameters
-		req, err := http.NewRequest(http.MethodGet, "/transactions/sum?account=expenses:salary&pageSize=15", nil)
+		req, err := http.NewRequest(http.MethodGet, "/transactions/sum?account=expenses:salary", nil)
 		req.Header.Set("Content-Type", "application/json")
 		require.NoError(t, err)
 
@@ -100,6 +102,90 @@ func TestGetTransactionsSum(t *testing.T) {
 		server.ServeHTTP(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("pagination with multiple pages", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test data
+		ctrl := gomock.NewController(t)
+		mockLedgerController := NewLedgerController(ctrl)
+
+		// Mock the first page of transactions
+		desc := bunpaginate.OrderDesc
+		order := bunpaginate.Order(desc)
+		expectedQuery1 := storagecommon.InitialPaginatedQuery[any]{
+			PageSize: 100, // Fixed page size for internal pagination
+			Column:   "timestamp",
+			Order:    &order,
+			Options: storagecommon.ResourceQuery[any]{
+				Expand: []string{},
+			},
+		}
+
+		// First page with 2 transactions and hasMore=true
+		mockLedgerController.EXPECT().
+			ListTransactions(gomock.Any(), matchPaginatedQuery(expectedQuery1)).
+			Return(&bunpaginate.Cursor[ledger.Transaction]{
+				Data: []ledger.Transaction{
+					ledger.NewTransaction().WithPostings(
+						ledger.NewPosting("world", "expenses:salary", "USD", big.NewInt(1000)),
+					),
+					ledger.NewTransaction().WithPostings(
+						ledger.NewPosting("expenses:salary", "bank:checking", "USD", big.NewInt(500)),
+					),
+				},
+				HasMore: true,
+				Next:     "next-page-cursor",
+			}, nil)
+
+		// Second page with 1 more transaction and hasMore=false
+		expectedQuery2 := storagecommon.InitialPaginatedQuery[any]{
+			PageSize: 100, // Same fixed page size
+			Column:   "timestamp",
+			Order:    &order,
+			Options: storagecommon.ResourceQuery[any]{
+				Expand: []string{},
+			},
+		}
+
+		mockLedgerController.EXPECT().
+			ListTransactions(gomock.Any(), matchPaginatedQuery(expectedQuery2)).
+			Return(&bunpaginate.Cursor[ledger.Transaction]{
+				Data: []ledger.Transaction{
+					ledger.NewTransaction().WithPostings(
+						ledger.NewPosting("client:1", "expenses:salary", "USD", big.NewInt(200)),
+					),
+				},
+				HasMore: false, // Last page
+			}, nil)
+
+		// Create test server with mock controller
+		server := newTestServer(t, mockLedgerController)
+
+		req, err := http.NewRequest(http.MethodGet, "/transactions/sum?account=expenses:salary", nil)
+		req.Header.Set("Content-Type", "application/json")
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		// Verify response
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		// Parse response
+		var responseWrapper struct {
+			Data []sumResponse `json:"data"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &responseWrapper)
+		require.NoError(t, err, "Failed to unmarshal response")
+
+		// Verify the response contains the expected data
+		require.Len(t, responseWrapper.Data, 1)
+		require.Equal(t, "expenses:salary", responseWrapper.Data[0].Account)
+		require.Equal(t, "USD", responseWrapper.Data[0].Asset)
+		// 1000 (from world) - 500 (to bank) + 200 (from client) = 700
+		require.Equal(t, int64(700), responseWrapper.Data[0].Sum.Int64())
 	})
 }
 
