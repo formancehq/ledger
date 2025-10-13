@@ -20,7 +20,7 @@ func (h accountsResourceHandler) Schema() common.EntitySchema {
 			"balance":        common.NewNumericMapField(),
 			"metadata":       common.NewStringMapField(),
 			"insertion_date": common.NewDateField().Paginated(),
-			"updated_at": common.NewDateField().Paginated(),
+			"updated_at":     common.NewDateField().Paginated(),
 		},
 	}
 }
@@ -77,7 +77,7 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 				ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 				DistinctOn("asset").
 				ColumnExpr("first_value((post_commit_volumes).inputs - (post_commit_volumes).outputs) over (partition by (accounts_address, asset) order by seq desc) as balance").
-				Where("insertion_date <= ?", opts.PIT)
+				Where("effective_date <= ?", opts.PIT)
 		} else {
 			selectBalance = selectBalance.
 				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
