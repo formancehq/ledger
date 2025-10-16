@@ -102,8 +102,8 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 			selectBalance = selectBalance.
 				ModelTableExpr(store.GetPrefixedRelationName("moves")).
 				DistinctOn("asset").
-				ColumnExpr("first_value((post_commit_volumes).inputs - (post_commit_volumes).outputs) over (partition by (accounts_address, asset) order by seq desc) as balance").
-				Where("insertion_date <= ?", opts.PIT)
+				ColumnExpr("first_value((post_commit_effective_volumes).inputs - (post_commit_effective_volumes).outputs) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as balance").
+				Where("effective_date <= ?", opts.PIT)
 		} else {
 			selectBalance = selectBalance.
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
