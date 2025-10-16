@@ -123,8 +123,8 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						force = true
 					})
 					It("Should be ok", func() {
-						Expect(newTransaction.ID).To(Equal(big.NewInt(3)))
 						Expect(err).ToNot(HaveOccurred())
+						Expect(newTransaction.ID).To(Equal(big.NewInt(3)))
 					})
 				})
 			})
