@@ -98,11 +98,12 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 			When("trying to revert the original transaction", func() {
 				var (
-					force bool
-					err   error
+					force          bool
+					err            error
+					newTransaction *components.V2Transaction
 				)
 				revertTx := func() {
-					_, err = RevertTransaction(
+					newTransaction, err = RevertTransaction(
 						ctx,
 						testServer.GetValue(),
 						operations.V2RevertTransactionRequest{
@@ -123,6 +124,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 					})
 					It("Should be ok", func() {
 						Expect(err).ToNot(HaveOccurred())
+						Expect(newTransaction.ID).To(Equal(big.NewInt(3)))
 					})
 				})
 			})
