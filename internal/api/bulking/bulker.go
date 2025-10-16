@@ -203,7 +203,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			return nil, 0, err
 		}
 
-		return revertTransactionResult.RevertedTransaction, *log.ID, nil
+		return revertTransactionResult.RevertTransaction, *log.ID, nil
 	case ActionDeleteMetadata:
 		req := data.Data.(DeleteMetadataRequest)
 
