@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"sync"
-	"time"
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -36,9 +38,23 @@ type Driver struct {
 	parallelBucketMigrations int
 }
 
-func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
+/*
+CreateLedger creates a new ledger in the system and sets up all necessary database objects.
 
+The function follows these steps:
+ 1. Create a ledger record in the system store (_system.ledgers table)
+ 2. Get the bucket (database schema) for this ledger
+ 3. Check if the bucket is already initialized:
+    a. If initialized: Verify it's up to date and add ledger-specific objects to it
+    b. If not initialized: Create the bucket schema with all necessary tables
+ 4. Return a ledger store that provides an interface to interact with the ledger
+
+Note: This entire process is wrapped in a database transaction, ensuring atomicity.
+If any step fails, the entire transaction is rolled back, preventing partial state.
+*/
+func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
 	var ret *ledgerstore.Store
+
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		systemStore := d.systemStoreFactory.Create(tx)
 
@@ -54,6 +70,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		if err != nil {
 			return fmt.Errorf("checking if bucket is initialized: %w", err)
 		}
+
 		if isInitialized {
 			upToDate, err := b.IsUpToDate(ctx, tx)
 			if err != nil {
@@ -61,6 +78,17 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 
 			if !upToDate {
+				assert.AlwaysOrUnreachable(
+					// @todo: replace this with a proper flag detailing wether we're
+					// operating a new version of the binary or not.
+					// if we are, we are definitely expecting this to happen.
+					// if we're not, this should be unreachable.
+					false,
+					"Bucket is outdated",
+					map[string]any{
+						"bucket": l.Bucket,
+					},
+				)
 				return ErrBucketOutdated
 			}
 
@@ -77,6 +105,7 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 		return nil
 	})
+
 	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}

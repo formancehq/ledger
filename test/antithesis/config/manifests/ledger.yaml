@@ -1,0 +1,7 @@
+apiVersion: formance.com/v1beta1
+kind: Ledger
+metadata:
+  name: stack0-ledger
+spec:
+  stack: stack0
+  version: LEDGER_VERSION_PLACEHOLDER
