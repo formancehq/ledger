@@ -22,6 +22,7 @@ const (
 	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
+	UpdatedSchemaLogType // "UPDATE_CHART_OF_ACCOUNT"
 )
 
 type LogType int16
@@ -60,9 +61,11 @@ func (lt LogType) String() string {
 		return "REVERTED_TRANSACTION"
 	case DeleteMetadataLogType:
 		return "DELETE_METADATA"
+	case UpdatedSchemaLogType:
+		return "UPDATED_SCHEMA"
 	}
 
-	return ""
+	panic("invalid log type")
 }
 
 func LogTypeFromString(logType string) LogType {
@@ -75,6 +78,8 @@ func LogTypeFromString(logType string) LogType {
 		return RevertedTransactionLogType
 	case "DELETE_METADATA":
 		return DeleteMetadataLogType
+	case "UPDATED_SCHEMA":
+		return UpdatedSchemaLogType
 	}
 
 	panic("invalid log type")
@@ -365,6 +370,14 @@ func (r RevertedTransaction) GetMemento() any {
 
 var _ Memento = (*RevertedTransaction)(nil)
 
+type UpdatedSchema struct {
+	Schema Schema `json:"schema"`
+}
+
+func (u UpdatedSchema) Type() LogType {
+	return UpdatedSchemaLogType
+}
+
 func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
 	switch _type {
@@ -376,6 +389,8 @@ func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 		payload = &DeletedMetadata{}
 	case RevertedTransactionLogType:
 		payload = &RevertedTransaction{}
+	case UpdatedSchemaLogType:
+		payload = &UpdatedSchema{}
 	default:
 		return nil, fmt.Errorf("unknown type '%s'", _type)
 	}
