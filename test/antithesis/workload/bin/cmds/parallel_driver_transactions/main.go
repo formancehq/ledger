@@ -20,9 +20,10 @@ func main() {
 	client := internal.NewClient()
 
 	ledger, err := internal.GetRandomLedger(ctx, client)
+	assert.Sometimes(err == nil, "should be able to get a random ledger", internal.Details{
+		"error": err,
+	})
 	if err != nil {
-		ledger = "default"
-		log.Printf("error getting random ledger: %s", err)
 		return
 	}
 

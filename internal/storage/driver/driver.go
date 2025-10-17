@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -13,6 +11,8 @@ import (
 	"github.com/formancehq/ledger/internal/tracing"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"sync"
+	"time"
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"

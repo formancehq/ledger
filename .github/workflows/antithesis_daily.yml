@@ -25,9 +25,7 @@ jobs:
       OPERATOR_TAG: "v2.10.1"
       OPERATOR_UTILS_TAG: "v2.0.14"
       GATEWAY_TAG: "v2.0.24"
-      # LEDGER_PREVIOUS_TAG: "v2.2.47"
-      # temporary: remove this when support for multiple image versions is added
-      LEDGER_PREVIOUS_TAG: "v2.3.0"
+      LEDGER_PREVIOUS_TAG: "v2.2.47"
       LEDGER_LATEST_TAG: "v2.3.0"
     steps:
       - name: Checkout code
@@ -74,8 +72,6 @@ jobs:
           username: ${{ secrets.ANTITHESIS_USERNAME }}
           password: ${{ secrets.ANTITHESIS_PASSWORD }}
           github_token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          # images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_PREVIOUS_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
-          # temporary: remove this when support for multiple image versions is added
-          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
+          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_PREVIOUS_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
           config_image: "antithesis-config:daily_run"
           email_recipients: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}

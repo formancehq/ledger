@@ -61,7 +61,8 @@ func checkBalanced(ctx context.Context, client *client.Formance, ledger string) 
 			fmt.Sprintf("aggregated volumes for asset %s should be 0",
 				asset,
 			), internal.Details{
-				"error": err,
+				"asset": asset,
+				"volumes": volumes,
 			})
 	}
 
@@ -75,8 +76,9 @@ func checkAccountBalances(ctx context.Context, client *client.Formance, ledger s
 			Ledger: ledger,
 			Address: address,
 		})
-		assert.Sometimes(err != nil, "Client can aggregate account balances", internal.Details{
+		assert.Sometimes(err == nil, "Client can aggregate account balances", internal.Details{
 			"ledger": ledger,
+			"address": address,
 			"error": err,
 		})
 		if err != nil {

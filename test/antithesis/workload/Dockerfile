@@ -13,6 +13,7 @@ COPY pkg/client /src/pkg/client
 RUN antithesis-go-instrumentor -assert_only .
 
 RUN go build -o /init ./bin/init
+RUN mkdir -p /cmds
 RUN for file in $(ls ./bin/cmds/); do go build -o /cmds/$file ./bin/cmds/$file; done
 
 RUN antithesis-go-instrumentor -assert_only .
@@ -27,6 +28,6 @@ ARG LEDGER_LATEST_TAG
 COPY --from=compiler /init /init
 ENTRYPOINT ["/init"]
 
-COPY --from=compiler cmds/* /opt/antithesis/test/v1/main/
+COPY --from=compiler /cmds/* /opt/antithesis/test/v1/main/
 
 RUN echo ${LEDGER_LATEST_TAG} > /ledger_latest_tag

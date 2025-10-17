@@ -5,10 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
-	"strings"
-
+	
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/service"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
@@ -19,6 +16,9 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+	"net/http"
+	"os"
+	"strings"
 )
 
 const (
