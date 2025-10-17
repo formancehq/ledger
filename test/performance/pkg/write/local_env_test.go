@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
+	"github.com/stretchr/testify/require"
 	"io"
 	"net/url"
 	"os"
@@ -75,6 +76,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 			testserver.ExperimentalFeaturesInstrumentation(),
 		),
 	)
+	require.NoError(b, testServer.Start(ctx))
 
 	return &TestServerEnv{
 		testServer: testServer,
