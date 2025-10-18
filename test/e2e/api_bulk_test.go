@@ -150,6 +150,8 @@ var _ = Context("Ledger engine tests", func() {
 			})
 			Expect(err).To(Succeed())
 
+			Expect(bulkResponse.V2BulkResponse.Data[3].V2BulkElementResultRevertTransaction.Data.ID).To(Equal(big.NewInt(2)))
+
 			Expect(tx.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
 				ID: big.NewInt(1),
 				Metadata: metadata.Metadata{
