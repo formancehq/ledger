@@ -103,11 +103,12 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 			When("trying to revert the original transaction", func() {
 				var (
-					force bool
-					err   error
+					force          bool
+					err            error
+					newTransaction *operations.V2RevertTransactionResponse
 				)
 				revertTx := func(specContext SpecContext) {
-					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
+					newTransaction, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
 						ctx,
 						operations.V2RevertTransactionRequest{
 							Force:  pointer.For(force),
@@ -127,6 +128,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 					})
 					It("Should be ok", func() {
 						Expect(err).ToNot(HaveOccurred())
+						Expect(newTransaction.V2CreateTransactionResponse.Data.ID).To(Equal(big.NewInt(3)))
 					})
 				})
 			})
