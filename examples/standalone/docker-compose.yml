@@ -1,0 +1,81 @@
+volumes:
+  postgres: {}
+
+services:
+
+  postgres:
+    image: "postgres:16-alpine"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command:
+      - -c
+      - max_connections=200
+      - -c
+      - log_min_messages=info
+    environment:
+      POSTGRES_USER: "ledger"
+      POSTGRES_PASSWORD: "ledger"
+      POSTGRES_DB: "ledger"
+      PGDATA: /data/postgres
+    volumes:
+      - ${POSTGRES_DATA:-postgres}:/data/postgres
+
+  worker:
+    image: ghcr.io/formancehq/ledger:v2.3.0
+    # entrypoint:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DEBUG: "${DEBUG:-false}"
+      POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+      POSTGRES_MAX_OPEN_CONNS: "40"
+      POSTGRES_MAX_IDLE_CONNS: "40"
+      POSTGRES_CONN_MAX_IDLE_TIME: "5m"
+
+  ledger:
+    image: ghcr.io/formancehq/ledger:v2.3.0
+    ports:
+      - 3068:3068
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DEBUG: "${DEBUG:-false}"
+      POSTGRES_URI: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
+      POSTGRES_MAX_OPEN_CONNS: "40"
+      POSTGRES_MAX_IDLE_CONNS: "40"
+      POSTGRES_CONN_MAX_IDLE_TIME: "5m"
+      EXPERIMENTAL_FEATURES: "true"
+      AUTO_UPGRADE: "true"
+      BULK_PARALLEL: "10"
+
+  gateway:
+    image: ghcr.io/formancehq/gateway:v2.0.31
+    depends_on: [ledger]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./Caddyfile:/etc/caddy/Caddyfile"
+
+  console:
+    image: ghcr.io/formancehq/console-v3:239302ac3d1ff077718402d2aa08eddaa871d822
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MICRO_STACK=1
+      - API_URL=http://localhost:80/api
+      - COOKIE_SECRET=secret
+      - COOKIE_DOMAIN=localhost
+      - FEATURES_DISABLED=
+      - DEBUG=0
+    depends_on:
+      - postgres
+      - worker
+      - ledger
+      - gateway
