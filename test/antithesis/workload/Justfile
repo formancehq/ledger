@@ -1,0 +1,3 @@
+push:
+	docker build --build-arg LEDGER_LATEST_TAG="$LEDGER_LATEST_TAG" -f Dockerfile -t "$ANTITHESIS_REPOSITORY/workload:latest" ../../../
+	docker push "$ANTITHESIS_REPOSITORY/workload:latest"

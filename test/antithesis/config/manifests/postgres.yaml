@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: formance-systems
+spec:
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres
+  namespace: formance-systems
+  labels:
+    app: postgres
+spec:
+  containers:
+    - name: postgres
+      image: postgres:15-alpine
+      imagePullPolicy: IfNotPresent
+      args: ["-c", "max_connections=100"]
+      env:
+        - name: "POSTGRES_USER"
+          value: "ledger"
+        - name: "POSTGRES_PASSWORD"
+          value: "ledger"
+        - name: "POSTGRES_DB"
+          value: "ledger"
+        - name: "PGDATA"
+          value: /data/postgres
+      livenessProbe:
+        exec:
+          command: ["pg_isready", "-Uledger"]
+        initialDelaySeconds: 0
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 5
