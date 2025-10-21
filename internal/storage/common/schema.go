@@ -2,6 +2,8 @@ package common
 
 import (
 	"fmt"
+	"math/big"
+
 	"github.com/formancehq/go-libs/v3/time"
 )
 
@@ -214,8 +216,8 @@ func (t TypeNumeric) Operators() []string {
 
 func (t TypeNumeric) ValidateValue(value any) error {
 	switch value.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float64, float32,
-		*int, *int8, *int16, *int32, *int64, *uint, *uint8, *uint16, *uint32, *uint64, *float64, *float32:
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float64, float32, big.Int,
+		*int, *int8, *int16, *int32, *int64, *uint, *uint8, *uint16, *uint32, *uint64, *float64, *float32, *big.Int:
 		return nil
 	default:
 		return fmt.Errorf("expected numeric value, got %T", value)

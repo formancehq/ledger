@@ -8,6 +8,8 @@ import (
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
+	"go.opentelemetry.io/otel/metric"
+	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/go-chi/chi/v5"
+	otelchimetric "github.com/riandyrn/otelchi/metric"
 )
 
 // todo: refine textual errors
@@ -36,6 +39,11 @@ func NewRouter(
 		opt(&routerOptions)
 	}
 
+	baseCfg := otelchimetric.NewBaseConfig(
+		"ledger",
+		otelchimetric.WithMeterProvider(routerOptions.meterProvider),
+	)
+
 	mux := chi.NewRouter()
 	mux.Use(
 		cors.New(cors.Options{
@@ -47,6 +55,9 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		service.OTLPMiddleware("ledger", debug),
+		otelchimetric.NewRequestDurationMillis(baseCfg),
+		otelchimetric.NewRequestInFlight(baseCfg),
+		otelchimetric.NewResponseSizeBytes(baseCfg),
 		func(next http.Handler) http.Handler {
 			fn := func(w http.ResponseWriter, r *http.Request) {
 				defer func() {
@@ -101,6 +112,7 @@ func NewRouter(
 
 type routerOptions struct {
 	tracer           trace.Tracer
+	meterProvider metric.MeterProvider
 	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
 	paginationConfig common.PaginationConfig
@@ -139,8 +151,15 @@ func WithExporters(v bool) RouterOption {
 	}
 }
 
+func WithMeterProvider(mp metric.MeterProvider) RouterOption {
+	return func(ro *routerOptions) {
+		ro.meterProvider = mp
+	}
+}
+
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
+	WithMeterProvider(noopmetrics.MeterProvider{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
 	WithPaginationConfiguration(common.PaginationConfig{
 		MaxPageSize:     bunpaginate.MaxPageSize,
