@@ -63,17 +63,14 @@ services:
       - "./Caddyfile:/etc/caddy/Caddyfile"
 
   console:
-    image: ghcr.io/formancehq/console-v3:239302ac3d1ff077718402d2aa08eddaa871d822
+    image: ghcr.io/formancehq/console-v3:119d023436b322104e18f7ddac0aa6819aabe29e
     ports:
-      - "3000:3000"
+      - "3200:3000"
     environment:
-      - PORT=3000
       - MICRO_STACK=1
       - API_URL=http://localhost:80/api
       - COOKIE_SECRET=secret
       - COOKIE_DOMAIN=localhost
-      - FEATURES_DISABLED=
-      - DEBUG=0
     depends_on:
       - postgres
       - worker
