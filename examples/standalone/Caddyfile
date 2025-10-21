@@ -22,13 +22,8 @@
 	debug
 }
 
-localhost:80 {
+:80 {
 	import handle_path_route_without_auth "/api/ledger" "ledger:3068"
-
-	# handle all other requests
-	handle {
-		respond "Bad Gateway" 502
-	}
 
 	handle /versions {
 		versions {
@@ -38,6 +33,11 @@ localhost:80 {
 				ledger /api/ledger/_info /api/ledger/_healthcheck
 			}
 		}
+	}
+
+	# handle all other requests
+	handle {
+		respond "Bad Gateway" 502
 	}
 
 }
