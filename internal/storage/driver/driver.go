@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -78,17 +77,6 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 
 			if !upToDate {
-				assert.AlwaysOrUnreachable(
-					// @todo: replace this with a proper flag detailing wether we're
-					// operating a new version of the binary or not.
-					// if we are, we are definitely expecting this to happen.
-					// if we're not, this should be unreachable.
-					false,
-					"Bucket is outdated",
-					map[string]any{
-						"bucket": l.Bucket,
-					},
-				)
 				return ErrBucketOutdated
 			}
 
