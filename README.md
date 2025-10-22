@@ -9,7 +9,7 @@ Formance Ledger is a programmable financial core ledger that provides a foundati
 
 ## Quickstart
 
-To quickly get started using the Formance Ledger on your computer, you can use the local, all-in-one docker image: 
+To quickly get started using the Formance Ledger on your computer, you can use the local, all-in-one docker image:
 
 ```
 docker compose -f examples/standalone/docker-compose.yml up
@@ -23,7 +23,7 @@ http post :3068/quickstart
 http post :3068/quickstart/transactions postings:='[{"amount":100,"asset":"USD/2","destination":"users:1234","source":"world"}]'
 ```
 
-And get a visual feedback on the Ledger Console UI started on [https://localhost:3000](https://localhost:3000/formance/localhost/ledgers?region=localhost)
+And get a visual feedback on the Ledger Console UI started on [http://localhost:3000](http://localhost:3000/formance/localhost?region=localhost)
 
 ## Production
 
@@ -34,7 +34,7 @@ Production usage of the Formance Ledger is supported through the official k8s [o
 Standalone binary builds can be downloaded from the [releases page](https://github.com/formancehq/ledger/releases).
 Container images can be found on the [ghcr registry](https://github.com/formancehq/ledger/pkgs/container/ledger).
 
-## Docs 📚 
+## Docs 📚
 
 You can find the exhaustive Formance Platform documentation at [docs.formance.com](https://docs.formance.com).
 
