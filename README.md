@@ -1,4 +1,4 @@
-# ![ledger](docs/ledger.svg) Formance Ledger
+# ![ledger](docs/ledger-logo.svg) Formance Ledger
 
 Formance Ledger is a programmable financial core ledger that provides a foundation for all kind of money-moving applications. It provides an atomic multi-postings transactions system, account-based modeling, and is programmable in [numscript](https://docs.formance.com/modules/numscript/introduction), a built-in DSL to model financial transactions.
 
