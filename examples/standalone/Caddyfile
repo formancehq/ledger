@@ -1,0 +1,43 @@
+(cors) {
+	header {
+		Access-Control-Allow-Methods "GET,OPTIONS,PUT,POST,DELETE,HEAD,PATCH"
+		Access-Control-Allow-Headers content-type
+		Access-Control-Max-Age 100
+		Access-Control-Allow-Origin *
+	}
+}
+
+(handle_path_route_without_auth) {
+	# handle_path automatically strips the prefix from the request path
+	handle_path {args.0}* {
+		reverse_proxy {args.1}
+
+		import cors
+	}
+}
+
+{
+	order versions after metrics
+
+	debug
+}
+
+:80 {
+	import handle_path_route_without_auth "/api/ledger" "ledger:3068"
+
+	handle /versions {
+		versions {
+			region "local"
+			env "local"
+			endpoints {
+				ledger /api/ledger/_info /api/ledger/_healthcheck
+			}
+		}
+	}
+
+	# handle all other requests
+	handle {
+		respond "Bad Gateway" 502
+	}
+
+}
