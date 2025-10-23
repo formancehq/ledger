@@ -21,6 +21,7 @@ docker compose -f examples/standalone/docker-compose.yml up
 
 Which will start:
 * A Postgres DB
+* 1 Gateway Server process (Caddy based reverse proxy)
 * 1 Ledger server process
 * 1 Ledger worker process
 * The Console UI
@@ -29,9 +30,9 @@ With the system is up and running, you can now start using the ledger:
 
 ```shell
 # Create a ledger
-http post :3068/quickstart
+http POST :80/api/ledger/v2/quickstart
 # Create a first transaction
-http post :3068/quickstart/transactions postings:='[{"amount":100,"asset":"USD/2","destination":"users:1234","source":"world"}]'
+http POST :80/api/ledger/v2/quickstart/transactions postings:='[{"amount":100,"asset":"USD/2","destination":"users:1234","source":"world"}]'
 ```
 
 And get a visual feedback on the Ledger Console UI started on [http://localhost:3000](http://localhost:3000/formance/localhost?region=localhost):
