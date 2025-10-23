@@ -63,7 +63,7 @@ services:
       - "./Caddyfile:/etc/caddy/Caddyfile"
 
   console:
-    image: ghcr.io/formancehq/console-v3:91d774775a64154d3b0bd05b03254b535f15729a
+    image: ghcr.io/formancehq/console-v3:d924bd604af772041acba7a116528a1b02915e4d
     ports:
       - "3000:3000"
     environment:
