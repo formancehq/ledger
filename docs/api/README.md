@@ -4606,7 +4606,10 @@ and
   "data": {
     "id": 0,
     "force": true,
-    "atEffectiveDate": true
+    "atEffectiveDate": true,
+    "metadata": {
+      "admin": "true"
+    }
   }
 }
 
@@ -4629,6 +4632,7 @@ and
 |»» id|integer(bigint)|true|none|none|
 |»» force|boolean|false|none|none|
 |»» atEffectiveDate|boolean|false|none|none|
+|»» metadata|[V2Metadata](#schemav2metadata)|false|none|none|
 
 <h2 id="tocS_V2BulkElementDeleteMetadata">V2BulkElementDeleteMetadata</h2>
 <!-- backwards compatibility -->

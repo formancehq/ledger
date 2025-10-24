@@ -125,7 +125,7 @@ V2CreateBulkRequest (ledger: string, continueOnFailure: boolean, atomic: boolean
      V2TargetId (union)
      V2TargetType (enum: TRANSACTION, ACCOUNT)
    V2BulkElementRevertTransaction (action: string, ik: string, data: class)
-    V2BulkElementRevertTransactionData (id: bigint, force: boolean, atEffectiveDate: boolean)
+    V2BulkElementRevertTransactionData (id: bigint, force: boolean, atEffectiveDate: boolean ...)
    V2BulkElementDeleteMetadata (action: string, ik: string, data: class)
     V2BulkElementDeleteMetadataData (targetId: V2TargetId, targetType: V2TargetType, key: string)
 V2CreateBulkResponse (HttpMeta: HTTPMetadata, V2BulkResponse: V2BulkResponse)

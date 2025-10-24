@@ -197,6 +197,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
 				TransactionID:   req.ID,
+				Metadata: req.Metadata,
 			},
 		})
 		if err != nil {
