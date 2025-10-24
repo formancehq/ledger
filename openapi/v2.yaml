@@ -293,8 +293,8 @@ paths:
           in: query
           description: Continue on failure
           schema:
-            type: boolean
-            example: true
+              type: boolean
+              example: true
         - name: atomic
           in: query
           description: Make bulk atomic
@@ -1357,7 +1357,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2ListExportersResponse"
+          $ref: '#/components/responses/V2ListExportersResponse'
         default:
           description: Error
           content:
@@ -1375,10 +1375,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2CreateExporterRequest"
+              $ref: '#/components/schemas/V2CreateExporterRequest'
       responses:
         "201":
-          $ref: "#/components/responses/V2CreateExporterResponse"
+          $ref: '#/components/responses/V2CreateExporterResponse'
         default:
           description: Error
           content:
@@ -1401,7 +1401,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2GetExporterStateResponse"
+          $ref: '#/components/responses/V2GetExporterStateResponse'
         default:
           description: Error
           content:
@@ -1440,7 +1440,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2ListPipelinesResponse"
+          $ref: '#/components/responses/V2ListPipelinesResponse'
         default:
           description: Error
           content:
@@ -1457,10 +1457,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2CreatePipelineRequest"
+              $ref: '#/components/schemas/V2CreatePipelineRequest'
       responses:
         "201":
-          $ref: "#/components/responses/V2CreatePipelineResponse"
+          $ref: '#/components/responses/V2CreatePipelineResponse'
         default:
           description: Error
           content:
@@ -1490,7 +1490,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2GetPipelineStateResponse"
+          $ref: '#/components/responses/V2GetPipelineStateResponse'
         default:
           description: Error
           content:
@@ -1632,7 +1632,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Pipeline"
+                $ref: '#/components/schemas/V2Pipeline'
             required:
               - data
     V2ListPipelinesResponse:
@@ -1644,12 +1644,12 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: "#/components/schemas/V2PipelinesCursorResponse"
+                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
                   - properties:
                       data:
                         type: array
                         items:
-                          $ref: "#/components/schemas/V2Pipeline"
+                          $ref: '#/components/schemas/V2Pipeline'
 
     V2GetPipelineStateResponse:
       description: Pipeline information
@@ -1659,7 +1659,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Pipeline"
+                $ref: '#/components/schemas/V2Pipeline'
             required:
               - data
 
@@ -1671,7 +1671,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Exporter"
+                $ref: '#/components/schemas/V2Exporter'
             required:
               - data
     V2ListExportersResponse:
@@ -1683,13 +1683,13 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: "#/components/schemas/V2ExportersCursorResponse"
+                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
                   - type: object
                     properties:
                       data:
                         type: array
                         items:
-                          $ref: "#/components/schemas/V2Exporter"
+                          $ref: '#/components/schemas/V2Exporter'
 
     V2GetExporterStateResponse:
       description: Exporter information
@@ -1699,7 +1699,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Exporter"
+                $ref: '#/components/schemas/V2Exporter'
             required:
               - data
   schemas:
@@ -2559,7 +2559,7 @@ components:
       required:
         - exporterID
     V2CreateExporterRequest:
-      $ref: "#/components/schemas/V2ExporterConfiguration"
+      $ref: '#/components/schemas/V2ExporterConfiguration'
     V2PipelineConfiguration:
       properties:
         ledger:
@@ -2583,7 +2583,7 @@ components:
     V2Exporter:
       type: object
       allOf:
-        - $ref: "#/components/schemas/V2ExporterConfiguration"
+        - $ref: '#/components/schemas/V2ExporterConfiguration'
         - type: object
           properties:
             id:
@@ -2596,7 +2596,7 @@ components:
             - createdAt
     V2Pipeline:
       allOf:
-        - $ref: "#/components/schemas/V2PipelineConfiguration"
+        - $ref: '#/components/schemas/V2PipelineConfiguration'
         - type: object
           properties:
             id:
