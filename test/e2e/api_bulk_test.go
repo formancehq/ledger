@@ -124,6 +124,9 @@ var _ = Context("Ledger engine tests", func() {
 				components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
 					Data: &components.V2BulkElementRevertTransactionData{
 						ID: big.NewInt(1),
+						Metadata: metadata.Metadata{
+							"reverted_metadata": "foo",
+						},
 					},
 				}),
 			}
@@ -151,6 +154,10 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(err).To(Succeed())
 
 			Expect(bulkResponse.V2BulkResponse.Data[3].V2BulkElementResultRevertTransaction.Data.ID).To(Equal(big.NewInt(2)))
+			Expect(bulkResponse.V2BulkResponse.Data[3].V2BulkElementResultRevertTransaction.Data.Metadata).To(Equal(map[string]string{
+				"com.formance.spec/state/reverts": big.NewInt(1).String(),
+				"reverted_metadata": "foo",
+			}))
 
 			Expect(tx.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
 				ID: big.NewInt(1),
