@@ -2364,6 +2364,8 @@ components:
                   type: boolean
                 atEffectiveDate:
                   type: boolean
+                metadata:
+                  $ref: "#/components/schemas/V2Metadata"
               required:
                 - id
     V2BulkElementDeleteMetadata:

@@ -169,7 +169,10 @@ func TestBulk(t *testing.T) {
 			body: `[{
 				"action": "REVERT_TRANSACTION",
 				"data": {
-					"id": 1	
+					"id": 1,
+					"metadata": {
+						"foo": "bar"
+					}
 				}
 			}]`,
 			expectations: func(mockLedger *LedgerController) {
@@ -177,6 +180,9 @@ func TestBulk(t *testing.T) {
 					RevertTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 						Input: ledgercontroller.RevertTransaction{
 							TransactionID: 1,
+							Metadata: metadata.Metadata{
+								"foo": "bar",
+							},
 						},
 					}).
 					Return(&ledger.Log{
@@ -187,13 +193,20 @@ func TestBulk(t *testing.T) {
 						},
 						RevertTransaction: ledger.Transaction{
 							ID: pointer.For(uint64(0)),
+							TransactionData: ledger.TransactionData{
+								Metadata: metadata.Metadata{
+									"foo": "bar",
+								},
+							},
 						},
 					}, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
 					"id":        float64(0),
-					"metadata":  nil,
+					"metadata":  map[string]interface{}{
+						"foo": "bar",
+					},
 					"postings":  nil,
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",

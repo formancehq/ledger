@@ -86,6 +86,7 @@ type RevertTransactionRequest struct {
 	ID              uint64  `json:"id"`
 	Force           bool `json:"force"`
 	AtEffectiveDate bool `json:"atEffectiveDate"`
+	Metadata        metadata.Metadata `json:"metadata"`
 }
 
 type DeleteMetadataRequest struct {
