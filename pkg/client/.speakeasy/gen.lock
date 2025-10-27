@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 679d4d7c73e2d08f97b9358d13b6bb68
+  docChecksum: 920ba5d55ce048f2654006c5aa63a8d5
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -11,6 +11,7 @@ features:
   go:
     additionalDependencies: 0.1.0
     bigint: 0.0.2
+    constsAndDefaults: 0.1.12
     core: 3.8.1
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.3
@@ -109,6 +110,11 @@ generatedFiles:
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
   - /models/components/v2reverttransactionrequest.go
+  - /models/components/v2schema.go
+  - /models/components/v2schemadata.go
+  - /models/components/v2schemaresponse.go
+  - /models/components/v2schemascursor.go
+  - /models/components/v2schemascursorresponse.go
   - /models/components/v2stats.go
   - /models/components/v2statsresponse.go
   - /models/components/v2targetid.go
@@ -162,14 +168,17 @@ generatedFiles:
   - /models/operations/v2getledger.go
   - /models/operations/v2getledgerinfo.go
   - /models/operations/v2getpipelinestate.go
+  - /models/operations/v2getschema.go
   - /models/operations/v2gettransaction.go
   - /models/operations/v2getvolumeswithbalances.go
   - /models/operations/v2importlogs.go
+  - /models/operations/v2insertschema.go
   - /models/operations/v2listaccounts.go
   - /models/operations/v2listexporters.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2listlogs.go
   - /models/operations/v2listpipelines.go
+  - /models/operations/v2listschemas.go
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
   - /models/operations/v2resetpipeline.go
@@ -281,6 +290,11 @@ generatedFiles:
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
   - docs/models/components/v2reverttransactionrequest.md
+  - docs/models/components/v2schema.md
+  - docs/models/components/v2schemadata.md
+  - docs/models/components/v2schemaresponse.md
+  - docs/models/components/v2schemascursor.md
+  - docs/models/components/v2schemascursorresponse.md
   - docs/models/components/v2stats.md
   - docs/models/components/v2statsresponse.md
   - docs/models/components/v2targetid.md
@@ -328,12 +342,14 @@ generatedFiles:
   - docs/models/operations/metadata.md
   - docs/models/operations/option.md
   - docs/models/operations/order.md
+  - docs/models/operations/queryparamorder.md
   - docs/models/operations/readstatsrequest.md
   - docs/models/operations/readstatsresponse.md
   - docs/models/operations/reverttransactionrequest.md
   - docs/models/operations/reverttransactionresponse.md
   - docs/models/operations/runscriptrequest.md
   - docs/models/operations/runscriptresponse.md
+  - docs/models/operations/sort.md
   - docs/models/operations/updatemappingrequest.md
   - docs/models/operations/updatemappingresponse.md
   - docs/models/operations/v2addmetadataontransactionrequest.md
@@ -378,12 +394,16 @@ generatedFiles:
   - docs/models/operations/v2getledgerresponse.md
   - docs/models/operations/v2getpipelinestaterequest.md
   - docs/models/operations/v2getpipelinestateresponse.md
+  - docs/models/operations/v2getschemarequest.md
+  - docs/models/operations/v2getschemaresponse.md
   - docs/models/operations/v2gettransactionrequest.md
   - docs/models/operations/v2gettransactionresponse.md
   - docs/models/operations/v2getvolumeswithbalancesrequest.md
   - docs/models/operations/v2getvolumeswithbalancesresponse.md
   - docs/models/operations/v2importlogsrequest.md
   - docs/models/operations/v2importlogsresponse.md
+  - docs/models/operations/v2insertschemarequest.md
+  - docs/models/operations/v2insertschemaresponse.md
   - docs/models/operations/v2listaccountsrequest.md
   - docs/models/operations/v2listaccountsresponse.md
   - docs/models/operations/v2listexportersresponse.md
@@ -393,6 +413,8 @@ generatedFiles:
   - docs/models/operations/v2listlogsresponse.md
   - docs/models/operations/v2listpipelinesrequest.md
   - docs/models/operations/v2listpipelinesresponse.md
+  - docs/models/operations/v2listschemasrequest.md
+  - docs/models/operations/v2listschemasresponse.md
   - docs/models/operations/v2listtransactionsrequest.md
   - docs/models/operations/v2listtransactionsresponse.md
   - docs/models/operations/v2readstatsrequest.md
@@ -1136,6 +1158,42 @@ examples:
         path:
           exporterID: "<id>"
       responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2InsertSchema:
+    speakeasy-default-v2-insert-schema:
+      parameters:
+        path:
+          ledger: "ledger001"
+          version: "v1.0.0"
+      requestBody:
+        application/json: {}
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2GetSchema:
+    speakeasy-default-v2-get-schema:
+      parameters:
+        path:
+          ledger: "ledger001"
+          version: "v1.0.0"
+      responses:
+        "200":
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {}}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2ListSchemas:
+    speakeasy-default-v2-list-schemas:
+      parameters:
+        path:
+          ledger: "ledger001"
+        query:
+          pageSize: 15
+          sort: "created_at"
+          order: "desc"
+      responses:
+        "200":
+          application/json: {"cursor": {"data": [], "hasMore": true, "pageSize": 47856}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.2
