@@ -86,12 +86,16 @@ func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key stri
 		store.tracer,
 		store.deleteAccountMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
-			_, err := store.db.NewUpdate().
+			query := store.db.NewUpdate().
 				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				Set("metadata = metadata - ?", key).
-				Where("address = ?", account).
-				Where("ledger = ?", store.ledger.Name).
-				Exec(ctx)
+				Where("address = ?", account)
+
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+				query = query.Where(filterSQL, filterArgs...)
+			}
+
+			_, err := query.Exec(ctx)
 			return postgres.ResolveError(err)
 		}),
 	)

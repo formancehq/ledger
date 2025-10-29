@@ -181,6 +181,13 @@ func (store *Store) updateTxWithRetrieve(ctx context.Context, id uint64, query *
 	}
 	me := &modifiedEntity{}
 
+	fallbackQuery := store.db.NewSelect().
+		ModelTableExpr(store.GetPrefixedRelationName("transactions")).
+		ColumnExpr("*, false as modified").
+		Where("id = ?", id).
+		Limit(1)
+	fallbackQuery = store.applyLedgerFilter(fallbackQuery, "transactions")
+
 	err := store.db.NewSelect().
 		With("upd", query).
 		ModelTableExpr(
@@ -188,13 +195,7 @@ func (store *Store) updateTxWithRetrieve(ctx context.Context, id uint64, query *
 			store.db.NewSelect().
 				ColumnExpr("upd.*, true as modified").
 				ModelTableExpr("upd").
-				UnionAll(
-					store.db.NewSelect().
-						ModelTableExpr(store.GetPrefixedRelationName("transactions")).
-						ColumnExpr("*, false as modified").
-						Where("id = ? and ledger = ?", id, store.ledger.Name).
-						Limit(1),
-				),
+				UnionAll(fallbackQuery),
 		).
 		Model(me).
 		ColumnExpr("*").
@@ -216,8 +217,11 @@ func (store *Store) RevertTransaction(ctx context.Context, id uint64, at time.Ti
 				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Where("id = ?", id).
 				Where("reverted_at is null").
-				Where("ledger = ?", store.ledger.Name).
 				Returning("*")
+
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+				query = query.Where(filterSQL, filterArgs...)
+			}
 			if at.IsZero() {
 				query = query.
 					Set("reverted_at = " + store.GetPrefixedRelationName("transaction_date") + "()").
@@ -247,10 +251,13 @@ func (store *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, m 
 				Model(&ledger.Transaction{}).
 				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Where("id = ?", id).
-				Where("ledger = ?", store.ledger.Name).
 				Set("metadata = metadata || ?", m).
 				Where("not (metadata @> ?)", m).
 				Returning("*")
+
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+				updateQuery = updateQuery.Where(filterSQL, filterArgs...)
+			}
 			if at.IsZero() {
 				updateQuery = updateQuery.Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
 			} else {
@@ -277,9 +284,12 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id uint64, ke
 				ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 				Set("metadata = metadata - ?", key).
 				Where("id = ?", id).
-				Where("ledger = ?", store.ledger.Name).
 				Where("metadata -> ? is not null", key).
 				Returning("*")
+
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+				updateQuery = updateQuery.Where(filterSQL, filterArgs...)
+			}
 			if at.IsZero() {
 				updateQuery = updateQuery.Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
 			} else {

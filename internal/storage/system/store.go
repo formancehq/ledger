@@ -24,6 +24,7 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, ListLedgersQueryPayload]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	CountLedgersInBucket(ctx context.Context, bucketName string) (int, error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -59,6 +60,17 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 	}
 
 	return buckets, nil
+}
+
+func (d *DefaultStore) CountLedgersInBucket(ctx context.Context, bucketName string) (int, error) {
+	count, err := d.db.NewSelect().
+		Model(&ledger.Ledger{}).
+		Where("bucket = ?", bucketName).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("counting ledgers in bucket: %w", postgres.ResolveError(err))
+	}
+	return count, nil
 }
 
 func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {

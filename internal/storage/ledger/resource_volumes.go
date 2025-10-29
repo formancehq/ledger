@@ -39,15 +39,15 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			ColumnExpr("input - output as balance").
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
-			Where("ledger = ?", h.store.ledger.Name).
 			Order("accounts_address", "asset")
+		selectVolumes = h.store.applyLedgerFilter(selectVolumes, "accounts_volumes")
 
 		if query.UseFilter("metadata") || query.UseFilter("first_usage") || needAddressSegments {
 			accountsQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
-				Where("ledger = ?", h.store.ledger.Name).
 				Where("accounts.address = accounts_address")
+			accountsQuery = h.store.applyLedgerFilter(accountsQuery, "accounts")
 
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array as account_array")
@@ -77,9 +77,9 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
-			Where("ledger = ?", h.store.ledger.Name).
 			GroupExpr("accounts_address, asset").
 			Order("accounts_address", "asset")
+		selectVolumes = h.store.applyLedgerFilter(selectVolumes, "moves")
 
 		dateFilterColumn := "effective_date"
 		if query.Opts.UseInsertionDate {
@@ -97,8 +97,8 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 		if needAddressSegments || query.UseFilter("first_usage") {
 			accountsQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
-				Where("accounts.address = accounts_address").
-				Where("ledger = ?", h.store.ledger.Name)
+				Where("accounts.address = accounts_address")
+			accountsQuery = h.store.applyLedgerFilter(accountsQuery, "accounts")
 
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array")
@@ -116,8 +116,8 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				DistinctOn("accounts_address").
 				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("ledger = ?", h.store.ledger.Name).
 				Where("accounts_metadata.accounts_address = moves.accounts_address")
+			subQuery = h.store.applyLedgerFilter(subQuery, "accounts_metadata")
 
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
