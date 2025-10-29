@@ -28,8 +28,8 @@ func (h accountsResourceHandler) Schema() common.EntitySchema {
 func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := h.store.db.NewSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("accounts")).
-		Column("address", "address_array", "first_usage", "insertion_date", "updated_at").
-		Where("ledger = ?", h.store.ledger.Name)
+		Column("address", "address_array", "first_usage", "insertion_date", "updated_at")
+	ret = h.store.applyLedgerFilter(ret, "accounts")
 
 	if opts.PIT != nil && !opts.PIT.IsZero() {
 		ret = ret.Where("accounts.first_usage <= ?", opts.PIT)
@@ -39,10 +39,10 @@ func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuild
 		selectDistinctAccountMetadataHistories := h.store.db.NewSelect().
 			DistinctOn("accounts_address").
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
-			Where("ledger = ?", h.store.ledger.Name).
 			Column("accounts_address").
 			ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 			Where("date <= ?", opts.PIT)
+		selectDistinctAccountMetadataHistories = h.store.applyLedgerFilter(selectDistinctAccountMetadataHistories, "accounts_metadata")
 
 		ret = ret.
 			Join(
@@ -66,8 +66,7 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 	case balanceRegex.MatchString(property) || property == "balance":
 
 		selectBalance := h.store.db.NewSelect().
-			Where("accounts_address = dataset.address").
-			Where("ledger = ?", h.store.ledger.Name)
+			Where("accounts_address = dataset.address")
 
 		if opts.PIT != nil && !opts.PIT.IsZero() {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
@@ -78,10 +77,12 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 				DistinctOn("asset").
 				ColumnExpr("first_value((post_commit_effective_volumes).inputs - (post_commit_effective_volumes).outputs) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as balance").
 				Where("effective_date <= ?", opts.PIT)
+			selectBalance = h.store.applyLedgerFilter(selectBalance, "moves")
 		} else {
 			selectBalance = selectBalance.
 				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 				ColumnExpr("input - output as balance")
+			selectBalance = h.store.applyLedgerFilter(selectBalance, "accounts_volumes")
 		}
 
 		if balanceRegex.MatchString(property) {
@@ -128,8 +129,8 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
-			Column("accounts_address", "asset").
-			Where("ledger = ?", h.store.ledger.Name)
+			Column("accounts_address", "asset")
+		selectRowsQuery = h.store.applyLedgerFilter(selectRowsQuery, "moves")
 		if property == "volumes" {
 			selectRowsQuery = selectRowsQuery.
 				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as volumes").
@@ -143,8 +144,8 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", h.store.ledger.Name)
+			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
+		selectRowsQuery = h.store.applyLedgerFilter(selectRowsQuery, "accounts_volumes")
 	}
 
 	return h.store.db.NewSelect().

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -19,10 +20,17 @@ import (
 	"github.com/uptrace/bun"
 )
 
+type singleLedgerOptimization struct {
+	mu      sync.RWMutex
+	enabled bool
+}
+
 type Store struct {
 	db     bun.IDB
 	bucket bucket.Bucket
 	ledger ledger.Ledger
+
+	singleLedgerCache *singleLedgerOptimization
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -165,9 +173,10 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
-		db:     db,
-		ledger: l,
-		bucket: bucket,
+		db:                db,
+		ledger:            l,
+		bucket:            bucket,
+		singleLedgerCache: &singleLedgerOptimization{enabled: false},
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -265,6 +274,39 @@ func (store *Store) WithDB(db bun.IDB) *Store {
 	ret.db = db
 
 	return &ret
+}
+
+func (store *Store) isSingleLedger() bool {
+	store.singleLedgerCache.mu.RLock()
+	defer store.singleLedgerCache.mu.RUnlock()
+	return store.singleLedgerCache.enabled
+}
+
+func (store *Store) applyLedgerFilter(query *bun.SelectQuery, tableAlias string) *bun.SelectQuery {
+	if store.isSingleLedger() {
+		return query
+	}
+	return query.Where(tableAlias+".ledger = ?", store.ledger.Name)
+}
+
+func (store *Store) getLedgerFilterSQL() (string, []any) {
+	if store.isSingleLedger() {
+		return "", nil
+	}
+	return "ledger = ?", []any{store.ledger.Name}
+}
+
+func (store *Store) UpdateSingleLedgerState(ctx context.Context, countFunc func(ctx context.Context, bucketName string) (int, error)) error {
+	count, err := countFunc(ctx, store.ledger.Bucket)
+	if err != nil {
+		return fmt.Errorf("failed to count ledgers in bucket: %w", err)
+	}
+
+	store.singleLedgerCache.mu.Lock()
+	defer store.singleLedgerCache.mu.Unlock()
+	store.singleLedgerCache.enabled = (count == 1)
+
+	return nil
 }
 
 type Option func(s *Store)
