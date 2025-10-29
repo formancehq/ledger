@@ -26,8 +26,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		ret := h.store.db.NewSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
-			Column("accounts_address", "asset").
-			Where("ledger = ?", h.store.ledger.Name)
+			Column("accounts_address", "asset")
+		ret = h.store.applyLedgerFilter(ret, "moves")
 		if query.Opts.UseInsertionDate {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return nil, NewErrMissingFeature(features.FeatureMovesHistory)
@@ -52,8 +52,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			subQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
-				Where("accounts.address = accounts_address").
-				Where("ledger = ?", h.store.ledger.Name)
+				Where("accounts.address = accounts_address")
+			subQuery = h.store.applyLedgerFilter(subQuery, "accounts")
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -65,9 +65,9 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				DistinctOn("accounts_address").
 				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("ledger = ?", h.store.ledger.Name).
 				Where("accounts_metadata.accounts_address = moves.accounts_address").
 				Where("date <= ?", query.PIT)
+			subQuery = h.store.applyLedgerFilter(subQuery, "accounts_metadata")
 
 			ret = ret.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
@@ -79,8 +79,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		ret := h.store.db.NewSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", h.store.ledger.Name)
+			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
+		ret = h.store.applyLedgerFilter(ret, "accounts_volumes")
 
 		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
 			return isPartialAddress(value.(string))
@@ -88,8 +88,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			subQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
-				Where("ledger = ?", h.store.ledger.Name).
 				Where("accounts.address = accounts_address")
+			subQuery = h.store.applyLedgerFilter(subQuery, "accounts")
 
 			if query.UseFilter("address") {
 				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
