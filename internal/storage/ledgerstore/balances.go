@@ -153,7 +153,7 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 			ColumnExpr("(post_commit_volumes).inputs - (post_commit_volumes).outputs as balance").
 			Where("account_address = ?", address).
 			Where("asset = ?", asset).
-			//Where("ledger = ?", store.name).
+			Where("ledger = ?", store.name).
 			Order("seq desc").
 			Limit(1)
 	})
