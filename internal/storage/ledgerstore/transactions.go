@@ -158,8 +158,8 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 	}
 
 	query = query.
-		ModelTableExpr("transactions").
-		Where("transactions.ledger = ?", store.name)
+		ModelTableExpr("transactions")
+	query = store.applyLedgerFilter(query, "transactions")
 
 	if p.PIT != nil && !p.PIT.IsZero() {
 		query = query.
@@ -340,11 +340,12 @@ func (store *Store) GetTransactionWithVolumes(ctx context.Context, filter GetTra
 func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.Transaction, error) {
 	tx, err := fetch[*Transaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
-			return query.
+			query = query.
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
-				Where("transactions.id = ?", (*bunpaginate.BigInt)(txId)).
-				Where("transactions.ledger = ?", store.name).
+				Where("transactions.id = ?", (*bunpaginate.BigInt)(txId))
+			query = store.applyLedgerFilter(query, "transactions")
+			return query.
 				Order("tm.revision desc").
 				Limit(1)
 		})
@@ -358,11 +359,12 @@ func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.
 func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (*ledger.ExpandedTransaction, error) {
 	ret, err := fetch[*ExpandedTransaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
-			return query.
+			query = query.
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
-				Where("transactions.reference = ?", ref).
-				Where("transactions.ledger = ?", store.name).
+				Where("transactions.reference = ?", ref)
+			query = store.applyLedgerFilter(query, "transactions")
+			return query.
 				Order("tm.revision desc").
 				Limit(1)
 		})
@@ -376,11 +378,12 @@ func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (
 func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTransaction, error) {
 	ret, err := fetch[*ExpandedTransaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
-			return query.
+			query = query.
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
-				Order("transactions.seq desc", "tm.revision desc").
-				Where("transactions.ledger = ?", store.name).
+				Order("transactions.seq desc", "tm.revision desc")
+			query = store.applyLedgerFilter(query, "transactions")
+			return query.
 				Limit(1)
 		})
 	if err != nil {

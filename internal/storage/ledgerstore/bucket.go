@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/formancehq/go-libs/migrations"
 
@@ -18,13 +20,73 @@ import (
 //go:embed migrations
 var migrationsDir embed.FS
 
+type singleLedgerOptimization struct {
+	mu          sync.RWMutex
+	enabled     bool
+	ledgerName  string
+	lastChecked time.Time
+}
+
 type Bucket struct {
-	name string
-	db   *bun.DB
+	name              string
+	db                *bun.DB
+	singleLedgerCache *singleLedgerOptimization
 }
 
 func (b *Bucket) Name() string {
 	return b.name
+}
+
+// IsSingleLedger returns true if the bucket optimization is enabled for single-ledger scenarios.
+// This allows queries to skip the WHERE ledger = ? clause when there's only one ledger in the bucket.
+func (b *Bucket) IsSingleLedger() bool {
+	if b.singleLedgerCache == nil {
+		return false
+	}
+	b.singleLedgerCache.mu.RLock()
+	defer b.singleLedgerCache.mu.RUnlock()
+	return b.singleLedgerCache.enabled
+}
+
+// UpdateSingleLedgerState checks if this bucket contains only one ledger and updates the cache accordingly.
+// This is called during bucket initialization and when ledgers are created/deleted.
+func (b *Bucket) UpdateSingleLedgerState(ctx context.Context, systemDB *bun.DB) error {
+	if b.singleLedgerCache == nil {
+		b.singleLedgerCache = &singleLedgerOptimization{}
+	}
+
+	// Query systemstore to count ledgers in this bucket
+	type result struct {
+		Ledger string
+		Count  int
+	}
+
+	var results []result
+	err := systemDB.NewSelect().
+		Table("_system.ledgers").
+		Column("ledger").
+		ColumnExpr("COUNT(*) OVER() as count").
+		Where("bucket = ?", b.name).
+		Limit(2). // Only need to know if count > 1
+		Scan(ctx, &results)
+
+	if err != nil {
+		return sqlutils.PostgresError(err)
+	}
+
+	b.singleLedgerCache.mu.Lock()
+	defer b.singleLedgerCache.mu.Unlock()
+
+	if len(results) == 1 && results[0].Count == 1 {
+		b.singleLedgerCache.enabled = true
+		b.singleLedgerCache.ledgerName = results[0].Ledger
+	} else {
+		b.singleLedgerCache.enabled = false
+		b.singleLedgerCache.ledgerName = ""
+	}
+	b.singleLedgerCache.lastChecked = time.Now()
+
+	return nil
 }
 
 func (b *Bucket) Migrate(ctx context.Context) error {

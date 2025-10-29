@@ -84,9 +84,9 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 				NewSelect().
 				Table(MovesTableName).
 				ColumnExpr("distinct on (moves.account_address, moves.asset) moves.*").
-				Order("account_address", "asset").
-				Where("moves.ledger = ?", store.name).
-				Apply(filterPIT(q.PIT, pitColumn))
+				Order("account_address", "asset")
+			moves = store.applyLedgerFilter(moves, "moves")
+			moves = moves.Apply(filterPIT(q.PIT, pitColumn))
 
 			if q.UseInsertionDate {
 				moves = moves.Order("moves.insertion_date desc")
@@ -148,12 +148,13 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 	}
 
 	v, err := fetch[*Temp](store, false, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
-		return query.
+		query = query.
 			ModelTableExpr(MovesTableName).
 			ColumnExpr("(post_commit_volumes).inputs - (post_commit_volumes).outputs as balance").
 			Where("account_address = ?", address).
-			Where("asset = ?", asset).
-			Where("ledger = ?", store.name).
+			Where("asset = ?", asset)
+		query = store.applyLedgerFilter(query, "moves")
+		return query.
 			Order("seq desc").
 			Limit(1)
 	})

@@ -21,8 +21,9 @@ import (
 func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
 
 	query = query.
-		Column("accounts.address", "accounts.first_usage").
-		Where("accounts.ledger = ?", store.name).
+		Column("accounts.address", "accounts.first_usage")
+	query = store.applyLedgerFilter(query, "accounts")
+	query = query.
 		Apply(filterPIT(q.PIT, "first_usage")).
 		Order("accounts.address")
 
@@ -107,7 +108,10 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 		case balanceRegex.Match([]byte(key)):
 			match := balanceRegex.FindAllStringSubmatch(key, 2)
 
-			args := []any{match[0][1], store.name}
+			args := []any{match[0][1]}
+
+			ledgerFilter, ledgerArgs := store.getLedgerFilterSQLWithoutPrefix()
+			args = append(args, ledgerArgs...)
 
 			dateFilter := ``
 			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
@@ -119,12 +123,20 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 			return fmt.Sprintf(`(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
-				where asset = ? and account_address = accounts.address and ledger = ? `+dateFilter+`
+				where asset = ? and account_address = accounts.address `+ledgerFilter+` `+dateFilter+`
 				order by seq desc
 				limit 1
 			) %s ?`, convertOperatorToSQL()), args, nil
 		case key == "balance":
-			args := []any{store.name}
+			args := []any{}
+
+			ledgerFilter, ledgerArgs := store.getLedgerFilterSQLWithoutPrefix()
+			// Remove "and" prefix if ledger filter is present
+			if ledgerFilter != "" {
+				ledgerFilter = "and " + ledgerFilter[4:] // Remove "and " and re-add with proper placement
+			}
+			args = append(args, ledgerArgs...)
+
 			dateFilter := ``
 			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
 				dateFilter = `and insertion_date < ?`
@@ -135,7 +147,7 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 			return fmt.Sprintf(`(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
-				where account_address = accounts.address and ledger = ? `+dateFilter+`
+				where account_address = accounts.address `+ledgerFilter+` `+dateFilter+`
 				order by seq desc
 				limit 1
 			) %s ?`, convertOperatorToSQL()), args, nil
@@ -190,14 +202,15 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQue
 
 func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
 	account, err := fetch[*ledger.Account](store, false, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
-		return query.
+		query = query.
 			ColumnExpr("accounts.address").
 			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata").
 			ColumnExpr("accounts.first_usage").
 			Table("accounts").
 			Join("left join accounts_metadata on accounts_metadata.accounts_seq = accounts.seq").
-			Where("accounts.address = ?", address).
-			Where("accounts.ledger = ?", store.name).
+			Where("accounts.address = ?", address)
+		query = store.applyLedgerFilter(query, "accounts")
+		return query.
 			Order("revision desc").
 			Limit(1)
 	})

@@ -125,3 +125,18 @@ func RegisterLedger(ctx context.Context, db bun.IDB, l *Ledger) (bool, error) {
 
 	return affected > 0, nil
 }
+
+// CountLedgersInBucket returns the number of ledgers in a specific bucket.
+// This is useful for determining if single-ledger optimizations can be applied.
+func (s *Store) CountLedgersInBucket(ctx context.Context, bucketName string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*Ledger)(nil)).
+		Where("bucket = ?", bucketName).
+		Count(ctx)
+
+	if err != nil {
+		return 0, sqlutils.PostgresError(err)
+	}
+
+	return count, nil
+}

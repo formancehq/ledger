@@ -72,6 +72,13 @@ func (d *Driver) OpenBucket(ctx context.Context, name string) (*ledgerstore.Buck
 	}
 	d.buckets[name] = b
 
+	// Update single-ledger optimization state for this bucket
+	if d.db != nil {
+		if err := b.UpdateSingleLedgerState(ctx, d.db); err != nil {
+			logging.FromContext(ctx).Debugf("Failed to update single-ledger state for bucket '%s': %v", name, err)
+		}
+	}
+
 	return b, nil
 }
 
@@ -148,7 +155,16 @@ func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configurati
 		return nil, errors.Wrap(err, "registring ledger on system store")
 	}
 
-	return store, errors.Wrap(tx.Commit(), "committing sql transaction")
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "committing sql transaction")
+	}
+
+	// Update single-ledger optimization state after creating a new ledger
+	if err := bucket.UpdateSingleLedgerState(ctx, f.db); err != nil {
+		logging.FromContext(ctx).Debugf("Failed to update single-ledger state after ledger creation: %v", err)
+	}
+
+	return store, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {

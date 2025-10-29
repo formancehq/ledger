@@ -129,16 +129,15 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 	if useMetadata {
 		query = query.
 			ColumnExpr("accounts_metadata.metadata as metadata").
-			Join(`join lateral (	
+			Join(`join lateral (
 				select metadata
-				from accounts a 
+				from accounts a
 				where a.seq = accountsWithVolumes.accounts_seq
 				) accounts_metadata on true`,
 			)
 	}
 
-	query = query.
-		Where("ledger = ?", store.name)
+	query = store.applyLedgerFilter(query, "accountsWithVolumes")
 
 	globalQuery := query.NewSelect()
 	globalQuery = globalQuery.
