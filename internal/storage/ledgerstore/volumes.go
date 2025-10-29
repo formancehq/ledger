@@ -137,8 +137,8 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 			)
 	}
 
-	query = query.
-		Where("ledger = ?", store.name)
+	//query = query.
+	//	Where("ledger = ?", store.name)
 
 	globalQuery := query.NewSelect()
 	globalQuery = globalQuery.
