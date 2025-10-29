@@ -1,0 +1,77 @@
+name: Antithesis Daily Run
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: "Run Antithesis tests after pushing images"
+        type: boolean
+        default: true
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "test/antithesis/**"
+      - ".github/workflows/antithesis_daily.yml"
+  schedule:
+    - cron: "0 10 * * *"
+
+jobs:
+  trigger-daily-run:
+    name: Trigger daily run
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      ANTITHESIS_PASSWORD: ${{ secrets.ANTITHESIS_PASSWORD }}
+      ANTITHESIS_SLACK_REPORT_RECIPIENT: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
+      ANTITHESIS_REPOSITORY: ${{ secrets.ANTITHESIS_REPOSITORY }}
+      OPERATOR_TAG: "v2.10.1"
+      OPERATOR_UTILS_TAG: "v2.0.14"
+      GATEWAY_TAG: "v2.0.24"
+      LEDGER_PREVIOUS_TAG: "v2.2.47"
+      LEDGER_LATEST_TAG: "v2.3.0"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: "1.40.0"
+
+      - name: Setup Environment
+        uses: ./.github/actions/default
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: "NumaryBot"
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+      - name: Login to Antithesis Docker Registry
+        run: |
+          echo '${{ secrets.ANTITHESIS_JSON_KEY }}' | docker login -u _json_key https://us-central1-docker.pkg.dev --password-stdin
+
+      - name: Build and Push Config Image
+        run: |
+          nix develop --impure --command just --justfile ./test/antithesis/Justfile requirements-push
+
+      - name: Run Antithesis Tests
+        uses: antithesishq/antithesis-trigger-action@v0.8
+        with:
+          notebook_name: formance-k8s
+          tenant: formance
+          username: ${{ secrets.ANTITHESIS_USERNAME }}
+          password: ${{ secrets.ANTITHESIS_PASSWORD }}
+          github_token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          images: "workload:latest;docker.io/library/postgres:15-alpine;ghcr.io/formancehq/operator:${{ env.OPERATOR_TAG }};ghcr.io/formancehq/operator-utils:${{ env.OPERATOR_UTILS_TAG }};ghcr.io/formancehq/gateway:${{ env.GATEWAY_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_PREVIOUS_TAG }};ghcr.io/formancehq/ledger-instrumented:${{ env.LEDGER_LATEST_TAG }}"
+          config_image: "antithesis-config:daily_run"
+          email_recipients: ${{ secrets.ANTITHESIS_SLACK_REPORT_RECIPIENT }}
