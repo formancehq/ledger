@@ -65,15 +65,15 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			ColumnExpr("input - output as balance").
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
-			Where("ledger = ?", store.ledger.Name).
 			Order("accounts_address", "asset")
+		selectVolumes = store.applyLedgerFilter(selectVolumes, "accounts_volumes")
 
 		if query.useFilter("metadata") || needAddressSegments {
 			subQuery := store.db.NewSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address").
-				Where("ledger = ?", store.ledger.Name).
 				Where("accounts.address = accounts_address")
+			subQuery = store.applyLedgerFilter(subQuery, "accounts")
 
 			if needAddressSegments {
 				subQuery = subQuery.ColumnExpr("address_array as account_array")
@@ -99,9 +99,9 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
-			Where("ledger = ?", store.ledger.Name).
 			GroupExpr("accounts_address, asset").
 			Order("accounts_address", "asset")
+		selectVolumes = store.applyLedgerFilter(selectVolumes, "moves")
 
 		dateFilterColumn := "effective_date"
 		if query.Opts.UseInsertionDate {
@@ -120,8 +120,8 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			subQuery := store.db.NewSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
-				Where("accounts.address = accounts_address").
-				Where("ledger = ?", store.ledger.Name)
+				Where("accounts.address = accounts_address")
+			subQuery = store.applyLedgerFilter(subQuery, "accounts")
 
 			selectVolumes.
 				ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
@@ -133,8 +133,8 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				DistinctOn("accounts_address").
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("ledger = ?", store.ledger.Name).
 				Where("accounts_metadata.accounts_address = moves.accounts_address")
+			subQuery = store.applyLedgerFilter(subQuery, "accounts_metadata")
 
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).

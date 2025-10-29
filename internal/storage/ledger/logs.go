@@ -119,14 +119,14 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 		store.readLogWithIdempotencyKeyHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
 			ret := &Log{}
-			if err := store.db.NewSelect().
+			query := store.db.NewSelect().
 				Model(ret).
 				ModelTableExpr(store.GetPrefixedRelationName("logs")).
 				Column("*").
 				Where("idempotency_key = ?", key).
-				Where("ledger = ?", store.ledger.Name).
-				Limit(1).
-				Scan(ctx); err != nil {
+				Limit(1)
+			query = store.applyLedgerFilter(query, "logs")
+			if err := query.Scan(ctx); err != nil {
 				return nil, postgres.ResolveError(err)
 			}
 

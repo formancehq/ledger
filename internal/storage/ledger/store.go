@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -20,10 +22,17 @@ import (
 	"github.com/uptrace/bun"
 )
 
+type singleLedgerOptimization struct {
+	mu      sync.RWMutex
+	enabled bool
+}
+
 type Store struct {
 	db     bun.IDB
 	bucket bucket.Bucket
 	ledger ledger.Ledger
+
+	singleLedgerCache *singleLedgerOptimization
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -133,6 +142,55 @@ func (store *Store) GetBucket() bucket.Bucket {
 
 func (store *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
+}
+
+// isSingleLedger returns true if the bucket optimization is enabled for single-ledger scenarios.
+// This allows queries to skip the WHERE ledger = ? clause when there's only one ledger in the bucket.
+func (store *Store) isSingleLedger() bool {
+	if store.singleLedgerCache == nil {
+		return false
+	}
+	store.singleLedgerCache.mu.RLock()
+	defer store.singleLedgerCache.mu.RUnlock()
+	return store.singleLedgerCache.enabled
+}
+
+// applyLedgerFilter conditionally applies the WHERE ledger = ? clause to a query.
+// If the bucket contains only one ledger, the filter is skipped for performance optimization.
+func (store *Store) applyLedgerFilter(query *bun.SelectQuery, tableAlias string) *bun.SelectQuery {
+	if store.isSingleLedger() {
+		return query
+	}
+	return query.Where(fmt.Sprintf("%s.ledger = ?", tableAlias), store.ledger.Name)
+}
+
+// getLedgerFilterSQL returns the SQL fragment and arguments for ledger filtering in inline SQL.
+// Returns empty string and nil args if single-ledger optimization is enabled.
+func (store *Store) getLedgerFilterSQL() (string, []any) {
+	if store.isSingleLedger() {
+		return "", nil
+	}
+	return "and ledger = ?", []any{store.ledger.Name}
+}
+
+// UpdateSingleLedgerState checks if the bucket contains only one ledger and updates the cache accordingly.
+// This should be called during store initialization.
+func (store *Store) UpdateSingleLedgerState(ctx context.Context, countFunc func(ctx context.Context, bucketName string) (int, error)) error {
+	if store.singleLedgerCache == nil {
+		store.singleLedgerCache = &singleLedgerOptimization{}
+	}
+
+	count, err := countFunc(ctx, store.ledger.Bucket)
+	if err != nil {
+		return err
+	}
+
+	store.singleLedgerCache.mu.Lock()
+	defer store.singleLedgerCache.mu.Unlock()
+
+	store.singleLedgerCache.enabled = (count == 1)
+
+	return nil
 }
 
 func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {

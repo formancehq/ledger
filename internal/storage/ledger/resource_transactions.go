@@ -83,8 +83,8 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-		).
-		Where("ledger = ?", store.ledger.Name)
+		)
+	ret = store.applyLedgerFilter(ret, "transactions")
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -98,10 +98,10 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 		selectDistinctTransactionMetadataHistories := store.db.NewSelect().
 			DistinctOn("transactions_id").
 			ModelTableExpr(store.GetPrefixedRelationName("transactions_metadata")).
-			Where("ledger = ?", store.ledger.Name).
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
+		selectDistinctTransactionMetadataHistories = store.applyLedgerFilter(selectDistinctTransactionMetadataHistories, "transactions_metadata")
 
 		ret = ret.
 			Join(
@@ -163,19 +163,21 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 		return nil, nil, nil
 	}
 
+	movesSubquery := store.db.NewSelect().
+		DistinctOn("transactions_id, accounts_address, asset").
+		ModelTableExpr(store.GetPrefixedRelationName("moves")).
+		Column("transactions_id", "accounts_address", "asset").
+		ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
+		Where("transactions_id in (select id from dataset)")
+	movesSubquery = store.applyLedgerFilter(movesSubquery, "moves")
+
 	ret := store.db.NewSelect().
 		TableExpr(
 			"(?) data",
 			store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
-					store.db.NewSelect().
-						DistinctOn("transactions_id, accounts_address, asset").
-						ModelTableExpr(store.GetPrefixedRelationName("moves")).
-						Column("transactions_id", "accounts_address", "asset").
-						ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
-						Where("ledger = ?", store.ledger.Name).
-						Where("transactions_id in (select id from dataset)"),
+					movesSubquery,
 				).
 				Column("transactions_id", "accounts_address").
 				ColumnExpr(`public.aggregate_objects(json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))::jsonb) AS post_commit_effective_volumes`).

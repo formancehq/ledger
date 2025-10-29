@@ -5,6 +5,7 @@ import (
 	"fmt"
 	. "github.com/formancehq/go-libs/v2/collectionutils"
 	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"regexp"
@@ -77,12 +78,18 @@ func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key stri
 		store.tracer,
 		store.deleteAccountMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
-			_, err := store.db.NewUpdate().
+			query := store.db.NewUpdate().
 				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				Set("metadata = metadata - ?", key).
-				Where("address = ?", account).
-				Where("ledger = ?", store.ledger.Name).
-				Exec(ctx)
+				Where("address = ?", account)
+			query = query.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
+				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
+				if ledgerFilter != "" {
+					return q.Where(ledgerFilter[4:], ledgerArgs...) // Skip "and " prefix
+				}
+				return q
+			})
+			_, err := query.Exec(ctx)
 			return postgres.ResolveError(err)
 		}),
 	)

@@ -22,10 +22,11 @@ func (h logsResourceHandler) filters() []filter {
 }
 
 func (h logsResourceHandler) buildDataset(store *Store, _ repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	return store.db.NewSelect().
+	ret := store.db.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("logs")).
-		ColumnExpr("*").
-		Where("ledger = ?", store.ledger.Name), nil
+		ColumnExpr("*")
+	ret = store.applyLedgerFilter(ret, "logs")
+	return ret, nil
 }
 
 func (h logsResourceHandler) resolveFilter(_ *Store, _ ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
