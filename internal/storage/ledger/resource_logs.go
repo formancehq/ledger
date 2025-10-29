@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -21,15 +22,15 @@ func (h logsResourceHandler) filters() []filter {
 	}
 }
 
-func (h logsResourceHandler) buildDataset(store *Store, _ repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h logsResourceHandler) buildDataset(ctx context.Context, store *Store, _ repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.db.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("logs")).
 		ColumnExpr("*")
-	ret = store.applyLedgerFilter(ret, "logs")
+	ret = store.applyLedgerFilter(ctx, ret, "logs")
 	return ret, nil
 }
 
-func (h logsResourceHandler) resolveFilter(_ *Store, _ ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h logsResourceHandler) resolveFilter(_ context.Context, _ *Store, _ ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "date" || property == "id":
 		return fmt.Sprintf("%s %s ?", property, convertOperatorToSQL(operator)), []any{value}, nil
@@ -38,11 +39,11 @@ func (h logsResourceHandler) resolveFilter(_ *Store, _ ledgercontroller.Resource
 	}
 }
 
-func (h logsResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[any], _ string) (*bun.SelectQuery, *joinCondition, error) {
+func (h logsResourceHandler) expand(_ context.Context, _ *Store, _ ledgercontroller.ResourceQuery[any], _ string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expand supported")
 }
 
-func (h logsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h logsResourceHandler) project(_ context.Context, store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 

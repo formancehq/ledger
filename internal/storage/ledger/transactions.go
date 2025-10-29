@@ -182,7 +182,7 @@ func (store *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun
 							ColumnExpr("*, false as modified").
 							Where("id = ?", id).
 							Limit(1)
-						return store.applyLedgerFilter(query, "transactions")
+						return store.applyLedgerFilter(ctx, query, "transactions")
 					}(),
 				),
 		).
@@ -208,7 +208,7 @@ func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time)
 				Where("reverted_at is null").
 				Returning("*")
 			query = query.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
+				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL(ctx)
 				if ledgerFilter != "" {
 					return q.Where(ledgerFilter, ledgerArgs...)
 				}
@@ -247,7 +247,7 @@ func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m met
 				Where("not (metadata @> ?)", m).
 				Returning("*")
 			updateQuery = updateQuery.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
+				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL(ctx)
 				if ledgerFilter != "" {
 					return q.Where(ledgerFilter, ledgerArgs...)
 				}
@@ -282,7 +282,7 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key s
 				Where("metadata -> ? is not null", key).
 				Returning("*")
 			updateQuery = updateQuery.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
+				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL(ctx)
 				if ledgerFilter != "" {
 					return q.Where(ledgerFilter, ledgerArgs...)
 				}

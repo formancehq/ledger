@@ -125,7 +125,7 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 				Column("*").
 				Where("idempotency_key = ?", key).
 				Limit(1)
-			query = store.applyLedgerFilter(query, "logs")
+			query = store.applyLedgerFilter(ctx, query, "logs")
 			if err := query.Scan(ctx); err != nil {
 				return nil, postgres.ResolveError(err)
 			}

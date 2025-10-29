@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
@@ -46,14 +47,14 @@ func (h aggregatedBalancesResourceRepositoryHandler) filters() []filter {
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(ctx context.Context, store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
 		ret := store.db.NewSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
 			Column("accounts_address", "asset")
-		ret = store.applyLedgerFilter(ret, "moves")
+		ret = store.applyLedgerFilter(ctx, ret, "moves")
 		if query.Opts.UseInsertionDate {
 			if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
@@ -77,7 +78,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
 				Where("accounts.address = accounts_address")
-			subQuery = store.applyLedgerFilter(subQuery, "accounts")
+			subQuery = store.applyLedgerFilter(ctx, subQuery, "accounts")
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -91,7 +92,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("accounts_metadata.accounts_address = moves.accounts_address").
 				Where("date <= ?", query.PIT)
-			subQuery = store.applyLedgerFilter(subQuery, "accounts_metadata")
+			subQuery = store.applyLedgerFilter(ctx, subQuery, "accounts_metadata")
 
 			ret = ret.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
@@ -104,14 +105,14 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes")
-		ret = store.applyLedgerFilter(ret, "accounts_volumes")
+		ret = store.applyLedgerFilter(ctx, ret, "accounts_volumes")
 
 		if query.useFilter("metadata") || query.useFilter("address", isPartialAddress) {
 			subQuery := store.db.NewSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address").
 				Where("accounts.address = accounts_address")
-			subQuery = store.applyLedgerFilter(subQuery, "accounts")
+			subQuery = store.applyLedgerFilter(ctx, subQuery, "accounts")
 
 			if query.useFilter("address") {
 				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
@@ -130,7 +131,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(ctx context.Context, store *Store, query ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
@@ -149,11 +150,12 @@ func (h aggregatedBalancesResourceRepositoryHandler) resolveFilter(store *Store,
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) expand(_ context.Context, _ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) project(
+	ctx context.Context,
 	store *Store,
 	_ ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,

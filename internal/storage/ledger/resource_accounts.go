@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -48,14 +49,14 @@ func (h accountsResourceHandler) filters() []filter {
 	}
 }
 
-func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) buildDataset(ctx context.Context, store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.db.NewSelect()
 
 	// Build the query
 	ret = ret.
 		ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 		Column("address", "address_array", "first_usage", "insertion_date", "updated_at")
-	ret = store.applyLedgerFilter(ret, "accounts")
+	ret = store.applyLedgerFilter(ctx, ret, "accounts")
 
 	if opts.PIT != nil && !opts.PIT.IsZero() {
 		ret = ret.Where("accounts.first_usage <= ?", opts.PIT)
@@ -68,7 +69,7 @@ func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandl
 			Column("accounts_address").
 			ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 			Where("date <= ?", opts.PIT)
-		selectDistinctAccountMetadataHistories = store.applyLedgerFilter(selectDistinctAccountMetadataHistories, "accounts_metadata")
+		selectDistinctAccountMetadataHistories = store.applyLedgerFilter(ctx, selectDistinctAccountMetadataHistories, "accounts_metadata")
 
 		ret = ret.
 			Join(
@@ -83,7 +84,7 @@ func (h accountsResourceHandler) buildDataset(store *Store, opts repositoryHandl
 	return ret, nil
 }
 
-func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h accountsResourceHandler) resolveFilter(ctx context.Context, store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
@@ -103,12 +104,12 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 				DistinctOn("asset").
 				ColumnExpr("first_value((post_commit_effective_volumes).inputs - (post_commit_effective_volumes).outputs) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as balance").
 				Where("effective_date <= ?", opts.PIT)
-			selectBalance = store.applyLedgerFilter(selectBalance, "moves")
+			selectBalance = store.applyLedgerFilter(ctx, selectBalance, "moves")
 		} else {
 			selectBalance = selectBalance.
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 				ColumnExpr("input - output as balance")
-			selectBalance = store.applyLedgerFilter(selectBalance, "accounts_volumes")
+			selectBalance = store.applyLedgerFilter(ctx, selectBalance, "accounts_volumes")
 		}
 
 		if balanceRegex.MatchString(property) {
@@ -133,11 +134,11 @@ func (h accountsResourceHandler) resolveFilter(store *Store, opts ledgercontroll
 	}
 }
 
-func (h accountsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h accountsResourceHandler) project(ctx context.Context, store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h accountsResourceHandler) expand(ctx context.Context, store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	switch property {
 	case "volumes":
 		if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
@@ -156,7 +157,7 @@ func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.Reso
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
 			Column("accounts_address", "asset")
-		selectRowsQuery = store.applyLedgerFilter(selectRowsQuery, "moves")
+		selectRowsQuery = store.applyLedgerFilter(ctx, selectRowsQuery, "moves")
 		if property == "volumes" {
 			selectRowsQuery = selectRowsQuery.
 				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as volumes").
@@ -171,7 +172,7 @@ func (h accountsResourceHandler) expand(store *Store, opts ledgercontroller.Reso
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes")
-		selectRowsQuery = store.applyLedgerFilter(selectRowsQuery, "accounts_volumes")
+		selectRowsQuery = store.applyLedgerFilter(ctx, selectRowsQuery, "accounts_volumes")
 	}
 
 	return store.db.NewSelect().

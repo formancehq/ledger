@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -68,7 +69,7 @@ func (h transactionsResourceHandler) filters() []filter {
 	}
 }
 
-func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) buildDataset(ctx context.Context, store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.db.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 		Column(
@@ -84,7 +85,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 			"sources_arrays",
 			"destinations_arrays",
 		)
-	ret = store.applyLedgerFilter(ret, "transactions")
+	ret = store.applyLedgerFilter(ctx, ret, "transactions")
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -101,7 +102,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
-		selectDistinctTransactionMetadataHistories = store.applyLedgerFilter(selectDistinctTransactionMetadataHistories, "transactions_metadata")
+		selectDistinctTransactionMetadataHistories = store.applyLedgerFilter(ctx, selectDistinctTransactionMetadataHistories, "transactions_metadata")
 
 		ret = ret.
 			Join(
@@ -122,7 +123,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 	return ret, nil
 }
 
-func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h transactionsResourceHandler) resolveFilter(ctx context.Context, store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", convertOperatorToSQL(operator)), []any{value}, nil
@@ -154,11 +155,11 @@ func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercont
 	}
 }
 
-func (h transactionsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) project(ctx context.Context, store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h transactionsResourceHandler) expand(ctx context.Context, store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}
@@ -169,7 +170,7 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 		Column("transactions_id", "accounts_address", "asset").
 		ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
 		Where("transactions_id in (select id from dataset)")
-	movesSubquery = store.applyLedgerFilter(movesSubquery, "moves")
+	movesSubquery = store.applyLedgerFilter(ctx, movesSubquery, "moves")
 
 	ret := store.db.NewSelect().
 		TableExpr(

@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
@@ -54,7 +55,7 @@ func (h volumesResourceHandler) filters() []filter {
 	}
 }
 
-func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) buildDataset(ctx context.Context, store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
@@ -66,14 +67,14 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Order("accounts_address", "asset")
-		selectVolumes = store.applyLedgerFilter(selectVolumes, "accounts_volumes")
+		selectVolumes = store.applyLedgerFilter(ctx, selectVolumes, "accounts_volumes")
 
 		if query.useFilter("metadata") || needAddressSegments {
 			subQuery := store.db.NewSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address").
 				Where("accounts.address = accounts_address")
-			subQuery = store.applyLedgerFilter(subQuery, "accounts")
+			subQuery = store.applyLedgerFilter(ctx, subQuery, "accounts")
 
 			if needAddressSegments {
 				subQuery = subQuery.ColumnExpr("address_array as account_array")
@@ -101,7 +102,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			GroupExpr("accounts_address, asset").
 			Order("accounts_address", "asset")
-		selectVolumes = store.applyLedgerFilter(selectVolumes, "moves")
+		selectVolumes = store.applyLedgerFilter(ctx, selectVolumes, "moves")
 
 		dateFilterColumn := "effective_date"
 		if query.Opts.UseInsertionDate {
@@ -121,7 +122,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
 				Where("accounts.address = accounts_address")
-			subQuery = store.applyLedgerFilter(subQuery, "accounts")
+			subQuery = store.applyLedgerFilter(ctx, subQuery, "accounts")
 
 			selectVolumes.
 				ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
@@ -134,7 +135,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("accounts_metadata.accounts_address = moves.accounts_address")
-			subQuery = store.applyLedgerFilter(subQuery, "accounts_metadata")
+			subQuery = store.applyLedgerFilter(ctx, subQuery, "accounts_metadata")
 
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
@@ -146,6 +147,7 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 }
 
 func (h volumesResourceHandler) resolveFilter(
+	ctx context.Context,
 	store *Store,
 	opts ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	operator, property string,
@@ -184,6 +186,7 @@ func (h volumesResourceHandler) resolveFilter(
 }
 
 func (h volumesResourceHandler) project(
+	ctx context.Context,
 	store *Store,
 	query ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
@@ -208,7 +211,7 @@ func (h volumesResourceHandler) project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) expand(_ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h volumesResourceHandler) expand(_ context.Context, _ *Store, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions], property string) (*bun.SelectQuery, *joinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
