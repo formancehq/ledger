@@ -85,7 +85,7 @@ func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key stri
 			query = query.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
 				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
 				if ledgerFilter != "" {
-					return q.Where(ledgerFilter[4:], ledgerArgs...) // Skip "and " prefix
+					return q.Where(ledgerFilter, ledgerArgs...)
 				}
 				return q
 			})

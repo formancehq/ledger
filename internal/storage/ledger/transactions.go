@@ -210,7 +210,7 @@ func (store *Store) RevertTransaction(ctx context.Context, id int, at time.Time)
 			query = query.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
 				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
 				if ledgerFilter != "" {
-					return q.Where(ledgerFilter[4:], ledgerArgs...) // Skip "and " prefix
+					return q.Where(ledgerFilter, ledgerArgs...)
 				}
 				return q
 			})
@@ -249,7 +249,7 @@ func (store *Store) UpdateTransactionMetadata(ctx context.Context, id int, m met
 			updateQuery = updateQuery.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
 				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
 				if ledgerFilter != "" {
-					return q.Where(ledgerFilter[4:], ledgerArgs...) // Skip "and " prefix
+					return q.Where(ledgerFilter, ledgerArgs...)
 				}
 				return q
 			})
@@ -284,7 +284,7 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id int, key s
 			updateQuery = updateQuery.WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
 				ledgerFilter, ledgerArgs := store.getLedgerFilterSQL()
 				if ledgerFilter != "" {
-					return q.Where(ledgerFilter[4:], ledgerArgs...) // Skip "and " prefix
+					return q.Where(ledgerFilter, ledgerArgs...)
 				}
 				return q
 			})

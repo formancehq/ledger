@@ -164,13 +164,13 @@ func (store *Store) applyLedgerFilter(query *bun.SelectQuery, tableAlias string)
 	return query.Where(fmt.Sprintf("%s.ledger = ?", tableAlias), store.ledger.Name)
 }
 
-// getLedgerFilterSQL returns the SQL fragment and arguments for ledger filtering in inline SQL.
+// getLedgerFilterSQL returns the SQL condition (without conjunction) and arguments for ledger filtering.
 // Returns empty string and nil args if single-ledger optimization is enabled.
 func (store *Store) getLedgerFilterSQL() (string, []any) {
 	if store.isSingleLedger() {
 		return "", nil
 	}
-	return "and ledger = ?", []any{store.ledger.Name}
+	return "ledger = ?", []any{store.ledger.Name}
 }
 
 // UpdateSingleLedgerState checks if the bucket contains only one ledger and updates the cache accordingly.
