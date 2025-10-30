@@ -142,22 +142,28 @@ func (store *Store) GetPrefixedRelationName(v string) string {
 // This allows queries to skip the WHERE ledger = ? clause when there's only one ledger in the bucket.
 // isSingleLedger checks in real-time if the bucket contains only one ledger.
 // This query is fast since the ledgers table has very few rows.
-func (store *Store) isSingleLedger(ctx context.Context) bool {
+func (store *Store) isSingleLedger(ctx context.Context) (bool, error) {
 	if store.countLedgersInBucket == nil {
-		return false
+		return false, nil
 	}
 	count, err := store.countLedgersInBucket(ctx, store.ledger.Bucket)
 	if err != nil {
-		// On error, be conservative and assume multi-ledger
-		return false
+		return false, fmt.Errorf("failed to count ledgers in bucket: %w", err)
 	}
-	return count == 1
+	return count == 1, nil
 }
 
 // applyLedgerFilter conditionally applies the WHERE ledger = ? clause to a query.
 // If the bucket contains only one ledger, the filter is skipped for performance optimization.
+// On error, conservatively applies the filter.
 func (store *Store) applyLedgerFilter(ctx context.Context, query *bun.SelectQuery, tableAlias string) *bun.SelectQuery {
-	if store.isSingleLedger(ctx) {
+	singleLedger, err := store.isSingleLedger(ctx)
+	if err != nil {
+		// Log error but continue with conservative behavior (apply filter)
+		trace.SpanFromContext(ctx).RecordError(err)
+		return query.Where(fmt.Sprintf("%s.ledger = ?", tableAlias), store.ledger.Name)
+	}
+	if singleLedger {
 		return query
 	}
 	return query.Where(fmt.Sprintf("%s.ledger = ?", tableAlias), store.ledger.Name)
@@ -165,8 +171,15 @@ func (store *Store) applyLedgerFilter(ctx context.Context, query *bun.SelectQuer
 
 // getLedgerFilterSQL returns the SQL condition (without conjunction) and arguments for ledger filtering.
 // Returns empty string and nil args if single-ledger optimization is enabled.
+// On error, conservatively returns the filter.
 func (store *Store) getLedgerFilterSQL(ctx context.Context) (string, []any) {
-	if store.isSingleLedger(ctx) {
+	singleLedger, err := store.isSingleLedger(ctx)
+	if err != nil {
+		// Log error but continue with conservative behavior (return filter)
+		trace.SpanFromContext(ctx).RecordError(err)
+		return "ledger = ?", []any{store.ledger.Name}
+	}
+	if singleLedger {
 		return "", nil
 	}
 	return "ledger = ?", []any{store.ledger.Name}
