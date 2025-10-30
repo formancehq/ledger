@@ -44,8 +44,8 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-		).
-		Where("ledger = ?", h.store.ledger.Name)
+		)
+	ret = h.store.applyLedgerFilter(opts.Ctx, ret, "transactions")
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -59,10 +59,10 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 		selectDistinctTransactionMetadataHistories := h.store.db.NewSelect().
 			DistinctOn("transactions_id").
 			ModelTableExpr(h.store.GetPrefixedRelationName("transactions_metadata")).
-			Where("ledger = ?", h.store.ledger.Name).
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
+		selectDistinctTransactionMetadataHistories = h.store.applyLedgerFilter(opts.Ctx, selectDistinctTransactionMetadataHistories, "transactions_metadata")
 
 		ret = ret.
 			Join(
@@ -119,10 +119,18 @@ func (h transactionsResourceHandler) Project(_ common.ResourceQuery[any], select
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h transactionsResourceHandler) Expand(query common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}
+
+	innerMostQuery := h.store.db.NewSelect().
+		DistinctOn("transactions_id, accounts_address, asset").
+		ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
+		Column("transactions_id", "accounts_address", "asset").
+		ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
+		Where("transactions_id in (select id from dataset)")
+	innerMostQuery = h.store.applyLedgerFilter(query.Ctx, innerMostQuery, "moves")
 
 	ret := h.store.db.NewSelect().
 		TableExpr(
@@ -130,13 +138,7 @@ func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], propert
 			h.store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
-					h.store.db.NewSelect().
-						DistinctOn("transactions_id, accounts_address, asset").
-						ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
-						Column("transactions_id", "accounts_address", "asset").
-						ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
-						Where("ledger = ?", h.store.ledger.Name).
-						Where("transactions_id in (select id from dataset)"),
+					innerMostQuery,
 				).
 				Column("transactions_id", "accounts_address").
 				ColumnExpr(`public.aggregate_objects(json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))::jsonb) AS post_commit_effective_volumes`).

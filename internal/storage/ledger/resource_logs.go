@@ -20,11 +20,12 @@ func (h logsResourceHandler) Schema() common.EntitySchema {
 	}
 }
 
-func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	return h.store.db.NewSelect().
+func (h logsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+	ret := h.store.db.NewSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("logs")).
-		ColumnExpr("*").
-		Where("ledger = ?", h.store.ledger.Name), nil
+		ColumnExpr("*")
+	ret = h.store.applyLedgerFilter(opts.Ctx, ret, "logs")
+	return ret, nil
 }
 
 func (h logsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
