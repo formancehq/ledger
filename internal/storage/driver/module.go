@@ -29,6 +29,8 @@ func NewFXModule() fx.Option {
 				&ledger.Ledger{},
 			)
 		}),
+		// SystemStoreFactory is provided separately to be used both by the Driver
+		// and by the ledger store factory for counting ledgers in buckets
 		fx.Provide(func(tracerProvider trace.TracerProvider) systemstore.StoreFactory {
 			return systemstore.NewStoreFactory(systemstore.WithTracer(
 				tracerProvider.Tracer("SystemStore"),
