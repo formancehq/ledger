@@ -81,10 +81,6 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, postgres.ResolveError(err)
 	}
 
-	if err := ret.UpdateSingleLedgerState(ctx, d.systemStoreFactory.Create(d.db).CountLedgersInBucket); err != nil {
-		logging.FromContext(ctx).Debugf("Failed to update single-ledger state: %v", err)
-	}
-
 	return ret, nil
 }
 
@@ -96,10 +92,6 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	}
 
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
-
-	if err := store.UpdateSingleLedgerState(ctx, d.systemStoreFactory.Create(d.db).CountLedgersInBucket); err != nil {
-		logging.FromContext(ctx).Debugf("Failed to update single-ledger state: %v", err)
-	}
 
 	return store, ret, err
 }

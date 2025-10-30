@@ -209,6 +209,7 @@ func (r *ResourceRepository[ResourceType, OptionsType]) expand(dataset *bun.Sele
 }
 
 func (r *ResourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ResourceQuery[OptionsType]) (*ResourceType, error) {
+	query.Ctx = ctx
 
 	finalQuery, err := r.buildFilteredDataset(query)
 	if err != nil {
@@ -235,6 +236,7 @@ func (r *ResourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Conte
 }
 
 func (r *ResourceRepository[ResourceType, OptionsType]) Count(ctx context.Context, query ResourceQuery[OptionsType]) (int, error) {
+	query.Ctx = ctx
 
 	finalQuery, err := r.buildFilteredDataset(query)
 	if err != nil {
@@ -325,6 +327,7 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	default:
 		panic("should not happen")
 	}
+	resourceQuery.Ctx = ctx
 
 	finalQuery, err := r.buildFilteredDataset(resourceQuery)
 	if err != nil {
@@ -406,11 +409,12 @@ func NewPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceTy
 }
 
 type ResourceQuery[Opts any] struct {
-	PIT     *time.Time    `json:"pit"`
-	OOT     *time.Time    `json:"oot"`
-	Builder query.Builder `json:"qb"`
-	Expand  []string      `json:"expand,omitempty"`
-	Opts    Opts          `json:"opts"`
+	Ctx     context.Context `json:"-"`
+	PIT     *time.Time      `json:"pit"`
+	OOT     *time.Time      `json:"oot"`
+	Builder query.Builder   `json:"qb"`
+	Expand  []string        `json:"expand,omitempty"`
+	Opts    Opts            `json:"opts"`
 }
 
 func (rq ResourceQuery[Opts]) UsePIT() bool {

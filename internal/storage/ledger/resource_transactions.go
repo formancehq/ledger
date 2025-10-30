@@ -45,7 +45,7 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			"sources_arrays",
 			"destinations_arrays",
 		)
-	ret = h.store.applyLedgerFilter(ret, "transactions")
+	ret = h.store.applyLedgerFilter(opts.Ctx, ret, "transactions")
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -62,7 +62,7 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
-		selectDistinctTransactionMetadataHistories = h.store.applyLedgerFilter(selectDistinctTransactionMetadataHistories, "transactions_metadata")
+		selectDistinctTransactionMetadataHistories = h.store.applyLedgerFilter(opts.Ctx, selectDistinctTransactionMetadataHistories, "transactions_metadata")
 
 		ret = ret.
 			Join(
@@ -119,7 +119,7 @@ func (h transactionsResourceHandler) Project(_ common.ResourceQuery[any], select
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h transactionsResourceHandler) Expand(query common.ResourceQuery[any], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}
@@ -130,7 +130,7 @@ func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], propert
 		Column("transactions_id", "accounts_address", "asset").
 		ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
 		Where("transactions_id in (select id from dataset)")
-	innerMostQuery = h.store.applyLedgerFilter(innerMostQuery, "moves")
+	innerMostQuery = h.store.applyLedgerFilter(query.Ctx, innerMostQuery, "moves")
 
 	ret := h.store.db.NewSelect().
 		TableExpr(

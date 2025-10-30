@@ -91,7 +91,7 @@ func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key stri
 				Set("metadata = metadata - ?", key).
 				Where("address = ?", account)
 
-			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(ctx); filterSQL != "" {
 				query = query.Where(filterSQL, filterArgs...)
 			}
 

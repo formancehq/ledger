@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sync"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -20,17 +19,12 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type singleLedgerOptimization struct {
-	mu      sync.RWMutex
-	enabled bool
-}
-
 type Store struct {
 	db     bun.IDB
 	bucket bucket.Bucket
 	ledger ledger.Ledger
 
-	singleLedgerCache *singleLedgerOptimization
+	countLedgersInBucket func(ctx context.Context, bucketName string) (int, error)
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -173,10 +167,9 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
-		db:                db,
-		ledger:            l,
-		bucket:            bucket,
-		singleLedgerCache: &singleLedgerOptimization{enabled: false},
+		db:     db,
+		ledger: l,
+		bucket: bucket,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -276,37 +269,38 @@ func (store *Store) WithDB(db bun.IDB) *Store {
 	return &ret
 }
 
-func (store *Store) isSingleLedger() bool {
-	store.singleLedgerCache.mu.RLock()
-	defer store.singleLedgerCache.mu.RUnlock()
-	return store.singleLedgerCache.enabled
+// isSingleLedger returns true if the bucket optimization is enabled for single-ledger scenarios.
+// This allows queries to skip the WHERE ledger = ? clause when there's only one ledger in the bucket.
+// isSingleLedger checks in real-time if the bucket contains only one ledger.
+// This query is fast since the ledgers table has very few rows.
+func (store *Store) isSingleLedger(ctx context.Context) bool {
+	if store.countLedgersInBucket == nil {
+		return false
+	}
+	count, err := store.countLedgersInBucket(ctx, store.ledger.Bucket)
+	if err != nil {
+		// On error, be conservative and assume multi-ledger
+		return false
+	}
+	return count == 1
 }
 
-func (store *Store) applyLedgerFilter(query *bun.SelectQuery, tableAlias string) *bun.SelectQuery {
-	if store.isSingleLedger() {
+// applyLedgerFilter conditionally applies the WHERE ledger = ? clause to a query.
+// If the bucket contains only one ledger, the filter is skipped for performance optimization.
+func (store *Store) applyLedgerFilter(ctx context.Context, query *bun.SelectQuery, tableAlias string) *bun.SelectQuery {
+	if store.isSingleLedger(ctx) {
 		return query
 	}
 	return query.Where(tableAlias+".ledger = ?", store.ledger.Name)
 }
 
-func (store *Store) getLedgerFilterSQL() (string, []any) {
-	if store.isSingleLedger() {
+// getLedgerFilterSQL returns the SQL condition (without conjunction) and arguments for ledger filtering.
+// Returns empty string and nil args if single-ledger optimization is enabled.
+func (store *Store) getLedgerFilterSQL(ctx context.Context) (string, []any) {
+	if store.isSingleLedger(ctx) {
 		return "", nil
 	}
 	return "ledger = ?", []any{store.ledger.Name}
-}
-
-func (store *Store) UpdateSingleLedgerState(ctx context.Context, countFunc func(ctx context.Context, bucketName string) (int, error)) error {
-	count, err := countFunc(ctx, store.ledger.Bucket)
-	if err != nil {
-		return fmt.Errorf("failed to count ledgers in bucket: %w", err)
-	}
-
-	store.singleLedgerCache.mu.Lock()
-	defer store.singleLedgerCache.mu.Unlock()
-	store.singleLedgerCache.enabled = (count == 1)
-
-	return nil
 }
 
 type Option func(s *Store)
@@ -320,6 +314,12 @@ func WithMeter(meter metric.Meter) Option {
 func WithTracer(tracer trace.Tracer) Option {
 	return func(s *Store) {
 		s.tracer = tracer
+	}
+}
+
+func WithCountLedgersInBucketFunc(countFunc func(ctx context.Context, bucketName string) (int, error)) Option {
+	return func(s *Store) {
+		s.countLedgersInBucket = countFunc
 	}
 }
 

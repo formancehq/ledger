@@ -40,14 +40,14 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			ColumnExpr("accounts_address as account").
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Order("accounts_address", "asset")
-		selectVolumes = h.store.applyLedgerFilter(selectVolumes, "accounts_volumes")
+		selectVolumes = h.store.applyLedgerFilter(query.Ctx, selectVolumes, "accounts_volumes")
 
 		if query.UseFilter("metadata") || query.UseFilter("first_usage") || needAddressSegments {
 			accountsQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
 				Where("accounts.address = accounts_address")
-			accountsQuery = h.store.applyLedgerFilter(accountsQuery, "accounts")
+			accountsQuery = h.store.applyLedgerFilter(query.Ctx, accountsQuery, "accounts")
 
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array as account_array")
@@ -79,7 +79,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 			GroupExpr("accounts_address, asset").
 			Order("accounts_address", "asset")
-		selectVolumes = h.store.applyLedgerFilter(selectVolumes, "moves")
+		selectVolumes = h.store.applyLedgerFilter(query.Ctx, selectVolumes, "moves")
 
 		dateFilterColumn := "effective_date"
 		if query.Opts.UseInsertionDate {
@@ -98,7 +98,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			accountsQuery := h.store.db.NewSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Where("accounts.address = accounts_address")
-			accountsQuery = h.store.applyLedgerFilter(accountsQuery, "accounts")
+			accountsQuery = h.store.applyLedgerFilter(query.Ctx, accountsQuery, "accounts")
 
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array")
@@ -117,7 +117,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("accounts_metadata.accounts_address = moves.accounts_address")
-			subQuery = h.store.applyLedgerFilter(subQuery, "accounts_metadata")
+			subQuery = h.store.applyLedgerFilter(query.Ctx, subQuery, "accounts_metadata")
 
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).

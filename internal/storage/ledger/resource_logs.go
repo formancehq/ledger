@@ -20,11 +20,11 @@ func (h logsResourceHandler) Schema() common.EntitySchema {
 	}
 }
 
-func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h logsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := h.store.db.NewSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("logs")).
 		ColumnExpr("*")
-	ret = h.store.applyLedgerFilter(ret, "logs")
+	ret = h.store.applyLedgerFilter(opts.Ctx, ret, "logs")
 	return ret, nil
 }
 

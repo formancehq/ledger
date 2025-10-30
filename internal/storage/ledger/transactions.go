@@ -186,7 +186,7 @@ func (store *Store) updateTxWithRetrieve(ctx context.Context, id uint64, query *
 		ColumnExpr("*, false as modified").
 		Where("id = ?", id).
 		Limit(1)
-	fallbackQuery = store.applyLedgerFilter(fallbackQuery, "transactions")
+	fallbackQuery = store.applyLedgerFilter(ctx, fallbackQuery, "transactions")
 
 	err := store.db.NewSelect().
 		With("upd", query).
@@ -219,7 +219,7 @@ func (store *Store) RevertTransaction(ctx context.Context, id uint64, at time.Ti
 				Where("reverted_at is null").
 				Returning("*")
 
-			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(ctx); filterSQL != "" {
 				query = query.Where(filterSQL, filterArgs...)
 			}
 			if at.IsZero() {
@@ -255,7 +255,7 @@ func (store *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, m 
 				Where("not (metadata @> ?)", m).
 				Returning("*")
 
-			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(ctx); filterSQL != "" {
 				updateQuery = updateQuery.Where(filterSQL, filterArgs...)
 			}
 			if at.IsZero() {
@@ -287,7 +287,7 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id uint64, ke
 				Where("metadata -> ? is not null", key).
 				Returning("*")
 
-			if filterSQL, filterArgs := store.getLedgerFilterSQL(); filterSQL != "" {
+			if filterSQL, filterArgs := store.getLedgerFilterSQL(ctx); filterSQL != "" {
 				updateQuery = updateQuery.Where(filterSQL, filterArgs...)
 			}
 			if at.IsZero() {
