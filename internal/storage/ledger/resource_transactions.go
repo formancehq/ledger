@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"fmt"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -68,7 +69,7 @@ func (h transactionsResourceHandler) filters() []filter {
 	}
 }
 
-func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) buildDataset(ctx context.Context, store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
 	ret := store.db.NewSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 		Column(
@@ -83,8 +84,8 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-		).
-		Where("ledger = ?", store.ledger.Name)
+		)
+	ret = store.applyLedgerFilter(ctx, ret, "transactions")
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -98,10 +99,10 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 		selectDistinctTransactionMetadataHistories := store.db.NewSelect().
 			DistinctOn("transactions_id").
 			ModelTableExpr(store.GetPrefixedRelationName("transactions_metadata")).
-			Where("ledger = ?", store.ledger.Name).
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
+		selectDistinctTransactionMetadataHistories = store.applyLedgerFilter(ctx, selectDistinctTransactionMetadataHistories, "transactions_metadata")
 
 		ret = ret.
 			Join(
@@ -122,7 +123,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 	return ret, nil
 }
 
-func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
+func (h transactionsResourceHandler) resolveFilter(ctx context.Context, store *Store, opts ledgercontroller.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", convertOperatorToSQL(operator)), []any{value}, nil
@@ -154,14 +155,22 @@ func (h transactionsResourceHandler) resolveFilter(store *Store, opts ledgercont
 	}
 }
 
-func (h transactionsResourceHandler) project(store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
+func (h transactionsResourceHandler) project(ctx context.Context, store *Store, query ledgercontroller.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
 
-func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
+func (h transactionsResourceHandler) expand(ctx context.Context, store *Store, opts ledgercontroller.ResourceQuery[any], property string) (*bun.SelectQuery, *joinCondition, error) {
 	if property != "effectiveVolumes" {
 		return nil, nil, nil
 	}
+
+	movesSubquery := store.db.NewSelect().
+		DistinctOn("transactions_id, accounts_address, asset").
+		ModelTableExpr(store.GetPrefixedRelationName("moves")).
+		Column("transactions_id", "accounts_address", "asset").
+		ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
+		Where("transactions_id in (select id from dataset)")
+	movesSubquery = store.applyLedgerFilter(ctx, movesSubquery, "moves")
 
 	ret := store.db.NewSelect().
 		TableExpr(
@@ -169,13 +178,7 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 			store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
-					store.db.NewSelect().
-						DistinctOn("transactions_id, accounts_address, asset").
-						ModelTableExpr(store.GetPrefixedRelationName("moves")).
-						Column("transactions_id", "accounts_address", "asset").
-						ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
-						Where("ledger = ?", store.ledger.Name).
-						Where("transactions_id in (select id from dataset)"),
+					movesSubquery,
 				).
 				Column("transactions_id", "accounts_address").
 				ColumnExpr(`public.aggregate_objects(json_build_object(moves.asset, json_build_object('input', (moves.post_commit_effective_volumes).inputs, 'output', (moves.post_commit_effective_volumes).outputs))::jsonb) AS post_commit_effective_volumes`).

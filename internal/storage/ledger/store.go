@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -24,6 +25,8 @@ type Store struct {
 	db     bun.IDB
 	bucket bucket.Bucket
 	ledger ledger.Ledger
+
+	countLedgersInBucket func(ctx context.Context, bucketName string) (int, error)
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -133,6 +136,53 @@ func (store *Store) GetBucket() bucket.Bucket {
 
 func (store *Store) GetPrefixedRelationName(v string) string {
 	return fmt.Sprintf(`"%s".%s`, store.ledger.Bucket, v)
+}
+
+// isSingleLedger returns true if the bucket optimization is enabled for single-ledger scenarios.
+// This allows queries to skip the WHERE ledger = ? clause when there's only one ledger in the bucket.
+// isSingleLedger checks in real-time if the bucket contains only one ledger.
+// This query is fast since the ledgers table has very few rows.
+func (store *Store) isSingleLedger(ctx context.Context) (bool, error) {
+	if store.countLedgersInBucket == nil {
+		return false, nil
+	}
+	count, err := store.countLedgersInBucket(ctx, store.ledger.Bucket)
+	if err != nil {
+		return false, fmt.Errorf("failed to count ledgers in bucket: %w", err)
+	}
+	return count == 1, nil
+}
+
+// applyLedgerFilter conditionally applies the WHERE ledger = ? clause to a query.
+// If the bucket contains only one ledger, the filter is skipped for performance optimization.
+// On error, conservatively applies the filter.
+func (store *Store) applyLedgerFilter(ctx context.Context, query *bun.SelectQuery, tableAlias string) *bun.SelectQuery {
+	singleLedger, err := store.isSingleLedger(ctx)
+	if err != nil {
+		// Log error but continue with conservative behavior (apply filter)
+		trace.SpanFromContext(ctx).RecordError(err)
+		return query.Where(fmt.Sprintf("%s.ledger = ?", tableAlias), store.ledger.Name)
+	}
+	if singleLedger {
+		return query
+	}
+	return query.Where(fmt.Sprintf("%s.ledger = ?", tableAlias), store.ledger.Name)
+}
+
+// getLedgerFilterSQL returns the SQL condition (without conjunction) and arguments for ledger filtering.
+// Returns empty string and nil args if single-ledger optimization is enabled.
+// On error, conservatively returns the filter.
+func (store *Store) getLedgerFilterSQL(ctx context.Context) (string, []any) {
+	singleLedger, err := store.isSingleLedger(ctx)
+	if err != nil {
+		// Log error but continue with conservative behavior (return filter)
+		trace.SpanFromContext(ctx).RecordError(err)
+		return "ledger = ?", []any{store.ledger.Name}
+	}
+	if singleLedger {
+		return "", nil
+	}
+	return "ledger = ?", []any{store.ledger.Name}
 }
 
 func validateAddressFilter(ledger ledger.Ledger, operator string, value any) error {
@@ -301,6 +351,12 @@ func WithMeter(meter metric.Meter) Option {
 func WithTracer(tracer trace.Tracer) Option {
 	return func(s *Store) {
 		s.tracer = tracer
+	}
+}
+
+func WithCountLedgersInBucketFunc(countFunc func(ctx context.Context, bucketName string) (int, error)) Option {
+	return func(s *Store) {
+		s.countLedgersInBucket = countFunc
 	}
 }
 

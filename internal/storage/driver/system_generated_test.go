@@ -40,6 +40,21 @@ func (m *SystemStore) EXPECT() *SystemStoreMockRecorder {
 	return m.recorder
 }
 
+// CountLedgersInBucket mocks base method.
+func (m *SystemStore) CountLedgersInBucket(ctx context.Context, bucketName string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountLedgersInBucket", ctx, bucketName)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountLedgersInBucket indicates an expected call of CountLedgersInBucket.
+func (mr *SystemStoreMockRecorder) CountLedgersInBucket(ctx, bucketName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountLedgersInBucket", reflect.TypeOf((*SystemStore)(nil).CountLedgersInBucket), ctx, bucketName)
+}
+
 // CreateLedger mocks base method.
 func (m *SystemStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
 	m.ctrl.T.Helper()
