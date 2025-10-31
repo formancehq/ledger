@@ -157,6 +157,38 @@ func TestBalancesGet(t *testing.T) {
 	})
 }
 
+func TestBalancesAreIsolatedBetweenLedgers(t *testing.T) {
+	t.Parallel()
+	store1 := newLedgerStore(t)
+	store2 := newLedgerStore(t)
+	ctx := logging.TestingContext()
+	now := time.Now()
+	err := store1.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "toto", "USD", big.NewInt(100)),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)), nil)
+	require.NoError(t, err)
+	err = store2.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "toto", "USD", big.NewInt(200)),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)), nil)
+	require.NoError(t, err)
+	balances1, err := store1.GetBalances(ctx, ledgerstore.BalanceQuery{
+		"toto": {"USD"},
+	})
+	require.NoError(t, err)
+	balances2, err := store2.GetBalances(ctx, ledgerstore.BalanceQuery{
+		"toto": {"USD"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(100), balances1["toto"]["USD"])
+	require.Equal(t, big.NewInt(200), balances2["toto"]["USD"])
+}
+
 func TestBalancesAggregates(t *testing.T) {
 	t.Parallel()
 

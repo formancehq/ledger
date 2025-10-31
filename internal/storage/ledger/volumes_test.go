@@ -4,14 +4,16 @@ package ledger_test
 
 import (
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"testing"
 	libtime "time"
 
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/time"
 
@@ -483,6 +485,60 @@ func TestVolumesList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, volumes.Data, 1)
 	})
+}
+
+func TestVolumesAreIsolatedBetweenLedgers(t *testing.T) {
+	t.Parallel()
+	store1 := newLedgerStore(t)
+	store2 := newLedgerStore(t)
+	ctx := logging.TestingContext()
+	now := time.Now()
+	err := store1.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "toto", "USD", big.NewInt(100)),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)), nil)
+	require.NoError(t, err)
+	err = store2.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "toto", "USD", big.NewInt(200)),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)), nil)
+	require.NoError(t, err)
+	volumes1, err := store1.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
+		Options: common.ResourceQuery[ledgerstore.GetVolumesOptions]{
+			Builder: query.Match("account", "toto"),
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, volumes1.Data, 1)
+	require.Equal(t, ledger.VolumesWithBalanceByAssetByAccount{
+		Account: "toto",
+		Asset:   "USD",
+		VolumesWithBalance: ledger.VolumesWithBalance{
+			Input:   big.NewInt(100),
+			Output:  big.NewInt(0),
+			Balance: big.NewInt(100),
+		},
+	}, volumes1.Data[0])
+	volumes2, err := store2.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
+		Options: common.ResourceQuery[ledgerstore.GetVolumesOptions]{
+			Builder: query.Match("account", "toto"),
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, volumes2.Data, 1)
+	require.Equal(t, ledger.VolumesWithBalanceByAssetByAccount{
+		Account: "toto",
+		Asset:   "USD",
+		VolumesWithBalance: ledger.VolumesWithBalance{
+			Input:   big.NewInt(200),
+			Output:  big.NewInt(0),
+			Balance: big.NewInt(200),
+		},
+	}, volumes2.Data[0])
 }
 
 func TestVolumesAggregate(t *testing.T) {
