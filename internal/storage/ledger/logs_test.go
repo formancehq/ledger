@@ -202,6 +202,43 @@ func TestLogsReadWithIdempotencyKey(t *testing.T) {
 	require.Equal(t, log, *lastLog)
 }
 
+func TestLogsAreIsolatedBetweenLedgers(t *testing.T) {
+	t.Parallel()
+	store1 := newLedgerStore(t)
+	store2 := newLedgerStore(t)
+	ctx := logging.TestingContext()
+	log1 := ledger.NewLog(ledger.CreatedTransaction{
+		Transaction: ledger.NewTransaction().
+			WithPostings(
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(10)),
+			).
+			WithMetadata(metadata.Metadata{
+				"ledger": "one",
+			}),
+		AccountMetadata: ledger.AccountMetadata{},
+	}).WithIdempotencyKey("shared")
+	require.NoError(t, store1.InsertLog(ctx, &log1))
+	log2 := ledger.NewLog(ledger.CreatedTransaction{
+		Transaction: ledger.NewTransaction().
+			WithPostings(
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(20)),
+			).
+			WithMetadata(metadata.Metadata{
+				"ledger": "two",
+			}),
+		AccountMetadata: ledger.AccountMetadata{},
+	}).WithIdempotencyKey("shared")
+	require.NoError(t, store2.InsertLog(ctx, &log2))
+	stored1, err := store1.ReadLogWithIdempotencyKey(ctx, "shared")
+	require.NoError(t, err)
+	require.NotNil(t, stored1)
+	require.Equal(t, log1, *stored1)
+	stored2, err := store2.ReadLogWithIdempotencyKey(ctx, "shared")
+	require.NoError(t, err)
+	require.NotNil(t, stored2)
+	require.Equal(t, log2, *stored2)
+}
+
 func TestLogsList(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)

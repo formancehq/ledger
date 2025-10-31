@@ -100,6 +100,64 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 	}, tx.PostCommitVolumes)
 }
 
+func TestTransactionsAreIsolatedBetweenLedgers(t *testing.T) {
+	t.Parallel()
+	store1 := newLedgerStore(t)
+	store2 := newLedgerStore(t)
+	ctx := logging.TestingContext()
+	now := time.Now()
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "shared", "USD", big.NewInt(100)),
+		).
+		WithReference("shared").
+		WithTimestamp(now)
+	require.NoError(t, store1.CommitTransaction(ctx, &tx1, nil))
+	tx2 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "shared", "USD", big.NewInt(200)),
+		).
+		WithReference("shared").
+		WithTimestamp(now)
+	require.NoError(t, store2.CommitTransaction(ctx, &tx2, nil))
+	ret1, err := store1.Transactions().GetOne(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("reference", "shared"),
+		Expand:  []string{"volumes"},
+	})
+	require.NoError(t, err)
+	ret2, err := store2.Transactions().GetOne(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("reference", "shared"),
+		Expand:  []string{"volumes"},
+	})
+	require.NoError(t, err)
+	RequireEqual(t, ledger.PostCommitVolumes{
+		"shared": {
+			"USD": ledger.NewVolumesInt64(100, 0),
+		},
+		"world": {
+			"USD": ledger.NewVolumesInt64(0, 100),
+		},
+	}, ret1.PostCommitVolumes)
+	RequireEqual(t, ledger.PostCommitVolumes{
+		"shared": {
+			"USD": ledger.NewVolumesInt64(200, 0),
+		},
+		"world": {
+			"USD": ledger.NewVolumesInt64(0, 200),
+		},
+	}, ret2.PostCommitVolumes)
+	count1, err := store1.Transactions().Count(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("reference", "shared"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, count1)
+	count2, err := store2.Transactions().Count(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("reference", "shared"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, count2)
+}
+
 func TestTransactionsCount(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)

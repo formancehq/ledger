@@ -411,3 +411,39 @@ func TestBalancesAggregates(t *testing.T) {
 		}, *ret)
 	})
 }
+
+func TestAggregatedVolumesAreIsolatedBetweenLedgers(t *testing.T) {
+	t.Parallel()
+	store1 := newLedgerStore(t)
+	store2 := newLedgerStore(t)
+	ctx := logging.TestingContext()
+	now := time.Now()
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "shared", "USD", big.NewInt(100)),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)
+	require.NoError(t, store1.CommitTransaction(ctx, &tx1, nil))
+	tx2 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "shared", "USD", big.NewInt(200)),
+		).
+		WithTimestamp(now).
+		WithInsertedAt(now)
+	require.NoError(t, store2.CommitTransaction(ctx, &tx2, nil))
+	agg1, err := store1.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{})
+	require.NoError(t, err)
+	RequireEqual(t, ledger.AggregatedVolumes{
+		Aggregated: ledger.VolumesByAssets{
+			"USD": ledger.NewVolumesInt64(100, 100),
+		},
+	}, *agg1)
+	agg2, err := store2.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{})
+	require.NoError(t, err)
+	RequireEqual(t, ledger.AggregatedVolumes{
+		Aggregated: ledger.VolumesByAssets{
+			"USD": ledger.NewVolumesInt64(200, 200),
+		},
+	}, *agg2)
+}

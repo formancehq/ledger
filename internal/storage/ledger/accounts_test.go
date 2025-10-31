@@ -466,6 +466,58 @@ func TestAccountsGet(t *testing.T) {
 	})
 }
 
+func TestAccountsAreIsolatedBetweenLedgers(t *testing.T) {
+	t.Parallel()
+	store1 := newLedgerStore(t)
+	store2 := newLedgerStore(t)
+	ctx := logging.TestingContext()
+	now := time.Now()
+	tx1 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "shared", "USD", big.NewInt(100)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store1.CommitTransaction(ctx, &tx1, nil))
+	tx2 := ledger.NewTransaction().
+		WithPostings(
+			ledger.NewPosting("world", "shared", "USD", big.NewInt(200)),
+		).
+		WithTimestamp(now)
+	require.NoError(t, store2.CommitTransaction(ctx, &tx2, nil))
+	require.NoError(t, store1.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"shared": {
+			"label": "ledger1",
+		},
+	}, time.Time{}))
+	require.NoError(t, store2.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"shared": {
+			"label": "ledger2",
+		},
+	}, time.Time{}))
+	account1, err := store1.Accounts().GetOne(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("address", "shared"),
+		Expand:  []string{"volumes"},
+	})
+	require.NoError(t, err)
+	account2, err := store2.Accounts().GetOne(ctx, common.ResourceQuery[any]{
+		Builder: query.Match("address", "shared"),
+		Expand:  []string{"volumes"},
+	})
+	require.NoError(t, err)
+	RequireEqual(t, ledger.VolumesByAssets{
+		"USD": ledger.NewVolumesInt64(100, 0),
+	}, account1.Volumes)
+	RequireEqual(t, ledger.VolumesByAssets{
+		"USD": ledger.NewVolumesInt64(200, 0),
+	}, account2.Volumes)
+	require.Equal(t, metadata.Metadata{
+		"label": "ledger1",
+	}, account1.Metadata)
+	require.Equal(t, metadata.Metadata{
+		"label": "ledger2",
+	}, account2.Metadata)
+}
+
 func TestAccountsCount(t *testing.T) {
 	t.Parallel()
 
