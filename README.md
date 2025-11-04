@@ -35,7 +35,7 @@ http POST :80/api/ledger/v2/quickstart
 http POST :80/api/ledger/v2/quickstart/transactions postings:='[{"amount":100,"asset":"USD/2","destination":"users:1234","source":"world"}]'
 ```
 
-And get a visual feedback on the Ledger Console UI started on [http://localhost:3000](http://localhost:3000/formance/localhost?region=localhost):
+And get a visual feedback on the Ledger Console UI started on [http://localhost:3000/formance/localhost?region=localhost](http://localhost:3000/formance/localhost?region=localhost):
 
 ![console](examples/standalone/console-screenshot.png)
 
