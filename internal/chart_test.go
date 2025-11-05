@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"testing"
 
@@ -15,7 +16,11 @@ func TestChartOfAccounts(t *testing.T) {
         "$iban": {
             "_pattern": "*iban_pattern",
             "main": {
-                "_rules": "test"
+                "_rules": {
+                    "allowedDestinations": {
+                        "thing": true
+                    }
+                }
             },
             "out": {
                 "_metadata": {
@@ -45,7 +50,11 @@ func TestChartOfAccounts(t *testing.T) {
 						{
 							Fixed: pointer.For("main"),
 							Account: &AccountSchema{
-								Rules: "test",
+								Rules: AccountRules{
+									AllowedDestinations: map[string]interface{}{
+										"thing": true,
+									},
+								},
 							},
 						},
 						{
@@ -88,8 +97,8 @@ func TestChartOfAccounts(t *testing.T) {
 
 	require.Equal(t, expected[0], chart[0])
 
-	_, err = json.MarshalIndent(&chart, "", "  ")
+	value, err := json.MarshalIndent(&chart, "", "  ")
 	require.NoError(t, err)
-	// fmt.Printf("%v\n", string(value))
+	fmt.Printf("%v\n", string(value))
 
 }

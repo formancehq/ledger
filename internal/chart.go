@@ -2,16 +2,23 @@ package ledger
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/formancehq/go-libs/v3/pointer"
 )
 
+type AccountRules struct {
+	AllowedSources      map[string]interface{} `json:"allowedSources"`
+	AllowedDestinations map[string]interface{} `json:"allowedDestinations"`
+}
+
 type AccountSchema struct {
 	Metadata map[string]string
-	Rules    string
+	Rules    AccountRules
 }
 
 type SegmentSchema struct {
@@ -155,7 +162,57 @@ func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
 		if len(s.Segments) > 0 {
 			out["_self"] = map[string]any{}
 		}
-		out["_metadata"] = s.Account.Metadata
+		if s.Account.Metadata != nil {
+			out["_metadata"] = s.Account.Metadata
+		}
+		out["_rules"] = s.Account.Rules
 	}
 	return json.Marshal(out)
+}
+
+func findAccountSchema(segments []SegmentSchema, account []string) (*AccountSchema, error) {
+	nextSegment := account[0]
+	for _, segment := range segments {
+		if segment.Fixed == &nextSegment {
+			if segment.Account != nil {
+				return segment.Account, nil
+			} else {
+				return nil, errors.New("account is not allowed by the chart of accounts")
+			}
+		} else if segment.Pattern != nil {
+			regexp, err := regexp.Match(*segment.Pattern, []byte(nextSegment))
+			if err != nil {
+				return nil, err
+			}
+			if regexp {
+				if segment.Account != nil {
+					return segment.Account, nil
+				} else {
+					return nil, errors.New("account is not allowed by the chart of accounts")
+				}
+			}
+		}
+	}
+	return nil, errors.New("account is not allowed by the chart of accounts")
+}
+func (c *ChartOfAccounts) FindAccountSchema(account string) (*AccountSchema, error) {
+	return findAccountSchema([]SegmentSchema(*c), strings.Split(account, ":"))
+}
+
+func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
+	source, err := c.FindAccountSchema(posting.Source)
+	if err != nil {
+		return err
+	}
+	destination, err := c.FindAccountSchema(posting.Destination)
+	if err != nil {
+		return err
+	}
+	if source.Rules.AllowedDestinations != nil || source.Rules.AllowedDestinations[posting.Destination] == nil {
+		return errors.New("destination is not allowed")
+	}
+	if destination.Rules.AllowedSources != nil || destination.Rules.AllowedSources[posting.Source] == nil {
+		return errors.New("source is not allowed")
+	}
+	return nil
 }
