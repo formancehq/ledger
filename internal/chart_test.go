@@ -6,7 +6,6 @@ import (
 
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,15 +39,13 @@ func TestChartOfAccounts(t *testing.T) {
 }`
 
 	expected := ChartOfAccounts{
-		{
-			Fixed: pointer.For("banks"),
-			Segments: []SegmentSchema{
-				{
-					Label:   pointer.For("iban"),
-					Pattern: pointer.For("*iban_pattern"),
-					Segments: []SegmentSchema{
-						{
-							Fixed: pointer.For("main"),
+		"banks": {
+			VariableSegment: &VariableSegment{
+				Label:   "iban",
+				Pattern: "*iban_pattern",
+				SegmentSchema: SegmentSchema{
+					FixedSegments: map[string]SegmentSchema{
+						"main": {
 							Account: &AccountSchema{
 								Rules: AccountRules{
 									AllowedDestinations: map[string]interface{}{
@@ -57,32 +54,28 @@ func TestChartOfAccounts(t *testing.T) {
 								},
 							},
 						},
-						{
-							Fixed: pointer.For("out"),
+						"out": {
 							Account: &AccountSchema{
 								Metadata: map[string]string{
 									"key": "value",
 								},
 							},
 						},
-						{
-							Fixed:   pointer.For("pending_out"),
+						"pending_out": {
 							Account: &AccountSchema{},
 						},
 					},
 				},
 			},
 		},
-		{
-			Fixed: pointer.For("users"),
-			Segments: []SegmentSchema{
-				{
-					Label:   pointer.For("userID"),
-					Pattern: pointer.For("*user_pattern"),
+		"users": {
+			VariableSegment: &VariableSegment{
+				Label:   "userID",
+				Pattern: "*user_pattern",
+				SegmentSchema: SegmentSchema{
 					Account: &AccountSchema{},
-					Segments: []SegmentSchema{
-						{
-							Fixed:   pointer.For("main"),
+					FixedSegments: map[string]SegmentSchema{
+						"main": {
 							Account: &AccountSchema{},
 						},
 					},
@@ -95,7 +88,7 @@ func TestChartOfAccounts(t *testing.T) {
 	err := json.Unmarshal([]byte(src), &chart)
 	require.NoError(t, err)
 
-	require.Equal(t, expected[0], chart[0])
+	require.Equal(t, expected, chart)
 
 	value, err := json.MarshalIndent(&chart, "", "  ")
 	require.NoError(t, err)

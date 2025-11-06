@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 type AccountRules struct {
@@ -22,14 +20,19 @@ type AccountSchema struct {
 }
 
 type SegmentSchema struct {
-	Fixed    *string
-	Pattern  *string
-	Label    *string
-	Segments []SegmentSchema
-	Account  *AccountSchema
+	VariableSegment *VariableSegment
+	FixedSegments   map[string]SegmentSchema
+	Account         *AccountSchema
 }
 
-type ChartOfAccounts []SegmentSchema
+type VariableSegment struct {
+	SegmentSchema
+
+	Pattern string
+	Label   string
+}
+
+type ChartOfAccounts map[string]SegmentSchema
 
 const SegmentRegex = "^\\$?[a-zA-Z0-9_-]+$"
 
@@ -45,7 +48,13 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*s = rootSegment.Segments
+	*s = rootSegment.FixedSegments
+	if rootSegment.VariableSegment != nil {
+		return errors.New("variable segments are not allowed at the root")
+	}
+	if rootSegment.Account != nil {
+		return errors.New("the chart root is not a valid account")
+	}
 	return nil
 }
 func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
@@ -56,9 +65,8 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 	isLeaf := true
 	var isAccount bool
 	var account AccountSchema
-	var pattern *string
-	hasVariableSubsegment := false
-	var segments []SegmentSchema
+	var fixedSegments map[string]SegmentSchema
+	var variableSegment *VariableSegment
 	keys := []string{}
 	for key := range segment {
 		keys = append(keys, key)
@@ -72,35 +80,46 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 			if !ValidateSegment(key) {
 				return fmt.Errorf("invalid address segment: %v", key)
 			}
+			var pattern *string
+			{
+				var segment map[string]any
+				err := json.Unmarshal(value, &segment)
+				if err != nil {
+					return fmt.Errorf("invalid subsegment: %v", err)
+				}
+				if pat, ok := segment["_pattern"]; ok {
+					if pat, ok := pat.(string); ok {
+						pattern = &pat
+					}
+				}
+			}
 			segment := SegmentSchema{}
 			err := segment.UnmarshalJSON(value)
 			if err != nil {
 				return fmt.Errorf("invalid subsegment: %v", err)
 			}
-			if segment.Pattern != nil {
-				if hasVariableSubsegment {
+			if pattern != nil {
+				if key[0] != '$' {
+					return fmt.Errorf("cannot have a pattern on a fixed segment") // TODO: Should this actually be an error?
+				}
+				if variableSegment != nil {
 					return fmt.Errorf("invalid subsegments: cannot have two variable segments with the same prefix")
 				}
-				hasVariableSubsegment = true
-				segment.Label = pointer.For(key[1:])
+				variableSegment = &VariableSegment{
+					SegmentSchema: segment,
+					Pattern:       *pattern,
+					Label:         key[1:],
+				}
 			} else {
-				segment.Fixed = &key
+				if key[0] == '$' {
+					return fmt.Errorf("cannot have a variable segment without a pattern") // TODO: Should this actually be an error?
+				}
+				if fixedSegments == nil {
+					fixedSegments = map[string]SegmentSchema{}
+				}
+				fixedSegments[key] = segment
 			}
-			if key[0] == '$' && segment.Pattern == nil {
-				return fmt.Errorf("cannot have a variable segment without a pattern") // TODO: Should this actually be an error?
-			}
-			if segments == nil {
-				segments = []SegmentSchema{}
-			}
-			segments = append(segments, segment)
 			isLeaf = false
-		} else if key == "_pattern" {
-			var pat string
-			err := json.Unmarshal(value, &pat)
-			if err != nil {
-				return nil
-			}
-			pattern = &pat
 		} else if key == "_self" {
 			isAccount = true
 		} else if key == "_metadata" {
@@ -116,52 +135,51 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 		}
 	}
 	isAccount = isAccount || isLeaf
-	s.Segments = segments
-	s.Pattern = pattern
 	if isAccount {
 		s.Account = &account
 	}
+	s.FixedSegments = fixedSegments
+	s.VariableSegment = variableSegment
 
 	return nil
 }
 
 func (s *ChartOfAccounts) MarshalJSON() ([]byte, error) {
 	out := make(map[string]any)
-	for _, value := range []SegmentSchema(*s) {
+	for key, value := range map[string]SegmentSchema(*s) {
 		serialized, err := value.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
-		if value.Fixed != nil {
-			out[*value.Fixed] = json.RawMessage(serialized)
-		} else if value.Label != nil {
-			key := "$" + *value.Label
-			out[key] = json.RawMessage(serialized)
-		}
+		out[key] = json.RawMessage(serialized)
 	}
 	return json.Marshal(out)
 }
 func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
 	out := make(map[string]any)
-	for _, value := range s.Segments {
+	for key, value := range s.FixedSegments {
 		serialized, err := value.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
-		if value.Fixed != nil {
-			out[*value.Fixed] = json.RawMessage(serialized)
-		} else if value.Label != nil {
-			key := "$" + *value.Label
-			out[key] = json.RawMessage(serialized)
-		}
+		out[key] = json.RawMessage(serialized)
+
+		// if value.Fixed != nil {
+		// 	out[*value.Fixed] = json.RawMessage(serialized)
+		// } else if value.Label != nil {
+		// 	key := "$" + *value.Label
+		// 	out[key] = json.RawMessage(serialized)
+		// }
 	}
-	if s.Pattern != nil {
-		out["_pattern"] = s.Pattern
+	if s.VariableSegment != nil {
+		key := fmt.Sprintf("$%v", s.VariableSegment.Label)
+		serialized, err := s.VariableSegment.SegmentSchema.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		out[key] = json.RawMessage(serialized)
 	}
 	if s.Account != nil {
-		if len(s.Segments) > 0 {
-			out["_self"] = map[string]any{}
-		}
 		if s.Account.Metadata != nil {
 			out["_metadata"] = s.Account.Metadata
 		}
@@ -170,33 +188,37 @@ func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func findAccountSchema(segments []SegmentSchema, account []string) (*AccountSchema, error) {
+func findAccountSchema(fixedSegments map[string]SegmentSchema, variableSegment *VariableSegment, account []string) (*AccountSchema, error) {
 	nextSegment := account[0]
-	for _, segment := range segments {
-		if segment.Fixed == &nextSegment {
-			if segment.Account != nil {
-				return segment.Account, nil
-			} else {
-				return nil, errors.New("account is not allowed by the chart of accounts")
-			}
-		} else if segment.Pattern != nil {
-			regexp, err := regexp.Match(*segment.Pattern, []byte(nextSegment))
-			if err != nil {
-				return nil, err
-			}
-			if regexp {
-				if segment.Account != nil {
-					return segment.Account, nil
-				} else {
-					return nil, errors.New("account is not allowed by the chart of accounts")
-				}
-			}
+	if segment, ok := fixedSegments[nextSegment]; ok {
+		if len(account) > 1 {
+			return findAccountSchema(segment.FixedSegments, segment.VariableSegment, account)
+		} else if segment.Account != nil {
+			return segment.Account, nil
+		} else {
+			return nil, errors.New("account is not allowed by the chart of accounts")
+		}
+	}
+	if variableSegment != nil {
+		matches, err := regexp.Match(variableSegment.Pattern, []byte(nextSegment))
+		if err != nil {
+			return nil, errors.New("invalid regex")
+		}
+		if matches {
+			return nil, errors.New("account is not allowed by the chart of accounts")
 		}
 	}
 	return nil, errors.New("account is not allowed by the chart of accounts")
 }
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*AccountSchema, error) {
-	return findAccountSchema([]SegmentSchema(*c), strings.Split(account, ":"))
+	schema, err := findAccountSchema(map[string]SegmentSchema(*c), nil, strings.Split(account, ":"))
+	if err != nil {
+		if account == "world" {
+			return &AccountSchema{}, nil
+		}
+		return nil, err
+	}
+	return schema, nil
 }
 
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
@@ -208,10 +230,10 @@ func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
 	if err != nil {
 		return err
 	}
-	if source.Rules.AllowedDestinations != nil || source.Rules.AllowedDestinations[posting.Destination] == nil {
+	if source.Rules.AllowedDestinations != nil && source.Rules.AllowedDestinations[posting.Destination] == nil {
 		return errors.New("destination is not allowed")
 	}
-	if destination.Rules.AllowedSources != nil || destination.Rules.AllowedSources[posting.Source] == nil {
+	if destination.Rules.AllowedSources != nil && destination.Rules.AllowedSources[posting.Source] == nil {
 		return errors.New("source is not allowed")
 	}
 	return nil
