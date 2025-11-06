@@ -6,14 +6,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/alitto/pond"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"slices"
 	"testing"
 
+	"github.com/alitto/pond"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/time"
 
@@ -856,6 +858,54 @@ func TestTransactionsList(t *testing.T) {
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4},
+		},
+		{
+			name: "filter using gte reverted_at",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Gte("reverted_at", func() time.Time {
+						// Get reverted_at from tx3, subtract a minute to include it
+						if tx3.RevertedAt != nil {
+							return tx3.RevertedAt.Add(-time.Minute)
+						}
+						return now
+					}()),
+				},
+			},
+			expected: []ledger.Transaction{tx3},
+		},
+		{
+			name: "filter using lte reverted_at",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Lte("reverted_at", func() time.Time {
+						// Get reverted_at from tx3, add a minute to include it
+						if tx3.RevertedAt != nil {
+							return tx3.RevertedAt.Add(time.Minute)
+						}
+						return now
+					}()),
+				},
+			},
+			expected: []ledger.Transaction{tx3},
+		},
+		{
+			name: "filter using gte reverted_at with future date",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Gte("reverted_at", now.Add(time.Hour)),
+				},
+			},
+			expected: []ledger.Transaction{},
+		},
+		{
+			name: "filter using lte reverted_at with past date",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.Lte("reverted_at", now.Add(-2*time.Hour)),
+				},
+			},
+			expected: []ledger.Transaction{},
 		},
 	}
 
