@@ -154,7 +154,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.23.4 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
-	github.com/opencontainers/runc v1.2.3 // indirect
+	github.com/opencontainers/runc v1.2.8 // indirect
 	github.com/ory/dockertest/v3 v3.12.0 // indirect
 	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
