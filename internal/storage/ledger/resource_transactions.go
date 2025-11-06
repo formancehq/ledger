@@ -15,16 +15,17 @@ type transactionsResourceHandler struct {
 func (h transactionsResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"reverted": common.NewBooleanField(),
-			"account": common.NewStringField(),
-			"source": common.NewStringField(),
+			"reverted":    common.NewBooleanField(),
+			"account":     common.NewStringField(),
+			"source":      common.NewStringField(),
 			"destination": common.NewStringField(),
-			"timestamp": common.NewDateField().Paginated(),
-			"metadata": common.NewStringMapField(),
-			"id": common.NewNumericField().Paginated(),
-			"reference": common.NewStringField(),
+			"timestamp":   common.NewDateField().Paginated(),
+			"metadata":    common.NewStringMapField(),
+			"id":          common.NewNumericField().Paginated(),
+			"reference":   common.NewStringField(),
 			"inserted_at": common.NewDateField().Paginated(),
-			"updated_at": common.NewDateField().Paginated(),
+			"updated_at":  common.NewDateField().Paginated(),
+			"reverted_at": common.NewDateField().Paginated(),
 		},
 	}
 }
@@ -74,10 +75,11 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 		ret = ret.ColumnExpr("metadata")
 	}
 
+	// Always use ColumnExpr to create reverted_at alias to avoid ambiguity
 	if opts.UsePIT() {
 		ret = ret.ColumnExpr("(case when transactions.reverted_at <= ? then transactions.reverted_at else null end) as reverted_at", opts.PIT)
 	} else {
-		ret = ret.Column("reverted_at")
+		ret = ret.ColumnExpr("transactions.reverted_at as reverted_at")
 	}
 
 	return ret, nil
@@ -90,11 +92,13 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	case property == "reference" || property == "timestamp" || property == "inserted_at" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
-		ret := "reverted_at is"
+		ret := "dataset.reverted_at is"
 		if value.(bool) {
 			ret += " not"
 		}
 		return ret + " null", nil, nil
+	case property == "reverted_at":
+		return fmt.Sprintf("dataset.reverted_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "account":
 		return filterAccountAddressOnTransactions(value.(string), true, true), nil, nil
 	case property == "source":
