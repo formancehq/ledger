@@ -49,11 +49,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) filters() []filter {
 func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
-		ret := store.db.NewSelect().
+		ret := store.newScopedSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
-			Column("accounts_address", "asset").
-			Where("ledger = ?", store.ledger.Name)
+			Column("accounts_address", "asset")
 		if query.Opts.UseInsertionDate {
 			if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
@@ -73,11 +72,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 		}
 
 		if query.useFilter("address", isPartialAddress) {
-			subQuery := store.db.NewSelect().
+			subQuery := store.newScopedSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
-				Where("accounts.address = accounts_address").
-				Where("ledger = ?", store.ledger.Name)
+				Where("accounts.address = accounts_address")
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -85,11 +83,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 		}
 
 		if query.useFilter("metadata") {
-			subQuery := store.db.NewSelect().
+			subQuery := store.newScopedSelect().
 				DistinctOn("accounts_address").
 				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("ledger = ?", store.ledger.Name).
 				Where("accounts_metadata.accounts_address = moves.accounts_address").
 				Where("date <= ?", query.PIT)
 
@@ -100,17 +97,15 @@ func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, 
 
 		return ret, nil
 	} else {
-		ret := store.db.NewSelect().
+		ret := store.newScopedSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", store.ledger.Name)
+			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes")
 
 		if query.useFilter("metadata") || query.useFilter("address", isPartialAddress) {
-			subQuery := store.db.NewSelect().
+			subQuery := store.newScopedSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
 				Column("address").
-				Where("ledger = ?", store.ledger.Name).
 				Where("accounts.address = accounts_address")
 
 			if query.useFilter("address") {

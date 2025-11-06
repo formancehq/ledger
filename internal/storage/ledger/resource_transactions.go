@@ -69,7 +69,7 @@ func (h transactionsResourceHandler) filters() []filter {
 }
 
 func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	ret := store.db.NewSelect().
+	ret := store.newScopedSelect().
 		ModelTableExpr(store.GetPrefixedRelationName("transactions")).
 		Column(
 			"ledger",
@@ -83,8 +83,7 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-		).
-		Where("ledger = ?", store.ledger.Name)
+		)
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -95,10 +94,9 @@ func (h transactionsResourceHandler) buildDataset(store *Store, opts repositoryH
 	}
 
 	if store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
-		selectDistinctTransactionMetadataHistories := store.db.NewSelect().
+		selectDistinctTransactionMetadataHistories := store.newScopedSelect().
 			DistinctOn("transactions_id").
 			ModelTableExpr(store.GetPrefixedRelationName("transactions_metadata")).
-			Where("ledger = ?", store.ledger.Name).
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
@@ -169,12 +167,11 @@ func (h transactionsResourceHandler) expand(store *Store, opts ledgercontroller.
 			store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
-					store.db.NewSelect().
+					store.newScopedSelect().
 						DistinctOn("transactions_id, accounts_address, asset").
 						ModelTableExpr(store.GetPrefixedRelationName("moves")).
 						Column("transactions_id", "accounts_address", "asset").
 						ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
-						Where("ledger = ?", store.ledger.Name).
 						Where("transactions_id in (select id from dataset)"),
 				).
 				Column("transactions_id", "accounts_address").
