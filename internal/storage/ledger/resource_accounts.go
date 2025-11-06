@@ -60,7 +60,20 @@ func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuild
 func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
-		return filterAccountAddress(value.(string), "address"), nil, nil
+		fallthrough
+	case property == "account":
+		switch operator {
+		case common.OperatorIn:
+			addresses, err := assetAddressArray(value)
+			if err != nil {
+				return "", nil, err
+			}
+
+			return "address IN (?)", []any{bun.In(addresses)}, nil
+		default:
+			return filterAccountAddress(value.(string), "address"), nil, nil
+		}
+
 	case property == "first_usage" || property == "insertion_date" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":

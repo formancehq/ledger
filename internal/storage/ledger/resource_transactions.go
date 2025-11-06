@@ -89,7 +89,14 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
-	case property == "reference" || property == "timestamp" || property == "inserted_at" || property == "updated_at":
+	case property == "reference":
+		switch operator {
+		case common.OperatorIn:
+			return "reference IN (?)", []any{bun.In(value)}, nil
+		default:
+			return fmt.Sprintf("reference %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+		}
+	case property == "timestamp" || property == "inserted_at" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
 		ret := "dataset.reverted_at is"
@@ -100,11 +107,47 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	case property == "reverted_at":
 		return fmt.Sprintf("dataset.reverted_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "account":
-		return filterAccountAddressOnTransactions(value.(string), true, true), nil, nil
+		switch operator {
+		case common.OperatorIn:
+			addresses, err := assetAddressArray(value)
+			if err != nil {
+				return "", nil, err
+			}
+
+			placeholder, args := stringArrayToPostgresArray(addresses)
+			args = append(args, args...) // Duplicate args for sources and destinations
+
+			return "sources \\?| " + placeholder + " OR destinations \\?| " + placeholder, args, nil
+		default:
+			return filterAccountAddressOnTransactions(value.(string), true, true), nil, nil
+		}
 	case property == "source":
-		return filterAccountAddressOnTransactions(value.(string), true, false), nil, nil
+		switch operator {
+		case common.OperatorIn:
+			addresses, err := assetAddressArray(value)
+			if err != nil {
+				return "", nil, err
+			}
+
+			placeholder, args := stringArrayToPostgresArray(addresses)
+
+			return "sources \\?| " + placeholder, args, nil
+		default:
+			return filterAccountAddressOnTransactions(value.(string), true, false), nil, nil
+		}
 	case property == "destination":
-		return filterAccountAddressOnTransactions(value.(string), false, true), nil, nil
+		switch operator {
+		case common.OperatorIn:
+			addresses, err := assetAddressArray(value)
+			if err != nil {
+				return "", nil, err
+			}
+
+			placeholder, args := stringArrayToPostgresArray(addresses)
+			return "destinations \\?| " + placeholder, args, nil
+		default:
+			return filterAccountAddressOnTransactions(value.(string), false, true), nil, nil
+		}
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 

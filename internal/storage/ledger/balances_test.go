@@ -254,6 +254,22 @@ func TestBalancesAggregates(t *testing.T) {
 			},
 		}, *ret)
 	})
+	t.Run("filter using $in on address", func(t *testing.T) {
+		t.Parallel()
+
+		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+			Builder: query.In("address", []any{"users:1", "not-existing"}),
+		})
+		require.NoError(t, err)
+		RequireEqual(t, ledger.AggregatedVolumes{
+			Aggregated: ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input:  big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+					Output: new(big.Int),
+				},
+			},
+		}, *ret)
+	})
 	t.Run("using pit on effective date", func(t *testing.T) {
 		t.Parallel()
 		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{

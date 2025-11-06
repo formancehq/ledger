@@ -32,9 +32,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 
 	var selectVolumes *bun.SelectQuery
 
-	needAddressSegments := query.UseFilter("address", func(value any) bool {
-		return isPartialAddress(value.(string))
-	})
+	needAddressSegments := query.UseFilter("address", isFilteringOnPartialAddress)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = h.store.newScopedSelect().
 			Column("asset", "input", "output").
@@ -133,7 +131,17 @@ func (h volumesResourceHandler) ResolveFilter(
 
 	switch {
 	case property == "address" || property == "account":
-		return filterAccountAddress(value.(string), "account"), nil, nil
+		switch operator {
+		case common.OperatorIn:
+			addresses, err := assetAddressArray(value)
+			if err != nil {
+				return "", nil, err
+			}
+
+			return "account IN (?)", []any{bun.In(addresses)}, nil
+		default:
+			return filterAccountAddress(value.(string), "account"), nil, nil
+		}
 	case property == "first_usage":
 		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":

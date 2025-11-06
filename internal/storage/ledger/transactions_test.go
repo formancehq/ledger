@@ -675,6 +675,7 @@ func TestTransactionsList(t *testing.T) {
 			ledger.NewPosting("world", "alice", "EUR", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
+		WithReference("tx1").
 		WithTimestamp(now.Add(-3 * time.Hour))
 	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
@@ -684,6 +685,7 @@ func TestTransactionsList(t *testing.T) {
 			ledger.NewPosting("world", "bob", "USD", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "2"}).
+		WithReference("tx2").
 		WithTimestamp(now.Add(-2 * time.Hour))
 	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
@@ -903,6 +905,24 @@ func TestTransactionsList(t *testing.T) {
 				},
 			},
 			expected: []ledger.Transaction{},
+		},
+		{
+			name: "filter using $in on addresses",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.In("account", []any{"alice", "bob"}),
+				},
+			},
+			expected: []ledger.Transaction{tx2, tx1},
+		},
+		{
+			name: "filter using $in on references",
+			query: common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{
+					Builder: query.In("reference", []any{"tx1", "not-existing"}),
+				},
+			},
+			expected: []ledger.Transaction{tx1},
 		},
 	}
 
