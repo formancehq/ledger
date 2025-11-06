@@ -21,10 +21,9 @@ func (h logsResourceHandler) Schema() common.EntitySchema {
 }
 
 func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	return h.store.db.NewSelect().
+	return h.store.newScopedSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("logs")).
-		ColumnExpr("*").
-		Where("ledger = ?", h.store.ledger.Name), nil
+		ColumnExpr("*"), nil
 }
 
 func (h logsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {

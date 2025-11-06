@@ -163,6 +163,10 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 	}
 }
 
+func (store *Store) newScopedSelect() *bun.SelectQuery {
+	return store.db.NewSelect().Where("ledger = ?", store.ledger.Name)
+}
+
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
 		db:     db,
