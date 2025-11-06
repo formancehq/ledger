@@ -163,8 +163,27 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 	}
 }
 
+// newScopedSelect creates a new select query scoped to the current ledger.
+// notes(gfyrag): The "WHERE ledger = 'XXX'" condition can cause degraded postgres plan.
+// To avoid that, we use a WHERE OR to separate the two cases:
+// 1. Check if the ledger is the only one in the bucket
+// 2. Otherwise, filter by ledger name
 func (store *Store) newScopedSelect() *bun.SelectQuery {
-	return store.db.NewSelect().Where("ledger = ?", store.ledger.Name)
+	q := store.db.NewSelect()
+	checkLedgerAlone := store.db.NewSelect().
+		TableExpr("_system.ledgers").
+		ColumnExpr("count = 1").
+		Join("JOIN (?) AS counters ON _system.ledgers.bucket = counters.bucket",
+			store.db.NewSelect().
+				TableExpr("_system.ledgers").
+				ColumnExpr("bucket").
+				ColumnExpr("COUNT(*) AS count").
+				Group("bucket"),
+		).
+		Where("_system.ledgers.name = ?", store.ledger.Name)
+
+	return q.
+		Where("((?) or ledger = ?)", checkLedgerAlone, store.ledger.Name)
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
