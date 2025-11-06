@@ -181,7 +181,6 @@ func TestAccountsList(t *testing.T) {
 			"USD": ledger.NewVolumesInt64(200, 50),
 		}, accounts.Data[0].EffectiveVolumes)
 	})
-
 	t.Run("list using filter on address", func(t *testing.T) {
 		t.Parallel()
 		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
@@ -191,6 +190,16 @@ func TestAccountsList(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
+	})
+	t.Run("list using filter on address and $in", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.In("address", []any{"account:1", "account:2"}),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 2)
 	})
 	t.Run("list using filter on address and unbounded length", func(t *testing.T) {
 		t.Parallel()
