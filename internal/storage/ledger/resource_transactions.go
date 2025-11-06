@@ -31,7 +31,7 @@ func (h transactionsResourceHandler) Schema() common.EntitySchema {
 }
 
 func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	ret := h.store.db.NewSelect().
+	ret := h.store.newScopedSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("transactions")).
 		Column(
 			"ledger",
@@ -45,8 +45,7 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-		).
-		Where("ledger = ?", h.store.ledger.Name)
+		)
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -57,10 +56,9 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 	}
 
 	if h.store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
-		selectDistinctTransactionMetadataHistories := h.store.db.NewSelect().
+		selectDistinctTransactionMetadataHistories := h.store.newScopedSelect().
 			DistinctOn("transactions_id").
 			ModelTableExpr(h.store.GetPrefixedRelationName("transactions_metadata")).
-			Where("ledger = ?", h.store.ledger.Name).
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
@@ -134,12 +132,11 @@ func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], propert
 			h.store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
-					h.store.db.NewSelect().
+					h.store.newScopedSelect().
 						DistinctOn("transactions_id, accounts_address, asset").
 						ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 						Column("transactions_id", "accounts_address", "asset").
 						ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
-						Where("ledger = ?", h.store.ledger.Name).
 						Where("transactions_id in (select id from dataset)"),
 				).
 				Column("transactions_id", "accounts_address").

@@ -23,11 +23,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchem
 func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
-		ret := h.store.db.NewSelect().
+		ret := h.store.newScopedSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
-			Column("accounts_address", "asset").
-			Where("ledger = ?", h.store.ledger.Name)
+			Column("accounts_address", "asset")
 		if query.Opts.UseInsertionDate {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return nil, NewErrMissingFeature(features.FeatureMovesHistory)
@@ -49,11 +48,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		if query.UseFilter("address", func(value any) bool {
 			return isPartialAddress(value.(string))
 		}) {
-			subQuery := h.store.db.NewSelect().
+			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
-				Where("accounts.address = accounts_address").
-				Where("ledger = ?", h.store.ledger.Name)
+				Where("accounts.address = accounts_address")
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -61,11 +59,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		}
 
 		if query.UseFilter("metadata") {
-			subQuery := h.store.db.NewSelect().
+			subQuery := h.store.newScopedSelect().
 				DistinctOn("accounts_address").
 				ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("ledger = ?", h.store.ledger.Name).
 				Where("accounts_metadata.accounts_address = moves.accounts_address").
 				Where("date <= ?", query.PIT)
 
@@ -76,19 +73,17 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 
 		return ret, nil
 	} else {
-		ret := h.store.db.NewSelect().
+		ret := h.store.newScopedSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", h.store.ledger.Name)
+			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
 
 		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
 			return isPartialAddress(value.(string))
 		}) {
-			subQuery := h.store.db.NewSelect().
+			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
-				Where("ledger = ?", h.store.ledger.Name).
 				Where("accounts.address = accounts_address")
 
 			if query.UseFilter("address") {
