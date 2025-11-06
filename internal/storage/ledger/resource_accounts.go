@@ -26,20 +26,18 @@ func (h accountsResourceHandler) Schema() common.EntitySchema {
 }
 
 func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	ret := h.store.db.NewSelect().
+	ret := h.store.newScopedSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("accounts")).
-		Column("address", "address_array", "first_usage", "insertion_date", "updated_at").
-		Where("ledger = ?", h.store.ledger.Name)
+		Column("address", "address_array", "first_usage", "insertion_date", "updated_at")
 
 	if opts.PIT != nil && !opts.PIT.IsZero() {
 		ret = ret.Where("accounts.first_usage <= ?", opts.PIT)
 	}
 
 	if h.store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
-		selectDistinctAccountMetadataHistories := h.store.db.NewSelect().
+		selectDistinctAccountMetadataHistories := h.store.newScopedSelect().
 			DistinctOn("accounts_address").
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_metadata")).
-			Where("ledger = ?", h.store.ledger.Name).
 			Column("accounts_address").
 			ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 			Where("date <= ?", opts.PIT)
@@ -65,9 +63,8 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 
-		selectBalance := h.store.db.NewSelect().
-			Where("accounts_address = dataset.address").
-			Where("ledger = ?", h.store.ledger.Name)
+		selectBalance := h.store.newScopedSelect().
+			Where("accounts_address = dataset.address")
 
 		if opts.PIT != nil && !opts.PIT.IsZero() {
 			if !h.store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
@@ -122,14 +119,13 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		}
 	}
 
-	selectRowsQuery := h.store.db.NewSelect().
+	selectRowsQuery := h.store.newScopedSelect().
 		Where("accounts_address in (select address from dataset)")
 	if opts.UsePIT() {
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 			DistinctOn("accounts_address, asset").
-			Column("accounts_address", "asset").
-			Where("ledger = ?", h.store.ledger.Name)
+			Column("accounts_address", "asset")
 		if property == "volumes" {
 			selectRowsQuery = selectRowsQuery.
 				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as volumes").
@@ -143,16 +139,15 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes").
-			Where("ledger = ?", h.store.ledger.Name)
+			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
 	}
 
 	return h.store.db.NewSelect().
-			With("rows", selectRowsQuery).
-			ModelTableExpr("rows").
-			Column("accounts_address").
-			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
-			Group("accounts_address"), &common.JoinCondition{
+		With("rows", selectRowsQuery).
+		ModelTableExpr("rows").
+		Column("accounts_address").
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
+		Group("accounts_address"), &common.JoinCondition{
 			Left:  "address",
 			Right: "accounts_address",
 		}, nil
