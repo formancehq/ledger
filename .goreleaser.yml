@@ -22,6 +22,23 @@ builds:
     goarch:
       - amd64
       - arm64
+  - binary: ledger-ee
+    id: ledger-ee
+    ldflags:
+      - -X github.com/formancehq/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/formancehq/ledger/cmd.Version=v{{ .Version }}
+      - -X github.com/formancehq/ledger/cmd.Commit={{ .ShortCommit }}
+      - -extldflags "-static"
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - ee
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
   - binary: benchmarks
     id: benchmarks
     ldflags:
@@ -56,6 +73,99 @@ archives:
       - benchmarks
     format: tar.gz
     name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
+  - id: "{{.ProjectName}}-ee"
+    builds:
+      - ledger-ee
+    format: tar.gz
+    name_template: "{{.ProjectName}}-ee_{{.Os}}-{{.Arch}}"
+
+dockers:
+  # EE Build Images
+  - image_templates:
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-amd64"
+    use: buildx
+    ids:
+      - ledger-ee
+    dockerfile: build-ee.Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.url=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.source=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    goarch: amd64
+    goos: linux
+  - image_templates:
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-arm64"
+    use: buildx
+    ids:
+      - ledger-ee
+    dockerfile: build-ee.Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.url=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.source=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    goarch: arm64
+    goos: linux
+  # EE Scratch Images
+  - image_templates:
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-amd64-scratch"
+    use: buildx
+    ids:
+      - ledger-ee
+    dockerfile: scratch-ee.Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.url=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.source=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    goarch: amd64
+    goos: linux
+  - image_templates:
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-arm64-scratch"
+    use: buildx
+    ids:
+      - ledger-ee
+    dockerfile: scratch-ee.Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.url=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.source=https://github.com/formancehq/{{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    goarch: arm64
+    goos: linux
+
+docker_manifests:
+  # EE Multi-arch manifest
+  - name_template: "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee"
+    image_templates:
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-amd64"
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-arm64"
+  # EE Scratch multi-arch manifest
+  - name_template: "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-scratch"
+    image_templates:
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-amd64-scratch"
+      - "ghcr.io/formancehq/{{ .ProjectName }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-ee-arm64-scratch"
 
 nfpms:
   - id: ledger
@@ -102,7 +212,7 @@ brews:
           branch: main
     directory: Formula
     homepage: https://formance.com
-    skip_upload: 'false'
+    skip_upload: "false"
     test: |
       system "#{bin}/ledger version"
     install: |
@@ -121,6 +231,6 @@ brews:
           branch: main
     directory: Formula
     homepage: https://formance.com
-    skip_upload: 'false'
+    skip_upload: "false"
     install: |
       bin.install "ledger-benchmarks"

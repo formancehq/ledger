@@ -7,7 +7,7 @@ pre-commit: tidy generate lint export-docs-events openapi generate-client
 pc: pre-commit
 
 lint:
-    golangci-lint run --fix --build-tags it,local --timeout 5m
+    golangci-lint run --fix --build-tags ee,it,local --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \
         golangci-lint run --fix --build-tags it --timeout 5m; \
@@ -36,7 +36,7 @@ tests:
     go test -race -covermode=atomic \
         -coverpkg=github.com/formancehq/ledger/internal/...,github.com/formancehq/ledger/pkg/events/...,github.com/formancehq/ledger/pkg/accounts/...,github.com/formancehq/ledger/pkg/assets/...,github.com/formancehq/ledger/cmd/... \
         -coverprofile coverage.txt \
-        -tags it \
+        -tags ee,it \
         ./...
     cat coverage.txt | grep -v debug.go | grep -v "/machine/" | grep -v "pb.go" > coverage2.txt
     mv coverage2.txt coverage.txt

@@ -11,3 +11,8 @@ dumps
 .envrc.*
 Pulumi.*.yaml
 coverage.txt
+
+# Binary files
+ledger
+ledger-ce
+ledger-ee

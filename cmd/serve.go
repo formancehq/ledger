@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger/ee"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -168,6 +169,16 @@ func NewServeCommand() *cobra.Command {
 				)
 			}
 
+			// Add EE modules (audit, etc.)
+			eeModules, err := getEEModules(cmd)
+			if err != nil {
+				return fmt.Errorf("failed to load EE modules: %w", err)
+			}
+			options = append(options, eeModules...)
+
+			// Inject EE middleware (audit, etc.)
+			options = append(options, injectEEMiddleware())
+
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},
 	}
@@ -185,6 +196,9 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
+
+	// Add EE-specific flags (audit, etc.)
+	ee.AddFlags(cmd)
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
@@ -266,3 +280,4 @@ func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
 		otlpmetrics.FXModuleFromFlags(cmd),
 	)
 }
+
