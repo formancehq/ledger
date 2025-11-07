@@ -309,9 +309,22 @@ func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLo
 }
 
 func (d *DefaultStore) UpdateExporter(ctx context.Context, exporter ledger.Exporter) error {
-	_, err := d.db.NewUpdate().
+	ret, err := d.db.NewUpdate().
 		Model(&exporter).
 		Where("id = ?", exporter.ID).
 		Exec(ctx)
-	return postgres.ResolveError(err)
+	if err != nil {
+		return postgres.ResolveError(err)
+	}
+
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return postgres.ErrNotFound
+	}
+
+	return nil
 }
