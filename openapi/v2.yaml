@@ -2586,6 +2586,10 @@ components:
           format: date-time
         bucket:
           type: string
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:
