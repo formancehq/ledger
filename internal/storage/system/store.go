@@ -26,6 +26,7 @@ type Store interface {
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
 	DeleteBucket(ctx context.Context, bucket string) error
+	RestoreBucket(ctx context.Context, bucket string) error
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -118,6 +119,19 @@ func (d *DefaultStore) DeleteBucket(ctx context.Context, bucket string) error {
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("deleting bucket: %w", postgres.ResolveError(err))
+	}
+	return nil
+}
+
+func (d *DefaultStore) RestoreBucket(ctx context.Context, bucket string) error {
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("deleted_at = NULL").
+		Where("bucket = ?", bucket).
+		Where("deleted_at IS NOT NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("restoring bucket: %w", postgres.ResolveError(err))
 	}
 	return nil
 }

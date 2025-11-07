@@ -35,6 +35,7 @@
 * [GetExporterState](#getexporterstate) - Get exporter state
 * [DeleteExporter](#deleteexporter) - Delete exporter
 * [DeleteBucket](#deletebucket) - Delete bucket
+* [RestoreBucket](#restorebucket) - Restore bucket
 * [ListPipelines](#listpipelines) - List pipelines
 * [CreatePipeline](#createpipeline) - Create pipeline
 * [GetPipelineState](#getpipelinestate) - Get pipeline state
@@ -1932,6 +1933,65 @@ func main() {
 ### Response
 
 **[*operations.V2DeleteBucketResponse](../../models/operations/v2deletebucketresponse.md), error**
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
+
+## RestoreBucket
+
+Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All ledgers in the bucket will have their deleted_at field set to NULL.
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"os"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+        }),
+    )
+
+    res, err := s.Ledger.V2.RestoreBucket(ctx, operations.V2RestoreBucketRequest{
+        Bucket: "<value>",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                              | Type                                                                                   | Required                                                                               | Description                                                                            |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ctx`                                                                                  | [context.Context](https://pkg.go.dev/context#Context)                                  | :heavy_check_mark:                                                                     | The context to use for the request.                                                    |
+| `request`                                                                              | [operations.V2RestoreBucketRequest](../../models/operations/v2restorebucketrequest.md) | :heavy_check_mark:                                                                     | The request object to use for the request.                                             |
+| `opts`                                                                                 | [][operations.Option](../../models/operations/option.md)                               | :heavy_minus_sign:                                                                     | The options for this request.                                                          |
+
+### Response
+
+**[*operations.V2RestoreBucketResponse](../../models/operations/v2restorebucketresponse.md), error**
 
 ### Errors
 

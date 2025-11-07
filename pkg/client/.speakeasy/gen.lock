@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 95481bf4f605a90a8b41e0f72bf10bfc
+  docChecksum: 88e828f9e48752e11b569b3548c8ab0e
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -175,6 +175,7 @@ generatedFiles:
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
   - /models/operations/v2resetpipeline.go
+  - /models/operations/v2restorebucket.go
   - /models/operations/v2reverttransaction.go
   - /models/operations/v2startpipeline.go
   - /models/operations/v2stoppipeline.go
@@ -403,6 +404,8 @@ generatedFiles:
   - docs/models/operations/v2readstatsresponse.md
   - docs/models/operations/v2resetpipelinerequest.md
   - docs/models/operations/v2resetpipelineresponse.md
+  - docs/models/operations/v2restorebucketrequest.md
+  - docs/models/operations/v2restorebucketresponse.md
   - docs/models/operations/v2reverttransactionrequest.md
   - docs/models/operations/v2reverttransactionresponse.md
   - docs/models/operations/v2startpipelinerequest.md
@@ -1145,6 +1148,16 @@ examples:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2DeleteBucket:
     speakeasy-default-v2-delete-bucket:
+      parameters:
+        path:
+          bucket: "<value>"
+      responses:
+        "404":
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2RestoreBucket:
+    speakeasy-default-v2-restore-bucket:
       parameters:
         path:
           bucket: "<value>"
