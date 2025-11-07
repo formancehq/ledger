@@ -12,10 +12,8 @@ import (
 	"go.uber.org/fx"
 )
 
-const serviceName = "ledger"
-
 // AuditModule creates the audit Fx module for Enterprise Edition
-func AuditModule(cobraCmd *cobra.Command) fx.Option {
+func AuditModule(cobraCmd *cobra.Command, serviceName string) fx.Option {
 	return fx.Module("audit",
 		fx.Provide(func(
 			publisher message.Publisher,

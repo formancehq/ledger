@@ -95,7 +95,7 @@ func NewServeCommand() *cobra.Command {
 				fx.NopLogger,
 				otlpModule(cmd, cfg.commonConfig),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
-				ee.Module(cmd), // Enterprise Edition features (audit, etc.)
+				ee.Module(cmd, ServiceName), // Enterprise Edition features (audit, etc.)
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{

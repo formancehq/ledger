@@ -15,9 +15,9 @@ func AddFlags(cmd *cobra.Command) {
 }
 
 // Module returns the Enterprise Edition Fx module
-func Module(cobraCmd *cobra.Command) fx.Option {
+func Module(cobraCmd *cobra.Command, serviceName string) fx.Option {
 	return fx.Options(
 		// Provide audit module
-		AuditModule(cobraCmd),
+		AuditModule(cobraCmd, serviceName),
 	)
 }

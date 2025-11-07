@@ -10,10 +10,10 @@ lint:
     golangci-lint run --fix --build-tags it,local,ee --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \
-        golangci-lint run --fix --build-tags it --timeout 5m; \
+        golangci-lint run --fix --build-tags it,ee --timeout 5m; \
         popd; \
     done
-    cd {{justfile_directory()}}/deployments/pulumi && golangci-lint run --fix --build-tags it --timeout 5m
+    cd {{justfile_directory()}}/deployments/pulumi && golangci-lint run --fix --build-tags it,ee --timeout 5m
 
 tidy:
     for d in $(ls tools); do \
