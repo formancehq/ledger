@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/ledger/internal/replication/config"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"reflect"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -68,7 +68,7 @@ func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessa
 	exporter, err := c.store.GetExporter(ctx, id)
 	if err != nil {
 		switch {
-		case errors.Is(err, common.ErrNotFound):
+		case errors.Is(err, postgres.ErrNotFound):
 			return nil, nil, NewErrExporterNotFound(id)
 		default:
 			return nil, nil, err

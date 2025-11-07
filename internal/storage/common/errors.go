@@ -1,11 +1,8 @@
 package common
 
 import (
-	"database/sql"
 	"fmt"
 )
-
-var ErrNotFound = sql.ErrNoRows
 
 type ErrInvalidQuery struct {
 	msg string

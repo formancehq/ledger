@@ -40,6 +40,24 @@ func (t ThroughGRPCBackend) CreateExporter(ctx context.Context, configuration le
 	return pointer.For(mapExporterFromGRPC(exporter.Exporter)), nil
 }
 
+func (t ThroughGRPCBackend) UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error {
+	_, err := t.client.UpdateExporter(ctx, &grpc.UpdateExporterRequest{
+		Id:     id,
+		Config: mapExporterConfiguration(configuration),
+	})
+	if err != nil {
+		switch {
+		case status.Code(err) == codes.InvalidArgument:
+			return system.NewErrInvalidDriverConfiguration(configuration.Driver, err)
+		case status.Code(err) == codes.NotFound:
+			return system.NewErrExporterNotFound(id)
+		default:
+			return err
+		}
+	}
+	return nil
+}
+
 func (t ThroughGRPCBackend) DeleteExporter(ctx context.Context, id string) error {
 	_, err := t.client.DeleteExporter(ctx, &grpc.DeleteExporterRequest{
 		Id: id,

@@ -69,6 +69,25 @@ func (srv GRPCServiceImpl) GetExporter(ctx context.Context, request *grpc.GetExp
 	}, nil
 }
 
+func (srv GRPCServiceImpl) UpdateExporter(ctx context.Context, request *grpc.UpdateExporterRequest) (*grpc.UpdateExporterResponse, error) {
+	err := srv.manager.UpdateExporter(ctx, request.Id, ledger.ExporterConfiguration{
+		Driver: request.Config.Driver,
+		Config: json.RawMessage(request.Config.Config),
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, system.ErrInvalidDriverConfiguration{}):
+			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+		case errors.Is(err, system.ErrExporterNotFound("")):
+			return nil, status.Errorf(codes.NotFound, "%s", err.Error())
+		default:
+			return nil, err
+		}
+	}
+
+	return &grpc.UpdateExporterResponse{}, nil
+}
+
 func (srv GRPCServiceImpl) DeleteExporter(ctx context.Context, request *grpc.DeleteExporterRequest) (*grpc.DeleteExporterResponse, error) {
 	if err := srv.manager.DeleteExporter(ctx, request.Id); err != nil {
 		switch {

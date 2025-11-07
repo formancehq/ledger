@@ -196,7 +196,7 @@ func (d *DefaultStore) GetExporter(ctx context.Context, id string) (*ledger.Expo
 		Where("id = ?", id).
 		Scan(ctx)
 	if err != nil {
-		return nil, err
+		return nil, postgres.ResolveError(err)
 	}
 
 	return ret, nil
@@ -306,4 +306,12 @@ func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLo
 	}
 
 	return nil
+}
+
+func (d *DefaultStore) UpdateExporter(ctx context.Context, exporter ledger.Exporter) error {
+	_, err := d.db.NewUpdate().
+		Model(&exporter).
+		Where("id = ?", exporter.ID).
+		Exec(ctx)
+	return postgres.ResolveError(err)
 }

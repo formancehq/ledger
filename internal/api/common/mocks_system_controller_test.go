@@ -203,6 +203,20 @@ func (mr *MockReplicationBackendMockRecorder) StopPipeline(ctx, id any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*MockReplicationBackend)(nil).StopPipeline), ctx, id)
 }
 
+// UpdateExporter mocks base method.
+func (m *MockReplicationBackend) UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateExporter", ctx, id, configuration)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateExporter indicates an expected call of UpdateExporter.
+func (mr *MockReplicationBackendMockRecorder) UpdateExporter(ctx, id, configuration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateExporter", reflect.TypeOf((*MockReplicationBackend)(nil).UpdateExporter), ctx, id, configuration)
+}
+
 // SystemController is a mock of Controller interface.
 type SystemController struct {
 	ctrl     *gomock.Controller
@@ -458,6 +472,20 @@ func (m *SystemController) StopPipeline(ctx context.Context, id string) error {
 func (mr *SystemControllerMockRecorder) StopPipeline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*SystemController)(nil).StopPipeline), ctx, id)
+}
+
+// UpdateExporter mocks base method.
+func (m *SystemController) UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateExporter", ctx, id, configuration)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateExporter indicates an expected call of UpdateExporter.
+func (mr *SystemControllerMockRecorder) UpdateExporter(ctx, id, configuration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateExporter", reflect.TypeOf((*SystemController)(nil).UpdateExporter), ctx, id, configuration)
 }
 
 // UpdateLedgerMetadata mocks base method.
