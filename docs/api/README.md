@@ -2377,6 +2377,62 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
+## Update exporter
+
+<a id="opIdv2UpdateExporter"></a>
+
+> Code samples
+
+```http
+PUT http://localhost:8080/v2/_/exporters/{exporterID} HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`PUT /v2/_/exporters/{exporterID}`
+
+> Body parameter
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+```
+
+<h3 id="update-exporter-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2ExporterConfiguration](#schemav2exporterconfiguration)|true|none|
+|exporterID|path|string|true|The exporter id|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="update-exporter-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Exporter updated|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
+</aside>
+
 ## Delete exporter
 
 <a id="opIdv2DeleteExporter"></a>
@@ -5466,6 +5522,25 @@ and
 <a id="schema_V2CreateExporterRequest"></a>
 <a id="tocSv2createexporterrequest"></a>
 <a id="tocsv2createexporterrequest"></a>
+
+```json
+{
+  "driver": "string",
+  "config": {}
+}
+
+```
+
+### Properties
+
+*None*
+
+<h2 id="tocS_V2UpdateExporterRequest">V2UpdateExporterRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemav2updateexporterrequest"></a>
+<a id="schema_V2UpdateExporterRequest"></a>
+<a id="tocSv2updateexporterrequest"></a>
+<a id="tocsv2updateexporterrequest"></a>
 
 ```json
 {

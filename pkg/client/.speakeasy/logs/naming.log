@@ -205,6 +205,8 @@ V2CreateExporterResponse (HttpMeta: HTTPMetadata, V2CreateExporterResponse: V2Cr
 V2GetExporterStateRequest (exporterID: string)
 V2GetExporterStateResponse (HttpMeta: HTTPMetadata, V2GetExporterStateResponse: V2GetExporterStateResponse)
  V2GetExporterStateResponse (data: V2Exporter)
+V2UpdateExporterRequest (exporterID: string, V2ExporterConfiguration: V2ExporterConfiguration)
+V2UpdateExporterResponse (HttpMeta: HTTPMetadata)
 V2DeleteExporterRequest (exporterID: string)
 V2DeleteExporterResponse (HttpMeta: HTTPMetadata)
 V2ListPipelinesRequest (ledger: string)

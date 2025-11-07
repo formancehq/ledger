@@ -26,6 +26,7 @@ import (
 type ReplicationBackend interface {
 	ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)
 	CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error)
+	UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error
 	DeleteExporter(ctx context.Context, id string) error
 	GetExporter(ctx context.Context, id string) (*ledger.Exporter, error)
 
@@ -82,6 +83,13 @@ func (ctrl *DefaultController) CreateExporter(ctx context.Context, configuration
 		return nil, fmt.Errorf("failed to create exporter: %w", err)
 	}
 	return ret, nil
+}
+
+// UpdateExporter can return following errors:
+// * ErrInvalidDriverConfiguration
+// * ErrExporterNotFound
+func (ctrl *DefaultController) UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error {
+	return ctrl.replicationBackend.UpdateExporter(ctx, id, configuration)
 }
 
 // DeleteExporter can return following errors:
