@@ -30,7 +30,7 @@ func (t ThroughGRPCBackend) CreateExporter(ctx context.Context, configuration le
 		Config: mapExporterConfiguration(configuration),
 	})
 	if err != nil {
-		if status.Code(err) != codes.InvalidArgument {
+		if status.Code(err) == codes.InvalidArgument {
 			return nil, system.NewErrInvalidDriverConfiguration(configuration.Driver, err)
 		}
 

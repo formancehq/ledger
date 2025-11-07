@@ -4,9 +4,9 @@ package test_suite
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -50,6 +50,15 @@ var (
 	DBTemplate = "dbtemplate"
 )
 
+func init() {
+	var err error
+	// Use a static random source to have the same key every time (for parallel testing with ginkgo)
+	testPrivateKey, err = rsa.GenerateKey(rand.New(rand.NewSource(1)), 2048)
+	if err != nil {
+		panic("failed to generate test RSA key: " + err.Error())
+	}
+}
+
 type ParallelExecutionContext struct {
 	PostgresServer    *PostgresServer
 	NatsServer        *natstesting.NatsServer
@@ -62,11 +71,6 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 
 	By("Initializing docker pool")
 	dockerPool.SetValue(docker.NewPool(GinkgoT(), logger))
-
-	// Generate RSA key for OIDC mock server
-	var err error
-	testPrivateKey, err = rsa.GenerateKey(rand.Reader, 2048)
-	Expect(err).To(BeNil())
 
 	// Initialize mock OIDC server
 	testIssuerURL.LoadAsync(func() (string, error) {
@@ -159,7 +163,7 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 
 	By("Waiting services alive")
 	By("Waiting PG")
-	_, err = pgServer.Wait(specContext)
+	_, err := pgServer.Wait(specContext)
 	Expect(err).To(BeNil())
 	By("Waiting nats")
 	_, err = natsServer.Wait(specContext)
@@ -170,7 +174,7 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 	By("Waiting mock OIDC server")
 	_, err = testIssuerURL.Wait(specContext)
 	Expect(err).To(BeNil())
-	//Expect(deferred.WaitContext(specContext, pgServer, natsServer, clickhouseServer, mockOIDCServer)).To(BeNil())
+
 	By("All services ready.")
 
 	data, err := json.Marshal(ParallelExecutionContext{
