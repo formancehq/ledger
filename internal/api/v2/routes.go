@@ -17,6 +17,14 @@ import (
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 
+// NewRouter creates a chi.Router configured with the v2 HTTP API routes for the ledger service.
+// It registers authentication-protected top-level endpoints (including /_info), an "/_" group
+// that may expose exporter management and bucket operations, ledger-scoped routes (ledger creation,
+// metadata, and nested ledger subroutes such as bulk operations, info, stats, pipelines when
+// enabled, logs, accounts, transactions, aggregated balances, and volumes), and applies tracing
+// attributes for the selected ledger on ledger-scoped requests.
+// The behavior of tracing, bulking, bulk handler factories, pagination, and whether exporter-related
+// endpoints are mounted is controlled via RouterOption arguments.
 func NewRouter(
 	systemController systemcontroller.Controller,
 	authenticator auth.Authenticator,

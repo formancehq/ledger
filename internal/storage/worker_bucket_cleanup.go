@@ -109,6 +109,10 @@ func (r *BucketCleanupRunner) processBucket(ctx context.Context, bucket string) 
 	return nil
 }
 
+// NewBucketCleanupRunner creates a BucketCleanupRunner configured with the provided logger,
+// database handle, and configuration, applying any functional options.
+//
+// The returned runner is ready to be started; provided options override default behavior.
 func NewBucketCleanupRunner(logger logging.Logger, db *bun.DB, cfg BucketCleanupRunnerConfig, opts ...BucketCleanupRunnerOption) *BucketCleanupRunner {
 	ret := &BucketCleanupRunner{
 		stopChannel: make(chan chan struct{}),
@@ -126,6 +130,7 @@ func NewBucketCleanupRunner(logger logging.Logger, db *bun.DB, cfg BucketCleanup
 
 type BucketCleanupRunnerOption func(*BucketCleanupRunner)
 
+// WithBucketCleanupRunnerTracer returns a BucketCleanupRunnerOption that sets the OpenTelemetry tracer used by the BucketCleanupRunner.
 func WithBucketCleanupRunnerTracer(tracer trace.Tracer) BucketCleanupRunnerOption {
 	return func(r *BucketCleanupRunner) {
 		r.tracer = tracer
@@ -136,6 +141,10 @@ var defaultBucketCleanupRunnerOptions = []BucketCleanupRunnerOption{
 	WithBucketCleanupRunnerTracer(noop.Tracer{}),
 }
 
+// NewBucketCleanupRunnerModule returns an Fx module that provides a configured BucketCleanupRunner
+// and registers lifecycle hooks to start it in the background when the application starts and to stop
+// it when the application shuts down. The background goroutine will panic if the runner's Run method
+// returns an error.
 func NewBucketCleanupRunnerModule(cfg BucketCleanupRunnerConfig) fx.Option {
 	return fx.Options(
 		fx.Provide(func(logger logging.Logger, db *bun.DB) (*BucketCleanupRunner, error) {

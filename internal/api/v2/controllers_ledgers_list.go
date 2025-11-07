@@ -15,6 +15,10 @@ import (
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
+// listLedgers constructs an HTTP handler that lists ledgers with pagination.
+// The handler applies the provided pagination configuration (sorted by "id" ascending),
+// reads the "includeDeleted" query parameter to include deleted ledgers when set,
+// invokes the controller's ListLedgers, and renders the resulting paginated cursor.
 func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 

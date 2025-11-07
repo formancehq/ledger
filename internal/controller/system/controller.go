@@ -243,6 +243,12 @@ func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucket string)
 	})))
 }
 
+// NewDefaultController creates a DefaultController configured with the provided
+// store, listener, replication backend, and optional functional options.
+// 
+// The controller is initialized with a new StateRegistry and a default Numscript
+// parser; any of these defaults (and other fields) can be overridden by passing
+// Option values. The returned controller is ready for further initialization or use.
 func NewDefaultController(
 	store Driver,
 	listener ledgercontroller.Listener,
