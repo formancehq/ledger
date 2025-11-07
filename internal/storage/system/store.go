@@ -15,6 +15,7 @@ import (
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"time"
 )
 
 type Store interface {
@@ -24,6 +25,7 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, ListLedgersQueryPayload]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
+	DeleteBucket(ctx context.Context, bucket string) error
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -53,6 +55,7 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
 		Column("bucket").
+		Where("deleted_at IS NULL").
 		Scan(ctx, &buckets)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
@@ -105,12 +108,27 @@ func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository[ledger.Ledger, ListLedgersQueryPayload](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
 }
 
+func (d *DefaultStore) DeleteBucket(ctx context.Context, bucket string) error {
+	now := time.Now()
+	_, err := d.db.NewUpdate().
+		Model(&ledger.Ledger{}).
+		Set("deleted_at = ?", now).
+		Where("bucket = ?", bucket).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("deleting bucket: %w", postgres.ResolveError(err))
+	}
+	return nil
+}
+
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	ret := &ledger.Ledger{}
 	if err := d.db.NewSelect().
 		Model(ret).
 		Column("*").
 		Where("name = ?", name).
+		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		return nil, postgres.ResolveError(err)
 	}

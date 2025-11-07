@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: e526d411c2aea88839261ea9de2ab263
+  docChecksum: 9325ae512a676a095c5816ca4e14fe31
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -150,6 +150,7 @@ generatedFiles:
   - /models/operations/v2createpipeline.go
   - /models/operations/v2createtransaction.go
   - /models/operations/v2deleteaccountmetadata.go
+  - /models/operations/v2deletebucket.go
   - /models/operations/v2deleteexporter.go
   - /models/operations/v2deleteledgermetadata.go
   - /models/operations/v2deletepipeline.go
@@ -355,6 +356,8 @@ generatedFiles:
   - docs/models/operations/v2createtransactionresponse.md
   - docs/models/operations/v2deleteaccountmetadatarequest.md
   - docs/models/operations/v2deleteaccountmetadataresponse.md
+  - docs/models/operations/v2deletebucketrequest.md
+  - docs/models/operations/v2deletebucketresponse.md
   - docs/models/operations/v2deleteexporterrequest.md
   - docs/models/operations/v2deleteexporterresponse.md
   - docs/models/operations/v2deleteledgermetadatarequest.md
@@ -1136,6 +1139,16 @@ examples:
         path:
           exporterID: "<id>"
       responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeleteBucket:
+    speakeasy-default-v2-delete-bucket:
+      parameters:
+        path:
+          bucket: "<value>"
+      responses:
+        "404":
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.2

@@ -2421,6 +2421,54 @@ Accept: application/json
 This operation does not require authentication
 </aside>
 
+## Delete bucket
+
+<a id="opIdv2DeleteBucket"></a>
+
+> Code samples
+
+```http
+DELETE http://localhost:8080/v2/_/buckets/{bucket} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`DELETE /v2/_/buckets/{bucket}`
+
+Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). All ledgers in the bucket will have their deleted_at field set to the current timestamp.
+
+<h3 id="delete-bucket-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|bucket|path|string|true|The bucket name|
+
+> Example responses
+
+> 404 Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="delete-bucket-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Bucket deleted|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Bucket not found|[V2ErrorResponse](#schemav2errorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
+</aside>
+
 ## List pipelines
 
 <a id="opIdv2ListPipelines"></a>
