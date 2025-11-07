@@ -13,6 +13,6 @@ func AddFlags(_ *cobra.Command) {
 }
 
 // Module returns an empty Fx module for Community Edition builds
-func Module(_ *cobra.Command) fx.Option {
+func Module(_ *cobra.Command, _ string) fx.Option {
 	return fx.Options()
 }
