@@ -27,9 +27,18 @@ func AuditModule(cobraCmd *cobra.Command, serviceName string) fx.Option {
 			}
 
 			// Load audit settings
-			maxBodySize, _ := cobraCmd.Flags().GetInt64(audit.AuditMaxBodySizeFlag)
-			excludedPaths, _ := cobraCmd.Flags().GetStringSlice(audit.AuditExcludedPathsFlag)
-			sensitiveHeaders, _ := cobraCmd.Flags().GetStringSlice(audit.AuditSensitiveHeadersFlag)
+			maxBodySize, err := cobraCmd.Flags().GetInt64(audit.AuditMaxBodySizeFlag)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read audit max body size: %w", err)
+			}
+			excludedPaths, err := cobraCmd.Flags().GetStringSlice(audit.AuditExcludedPathsFlag)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read audit excluded paths: %w", err)
+			}
+			sensitiveHeaders, err := cobraCmd.Flags().GetStringSlice(audit.AuditSensitiveHeadersFlag)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read audit sensitive headers: %w", err)
+			}
 
 			// Auto-detect audit topic from publisher wildcard mapping
 			auditTopic := audit.BuildAuditTopic(cobraCmd)
