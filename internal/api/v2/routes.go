@@ -47,6 +47,7 @@ func NewRouter(
 			}
 			router.Route("/buckets", func(router chi.Router) {
 				router.Delete("/{bucket}", deleteBucket(systemController))
+				router.Post("/{bucket}/restore", restoreBucket(systemController))
 			})
 		})
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))

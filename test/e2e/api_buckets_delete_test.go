@@ -234,6 +234,131 @@ var _ = Context("Buckets deletion API tests", func() {
 				Expect(ledgers.V2LedgerListResponse.Cursor.Data[0].Name).To(Equal("temp-ledger"))
 				Expect(ledgers.V2LedgerListResponse.Cursor.Data[0].Bucket).To(Equal(emptyBucket))
 			})
+
+			When("restoring the bucket", func() {
+				var restoreErr error
+
+				JustBeforeEach(func(specContext SpecContext) {
+					_, restoreErr = Wait(specContext, DeferClient(testServer)).Ledger.V2.RestoreBucket(ctx, operations.V2RestoreBucketRequest{
+						Bucket: emptyBucket,
+					})
+				})
+
+				It("should succeed", func() {
+					Expect(restoreErr).To(BeNil())
+				})
+
+				It("should list the ledger after restoration", func(specContext SpecContext) {
+					ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+						PageSize: pointer.For(int64(100)),
+						RequestBody: map[string]any{
+							"$match": map[string]any{
+								"bucket": emptyBucket,
+							},
+						},
+					})
+					Expect(err).To(BeNil())
+					Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(1))
+					Expect(ledgers.V2LedgerListResponse.Cursor.Data[0].Name).To(Equal("temp-ledger"))
+					Expect(ledgers.V2LedgerListResponse.Cursor.Data[0].Bucket).To(Equal(emptyBucket))
+				})
+			})
+		})
+	})
+
+	When("restoring a deleted bucket", func() {
+		const (
+			bucket1 = "restore-bucket1"
+			bucket2 = "restore-bucket2"
+		)
+
+		BeforeEach(func(specContext SpecContext) {
+			// Create 2 ledgers in bucket1
+			for i := range 2 {
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+					Ledger: fmt.Sprintf("restore-ledger1-%d", i),
+					V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+						Bucket: pointer.For(bucket1),
+					},
+				})
+				Expect(err).To(BeNil())
+			}
+
+			// Create 1 ledger in bucket2
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+				Ledger: "restore-ledger2-0",
+				V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+					Bucket: pointer.For(bucket2),
+				},
+			})
+			Expect(err).To(BeNil())
+
+			// Delete bucket1
+			_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteBucket(ctx, operations.V2DeleteBucketRequest{
+				Bucket: bucket1,
+			})
+			Expect(err).To(BeNil())
+		})
+
+		It("should not list ledgers from bucket1 before restoration", func(specContext SpecContext) {
+			ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+				PageSize: pointer.For(int64(100)),
+				RequestBody: map[string]any{
+					"$match": map[string]any{
+						"bucket": bucket1,
+					},
+				},
+			})
+			Expect(err).To(BeNil())
+			Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(0))
+		})
+
+		When("restoring bucket1", func() {
+			var restoreErr error
+
+			JustBeforeEach(func(specContext SpecContext) {
+				_, restoreErr = Wait(specContext, DeferClient(testServer)).Ledger.V2.RestoreBucket(ctx, operations.V2RestoreBucketRequest{
+					Bucket: bucket1,
+				})
+			})
+
+			It("should succeed", func() {
+				Expect(restoreErr).To(BeNil())
+			})
+
+			It("should list ledgers from bucket1 after restoration", func(specContext SpecContext) {
+				ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+					PageSize: pointer.For(int64(100)),
+					RequestBody: map[string]any{
+						"$match": map[string]any{
+							"bucket": bucket1,
+						},
+					},
+				})
+				Expect(err).To(BeNil())
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(2))
+			})
+
+			It("should still list ledgers from bucket2", func(specContext SpecContext) {
+				ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+					PageSize: pointer.For(int64(100)),
+					RequestBody: map[string]any{
+						"$match": map[string]any{
+							"bucket": bucket2,
+						},
+					},
+				})
+				Expect(err).To(BeNil())
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(1))
+			})
+
+			It("should list all ledgers including restored ones", func(specContext SpecContext) {
+				ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+					PageSize: pointer.For(int64(100)),
+				})
+				Expect(err).To(BeNil())
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(3))
+			})
 		})
 	})
 })
