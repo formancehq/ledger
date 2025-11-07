@@ -1,3 +1,5 @@
+name: ledger-standalone
+
 volumes:
   postgres: {}
 
@@ -63,7 +65,7 @@ services:
       - "./Caddyfile:/etc/caddy/Caddyfile"
 
   console:
-    image: ghcr.io/formancehq/console-v3:5d61287cb526ac11d897cfbae3d538be959b5f86
+    image: ghcr.io/formancehq/console-v3:f76467637c7c594a35a39690b5e26f69936b2dcf
     ports:
       - "3000:3000"
     environment:
