@@ -68,12 +68,12 @@ release:
     - Join our [GitHub Discussions](https://github.com/orgs/formancehq/discussions)
 
 archives:
-  - id: "{{.ProjectName}}-ce"
+  - id: "{{.ProjectName}}"
     builds:
       - ledger
       - benchmarks
     format: tar.gz
-    name_template: "{{.ProjectName}}-ce_{{.Os}}-{{.Arch}}"
+    name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
   - id: "{{.ProjectName}}-ee"
     builds:
       - ledger-ee
@@ -83,7 +83,7 @@ archives:
 nfpms:
   - id: ledger
     package_name: ledger
-    file_name_template: "{{ .ProjectName }}-ce_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
       - ledger
     homepage: https://formance.com
