@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/robfig/cron/v3"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/fx"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
 type BucketCleanupRunnerConfig struct {

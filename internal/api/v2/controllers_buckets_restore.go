@@ -1,12 +1,14 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/controller/system"
-	"github.com/go-chi/chi/v5"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/go-libs/v3/api"
+
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/system"
 )
 
 // restoreBucket returns an HTTP handler that restores the bucket identified by the URL parameter "bucket".

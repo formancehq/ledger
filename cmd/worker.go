@@ -4,6 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/robfig/cron/v3"
+	"github.com/spf13/cobra"
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
@@ -14,11 +20,6 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/worker"
-	"github.com/robfig/cron/v3"
-	"github.com/spf13/cobra"
-	"go.uber.org/fx"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (

@@ -34,12 +34,12 @@ func (h ledgersResourceHandler) BuildDataset(ctx common.RepositoryHandlerBuildCo
 	query := h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
 		Column("*")
-	
+
 	// Only filter out deleted ledgers if IncludeDeleted is false (default behavior)
 	if !ctx.Opts.IncludeDeleted {
 		query = query.Where("deleted_at IS NULL")
 	}
-	
+
 	return query, nil
 }
 

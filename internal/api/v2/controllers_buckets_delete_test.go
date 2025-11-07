@@ -2,17 +2,17 @@ package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/logging"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/pkg/errors"
-
-	sharedapi "github.com/formancehq/go-libs/v3/api"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	sharedapi "github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func TestDeleteBucket(t *testing.T) {
@@ -68,4 +68,3 @@ func TestDeleteBucket(t *testing.T) {
 		})
 	}
 }
-

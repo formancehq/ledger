@@ -8,7 +8,6 @@ import (
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 
-
 	"github.com/formancehq/go-libs/v3/grpcserver"
 	"github.com/formancehq/go-libs/v3/serverport"
 

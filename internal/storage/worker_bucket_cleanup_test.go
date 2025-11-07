@@ -7,18 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robfig/cron/v3"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/bun/bundebug"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	. "github.com/formancehq/go-libs/v3/testing/utils"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/robfig/cron/v3"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
 )
 
 func TestBucketCleanupRunner(t *testing.T) {

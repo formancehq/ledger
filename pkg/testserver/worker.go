@@ -3,11 +3,11 @@ package testserver
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 
 	"github.com/formancehq/ledger/cmd"
-	"time"
 )
 
 // LogsHashBlockMaxSizeInstrumentation returns an instrumentation function that appends the worker async block hasher max block size flag and the provided size to the run configuration's CLI arguments.

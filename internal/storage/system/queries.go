@@ -1,7 +1,7 @@
 package system
 
 type ListLedgersQueryPayload struct {
-	Bucket        string
-	Features      map[string]string
+	Bucket         string
+	Features       map[string]string
 	IncludeDeleted bool
 }
