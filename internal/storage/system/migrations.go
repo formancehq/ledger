@@ -11,6 +11,8 @@ import (
 	"github.com/uptrace/bun"
 )
 
+// GetMigrator creates a Migrator configured with the package's system schema migrations for the given database.
+// It appends the system schema option to any provided migration options, registers all system migrations, and returns the configured *migrations.Migrator.
 func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator {
 
 	// configuration table has been removed, we keep the model to keep migrations consistent but the table is not used anymore.

@@ -58,6 +58,8 @@ type WorkerCommandConfiguration struct {
 	WorkerGRPCConfig    `mapstructure:",squash"`
 }
 
+// addWorkerFlags adds command-line flags to cmd to configure worker runtime behavior.
+// The flags control async block hashing, pipeline pull/push/sync behavior and pagination, and bucket cleanup retention and schedule.
 func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(WorkerAsyncBlockHasherMaxBlockSizeFlag, 1000, "Max block size")
 	cmd.Flags().String(WorkerAsyncBlockHasherScheduleFlag, "0 * * * * *", "Schedule")
@@ -69,6 +71,9 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().String(WorkerBucketCleanupScheduleFlag, "0 0 * * * *", "Schedule for bucket cleanup (cron format)")
 }
 
+// NewWorkerCommand constructs the "worker" Cobra command which initializes and runs the worker service using loaded configuration and composed FX modules.
+// The command registers worker-specific flags via addWorkerFlags and common service, bunconnect, and OTLP flags, and exposes the --worker-grpc-address flag (default ":8081").
+// When executed it loads configuration and starts the service with the configured modules and a gRPC server.
 func NewWorkerCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "worker",
@@ -113,6 +118,8 @@ func NewWorkerCommand() *cobra.Command {
 	return cmd
 }
 
+// newWorkerModule creates an fx.Option that configures the worker module using the provided WorkerConfiguration.
+// It maps the configuration into AsyncBlockRunnerConfig, ReplicationConfig, and BucketCleanupRunnerConfig for the worker.
 func newWorkerModule(configuration WorkerConfiguration) fx.Option {
 	return worker.NewFXModule(worker.ModuleConfig{
 		AsyncBlockRunnerConfig: storage.AsyncBlockRunnerConfig{

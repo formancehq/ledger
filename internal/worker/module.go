@@ -25,6 +25,9 @@ type ModuleConfig struct {
 	BucketCleanupRunnerConfig storage.BucketCleanupRunnerConfig
 }
 
+// NewFXModule constructs an fx.Option that installs the storage async block runner,
+// the replication worker, and the bucket cleanup runner modules into an Fx application.
+// The provided cfg supplies each submodule's configuration.
 func NewFXModule(cfg ModuleConfig) fx.Option {
 	return fx.Options(
 		// todo: add auto discovery
