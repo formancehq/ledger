@@ -257,9 +257,11 @@ func (m *Manager) Run(ctx context.Context) {
 
 	close(m.started)
 
+	// copy to prevent data race when setting the stopChannel to nil
+	stopChannel := m.stopChannel
 	for {
 		select {
-		case signalChannel := <-m.stopChannel:
+		case signalChannel := <-stopChannel:
 			m.logger.Debugf("got stop signal")
 			m.stopPipelines(ctx)
 			m.pipelinesWaitGroup.Wait()
@@ -291,14 +293,9 @@ func (m *Manager) Stop(ctx context.Context) error {
 	m.logger.Info("stopping manager")
 	signalChannel := make(chan error, 1)
 
-	if m.stopChannel == nil {
-		return nil
-	}
-
 	select {
 	case m.stopChannel <- signalChannel:
 		close(m.stopChannel)
-		m.stopChannel = nil
 		m.logger.Debug("stopping manager signal sent")
 		select {
 		case <-signalChannel:

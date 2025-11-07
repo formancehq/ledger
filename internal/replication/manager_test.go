@@ -33,12 +33,6 @@ func startManager(
 		WithSyncPeriod(time.Second),
 	)
 	go manager.Run(ctx)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-
-		require.NoError(t, manager.Stop(ctx))
-	})
 
 	return manager
 }
@@ -122,6 +116,9 @@ func TestManagerExportersNominal(t *testing.T) {
 		driverFactory,
 		exporterConfigValidator,
 	)
+	t.Cleanup(func() {
+		require.NoError(t, manager.Stop(ctx))
+	})
 	<-manager.Started()
 
 	err := manager.StartPipeline(ctx, pipeline.ID)
@@ -208,6 +205,9 @@ func TestManagerExportersUpdate(t *testing.T) {
 		driverFactory,
 		exporterConfigValidator,
 	)
+	t.Cleanup(func() {
+		require.NoError(t, manager.Stop(ctx))
+	})
 	<-manager.Started()
 
 	err := manager.StartPipeline(ctx, pipeline.ID)
