@@ -1,4 +1,8 @@
-# ![ledger](docs/ledger-logo.svg) Formance Ledger
+<p align="center">
+  <img src="https://formance01.b-cdn.net/Github-Attachements/banners/ledger-readme-banner.webp" alt="ledger" width="100%" />
+</p>
+
+#  Formance Ledger
 
 Formance Ledger is a programmable financial core ledger that provides a foundation for all kind of money-moving applications. It provides an atomic multi-postings transactions system, account-based modeling, and is programmable in [numscript](https://docs.formance.com/modules/numscript/introduction), a built-in DSL to model financial transactions.
 
@@ -37,7 +41,7 @@ http POST :80/api/ledger/v2/quickstart/transactions postings:='[{"amount":100,"a
 
 And get a visual feedback on the Ledger Console UI started on [http://localhost:3000/formance/localhost?region=localhost](http://localhost:3000/formance/localhost?region=localhost):
 
-![console](examples/standalone/console-screenshot.png)
+![console](https://formance01.b-cdn.net/Github-Attachements/console-screenshot.png)
 
 ## Production 🛡️
 
