@@ -1,47 +1,45 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger/ee"
-	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/replication"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/internal/worker"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"net/http"
 	"net/http/pprof"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	apilib "github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/health"
-	"github.com/formancehq/go-libs/v3/httpserver"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/go-chi/chi/v5"
-	"go.opentelemetry.io/otel/sdk/metric"
-
-	"github.com/formancehq/ledger/internal/bus"
-
+	"github.com/formancehq/go-libs/v3/audit"
 	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/aws/iam"
+	"github.com/formancehq/go-libs/v3/ballast"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/health"
+	"github.com/formancehq/go-libs/v3/httpserver"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/publish"
+	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger/internal/api"
-
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
-
-	"github.com/formancehq/go-libs/v3/ballast"
-	"github.com/formancehq/go-libs/v3/service"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/internal/worker"
+	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type ServeCommandConfig struct {
@@ -94,6 +92,7 @@ func NewServeCommand() *cobra.Command {
 				fx.NopLogger,
 				otlpModule(cmd, cfg.commonConfig),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
+				auditModule(cmd),
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
@@ -138,8 +137,16 @@ func NewServeCommand() *cobra.Command {
 
 					MeterProvider *metric.MeterProvider         `optional:"true"`
 					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					AuditClient   *audit.PublisherClient        `optional:"true"`
 				},
 				) chi.Router {
+					// Build middleware chain
+					var middlewares []func(http.Handler) http.Handler
+					if params.AuditClient != nil {
+						params.Logger.Infof("Adding audit middleware to router")
+						middlewares = append(middlewares, audit.HTTPMiddlewareWithPublisher(params.AuditClient))
+					}
+
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
 						params.MeterProvider,
@@ -147,6 +154,7 @@ func NewServeCommand() *cobra.Command {
 						params.HealthController,
 						params.Logger,
 						params.Handler,
+						middlewares...,
 					)
 				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
@@ -169,16 +177,6 @@ func NewServeCommand() *cobra.Command {
 				)
 			}
 
-			// Add EE modules (audit, etc.)
-			eeModules, err := getEEModules(cmd)
-			if err != nil {
-				return fmt.Errorf("failed to load EE modules: %w", err)
-			}
-			options = append(options, eeModules...)
-
-			// Inject EE middleware (audit, etc.)
-			options = append(options, injectEEMiddleware())
-
 			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},
 	}
@@ -197,8 +195,8 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 
-	// Add EE-specific flags (audit, etc.)
-	ee.AddFlags(cmd)
+	// Add audit flags
+	audit.AddFlags(cmd.Flags())
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
@@ -221,8 +219,11 @@ func assembleFinalRouter(
 	healthController *health.HealthController,
 	logger logging.Logger,
 	handler http.Handler,
+	middlewares ...func(http.Handler) http.Handler,
 ) *chi.Mux {
 	wrappedRouter := chi.NewRouter()
+
+	// Add base middleware
 	wrappedRouter.Use(func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -231,6 +232,13 @@ func assembleFinalRouter(
 			handler.ServeHTTP(w, r)
 		})
 	})
+
+	// Add optional middlewares (e.g., audit middleware)
+	for _, mw := range middlewares {
+		if mw != nil {
+			wrappedRouter.Use(mw)
+		}
+	}
 	wrappedRouter.Route("/_/", func(r chi.Router) {
 		if exporter != nil {
 			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
@@ -259,6 +267,59 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
+}
+
+func auditModule(cmd *cobra.Command) fx.Option {
+	return fx.Module("audit",
+		fx.Provide(func(
+			publisher message.Publisher,
+			logger logging.Logger,
+		) (*audit.PublisherClient, error) {
+			// Load audit configuration from flags
+			auditEnabled, _ := cmd.Flags().GetBool(audit.AuditEnabledFlag)
+
+			if !auditEnabled {
+				return nil, nil // Audit disabled, return nil (optional in DI)
+			}
+
+			// Load audit settings
+			maxBodySize, _ := cmd.Flags().GetInt64(audit.AuditMaxBodySizeFlag)
+			excludedPaths, _ := cmd.Flags().GetStringSlice(audit.AuditExcludedPathsFlag)
+			sensitiveHeaders, _ := cmd.Flags().GetStringSlice(audit.AuditSensitiveHeadersFlag)
+
+			// Auto-detect audit topic from publisher wildcard mapping
+			auditTopic := audit.BuildAuditTopic(cmd)
+
+			// Create client
+			client := audit.NewClientWithPublisher(
+				publisher,
+				auditTopic,
+				ServiceName,
+				maxBodySize,
+				excludedPaths,
+				sensitiveHeaders,
+				logger,
+			)
+
+			logger.Infof("Audit logging enabled (topic=%s, max-body-size=%d, excluded-paths=%d)",
+				auditTopic, maxBodySize, len(excludedPaths))
+
+			return client, nil
+		}),
+
+		// Lifecycle: Close audit client on shutdown
+		fx.Invoke(func(lc fx.Lifecycle, client *audit.PublisherClient) {
+			if client == nil {
+				return // Audit disabled
+			}
+
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					return client.Close()
+				},
+			})
+		}),
+	)
 }
 
 func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
