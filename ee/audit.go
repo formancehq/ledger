@@ -4,6 +4,7 @@ package ee
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/go-libs/v3/audit"
@@ -20,10 +21,13 @@ func AuditModule(cobraCmd *cobra.Command, serviceName string) fx.Option {
 			logger logging.Logger,
 		) (*audit.PublisherClient, error) {
 			// Load audit configuration from flags
-			auditEnabled, _ := cobraCmd.Flags().GetBool(audit.AuditEnabledFlag)
-
+			auditEnabled, err := cobraCmd.Flags().GetBool(audit.AuditEnabledFlag)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read audit enabled flag: %w", err)
+			}
 			if !auditEnabled {
-				return nil, nil // Audit disabled, return nil (optional in DI)
+				logger.Infof("Audit logging disabled via --%s", audit.AuditEnabledFlag)
+				return nil, nil
 			}
 
 			// Load audit settings
