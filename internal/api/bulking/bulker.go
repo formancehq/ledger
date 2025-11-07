@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
+
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
@@ -13,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"sync/atomic"
 )
 
 var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
@@ -75,6 +76,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 			}
 
 		})
+		index++
 	}
 
 	wp.StopAndWait()
