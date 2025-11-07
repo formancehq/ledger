@@ -7,8 +7,9 @@ includes:
       url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/main/.goreleaser.default.yaml
 
 builds:
+  # Community Edition build
   - binary: ledger
-    id: ledger
+    id: ledger-ce
     ldflags:
       - -X github.com/formancehq/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/formancehq/ledger/cmd.Version=v{{ .Version }}
@@ -19,6 +20,23 @@ builds:
     goos:
       - linux
       - darwin
+    goarch:
+      - amd64
+      - arm64
+  # Enterprise Edition build
+  - binary: ledger-ee
+    id: ledger-ee
+    ldflags:
+      - -X github.com/formancehq/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/formancehq/ledger/cmd.Version=v{{ .Version }}
+      - -X github.com/formancehq/ledger/cmd.Commit={{ .ShortCommit }}
+      - -extldflags "-static"
+    tags:
+      - ee
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
     goarch:
       - amd64
       - arm64
@@ -50,19 +68,24 @@ release:
     - Join our [GitHub Discussions](https://github.com/orgs/formancehq/discussions)
 
 archives:
-  - id: "{{.ProjectName}}"
+  - id: "{{.ProjectName}}-ce"
     builds:
-      - ledger
+      - ledger-ce
       - benchmarks
     format: tar.gz
-    name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
+    name_template: "{{.ProjectName}}-ce_{{.Os}}-{{.Arch}}"
+  - id: "{{.ProjectName}}-ee"
+    builds:
+      - ledger-ee
+    format: tar.gz
+    name_template: "{{.ProjectName}}-ee_{{.Os}}-{{.Arch}}"
 
 nfpms:
-  - id: ledger
+  - id: ledger-ce
     package_name: ledger
-    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    file_name_template: "{{ .ProjectName }}-ce_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
-      - ledger
+      - ledger-ce
     homepage: https://formance.com
     maintainer: Maxence Maireaux <maxence@formance.com>
     formats:
@@ -82,7 +105,7 @@ nfpms:
 publishers:
   - name: fury.io
     ids:
-      - ledger
+      - ledger-ce
       - benchmarks
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl --http1.1 -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
@@ -102,7 +125,7 @@ brews:
           branch: main
     directory: Formula
     homepage: https://formance.com
-    skip_upload: 'false'
+    skip_upload: "false"
     test: |
       system "#{bin}/ledger version"
     install: |
@@ -121,6 +144,6 @@ brews:
           branch: main
     directory: Formula
     homepage: https://formance.com
-    skip_upload: 'false'
+    skip_upload: "false"
     install: |
       bin.install "ledger-benchmarks"

@@ -39,6 +39,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/ballast"
 	"github.com/formancehq/go-libs/v3/service"
+	"github.com/formancehq/ledger/ee"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
@@ -93,6 +94,7 @@ func NewServeCommand() *cobra.Command {
 				fx.NopLogger,
 				otlpModule(cmd, cfg.commonConfig),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
+				ee.Module(cmd), // Enterprise Edition features (audit, etc.)
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
@@ -185,6 +187,9 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
+
+	// Add EE flags (if EE build)
+	ee.AddFlags(cmd)
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
