@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -183,7 +182,7 @@ func (d *DefaultStore) DeleteExporter(ctx context.Context, id string) error {
 		panic(err)
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return postgres.ErrNotFound
 	}
 
 	return err
@@ -258,7 +257,7 @@ func (d *DefaultStore) DeletePipeline(ctx context.Context, id string) error {
 		panic(err)
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return postgres.ErrNotFound
 	}
 
 	return err
@@ -302,7 +301,7 @@ func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLo
 		panic(err)
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return postgres.ErrNotFound
 	}
 
 	return nil
