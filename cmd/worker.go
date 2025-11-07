@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
@@ -16,7 +18,6 @@ import (
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"time"
 )
 
 const (
@@ -27,6 +28,9 @@ const (
 
 	WorkerAsyncBlockHasherMaxBlockSizeFlag = "worker-async-block-hasher-max-block-size"
 	WorkerAsyncBlockHasherScheduleFlag     = "worker-async-block-hasher-schedule"
+
+	WorkerBucketCleanupRetentionPeriodFlag = "worker-bucket-cleanup-retention-period"
+	WorkerBucketCleanupScheduleFlag        = "worker-bucket-cleanup-schedule"
 
 	WorkerGRPCAddressFlag = "worker-grpc-address"
 )
@@ -43,6 +47,9 @@ type WorkerConfiguration struct {
 	PullInterval    time.Duration `mapstructure:"worker-pipelines-pull-interval"`
 	SyncPeriod      time.Duration `mapstructure:"worker-pipelines-sync-period"`
 	LogsPageSize    uint64        `mapstructure:"worker-pipelines-logs-page-size"`
+
+	BucketCleanupRetentionPeriod time.Duration `mapstructure:"worker-bucket-cleanup-retention-period"`
+	BucketCleanupCRONSpec        cron.Schedule `mapstructure:"worker-bucket-cleanup-schedule"`
 }
 
 type WorkerCommandConfiguration struct {
@@ -58,6 +65,8 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(WorkerPipelinesPushRetryPeriodFlag, 10*time.Second, "Pipelines push retry period")
 	cmd.Flags().Duration(WorkerPipelinesSyncPeriod, time.Minute, "Pipelines sync period")
 	cmd.Flags().Uint64(WorkerPipelinesLogsPageSize, 100, "Pipelines logs page size")
+	cmd.Flags().Duration(WorkerBucketCleanupRetentionPeriodFlag, 30*24*time.Hour, "Retention period for deleted buckets before hard delete")
+	cmd.Flags().String(WorkerBucketCleanupScheduleFlag, "0 0 * * * *", "Schedule for bucket cleanup (cron format)")
 }
 
 func NewWorkerCommand() *cobra.Command {
@@ -115,6 +124,10 @@ func newWorkerModule(configuration WorkerConfiguration) fx.Option {
 			PullInterval:    configuration.PullInterval,
 			SyncPeriod:      configuration.SyncPeriod,
 			LogsPageSize:    configuration.LogsPageSize,
+		},
+		BucketCleanupRunnerConfig: storage.BucketCleanupRunnerConfig{
+			RetentionPeriod: configuration.BucketCleanupRetentionPeriod,
+			Schedule:        configuration.BucketCleanupCRONSpec,
 		},
 	})
 }

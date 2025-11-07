@@ -1,0 +1,159 @@
+package storage
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/robfig/cron/v3"
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+	"go.uber.org/fx"
+)
+
+type BucketCleanupRunnerConfig struct {
+	RetentionPeriod time.Duration
+	Schedule        cron.Schedule
+}
+
+type BucketCleanupRunner struct {
+	stopChannel chan chan struct{}
+	logger      logging.Logger
+	db          *bun.DB
+	cfg         BucketCleanupRunnerConfig
+	tracer      trace.Tracer
+}
+
+func (r *BucketCleanupRunner) Name() string {
+	return "Bucket cleanup runner"
+}
+
+func (r *BucketCleanupRunner) Run(ctx context.Context) error {
+	now := time.Now()
+	next := r.cfg.Schedule.Next(now).Sub(now)
+
+	for {
+		select {
+		case <-time.After(next):
+			if err := r.run(ctx); err != nil {
+				r.logger.Errorf("error running bucket cleanup: %v", err)
+			}
+
+			now = time.Now()
+			next = r.cfg.Schedule.Next(now).Sub(now)
+		case ch := <-r.stopChannel:
+			close(ch)
+			return nil
+		}
+	}
+}
+
+func (r *BucketCleanupRunner) Stop(ctx context.Context) error {
+	ch := make(chan struct{})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case r.stopChannel <- ch:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ch:
+		}
+	}
+	return nil
+}
+
+func (r *BucketCleanupRunner) run(ctx context.Context) error {
+	ctx, span := r.tracer.Start(ctx, "Run")
+	defer span.End()
+
+	// Calculate the cutoff time: buckets deleted before this time should be hard deleted
+	cutoffTime := time.Now().Add(-r.cfg.RetentionPeriod)
+	span.SetAttributes(attribute.String("cutoff_time", cutoffTime.Format(time.RFC3339)))
+
+	systemStore := systemstore.New(r.db)
+	buckets, err := systemStore.GetDeletedBucketsOlderThan(ctx, cutoffTime)
+	if err != nil {
+		return fmt.Errorf("getting deleted buckets: %w", err)
+	}
+
+	span.SetAttributes(attribute.Int("buckets_to_delete", len(buckets)))
+
+	for _, bucket := range buckets {
+		if err := r.processBucket(ctx, bucket); err != nil {
+			r.logger.Errorf("error processing bucket %s: %v", bucket, err)
+			// Continue with other buckets even if one fails
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (r *BucketCleanupRunner) processBucket(ctx context.Context, bucket string) error {
+	ctx, span := r.tracer.Start(ctx, "ProcessBucket")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("bucket", bucket))
+
+	systemStore := systemstore.New(r.db)
+	if err := systemStore.HardDeleteBucket(ctx, bucket); err != nil {
+		return fmt.Errorf("hard deleting bucket %s: %w", bucket, err)
+	}
+
+	r.logger.Infof("Successfully hard deleted bucket: %s", bucket)
+	return nil
+}
+
+func NewBucketCleanupRunner(logger logging.Logger, db *bun.DB, cfg BucketCleanupRunnerConfig, opts ...BucketCleanupRunnerOption) *BucketCleanupRunner {
+	ret := &BucketCleanupRunner{
+		stopChannel: make(chan chan struct{}),
+		logger:      logger,
+		db:          db,
+		cfg:         cfg,
+	}
+
+	for _, opt := range append(defaultBucketCleanupRunnerOptions, opts...) {
+		opt(ret)
+	}
+
+	return ret
+}
+
+type BucketCleanupRunnerOption func(*BucketCleanupRunner)
+
+func WithBucketCleanupRunnerTracer(tracer trace.Tracer) BucketCleanupRunnerOption {
+	return func(r *BucketCleanupRunner) {
+		r.tracer = tracer
+	}
+}
+
+var defaultBucketCleanupRunnerOptions = []BucketCleanupRunnerOption{
+	WithBucketCleanupRunnerTracer(noop.Tracer{}),
+}
+
+func NewBucketCleanupRunnerModule(cfg BucketCleanupRunnerConfig) fx.Option {
+	return fx.Options(
+		fx.Provide(func(logger logging.Logger, db *bun.DB) (*BucketCleanupRunner, error) {
+			return NewBucketCleanupRunner(logger, db, cfg), nil
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, bucketCleanupRunner *BucketCleanupRunner) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					go func() {
+						if err := bucketCleanupRunner.Run(context.WithoutCancel(ctx)); err != nil {
+							panic(err)
+						}
+					}()
+
+					return nil
+				},
+				OnStop: bucketCleanupRunner.Stop,
+			})
+		}),
+	)
+}

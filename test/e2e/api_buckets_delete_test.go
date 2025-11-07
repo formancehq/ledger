@@ -164,9 +164,10 @@ var _ = Context("Buckets deletion API tests", func() {
 				bucket1Count := 0
 				bucket2Count := 0
 				for _, ledger := range ledgers.V2LedgerListResponse.Cursor.Data {
-					if ledger.Bucket == bucket1 {
+					switch ledger.Bucket {
+					case bucket1:
 						bucket1Count++
-					} else if ledger.Bucket == bucket2 {
+					case bucket2:
 						bucket2Count++
 					}
 				}

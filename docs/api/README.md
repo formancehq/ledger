@@ -170,6 +170,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
         "name": "string",
         "addedAt": "2019-08-24T14:15:22Z",
         "bucket": "string",
+        "deletedAt": "2019-08-24T14:15:22Z",
         "metadata": {
           "admin": "true"
         },
@@ -227,6 +228,7 @@ Accept: application/json
     "name": "string",
     "addedAt": "2019-08-24T14:15:22Z",
     "bucket": "string",
+    "deletedAt": "2019-08-24T14:15:22Z",
     "metadata": {
       "admin": "true"
     },
@@ -5380,6 +5382,7 @@ and
   "name": "string",
   "addedAt": "2019-08-24T14:15:22Z",
   "bucket": "string",
+  "deletedAt": "2019-08-24T14:15:22Z",
   "metadata": {
     "admin": "true"
   },
@@ -5399,6 +5402,7 @@ and
 |name|string|true|none|none|
 |addedAt|string(date-time)|true|none|none|
 |bucket|string|true|none|none|
+|deletedAt|string(date-time)¦null|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|false|none|none|
 |features|object|false|none|none|
 |» **additionalProperties**|string|false|none|none|
@@ -5423,6 +5427,7 @@ and
         "name": "string",
         "addedAt": "2019-08-24T14:15:22Z",
         "bucket": "string",
+        "deletedAt": "2019-08-24T14:15:22Z",
         "metadata": {
           "admin": "true"
         },
@@ -5480,6 +5485,7 @@ and
     "name": "string",
     "addedAt": "2019-08-24T14:15:22Z",
     "bucket": "string",
+    "deletedAt": "2019-08-24T14:15:22Z",
     "metadata": {
       "admin": "true"
     },

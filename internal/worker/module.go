@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+
 	"github.com/formancehq/go-libs/v3/grpcserver"
 	"github.com/formancehq/go-libs/v3/serverport"
 	"github.com/formancehq/ledger/internal/replication"
@@ -19,16 +20,17 @@ type GRPCServerModuleConfig struct {
 }
 
 type ModuleConfig struct {
-	AsyncBlockRunnerConfig storage.AsyncBlockRunnerConfig
-	ReplicationConfig      replication.WorkerModuleConfig
+	AsyncBlockRunnerConfig    storage.AsyncBlockRunnerConfig
+	ReplicationConfig         replication.WorkerModuleConfig
+	BucketCleanupRunnerConfig storage.BucketCleanupRunnerConfig
 }
 
 func NewFXModule(cfg ModuleConfig) fx.Option {
 	return fx.Options(
 		// todo: add auto discovery
 		storage.NewAsyncBlockRunnerModule(cfg.AsyncBlockRunnerConfig),
-		// todo: add auto discovery
 		replication.NewWorkerFXModule(cfg.ReplicationConfig),
+		storage.NewBucketCleanupRunnerModule(cfg.BucketCleanupRunnerConfig),
 	)
 }
 
