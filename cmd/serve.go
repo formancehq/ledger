@@ -17,6 +17,7 @@ import (
 	"time"
 
 	apilib "github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/audit"
 	"github.com/formancehq/go-libs/v3/health"
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/otlp"
@@ -139,6 +140,7 @@ func NewServeCommand() *cobra.Command {
 
 					MeterProvider *metric.MeterProvider         `optional:"true"`
 					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					AuditClient   *audit.PublisherClient        `optional:"true"`
 				},
 				) chi.Router {
 					return assembleFinalRouter(
@@ -148,6 +150,7 @@ func NewServeCommand() *cobra.Command {
 						params.HealthController,
 						params.Logger,
 						params.Handler,
+						params.AuditClient,
 					)
 				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
@@ -212,6 +215,7 @@ func assembleFinalRouter(
 	healthController *health.HealthController,
 	logger logging.Logger,
 	handler http.Handler,
+	auditClient *audit.PublisherClient,
 ) *chi.Mux {
 	wrappedRouter := chi.NewRouter()
 	wrappedRouter.Use(func(handler http.Handler) http.Handler {
@@ -222,6 +226,13 @@ func assembleFinalRouter(
 			handler.ServeHTTP(w, r)
 		})
 	})
+
+	// Apply audit middleware if available (EE feature)
+	// This MUST be before mounting any routes
+	if auditClient != nil {
+		logger.Infof("Adding audit middleware to router (EE)")
+		wrappedRouter.Use(audit.HTTPMiddlewareWithPublisher(auditClient))
+	}
 	wrappedRouter.Route("/_/", func(r chi.Router) {
 		if exporter != nil {
 			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
