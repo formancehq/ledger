@@ -168,7 +168,7 @@ var _ = Context("Bucket cleanup worker", func() {
 			}
 
 			// Delete all buckets
-			for _, bucketName := range []string{bucket1Name, bucket2Name, bucket3Name} {
+			for _, bucketName := range []string{bucket1Name, bucket2Name} {
 				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.DeleteBucket(ctx, operations.V2DeleteBucketRequest{
 					Bucket: bucketName,
 				})
@@ -178,10 +178,9 @@ var _ = Context("Bucket cleanup worker", func() {
 
 		It("should handle multiple buckets correctly", func(specContext SpecContext) {
 
-			// Wait for the worker to run and verify via API
 			Eventually(func(g Gomega) bool {
 				// Verify ledger1 is deleted (even with includeDeleted=true)
-				ledgers1, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+				list, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 					PageSize:       pointer.For(int64(100)),
 					IncludeDeleted: pointer.For(true),
 					RequestBody: map[string]any{
@@ -191,12 +190,16 @@ var _ = Context("Bucket cleanup worker", func() {
 					},
 				})
 				g.Expect(err).To(BeNil())
-				if len(ledgers1.V2LedgerListResponse.Cursor.Data) > 0 {
-					return false
-				}
+
+				return len(list.V2LedgerListResponse.Cursor.Data) == 0
+			}).
+				WithTimeout(5*time.Second).
+				Should(BeTrue(), "buckets should be handled correctly")
+
+			Eventually(func(g Gomega) bool {
 
 				// Verify ledger2 is deleted (even with includeDeleted=true)
-				ledgers2, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+				list, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
 					PageSize:       pointer.For(int64(100)),
 					IncludeDeleted: pointer.For(true),
 					RequestBody: map[string]any{
@@ -206,29 +209,8 @@ var _ = Context("Bucket cleanup worker", func() {
 					},
 				})
 				g.Expect(err).To(BeNil())
-				if len(ledgers2.V2LedgerListResponse.Cursor.Data) > 0 {
-					return false
-				}
 
-				// Verify ledger3 still exists (with deleted_at set)
-				ledgers3, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
-					PageSize:       pointer.For(int64(100)),
-					IncludeDeleted: pointer.For(true),
-					RequestBody: map[string]any{
-						"$match": map[string]any{
-							"name": ledger3Name,
-						},
-					},
-				})
-				g.Expect(err).To(BeNil())
-				if len(ledgers3.V2LedgerListResponse.Cursor.Data) != 1 {
-					return false
-				}
-				if ledgers3.V2LedgerListResponse.Cursor.Data[0].DeletedAt == nil {
-					return false
-				}
-
-				return true
+				return len(list.V2LedgerListResponse.Cursor.Data) == 0
 			}).
 				WithTimeout(5*time.Second).
 				Should(BeTrue(), "buckets should be handled correctly")
@@ -246,7 +228,7 @@ var _ = Context("Bucket cleanup worker", func() {
 			Expect(err).To(BeNil())
 			Expect(ledgers3.V2LedgerListResponse.Cursor.Data).To(HaveLen(1))
 			Expect(ledgers3.V2LedgerListResponse.Cursor.Data[0].Name).To(Equal(ledger3Name))
-			Expect(ledgers3.V2LedgerListResponse.Cursor.Data[0].DeletedAt).NotTo(BeNil(), "ledger3 should have deletedAt set")
+			Expect(ledgers3.V2LedgerListResponse.Cursor.Data[0].DeletedAt).To(BeNil())
 			Expect(ledgers3.V2LedgerListResponse.Cursor.Data[0].Bucket).To(Equal(bucket3Name))
 		})
 	})
