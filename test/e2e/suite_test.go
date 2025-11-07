@@ -113,7 +113,6 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 	By("Waiting clickhouse")
 	_, err = clickhouseServer.Wait(specContext)
 	Expect(err).To(BeNil())
-	By("Waiting mock OIDC server")
 
 	By("All services ready.")
 
