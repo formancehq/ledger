@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 9325ae512a676a095c5816ca4e14fe31
+  docChecksum: 95481bf4f605a90a8b41e0f72bf10bfc
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -11,6 +11,7 @@ features:
   go:
     additionalDependencies: 0.1.0
     bigint: 0.0.2
+    constsAndDefaults: 0.1.12
     core: 3.8.1
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.3
@@ -713,6 +714,7 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
+          includeDeleted: false
       requestBody:
         application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:

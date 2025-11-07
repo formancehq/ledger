@@ -28,11 +28,17 @@ func (h ledgersResourceHandler) Schema() common.EntitySchema {
 	}
 }
 
-func (h ledgersResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[ListLedgersQueryPayload]) (*bun.SelectQuery, error) {
-	return h.store.db.NewSelect().
+func (h ledgersResourceHandler) BuildDataset(ctx common.RepositoryHandlerBuildContext[ListLedgersQueryPayload]) (*bun.SelectQuery, error) {
+	query := h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
-		Column("*").
-		Where("deleted_at IS NULL"), nil
+		Column("*")
+	
+	// Only filter out deleted ledgers if IncludeDeleted is false (default behavior)
+	if !ctx.Opts.IncludeDeleted {
+		query = query.Where("deleted_at IS NULL")
+	}
+	
+	return query, nil
 }
 
 func (h ledgersResourceHandler) ResolveFilter(_ common.ResourceQuery[ListLedgersQueryPayload], operator, property string, value any) (string, []any, error) {

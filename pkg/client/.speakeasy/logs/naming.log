@@ -88,7 +88,7 @@ ListLogsResponse (HttpMeta: HTTPMetadata, LogsCursorResponse: LogsCursorResponse
     Log (id: integer, type: enum, data: map ...)
      Type (enum: NEW_TRANSACTION, SET_METADATA)
 V2 (SDK empty)
-V2ListLedgersRequest (pageSize: integer, cursor: string, sort: string ...)
+V2ListLedgersRequest (pageSize: integer, cursor: string, includeDeleted: boolean ...)
 V2ListLedgersResponse (HttpMeta: HTTPMetadata, V2LedgerListResponse: V2LedgerListResponse)
  V2LedgerListResponse (cursor: class)
   V2LedgerListResponseCursor (pageSize: integer, hasMore: boolean, previous: string ...)

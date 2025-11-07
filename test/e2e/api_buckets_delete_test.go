@@ -134,6 +134,45 @@ var _ = Context("Buckets deletion API tests", func() {
 					Expect(ledger.Bucket).To(Equal(bucket2))
 				}
 			})
+
+			It("should list deleted ledgers from bucket1 when includeDeleted is true", func(specContext SpecContext) {
+				ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+					PageSize:       pointer.For(int64(100)),
+					IncludeDeleted: pointer.For(true),
+					RequestBody: map[string]any{
+						"$match": map[string]any{
+							"bucket": bucket1,
+						},
+					},
+				})
+				Expect(err).To(BeNil())
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(3))
+				// Verify all ledgers are from bucket1
+				for _, ledger := range ledgers.V2LedgerListResponse.Cursor.Data {
+					Expect(ledger.Bucket).To(Equal(bucket1))
+				}
+			})
+
+			It("should list all ledgers including deleted when includeDeleted is true", func(specContext SpecContext) {
+				ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+					PageSize:       pointer.For(int64(100)),
+					IncludeDeleted: pointer.For(true),
+				})
+				Expect(err).To(BeNil())
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(5))
+				// Verify we have ledgers from both buckets
+				bucket1Count := 0
+				bucket2Count := 0
+				for _, ledger := range ledgers.V2LedgerListResponse.Cursor.Data {
+					if ledger.Bucket == bucket1 {
+						bucket1Count++
+					} else if ledger.Bucket == bucket2 {
+						bucket2Count++
+					}
+				}
+				Expect(bucket1Count).To(Equal(3))
+				Expect(bucket2Count).To(Equal(2))
+			})
 		})
 	})
 
@@ -178,6 +217,22 @@ var _ = Context("Buckets deletion API tests", func() {
 				})
 				Expect(err).To(BeNil())
 				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(0))
+			})
+
+			It("should list the deleted ledger when includeDeleted is true", func(specContext SpecContext) {
+				ledgers, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
+					PageSize:       pointer.For(int64(100)),
+					IncludeDeleted: pointer.For(true),
+					RequestBody: map[string]any{
+						"$match": map[string]any{
+							"bucket": emptyBucket,
+						},
+					},
+				})
+				Expect(err).To(BeNil())
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data).To(HaveLen(1))
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data[0].Name).To(Equal("temp-ledger"))
+				Expect(ledgers.V2LedgerListResponse.Cursor.Data[0].Bucket).To(Equal(emptyBucket))
 			})
 		})
 	})

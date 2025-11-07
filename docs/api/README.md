@@ -136,6 +136,7 @@ Accept: application/json
 |---|---|---|---|---|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
+|includeDeleted|query|boolean|false|If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.|
 |sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
@@ -147,6 +148,8 @@ Accept: application/json
 Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
+
+**includeDeleted**: If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
 
 **sort**: Sort results using a field name and order (ascending or descending). 
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
