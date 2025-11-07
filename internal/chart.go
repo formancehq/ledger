@@ -10,8 +10,8 @@ import (
 )
 
 type AccountRules struct {
-	AllowedSources      map[string]interface{} `json:"allowedSources"`
-	AllowedDestinations map[string]interface{} `json:"allowedDestinations"`
+	AllowedSources      map[string]interface{} `json:"allowedSources,omitempty"`
+	AllowedDestinations map[string]interface{} `json:"allowedDestinations,omitempty"`
 }
 
 type AccountSchema struct {
@@ -155,7 +155,8 @@ func (s *ChartOfAccounts) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(out)
 }
-func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
+
+func (s *SegmentSchema) marshalJsonObject() (map[string]any, error) {
 	out := make(map[string]any)
 	for key, value := range s.FixedSegments {
 		serialized, err := value.MarshalJSON()
@@ -163,17 +164,10 @@ func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 		out[key] = json.RawMessage(serialized)
-
-		// if value.Fixed != nil {
-		// 	out[*value.Fixed] = json.RawMessage(serialized)
-		// } else if value.Label != nil {
-		// 	key := "$" + *value.Label
-		// 	out[key] = json.RawMessage(serialized)
-		// }
 	}
 	if s.VariableSegment != nil {
 		key := fmt.Sprintf("$%v", s.VariableSegment.Label)
-		serialized, err := s.VariableSegment.SegmentSchema.MarshalJSON()
+		serialized, err := s.VariableSegment.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -183,8 +177,30 @@ func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
 		if s.Account.Metadata != nil {
 			out["_metadata"] = s.Account.Metadata
 		}
-		out["_rules"] = s.Account.Rules
+		if s.Account.Rules.AllowedDestinations != nil || s.Account.Rules.AllowedSources != nil {
+			out["_rules"] = s.Account.Rules
+		}
+		if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
+			out["_self"] = map[string]interface{}{}
+		}
 	}
+	return out, nil
+}
+
+func (s *SegmentSchema) MarshalJSON() ([]byte, error) {
+	out, err := s.marshalJsonObject()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(out)
+}
+
+func (s *VariableSegment) MarshalJSON() ([]byte, error) {
+	out, err := s.marshalJsonObject()
+	if err != nil {
+		return nil, err
+	}
+	out["_pattern"] = s.Pattern
 	return json.Marshal(out)
 }
 

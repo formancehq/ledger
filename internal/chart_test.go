@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"testing"
 
@@ -90,8 +89,8 @@ func TestChartOfAccounts(t *testing.T) {
 
 	require.Equal(t, expected, chart)
 
-	value, err := json.MarshalIndent(&chart, "", "  ")
+	value, err := json.MarshalIndent(&chart, "", "    ")
 	require.NoError(t, err)
-	fmt.Printf("%v\n", string(value))
+	require.JSONEq(t, src, string(value))
 
 }
