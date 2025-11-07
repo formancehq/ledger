@@ -16,6 +16,7 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, system.ListLedgersQueryPayload]
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+	DeleteBucket(ctx context.Context, bucket string) error
 }
 
 type Driver interface {

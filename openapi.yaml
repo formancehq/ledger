@@ -2704,6 +2704,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/_/buckets/{bucket}:
+    parameters:
+      - name: bucket
+        description: The bucket name
+        in: path
+        schema:
+          type: string
+        required: true
+    delete:
+      summary: Delete bucket
+      operationId: v2DeleteBucket
+      x-speakeasy-name-override: DeleteBucket
+      tags:
+        - ledger.v2
+      description: >-
+        Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). All ledgers in the bucket will have their deleted_at field set to the current timestamp.
+      responses:
+        "204":
+          description: Bucket deleted
+        "404":
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/pipelines:
     parameters:
       - name: ledger

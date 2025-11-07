@@ -50,6 +50,7 @@ type Controller interface {
 	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+	DeleteBucket(ctx context.Context, bucket string) error
 }
 
 type DefaultController struct {
@@ -226,6 +227,12 @@ func (ctrl *DefaultController) UpdateLedgerMetadata(ctx context.Context, name st
 func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param string, key string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.driver.GetSystemStore().DeleteLedgerMetadata(ctx, param, key)
+	})))
+}
+
+func (ctrl *DefaultController) DeleteBucket(ctx context.Context, bucket string) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteBucket", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.driver.GetSystemStore().DeleteBucket(ctx, bucket)
 	})))
 }
 

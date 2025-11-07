@@ -33,7 +33,8 @@ func (h ledgersResourceHandler) Schema() common.EntitySchema {
 func (h ledgersResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[ListLedgersQueryPayload]) (*bun.SelectQuery, error) {
 	return h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
-		Column("*"), nil
+		Column("*").
+		Where("deleted_at IS NULL"), nil
 }
 
 func (h ledgersResourceHandler) ResolveFilter(_ common.ResourceQuery[ListLedgersQueryPayload], operator, property string, value any) (string, []any, error) {

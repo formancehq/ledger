@@ -157,6 +157,7 @@ func main() {
 * [GetExporterState](docs/sdks/v2/README.md#getexporterstate) - Get exporter state
 * [UpdateExporter](docs/sdks/v2/README.md#updateexporter) - Update exporter
 * [DeleteExporter](docs/sdks/v2/README.md#deleteexporter) - Delete exporter
+* [DeleteBucket](docs/sdks/v2/README.md#deletebucket) - Delete bucket
 * [ListPipelines](docs/sdks/v2/README.md#listpipelines) - List pipelines
 * [CreatePipeline](docs/sdks/v2/README.md#createpipeline) - Create pipeline
 * [GetPipelineState](docs/sdks/v2/README.md#getpipelinestate) - Get pipeline state

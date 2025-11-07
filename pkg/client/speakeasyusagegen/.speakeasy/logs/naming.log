@@ -209,6 +209,8 @@ V2UpdateExporterRequest (exporterID: string, V2ExporterConfiguration: V2Exporter
 V2UpdateExporterResponse (HttpMeta: HTTPMetadata)
 V2DeleteExporterRequest (exporterID: string)
 V2DeleteExporterResponse (HttpMeta: HTTPMetadata)
+V2DeleteBucketRequest (bucket: string)
+V2DeleteBucketResponse (HttpMeta: HTTPMetadata, V2ErrorResponse: V2ErrorResponse)
 V2ListPipelinesRequest (ledger: string)
 V2ListPipelinesResponse (HttpMeta: HTTPMetadata, V2ListPipelinesResponse: V2ListPipelinesResponse)
  V2ListPipelinesResponse (cursor: class)
