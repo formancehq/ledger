@@ -46,4 +46,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: graphs
-          path: test/performance/report
+          path: test/performance/pkg/write/report
