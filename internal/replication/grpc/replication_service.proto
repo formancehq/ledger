@@ -9,6 +9,7 @@ service Replication {
   rpc CreateExporter(CreateExporterRequest) returns (CreateExporterResponse);
   rpc ListExporters(ListExportersRequest) returns (ListExportersResponse);
   rpc GetExporter(GetExporterRequest) returns (GetExporterResponse);
+  rpc UpdateExporter(UpdateExporterRequest) returns (UpdateExporterResponse);
   rpc DeleteExporter(DeleteExporterRequest) returns (DeleteExporterResponse);
   rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse);
   rpc GetPipeline(GetPipelineRequest) returns (GetPipelineResponse);
@@ -66,6 +67,13 @@ message CreateExporterRequest {
 message CreateExporterResponse {
   Exporter exporter = 1;
 }
+
+message UpdateExporterRequest {
+  string id = 1;
+  ExporterConfiguration config = 2;
+}
+
+message UpdateExporterResponse {}
 
 message ListPipelinesRequest {
   string cursor = 1;

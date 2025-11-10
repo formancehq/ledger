@@ -1408,6 +1408,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
+    put:
+      summary: Update exporter
+      operationId: v2UpdateExporter
+      x-speakeasy-name-override: UpdateExporter
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2UpdateExporterRequest'
+      responses:
+        "204":
+          description: Exporter updated
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
     delete:
       summary: Delete exporter
       operationId: v2DeleteExporter
@@ -2557,6 +2581,8 @@ components:
       required:
         - exporterID
     V2CreateExporterRequest:
+      $ref: '#/components/schemas/V2ExporterConfiguration'
+    V2UpdateExporterRequest:
       $ref: '#/components/schemas/V2ExporterConfiguration'
     V2PipelineConfiguration:
       properties:

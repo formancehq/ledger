@@ -83,6 +83,13 @@ func ExperimentalPipelinesPullIntervalInstrumentation(duration time.Duration) te
 	}
 }
 
+func ExperimentalPipelinesSyncPeriodInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--"+cmd.WorkerPipelinesSyncPeriod, fmt.Sprint(duration))
+		return nil
+	}
+}
+
 func GRPCAddressInstrumentation(addr string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
 		runConfiguration.AppendArgs("--"+cmd.WorkerGRPCAddressFlag, addr)

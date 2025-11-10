@@ -5,25 +5,25 @@ package test_suite
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"slices"
+	"testing"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/clickhousetesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/system"
 	"github.com/nats-io/nats.go"
-	"github.com/uptrace/bun"
-	"os"
-	"slices"
-	"testing"
-
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/testing/docker"
-	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/uptrace/bun"
 )
 
 func Test(t *testing.T) {
@@ -113,7 +113,7 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 	By("Waiting clickhouse")
 	_, err = clickhouseServer.Wait(specContext)
 	Expect(err).To(BeNil())
-	//Expect(deferred.WaitContext(specContext, pgServer, natsServer, clickhouseServer)).To(BeNil())
+
 	By("All services ready.")
 
 	data, err := json.Marshal(ParallelExecutionContext{
