@@ -2,6 +2,7 @@ package tracing
 
 import (
 	"context"
+
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/time"
 	"go.opentelemetry.io/otel/attribute"
@@ -97,12 +98,13 @@ func LegacyMetricsName(operationName string) string {
 	}
 }
 
-func TraceWithMetric[RET any](
+func TraceWithMetricWithAttributes[RET any](
 	ctx context.Context,
 	operationName string,
 	tracer trace.Tracer,
 	histogram metric.Int64Histogram,
 	fn func(ctx context.Context) (RET, error),
+	attributes []attribute.KeyValue,
 	finalizers ...func(ctx context.Context, ret RET),
 ) (RET, error) {
 	var zeroRet RET
@@ -116,8 +118,8 @@ func TraceWithMetric[RET any](
 		}
 
 		latency := time.Since(now)
-		histogram.Record(ctx, latency.Milliseconds())
-		trace.SpanFromContext(ctx).SetAttributes(attribute.String("latency", latency.String()))
+		histogram.Record(ctx, latency.Milliseconds(), metric.WithAttributes(attributes...))
+		trace.SpanFromContext(ctx).SetAttributes(append(attributes, attribute.String("latency", latency.String()))...)
 
 		for _, finalizer := range finalizers {
 			finalizer(ctx, ret)
@@ -125,6 +127,17 @@ func TraceWithMetric[RET any](
 
 		return ret, nil
 	})
+}
+
+func TraceWithMetric[RET any](
+	ctx context.Context,
+	operationName string,
+	tracer trace.Tracer,
+	histogram metric.Int64Histogram,
+	fn func(ctx context.Context) (RET, error),
+	finalizers ...func(ctx context.Context, ret RET),
+) (RET, error) {
+	return TraceWithMetricWithAttributes(ctx, operationName, tracer, histogram, fn, nil, finalizers...)
 }
 
 func Trace[RET any](

@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/pkg/features"
-	"go.opentelemetry.io/otel/attribute"
 
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
@@ -125,7 +124,8 @@ func (ctrl *DefaultController) StopPipeline(ctx context.Context, id string) erro
 }
 
 var (
-	meter metric.Meter = nil
+	meter  metric.Meter = nil
+	tracer trace.Tracer = nil
 )
 
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
@@ -135,18 +135,12 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			return nil, err
 		}
 
-		instrumentationAttributes := []attribute.KeyValue{
-			attribute.String("ledger", name),
-		}
-
 		if meter == nil {
-			meter = ctrl.meterProvider.Meter("ledger", metric.WithInstrumentationAttributes(
-				instrumentationAttributes...,
-			))
+			meter = ctrl.meterProvider.Meter("ledger")
 		}
-		tracer := ctrl.tracerProvider.Tracer("ledger", trace.WithInstrumentationAttributes(
-			instrumentationAttributes...,
-		))
+		if tracer == nil {
+			tracer = ctrl.tracerProvider.Tracer("ledger")
+		}
 
 		var ledgerController ledgercontroller.Controller = ledgercontroller.NewDefaultController(
 			*l,
@@ -155,6 +149,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			ctrl.machineParser,
 			ctrl.interpreterParser,
 			ledgercontroller.WithMeter(meter),
+			ledgercontroller.WithTracer(tracer),
 		)
 
 		// Add too many client error handling

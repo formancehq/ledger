@@ -3,11 +3,13 @@ package ledger
 import (
 	"context"
 	"database/sql"
+
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/tracing"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
@@ -157,7 +159,7 @@ func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptio
 		tx   *bun.Tx
 		err  error
 	)
-	ctrl, err = tracing.TraceWithMetric(
+	ctrl, err = tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"BeginTX",
 		c.tracer,
@@ -173,6 +175,9 @@ func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptio
 
 			return &ret, nil
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 	if err != nil {
 		return nil, nil, err
@@ -181,7 +186,7 @@ func (c *ControllerWithTraces) BeginTX(ctx context.Context, options *sql.TxOptio
 }
 
 func (c *ControllerWithTraces) Commit(ctx context.Context) error {
-	return tracing.SkipResult(tracing.TraceWithMetric(
+	return tracing.SkipResult(tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"Commit",
 		c.tracer,
@@ -189,11 +194,14 @@ func (c *ControllerWithTraces) Commit(ctx context.Context) error {
 		tracing.NoResult(func(ctx context.Context) error {
 			return c.underlying.Commit(ctx)
 		}),
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	))
 }
 
 func (c *ControllerWithTraces) Rollback(ctx context.Context) error {
-	return tracing.SkipResult(tracing.TraceWithMetric(
+	return tracing.SkipResult(tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"Rollback",
 		c.tracer,
@@ -201,11 +209,14 @@ func (c *ControllerWithTraces) Rollback(ctx context.Context) error {
 		tracing.NoResult(func(ctx context.Context) error {
 			return c.underlying.Rollback(ctx)
 		}),
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	))
 }
 
 func (c *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"GetMigrationsInfo",
 		c.tracer,
@@ -213,11 +224,14 @@ func (c *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrati
 		func(ctx context.Context) ([]migrations.Info, error) {
 			return c.underlying.GetMigrationsInfo(ctx)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"ListTransactions",
 		c.tracer,
@@ -225,11 +239,14 @@ func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.Pa
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
 			return c.underlying.ListTransactions(ctx, q)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q common.ResourceQuery[any]) (int, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"CountTransactions",
 		c.tracer,
@@ -237,11 +254,14 @@ func (c *ControllerWithTraces) CountTransactions(ctx context.Context, q common.R
 		func(ctx context.Context) (int, error) {
 			return c.underlying.CountTransactions(ctx, q)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query common.ResourceQuery[any]) (*ledger.Transaction, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"GetTransaction",
 		c.tracer,
@@ -249,11 +269,14 @@ func (c *ControllerWithTraces) GetTransaction(ctx context.Context, query common.
 		func(ctx context.Context) (*ledger.Transaction, error) {
 			return c.underlying.GetTransaction(ctx, query)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a common.ResourceQuery[any]) (int, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"CountAccounts",
 		c.tracer,
@@ -261,11 +284,14 @@ func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a common.Resou
 		func(ctx context.Context) (int, error) {
 			return c.underlying.CountAccounts(ctx, a)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"ListAccounts",
 		c.tracer,
@@ -273,11 +299,14 @@ func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.Pagina
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Account], error) {
 			return c.underlying.ListAccounts(ctx, a)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Account, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"GetAccount",
 		c.tracer,
@@ -285,11 +314,14 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.Resource
 		func(ctx context.Context) (*ledger.Account, error) {
 			return c.underlying.GetAccount(ctx, q)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"GetAggregatedBalances",
 		c.tracer,
@@ -297,11 +329,14 @@ func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q comm
 		func(ctx context.Context) (ledger.BalancesByAssets, error) {
 			return c.underlying.GetAggregatedBalances(ctx, q)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"ListLogs",
 		c.tracer,
@@ -309,11 +344,14 @@ func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.PaginatedQ
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Log], error) {
 			return c.underlying.ListLogs(ctx, q)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) Import(ctx context.Context, stream chan ledger.Log) error {
-	return tracing.SkipResult(tracing.TraceWithMetric(
+	return tracing.SkipResult(tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"Import",
 		c.tracer,
@@ -321,11 +359,14 @@ func (c *ControllerWithTraces) Import(ctx context.Context, stream chan ledger.Lo
 		tracing.NoResult(func(ctx context.Context) error {
 			return c.underlying.Import(ctx, stream)
 		}),
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	))
 }
 
 func (c *ControllerWithTraces) Export(ctx context.Context, w ExportWriter) error {
-	return tracing.SkipResult(tracing.TraceWithMetric(
+	return tracing.SkipResult(tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"Export",
 		c.tracer,
@@ -333,11 +374,14 @@ func (c *ControllerWithTraces) Export(ctx context.Context, w ExportWriter) error
 		tracing.NoResult(func(ctx context.Context) error {
 			return c.underlying.Export(ctx, w)
 		}),
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	))
 }
 
 func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"IsDatabaseUpToDate",
 		c.tracer,
@@ -345,17 +389,23 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 		func(ctx context.Context) (bool, error) {
 			return c.underlying.IsDatabaseUpToDate(ctx)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"GetVolumesWithBalances",
 		c.tracer,
 		c.getVolumesWithBalancesHistogram,
 		func(ctx context.Context) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 			return c.underlying.GetVolumesWithBalances(ctx, q)
+		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
 		},
 	)
 }
@@ -366,7 +416,7 @@ func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters
 		log                *ledger.Log
 		err                error
 	)
-	_, err = tracing.TraceWithMetric(
+	_, err = tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"CreateTransaction",
 		c.tracer,
@@ -374,6 +424,9 @@ func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters
 		func(ctx context.Context) (any, error) {
 			log, createdTransaction, err = c.underlying.CreateTransaction(ctx, parameters)
 			return nil, err
+		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
 		},
 	)
 	if err != nil {
@@ -389,7 +442,7 @@ func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters
 		log                 *ledger.Log
 		err                 error
 	)
-	_, err = tracing.TraceWithMetric(
+	_, err = tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"RevertTransaction",
 		c.tracer,
@@ -397,6 +450,9 @@ func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters
 		func(ctx context.Context) (any, error) {
 			log, revertedTransaction, err = c.underlying.RevertTransaction(ctx, parameters)
 			return nil, err
+		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
 		},
 	)
 	if err != nil {
@@ -407,7 +463,7 @@ func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters
 }
 
 func (c *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"SaveTransactionMetadata",
 		c.tracer,
@@ -415,11 +471,14 @@ func (c *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, para
 		func(ctx context.Context) (*ledger.Log, error) {
 			return c.underlying.SaveTransactionMetadata(ctx, parameters)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"SaveAccountMetadata",
 		c.tracer,
@@ -427,11 +486,14 @@ func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, paramete
 		func(ctx context.Context) (*ledger.Log, error) {
 			return c.underlying.SaveAccountMetadata(ctx, parameters)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"DeleteTransactionMetadata",
 		c.tracer,
@@ -439,11 +501,14 @@ func (c *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, pa
 		func(ctx context.Context) (*ledger.Log, error) {
 			return c.underlying.DeleteTransactionMetadata(ctx, parameters)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"DeleteAccountMetadata",
 		c.tracer,
@@ -451,17 +516,23 @@ func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parame
 		func(ctx context.Context) (*ledger.Log, error) {
 			return c.underlying.DeleteAccountMetadata(ctx, parameters)
 		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
+		},
 	)
 }
 
 func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
-	return tracing.TraceWithMetric(
+	return tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"GetStats",
 		c.tracer,
 		c.getStatsHistogram,
 		func(ctx context.Context) (Stats, error) {
 			return c.underlying.GetStats(ctx)
+		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
 		},
 	)
 }
@@ -473,7 +544,7 @@ func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.
 		conn       bun.IDB
 		err        error
 	)
-	_, err = tracing.TraceWithMetric(
+	_, err = tracing.TraceWithMetricWithAttributes(
 		ctx,
 		"LockLedger",
 		c.tracer,
@@ -481,6 +552,9 @@ func (c *ControllerWithTraces) LockLedger(ctx context.Context) (Controller, bun.
 		func(ctx context.Context) (any, error) {
 			controller, conn, release, err = c.underlying.LockLedger(ctx)
 			return nil, err
+		},
+		[]attribute.KeyValue{
+			attribute.String("ledger", c.underlying.Info().Name),
 		},
 	)
 	if err != nil {
