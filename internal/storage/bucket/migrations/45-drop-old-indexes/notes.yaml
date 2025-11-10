@@ -1,0 +1,32 @@
+name: Drop Old Indexes (5/5)
+description: |
+  Drop all old suboptimal indexes that have been replaced by new optimized indexes
+  created in migrations 41-44. This final step completes the index optimization process.
+
+changes:
+  moves_table:
+    - action: "DROP"
+      old_indexes:
+        - "moves_post_commit_volumes"
+        - "moves_effective_post_commit_volumes"
+      reason: "Replaced by idx_moves_pit_insertion and idx_moves_pit_effective in migrations 41-42"
+
+  accounts_metadata_table:
+    - action: "DROP"
+      old_index: "accounts_metadata_revisions"
+      reason: "Replaced by idx_accounts_metadata_pit in migration 43"
+
+  transactions_metadata_table:
+    - action: "DROP"
+      old_index: "transactions_metadata_revisions"
+      reason: "Replaced by idx_transactions_metadata_pit in migration 44"
+
+  accounts_volumes_table:
+    - action: "DROP"
+      old_index: "accounts_volumes_idx"
+      reason: "Redundant - PRIMARY KEY already covers this pattern"
+
+migration_safety:
+  - "Old indexes are dropped only AFTER all new indexes are created"
+  - "Ensures no performance degradation during migration"
+  - "No data modification - only removes redundant index structures"

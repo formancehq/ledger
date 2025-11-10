@@ -1,0 +1,24 @@
+name: Optimize Transactions Metadata Index (4/5)
+description: |
+  Create optimized index for historical transaction metadata queries on transactions_metadata table.
+  This is part of a multi-step migration to safely create indexes concurrently.
+
+changes:
+  transactions_metadata_table:
+    - action: "CREATE"
+      new_index: "idx_transactions_metadata_pit (transactions_id, revision desc) INCLUDE (metadata, date)"
+      reason: |
+        Creates index for historical transaction metadata lookups.
+        Replaces transactions_metadata_revisions which used transactions_seq.
+        New index aligns with actual query patterns using transactions_id.
+
+affected_queries:
+  - "resource_transactions.go: Historical transaction metadata lookups for Point-in-Time queries"
+
+performance_impact:
+  - "MAJOR improvement for historical transaction metadata queries"
+
+migration_safety:
+  - "Uses CONCURRENTLY flag to avoid locking tables during index creation"
+  - "Each index creation is isolated in its own migration"
+  - "Old index will be dropped in migration 45 after all new indexes are created"
