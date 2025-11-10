@@ -6,7 +6,7 @@ import (
 )
 
 type SchemaData struct {
-	Chart *ChartOfAccounts `json:"chart" bun:"chart"`
+	Chart ChartOfAccounts `json:"chart" bun:"chart"`
 }
 
 type Schema struct {

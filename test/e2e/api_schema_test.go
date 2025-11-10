@@ -54,25 +54,82 @@ var _ = Context("Ledger schema API tests", func() {
 			BeforeEach(func(specContext SpecContext) {
 				// Schema v1.0.0 - Basic validation
 				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
-					Ledger:       "default",
-					Version:      "v1.0.0",
-					V2SchemaData: components.V2SchemaData{},
+					Ledger:  "default",
+					Version: "v1.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{
+							"users": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$userID": {
+										Pattern:  pointer.For("[0-9]{3}"),
+										Rules:    &components.V2ChartRules{},
+										Metadata: map[string]string{},
+									},
+								},
+							},
+							"bank": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$bankID": {
+										Pattern: pointer.For("[0-9]{3}"),
+									},
+								},
+							},
+						},
+					},
 				})
 				Expect(err).To(BeNil())
 
 				// Schema v2.0.0 - Stricter validation
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
-					Ledger:       "default",
-					Version:      "v2.0.0",
-					V2SchemaData: components.V2SchemaData{},
+					Ledger:  "default",
+					Version: "v2.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{
+							"users": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$userID": {
+										Pattern:  pointer.For("[0-9]{3}"),
+										Rules:    &components.V2ChartRules{},
+										Metadata: map[string]string{},
+									},
+								},
+							},
+							"bank": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$bankID": {
+										Pattern: pointer.For("[0-9]{3}"),
+									},
+								},
+							},
+						},
+					},
 				})
 				Expect(err).To(BeNil())
 
 				// Schema v3.0.0 - Account validation
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
-					Ledger:       "default",
-					Version:      "v3.0.0",
-					V2SchemaData: components.V2SchemaData{},
+					Ledger:  "default",
+					Version: "v3.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{
+							"users": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$userID": {
+										Pattern:  pointer.For("[0-9]{3}"),
+										Rules:    &components.V2ChartRules{},
+										Metadata: map[string]string{},
+									},
+								},
+							},
+							"bank": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$bankID": {
+										Pattern: pointer.For("[0-9]{3}"),
+									},
+								},
+							},
+						},
+					},
 				})
 				Expect(err).To(BeNil())
 			})

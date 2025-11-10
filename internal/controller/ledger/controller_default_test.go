@@ -35,6 +35,27 @@ func TestCreateTransaction(t *testing.T) {
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 
+	schema := ledger.Schema{
+		SchemaData: ledger.SchemaData{
+			Chart: ledger.ChartOfAccounts{
+				"world": {
+					Account: &ledger.AccountSchema{},
+				},
+				"bank": {
+					Account: &ledger.AccountSchema{},
+				},
+			},
+		},
+		Version: "v1.0",
+	}
+
+	store.EXPECT().
+		InsertSchema(gomock.Any(), &schema).
+		Return(nil)
+
+	err := store.InsertSchema(context.Background(), &schema)
+	require.NoError(t, err)
+
 	runScript := RunScript{}
 
 	parser.EXPECT().
@@ -57,6 +78,14 @@ func TestCreateTransaction(t *testing.T) {
 		}, nil)
 
 	store.EXPECT().
+		FindSchema(gomock.Any(), "v1.0").
+		Return(&schema, nil)
+
+	store.EXPECT().
+		FindSchema(gomock.Any(), "v1.0").
+		Return(&schema, nil)
+
+	store.EXPECT().
 		CommitTransaction(gomock.Any(), gomock.Any(), map[string]metadata.Metadata{}).
 		Return(nil)
 
@@ -69,7 +98,8 @@ func TestCreateTransaction(t *testing.T) {
 			return log
 		})
 
-	_, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+	_, _, err = l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+		SchemaVersion: "v1.0",
 		Input: CreateTransaction{
 			RunScript: runScript,
 		},

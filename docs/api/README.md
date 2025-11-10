@@ -329,7 +329,15 @@ Accept: application/json
 > Body parameter
 
 ```json
-{}
+{
+  "chart": {
+    "users": {
+      "$userID": {
+        "_pattern": "[0-9]{16}+"
+      }
+    }
+  }
+}
 ```
 
 <h3 id="insert-or-update-a-schema-for-a-ledger-parameters">Parameters</h3>
@@ -395,7 +403,15 @@ Accept: application/json
   "data": {
     "version": "v1.0.0",
     "createdAt": "2023-01-01T00:00:00Z",
-    "data": {}
+    "data": {
+      "chart": {
+        "users": {
+          "$userID": {
+            "_pattern": "[0-9]{16}+"
+          }
+        }
+      }
+    }
   }
 }
 ```
@@ -456,7 +472,15 @@ Accept: application/json
       {
         "version": "v1.0.0",
         "createdAt": "2023-01-01T00:00:00Z",
-        "data": {}
+        "data": {
+          "chart": {
+            "users": {
+              "$userID": {
+                "_pattern": "[0-9]{16}+"
+              }
+            }
+          }
+        }
       }
     ],
     "hasMore": true,
@@ -5422,6 +5446,85 @@ and
 |» errorDescription|string|true|none|none|
 |» errorDetails|string|false|none|none|
 
+<h2 id="tocS_V2ChartRules">V2ChartRules</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartrules"></a>
+<a id="schema_V2ChartRules"></a>
+<a id="tocSv2chartrules"></a>
+<a id="tocsv2chartrules"></a>
+
+```json
+{
+  "allowedDestinations": null,
+  "allowedSources": null
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|allowedDestinations|list|false|none|none|
+|allowedSources|list|false|none|none|
+
+<h2 id="tocS_V2ChartSegment">V2ChartSegment</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartsegment"></a>
+<a id="schema_V2ChartSegment"></a>
+<a id="tocSv2chartsegment"></a>
+<a id="tocsv2chartsegment"></a>
+
+```json
+{
+  "users": {
+    "$userID": {
+      "_pattern": "[0-9]{16}+"
+    }
+  }
+}
+
+```
+
+Segment within a chart of account
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
+|_self|object|false|none|none|
+|_pattern|string|false|none|none|
+|_rules|[V2ChartRules](#schemav2chartrules)|false|none|none|
+|_metadata|object|false|none|none|
+|» **additionalProperties**|string|false|none|none|
+
+<h2 id="tocS_V2ChartOfAccounts">V2ChartOfAccounts</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartofaccounts"></a>
+<a id="schema_V2ChartOfAccounts"></a>
+<a id="tocSv2chartofaccounts"></a>
+<a id="tocsv2chartofaccounts"></a>
+
+```json
+{
+  "users": {
+    "$userID": {
+      "_pattern": "[0-9]{16}+"
+    }
+  }
+}
+
+```
+
+Chart of account
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
+
 <h2 id="tocS_V2SchemaData">V2SchemaData</h2>
 <!-- backwards compatibility -->
 <a id="schemav2schemadata"></a>
@@ -5430,7 +5533,15 @@ and
 <a id="tocsv2schemadata"></a>
 
 ```json
-{}
+{
+  "chart": {
+    "users": {
+      "$userID": {
+        "_pattern": "[0-9]{16}+"
+      }
+    }
+  }
+}
 
 ```
 
@@ -5438,7 +5549,9 @@ Schema data structure for ledger schemas
 
 ### Properties
 
-*None*
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|false|none|Chart of account|
 
 <h2 id="tocS_V2Schema">V2Schema</h2>
 <!-- backwards compatibility -->
@@ -5451,7 +5564,15 @@ Schema data structure for ledger schemas
 {
   "version": "v1.0.0",
   "createdAt": "2023-01-01T00:00:00Z",
-  "data": {}
+  "data": {
+    "chart": {
+      "users": {
+        "$userID": {
+          "_pattern": "[0-9]{16}+"
+        }
+      }
+    }
+  }
 }
 
 ```
@@ -5478,7 +5599,15 @@ Complete schema structure with metadata
   "data": {
     "version": "v1.0.0",
     "createdAt": "2023-01-01T00:00:00Z",
-    "data": {}
+    "data": {
+      "chart": {
+        "users": {
+          "$userID": {
+            "_pattern": "[0-9]{16}+"
+          }
+        }
+      }
+    }
   }
 }
 
@@ -5504,7 +5633,15 @@ Complete schema structure with metadata
       {
         "version": "v1.0.0",
         "createdAt": "2023-01-01T00:00:00Z",
-        "data": {}
+        "data": {
+          "chart": {
+            "users": {
+              "$userID": {
+                "_pattern": "[0-9]{16}+"
+              }
+            }
+          }
+        }
       }
     ],
     "hasMore": true,
@@ -5534,7 +5671,15 @@ Complete schema structure with metadata
     {
       "version": "v1.0.0",
       "createdAt": "2023-01-01T00:00:00Z",
-      "data": {}
+      "data": {
+        "chart": {
+          "users": {
+            "$userID": {
+              "_pattern": "[0-9]{16}+"
+            }
+          }
+        }
+      }
     }
   ],
   "hasMore": true,

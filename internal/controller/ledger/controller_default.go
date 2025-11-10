@@ -431,15 +431,17 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		}
 	}
 
-	schema, err := store.FindSchema(ctx, parameters.SchemaVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, posting := range result.Postings {
-		err := schema.Chart.ValidatePosting(posting)
+	if parameters.SchemaVersion != "" {
+		schema, err := store.FindSchema(ctx, parameters.SchemaVersion)
 		if err != nil {
 			return nil, err
+		}
+
+		for _, posting := range result.Postings {
+			err := schema.Chart.ValidatePosting(posting)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

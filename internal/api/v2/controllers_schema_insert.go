@@ -2,12 +2,13 @@ package v2
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"github.com/formancehq/go-libs/v3/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/go-chi/chi/v5"
-	"net/http"
 )
 
 func insertSchema(w http.ResponseWriter, r *http.Request) {
