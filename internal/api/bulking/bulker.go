@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
+
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/otlp"
@@ -13,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
-	"sync/atomic"
 )
 
 type Bulker struct {
@@ -34,11 +35,13 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 
 	index := 0
 	for element := range bulk {
+		// Copy to prevent data race
+		itemIndex := index
 		wp.Submit(func() {
 			ctx, span := b.tracer.Start(ctx, "Bulk:ProcessElement",
 				trace.WithNewRoot(),
 				trace.WithLinks(trace.LinkFromContext(ctx)),
-				trace.WithAttributes(attribute.Int("index", index)),
+				trace.WithAttributes(attribute.Int("index", itemIndex)),
 			)
 			defer span.End()
 
@@ -73,6 +76,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 			}
 
 		})
+		index++
 	}
 
 	wp.StopAndWait()
