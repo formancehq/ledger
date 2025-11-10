@@ -27,7 +27,7 @@ func Extract[OF any](
 	}
 }
 
-func unmarshalCursor[OF any](v string, modifiers ...func(query *InitialPaginatedQuery[OF]) error) (PaginatedQuery[OF], error) {
+func unmarshalCursor[Options any](v string, modifiers ...func(query *InitialPaginatedQuery[Options]) error) (PaginatedQuery[Options], error) {
 	res, err := base64.RawURLEncoding.DecodeString(v)
 	if err != nil {
 		return nil, err
@@ -42,22 +42,22 @@ func unmarshalCursor[OF any](v string, modifiers ...func(query *InitialPaginated
 		return nil, fmt.Errorf("invalid cursor: %w", err)
 	}
 
-	var q PaginatedQuery[OF]
+	var q PaginatedQuery[Options]
 	if x.Offset != nil { // Offset defined, this is an offset cursor
-		q = &OffsetPaginatedQuery[OF]{}
+		q = &OffsetPaginatedQuery[Options]{}
 	} else {
-		q = &ColumnPaginatedQuery[OF]{}
+		q = &ColumnPaginatedQuery[Options]{}
 	}
 
 	if err := json.Unmarshal(res, &q); err != nil {
 		return nil, err
 	}
 
-	var root *InitialPaginatedQuery[OF]
+	var root *InitialPaginatedQuery[Options]
 	if x.Offset != nil { // Offset defined, this is an offset cursor
-		root = &q.(*OffsetPaginatedQuery[OF]).InitialPaginatedQuery
+		root = &q.(*OffsetPaginatedQuery[Options]).InitialPaginatedQuery
 	} else {
-		root = &q.(*ColumnPaginatedQuery[OF]).InitialPaginatedQuery
+		root = &q.(*ColumnPaginatedQuery[Options]).InitialPaginatedQuery
 	}
 
 	for _, modifier := range modifiers {
@@ -66,7 +66,7 @@ func unmarshalCursor[OF any](v string, modifiers ...func(query *InitialPaginated
 		}
 	}
 
-	return reflect.ValueOf(q).Elem().Interface().(PaginatedQuery[OF]), nil
+	return reflect.ValueOf(q).Elem().Interface().(PaginatedQuery[Options]), nil
 }
 
 func Iterate[OF any, Options any](
@@ -91,7 +91,7 @@ func Iterate[OF any, Options any](
 			break
 		}
 
-		query, err = unmarshalCursor[OF](cursor.Next)
+		query, err = unmarshalCursor[Options](cursor.Next)
 		if err != nil {
 			return fmt.Errorf("paginating next request: %w", err)
 		}
