@@ -7,6 +7,6 @@ set search_path = '{{.Schema}}';
 -- Critical: Index for historical transaction metadata queries
 -- Covers queries in resource_transactions.go for Point-in-Time metadata
 -- Replaces: transactions_metadata_revisions
-create index {{ if not .Transactional }}concurrently{{end}} idx_transactions_metadata_pit
+create index idx_transactions_metadata_pit
     on "{{.Schema}}".transactions_metadata (transactions_id, revision desc)
     include (metadata, date);

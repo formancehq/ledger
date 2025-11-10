@@ -1,7 +1,7 @@
 name: Optimize Accounts Metadata Index (3/5)
 description: |
   Create optimized index for historical metadata queries on accounts_metadata table.
-  This is part of a multi-step migration to safely create indexes concurrently.
+  This is part of a multi-step migration where each index is created in a separate migration.
 
 changes:
   accounts_metadata_table:

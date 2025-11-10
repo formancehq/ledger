@@ -1,7 +1,7 @@
 name: Optimize Query Indexes - PIT Insertion (1/5)
 description: |
   Create optimized index for Point-in-Time queries with insertion_date on moves table.
-  This is part of a multi-step migration to safely create indexes concurrently.
+  This is part of a multi-step migration where each index is created in a separate migration.
 
 changes:
   moves_table:
