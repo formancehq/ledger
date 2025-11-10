@@ -80,12 +80,12 @@ nfpms:
       - rpm
 
 publishers:
-  - name: fury.io
-    ids:
-      - ledger
-      - benchmarks
-    dir: "{{ dir .ArtifactPath }}"
-    cmd: curl --http1.1 -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
+  #- name: fury.io
+  #  ids:
+  #    - ledger
+  #    - benchmarks
+  #  dir: "{{ dir .ArtifactPath }}"
+  #  cmd: curl --http1.1 -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
 
 brews:
   - name: ledger

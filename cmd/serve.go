@@ -2,6 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/pprof"
+	"time"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/replication"
@@ -12,9 +16,6 @@ import (
 	"github.com/formancehq/ledger/internal/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"net/http"
-	"net/http/pprof"
-	"time"
 
 	apilib "github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/health"
@@ -129,15 +130,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-					fx.In
+						fx.In
 
-					Handler          chi.Router
-					HealthController *health.HealthController
-					Logger           logging.Logger
+						Handler          chi.Router
+						HealthController *health.HealthController
+						Logger           logging.Logger
 
-					MeterProvider *metric.MeterProvider         `optional:"true"`
-					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-				},
+						MeterProvider *metric.MeterProvider         `optional:"true"`
+						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),
@@ -184,7 +185,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
-	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
+	cmd.Flags().Bool(SemconvMetricsNames, true, "Use semconv metrics names (recommended)")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
