@@ -1,0 +1,58 @@
+name: Optimize Query Indexes
+description: |
+  Optimize database indexes for improved query performance in Point-in-Time (PIT) queries,
+  balance lookups, and metadata history queries.
+
+changes:
+  moves_table:
+    - action: "DROP and REPLACE"
+      old_indexes:
+        - "moves_post_commit_volumes (accounts_seq, asset, seq)"
+        - "moves_effective_post_commit_volumes (accounts_seq, asset, effective_date desc)"
+      new_indexes:
+        - "idx_moves_pit_insertion (ledger, account_address, asset, insertion_date desc, seq desc)"
+        - "idx_moves_pit_effective (ledger, account_address, asset, effective_date desc, seq desc)"
+        - "idx_moves_account_balance (ledger, account_address, effective_date desc, seq desc) INCLUDE (asset, post_commit_effective_volumes)"
+      reason: |
+        Old indexes used accounts_seq but queries filter on account_address and ledger.
+        This caused full table scans for PIT queries and balance lookups.
+        New indexes align with actual query patterns for significant performance improvement.
+
+  accounts_metadata_table:
+    - action: "DROP and REPLACE"
+      old_index: "accounts_metadata_revisions (accounts_seq, revision desc)"
+      new_index: "idx_accounts_metadata_pit (ledger, accounts_address, date desc, revision desc) INCLUDE (metadata)"
+      reason: |
+        Old index used accounts_seq but queries filter on accounts_address and date.
+        New index enables efficient historical metadata lookups.
+
+  transactions_metadata_table:
+    - action: "DROP and REPLACE"
+      old_index: "transactions_metadata_revisions (transactions_seq, revision desc)"
+      new_index: "idx_transactions_metadata_pit (ledger, transactions_id, date desc, revision desc) INCLUDE (metadata)"
+      reason: |
+        Old index used transactions_seq but queries filter on transactions_id and date.
+        New index enables efficient historical transaction metadata lookups.
+
+  accounts_volumes_table:
+    - action: "DROP"
+      index: "accounts_volumes_idx"
+      reason: "Redundant - PRIMARY KEY (ledger, accounts_address, asset) already covers this pattern"
+
+affected_queries:
+  - "resource_aggregated_balances.go: PIT queries with DISTINCT ON (accounts_address, asset)"
+  - "resource_accounts.go: Balance filtering with effective_date"
+  - "resource_accounts.go: Account expansion volumes queries"
+  - "resource_accounts.go: Historical metadata lookups"
+  - "resource_transactions.go: Historical transaction metadata lookups"
+
+performance_impact:
+  - "MAJOR improvement for Point-in-Time (PIT) queries"
+  - "MAJOR improvement for balance lookups by account"
+  - "MAJOR improvement for historical metadata queries"
+  - "Minor reduction in storage by removing redundant index"
+
+migration_safety:
+  - "Uses CONCURRENTLY flag to avoid locking tables during index creation"
+  - "Drops old indexes only after new ones are created"
+  - "No data modification - only index structure changes"
