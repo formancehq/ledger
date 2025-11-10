@@ -9,18 +9,18 @@ set search_path = '{{.Schema}}';
 -- Covers queries in resource_aggregated_balances.go and resource_accounts.go
 -- Replaces: moves_post_commit_volumes
 create index {{ if not .Transactional }}concurrently{{end}} idx_moves_pit_insertion
-    on "{{.Schema}}".moves (ledger, account_address, asset, insertion_date desc, seq desc);
+    on "{{.Schema}}".moves (account_address, asset, insertion_date desc, seq desc);
 
 -- Critical: Index for Point-in-Time queries with effective_date
 -- Covers queries in resource_aggregated_balances.go and resource_accounts.go
 -- Replaces: moves_effective_post_commit_volumes
 create index {{ if not .Transactional }}concurrently{{end}} idx_moves_pit_effective
-    on "{{.Schema}}".moves (ledger, account_address, asset, effective_date desc, seq desc);
+    on "{{.Schema}}".moves (account_address, asset, effective_date desc, seq desc);
 
 -- Optimal: Index for balance lookups by account with effective date
 -- Covers balance filtering queries in resource_accounts.go
 create index {{ if not .Transactional }}concurrently{{end}} idx_moves_account_balance
-    on "{{.Schema}}".moves (ledger, account_address, effective_date desc, seq desc)
+    on "{{.Schema}}".moves (account_address, effective_date desc, seq desc)
     include (asset, post_commit_effective_volumes);
 
 -- Step 2: Drop old suboptimal indexes AFTER new ones are ready
@@ -36,8 +36,8 @@ drop index if exists moves_effective_post_commit_volumes;
 -- Covers queries in resource_accounts.go for Point-in-Time metadata
 -- Replaces: accounts_metadata_revisions
 create index {{ if not .Transactional }}concurrently{{end}} idx_accounts_metadata_pit
-    on "{{.Schema}}".accounts_metadata (ledger, accounts_address, date desc, revision desc)
-    include (metadata);
+    on "{{.Schema}}".accounts_metadata (accounts_address, revision desc)
+    include (metadata, date);
 
 -- Step 2: Drop old suboptimal index AFTER new one is ready
 drop index if exists accounts_metadata_revisions;
@@ -51,8 +51,8 @@ drop index if exists accounts_metadata_revisions;
 -- Covers queries in resource_transactions.go for Point-in-Time metadata
 -- Replaces: transactions_metadata_revisions
 create index {{ if not .Transactional }}concurrently{{end}} idx_transactions_metadata_pit
-    on "{{.Schema}}".transactions_metadata (ledger, transactions_id, date desc, revision desc)
-    include (metadata);
+    on "{{.Schema}}".transactions_metadata (transactions_id, revision desc)
+    include (metadata, date);
 
 -- Step 2: Drop old suboptimal index AFTER new one is ready
 drop index if exists transactions_metadata_revisions;
