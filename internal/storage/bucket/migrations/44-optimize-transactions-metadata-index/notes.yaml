@@ -1,7 +1,7 @@
 name: Optimize Transactions Metadata Index (4/5)
 description: |
   Create optimized index for historical transaction metadata queries on transactions_metadata table.
-  This is part of a multi-step migration to safely create indexes concurrently.
+  This is part of a multi-step migration where each index is created in a separate migration.
 
 changes:
   transactions_metadata_table:
