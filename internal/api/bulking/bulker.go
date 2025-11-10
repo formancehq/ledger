@@ -37,11 +37,13 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 
 	index := 0
 	for element := range bulk {
+		// Copy to prevent data race
+		itemIndex := index
 		wp.Submit(func() {
 			ctx, span := b.tracer.Start(ctx, "Bulk:ProcessElement",
 				trace.WithNewRoot(),
 				trace.WithLinks(trace.LinkFromContext(ctx)),
-				trace.WithAttributes(attribute.Int("index", index)),
+				trace.WithAttributes(attribute.Int("index", itemIndex)),
 			)
 			defer span.End()
 
@@ -199,7 +201,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
 				TransactionID:   req.ID,
-				Metadata: req.Metadata,
+				Metadata:        req.Metadata,
 			},
 		})
 		if err != nil {
