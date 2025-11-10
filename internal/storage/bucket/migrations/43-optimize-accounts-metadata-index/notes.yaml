@@ -1,0 +1,24 @@
+name: Optimize Accounts Metadata Index (3/5)
+description: |
+  Create optimized index for historical metadata queries on accounts_metadata table.
+  This is part of a multi-step migration to safely create indexes concurrently.
+
+changes:
+  accounts_metadata_table:
+    - action: "CREATE"
+      new_index: "idx_accounts_metadata_pit (accounts_address, revision desc) INCLUDE (metadata, date)"
+      reason: |
+        Creates index for historical account metadata lookups.
+        Replaces accounts_metadata_revisions which used accounts_seq.
+        New index aligns with actual query patterns using accounts_address.
+
+affected_queries:
+  - "resource_accounts.go: Historical metadata lookups for Point-in-Time queries"
+
+performance_impact:
+  - "MAJOR improvement for historical account metadata queries"
+
+migration_safety:
+  - "Uses CONCURRENTLY flag to avoid locking tables during index creation"
+  - "Each index creation is isolated in its own migration"
+  - "Old index will be dropped in migration 45 after all new indexes are created"

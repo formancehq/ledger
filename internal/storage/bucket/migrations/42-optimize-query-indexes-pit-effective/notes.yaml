@@ -1,0 +1,25 @@
+name: Optimize Query Indexes - PIT Effective (2/5)
+description: |
+  Create optimized index for Point-in-Time queries with effective_date on moves table.
+  This is part of a multi-step migration to safely create indexes concurrently.
+
+changes:
+  moves_table:
+    - action: "CREATE"
+      new_index: "idx_moves_pit_effective (account_address, asset, effective_date desc, seq desc)"
+      reason: |
+        Creates index for PIT queries filtering on effective_date.
+        Replaces moves_effective_post_commit_volumes which used accounts_seq.
+        This index aligns with actual query patterns for better performance.
+
+affected_queries:
+  - "resource_aggregated_balances.go: PIT queries with effective_date filtering"
+  - "resource_accounts.go: Balance queries with effective_date"
+
+performance_impact:
+  - "MAJOR improvement for Point-in-Time queries using effective_date"
+
+migration_safety:
+  - "Uses CONCURRENTLY flag to avoid locking tables during index creation"
+  - "Each index creation is isolated in its own migration"
+  - "Old indexes will be dropped in migration 45 after all new indexes are created"
