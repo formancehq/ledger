@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"sync"
 	"time"
 
@@ -203,9 +203,6 @@ func (m *Manager) stopExporterIfNeeded(ctx context.Context, handler *PipelineHan
 }
 
 func (m *Manager) synchronizePipelines(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.logger.Debug("restore pipelines from store")
 	defer func() {
 		m.logger.Debug("restoration terminated")
@@ -245,24 +242,37 @@ func (m *Manager) Started() <-chan struct{} {
 }
 
 func (m *Manager) Run(ctx context.Context) {
-	if err := m.synchronizePipelines(ctx); err != nil {
-		m.logger.Errorf("restoring pipeline: %s", err)
+
+	withLock := func(f func()) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		f()
 	}
+
+	withLock(func() {
+		if err := m.synchronizePipelines(ctx); err != nil {
+			m.logger.Errorf("restoring pipeline: %s", err)
+		}
+	})
 
 	close(m.started)
 
+	// copy to prevent data race when setting the stopChannel to nil
+	stopChannel := m.stopChannel
 	for {
 		select {
-		case signalChannel := <-m.stopChannel:
+		case signalChannel := <-stopChannel:
 			m.logger.Debugf("got stop signal")
 			m.stopPipelines(ctx)
 			m.pipelinesWaitGroup.Wait()
 			close(signalChannel)
 			return
 		case <-time.After(m.syncPeriod):
-			if err := m.synchronizePipelines(ctx); err != nil {
-				m.logger.Errorf("synchronizing pipelines: %s", err)
-			}
+			withLock(func() {
+				if err := m.synchronizePipelines(ctx); err != nil {
+					m.logger.Errorf("synchronizing pipelines: %s", err)
+				}
+			})
 		}
 	}
 }
@@ -270,7 +280,7 @@ func (m *Manager) Run(ctx context.Context) {
 func (m *Manager) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {
 	pipeline, err := m.storage.GetPipeline(ctx, id)
 	if err != nil {
-		if errors.Is(err, common.ErrNotFound) {
+		if errors.Is(err, postgres.ErrNotFound) {
 			return nil, ledger.NewErrPipelineNotFound(id)
 		}
 		return nil, err
@@ -285,6 +295,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 
 	select {
 	case m.stopChannel <- signalChannel:
+		close(m.stopChannel)
 		m.logger.Debug("stopping manager signal sent")
 		select {
 		case <-signalChannel:
@@ -311,7 +322,7 @@ func (m *Manager) GetExporter(ctx context.Context, id string) (*ledger.Exporter,
 	exporter, err := m.storage.GetExporter(ctx, id)
 	if err != nil {
 		switch {
-		case errors.Is(err, common.ErrNotFound):
+		case errors.Is(err, postgres.ErrNotFound):
 			return nil, system.NewErrExporterNotFound(id)
 		default:
 			return nil, err
@@ -324,32 +335,66 @@ func (m *Manager) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger
 	return m.storage.ListExporters(ctx)
 }
 
+func (m *Manager) stopExporter(ctx context.Context, exporterID string) error {
+
+	for id, config := range m.pipelines {
+		if config.pipeline.ExporterID == exporterID {
+			if err := m.stopPipeline(ctx, id); err != nil {
+				return fmt.Errorf("stopping pipeline: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (m *Manager) DeleteExporter(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	driver, ok := m.drivers[id]
-	if ok {
-		for id, config := range m.pipelines {
-			if config.pipeline.ExporterID == id {
-				if err := m.stopPipeline(ctx, id); err != nil {
-					return fmt.Errorf("stopping pipeline: %w", err)
-				}
-			}
-		}
-
-		m.stopDriver(ctx, driver)
+	if err := m.stopExporter(ctx, id); err != nil {
+		return err
 	}
 
 	if err := m.storage.DeleteExporter(ctx, id); err != nil {
 		switch {
-		case errors.Is(err, common.ErrNotFound):
+		case errors.Is(err, postgres.ErrNotFound):
 			return system.NewErrExporterNotFound(id)
 		default:
 			return err
 		}
 	}
 	return nil
+}
+
+func (m *Manager) UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if err := m.exportersConfigValidator.ValidateConfig(configuration.Driver, configuration.Config); err != nil {
+		return system.NewErrInvalidDriverConfiguration(configuration.Driver, err)
+	}
+
+	if err := m.stopExporter(ctx, id); err != nil {
+		return err
+	}
+
+	exporter, err := m.storage.GetExporter(ctx, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, postgres.ErrNotFound):
+			return system.NewErrExporterNotFound(id)
+		default:
+			return err
+		}
+	}
+	exporter.ExporterConfiguration = configuration
+
+	if err := m.storage.UpdateExporter(ctx, *exporter); err != nil {
+		return err
+	}
+
+	return m.synchronizePipelines(ctx)
 }
 
 func (m *Manager) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
@@ -384,7 +429,7 @@ func (m *Manager) DeletePipeline(ctx context.Context, id string) error {
 	}
 
 	if err := m.storage.DeletePipeline(ctx, id); err != nil {
-		if errors.Is(err, common.ErrNotFound) {
+		if errors.Is(err, postgres.ErrNotFound) {
 			return ledger.NewErrPipelineNotFound(id)
 		}
 		return err
@@ -410,7 +455,7 @@ func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
 		"last_log_id": nil,
 	})
 	if err != nil {
-		if errors.Is(err, common.ErrNotFound) {
+		if errors.Is(err, postgres.ErrNotFound) {
 			return ledger.NewErrPipelineNotFound(id)
 		}
 		return fmt.Errorf("updating pipeline: %w", err)

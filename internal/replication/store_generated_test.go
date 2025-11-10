@@ -241,6 +241,20 @@ func (mr *MockStorageMockRecorder) StorePipelineState(ctx, id, lastLogID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StorePipelineState", reflect.TypeOf((*MockStorage)(nil).StorePipelineState), ctx, id, lastLogID)
 }
 
+// UpdateExporter mocks base method.
+func (m *MockStorage) UpdateExporter(ctx context.Context, exporter ledger.Exporter) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateExporter", ctx, exporter)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateExporter indicates an expected call of UpdateExporter.
+func (mr *MockStorageMockRecorder) UpdateExporter(ctx, exporter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateExporter", reflect.TypeOf((*MockStorage)(nil).UpdateExporter), ctx, exporter)
+}
+
 // UpdatePipeline mocks base method.
 func (m *MockStorage) UpdatePipeline(ctx context.Context, id string, o map[string]any) (*ledger.Pipeline, error) {
 	m.ctrl.T.Helper()

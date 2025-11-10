@@ -31,6 +31,7 @@ type Storage interface {
 	CreateExporter(ctx context.Context, exporter ledger.Exporter) error
 	DeleteExporter(ctx context.Context, id string) error
 	GetExporter(ctx context.Context, id string) (*ledger.Exporter, error)
+	UpdateExporter(ctx context.Context, exporter ledger.Exporter) error
 
 	CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error
 	DeletePipeline(ctx context.Context, id string) error
@@ -43,6 +44,10 @@ type Storage interface {
 type storageAdapter struct {
 	*systemstore.DefaultStore
 	storageDriver *driver.Driver
+}
+
+func (s *storageAdapter) UpdateExporter(ctx context.Context, exporter ledger.Exporter) error {
+	return s.DefaultStore.UpdateExporter(ctx, exporter)
 }
 
 func (s *storageAdapter) GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error) {

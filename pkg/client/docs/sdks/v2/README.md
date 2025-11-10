@@ -33,6 +33,7 @@
 * [ListExporters](#listexporters) - List exporters
 * [CreateExporter](#createexporter) - Create exporter
 * [GetExporterState](#getexporterstate) - Get exporter state
+* [UpdateExporter](#updateexporter) - Update exporter
 * [DeleteExporter](#deleteexporter) - Delete exporter
 * [ListPipelines](#listpipelines) - List pipelines
 * [CreatePipeline](#createpipeline) - Create pipeline
@@ -1813,6 +1814,73 @@ func main() {
 ### Response
 
 **[*operations.V2GetExporterStateResponse](../../models/operations/v2getexporterstateresponse.md), error**
+
+### Errors
+
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
+
+## UpdateExporter
+
+Update exporter
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"os"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+        }),
+    )
+
+    res, err := s.Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
+        ExporterID: "<id>",
+        V2ExporterConfiguration: components.V2ExporterConfiguration{
+            Driver: "<value>",
+            Config: map[string]any{
+                "key": "<value>",
+                "key1": "<value>",
+                "key2": "<value>",
+            },
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                | Type                                                                                     | Required                                                                                 | Description                                                                              |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ctx`                                                                                    | [context.Context](https://pkg.go.dev/context#Context)                                    | :heavy_check_mark:                                                                       | The context to use for the request.                                                      |
+| `request`                                                                                | [operations.V2UpdateExporterRequest](../../models/operations/v2updateexporterrequest.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
+| `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
+
+### Response
+
+**[*operations.V2UpdateExporterResponse](../../models/operations/v2updateexporterresponse.md), error**
 
 ### Errors
 
