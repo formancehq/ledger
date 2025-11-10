@@ -124,6 +124,10 @@ func (ctrl *DefaultController) StopPipeline(ctx context.Context, id string) erro
 	return ctrl.replicationBackend.StopPipeline(ctx, id)
 }
 
+var (
+	meter metric.Meter = nil
+)
+
 func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error) {
 	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "GetLedgerController", func(ctx context.Context) (ledgercontroller.Controller, error) {
 		store, l, err := ctrl.driver.OpenLedger(ctx, name)
@@ -135,9 +139,11 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			attribute.String("ledger", name),
 		}
 
-		meter := ctrl.meterProvider.Meter("ledger", metric.WithInstrumentationAttributes(
-			instrumentationAttributes...,
-		))
+		if meter == nil {
+			meter = ctrl.meterProvider.Meter("ledger", metric.WithInstrumentationAttributes(
+				instrumentationAttributes...,
+			))
+		}
 		tracer := ctrl.tracerProvider.Tracer("ledger", trace.WithInstrumentationAttributes(
 			instrumentationAttributes...,
 		))
