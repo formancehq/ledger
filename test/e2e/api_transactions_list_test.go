@@ -1012,6 +1012,140 @@ var _ = Context("Ledger transactions list API tests", func() {
 				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
 			})
 		})
+		When("reverting a transaction", func() {
+			var (
+				revertTime time.Time
+			)
+			JustBeforeEach(func(specContext SpecContext) {
+				revertTime = time.Now().Round(time.Second).UTC()
+				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
+					ctx,
+					operations.V2RevertTransactionRequest{
+						Ledger: "default",
+						ID:     t2.V2CreateTransactionResponse.Data.ID,
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			It("should filter transactions by reverted_at using $gte", func(specContext SpecContext) {
+				// Filter transactions reverted at or after revertTime (should include t2)
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$gte": map[string]any{
+								"reverted_at": revertTime.Add(-time.Minute).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(1))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).To(Equal(t2.V2CreateTransactionResponse.Data.ID))
+			})
+			It("should filter transactions by reverted_at using $lte", func(specContext SpecContext) {
+				// Filter transactions reverted at or before revertTime + 1 minute (should include t2)
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$lte": map[string]any{
+								"reverted_at": revertTime.Add(time.Minute).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(1))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).To(Equal(t2.V2CreateTransactionResponse.Data.ID))
+			})
+			It("should filter transactions by reverted_at using $gte with future date", func(specContext SpecContext) {
+				// Filter transactions reverted after a future date (should return empty)
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$gte": map[string]any{
+								"reverted_at": revertTime.Add(time.Hour).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
+			})
+			It("should filter transactions by reverted_at using $lte with past date", func(specContext SpecContext) {
+				// Filter transactions reverted before a past date (should return empty)
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$lte": map[string]any{
+								"reverted_at": revertTime.Add(-time.Hour).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
+			})
+			It("should count transactions by reverted_at using $gte", func(specContext SpecContext) {
+				// Count transactions reverted at or after revertTime
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+					ctx,
+					operations.V2CountTransactionsRequest{
+						Ledger: "default",
+						RequestBody: map[string]interface{}{
+							"$gte": map[string]any{
+								"reverted_at": revertTime.Add(-time.Minute).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
+			})
+			It("should count transactions by reverted_at using $lte", func(specContext SpecContext) {
+				// Count transactions reverted at or before revertTime + 1 minute
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+					ctx,
+					operations.V2CountTransactionsRequest{
+						Ledger: "default",
+						RequestBody: map[string]interface{}{
+							"$lte": map[string]any{
+								"reverted_at": revertTime.Add(time.Minute).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
+			})
+			It("should count transactions by reverted_at with future date", func(specContext SpecContext) {
+				// Count transactions reverted after a future date (should return 0)
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+					ctx,
+					operations.V2CountTransactionsRequest{
+						Ledger: "default",
+						RequestBody: map[string]interface{}{
+							"$gte": map[string]any{
+								"reverted_at": revertTime.Add(time.Hour).Format(time.RFC3339),
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
+			})
+		})
 		It("should be gettable on api", func(specContext SpecContext) {
 			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 				ctx,

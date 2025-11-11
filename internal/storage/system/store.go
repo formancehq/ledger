@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
@@ -183,7 +182,7 @@ func (d *DefaultStore) DeleteExporter(ctx context.Context, id string) error {
 		panic(err)
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return postgres.ErrNotFound
 	}
 
 	return err
@@ -196,7 +195,7 @@ func (d *DefaultStore) GetExporter(ctx context.Context, id string) (*ledger.Expo
 		Where("id = ?", id).
 		Scan(ctx)
 	if err != nil {
-		return nil, err
+		return nil, postgres.ResolveError(err)
 	}
 
 	return ret, nil
@@ -258,7 +257,7 @@ func (d *DefaultStore) DeletePipeline(ctx context.Context, id string) error {
 		panic(err)
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return postgres.ErrNotFound
 	}
 
 	return err
@@ -302,7 +301,28 @@ func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLo
 		panic(err)
 	}
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return postgres.ErrNotFound
+	}
+
+	return nil
+}
+
+func (d *DefaultStore) UpdateExporter(ctx context.Context, exporter ledger.Exporter) error {
+	ret, err := d.db.NewUpdate().
+		Model(&exporter).
+		Where("id = ?", exporter.ID).
+		Exec(ctx)
+	if err != nil {
+		return postgres.ResolveError(err)
+	}
+
+	rowsAffected, err := ret.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return postgres.ErrNotFound
 	}
 
 	return nil

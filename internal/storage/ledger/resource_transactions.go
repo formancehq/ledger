@@ -15,22 +15,23 @@ type transactionsResourceHandler struct {
 func (h transactionsResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"reverted": common.NewBooleanField(),
-			"account": common.NewStringField(),
-			"source": common.NewStringField(),
+			"reverted":    common.NewBooleanField(),
+			"account":     common.NewStringField(),
+			"source":      common.NewStringField(),
 			"destination": common.NewStringField(),
-			"timestamp": common.NewDateField().Paginated(),
-			"metadata": common.NewStringMapField(),
-			"id": common.NewNumericField().Paginated(),
-			"reference": common.NewStringField(),
+			"timestamp":   common.NewDateField().Paginated(),
+			"metadata":    common.NewStringMapField(),
+			"id":          common.NewNumericField().Paginated(),
+			"reference":   common.NewStringField(),
 			"inserted_at": common.NewDateField().Paginated(),
-			"updated_at": common.NewDateField().Paginated(),
+			"updated_at":  common.NewDateField().Paginated(),
+			"reverted_at": common.NewDateField().Paginated(),
 		},
 	}
 }
 
 func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	ret := h.store.db.NewSelect().
+	ret := h.store.newScopedSelect().
 		ModelTableExpr(h.store.GetPrefixedRelationName("transactions")).
 		Column(
 			"ledger",
@@ -44,8 +45,7 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-		).
-		Where("ledger = ?", h.store.ledger.Name)
+		)
 
 	if slices.Contains(opts.Expand, "volumes") {
 		ret = ret.Column("post_commit_volumes")
@@ -56,10 +56,9 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 	}
 
 	if h.store.ledger.HasFeature(features.FeatureAccountMetadataHistory, "SYNC") && opts.PIT != nil && !opts.PIT.IsZero() {
-		selectDistinctTransactionMetadataHistories := h.store.db.NewSelect().
+		selectDistinctTransactionMetadataHistories := h.store.newScopedSelect().
 			DistinctOn("transactions_id").
 			ModelTableExpr(h.store.GetPrefixedRelationName("transactions_metadata")).
-			Where("ledger = ?", h.store.ledger.Name).
 			Column("transactions_id", "metadata").
 			Order("transactions_id", "revision desc").
 			Where("date <= ?", opts.PIT)
@@ -74,10 +73,11 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 		ret = ret.ColumnExpr("metadata")
 	}
 
+	// Always use ColumnExpr to create reverted_at alias to avoid ambiguity
 	if opts.UsePIT() {
 		ret = ret.ColumnExpr("(case when transactions.reverted_at <= ? then transactions.reverted_at else null end) as reverted_at", opts.PIT)
 	} else {
-		ret = ret.Column("reverted_at")
+		ret = ret.ColumnExpr("transactions.reverted_at as reverted_at")
 	}
 
 	return ret, nil
@@ -90,11 +90,13 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	case property == "reference" || property == "timestamp" || property == "inserted_at" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
-		ret := "reverted_at is"
+		ret := "dataset.reverted_at is"
 		if value.(bool) {
 			ret += " not"
 		}
 		return ret + " null", nil, nil
+	case property == "reverted_at":
+		return fmt.Sprintf("dataset.reverted_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "account":
 		return filterAccountAddressOnTransactions(value.(string), true, true), nil, nil
 	case property == "source":
@@ -130,12 +132,11 @@ func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], propert
 			h.store.db.NewSelect().
 				TableExpr(
 					"(?) moves",
-					h.store.db.NewSelect().
+					h.store.newScopedSelect().
 						DistinctOn("transactions_id, accounts_address, asset").
 						ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
 						Column("transactions_id", "accounts_address", "asset").
 						ColumnExpr(`first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc) as post_commit_effective_volumes`).
-						Where("ledger = ?", h.store.ledger.Name).
 						Where("transactions_id in (select id from dataset)"),
 				).
 				Column("transactions_id", "accounts_address").

@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: e526d411c2aea88839261ea9de2ab263
+  docChecksum: 52984747065f55166ed255f2dd2d9a8f
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -176,6 +176,7 @@ generatedFiles:
   - /models/operations/v2reverttransaction.go
   - /models/operations/v2startpipeline.go
   - /models/operations/v2stoppipeline.go
+  - /models/operations/v2updateexporter.go
   - /models/operations/v2updateledgermetadata.go
   - /models/sdkerrors/errorresponse.go
   - /models/sdkerrors/v2errorresponse.go
@@ -405,6 +406,8 @@ generatedFiles:
   - docs/models/operations/v2startpipelineresponse.md
   - docs/models/operations/v2stoppipelinerequest.md
   - docs/models/operations/v2stoppipelineresponse.md
+  - docs/models/operations/v2updateexporterrequest.md
+  - docs/models/operations/v2updateexporterresponse.md
   - docs/models/operations/v2updateledgermetadatarequest.md
   - docs/models/operations/v2updateledgermetadataresponse.md
   - docs/models/sdkerrors/errorresponse.md
@@ -1136,6 +1139,18 @@ examples:
         path:
           exporterID: "<id>"
       responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2UpdateExporter:
+    speakeasy-default-v2-update-exporter:
+      parameters:
+        path:
+          exporterID: "<id>"
+      requestBody:
+        application/json: {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}}
+      responses:
+        "400":
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.2

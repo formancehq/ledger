@@ -37,7 +37,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 					return
 				}
 				select {
-				case <-ctx.Done():
+				case <-c.startContext.Done():
 					return
 				case <-time.After(c.retryInterval):
 				}
@@ -52,7 +52,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 
 func (c *DriverFacade) Stop(ctx context.Context) error {
 	select {
-	case <-c.startingChan:
+	case <-c.startingChan: // running phase
 		// not in starting phase
 	default:
 		// Cancel start
