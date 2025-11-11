@@ -5,19 +5,22 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/service"
+
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/pkg/generate"
-	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
-	"net/http"
-	"os"
-	"strings"
 )
 
 const (

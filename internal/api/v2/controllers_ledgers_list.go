@@ -1,13 +1,14 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+
+	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
 func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {

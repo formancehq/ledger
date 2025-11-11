@@ -3,12 +3,14 @@ package api
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
 )
 
 type Component struct {
@@ -59,7 +61,7 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 		CommonArgs: args.CommonArgs,
 		Args:       args.Args,
 		Database:   args.Storage,
-		Worker: 	args.Worker,
+		Worker:     args.Worker,
 	}, pulumi.Parent(cmp))
 	if err != nil {
 		return nil, fmt.Errorf("creating deployment: %w", err)

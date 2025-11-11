@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	ledger "github.com/formancehq/ledger/internal"
+
 	"github.com/uptrace/bun"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 type ControllerWithEvents struct {

@@ -2,14 +2,17 @@ package replication
 
 import (
 	"context"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/pointer"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/replication/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type ThroughGRPCBackend struct {

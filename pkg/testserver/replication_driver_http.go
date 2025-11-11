@@ -3,11 +3,13 @@ package testserver
 import (
 	"context"
 	"encoding/json"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 type HTTPDriver struct {

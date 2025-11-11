@@ -25,7 +25,7 @@ type FieldType interface {
 }
 
 type Field struct {
-	Aliases []string
+	Aliases     []string
 	Type        FieldType
 	IsPaginated bool
 }

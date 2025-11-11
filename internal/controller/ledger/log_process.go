@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/go-libs/v3/pointer"
-	ledger "github.com/formancehq/ledger/internal"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
+
+	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 type logProcessor[INPUT any, OUTPUT ledger.LogPayload] struct {

@@ -5,10 +5,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/olivere/elastic/v7"
 	"github.com/pkg/errors"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 type Driver struct {

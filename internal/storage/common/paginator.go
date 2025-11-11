@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 )
 
 type Paginator[ResourceType any] interface {

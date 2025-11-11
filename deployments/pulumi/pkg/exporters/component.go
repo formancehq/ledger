@@ -2,9 +2,11 @@ package exporters
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"reflect"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 )
 
 type ExporterArgs struct {

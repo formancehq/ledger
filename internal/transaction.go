@@ -2,13 +2,14 @@ package ledger
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/invopop/jsonschema"
-	"github.com/uptrace/bun"
 	"slices"
 	"sort"
 
+	"github.com/invopop/jsonschema"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
 )
 
 type Transactions struct {
@@ -16,10 +17,10 @@ type Transactions struct {
 }
 
 type TransactionData struct {
-	Postings   Postings          `json:"postings" bun:"postings,type:jsonb"`
-	Metadata   metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
-	Timestamp  time.Time         `json:"timestamp" bun:"timestamp,type:timestamp without time zone,nullzero"`
-	Reference  string            `json:"reference,omitempty" bun:"reference,type:varchar,unique,nullzero"`
+	Postings  Postings          `json:"postings" bun:"postings,type:jsonb"`
+	Metadata  metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
+	Timestamp time.Time         `json:"timestamp" bun:"timestamp,type:timestamp without time zone,nullzero"`
+	Reference string            `json:"reference,omitempty" bun:"reference,type:varchar,unique,nullzero"`
 }
 
 func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -38,8 +39,8 @@ type Transaction struct {
 
 	TransactionData
 	ID         *uint64    `json:"id" bun:"id,type:numeric"`
-	InsertedAt time.Time         `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
-	UpdatedAt  time.Time         `json:"updatedAt,omitempty" bun:"updated_at,type:timestamp without time zone,nullzero"`
+	InsertedAt time.Time  `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
+	UpdatedAt  time.Time  `json:"updatedAt,omitempty" bun:"updated_at,type:timestamp without time zone,nullzero"`
 	RevertedAt *time.Time `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	// PostCommitVolumes are the volumes of each account/asset after a transaction has been committed.
 	// Those volumes will never change as those are computed in flight.

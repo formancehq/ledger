@@ -1,10 +1,12 @@
 package ledger
 
 import (
+	"math/big"
+
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/uptrace/bun"
-	"math/big"
 )
 
 const (

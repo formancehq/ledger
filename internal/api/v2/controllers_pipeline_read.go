@@ -1,13 +1,14 @@
 package v2
 
 import (
-	ledger "github.com/formancehq/ledger/internal"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/v3/api"
+
+	ledger "github.com/formancehq/ledger/internal"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 
 func readPipeline(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {

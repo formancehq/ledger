@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/go-libs/v3/query"
+
 	ledger "github.com/formancehq/ledger/internal"
 )
 
@@ -68,7 +69,7 @@ func buildGetTransactionsQuery(r *http.Request) query.Builder {
 		clauses = append(clauses, query.Gte("timestamp", startTime))
 	}
 
-	// Support both endTime (new) and end_time (deprecated) parameters  
+	// Support both endTime (new) and end_time (deprecated) parameters
 	endTime := r.URL.Query().Get("endTime")
 	if endTime == "" {
 		endTime = r.URL.Query().Get("end_time") // fallback to deprecated parameter

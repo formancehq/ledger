@@ -3,18 +3,20 @@
 package test_suite
 
 import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/api"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 var _ = Context("Exporters creation API tests", func() {

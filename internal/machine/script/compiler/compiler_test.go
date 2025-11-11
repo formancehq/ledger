@@ -7,10 +7,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/machine"
-
-	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
 type TestCase struct {

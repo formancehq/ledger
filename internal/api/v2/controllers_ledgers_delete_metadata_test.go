@@ -2,18 +2,18 @@ package v2
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"errors"
-	"github.com/formancehq/go-libs/v3/api"
-
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func TestLedgersDeleteMetadata(t *testing.T) {

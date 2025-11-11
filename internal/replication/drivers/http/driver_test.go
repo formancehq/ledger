@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/replication/drivers"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 func TestHTTPDriver(t *testing.T) {

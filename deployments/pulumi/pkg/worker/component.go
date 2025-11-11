@@ -2,12 +2,14 @@ package worker
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 )
 
 type Args struct {

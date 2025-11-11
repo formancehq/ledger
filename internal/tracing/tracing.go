@@ -2,12 +2,13 @@ package tracing
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/go-libs/v3/time"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/time"
 )
 
 func LegacyMetricsName(operationName string) string {

@@ -2,21 +2,24 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunconnect"
-	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v3/service"
-	"github.com/formancehq/ledger/internal/replication"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
-	"github.com/formancehq/ledger/internal/storage"
-	"github.com/formancehq/ledger/internal/worker"
+	"time"
+
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"time"
+
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v3/service"
+
+	"github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
+	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/worker"
 )
 
 const (

@@ -3,20 +3,21 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger/internal"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-
-	sharedapi "github.com/formancehq/go-libs/v3/api"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	sharedapi "github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/logging"
+
+	ledger "github.com/formancehq/ledger/internal"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 
 func TestUpdateExporter(t *testing.T) {
@@ -106,4 +107,3 @@ func TestUpdateExporter(t *testing.T) {
 		})
 	}
 }
-

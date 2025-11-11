@@ -3,10 +3,12 @@ package ledger
 import (
 	"errors"
 	"fmt"
+	"strings"
+
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
-	"github.com/uptrace/bun"
-	"strings"
 )
 
 type volumesResourceHandler struct {

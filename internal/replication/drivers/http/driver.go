@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/ledger/internal/replication/config"
 	"net/http"
 	"net/url"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-
 	"github.com/pkg/errors"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger/internal/replication/config"
+	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 type Driver struct {

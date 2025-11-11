@@ -2,16 +2,17 @@ package replication
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/query"
-	"github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/query"
+
+	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 var (

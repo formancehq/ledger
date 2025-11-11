@@ -1,13 +1,14 @@
 package system
 
 import (
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"time"
 
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
+
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
 type DatabaseRetryConfiguration struct {

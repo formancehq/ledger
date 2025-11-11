@@ -2,6 +2,13 @@ package ledger
 
 import (
 	"fmt"
+
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/internals"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/devbox"
@@ -10,11 +17,6 @@ import (
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/provision"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/worker"
-	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/internals"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
 type ComponentArgs struct {

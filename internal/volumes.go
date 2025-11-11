@@ -4,9 +4,10 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-	"github.com/invopop/jsonschema"
 	"math/big"
 	"strings"
+
+	"github.com/invopop/jsonschema"
 )
 
 type Volumes struct {

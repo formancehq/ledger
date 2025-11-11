@@ -3,12 +3,14 @@ package system
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger/pkg/features"
+
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/uptrace/bun"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator {

@@ -3,13 +3,16 @@ package storage
 import (
 	"context"
 	"errors"
+
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/fx"
+
 	"github.com/formancehq/go-libs/v3/health"
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger/internal/storage/driver"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/fx"
 )
 
 const HealthCheckName = `storage-driver-up-to-date`

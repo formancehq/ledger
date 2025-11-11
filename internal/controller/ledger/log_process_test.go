@@ -2,16 +2,19 @@ package ledger
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/go-libs/v3/pointer"
-	ledger "github.com/formancehq/ledger/internal"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
-	"testing"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
+
+	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestForgeLogWithIKConflict(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+
 	ledger "github.com/formancehq/ledger/internal"
 )
 

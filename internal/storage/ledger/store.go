@@ -3,20 +3,22 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/common"
+
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"errors"
-	"github.com/uptrace/bun"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 type Store struct {

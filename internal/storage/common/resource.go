@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/uptrace/bun"
-	"slices"
-	"strings"
 )
 
 func ConvertOperatorToSQL(operator string) string {

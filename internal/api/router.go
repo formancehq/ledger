@@ -2,27 +2,28 @@ package api
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/go-libs/v3/service"
-	"github.com/formancehq/ledger/internal/api/bulking"
-	"github.com/formancehq/ledger/internal/controller/system"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	otelchimetric "github.com/riandyrn/otelchi/metric"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"net/http"
 
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/service"
+
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/go-chi/chi/v5"
-	otelchimetric "github.com/riandyrn/otelchi/metric"
+	"github.com/formancehq/ledger/internal/controller/system"
 )
 
 // todo: refine textual errors
@@ -112,7 +113,7 @@ func NewRouter(
 
 type routerOptions struct {
 	tracer           trace.Tracer
-	meterProvider metric.MeterProvider
+	meterProvider    metric.MeterProvider
 	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
 	paginationConfig common.PaginationConfig

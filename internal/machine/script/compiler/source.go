@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/internal/machine"
-
 	"github.com/formancehq/ledger/internal/machine/script/parser"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 )

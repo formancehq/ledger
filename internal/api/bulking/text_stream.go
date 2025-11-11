@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"strings"
+
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/machine/vm"
-	"strings"
 )
 
 func ParseTextStream(scanner *bufio.Scanner) (*BulkElement, error) {

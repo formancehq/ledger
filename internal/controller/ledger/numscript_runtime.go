@@ -2,17 +2,17 @@ package ledger
 
 import (
 	"context"
-	"fmt"
-
 	"errors"
+	"fmt"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/numscript"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
 	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
-	"github.com/formancehq/numscript"
 )
 
 type NumscriptExecutionResult struct {

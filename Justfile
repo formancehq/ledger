@@ -7,6 +7,7 @@ pre-commit: tidy generate lint export-docs-events openapi generate-client
 pc: pre-commit
 
 lint:
+    gci write --skip-generated --skip-vendor -s standard -s default -s "prefix(github.com/formancehq)" -s localmodule .
     golangci-lint run --fix --build-tags it,local --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \

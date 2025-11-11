@@ -4,22 +4,24 @@ package write
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v3/testing/deferred"
-	"github.com/formancehq/go-libs/v3/testing/docker"
-	"github.com/formancehq/go-libs/v3/testing/testservice"
-	ledgerclient "github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/test/performance/pkg/env"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/url"
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/go-libs/v3/time"
+
+	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 )
 
 type TestServerEnv struct {

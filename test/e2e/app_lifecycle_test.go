@@ -6,6 +6,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math/big"
+	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -14,6 +23,7 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -23,13 +33,6 @@ import (
 	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
-	"github.com/google/uuid"
-	"github.com/nats-io/nats.go"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/uptrace/bun"
-	"math/big"
-	"net/http"
 )
 
 var _ = Context("Ledger application lifecycle tests", func() {

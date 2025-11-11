@@ -3,10 +3,12 @@ package exporters
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"reflect"
+
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"reflect"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 )
 
 type ExporterComponent interface {

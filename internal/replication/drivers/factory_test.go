@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func TestDriverFactoryWithBatching(t *testing.T) {

@@ -1,14 +1,14 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger/internal/machine"
-
-	"errors"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
+
+	"github.com/formancehq/ledger/internal/machine"
 	"github.com/formancehq/ledger/internal/machine/script/parser"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 )

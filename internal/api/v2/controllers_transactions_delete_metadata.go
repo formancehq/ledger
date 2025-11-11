@@ -4,13 +4,12 @@ import (
 	"net/http"
 	"strconv"
 
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger/internal/api/common"
-
 	"github.com/formancehq/go-libs/v3/api"
+
+	"github.com/formancehq/ledger/internal/api/common"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {

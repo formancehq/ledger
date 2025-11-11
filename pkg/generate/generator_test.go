@@ -3,17 +3,20 @@
 package generate
 
 import (
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
 	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
 )
 
 func TestGenerator(t *testing.T) {

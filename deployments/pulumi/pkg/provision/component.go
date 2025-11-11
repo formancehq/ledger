@@ -2,16 +2,18 @@ package provision
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	rbacv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/rbac/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )
 
 type Component struct {
@@ -19,8 +21,8 @@ type Component struct {
 }
 
 type LedgerConfigArgs struct {
-	Bucket   string            `json:"bucket"`
-	Metadata map[string]string `json:"metadata"`
+	Bucket    string            `json:"bucket"`
+	Metadata  map[string]string `json:"metadata"`
 	Features  map[string]string `json:"features"`
 	Exporters []string          `json:"exporters"`
 }

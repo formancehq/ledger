@@ -1,11 +1,12 @@
 package worker
 
 import (
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )
 
 func createDeployment(ctx *pulumi.Context, args ComponentArgs, resourceOptions ...pulumi.ResourceOption) (*appsv1.Deployment, error) {

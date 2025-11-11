@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/pkg/errors"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 type DriverFacade struct {

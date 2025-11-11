@@ -3,9 +3,11 @@
 package env
 
 import (
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/ledger/pkg/features"
 	"sort"
+
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 func BuildAllPossibleConfigurations() []Configuration {

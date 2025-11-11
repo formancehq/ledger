@@ -93,6 +93,7 @@
               go-tools
               golangci-lint
               ginkgo
+              gci
               yq-go
               jq
               pkgs.nur.repos.goreleaser.goreleaser-pro

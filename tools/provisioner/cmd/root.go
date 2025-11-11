@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/pkg/client"
-	provisionner "github.com/formancehq/ledger/tools/provisioner/pkg"
-	"gopkg.in/yaml.v2"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
+
+	"github.com/formancehq/ledger/pkg/client"
+	provisionner "github.com/formancehq/ledger/tools/provisioner/pkg"
 )
 
 var rootCmd = &cobra.Command{

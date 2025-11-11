@@ -4,15 +4,16 @@ package test_suite
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/testing/deferred"
-	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/testing/docker"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 )
 
 func Test(t *testing.T) {

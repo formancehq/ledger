@@ -3,10 +3,13 @@
 package write_test
 
 import (
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger/test/performance/pkg/env"
-	"github.com/jamiealquiza/tachymeter"
 	"sync"
+
+	"github.com/jamiealquiza/tachymeter"
+
+	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 )
 
 type Result struct {
