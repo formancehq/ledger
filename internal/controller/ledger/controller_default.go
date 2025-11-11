@@ -3,37 +3,32 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"reflect"
 
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger/pkg/features"
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/ledger/internal/tracing"
-
-	"github.com/formancehq/ledger/internal/machine"
-
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-
-	"errors"
-
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/google/uuid"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 type DefaultController struct {
@@ -120,7 +115,7 @@ func NewDefaultController(
 	}
 
 	var err error
-	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("controller.numscript_run")
+	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("controller.numscript_run", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
