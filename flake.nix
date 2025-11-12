@@ -28,12 +28,13 @@
             pkgs = import nixpkgs {
               inherit system;
               overlays = [ self.overlays.default nur.overlays.default ];
-              config.allowUnfree = true;
+              config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
+                "goreleaser-pro"
+              ];
             };
             pkgs-unstable = import nixpkgs-unstable {
               inherit system;
-              overlays = [ self.overlays.default nur.overlays.default ];
-              config.allowUnfree = true;
+              overlays = [ self.overlays.default ];
             };
           in
           f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
