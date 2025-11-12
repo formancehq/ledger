@@ -213,7 +213,7 @@ func BenchmarkWrite(b *testing.B) {
 			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSActionProviderFactory(rootPath, string(script))
 		}
 	} else {
-		file, err := os.ReadFile(scriptFlag)
+		file, err := os.ReadFile(filepath.Clean(scriptFlag))
 		require.NoError(b, err, "reading file "+scriptFlag)
 
 		rootPath, err := filepath.Abs(filepath.Dir(scriptFlag))
@@ -229,9 +229,9 @@ func BenchmarkWrite(b *testing.B) {
 
 	// Write report
 	if reportFileFlag != "" {
-		require.NoError(b, os.MkdirAll(filepath.Dir(reportFileFlag), 0755))
+		require.NoError(b, os.MkdirAll(filepath.Dir(reportFileFlag), 0750))
 
-		f, err := os.Create(reportFileFlag)
+		f, err := os.Create(filepath.Clean(reportFileFlag))
 		require.NoError(b, err)
 		enc := json.NewEncoder(f)
 		enc.SetIndent("", "  ")

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -130,7 +131,7 @@ func BenchmarkRead(b *testing.B) {
 	env.Start()
 
 	cfg := &Configuration{}
-	f, err := os.Open(configFlag)
+	f, err := os.Open(filepath.Clean(configFlag))
 	if err != nil {
 		b.Fatalf("Failed to open configuration file: %s", err)
 	}
