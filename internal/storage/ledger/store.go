@@ -3,20 +3,22 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/common"
+
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"errors"
-	"github.com/uptrace/bun"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 type Store struct {
@@ -197,77 +199,77 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 	}
 
 	var err error
-	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema")
+	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.check_ledger_schema")
+	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.check_ledger_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.update_accounts_metadata")
+	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.update_accounts_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_account_metadata")
+	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_account_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsert_accounts")
+	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsert_accounts", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.get_balances")
+	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.get_balances", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insert_log")
+	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insert_log", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.read_log_with_idempotency_key")
+	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.read_log_with_idempotency_key", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insert_moves")
+	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insert_moves", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insert_transaction")
+	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insert_transaction", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revert_transaction")
+	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revert_transaction", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.update_transaction_metadata")
+	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.update_transaction_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_transaction_metadata")
+	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_transaction_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.update_balances")
+	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.update_balances", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
 
-	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.get_volumes_with_balances")
+	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.get_volumes_with_balances", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}

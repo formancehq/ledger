@@ -3,16 +3,18 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/formancehq/ledger/internal/tracing"
+
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/migrations"
+
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/tracing"
 )
 
 type ControllerWithTraces struct {
@@ -55,95 +57,95 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 	}
 
 	var err error
-	ret.beginTxHistogram, err = meter.Int64Histogram("controller.begin_tx")
+	ret.beginTxHistogram, err = meter.Int64Histogram("controller.begin_tx", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.listTransactionsHistogram, err = meter.Int64Histogram("controller.list_transactions")
+	ret.listTransactionsHistogram, err = meter.Int64Histogram("controller.list_transactions", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.commitHistogram, err = meter.Int64Histogram("controller.commit")
+	ret.commitHistogram, err = meter.Int64Histogram("controller.commit", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.rollbackHistogram, err = meter.Int64Histogram("controller.rollback")
+	ret.rollbackHistogram, err = meter.Int64Histogram("controller.rollback", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.countTransactionsHistogram, err = meter.Int64Histogram("controller.count_transactions")
+	ret.countTransactionsHistogram, err = meter.Int64Histogram("controller.count_transactions", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.getTransactionHistogram, err = meter.Int64Histogram("controller.get_transaction")
+	ret.getTransactionHistogram, err = meter.Int64Histogram("controller.get_transaction", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.countAccountsHistogram, err = meter.Int64Histogram("controller.count_accounts")
+	ret.countAccountsHistogram, err = meter.Int64Histogram("controller.count_accounts", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.listAccountsHistogram, err = meter.Int64Histogram("controller.list_accounts")
+	ret.listAccountsHistogram, err = meter.Int64Histogram("controller.list_accounts", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.getAccountHistogram, err = meter.Int64Histogram("controller.get_account")
+	ret.getAccountHistogram, err = meter.Int64Histogram("controller.get_account", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.getAggregatedBalancesHistogram, err = meter.Int64Histogram("controller.get_aggregated_balances")
+	ret.getAggregatedBalancesHistogram, err = meter.Int64Histogram("controller.get_aggregated_balances", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.listLogsHistogram, err = meter.Int64Histogram("controller.list_logs")
+	ret.listLogsHistogram, err = meter.Int64Histogram("controller.list_logs", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.importHistogram, err = meter.Int64Histogram("controller.import")
+	ret.importHistogram, err = meter.Int64Histogram("controller.import", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.exportHistogram, err = meter.Int64Histogram("controller.export")
+	ret.exportHistogram, err = meter.Int64Histogram("controller.export", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.isDatabaseUpToDateHistogram, err = meter.Int64Histogram("controller.is_database_up_to_date")
+	ret.isDatabaseUpToDateHistogram, err = meter.Int64Histogram("controller.is_database_up_to_date", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.getVolumesWithBalancesHistogram, err = meter.Int64Histogram("controller.get_volumes_with_balances")
+	ret.getVolumesWithBalancesHistogram, err = meter.Int64Histogram("controller.get_volumes_with_balances", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.getStatsHistogram, err = meter.Int64Histogram("controller.get_stats")
+	ret.getStatsHistogram, err = meter.Int64Histogram("controller.get_stats", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.createTransactionHistogram, err = meter.Int64Histogram("controller.create_transaction")
+	ret.createTransactionHistogram, err = meter.Int64Histogram("controller.create_transaction", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.revertTransactionHistogram, err = meter.Int64Histogram("controller.revert_transaction")
+	ret.revertTransactionHistogram, err = meter.Int64Histogram("controller.revert_transaction", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.saveTransactionMetadataHistogram, err = meter.Int64Histogram("controller.save_transaction_metadata")
+	ret.saveTransactionMetadataHistogram, err = meter.Int64Histogram("controller.save_transaction_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.saveAccountMetadataHistogram, err = meter.Int64Histogram("controller.save_account_metadata")
+	ret.saveAccountMetadataHistogram, err = meter.Int64Histogram("controller.save_account_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.deleteTransactionMetadataHistogram, err = meter.Int64Histogram("controller.delete_transaction_metadata")
+	ret.deleteTransactionMetadataHistogram, err = meter.Int64Histogram("controller.delete_transaction_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.deleteAccountMetadataHistogram, err = meter.Int64Histogram("controller.delete_account_metadata")
+	ret.deleteAccountMetadataHistogram, err = meter.Int64Histogram("controller.delete_account_metadata", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.lockLedgerHistogram, err = meter.Int64Histogram("controller.lock_ledger")
+	ret.lockLedgerHistogram, err = meter.Int64Histogram("controller.lock_ledger", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
