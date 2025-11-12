@@ -2,8 +2,9 @@
   description = "A Nix-flake-based Go 1.25 development environment";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2505";
-    nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
+    # Pin to specific nixpkgs revision for reproducible builds
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     nur = {
       url = "github:nix-community/NUR";
