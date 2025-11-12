@@ -26,7 +26,7 @@ func NewDocEventsCommand() *cobra.Command {
 				return fmt.Errorf("failed to get write-dir flag: %w", err)
 			}
 
-			err = os.MkdirAll(writeDir, 0755)
+			err = os.MkdirAll(writeDir, 0750)
 			if err != nil {
 				return fmt.Errorf("failed to create write-dir: %w", err)
 			}

@@ -222,7 +222,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 	}
 
 	err = runtime.Set("read_file", func(path string) string {
-		f, err := os.ReadFile(filepath.Join(cfg.rootPath, path))
+		f, err := os.ReadFile(filepath.Clean(filepath.Join(cfg.rootPath, path)))
 		if err != nil {
 			panic(err)
 		}
