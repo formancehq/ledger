@@ -95,21 +95,21 @@
         {
           default = pkgs.mkShell {
             packages = with pkgs; with pkgs-unstable; [
-              pkgs.ginkgo
-              pkgs.go
-              pkgs.go-tools
-              pkgs.gomarkdoc
-              pkgs.goperf
-              pkgs.gotools
-              pkgs.jdk11
-              pkgs.jq
-              pkgs.just
-              pkgs.mockgen
-              pkgs.nodejs_22
-              pkgs.protobuf_27
-              pkgs.protoc-gen-go
-              pkgs.protoc-gen-go-grpc
-              pkgs.yq-go
+              ginkgo
+              go
+              go-tools
+              gomarkdoc
+              goperf
+              gotools
+              jdk11
+              jq
+              just
+              mockgen
+              nodejs_22
+              protobuf_27
+              protoc-gen-go
+              protoc-gen-go-grpc
+              yq-go
 
               pkgs-unstable.golangci-lint
               pkgs.nur.repos.goreleaser.goreleaser-pro
