@@ -94,7 +94,7 @@
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         {
           default = pkgs.mkShell {
-            packages = with pkgs; with pkgs-unstable; [
+            packages = with pkgs; [
               ginkgo
               go
               go-tools
