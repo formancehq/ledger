@@ -13,8 +13,6 @@
 
   outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
     let
-      goVersion = 25;
-
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -27,14 +25,13 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ self.overlays.default nur.overlays.default ];
+              overlays = [ nur.overlays.default ];
               config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
                 "goreleaser-pro"
               ];
             };
             pkgs-unstable = import nixpkgs-unstable {
               inherit system;
-              #overlays = [ self.overlays.default ];
             };
           in
           f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
@@ -56,10 +53,6 @@
 
     in
     {
-      overlays.default = final: prev: {
-        go = final."go_1_${toString goVersion}";
-      };
-
       packages = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         {
           speakeasy = pkgs.stdenv.mkDerivation {
@@ -95,7 +88,7 @@
         let
           stablePackages = with pkgs; [
             ginkgo
-            pkgs.go
+            go_1_25
             go-tools
             gomarkdoc
             goperf
