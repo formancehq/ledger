@@ -8,13 +8,15 @@ import (
 	"sync/atomic"
 
 	"github.com/alitto/pond"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/otlp"
-	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
+
+	ledger "github.com/formancehq/ledger/internal"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")

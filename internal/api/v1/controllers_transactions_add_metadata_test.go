@@ -1,20 +1,22 @@
 package v1
 
 import (
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/metadata"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestTransactionsAddMetadata(t *testing.T) {

@@ -2,11 +2,14 @@ package replication
 
 import (
 	"encoding/json"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/grpc"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func mapExporter(exporter ledger.Exporter) *grpc.Exporter {
@@ -23,7 +26,7 @@ func mapExporter(exporter ledger.Exporter) *grpc.Exporter {
 func mapPipelineConfiguration(cfg ledger.PipelineConfiguration) *grpc.PipelineConfiguration {
 	return &grpc.PipelineConfiguration{
 		ExporterId: cfg.ExporterID,
-		Ledger:      cfg.Ledger,
+		Ledger:     cfg.Ledger,
 	}
 }
 

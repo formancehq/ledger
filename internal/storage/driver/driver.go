@@ -4,23 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/tracing"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 	"sync"
 	"time"
 
 	"github.com/alitto/pond"
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/uptrace/bun"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/tracing"
 )
 
 var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")

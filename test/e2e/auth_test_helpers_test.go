@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/oidc"
-	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+
+	"github.com/formancehq/go-libs/v3/oidc"
+	libtime "github.com/formancehq/go-libs/v3/time"
 )
 
 const (

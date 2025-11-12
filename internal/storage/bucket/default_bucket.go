@@ -6,12 +6,15 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/migrations"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/pkg/features"
+	"text/template"
+
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
-	"text/template"
+
+	"github.com/formancehq/go-libs/v3/migrations"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 // stateless version (+1 regarding directory name, as migrations start from 1 in the lib)

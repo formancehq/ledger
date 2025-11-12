@@ -2,13 +2,15 @@ package common
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/uptrace/bun"
 	"math/big"
 	"reflect"
 	"strings"
 	libtime "time"
+
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/time"
 )
 
 type columnPaginator[ResourceType, OptionsType any] struct {

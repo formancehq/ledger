@@ -4,10 +4,12 @@ package main_test
 
 import (
 	"embed"
-	"github.com/formancehq/ledger/pkg/generate"
-	"github.com/stretchr/testify/require"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/pkg/generate"
 )
 
 //go:embed examples

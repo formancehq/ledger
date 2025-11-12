@@ -5,9 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"net/http"
 	"reflect"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 )
 
 // todo: backport in go libs

@@ -2,20 +2,23 @@ package replication
 
 import (
 	"context"
+	"time"
+
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
-	"go.uber.org/fx"
-	"google.golang.org/grpc"
-	"time"
 )
 
 type WorkerModuleConfig struct {
 	PushRetryPeriod time.Duration
 	PullInterval    time.Duration
-	SyncPeriod   time.Duration
-	LogsPageSize uint64
+	SyncPeriod      time.Duration
+	LogsPageSize    uint64
 }
 
 // NewWorkerFXModule create a new fx module

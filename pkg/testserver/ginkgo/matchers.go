@@ -5,20 +5,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/publish"
-	"github.com/formancehq/go-libs/v3/testing/deferred"
-	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/formancehq/ledger/pkg/testserver"
+	"math/big"
+	"reflect"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/invopop/jsonschema"
 	"github.com/nats-io/nats.go"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 	"github.com/xeipuuv/gojsonschema"
-	"math/big"
-	"reflect"
+
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/publish"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/testserver"
 )
 
 type HaveCoherentStateMatcher struct{}

@@ -1,9 +1,10 @@
 package common
 
 import (
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/monitoring"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/monitoring"
 )
 
 type CommonArgs struct {

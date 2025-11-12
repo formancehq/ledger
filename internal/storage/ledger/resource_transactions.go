@@ -2,10 +2,12 @@ package ledger
 
 import (
 	"fmt"
+	"slices"
+
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
-	"github.com/uptrace/bun"
-	"slices"
 )
 
 type transactionsResourceHandler struct {

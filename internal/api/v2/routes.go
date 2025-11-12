@@ -3,19 +3,18 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/ledger/internal/api/bulking"
-	v1 "github.com/formancehq/ledger/internal/api/v1"
-	nooptracer "go.opentelemetry.io/otel/trace/noop"
-
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-
+	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/go-chi/chi/v5"
+	v1 "github.com/formancehq/ledger/internal/api/v1"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 
 func NewRouter(

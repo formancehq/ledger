@@ -7,21 +7,21 @@ import (
 	"math/big"
 	"net/http"
 
-	. "github.com/formancehq/ledger/pkg/testserver"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"golang.org/x/oauth2"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/ledger/pkg/client"
-	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
-	"golang.org/x/oauth2"
 
+	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 )
 
 // clientWithToken creates a client with a bearer token using oauth2.StaticTokenSource

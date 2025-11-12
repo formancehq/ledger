@@ -3,18 +3,20 @@ package ledger
 import (
 	"context"
 	"fmt"
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger/internal/tracing"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"regexp"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/tracing"
 )
 
 var (

@@ -6,17 +6,19 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/trace"
-	"gopkg.in/yaml.v3"
 	"io/fs"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"text/template"
+
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"gopkg.in/yaml.v3"
+
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/otlp"
 )
 
 //go:embed migrations

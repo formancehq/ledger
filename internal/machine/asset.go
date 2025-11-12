@@ -2,6 +2,7 @@ package machine
 
 import (
 	"fmt"
+
 	"github.com/formancehq/ledger/pkg/assets"
 )
 

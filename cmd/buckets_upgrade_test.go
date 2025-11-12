@@ -6,11 +6,12 @@ import (
 	"io"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBucketsUpgrade(t *testing.T) {

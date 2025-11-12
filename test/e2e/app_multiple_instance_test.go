@@ -3,15 +3,18 @@
 package test_suite
 
 import (
+	"sync"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+
 	"github.com/formancehq/ledger/cmd"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"sync"
 )
 
 var _ = Context("Ledger application multiple instance tests", func() {

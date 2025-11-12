@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/formancehq/ledger/internal/controller/ledger"
-
 	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/go-libs/v3/api"
+
 	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {

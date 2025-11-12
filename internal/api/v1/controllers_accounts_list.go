@@ -1,14 +1,15 @@
 package v1
 
 import (
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/storage/ledger"
+	"errors"
 	"net/http"
 
-	"errors"
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func listAccounts(w http.ResponseWriter, r *http.Request) {

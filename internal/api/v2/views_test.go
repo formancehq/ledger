@@ -2,14 +2,17 @@ package v2
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
 	"math/big"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestTransactionRender(t *testing.T) {

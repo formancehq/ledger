@@ -3,12 +3,12 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/common"
-
-	"github.com/formancehq/ledger/internal/controller/system"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/system"
 )
 
 func deleteLedgerMetadata(b system.Controller) http.HandlerFunc {

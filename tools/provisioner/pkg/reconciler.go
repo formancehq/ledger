@@ -3,14 +3,17 @@ package provisionner
 import (
 	"context"
 	"fmt"
+	"slices"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/pointer"
+
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"slices"
 )
 
 type Reconciler struct {

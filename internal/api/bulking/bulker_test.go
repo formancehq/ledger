@@ -2,21 +2,21 @@ package bulking
 
 import (
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/uptrace/bun"
+	"errors"
 	"math/big"
 	"testing"
 
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
 
-	"errors"
-	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func TestBulk(t *testing.T) {

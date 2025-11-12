@@ -2,17 +2,18 @@ package driver
 
 import (
 	"context"
+
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/fx"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v3/logging"
-	"go.uber.org/fx"
 )
 
 func NewFXModule() fx.Option {

@@ -2,13 +2,15 @@ package drivers
 
 import (
 	"context"
-	ledger "github.com/formancehq/ledger/internal"
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestBatchingConfiguration(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
@@ -71,9 +72,9 @@ func UnmarshalBulkElementPayload(action string, data []byte) (any, error) {
 
 type BulkElementResult struct {
 	Error     error
-	Data      any `json:"data,omitempty"`
+	Data      any    `json:"data,omitempty"`
 	LogID     uint64 `json:"logID"`
-	ElementID int `json:"elementID"`
+	ElementID int    `json:"elementID"`
 }
 
 type AddMetadataRequest struct {
@@ -83,9 +84,9 @@ type AddMetadataRequest struct {
 }
 
 type RevertTransactionRequest struct {
-	ID              uint64  `json:"id"`
-	Force           bool `json:"force"`
-	AtEffectiveDate bool `json:"atEffectiveDate"`
+	ID              uint64            `json:"id"`
+	Force           bool              `json:"force"`
+	AtEffectiveDate bool              `json:"atEffectiveDate"`
 	Metadata        metadata.Metadata `json:"metadata"`
 }
 
@@ -103,7 +104,7 @@ type TransactionRequest struct {
 	Metadata        metadata.Metadata            `json:"metadata" swaggertype:"object"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 	Runtime         ledgercontroller.RuntimeType `json:"runtime,omitempty"`
-	Force bool `json:"force"`
+	Force           bool                         `json:"force"`
 }
 
 func (req TransactionRequest) ToCore() (*ledgercontroller.CreateTransaction, error) {

@@ -2,14 +2,16 @@ package devbox
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/storage"
 )
 
 type Component struct {
@@ -19,7 +21,7 @@ type Component struct {
 
 type ComponentArgs struct {
 	common.CommonArgs
-	Storage    *storage.Component
+	Storage   *storage.Component
 	API       *api.Component
 	Exporters *exporters.Component
 }

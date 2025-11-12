@@ -2,12 +2,15 @@ package ledger
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger/pkg/features"
-	"github.com/uptrace/bun"
 	"regexp"
 	"slices"
+
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 const (

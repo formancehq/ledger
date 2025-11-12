@@ -2,9 +2,11 @@ package ledger
 
 import (
 	"errors"
+
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
-	"github.com/uptrace/bun"
 )
 
 type aggregatedBalancesResourceRepositoryHandler struct {
@@ -76,7 +78,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		ret := h.store.newScopedSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
+			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
 
 		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
 			return isPartialAddress(value.(string))

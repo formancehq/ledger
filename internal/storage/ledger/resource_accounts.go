@@ -2,10 +2,12 @@ package ledger
 
 import (
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/pkg/features"
+
 	"github.com/stoewer/go-strcase"
 	"github.com/uptrace/bun"
+
+	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 type accountsResourceHandler struct {
@@ -139,15 +141,15 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
+			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
 	}
 
 	return h.store.db.NewSelect().
-		With("rows", selectRowsQuery).
-		ModelTableExpr("rows").
-		Column("accounts_address").
-		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
-		Group("accounts_address"), &common.JoinCondition{
+			With("rows", selectRowsQuery).
+			ModelTableExpr("rows").
+			Column("accounts_address").
+			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
+			Group("accounts_address"), &common.JoinCondition{
 			Left:  "address",
 			Right: "accounts_address",
 		}, nil

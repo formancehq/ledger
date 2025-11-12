@@ -3,21 +3,22 @@ package vm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
 	"sync"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/machine"
-
-	"errors"
-	"github.com/formancehq/go-libs/v3/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/script/compiler"
-	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/internal/machine/script/compiler"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
 const (

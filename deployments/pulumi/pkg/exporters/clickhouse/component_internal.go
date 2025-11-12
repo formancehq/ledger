@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	helm "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v4"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/internals"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 )
 
 type internalComponent struct {

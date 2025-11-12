@@ -3,14 +3,17 @@ package bulking
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/time"
+
+	ledger "github.com/formancehq/ledger/internal"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func TestBulkHandlerJSON(t *testing.T) {

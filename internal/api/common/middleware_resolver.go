@@ -1,16 +1,17 @@
 package common
 
 import (
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"errors"
 	"net/http"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/ledger/internal/controller/system"
 
-	"errors"
+	"github.com/formancehq/ledger/internal/controller/system"
 )
 
 const (

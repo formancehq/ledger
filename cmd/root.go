@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/bun/bunmigrate"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/service"
+
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/spf13/cobra"
-	"github.com/uptrace/bun"
 )
 
 const (
@@ -15,8 +17,8 @@ const (
 
 	NumscriptInterpreterFlag        = "experimental-numscript-interpreter"
 	NumscriptInterpreterFlagsToPass = "experimental-numscript-interpreter-flags"
-	ExperimentalFeaturesFlag = "experimental-features"
-	ExperimentalExporters    = "experimental-exporters"
+	ExperimentalFeaturesFlag        = "experimental-features"
+	ExperimentalExporters           = "experimental-exporters"
 )
 
 var (

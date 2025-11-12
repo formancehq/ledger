@@ -3,11 +3,14 @@ package noop
 import (
 	"context"
 	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestNoOpDriver(t *testing.T) {

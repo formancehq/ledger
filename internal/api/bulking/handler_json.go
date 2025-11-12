@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/pointer"
+
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"net/http"
-	"slices"
 )
 
 type JsonBulkHandler struct {

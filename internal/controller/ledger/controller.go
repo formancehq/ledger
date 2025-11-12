@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
+
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
@@ -102,7 +103,7 @@ type RevertTransaction struct {
 	Force           bool
 	AtEffectiveDate bool
 	TransactionID   uint64
-	Metadata metadata.Metadata
+	Metadata        metadata.Metadata
 }
 
 type SaveTransactionMetadata struct {

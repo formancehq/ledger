@@ -3,12 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/ledger/pkg/events"
-	"github.com/invopop/jsonschema"
-	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"reflect"
+
+	"github.com/invopop/jsonschema"
+	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger/pkg/events"
 )
 
 func NewDocEventsCommand() *cobra.Command {

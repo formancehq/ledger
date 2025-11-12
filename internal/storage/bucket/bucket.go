@@ -2,11 +2,14 @@ package bucket
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/migrations"
-	ledger "github.com/formancehq/ledger/internal"
+
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/formancehq/go-libs/v3/migrations"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source bucket.go -destination bucket_generated_test.go -package bucket . Bucket

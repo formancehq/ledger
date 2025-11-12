@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type Store interface {

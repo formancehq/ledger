@@ -3,12 +3,15 @@ package stdout
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/stretchr/testify/require"
 	"io"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
 func TestStdoutDriver(t *testing.T) {

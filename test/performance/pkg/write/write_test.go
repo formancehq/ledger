@@ -8,22 +8,25 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/formancehq/ledger/pkg/generate"
-	"github.com/formancehq/ledger/test/performance/pkg/env"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/time"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/generate"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 )
 
 func init() {
