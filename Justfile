@@ -7,6 +7,7 @@ pre-commit: tidy generate lint export-docs-events openapi generate-client
 pc: pre-commit
 
 lint:
+    golangci-lint --version
     golangci-lint run --fix --build-tags it,local --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \
