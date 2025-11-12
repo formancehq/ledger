@@ -34,7 +34,7 @@
             };
             pkgs-unstable = import nixpkgs-unstable {
               inherit system;
-              overlays = [ self.overlays.default ];
+              #overlays = [ self.overlays.default ];
             };
           in
           f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
