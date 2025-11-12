@@ -2,6 +2,8 @@ module github.com/formancehq/ledger/deployments/pulumi
 
 go 1.24
 
+toolchain go1.25.4
+
 require (
 	github.com/formancehq/go-libs/v3 v3.0.1
 	github.com/google/uuid v1.6.0

@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
-
 	"github.com/formancehq/ledger/pkg/testserver"
 )
 

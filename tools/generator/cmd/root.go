@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/service"
-
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -74,7 +74,7 @@ func run(cmd *cobra.Command, args []string) error {
 	ledgerUrl := args[0]
 	scriptLocation := args[1]
 
-	fileContent, err := os.ReadFile(scriptLocation)
+	fileContent, err := os.ReadFile(filepath.Clean(scriptLocation))
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
