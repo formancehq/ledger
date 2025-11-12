@@ -92,29 +92,35 @@
       defaultPackage.aarch64-darwin = self.packages.aarch64-darwin.speakeasy;
 
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
+        let
+          stablePackages = with pkgs; [
+            ginkgo
+            go
+            go-tools
+            gomarkdoc
+            goperf
+            gotools
+            jdk11
+            jq
+            just
+            mockgen
+            nodejs_22
+            protobuf_27
+            protoc-gen-go
+            protoc-gen-go-grpc
+            yq-go
+          ];
+          unstablePackages = with pkgs-unstable; [
+            golangci-lint
+          ];
+          otherPackages = [
+            pkgs.nur.repos.goreleaser.goreleaser-pro
+            self.packages.${system}.speakeasy
+          ];
+        in
         {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              ginkgo
-              go
-              go-tools
-              gomarkdoc
-              goperf
-              gotools
-              jdk11
-              jq
-              just
-              mockgen
-              nodejs_22
-              protobuf_27
-              protoc-gen-go
-              protoc-gen-go-grpc
-              yq-go
-
-              pkgs-unstable.golangci-lint
-              pkgs.nur.repos.goreleaser.goreleaser-pro
-              self.packages.${system}.speakeasy
-            ];
+            packages = stablePackages ++ unstablePackages ++ otherPackages;
           };
         }
       );
