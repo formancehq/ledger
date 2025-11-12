@@ -95,7 +95,7 @@
         let
           stablePackages = with pkgs; [
             ginkgo
-            go
+            pkgs.go
             go-tools
             gomarkdoc
             goperf
