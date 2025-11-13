@@ -23,8 +23,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestCreateTransaction(t *testing.T) {
-	t.Parallel()
+func testCreateTransaction(t *testing.T, withSchema bool) {
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -35,26 +34,31 @@ func TestCreateTransaction(t *testing.T) {
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 
-	schema := ledger.Schema{
-		SchemaData: ledger.SchemaData{
-			Chart: ledger.ChartOfAccounts{
-				"world": {
-					Account: &ledger.AccountSchema{},
-				},
-				"bank": {
-					Account: &ledger.AccountSchema{},
+	var schema ledger.Schema
+	var schemaVersion string
+	if withSchema {
+		schemaVersion = "v1.0"
+		schema = ledger.Schema{
+			SchemaData: ledger.SchemaData{
+				Chart: ledger.ChartOfAccounts{
+					"world": {
+						Account: &ledger.AccountSchema{},
+					},
+					"bank": {
+						Account: &ledger.AccountSchema{},
+					},
 				},
 			},
-		},
-		Version: "v1.0",
+			Version: schemaVersion,
+		}
+
+		store.EXPECT().
+			InsertSchema(gomock.Any(), &schema).
+			Return(nil)
+
+		err := store.InsertSchema(context.Background(), &schema)
+		require.NoError(t, err)
 	}
-
-	store.EXPECT().
-		InsertSchema(gomock.Any(), &schema).
-		Return(nil)
-
-	err := store.InsertSchema(context.Background(), &schema)
-	require.NoError(t, err)
 
 	runScript := RunScript{}
 
@@ -77,13 +81,19 @@ func TestCreateTransaction(t *testing.T) {
 			Postings: ledger.Postings{posting},
 		}, nil)
 
-	store.EXPECT().
-		FindSchema(gomock.Any(), "v1.0").
-		Return(&schema, nil)
+	if withSchema {
+		store.EXPECT().
+			FindSchema(gomock.Any(), "v1.0").
+			Return(&schema, nil)
 
-	store.EXPECT().
-		FindSchema(gomock.Any(), "v1.0").
-		Return(&schema, nil)
+		store.EXPECT().
+			FindSchema(gomock.Any(), "v1.0").
+			Return(&schema, nil)
+	} else {
+		store.EXPECT().
+			FindSchemas(gomock.Any(), gomock.Any()).
+			Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+	}
 
 	store.EXPECT().
 		CommitTransaction(gomock.Any(), gomock.Any(), map[string]metadata.Metadata{}).
@@ -98,13 +108,19 @@ func TestCreateTransaction(t *testing.T) {
 			return log
 		})
 
-	_, _, err = l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
-		SchemaVersion: "v1.0",
+	_, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+		SchemaVersion: schemaVersion,
 		Input: CreateTransaction{
 			RunScript: runScript,
 		},
 	})
 	require.NoError(t, err)
+}
+
+func TestCreateTransaction(t *testing.T) {
+	t.Parallel()
+	testCreateTransaction(t, false)
+	testCreateTransaction(t, true)
 }
 
 func TestRevertTransaction(t *testing.T) {
