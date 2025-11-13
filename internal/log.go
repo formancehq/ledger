@@ -6,15 +6,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/uptrace/bun"
 	"reflect"
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/v3/time"
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 )
 
 const (

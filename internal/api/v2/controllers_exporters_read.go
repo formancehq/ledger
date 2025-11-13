@@ -2,9 +2,11 @@ package v2
 
 import (
 	"errors"
-	"github.com/formancehq/go-libs/v3/api"
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
+
+	"github.com/formancehq/go-libs/v3/api"
+
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 
 func getExporter(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {

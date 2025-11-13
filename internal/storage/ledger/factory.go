@@ -1,9 +1,10 @@
 package ledger
 
 import (
+	"github.com/uptrace/bun"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/uptrace/bun"
 )
 
 type Factory interface {

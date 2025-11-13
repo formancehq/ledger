@@ -3,11 +3,13 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+
 	"github.com/formancehq/ledger/cmd"
-	"time"
 )
 
 func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions]) testservice.Option {

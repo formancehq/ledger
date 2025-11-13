@@ -32,7 +32,7 @@ func NewRemoteLedgerEnvFactory(httpClient *http.Client, ledgerURL string) *Remot
 }
 
 type RemoteLedgerEnv struct {
-	client    *ledgerclient.Formance
+	client *ledgerclient.Formance
 }
 
 func (r *RemoteLedgerEnv) Client() *ledgerclient.Formance {
@@ -45,7 +45,7 @@ func (r *RemoteLedgerEnv) Stop(_ context.Context) error {
 
 func NewRemoteLedgerEnv(client *ledgerclient.Formance) *RemoteLedgerEnv {
 	return &RemoteLedgerEnv{
-		client:    client,
+		client: client,
 	}
 }
 

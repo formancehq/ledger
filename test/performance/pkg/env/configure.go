@@ -7,11 +7,13 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/httpclient"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
 	"net/http"
 	"os"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
+
+	"github.com/formancehq/go-libs/v3/httpclient"
 )
 
 var (

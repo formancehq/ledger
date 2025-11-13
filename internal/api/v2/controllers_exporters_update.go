@@ -2,12 +2,15 @@ package v2
 
 import (
 	"errors"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/go-libs/v3/api"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	"github.com/go-chi/chi/v5"
-	"net/http"
 )
 
 func updateExporter(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {
@@ -31,4 +34,3 @@ func updateExporter(systemController systemcontroller.Controller) func(w http.Re
 		})
 	}
 }
-

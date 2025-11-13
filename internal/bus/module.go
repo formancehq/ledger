@@ -1,8 +1,9 @@
 package bus
 
 import (
-	"github.com/formancehq/ledger/internal/controller/ledger"
 	"go.uber.org/fx"
+
+	"github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func NewFxModule() fx.Option {

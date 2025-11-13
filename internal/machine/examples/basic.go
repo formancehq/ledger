@@ -6,7 +6,8 @@ import (
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/ledger/internal"
+
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
 	"github.com/formancehq/ledger/internal/machine/vm"
 )

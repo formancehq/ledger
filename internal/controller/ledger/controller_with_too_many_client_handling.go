@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
-	ledger "github.com/formancehq/ledger/internal"
+	"time"
+
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"time"
+
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator -typed

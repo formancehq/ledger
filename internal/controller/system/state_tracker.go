@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
+
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/uptrace/bun"
-	"sync"
 )
 
 type controllerFacade struct {
@@ -104,7 +107,6 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 			return fmt.Errorf("failed to rollback transaction: %w", err)
 		}
 	}
-
 
 	return nil
 }

@@ -3,12 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/ledger/pkg/events"
-	"github.com/invopop/jsonschema"
-	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"reflect"
+
+	"github.com/invopop/jsonschema"
+	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger/pkg/events"
 )
 
 func NewDocEventsCommand() *cobra.Command {
@@ -24,7 +26,7 @@ func NewDocEventsCommand() *cobra.Command {
 				return fmt.Errorf("failed to get write-dir flag: %w", err)
 			}
 
-			err = os.MkdirAll(writeDir, 0755)
+			err = os.MkdirAll(writeDir, 0750)
 			if err != nil {
 				return fmt.Errorf("failed to create write-dir: %w", err)
 			}

@@ -3,28 +3,28 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger/internal/api/bulking"
-	"github.com/uptrace/bun"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v3/time"
-
-	"errors"
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
+	"github.com/formancehq/ledger/internal/api/bulking"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func TestBulk(t *testing.T) {
@@ -203,8 +203,8 @@ func TestBulk(t *testing.T) {
 			},
 			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
-					"id":        float64(0),
-					"metadata":  map[string]interface{}{
+					"id": float64(0),
+					"metadata": map[string]interface{}{
 						"foo": "bar",
 					},
 					"postings":  nil,

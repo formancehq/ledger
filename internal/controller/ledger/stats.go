@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 

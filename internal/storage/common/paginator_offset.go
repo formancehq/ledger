@@ -2,9 +2,11 @@ package common
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/uptrace/bun"
 	"math"
+
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 )
 
 type OffsetPaginator[ResourceType, OptionsType any] struct {

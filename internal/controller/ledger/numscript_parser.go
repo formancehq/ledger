@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 
 	"github.com/bluele/gcache"
-	"github.com/formancehq/ledger/internal/machine/script/compiler"
+
 	"github.com/formancehq/numscript"
+
+	"github.com/formancehq/ledger/internal/machine/script/compiler"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source numscript_parser.go -destination numscript_parser_generated_test.go -package ledger . NumscriptParser

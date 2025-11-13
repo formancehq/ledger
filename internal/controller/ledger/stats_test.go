@@ -3,12 +3,13 @@ package ledger
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/internal/storage/common"
-
-	"github.com/formancehq/go-libs/v3/logging"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 func TestStats(t *testing.T) {

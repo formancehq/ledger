@@ -1,13 +1,16 @@
 package monitoring
 
 import (
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"slices"
+	"time"
+
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
-	"slices"
-	"time"
+
+	"github.com/formancehq/go-libs/v3/collectionutils"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )
 
 type JaegerExporterArgs struct {

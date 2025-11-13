@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS compiler
+FROM golang:1.25-alpine AS compiler
 WORKDIR /src
 COPY --from=root pkg pkg
 COPY --from=root internal internal

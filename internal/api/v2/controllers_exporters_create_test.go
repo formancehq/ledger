@@ -3,18 +3,19 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
-	sharedapi "github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/auth"
-	ledger "github.com/formancehq/ledger/internal"
-	"go.uber.org/mock/gomock"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/pkg/errors"
-
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	sharedapi "github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/logging"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestCreateExporter(t *testing.T) {

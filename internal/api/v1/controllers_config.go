@@ -2,19 +2,17 @@ package v1
 
 import (
 	_ "embed"
-	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/controller/system"
-
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	ledger "github.com/formancehq/ledger/internal"
-
 	"github.com/formancehq/go-libs/v3/collectionutils"
 
-	"github.com/formancehq/go-libs/v3/api"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
 type ConfigInfo struct {

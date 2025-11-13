@@ -2,9 +2,11 @@ package driver
 
 import (
 	"context"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
-	"github.com/formancehq/ledger/internal"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package driver_test . SystemStore

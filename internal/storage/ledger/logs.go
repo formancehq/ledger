@@ -4,14 +4,15 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding/json"
-	"fmt"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/pkg/features"
-
 	"errors"
+	"fmt"
+
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
+
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 // Log override ledger.Log to be able to properly read/write payload which is jsonb

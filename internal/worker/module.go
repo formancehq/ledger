@@ -2,15 +2,18 @@ package worker
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/grpcserver"
-	"github.com/formancehq/go-libs/v3/serverport"
-	"github.com/formancehq/ledger/internal/replication"
-	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
-	"github.com/formancehq/ledger/internal/storage"
+
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
+
+	"github.com/formancehq/go-libs/v3/grpcserver"
+	"github.com/formancehq/go-libs/v3/serverport"
+
+	"github.com/formancehq/ledger/internal/replication"
+	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
+	"github.com/formancehq/ledger/internal/storage"
 )
 
 type GRPCServerModuleConfig struct {

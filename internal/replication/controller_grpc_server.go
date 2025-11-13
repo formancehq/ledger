@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/go-libs/v3/collectionutils"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
 	"github.com/formancehq/ledger/internal/replication/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type GRPCServiceImpl struct {

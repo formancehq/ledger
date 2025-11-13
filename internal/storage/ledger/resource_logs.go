@@ -3,8 +3,10 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/internal/storage/common"
+
 	"github.com/uptrace/bun"
+
+	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 type logsResourceHandler struct {

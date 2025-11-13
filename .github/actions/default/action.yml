@@ -9,19 +9,27 @@ runs:
   steps:
     - name: Install Nix
       uses: cachix/install-nix-action@v31
-    - name: Cache dependencies
-      uses: nix-community/cache-nix-action@v6
-      with:
-        primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.nix', '**/flake.lock') }}
-        restore-prefixes-first-match: nix-${{ runner.os }}-
+    ## Disabling cache for now, as it's slowing down the build. Downloading nix
+    ## dependencies from cache.nixos.org is faster than restoring from the cache.
+    #- name: Cache dependencies
+    #  uses: nix-community/cache-nix-action@v6
+    #  with:
+    #    primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.nix', '**/flake.lock') }}
+    #    restore-prefixes-first-match: nix-${{ runner.os }}-
     - name: Load dependencies
       shell: bash
       run: nix develop --install
+    - name: go env
+      id: go-env
+      shell: bash
+      run: |
+        nix develop --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@v4
       with:
         path: |
-          ~/.cache/go-build
-          /tmp/go/pkg/mod/
+          ${{ steps.go-env.outputs.GOCACHE }}
+          ${{ steps.go-env.outputs.GOMODCACHE }}
+          ~/.cache/golangci-lint
         key: ${{ runner.os }}-${{ github.job }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-${{ github.job }}-go-

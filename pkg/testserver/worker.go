@@ -2,9 +2,11 @@ package testserver
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/v3/testing/testservice"
-	"github.com/formancehq/ledger/cmd"
 	"strconv"
+
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+
+	"github.com/formancehq/ledger/cmd"
 )
 
 func LogsHashBlockMaxSizeInstrumentation(size int) testservice.InstrumentationFunc {

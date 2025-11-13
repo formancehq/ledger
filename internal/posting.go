@@ -1,11 +1,11 @@
 package ledger
 
 import (
-	"github.com/formancehq/ledger/pkg/accounts"
-	"github.com/formancehq/ledger/pkg/assets"
+	"errors"
 	"math/big"
 
-	"errors"
+	"github.com/formancehq/ledger/pkg/accounts"
+	"github.com/formancehq/ledger/pkg/assets"
 )
 
 type Posting struct {

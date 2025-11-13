@@ -2,10 +2,12 @@ package system
 
 import (
 	"errors"
+	"regexp"
+
+	"github.com/uptrace/bun"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/uptrace/bun"
-	"regexp"
 )
 
 var (

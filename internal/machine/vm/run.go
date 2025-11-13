@@ -2,13 +2,13 @@ package vm
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/time"
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/machine"
-
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine"
 )
 
 type RunScript struct {

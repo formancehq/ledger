@@ -5,18 +5,20 @@ package system
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/go-libs/v3/testing/migrations"
-	"github.com/formancehq/ledger/pkg/features"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/bun/bundebug"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/migrations"
 	"github.com/formancehq/go-libs/v3/time"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 func TestMigrations(t *testing.T) {

@@ -4,17 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"errors"
-	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/auth"
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestLogsImport(t *testing.T) {

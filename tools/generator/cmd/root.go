@@ -5,6 +5,15 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/service"
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
@@ -12,12 +21,6 @@ import (
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/client/models/sdkerrors"
 	"github.com/formancehq/ledger/pkg/generate"
-	"github.com/spf13/cobra"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
-	"net/http"
-	"os"
-	"strings"
 )
 
 const (
@@ -71,7 +74,7 @@ func run(cmd *cobra.Command, args []string) error {
 	ledgerUrl := args[0]
 	scriptLocation := args[1]
 
-	fileContent, err := os.ReadFile(scriptLocation)
+	fileContent, err := os.ReadFile(filepath.Clean(scriptLocation))
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}

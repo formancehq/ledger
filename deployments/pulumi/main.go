@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/formancehq/ledger/deployments/pulumi/pkg"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
+	ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/config"
 	_ "github.com/formancehq/ledger/deployments/pulumi/pkg/exporters/clickhouse"
 )
 

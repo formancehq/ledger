@@ -3,29 +3,26 @@ package ledger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	. "github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/ledger/pkg/features"
 	"math/big"
 	"slices"
 	"strings"
 
-	"github.com/formancehq/ledger/internal/tracing"
-
-	"errors"
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
-
 	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-
-	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/uptrace/bun"
+	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/pkg/features"
 )
 
 func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {

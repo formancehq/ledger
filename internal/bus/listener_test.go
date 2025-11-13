@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	ledger "github.com/formancehq/ledger/internal"
-
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	topicmapper "github.com/formancehq/go-libs/v3/publish/topic_mapper"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
+
+	topicmapper "github.com/formancehq/go-libs/v3/publish/topic_mapper"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestMonitor(t *testing.T) {

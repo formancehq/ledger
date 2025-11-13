@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
+
+	"golang.org/x/sync/errgroup"
+
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
+
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"golang.org/x/sync/errgroup"
-	"math/big"
 )
 
 type GeneratorSet struct {

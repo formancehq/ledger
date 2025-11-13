@@ -1,8 +1,9 @@
 {
-  description = "A Nix-flake-based Go 1.24 development environment";
+  description = "A Nix-flake-based Go 1.25 development environment";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2505";
+    nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
 
     nur = {
       url = "github:nix-community/NUR";
@@ -10,10 +11,8 @@
     };
   };
 
-  outputs = { self, nixpkgs, nur }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
     let
-      goVersion = 24;
-
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -26,11 +25,16 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ self.overlays.default nur.overlays.default ];
-              config.allowUnfree = true;
+              overlays = [ nur.overlays.default ];
+              config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
+                "goreleaser-pro"
+              ];
+            };
+            pkgs-unstable = import nixpkgs-unstable {
+              inherit system;
             };
           in
-          f { pkgs = pkgs; system = system; }
+          f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
         );
 
       speakeasyVersion = "1.563.0";
@@ -49,11 +53,7 @@
 
     in
     {
-      overlays.default = final: prev: {
-        go = final."go_1_${toString goVersion}";
-      };
-
-      packages = forEachSupportedSystem ({ pkgs, system }:
+      packages = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         {
           speakeasy = pkgs.stdenv.mkDerivation {
             pname = "speakeasy";
@@ -84,29 +84,36 @@
       defaultPackage.x86_64-darwin  = self.packages.x86_64-darwin.speakeasy;
       defaultPackage.aarch64-darwin = self.packages.aarch64-darwin.speakeasy;
 
-      devShells = forEachSupportedSystem ({ pkgs, system }:
+      devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
+        let
+          stablePackages = with pkgs; [
+            ginkgo
+            go_1_25
+            go-tools
+            gomarkdoc
+            goperf
+            gotools
+            jdk11
+            jq
+            just
+            mockgen
+            nodejs_22
+            protobuf_27
+            protoc-gen-go
+            protoc-gen-go-grpc
+            yq-go
+          ];
+          unstablePackages = with pkgs-unstable; [
+            golangci-lint
+          ];
+          otherPackages = [
+            pkgs.nur.repos.goreleaser.goreleaser-pro
+            self.packages.${system}.speakeasy
+          ];
+        in
         {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              go
-              gotools
-              go-tools
-              golangci-lint
-              ginkgo
-              yq-go
-              jq
-              pkgs.nur.repos.goreleaser.goreleaser-pro
-              mockgen
-              gomarkdoc
-              jdk11
-              just
-              nodejs_22
-              self.packages.${system}.speakeasy
-              goperf
-              protobuf_27
-              protoc-gen-go-grpc
-              protoc-gen-go
-            ];
+            packages = stablePackages ++ unstablePackages ++ otherPackages;
           };
         }
       );

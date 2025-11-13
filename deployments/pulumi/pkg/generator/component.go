@@ -3,18 +3,20 @@ package generator
 import (
 	"errors"
 	"fmt"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
+	"os"
+	"path/filepath"
+	"time"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
-	"os"
-	"path/filepath"
-	"time"
+
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )
 
 type Component struct {

@@ -7,6 +7,7 @@ pre-commit: tidy generate lint export-docs-events openapi generate-client
 pc: pre-commit
 
 lint:
+    golangci-lint --version
     golangci-lint run --fix --build-tags it,local --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \
@@ -41,12 +42,15 @@ tests:
     cat coverage.txt | grep -v debug.go | grep -v "/machine/" | grep -v "pb.go" > coverage2.txt
     mv coverage2.txt coverage.txt
 
+fmt:
+  @golangci-lint fmt
+
 openapi:
     yq eval-all '. as $item ireduce ({}; . * $item)' openapi/v1.yaml openapi/v2.yaml openapi/overlay.yaml > openapi.yaml
     npx -y widdershins {{justfile_directory()}}/openapi/v2.yaml -o {{justfile_directory()}}/docs/api/README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
 
 generate-client: openapi
-    if [ ! -z "$SPEAKEASY_API_KEY" ]; then cd pkg/client && speakeasy run --skip-versioning; fi
+    if [ ! -z "${SPEAKEASY_API_KEY:-}" ]; then cd pkg/client && speakeasy run --skip-versioning; fi
 
 release-local:
     @goreleaser release --nightly --skip=publish --clean

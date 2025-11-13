@@ -1,15 +1,15 @@
 package v2
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/controller/system"
-
-	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/controller/system"
 )
 
 func readLedger(b system.Controller) http.HandlerFunc {

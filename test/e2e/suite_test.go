@@ -13,23 +13,24 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
+	"github.com/nats-io/nats.go"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/clickhousetesting"
 	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/system"
-	"github.com/go-jose/go-jose/v4"
-	"github.com/nats-io/nats.go"
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/testing/docker"
-	. "github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 func Test(t *testing.T) {

@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 )
 

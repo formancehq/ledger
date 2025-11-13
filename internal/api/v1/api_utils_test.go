@@ -3,9 +3,9 @@ package v1
 import (
 	"testing"
 
-	ledger "github.com/formancehq/ledger/internal"
-
 	"go.uber.org/mock/gomock"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func newTestingSystemController(t *testing.T, expectedSchemaCheck bool) (*SystemController, *LedgerController) {

@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"math/big"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 )
 
 type (

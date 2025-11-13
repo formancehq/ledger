@@ -2,45 +2,43 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger/internal/api/common"
-	"github.com/formancehq/ledger/internal/replication"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/internal/worker"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"net/http"
 	"net/http/pprof"
 	"time"
 
-	apilib "github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/health"
-	"github.com/formancehq/go-libs/v3/httpserver"
-	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/go-chi/chi/v5"
+	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/formancehq/ledger/internal/bus"
-
+	apilib "github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/aws/iam"
+	"github.com/formancehq/go-libs/v3/ballast"
 	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/health"
+	"github.com/formancehq/go-libs/v3/httpserver"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/publish"
-	"github.com/formancehq/ledger/internal/api"
+	"github.com/formancehq/go-libs/v3/service"
 
+	"github.com/formancehq/ledger/internal/api"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/replication"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
-
-	"github.com/formancehq/go-libs/v3/ballast"
-	"github.com/formancehq/go-libs/v3/service"
-	"github.com/spf13/cobra"
-	"go.uber.org/fx"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/formancehq/ledger/internal/worker"
 )
 
 type ServeCommandConfig struct {
@@ -129,15 +127,15 @@ func NewServeCommand() *cobra.Command {
 				}),
 				fx.Decorate(func(
 					params struct {
-					fx.In
+						fx.In
 
-					Handler          chi.Router
-					HealthController *health.HealthController
-					Logger           logging.Logger
+						Handler          chi.Router
+						HealthController *health.HealthController
+						Logger           logging.Logger
 
-					MeterProvider *metric.MeterProvider         `optional:"true"`
-					Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
-				},
+						MeterProvider *metric.MeterProvider         `optional:"true"`
+						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+					},
 				) chi.Router {
 					return assembleFinalRouter(
 						service.IsDebug(cmd),

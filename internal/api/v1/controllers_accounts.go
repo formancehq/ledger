@@ -2,14 +2,14 @@ package v1
 
 import (
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"errors"
-
 	"github.com/formancehq/go-libs/v3/query"
+
 	ledger "github.com/formancehq/ledger/internal"
 )
 

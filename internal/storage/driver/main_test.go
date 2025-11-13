@@ -4,20 +4,20 @@ package driver_test
 
 import (
 	"database/sql"
-	. "github.com/formancehq/go-libs/v3/testing/utils"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"os"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/bun/bundebug"
-	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
-	"github.com/uptrace/bun"
-
+	"github.com/formancehq/go-libs/v3/bun/bundebug"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/docker"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
-	"github.com/stretchr/testify/require"
+	. "github.com/formancehq/go-libs/v3/testing/utils"
+
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
 var (

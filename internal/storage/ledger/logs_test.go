@@ -5,23 +5,23 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"golang.org/x/sync/errgroup"
+	"errors"
 	"math/big"
 	"testing"
 
-	"errors"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-
-	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/stretchr/testify/require"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func TestLogsInsert(t *testing.T) {
@@ -242,7 +242,7 @@ func TestLogsList(t *testing.T) {
 				query.Lt("date", now.Add(-time.Hour)),
 			),
 		},
-		Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)

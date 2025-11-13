@@ -4,20 +4,23 @@ package test_suite
 
 import (
 	"fmt"
+	"math/big"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
+
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"math/big"
-	"time"
 )
 
 var _ = Context("Logs block async hashing", func() {

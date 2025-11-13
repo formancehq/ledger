@@ -3,17 +3,19 @@ package replication
 import (
 	"context"
 	"errors"
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v3/pointer"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/common"
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 func startManager(

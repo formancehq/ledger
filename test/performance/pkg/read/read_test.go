@@ -7,16 +7,19 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/formancehq/ledger/test/performance/pkg/env"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
 )
 
 var (
@@ -128,7 +131,7 @@ func BenchmarkRead(b *testing.B) {
 	env.Start()
 
 	cfg := &Configuration{}
-	f, err := os.Open(configFlag)
+	f, err := os.Open(filepath.Clean(configFlag))
 	if err != nil {
 		b.Fatalf("Failed to open configuration file: %s", err)
 	}
