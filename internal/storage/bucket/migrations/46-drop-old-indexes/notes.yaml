@@ -1,7 +1,7 @@
-name: Drop Old Indexes (5/5)
+name: Drop Old Indexes (6/6)
 description: |
   Drop all old suboptimal indexes that have been replaced by new optimized indexes
-  created in migrations 41-44. This final step completes the index optimization process.
+  created in migrations 41-45. This final step completes the index optimization process.
 
 changes:
   moves_table:
@@ -9,7 +9,11 @@ changes:
       old_indexes:
         - "moves_post_commit_volumes"
         - "moves_effective_post_commit_volumes"
-      reason: "Replaced by idx_moves_pit_insertion and idx_moves_pit_effective in migrations 41-42"
+        - "moves_range_dates"
+      reason: |
+        - moves_post_commit_volumes and moves_effective_post_commit_volumes
+          replaced by idx_moves_pit_insertion and idx_moves_pit_effective in migrations 41-42
+        - moves_range_dates replaced by idx_moves_update_effective_volumes in migration 45
 
   accounts_metadata_table:
     - action: "DROP"
