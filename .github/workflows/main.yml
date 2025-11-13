@@ -45,7 +45,7 @@ jobs:
         id: changed-files
         shell: bash
         run: |
-          hasChanged=$(git status --porcelain) 
+          hasChanged=$(git status --porcelain)
           if (( $(echo ${#hasChanged}) != 0 )); then
             git status
             echo "There are changes in the repository"
@@ -159,11 +159,15 @@ jobs:
       - Tests
     steps:
       - name: Tailscale
-        uses: tailscale/github-action@v3
+        uses: formancehq/tailscale-github-action@v3+formance
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
+          tags: ${{ vars.TS_TAGS }}
+          version: ${{ vars.TS_VERSION }}
+          args: ${{ vars.TS_ARGS }}
+          retry: ${{ vars.TS_RETRY }}
+          timeout: ${{ vars.TS_TIMEOUT }}
       - uses: earthly/actions-setup@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -177,8 +181,8 @@ jobs:
           COMPONENT: ledger
           ARGOCD_REGION_AUTH_TOKEN: ${{ secrets.ARGOCD_REGION_AUTH_TOKEN }}
         run: >
-          earthly  
-          --no-output 
+          earthly
+          --no-output
           --secret AUTH_TOKEN=$ARGOCD_REGION_AUTH_TOKEN
           +deploy-staging
           --TAG=$TAG
