@@ -56,6 +56,8 @@ export const exportTPSGraph = async (configuration: {output: string}, result: Be
 
     const chart = new ChartJsImage();
     chart.setConfig(config);
+    chart.setWidth(1200);
+    chart.setHeight(800);
     await chart.toFile(configuration.output);
 }
 
@@ -108,6 +110,8 @@ export const exportLatencyGraph = async (configuration: {output: string}, key: k
 
     const chart = new ChartJsImage();
     chart.setConfig(config);
+    chart.setWidth(1200);
+    chart.setHeight(800);
     await chart.toFile(configuration.output);
 }
 
@@ -192,5 +196,7 @@ export const exportDatabaseStats = async (
     const chart = new ChartJsImage();
     chart.setConfig(config);
     chart.setChartJsVersion('4')
+    chart.setWidth(1200);
+    chart.setHeight(800);
     await chart.toFile(output);
 }
