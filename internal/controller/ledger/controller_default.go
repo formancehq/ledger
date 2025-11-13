@@ -440,7 +440,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		if len(schemas.Data) > 0 {
 			return nil, ErrSchemaRequired{}
 		}
-	} else if parameters.SchemaVersion != "" {
+	} else {
 		schema, err := store.FindSchema(ctx, parameters.SchemaVersion)
 		if err != nil {
 			return nil, err

@@ -30,12 +30,10 @@ type ChartVariableSegment struct {
 
 type ChartOfAccounts map[string]ChartSegment
 
-const SegmentRegex = "^\\$?[a-zA-Z0-9_-]+$"
-
-var Regexp = regexp.MustCompile(SegmentRegex)
+var ChartSegmentRegexp = regexp.MustCompile(`^\$?[a-zA-Z0-9_-]+$`)
 
 func ValidateSegment(addr string) bool {
-	return Regexp.Match([]byte(addr))
+	return ChartSegmentRegexp.Match([]byte(addr))
 }
 
 func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
