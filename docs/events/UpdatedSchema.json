@@ -3,19 +3,7 @@
   "$id": "https://github.com/formancehq/ledger/pkg/events/updated-schema",
   "$ref": "#/$defs/UpdatedSchema",
   "$defs": {
-    "AccountRules": {
-      "properties": {
-        "allowedSources": {
-          "type": "object"
-        },
-        "allowedDestinations": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "AccountSchema": {
+    "ChartAccount": {
       "properties": {
         "Metadata": {
           "additionalProperties": {
@@ -24,7 +12,7 @@
           "type": "object"
         },
         "Rules": {
-          "$ref": "#/$defs/AccountRules"
+          "$ref": "#/$defs/ChartAccountRules"
         }
       },
       "additionalProperties": false,
@@ -34,11 +22,70 @@
         "Rules"
       ]
     },
+    "ChartAccountRules": {
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ChartOfAccounts": {
       "additionalProperties": {
-        "$ref": "#/$defs/SegmentSchema"
+        "$ref": "#/$defs/ChartSegment"
       },
       "type": "object"
+    },
+    "ChartSegment": {
+      "properties": {
+        "VariableSegment": {
+          "$ref": "#/$defs/ChartVariableSegment"
+        },
+        "FixedSegments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ChartSegment"
+          },
+          "type": "object"
+        },
+        "Account": {
+          "$ref": "#/$defs/ChartAccount"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "VariableSegment",
+        "FixedSegments",
+        "Account"
+      ]
+    },
+    "ChartVariableSegment": {
+      "properties": {
+        "VariableSegment": {
+          "$ref": "#/$defs/ChartVariableSegment"
+        },
+        "FixedSegments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ChartSegment"
+          },
+          "type": "object"
+        },
+        "Account": {
+          "$ref": "#/$defs/ChartAccount"
+        },
+        "Pattern": {
+          "type": "string"
+        },
+        "Label": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "VariableSegment",
+        "FixedSegments",
+        "Account",
+        "Pattern",
+        "Label"
+      ]
     },
     "Schema": {
       "properties": {
@@ -60,29 +107,6 @@
         "createdAt"
       ]
     },
-    "SegmentSchema": {
-      "properties": {
-        "VariableSegment": {
-          "$ref": "#/$defs/VariableSegment"
-        },
-        "FixedSegments": {
-          "additionalProperties": {
-            "$ref": "#/$defs/SegmentSchema"
-          },
-          "type": "object"
-        },
-        "Account": {
-          "$ref": "#/$defs/AccountSchema"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "VariableSegment",
-        "FixedSegments",
-        "Account"
-      ]
-    },
     "Time": {
       "type": "string",
       "format": "date-time",
@@ -102,37 +126,6 @@
       "required": [
         "ledger",
         "schema"
-      ]
-    },
-    "VariableSegment": {
-      "properties": {
-        "VariableSegment": {
-          "$ref": "#/$defs/VariableSegment"
-        },
-        "FixedSegments": {
-          "additionalProperties": {
-            "$ref": "#/$defs/SegmentSchema"
-          },
-          "type": "object"
-        },
-        "Account": {
-          "$ref": "#/$defs/AccountSchema"
-        },
-        "Pattern": {
-          "type": "string"
-        },
-        "Label": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "VariableSegment",
-        "FixedSegments",
-        "Account",
-        "Pattern",
-        "Label"
       ]
     }
   }

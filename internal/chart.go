@@ -8,27 +8,27 @@ import (
 	"strings"
 )
 
-type AccountRules struct{}
+type ChartAccountRules struct{}
 
-type AccountSchema struct {
+type ChartAccount struct {
 	Metadata map[string]string
-	Rules    AccountRules
+	Rules    ChartAccountRules
 }
 
-type SegmentSchema struct {
-	VariableSegment *VariableSegment
-	FixedSegments   map[string]SegmentSchema
-	Account         *AccountSchema
+type ChartSegment struct {
+	VariableSegment *ChartVariableSegment
+	FixedSegments   map[string]ChartSegment
+	Account         *ChartAccount
 }
 
-type VariableSegment struct {
-	SegmentSchema
+type ChartVariableSegment struct {
+	ChartSegment
 
 	Pattern string
 	Label   string
 }
 
-type ChartOfAccounts map[string]SegmentSchema
+type ChartOfAccounts map[string]ChartSegment
 
 const SegmentRegex = "^\\$?[a-zA-Z0-9_-]+$"
 
@@ -43,12 +43,12 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &segment); err != nil {
 		return err
 	}
-	out := make(map[string]SegmentSchema)
+	out := make(map[string]ChartSegment)
 	for key, value := range segment {
 		if !ValidateSegment(key) || key[0] == '$' || key[0] == '_' {
 			return fmt.Errorf("invalid segment name: %v", key)
 		}
-		var seg SegmentSchema
+		var seg ChartSegment
 		err := seg.UnmarshalJSON(value)
 		if err != nil {
 			return fmt.Errorf("invalid segment `%v`: %v", key, err)
@@ -58,16 +58,16 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 	*s = out
 	return nil
 }
-func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
+func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 	var segment map[string]json.RawMessage
 	if err := json.Unmarshal(data, &segment); err != nil {
 		return err
 	}
 	isLeaf := true
 	var isAccount bool
-	var account AccountSchema
-	var fixedSegments map[string]SegmentSchema
-	var variableSegment *VariableSegment
+	var account ChartAccount
+	var fixedSegments map[string]ChartSegment
+	var variableSegment *ChartVariableSegment
 	keys := []string{}
 	for key := range segment {
 		keys = append(keys, key)
@@ -93,7 +93,7 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 					}
 				}
 			}
-			segment := SegmentSchema{}
+			segment := ChartSegment{}
 			err := segment.UnmarshalJSON(value)
 			if err != nil {
 				return fmt.Errorf("invalid segment: %v", err)
@@ -105,17 +105,17 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 				if variableSegment != nil {
 					return fmt.Errorf("cannot have two variable segments with the same prefix")
 				}
-				variableSegment = &VariableSegment{
-					SegmentSchema: segment,
-					Pattern:       *pattern,
-					Label:         key[1:],
+				variableSegment = &ChartVariableSegment{
+					ChartSegment: segment,
+					Pattern:      *pattern,
+					Label:        key[1:],
 				}
 			} else {
 				if key[0] == '$' {
 					return fmt.Errorf("cannot have a variable segment without a pattern")
 				}
 				if fixedSegments == nil {
-					fixedSegments = map[string]SegmentSchema{}
+					fixedSegments = map[string]ChartSegment{}
 				}
 				fixedSegments[key] = segment
 			}
@@ -149,7 +149,7 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 
 func (s ChartOfAccounts) MarshalJSON() ([]byte, error) {
 	out := make(map[string]any)
-	for key, value := range map[string]SegmentSchema(s) {
+	for key, value := range map[string]ChartSegment(s) {
 		serialized, err := value.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -159,7 +159,7 @@ func (s ChartOfAccounts) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func (s SegmentSchema) marshalJsonObject() (map[string]any, error) {
+func (s ChartSegment) marshalJsonObject() (map[string]any, error) {
 	out := make(map[string]any)
 	for key, value := range s.FixedSegments {
 		serialized, err := value.MarshalJSON()
@@ -188,7 +188,7 @@ func (s SegmentSchema) marshalJsonObject() (map[string]any, error) {
 	return out, nil
 }
 
-func (s SegmentSchema) MarshalJSON() ([]byte, error) {
+func (s ChartSegment) MarshalJSON() ([]byte, error) {
 	out, err := s.marshalJsonObject()
 	if err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func (s SegmentSchema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func (s VariableSegment) MarshalJSON() ([]byte, error) {
+func (s ChartVariableSegment) MarshalJSON() ([]byte, error) {
 	out, err := s.marshalJsonObject()
 	if err != nil {
 		return nil, err
@@ -205,7 +205,7 @@ func (s VariableSegment) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func findAccountSchema(path []string, fixedSegments map[string]SegmentSchema, variableSegment *VariableSegment, account []string) (*AccountSchema, error) {
+func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, variableSegment *ChartVariableSegment, account []string) (*ChartAccount, error) {
 	nextSegment := account[0]
 	if segment, ok := fixedSegments[nextSegment]; ok {
 		if len(account) > 1 {
@@ -233,11 +233,11 @@ func findAccountSchema(path []string, fixedSegments map[string]SegmentSchema, va
 	}
 	return nil, ErrInvalidAccount{path, nextSegment}
 }
-func (c *ChartOfAccounts) FindAccountSchema(account string) (*AccountSchema, error) {
-	schema, err := findAccountSchema([]string{}, map[string]SegmentSchema(*c), nil, strings.Split(account, ":"))
+func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error) {
+	schema, err := findAccountSchema([]string{}, map[string]ChartSegment(*c), nil, strings.Split(account, ":"))
 	if err != nil {
 		if account == "world" {
-			return &AccountSchema{}, nil
+			return &ChartAccount{}, nil
 		}
 		return nil, err
 	}

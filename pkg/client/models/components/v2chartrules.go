@@ -2,27 +2,5 @@
 
 package components
 
-type AllowedDestinations struct {
-}
-
-type AllowedSources struct {
-}
-
 type V2ChartRules struct {
-	AllowedDestinations map[string]AllowedDestinations `json:"allowedDestinations,omitempty"`
-	AllowedSources      map[string]AllowedSources      `json:"allowedSources,omitempty"`
-}
-
-func (o *V2ChartRules) GetAllowedDestinations() map[string]AllowedDestinations {
-	if o == nil {
-		return nil
-	}
-	return o.AllowedDestinations
-}
-
-func (o *V2ChartRules) GetAllowedSources() map[string]AllowedSources {
-	if o == nil {
-		return nil
-	}
-	return o.AllowedSources
 }

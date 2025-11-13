@@ -5454,19 +5454,13 @@ and
 <a id="tocsv2chartrules"></a>
 
 ```json
-{
-  "allowedDestinations": null,
-  "allowedSources": null
-}
+{}
 
 ```
 
 ### Properties
 
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|allowedDestinations|list|false|none|none|
-|allowedSources|list|false|none|none|
+*None*
 
 <h2 id="tocS_V2ChartSegment">V2ChartSegment</h2>
 <!-- backwards compatibility -->

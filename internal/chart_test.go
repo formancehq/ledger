@@ -47,39 +47,39 @@ func TestChartOfAccounts(t *testing.T) {
 }`
 	expected := ChartOfAccounts{
 		"banks": {
-			VariableSegment: &VariableSegment{
+			VariableSegment: &ChartVariableSegment{
 				Label:   "iban",
 				Pattern: "*iban_pattern",
-				SegmentSchema: SegmentSchema{
-					FixedSegments: map[string]SegmentSchema{
+				ChartSegment: ChartSegment{
+					FixedSegments: map[string]ChartSegment{
 						"main": {
-							Account: &AccountSchema{
-								Rules: AccountRules{},
+							Account: &ChartAccount{
+								Rules: ChartAccountRules{},
 							},
 						},
 						"out": {
-							Account: &AccountSchema{
+							Account: &ChartAccount{
 								Metadata: map[string]string{
 									"key": "value",
 								},
 							},
 						},
 						"pending_out": {
-							Account: &AccountSchema{},
+							Account: &ChartAccount{},
 						},
 					},
 				},
 			},
 		},
 		"users": {
-			VariableSegment: &VariableSegment{
+			VariableSegment: &ChartVariableSegment{
 				Label:   "userID",
 				Pattern: "*user_pattern",
-				SegmentSchema: SegmentSchema{
-					Account: &AccountSchema{},
-					FixedSegments: map[string]SegmentSchema{
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{},
+					FixedSegments: map[string]ChartSegment{
 						"main": {
-							Account: &AccountSchema{},
+							Account: &ChartAccount{},
 						},
 					},
 				},
@@ -203,25 +203,25 @@ func TestInvalidRootSegment(t *testing.T) {
 func testChart() ChartOfAccounts {
 	return ChartOfAccounts{
 		"bank": {
-			VariableSegment: &VariableSegment{
+			VariableSegment: &ChartVariableSegment{
 				Label:   "bankID",
 				Pattern: "[0-9]{3}",
-				SegmentSchema: SegmentSchema{
-					Account: &AccountSchema{
-						Rules: AccountRules{},
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{
+						Rules: ChartAccountRules{},
 					},
 				},
 			},
-			Account: &AccountSchema{},
+			Account: &ChartAccount{},
 		},
 		"users": {
-			VariableSegment: &VariableSegment{
+			VariableSegment: &ChartVariableSegment{
 				Label:   "userID",
 				Pattern: "[0-9]{3}",
-				SegmentSchema: SegmentSchema{
-					FixedSegments: map[string]SegmentSchema{
+				ChartSegment: ChartSegment{
+					FixedSegments: map[string]ChartSegment{
 						"main": {
-							Account: &AccountSchema{},
+							Account: &ChartAccount{},
 						},
 					},
 				},

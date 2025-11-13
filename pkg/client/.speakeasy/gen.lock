@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 72deae13fe9d0392d8ab19c90b6f5637
+  docChecksum: 813f772926657a61fac9a0736009f992
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -197,8 +197,6 @@ generatedFiles:
   - docs/models/components/accountscursorresponse.md
   - docs/models/components/accountwithvolumesandbalances.md
   - docs/models/components/aggregatebalancesresponse.md
-  - docs/models/components/alloweddestinations.md
-  - docs/models/components/allowedsources.md
   - docs/models/components/balancescursorresponse.md
   - docs/models/components/balancescursorresponsecursor.md
   - docs/models/components/config.md

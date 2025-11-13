@@ -42,10 +42,10 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 			SchemaData: ledger.SchemaData{
 				Chart: ledger.ChartOfAccounts{
 					"world": {
-						Account: &ledger.AccountSchema{},
+						Account: &ledger.ChartAccount{},
 					},
 					"bank": {
-						Account: &ledger.AccountSchema{},
+						Account: &ledger.ChartAccount{},
 					},
 				},
 			},
