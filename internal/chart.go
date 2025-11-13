@@ -5,14 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 )
 
-type AccountRules struct {
-	AllowedSources      []string `json:"allowedSources,omitempty"`
-	AllowedDestinations []string `json:"allowedDestinations,omitempty"`
-}
+type AccountRules struct{}
 
 type AccountSchema struct {
 	Metadata map[string]string
@@ -104,7 +100,7 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 			}
 			if pattern != nil {
 				if key[0] != '$' {
-					return fmt.Errorf("cannot have a pattern on a fixed segment") // TODO: Should this actually be an error?
+					return fmt.Errorf("cannot have a pattern on a fixed segment")
 				}
 				if variableSegment != nil {
 					return fmt.Errorf("cannot have two variable segments with the same prefix")
@@ -116,7 +112,7 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 				}
 			} else {
 				if key[0] == '$' {
-					return fmt.Errorf("cannot have a variable segment without a pattern") // TODO: Should this actually be an error?
+					return fmt.Errorf("cannot have a variable segment without a pattern")
 				}
 				if fixedSegments == nil {
 					fixedSegments = map[string]SegmentSchema{}
@@ -184,9 +180,7 @@ func (s SegmentSchema) marshalJsonObject() (map[string]any, error) {
 		if s.Account.Metadata != nil {
 			out["_metadata"] = s.Account.Metadata
 		}
-		if s.Account.Rules.AllowedDestinations != nil || s.Account.Rules.AllowedSources != nil {
-			out["_rules"] = s.Account.Rules
-		}
+		out["_rules"] = s.Account.Rules
 		if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
 			out["_self"] = map[string]interface{}{}
 		}
@@ -251,27 +245,13 @@ func (c *ChartOfAccounts) FindAccountSchema(account string) (*AccountSchema, err
 }
 
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
-	source, err := c.FindAccountSchema(posting.Source)
+	_, err := c.FindAccountSchema(posting.Source)
 	if err != nil {
 		return err
 	}
-	destination, err := c.FindAccountSchema(posting.Destination)
+	_, err = c.FindAccountSchema(posting.Destination)
 	if err != nil {
 		return err
-	}
-	if source.Rules.AllowedDestinations != nil && !slices.Contains(source.Rules.AllowedDestinations, posting.Destination) {
-		return ErrDestinationNotAllowed{
-			source:              posting.Source,
-			destination:         posting.Destination,
-			allowedDestinations: source.Rules.AllowedDestinations,
-		}
-	}
-	if destination.Rules.AllowedSources != nil && !slices.Contains(destination.Rules.AllowedSources, posting.Source) {
-		return ErrSourceNotAllowed{
-			source:         posting.Source,
-			destination:    posting.Destination,
-			allowedSources: destination.Rules.AllowedSources,
-		}
 	}
 	return nil
 }

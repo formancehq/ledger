@@ -8,18 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func expectValidChart(t *testing.T, source string, expected ChartOfAccounts) {
-	var chart ChartOfAccounts
-	err := json.Unmarshal([]byte(source), &chart)
-	require.NoError(t, err)
-
-	require.Equal(t, expected, chart)
-
-	value, err := json.MarshalIndent(&chart, "", "    ")
-	require.NoError(t, err)
-	require.JSONEq(t, source, string(value))
-}
-
 func expectInvalidChart(t *testing.T, source string, expectedError string) {
 	var chart ChartOfAccounts
 	err := json.Unmarshal([]byte(source), &chart)
@@ -28,28 +16,32 @@ func expectInvalidChart(t *testing.T, source string, expectedError string) {
 }
 
 func TestChartOfAccounts(t *testing.T) {
-	src := `{
+	source := `{
     "banks": {
         "$iban": {
             "_pattern": "*iban_pattern",
             "main": {
-                "_rules": {
-                    "allowedDestinations": ["thing"]
-                }
+                "_rules": {}
             },
             "out": {
                 "_metadata": {
                     "key": "value"
-                }
+                },
+                "_rules": {}
             },
-            "pending_out": {}
+            "pending_out": {
+                "_rules": {}
+            }
         }
     },
     "users": {
         "$userID": {
             "_self": {},
             "_pattern": "*user_pattern",
-            "main": {}
+            "_rules": {},
+            "main": {
+                "_rules": {}
+            }
         }
     }
 }`
@@ -62,9 +54,7 @@ func TestChartOfAccounts(t *testing.T) {
 					FixedSegments: map[string]SegmentSchema{
 						"main": {
 							Account: &AccountSchema{
-								Rules: AccountRules{
-									AllowedDestinations: []string{"thing"},
-								},
+								Rules: AccountRules{},
 							},
 						},
 						"out": {
@@ -97,7 +87,15 @@ func TestChartOfAccounts(t *testing.T) {
 		},
 	}
 
-	expectValidChart(t, src, expected)
+	var chart ChartOfAccounts
+	err := json.Unmarshal([]byte(source), &chart)
+	require.NoError(t, err)
+
+	require.Equal(t, expected, chart)
+
+	value, err := json.MarshalIndent(&chart, "", "    ")
+	require.NoError(t, err)
+	require.JSONEq(t, source, string(value))
 }
 
 func TestInvalidFixedSegment(t *testing.T) {
@@ -183,7 +181,7 @@ func TestInvalidAccountSchema(t *testing.T) {
 		"banks": {
 			"main": {
 				"_self": {
-					"_rules": 42
+					"_rules": {}
 				}
 			}
 		}
@@ -210,10 +208,7 @@ func testChart() ChartOfAccounts {
 				Pattern: "[0-9]{3}",
 				SegmentSchema: SegmentSchema{
 					Account: &AccountSchema{
-						Rules: AccountRules{
-							AllowedDestinations: []string{"world", "users:012:main"},
-							AllowedSources:      []string{"world"},
-						},
+						Rules: AccountRules{},
 					},
 				},
 			},
@@ -280,17 +275,4 @@ func TestPostingValidation(t *testing.T) {
 		Destination: "users:invalid:main",
 	})
 	require.ErrorContains(t, err, "not allowed by the chart")
-
-	err = chart.ValidatePosting(Posting{
-		Source:      "bank:012",
-		Destination: "users:001:main",
-	})
-	require.ErrorContains(t, err, "cannot send to")
-
-	err = chart.ValidatePosting(Posting{
-		Source:      "users:001:main",
-		Destination: "bank:012",
-	})
-	require.ErrorContains(t, err, "cannot receive from")
-
 }
