@@ -43,7 +43,7 @@ tests:
     mv coverage2.txt coverage.txt
 
 fmt:
-  @golangci-lint fmt
+    @golangci-lint fmt
 
 openapi:
     yq eval-all '. as $item ireduce ({}; . * $item)' openapi/v1.yaml openapi/v2.yaml openapi/overlay.yaml > openapi.yaml
