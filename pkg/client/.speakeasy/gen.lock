@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 813f772926657a61fac9a0736009f992
+  docChecksum: e9ea9c66e39477110c83837feac1f2d8
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -205,6 +205,7 @@ generatedFiles:
   - docs/models/components/contract.md
   - docs/models/components/cursor.md
   - docs/models/components/data.md
+  - docs/models/components/dotself.md
   - docs/models/components/errorresponse.md
   - docs/models/components/errorsenum.md
   - docs/models/components/expr.md
@@ -225,7 +226,6 @@ generatedFiles:
   - docs/models/components/script.md
   - docs/models/components/scriptresponse.md
   - docs/models/components/security.md
-  - docs/models/components/self.md
   - docs/models/components/state.md
   - docs/models/components/stats.md
   - docs/models/components/statsresponse.md
@@ -1178,7 +1178,7 @@ examples:
           ledger: "ledger001"
           version: "v1.0.0"
       requestBody:
-        application/json: {"chart": {"users": {"$userID": {"_pattern": "[0-9]{16}+"}}}}
+        application/json: {"chart": {"users": {"$userID": {".pattern": "[0-9]{16}+"}}}}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -1190,7 +1190,7 @@ examples:
           version: "v1.0.0"
       responses:
         "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {"chart": {"users": {"$userID": {"_pattern": "[0-9]{16}+"}}}}}}
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {"chart": {"users": {"$userID": {".pattern": "[0-9]{16}+"}}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListSchemas:

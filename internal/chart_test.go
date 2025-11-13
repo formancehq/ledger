@@ -19,28 +19,28 @@ func TestChartOfAccounts(t *testing.T) {
 	source := `{
     "banks": {
         "$iban": {
-            "_pattern": "*iban_pattern",
+            ".pattern": "[0-9]{10}",
             "main": {
-                "_rules": {}
+                ".rules": {}
             },
             "out": {
-                "_metadata": {
+                ".metadata": {
                     "key": "value"
                 },
-                "_rules": {}
+                ".rules": {}
             },
             "pending_out": {
-                "_rules": {}
+                ".rules": {}
             }
         }
     },
     "users": {
         "$userID": {
-            "_self": {},
-            "_pattern": "*user_pattern",
-            "_rules": {},
+            ".self": {},
+            ".pattern": "[0-9]{5}",
+            ".rules": {},
             "main": {
-                "_rules": {}
+                ".rules": {}
             }
         }
     }
@@ -49,7 +49,7 @@ func TestChartOfAccounts(t *testing.T) {
 		"banks": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "iban",
-				Pattern: "*iban_pattern",
+				Pattern: "[0-9]{10}",
 				ChartSegment: ChartSegment{
 					FixedSegments: map[string]ChartSegment{
 						"main": {
@@ -74,7 +74,7 @@ func TestChartOfAccounts(t *testing.T) {
 		"users": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "userID",
-				Pattern: "*user_pattern",
+				Pattern: "[0-9]{5}",
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{},
 					FixedSegments: map[string]ChartSegment{
@@ -120,7 +120,7 @@ func TestInvalidPatternOnFixed(t *testing.T) {
 	src := `{
 		"banks": {
 			"main": {
-				"_pattern": "[0-9]{3}"
+				".pattern": "[0-9]{3}"
 			}
 		}
 	}`
@@ -131,10 +131,10 @@ func TestInvalidMultipleVariableSegments(t *testing.T) {
 	src := `{
 		"users": {
 			"$userID": {
-				"_pattern": "[0-9]{3}"
+				".pattern": "[0-9]{3}"
 			},
 			"$otherID": {
-				"_pattern": "[0-9]{4}"
+				".pattern": "[0-9]{4}"
 			}
 		}
 	}`
@@ -145,7 +145,7 @@ func TestInvalidVariableSegmentWithoutPattern(t *testing.T) {
 	src := `{
 		"users": {
 			"$userID": {
-				"_metadata": {
+				".metadata": {
 					"key": "value"
 				}
 			}
@@ -158,7 +158,7 @@ func TestInvalidMetadata(t *testing.T) {
 	src := `{
 		"banks": {
 			"main": {
-				"_metadata": 42
+				"metadata": 42
 			}
 		}
 	}`
@@ -169,7 +169,7 @@ func TestInvalidRules(t *testing.T) {
 	src := `{
 		"banks": {
 			"main": {
-				"_rules": 42
+				".rules": 42
 			}
 		}
 	}`
@@ -180,8 +180,8 @@ func TestInvalidAccountSchema(t *testing.T) {
 	src := `{
 		"banks": {
 			"main": {
-				"_self": {
-					"_rules": {}
+				".self": {
+					".rules": {}
 				}
 			}
 		}
@@ -190,13 +190,13 @@ func TestInvalidAccountSchema(t *testing.T) {
 }
 
 func TestInvalidRootSegment(t *testing.T) {
-	src := `{ "_banks": { "_self": {} } }`
+	src := `{ ".banks": { ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 
-	src = `{ "$banks": { "pattern": "[0-9]+", "_self": {} } }`
+	src = `{ "$banks": { "pattern": "[0-9]+", ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 
-	src = `{ "abc:abc": { "_self": {} } }`
+	src = `{ "abc:abc": { ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 }
 

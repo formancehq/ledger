@@ -103,7 +103,7 @@ V2CreateLedgerRequest (ledger: string, V2CreateLedgerRequest: V2CreateLedgerRequ
 V2CreateLedgerResponse (HttpMeta: HTTPMetadata)
 V2InsertSchemaRequest (ledger: string, version: string, V2SchemaData: V2SchemaData)
  V2SchemaData (chart: map)
-   V2ChartSegment (_self: class, _pattern: string, _rules: V2ChartRules ...)
+   V2ChartSegment (.self: class, .pattern: string, .rules: V2ChartRules ...)
     Self (empty)
     V2ChartRules (empty)
 V2InsertSchemaResponse (HttpMeta: HTTPMetadata)

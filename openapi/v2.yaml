@@ -2630,13 +2630,13 @@ components:
       type: object
       description: "Segment within a chart of account"
       properties:
-        _self:
+        .self:
           type: object
-        _pattern:
+        .pattern:
           type: string
-        _rules:
+        .rules:
           $ref: "#/components/schemas/V2ChartRules"
-        _metadata:
+        .metadata:
           type: object
           additionalProperties:
             type: string
@@ -2645,7 +2645,7 @@ components:
       example:
         users:
           $userID:
-            _pattern: "[0-9]{16}+"
+            .pattern: "[0-9]{16}+"
     V2ChartOfAccounts:
       type: object
       description: "Chart of account"
@@ -2654,7 +2654,7 @@ components:
       example:
         users:
           $userID:
-            _pattern: "[0-9]{16}+"
+            .pattern: "[0-9]{16}+"
     V2SchemaData:
       type: object
       description: Schema data structure for ledger schemas

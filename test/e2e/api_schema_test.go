@@ -61,16 +61,16 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										Pattern:  pointer.For("[0-9]{3}"),
-										Rules:    &components.V2ChartRules{},
-										Metadata: map[string]string{},
+										DotPattern:  pointer.For("[0-9]{3}"),
+										DotRules:    &components.V2ChartRules{},
+										DotMetadata: map[string]string{},
 									},
 								},
 							},
 							"bank": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$bankID": {
-										Pattern: pointer.For("[0-9]{3}"),
+										DotPattern: pointer.For("[0-9]{3}"),
 									},
 								},
 							},
@@ -88,16 +88,16 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										Pattern:  pointer.For("[0-9]{3}"),
-										Rules:    &components.V2ChartRules{},
-										Metadata: map[string]string{},
+										DotPattern:  pointer.For("[0-9]{3}"),
+										DotRules:    &components.V2ChartRules{},
+										DotMetadata: map[string]string{},
 									},
 								},
 							},
 							"bank": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$bankID": {
-										Pattern: pointer.For("[0-9]{3}"),
+										DotPattern: pointer.For("[0-9]{3}"),
 									},
 								},
 							},
@@ -115,16 +115,16 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										Pattern:  pointer.For("[0-9]{3}"),
-										Rules:    &components.V2ChartRules{},
-										Metadata: map[string]string{},
+										DotPattern:  pointer.For("[0-9]{3}"),
+										DotRules:    &components.V2ChartRules{},
+										DotMetadata: map[string]string{},
 									},
 								},
 							},
 							"bank": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$bankID": {
-										Pattern: pointer.For("[0-9]{3}"),
+										DotPattern: pointer.For("[0-9]{3}"),
 									},
 								},
 							},

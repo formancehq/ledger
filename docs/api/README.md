@@ -333,7 +333,7 @@ Accept: application/json
   "chart": {
     "users": {
       "$userID": {
-        "_pattern": "[0-9]{16}+"
+        ".pattern": "[0-9]{16}+"
       }
     }
   }
@@ -407,7 +407,7 @@ Accept: application/json
       "chart": {
         "users": {
           "$userID": {
-            "_pattern": "[0-9]{16}+"
+            ".pattern": "[0-9]{16}+"
           }
         }
       }
@@ -476,7 +476,7 @@ Accept: application/json
           "chart": {
             "users": {
               "$userID": {
-                "_pattern": "[0-9]{16}+"
+                ".pattern": "[0-9]{16}+"
               }
             }
           }
@@ -5473,7 +5473,7 @@ and
 {
   "users": {
     "$userID": {
-      "_pattern": "[0-9]{16}+"
+      ".pattern": "[0-9]{16}+"
     }
   }
 }
@@ -5487,10 +5487,10 @@ Segment within a chart of account
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
-|_self|object|false|none|none|
-|_pattern|string|false|none|none|
-|_rules|[V2ChartRules](#schemav2chartrules)|false|none|none|
-|_metadata|object|false|none|none|
+|.self|object|false|none|none|
+|.pattern|string|false|none|none|
+|.rules|[V2ChartRules](#schemav2chartrules)|false|none|none|
+|.metadata|object|false|none|none|
 |» **additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_V2ChartOfAccounts">V2ChartOfAccounts</h2>
@@ -5504,7 +5504,7 @@ Segment within a chart of account
 {
   "users": {
     "$userID": {
-      "_pattern": "[0-9]{16}+"
+      ".pattern": "[0-9]{16}+"
     }
   }
 }
@@ -5531,7 +5531,7 @@ Chart of account
   "chart": {
     "users": {
       "$userID": {
-        "_pattern": "[0-9]{16}+"
+        ".pattern": "[0-9]{16}+"
       }
     }
   }
@@ -5562,7 +5562,7 @@ Schema data structure for ledger schemas
     "chart": {
       "users": {
         "$userID": {
-          "_pattern": "[0-9]{16}+"
+          ".pattern": "[0-9]{16}+"
         }
       }
     }
@@ -5597,7 +5597,7 @@ Complete schema structure with metadata
       "chart": {
         "users": {
           "$userID": {
-            "_pattern": "[0-9]{16}+"
+            ".pattern": "[0-9]{16}+"
           }
         }
       }
@@ -5631,7 +5631,7 @@ Complete schema structure with metadata
           "chart": {
             "users": {
               "$userID": {
-                "_pattern": "[0-9]{16}+"
+                ".pattern": "[0-9]{16}+"
               }
             }
           }
@@ -5669,7 +5669,7 @@ Complete schema structure with metadata
         "chart": {
           "users": {
             "$userID": {
-              "_pattern": "[0-9]{16}+"
+              ".pattern": "[0-9]{16}+"
             }
           }
         }

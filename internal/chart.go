@@ -28,9 +28,15 @@ type ChartVariableSegment struct {
 	Label   string
 }
 
+const PROPERTY_PREFIX = '.'
+const PATTERN_KEY = string(PROPERTY_PREFIX) + "pattern"
+const SELF_KEY = string(PROPERTY_PREFIX) + "self"
+const RULES_KEY = string(PROPERTY_PREFIX) + "rules"
+const METADATA_KEY = string(PROPERTY_PREFIX) + "metadata"
+
 type ChartOfAccounts map[string]ChartSegment
 
-var ChartSegmentRegexp = regexp.MustCompile(`^\$?[a-zA-Z0-9_-]+$`)
+var ChartSegmentRegexp = regexp.MustCompile(`^(\$|\.)?[a-zA-Z0-9_-]+$`)
 
 func ValidateSegment(addr string) bool {
 	return ChartSegmentRegexp.Match([]byte(addr))
@@ -43,7 +49,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 	}
 	out := make(map[string]ChartSegment)
 	for key, value := range segment {
-		if !ValidateSegment(key) || key[0] == '$' || key[0] == '_' {
+		if !ValidateSegment(key) || key[0] == '$' || key[0] == PROPERTY_PREFIX {
 			return fmt.Errorf("invalid segment name: %v", key)
 		}
 		var seg ChartSegment
@@ -72,7 +78,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 	}
 	for _, key := range keys {
 		value := segment[key]
-		isSubsegment := key[0] != '_'
+		isSubsegment := key[0] != PROPERTY_PREFIX
 
 		if isSubsegment {
 			if !ValidateSegment(key) {
@@ -85,7 +91,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				if err != nil {
 					return fmt.Errorf("invalid segment: %v", err)
 				}
-				if pat, ok := segment["_pattern"]; ok {
+				if pat, ok := segment[PATTERN_KEY]; ok {
 					if pat, ok := pat.(string); ok {
 						pattern = &pat
 					}
@@ -118,17 +124,17 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				fixedSegments[key] = segment
 			}
 			isLeaf = false
-		} else if key == "_self" {
+		} else if key == SELF_KEY {
 			if string(value) != "{}" {
-				return fmt.Errorf("_self must be an empty object")
+				return fmt.Errorf("%v must be an empty object", SELF_KEY)
 			}
 			isAccount = true
-		} else if key == "_metadata" {
+		} else if key == METADATA_KEY {
 			err := json.Unmarshal(value, &account.Metadata)
 			if err != nil {
 				return fmt.Errorf("invalid default metadata: %v", err)
 			}
-		} else if key == "_rules" {
+		} else if key == RULES_KEY {
 			err := json.Unmarshal(value, &account.Rules)
 			if err != nil {
 				return fmt.Errorf("invalid account rules: %v", err)
@@ -176,11 +182,11 @@ func (s ChartSegment) marshalJsonObject() (map[string]any, error) {
 	}
 	if s.Account != nil {
 		if s.Account.Metadata != nil {
-			out["_metadata"] = s.Account.Metadata
+			out[METADATA_KEY] = s.Account.Metadata
 		}
-		out["_rules"] = s.Account.Rules
+		out[RULES_KEY] = s.Account.Rules
 		if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
-			out["_self"] = map[string]interface{}{}
+			out[SELF_KEY] = map[string]interface{}{}
 		}
 	}
 	return out, nil
@@ -199,7 +205,7 @@ func (s ChartVariableSegment) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out["_pattern"] = s.Pattern
+	out[PATTERN_KEY] = s.Pattern
 	return json.Marshal(out)
 }
 

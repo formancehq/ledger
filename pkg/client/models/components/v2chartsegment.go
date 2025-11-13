@@ -6,15 +6,15 @@ import (
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
-type Self struct {
+type DotSelf struct {
 }
 
 // V2ChartSegment - Segment within a chart of account
 type V2ChartSegment struct {
-	Self                 *Self                     `json:"_self,omitempty"`
-	Pattern              *string                   `json:"_pattern,omitempty"`
-	Rules                *V2ChartRules             `json:"_rules,omitempty"`
-	Metadata             map[string]string         `json:"_metadata,omitempty"`
+	DotSelf              *DotSelf                  `json:".self,omitempty"`
+	DotPattern           *string                   `json:".pattern,omitempty"`
+	DotRules             *V2ChartRules             `json:".rules,omitempty"`
+	DotMetadata          map[string]string         `json:".metadata,omitempty"`
 	AdditionalProperties map[string]V2ChartSegment `additionalProperties:"true" json:"-"`
 }
 
@@ -29,32 +29,32 @@ func (v *V2ChartSegment) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *V2ChartSegment) GetSelf() *Self {
+func (o *V2ChartSegment) GetDotSelf() *DotSelf {
 	if o == nil {
 		return nil
 	}
-	return o.Self
+	return o.DotSelf
 }
 
-func (o *V2ChartSegment) GetPattern() *string {
+func (o *V2ChartSegment) GetDotPattern() *string {
 	if o == nil {
 		return nil
 	}
-	return o.Pattern
+	return o.DotPattern
 }
 
-func (o *V2ChartSegment) GetRules() *V2ChartRules {
+func (o *V2ChartSegment) GetDotRules() *V2ChartRules {
 	if o == nil {
 		return nil
 	}
-	return o.Rules
+	return o.DotRules
 }
 
-func (o *V2ChartSegment) GetMetadata() map[string]string {
+func (o *V2ChartSegment) GetDotMetadata() map[string]string {
 	if o == nil {
 		return nil
 	}
-	return o.Metadata
+	return o.DotMetadata
 }
 
 func (o *V2ChartSegment) GetAdditionalProperties() map[string]V2ChartSegment {
