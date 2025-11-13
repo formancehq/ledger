@@ -1,0 +1,35 @@
+name: Add Index for Trigger Optimization (3/5)
+description: |
+  Create optimized index for the update_effective_volumes trigger that runs on every
+  INSERT when MOVES_HISTORY feature is enabled (ON by default).
+
+  This trigger updates all moves where effective_date > new.effective_date, which
+  requires an efficient index on (accounts_address, asset, effective_date) to avoid
+  full table scans on large datasets.
+
+changes:
+  moves_table:
+    - action: "CREATE"
+      new_index: "idx_moves_update_effective_volumes (accounts_address, asset, effective_date)"
+      reason: |
+        Optimizes the UPDATE query in update_effective_volumes trigger.
+        Without this index, every INSERT causes a slow sequential scan when
+        MOVES_HISTORY is ON, causing severe performance degradation.
+
+        The existing moves_range_dates index has the same columns but in a
+        different order (account_address, asset, effective_date) and was created
+        before the column rename. This new index ensures optimal performance.
+
+affected_queries:
+  - "update_effective_volumes trigger: UPDATE moves WHERE effective_date > ?"
+  - "Runs on EVERY INSERT when MOVES_HISTORY=ON (default configuration)"
+
+performance_impact:
+  - "CRITICAL improvement for write performance with MOVES_HISTORY enabled"
+  - "Reduces INSERT latency by eliminating sequential scans on moves table"
+  - "Essential for maintaining performance at scale with history tracking"
+
+migration_safety:
+  - "Index creation is non-blocking"
+  - "No data modification"
+  - "moves_range_dates will be dropped in next migration (46) as redundant"
