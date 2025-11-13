@@ -43,18 +43,23 @@ func ValidateSegment(addr string) bool {
 }
 
 func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
-	var rootSegment SegmentSchema
-	err := rootSegment.UnmarshalJSON(data)
-	if err != nil {
+	var segment map[string]json.RawMessage
+	if err := json.Unmarshal(data, &segment); err != nil {
 		return err
 	}
-	*s = rootSegment.FixedSegments
-	if rootSegment.VariableSegment != nil {
-		return errors.New("variable segments are not allowed at the root")
+	out := make(map[string]SegmentSchema)
+	for key, value := range segment {
+		if !ValidateSegment(key) || key[0] == '$' || key[0] == '_' {
+			return fmt.Errorf("invalid segment name: %v", key)
+		}
+		var seg SegmentSchema
+		err := seg.UnmarshalJSON(value)
+		if err != nil {
+			return fmt.Errorf("invalid segment `%v`: %v", key, err)
+		}
+		out[key] = seg
 	}
-	// if rootSegment.Account != nil {
-	// 	return errors.New("the chart root is not a valid account")
-	// }
+	*s = out
 	return nil
 }
 func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
@@ -84,7 +89,7 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 				var segment map[string]any
 				err := json.Unmarshal(value, &segment)
 				if err != nil {
-					return fmt.Errorf("invalid subsegment: %v", err)
+					return fmt.Errorf("invalid segment: %v", err)
 				}
 				if pat, ok := segment["_pattern"]; ok {
 					if pat, ok := pat.(string); ok {
@@ -95,14 +100,14 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 			segment := SegmentSchema{}
 			err := segment.UnmarshalJSON(value)
 			if err != nil {
-				return fmt.Errorf("invalid subsegment: %v", err)
+				return fmt.Errorf("invalid segment: %v", err)
 			}
 			if pattern != nil {
 				if key[0] != '$' {
 					return fmt.Errorf("cannot have a pattern on a fixed segment") // TODO: Should this actually be an error?
 				}
 				if variableSegment != nil {
-					return fmt.Errorf("invalid subsegments: cannot have two variable segments with the same prefix")
+					return fmt.Errorf("cannot have two variable segments with the same prefix")
 				}
 				variableSegment = &VariableSegment{
 					SegmentSchema: segment,
@@ -120,16 +125,19 @@ func (s *SegmentSchema) UnmarshalJSON(data []byte) error {
 			}
 			isLeaf = false
 		} else if key == "_self" {
+			if string(value) != "{}" {
+				return fmt.Errorf("_self must be an empty object")
+			}
 			isAccount = true
 		} else if key == "_metadata" {
 			err := json.Unmarshal(value, &account.Metadata)
 			if err != nil {
-				return err
+				return fmt.Errorf("invalid default metadata: %v", err)
 			}
 		} else if key == "_rules" {
 			err := json.Unmarshal(value, &account.Rules)
 			if err != nil {
-				return err
+				return fmt.Errorf("invalid account rules: %v", err)
 			}
 		}
 	}

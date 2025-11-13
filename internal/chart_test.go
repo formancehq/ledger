@@ -115,7 +115,7 @@ func TestInvalidSubsegment(t *testing.T) {
 			"main": 42
 		}
 	}`
-	expectInvalidChart(t, src, "invalid subsegment")
+	expectInvalidChart(t, src, "invalid segment")
 }
 
 func TestInvalidPatternOnFixed(t *testing.T) {
@@ -140,7 +140,7 @@ func TestInvalidMultipleVariableSegments(t *testing.T) {
 			}
 		}
 	}`
-	expectInvalidChart(t, src, "invalid subsegments: cannot have two variable segments with the same prefix")
+	expectInvalidChart(t, src, "cannot have two variable segments with the same prefix")
 }
 
 func TestInvalidVariableSegmentWithoutPattern(t *testing.T) {
@@ -164,7 +164,7 @@ func TestInvalidMetadata(t *testing.T) {
 			}
 		}
 	}`
-	expectInvalidChart(t, src, "invalid subsegment")
+	expectInvalidChart(t, src, "invalid segment")
 }
 
 func TestInvalidRules(t *testing.T) {
@@ -175,17 +175,46 @@ func TestInvalidRules(t *testing.T) {
 			}
 		}
 	}`
-	expectInvalidChart(t, src, "invalid subsegment")
+	expectInvalidChart(t, src, "invalid segment")
 }
 
-func TestChartValidation(t *testing.T) {
-	chart := ChartOfAccounts{
+func TestInvalidAccountSchema(t *testing.T) {
+	src := `{
+		"banks": {
+			"main": {
+				"_self": {
+					"_rules": 42
+				}
+			}
+		}
+	}`
+	expectInvalidChart(t, src, "invalid segment")
+}
+
+func TestInvalidRootSegment(t *testing.T) {
+	src := `{ "_banks": { "_self": {} } }`
+	expectInvalidChart(t, src, "invalid segment name")
+
+	src = `{ "$banks": { "pattern": "[0-9]+", "_self": {} } }`
+	expectInvalidChart(t, src, "invalid segment name")
+
+	src = `{ "abc:abc": { "_self": {} } }`
+	expectInvalidChart(t, src, "invalid segment name")
+}
+
+func testChart() ChartOfAccounts {
+	return ChartOfAccounts{
 		"bank": {
 			VariableSegment: &VariableSegment{
 				Label:   "bankID",
 				Pattern: "[0-9]{3}",
 				SegmentSchema: SegmentSchema{
-					Account: &AccountSchema{},
+					Account: &AccountSchema{
+						Rules: AccountRules{
+							AllowedDestinations: []string{"world", "users:012:main"},
+							AllowedSources:      []string{"world"},
+						},
+					},
 				},
 			},
 			Account: &AccountSchema{},
@@ -204,6 +233,10 @@ func TestChartValidation(t *testing.T) {
 			},
 		},
 	}
+}
+
+func TestAccountValidation(t *testing.T) {
+	chart := testChart()
 
 	_, err := chart.FindAccountSchema("world")
 	require.NoError(t, err)
@@ -225,4 +258,39 @@ func TestChartValidation(t *testing.T) {
 
 	_, err = chart.FindAccountSchema("users")
 	require.ErrorIs(t, err, ErrInvalidAccount{})
+}
+
+func TestPostingValidation(t *testing.T) {
+	chart := testChart()
+
+	err := chart.ValidatePosting(Posting{
+		Source:      "bank:012",
+		Destination: "users:012:main",
+	})
+	require.NoError(t, err)
+
+	err = chart.ValidatePosting(Posting{
+		Source:      "bank:invalid",
+		Destination: "users:001:main",
+	})
+	require.ErrorContains(t, err, "not allowed by the chart")
+
+	err = chart.ValidatePosting(Posting{
+		Source:      "bank:012",
+		Destination: "users:invalid:main",
+	})
+	require.ErrorContains(t, err, "not allowed by the chart")
+
+	err = chart.ValidatePosting(Posting{
+		Source:      "bank:012",
+		Destination: "users:001:main",
+	})
+	require.ErrorContains(t, err, "cannot send to")
+
+	err = chart.ValidatePosting(Posting{
+		Source:      "users:001:main",
+		Destination: "bank:012",
+	})
+	require.ErrorContains(t, err, "cannot receive from")
+
 }
