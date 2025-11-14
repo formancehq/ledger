@@ -193,11 +193,37 @@ func TestInvalidRootSegment(t *testing.T) {
 	src := `{ ".banks": { ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 
-	src = `{ "$banks": { "pattern": "[0-9]+", ".self": {} } }`
+	src = `{ "$banks": { ".pattern": "[0-9]+", ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 
 	src = `{ "abc:abc": { ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
+}
+
+func TestInvalidPatternType(t *testing.T) {
+	src := `{ "banks": { "$bankID": { ".pattern": 42 } } }`
+	expectInvalidChart(t, src, "pattern must be a string")
+}
+
+func TestInvalidPatternRegex(t *testing.T) {
+	src := `{ "banks": { "$bankID": { ".pattern": "[[" } } }`
+	expectInvalidChart(t, src, "invalid pattern regex")
+}
+
+func TestInvalidSelf(t *testing.T) {
+	src := `{ "foo": {
+		".self": 42,
+		"bar": { "baz": {} }
+} }`
+	expectInvalidChart(t, src, ".self must be an empty object")
+
+	src = `{ "foo": {
+	".self": {
+		"key": "value"
+	},
+	"bar": { "baz": {} }
+} }`
+	expectInvalidChart(t, src, ".self must be an empty object")
 }
 
 func testChart() ChartOfAccounts {

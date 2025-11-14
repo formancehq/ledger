@@ -28,11 +28,11 @@ type ChartVariableSegment struct {
 	Label   string
 }
 
-const PROPERTY_PREFIX = '.'
-const PATTERN_KEY = string(PROPERTY_PREFIX) + "pattern"
-const SELF_KEY = string(PROPERTY_PREFIX) + "self"
-const RULES_KEY = string(PROPERTY_PREFIX) + "rules"
-const METADATA_KEY = string(PROPERTY_PREFIX) + "metadata"
+const PROPERTY_PREFIX = "."
+const PATTERN_KEY = PROPERTY_PREFIX + "pattern"
+const SELF_KEY = PROPERTY_PREFIX + "self"
+const RULES_KEY = PROPERTY_PREFIX + "rules"
+const METADATA_KEY = PROPERTY_PREFIX + "metadata"
 
 type ChartOfAccounts map[string]ChartSegment
 
@@ -49,7 +49,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 	}
 	out := make(map[string]ChartSegment)
 	for key, value := range segment {
-		if !ValidateSegment(key) || key[0] == '$' || key[0] == PROPERTY_PREFIX {
+		if !ValidateSegment(key) || strings.HasPrefix(key, "$") || strings.HasPrefix(key, PROPERTY_PREFIX) {
 			return fmt.Errorf("invalid segment name: %v", key)
 		}
 		var seg ChartSegment
@@ -67,18 +67,15 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &segment); err != nil {
 		return err
 	}
-	isLeaf := true
-	var isAccount bool
-	var account ChartAccount
-	var fixedSegments map[string]ChartSegment
-	var variableSegment *ChartVariableSegment
-	keys := []string{}
-	for key := range segment {
-		keys = append(keys, key)
-	}
-	for _, key := range keys {
-		value := segment[key]
-		isSubsegment := key[0] != PROPERTY_PREFIX
+	var (
+		isLeaf          bool = true
+		isAccount       bool
+		account         ChartAccount
+		fixedSegments   map[string]ChartSegment
+		variableSegment *ChartVariableSegment
+	)
+	for key, value := range segment {
+		isSubsegment := !strings.HasPrefix(key, PROPERTY_PREFIX)
 
 		if isSubsegment {
 			if !ValidateSegment(key) {
@@ -93,7 +90,13 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				}
 				if pat, ok := segment[PATTERN_KEY]; ok {
 					if pat, ok := pat.(string); ok {
+						_, err := regexp.Compile(pat)
+						if err != nil {
+							return fmt.Errorf("invalid pattern regex: %v", err)
+						}
 						pattern = &pat
+					} else {
+						return fmt.Errorf("pattern must be a string")
 					}
 				}
 			}
@@ -103,7 +106,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("invalid segment: %v", err)
 			}
 			if pattern != nil {
-				if key[0] != '$' {
+				if !strings.HasPrefix(key, "$") {
 					return fmt.Errorf("cannot have a pattern on a fixed segment")
 				}
 				if variableSegment != nil {
@@ -115,7 +118,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 					Label:        key[1:],
 				}
 			} else {
-				if key[0] == '$' {
+				if strings.HasPrefix(key, "$") {
 					return fmt.Errorf("cannot have a variable segment without a pattern")
 				}
 				if fixedSegments == nil {
@@ -125,7 +128,11 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 			}
 			isLeaf = false
 		} else if key == SELF_KEY {
-			if string(value) != "{}" {
+			var obj map[string]json.RawMessage
+			if err := json.Unmarshal(value, &obj); err != nil {
+				return fmt.Errorf("%v must be an empty object", SELF_KEY)
+			}
+			if len(obj) != 0 {
 				return fmt.Errorf("%v must be an empty object", SELF_KEY)
 			}
 			isAccount = true
