@@ -134,7 +134,7 @@ V2CreateBulkRequest (ledger: string, continueOnFailure: boolean, atomic: boolean
    V2BulkElementCreateTransaction (action: string, ik: string, schemaVersion: string ...)
     V2PostTransaction (timestamp: date-time, postings: array, script: class ...)
       V2Posting (amount: bigint, asset: string, destination: string ...)
-     V2PostTransactionScript (plain: string, vars: map)
+     V2PostTransactionScript (template: string, plain: string, vars: map)
      Runtime (enum: experimental-interpreter, machine)
    V2BulkElementAddMetadata (action: string, ik: string, schemaVersion: string ...)
     Data (targetId: V2TargetId, targetType: V2TargetType, metadata: map)

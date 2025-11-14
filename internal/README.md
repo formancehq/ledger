@@ -160,6 +160,10 @@ import "github.com/formancehq/ledger/internal"
 - [type TransactionData](<#TransactionData>)
   - [func NewTransactionData\(\) TransactionData](<#NewTransactionData>)
   - [func \(data TransactionData\) WithPostings\(postings ...Posting\) TransactionData](<#TransactionData.WithPostings>)
+- [type TransactionTemplate](<#TransactionTemplate>)
+- [type TransactionTemplates](<#TransactionTemplates>)
+  - [func \(t TransactionTemplates\) MarshalJSON\(\) \(\[\]byte, error\)](<#TransactionTemplates.MarshalJSON>)
+  - [func \(t \*TransactionTemplates\) UnmarshalJSON\(data \[\]byte\) error](<#TransactionTemplates.UnmarshalJSON>)
 - [type Transactions](<#Transactions>)
 - [type UpdatedSchema](<#UpdatedSchema>)
   - [func \(p UpdatedSchema\) NeedsSchema\(\) bool](<#UpdatedSchema.NeedsSchema>)
@@ -1772,6 +1776,45 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 ```
 
 
+
+<a name="TransactionTemplate"></a>
+## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L9-L12>)
+
+
+
+```go
+type TransactionTemplate struct {
+    Description string
+    Script      string
+}
+```
+
+<a name="TransactionTemplates"></a>
+## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L14>)
+
+
+
+```go
+type TransactionTemplates map[string]TransactionTemplate
+```
+
+<a name="TransactionTemplates.MarshalJSON"></a>
+### func \(TransactionTemplates\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L43>)
+
+```go
+func (t TransactionTemplates) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="TransactionTemplates.UnmarshalJSON"></a>
+### func \(\*TransactionTemplates\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L17>)
+
+```go
+func (t *TransactionTemplates) UnmarshalJSON(data []byte) error
+```
+
+Marshal that transforms a list of transactions with ids into a map
 
 <a name="Transactions"></a>
 ## type [Transactions](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L15-L17>)

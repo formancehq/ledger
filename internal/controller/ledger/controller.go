@@ -92,6 +92,16 @@ type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
 
+type ScriptRef struct {
+	vm.Script
+	// Template string            `json:"template"`
+}
+
+type ScriptRefV1 struct {
+	vm.ScriptV1
+	// Template string            `json:"template"`
+}
+
 type RuntimeType string
 
 const (

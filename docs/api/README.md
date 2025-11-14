@@ -699,6 +699,7 @@ Accept: application/json
         }
       ],
       "script": {
+        "template": "CUSTOMER_DEPOSIT",
         "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
         "vars": {
           "user": "users:042"
@@ -1533,6 +1534,7 @@ Idempotency-Key: string
     }
   ],
   "script": {
+    "template": "CUSTOMER_DEPOSIT",
     "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
     "vars": {
       "user": "users:042"
@@ -3943,6 +3945,7 @@ This operation does not require authentication
     }
   ],
   "script": {
+    "template": "CUSTOMER_DEPOSIT",
     "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
     "vars": {
       "user": "users:042"
@@ -3973,6 +3976,7 @@ This operation does not require authentication
 |timestamp|string(date-time)|false|none|none|
 |postings|[[V2Posting](#schemav2posting)]|false|none|none|
 |script|object|false|none|none|
+|» template|string|false|none|none|
 |» plain|string|true|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
@@ -4676,6 +4680,7 @@ This operation does not require authentication
         }
       ],
       "script": {
+        "template": "CUSTOMER_DEPOSIT",
         "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
         "vars": {
           "user": "users:042"
@@ -4754,6 +4759,7 @@ This operation does not require authentication
       }
     ],
     "script": {
+      "template": "CUSTOMER_DEPOSIT",
       "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
       "vars": {
         "user": "users:042"
@@ -4827,6 +4833,7 @@ xor
       }
     ],
     "script": {
+      "template": "CUSTOMER_DEPOSIT",
       "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
       "vars": {
         "user": "users:042"

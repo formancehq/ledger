@@ -10,6 +10,7 @@ import (
 
 type SchemaData struct {
 	Chart ChartOfAccounts `json:"chart" bun:"chart"`
+	Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
 }
 
 type Schema struct {

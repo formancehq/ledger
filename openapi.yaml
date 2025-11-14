@@ -4071,6 +4071,9 @@ components:
         script:
           type: object
           properties:
+            template:
+              type: string
+              example: CUSTOMER_DEPOSIT
             plain:
               type: string
               example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
