@@ -1352,6 +1352,14 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: includeDeleted
+          in: query
+          description: |
+            If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
+          schema:
+            type: boolean
+            default: false
+          example: false
         - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
@@ -2704,6 +2712,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/_/buckets/{bucket}:
+    parameters:
+      - name: bucket
+        description: The bucket name
+        in: path
+        schema:
+          type: string
+        required: true
+    delete:
+      summary: Delete bucket
+      operationId: v2DeleteBucket
+      x-speakeasy-name-override: DeleteBucket
+      tags:
+        - ledger.v2
+      description: >-
+        Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). All ledgers in the bucket will have their deleted_at field set to the current timestamp.
+      responses:
+        "204":
+          description: Bucket deleted
+        "404":
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/_/buckets/{bucket}/restore:
+    parameters:
+      - name: bucket
+        description: The bucket name
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Restore bucket
+      operationId: v2RestoreBucket
+      x-speakeasy-name-override: RestoreBucket
+      tags:
+        - ledger.v2
+      description: >-
+        Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All ledgers in the bucket will have their deleted_at field set to NULL.
+      responses:
+        "204":
+          description: Bucket restored
+        "404":
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/pipelines:
     parameters:
       - name: ledger
@@ -4262,6 +4338,10 @@ components:
           format: date-time
         bucket:
           type: string
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:

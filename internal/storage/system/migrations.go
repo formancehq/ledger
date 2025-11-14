@@ -13,6 +13,8 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 )
 
+// GetMigrator creates a Migrator configured with the package's system schema migrations for the given database.
+// It appends the system schema option to any provided migration options, registers all system migrations, and returns the configured *migrations.Migrator.
 func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator {
 
 	// configuration table has been removed, we keep the model to keep migrations consistent but the table is not used anymore.
@@ -278,6 +280,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 					create unique index on _system.pipelines (ledger, exporter_id);
 				`)
 				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Add deleted_at column to ledgers",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+					_, err := tx.ExecContext(ctx, `
+						alter table _system.ledgers
+						add column if not exists deleted_at timestamp;
+					`)
+					return err
+				})
 			},
 		},
 	)

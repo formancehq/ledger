@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 52984747065f55166ed255f2dd2d9a8f
+  docChecksum: 18f198e70525f40811be371cca775b5f
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -11,6 +11,7 @@ features:
   go:
     additionalDependencies: 0.1.0
     bigint: 0.0.2
+    constsAndDefaults: 0.1.12
     core: 3.8.1
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.3
@@ -150,6 +151,7 @@ generatedFiles:
   - /models/operations/v2createpipeline.go
   - /models/operations/v2createtransaction.go
   - /models/operations/v2deleteaccountmetadata.go
+  - /models/operations/v2deletebucket.go
   - /models/operations/v2deleteexporter.go
   - /models/operations/v2deleteledgermetadata.go
   - /models/operations/v2deletepipeline.go
@@ -173,6 +175,7 @@ generatedFiles:
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
   - /models/operations/v2resetpipeline.go
+  - /models/operations/v2restorebucket.go
   - /models/operations/v2reverttransaction.go
   - /models/operations/v2startpipeline.go
   - /models/operations/v2stoppipeline.go
@@ -356,6 +359,8 @@ generatedFiles:
   - docs/models/operations/v2createtransactionresponse.md
   - docs/models/operations/v2deleteaccountmetadatarequest.md
   - docs/models/operations/v2deleteaccountmetadataresponse.md
+  - docs/models/operations/v2deletebucketrequest.md
+  - docs/models/operations/v2deletebucketresponse.md
   - docs/models/operations/v2deleteexporterrequest.md
   - docs/models/operations/v2deleteexporterresponse.md
   - docs/models/operations/v2deleteledgermetadatarequest.md
@@ -400,6 +405,8 @@ generatedFiles:
   - docs/models/operations/v2readstatsresponse.md
   - docs/models/operations/v2resetpipelinerequest.md
   - docs/models/operations/v2resetpipelineresponse.md
+  - docs/models/operations/v2restorebucketrequest.md
+  - docs/models/operations/v2restorebucketresponse.md
   - docs/models/operations/v2reverttransactionrequest.md
   - docs/models/operations/v2reverttransactionresponse.md
   - docs/models/operations/v2startpipelinerequest.md
@@ -713,6 +720,7 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
+          includeDeleted: false
       requestBody:
         application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
@@ -1150,6 +1158,26 @@ examples:
         application/json: {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}}
       responses:
         "400":
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2DeleteBucket:
+    speakeasy-default-v2-delete-bucket:
+      parameters:
+        path:
+          bucket: "<value>"
+      responses:
+        "404":
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2RestoreBucket:
+    speakeasy-default-v2-restore-bucket:
+      parameters:
+        path:
+          bucket: "<value>"
+      responses:
+        "404":
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}

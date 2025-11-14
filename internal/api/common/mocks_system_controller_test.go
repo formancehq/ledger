@@ -285,6 +285,20 @@ func (mr *SystemControllerMockRecorder) CreatePipeline(ctx, pipelineConfiguratio
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePipeline", reflect.TypeOf((*SystemController)(nil).CreatePipeline), ctx, pipelineConfiguration)
 }
 
+// DeleteBucket mocks base method.
+func (m *SystemController) DeleteBucket(ctx context.Context, bucket string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBucket", ctx, bucket)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBucket indicates an expected call of DeleteBucket.
+func (mr *SystemControllerMockRecorder) DeleteBucket(ctx, bucket any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBucket", reflect.TypeOf((*SystemController)(nil).DeleteBucket), ctx, bucket)
+}
+
 // DeleteExporter mocks base method.
 func (m *SystemController) DeleteExporter(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
@@ -444,6 +458,20 @@ func (m *SystemController) ResetPipeline(ctx context.Context, id string) error {
 func (mr *SystemControllerMockRecorder) ResetPipeline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetPipeline", reflect.TypeOf((*SystemController)(nil).ResetPipeline), ctx, id)
+}
+
+// RestoreBucket mocks base method.
+func (m *SystemController) RestoreBucket(ctx context.Context, bucket string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreBucket", ctx, bucket)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RestoreBucket indicates an expected call of RestoreBucket.
+func (mr *SystemControllerMockRecorder) RestoreBucket(ctx, bucket any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreBucket", reflect.TypeOf((*SystemController)(nil).RestoreBucket), ctx, bucket)
 }
 
 // StartPipeline mocks base method.

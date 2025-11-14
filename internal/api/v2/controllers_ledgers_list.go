@@ -8,13 +8,28 @@ import (
 
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
+// listLedgers constructs an HTTP handler that lists ledgers with pagination.
+// The handler applies the provided pagination configuration (sorted by "id" ascending),
+// reads the "includeDeleted" query parameter to include deleted ledgers when set,
+// invokes the controller's ListLedgers, and renders the resulting paginated cursor.
 func listLedgers(b system.Controller, paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		rq, err := getPaginatedQuery[systemstore.ListLedgersQueryPayload](r, paginationConfig, "id", bunpaginate.OrderAsc)
+		rq, err := getPaginatedQuery[systemstore.ListLedgersQueryPayload](
+			r,
+			paginationConfig,
+			"id",
+			bunpaginate.OrderAsc,
+			func(resourceQuery *storagecommon.ResourceQuery[systemstore.ListLedgersQueryPayload]) {
+				// Extract includeDeleted query parameter
+				includeDeleted := api.QueryParamBool(r, "includeDeleted")
+				resourceQuery.Opts.IncludeDeleted = includeDeleted
+			},
+		)
 		if err != nil {
 			api.BadRequest(w, common.ErrValidation, err)
 			return
