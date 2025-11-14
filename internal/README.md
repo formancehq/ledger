@@ -204,31 +204,31 @@ const (
 <a name="METADATA_KEY"></a>
 
 ```go
-const METADATA_KEY = string(PROPERTY_PREFIX) + "metadata"
+const METADATA_KEY = PROPERTY_PREFIX + "metadata"
 ```
 
 <a name="PATTERN_KEY"></a>
 
 ```go
-const PATTERN_KEY = string(PROPERTY_PREFIX) + "pattern"
+const PATTERN_KEY = PROPERTY_PREFIX + "pattern"
 ```
 
 <a name="PROPERTY_PREFIX"></a>
 
 ```go
-const PROPERTY_PREFIX = '.'
+const PROPERTY_PREFIX = "."
 ```
 
 <a name="RULES_KEY"></a>
 
 ```go
-const RULES_KEY = string(PROPERTY_PREFIX) + "rules"
+const RULES_KEY = PROPERTY_PREFIX + "rules"
 ```
 
 <a name="SELF_KEY"></a>
 
 ```go
-const SELF_KEY = string(PROPERTY_PREFIX) + "self"
+const SELF_KEY = PROPERTY_PREFIX + "self"
 ```
 
 <a name="WORLD"></a>
@@ -438,7 +438,7 @@ type ChartOfAccounts map[string]ChartSegment
 ```
 
 <a name="ChartOfAccounts.FindAccountSchema"></a>
-### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L240>)
+### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L253>)
 
 ```go
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error)
@@ -447,7 +447,7 @@ func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, erro
 
 
 <a name="ChartOfAccounts.MarshalJSON"></a>
-### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L154>)
+### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L167>)
 
 ```go
 func (s ChartOfAccounts) MarshalJSON() ([]byte, error)
@@ -465,7 +465,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
 
 
 <a name="ChartOfAccounts.ValidatePosting"></a>
-### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L251>)
+### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L264>)
 
 ```go
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
@@ -487,7 +487,7 @@ type ChartSegment struct {
 ```
 
 <a name="ChartSegment.MarshalJSON"></a>
-### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L195>)
+### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L208>)
 
 ```go
 func (s ChartSegment) MarshalJSON() ([]byte, error)
@@ -496,7 +496,7 @@ func (s ChartSegment) MarshalJSON() ([]byte, error)
 
 
 <a name="ChartSegment.UnmarshalJSON"></a>
-### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L65>)
+### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L71>)
 
 ```go
 func (s *ChartSegment) UnmarshalJSON(data []byte) error
@@ -519,7 +519,7 @@ type ChartVariableSegment struct {
 ```
 
 <a name="ChartVariableSegment.MarshalJSON"></a>
-### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L203>)
+### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L216>)
 
 ```go
 func (s ChartVariableSegment) MarshalJSON() ([]byte, error)

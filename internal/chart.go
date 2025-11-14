@@ -49,8 +49,14 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 	}
 	out := make(map[string]ChartSegment)
 	for key, value := range segment {
-		if !ValidateSegment(key) || strings.HasPrefix(key, "$") || strings.HasPrefix(key, PROPERTY_PREFIX) {
+		if !ValidateSegment(key) {
 			return fmt.Errorf("invalid segment name: %v", key)
+		}
+		if strings.HasPrefix(key, "$") {
+			return fmt.Errorf("invalid key %v: root cannot have a variable segment", key)
+		}
+		if strings.HasPrefix(key, PROPERTY_PREFIX) {
+			return fmt.Errorf("invalid key %v: the root cannot be an account", key)
 		}
 		var seg ChartSegment
 		err := seg.UnmarshalJSON(value)
@@ -68,7 +74,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var (
-		isLeaf          bool = true
+		isLeaf          = true
 		isAccount       bool
 		account         ChartAccount
 		fixedSegments   map[string]ChartSegment

@@ -189,14 +189,16 @@ func TestInvalidAccountSchema(t *testing.T) {
 	expectInvalidChart(t, src, "invalid segment")
 }
 
-func TestInvalidRootSegment(t *testing.T) {
-	src := `{ ".banks": { ".self": {} } }`
-	expectInvalidChart(t, src, "invalid segment name")
-
-	src = `{ "$banks": { ".pattern": "[0-9]+", ".self": {} } }`
-	expectInvalidChart(t, src, "invalid segment name")
-
-	src = `{ "abc:abc": { ".self": {} } }`
+func TestInvalidRootIsAccount(t *testing.T) {
+	src := `{ ".self": { ".self": {} } }`
+	expectInvalidChart(t, src, "root cannot be an account")
+}
+func TestInvalidRootHasVariableSegment(t *testing.T) {
+	src := `{ "$banks": { ".pattern": "[0-9]+", ".self": {} } }`
+	expectInvalidChart(t, src, "root cannot have a variable segment")
+}
+func TestRootSubsegmentIsInvalid(t *testing.T) {
+	src := `{ "abc:abc": { ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 }
 
