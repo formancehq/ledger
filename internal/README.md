@@ -16,6 +16,7 @@ import "github.com/formancehq/ledger/internal"
 - [func RevertMetadata\(txID uint64\) metadata.Metadata](<#RevertMetadata>)
 - [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
 - [func SpecMetadata\(name string\) string](<#SpecMetadata>)
+- [func ValidateSegment\(addr string\) bool](<#ValidateSegment>)
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
@@ -24,6 +25,18 @@ import "github.com/formancehq/ledger/internal"
 - [type Balances](<#Balances>)
 - [type BalancesByAssets](<#BalancesByAssets>)
 - [type BalancesByAssetsByAccounts](<#BalancesByAssetsByAccounts>)
+- [type ChartAccount](<#ChartAccount>)
+- [type ChartAccountRules](<#ChartAccountRules>)
+- [type ChartOfAccounts](<#ChartOfAccounts>)
+  - [func \(c \*ChartOfAccounts\) FindAccountSchema\(account string\) \(\*ChartAccount, error\)](<#ChartOfAccounts.FindAccountSchema>)
+  - [func \(s ChartOfAccounts\) MarshalJSON\(\) \(\[\]byte, error\)](<#ChartOfAccounts.MarshalJSON>)
+  - [func \(s \*ChartOfAccounts\) UnmarshalJSON\(data \[\]byte\) error](<#ChartOfAccounts.UnmarshalJSON>)
+  - [func \(c \*ChartOfAccounts\) ValidatePosting\(posting Posting\) error](<#ChartOfAccounts.ValidatePosting>)
+- [type ChartSegment](<#ChartSegment>)
+  - [func \(s ChartSegment\) MarshalJSON\(\) \(\[\]byte, error\)](<#ChartSegment.MarshalJSON>)
+  - [func \(s \*ChartSegment\) UnmarshalJSON\(data \[\]byte\) error](<#ChartSegment.UnmarshalJSON>)
+- [type ChartVariableSegment](<#ChartVariableSegment>)
+  - [func \(s ChartVariableSegment\) MarshalJSON\(\) \(\[\]byte, error\)](<#ChartVariableSegment.MarshalJSON>)
 - [type Configuration](<#Configuration>)
   - [func NewDefaultConfiguration\(\) Configuration](<#NewDefaultConfiguration>)
   - [func \(c \*Configuration\) SetDefaults\(\)](<#Configuration.SetDefaults>)
@@ -40,6 +53,9 @@ import "github.com/formancehq/ledger/internal"
   - [func NewErrAlreadyStarted\(id string\) ErrAlreadyStarted](<#NewErrAlreadyStarted>)
   - [func \(e ErrAlreadyStarted\) Error\(\) string](<#ErrAlreadyStarted.Error>)
   - [func \(e ErrAlreadyStarted\) Is\(err error\) bool](<#ErrAlreadyStarted.Is>)
+- [type ErrInvalidAccount](<#ErrInvalidAccount>)
+  - [func \(e ErrInvalidAccount\) Error\(\) string](<#ErrInvalidAccount.Error>)
+  - [func \(e ErrInvalidAccount\) Is\(err error\) bool](<#ErrInvalidAccount.Is>)
 - [type ErrInvalidBucketName](<#ErrInvalidBucketName>)
   - [func \(e ErrInvalidBucketName\) Error\(\) string](<#ErrInvalidBucketName.Error>)
   - [func \(e ErrInvalidBucketName\) Is\(err error\) bool](<#ErrInvalidBucketName.Is>)
@@ -185,6 +201,36 @@ const (
 )
 ```
 
+<a name="METADATA_KEY"></a>
+
+```go
+const METADATA_KEY = PROPERTY_PREFIX + "metadata"
+```
+
+<a name="PATTERN_KEY"></a>
+
+```go
+const PATTERN_KEY = PROPERTY_PREFIX + "pattern"
+```
+
+<a name="PROPERTY_PREFIX"></a>
+
+```go
+const PROPERTY_PREFIX = "."
+```
+
+<a name="RULES_KEY"></a>
+
+```go
+const RULES_KEY = PROPERTY_PREFIX + "rules"
+```
+
+<a name="SELF_KEY"></a>
+
+```go
+const SELF_KEY = PROPERTY_PREFIX + "self"
+```
+
 <a name="WORLD"></a>
 
 ```go
@@ -194,6 +240,12 @@ const (
 ```
 
 ## Variables
+
+<a name="ChartSegmentRegexp"></a>
+
+```go
+var ChartSegmentRegexp = regexp.MustCompile(`^(\$|\.)?[a-zA-Z0-9_-]+$`)
+```
 
 <a name="Zero"></a>
 
@@ -251,6 +303,15 @@ func RevertMetadataSpecKey() string
 
 ```go
 func SpecMetadata(name string) string
+```
+
+
+
+<a name="ValidateSegment"></a>
+## func [ValidateSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L41>)
+
+```go
+func ValidateSegment(addr string) bool
 ```
 
 
@@ -345,6 +406,126 @@ type BalancesByAssets map[string]*big.Int
 ```go
 type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
+
+<a name="ChartAccount"></a>
+## type [ChartAccount](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L13-L16>)
+
+
+
+```go
+type ChartAccount struct {
+    Metadata map[string]string
+    Rules    ChartAccountRules
+}
+```
+
+<a name="ChartAccountRules"></a>
+## type [ChartAccountRules](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L11>)
+
+
+
+```go
+type ChartAccountRules struct{}
+```
+
+<a name="ChartOfAccounts"></a>
+## type [ChartOfAccounts](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L37>)
+
+
+
+```go
+type ChartOfAccounts map[string]ChartSegment
+```
+
+<a name="ChartOfAccounts.FindAccountSchema"></a>
+### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L253>)
+
+```go
+func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error)
+```
+
+
+
+<a name="ChartOfAccounts.MarshalJSON"></a>
+### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L167>)
+
+```go
+func (s ChartOfAccounts) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ChartOfAccounts.UnmarshalJSON"></a>
+### func \(\*ChartOfAccounts\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L45>)
+
+```go
+func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
+```
+
+
+
+<a name="ChartOfAccounts.ValidatePosting"></a>
+### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L264>)
+
+```go
+func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
+```
+
+
+
+<a name="ChartSegment"></a>
+## type [ChartSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L18-L22>)
+
+
+
+```go
+type ChartSegment struct {
+    VariableSegment *ChartVariableSegment
+    FixedSegments   map[string]ChartSegment
+    Account         *ChartAccount
+}
+```
+
+<a name="ChartSegment.MarshalJSON"></a>
+### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L208>)
+
+```go
+func (s ChartSegment) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="ChartSegment.UnmarshalJSON"></a>
+### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L71>)
+
+```go
+func (s *ChartSegment) UnmarshalJSON(data []byte) error
+```
+
+
+
+<a name="ChartVariableSegment"></a>
+## type [ChartVariableSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L24-L29>)
+
+
+
+```go
+type ChartVariableSegment struct {
+    ChartSegment
+
+    Pattern string
+    Label   string
+}
+```
+
+<a name="ChartVariableSegment.MarshalJSON"></a>
+### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L216>)
+
+```go
+func (s ChartVariableSegment) MarshalJSON() ([]byte, error)
+```
+
+
 
 <a name="Configuration"></a>
 ## type [Configuration](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L92-L96>)
@@ -497,6 +678,35 @@ func (e ErrAlreadyStarted) Error() string
 
 ```go
 func (e ErrAlreadyStarted) Is(err error) bool
+```
+
+
+
+<a name="ErrInvalidAccount"></a>
+## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L90-L93>)
+
+
+
+```go
+type ErrInvalidAccount struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="ErrInvalidAccount.Error"></a>
+### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L95>)
+
+```go
+func (e ErrInvalidAccount) Error() string
+```
+
+
+
+<a name="ErrInvalidAccount.Is"></a>
+### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L98>)
+
+```go
+func (e ErrInvalidAccount) Is(err error) bool
 ```
 
 
@@ -1237,7 +1447,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L17>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L12-L18>)
 
 
 
@@ -1252,7 +1462,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L19>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L20>)
 
 ```go
 func NewSchema(version string, data SchemaData) Schema
@@ -1261,12 +1471,13 @@ func NewSchema(version string, data SchemaData) Schema
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L8-L9>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L8-L10>)
 
 
 
 ```go
 type SchemaData struct {
+    Chart ChartOfAccounts `json:"chart" bun:"chart"`
 }
 ```
 

@@ -2624,9 +2624,43 @@ components:
           required:
             - errorCode
             - errorDescription
+    V2ChartRules:
+      type: object
+    V2ChartSegment:
+      type: object
+      description: "Segment within a chart of account"
+      properties:
+        .self:
+          type: object
+        .pattern:
+          type: string
+        .rules:
+          $ref: "#/components/schemas/V2ChartRules"
+        .metadata:
+          type: object
+          additionalProperties:
+            type: string
+      additionalProperties:
+        $ref: "#/components/schemas/V2ChartSegment"
+      example:
+        users:
+          $userID:
+            .pattern: "^[0-9]{16}+$"
+    V2ChartOfAccounts:
+      type: object
+      description: "Chart of account"
+      additionalProperties:
+        $ref: "#/components/schemas/V2ChartSegment"
+      example:
+        users:
+          $userID:
+            .pattern: "^[0-9]{16}+$"
     V2SchemaData:
       type: object
       description: Schema data structure for ledger schemas
+      properties:
+        chart:
+          $ref: "#/components/schemas/V2ChartOfAccounts"
     V2Schema:
       type: object
       description: Complete schema structure with metadata

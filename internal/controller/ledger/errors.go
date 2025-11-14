@@ -245,7 +245,8 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		computedIdempotencyHash: gotIdempotencyHash,
 	}
 }
-type ErrSchemaNotFound struct {}
+
+type ErrSchemaNotFound struct{}
 
 func (e ErrSchemaNotFound) Error() string {
 	return "schema not found"
@@ -279,4 +280,15 @@ func newErrSchemaValidationError(requestedSchema string, err error) ErrSchemaVal
 		requestedSchema: requestedSchema,
 		err:             err,
 	}
+}
+
+type ErrSchemaRequired struct{}
+
+func (e ErrSchemaRequired) Error() string {
+	return "a schema version must be specified for this ledger"
+}
+
+func (e ErrSchemaRequired) Is(err error) bool {
+	_, ok := err.(ErrSchemaRequired)
+	return ok
 }

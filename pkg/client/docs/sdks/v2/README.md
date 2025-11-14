@@ -265,7 +265,17 @@ func main() {
     res, err := s.Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
         Ledger: "ledger001",
         Version: "v1.0.0",
-        V2SchemaData: components.V2SchemaData{},
+        V2SchemaData: components.V2SchemaData{
+            Chart: map[string]components.V2ChartSegment{
+                "users": components.V2ChartSegment{
+                    AdditionalProperties: map[string]components.V2ChartSegment{
+                        "$userID": components.V2ChartSegment{
+                            DotPattern: client.String("^[0-9]{16}+$"),
+                        },
+                    },
+                },
+            },
+        },
     })
     if err != nil {
         log.Fatal(err)

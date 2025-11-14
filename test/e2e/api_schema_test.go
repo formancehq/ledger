@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
 	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
 	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
@@ -54,25 +55,82 @@ var _ = Context("Ledger schema API tests", func() {
 			BeforeEach(func(specContext SpecContext) {
 				// Schema v1.0.0 - Basic validation
 				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
-					Ledger:       "default",
-					Version:      "v1.0.0",
-					V2SchemaData: components.V2SchemaData{},
+					Ledger:  "default",
+					Version: "v1.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{
+							"users": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$userID": {
+										DotPattern:  pointer.For("^[0-9]{3}$"),
+										DotRules:    &components.V2ChartRules{},
+										DotMetadata: map[string]string{},
+									},
+								},
+							},
+							"bank": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$bankID": {
+										DotPattern: pointer.For("^[0-9]{3}$"),
+									},
+								},
+							},
+						},
+					},
 				})
 				Expect(err).To(BeNil())
 
 				// Schema v2.0.0 - Stricter validation
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
-					Ledger:       "default",
-					Version:      "v2.0.0",
-					V2SchemaData: components.V2SchemaData{},
+					Ledger:  "default",
+					Version: "v2.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{
+							"users": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$userID": {
+										DotPattern:  pointer.For("^[0-9]{3}$"),
+										DotRules:    &components.V2ChartRules{},
+										DotMetadata: map[string]string{},
+									},
+								},
+							},
+							"bank": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$bankID": {
+										DotPattern: pointer.For("^[0-9]{3}$"),
+									},
+								},
+							},
+						},
+					},
 				})
 				Expect(err).To(BeNil())
 
 				// Schema v3.0.0 - Account validation
 				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
-					Ledger:       "default",
-					Version:      "v3.0.0",
-					V2SchemaData: components.V2SchemaData{},
+					Ledger:  "default",
+					Version: "v3.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{
+							"users": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$userID": {
+										DotPattern:  pointer.For("^[0-9]{3}$"),
+										DotRules:    &components.V2ChartRules{},
+										DotMetadata: map[string]string{},
+									},
+								},
+							},
+							"bank": {
+								AdditionalProperties: map[string]components.V2ChartSegment{
+									"$bankID": {
+										DotPattern: pointer.For("^[0-9]{3}$"),
+									},
+								},
+							},
+						},
+					},
 				})
 				Expect(err).To(BeNil())
 			})
@@ -198,6 +256,32 @@ var _ = Context("Ledger schema API tests", func() {
 						},
 					})
 					Expect(err).To(BeNil())
+				})
+
+				It("should fail with invalid account", func(specContext SpecContext) {
+					schemaVersion := "v3.0.0"
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force: pointer.For(true),
+							Postings: []components.V2Posting{
+								{
+									Source:      "bank",
+									Destination: "users:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+								{
+									Source:      "users:001",
+									Destination: "bank",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 				})
 
 				It("should fail with non-existent schema version", func(specContext SpecContext) {

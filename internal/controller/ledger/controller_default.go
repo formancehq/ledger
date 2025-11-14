@@ -431,6 +431,29 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		}
 	}
 
+	if parameters.SchemaVersion == "" {
+		// Only allow transactions without schema if the ledger has no schema
+		schemas, err := store.FindSchemas(ctx, storagecommon.InitialPaginatedQuery[any]{PageSize: 1})
+		if err != nil {
+			return nil, err
+		}
+		if len(schemas.Data) > 0 {
+			return nil, ErrSchemaRequired{}
+		}
+	} else {
+		schema, err := store.FindSchema(ctx, parameters.SchemaVersion)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, posting := range result.Postings {
+			err := schema.Chart.ValidatePosting(posting)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	transaction := ledger.NewTransaction().
 		WithPostings(result.Postings...).
 		WithMetadata(finalMetadata).
