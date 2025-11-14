@@ -47,9 +47,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Where("effective_date <= ?", query.PIT)
 		}
 
-		if query.UseFilter("address", func(value any) bool {
-			return isPartialAddress(value.(string))
-		}) {
+		if query.UseFilter("address", isFilteringOnPartialAddress) {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
@@ -80,9 +78,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
 
-		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
-			return isPartialAddress(value.(string))
-		}) {
+		if query.UseFilter("metadata") || query.UseFilter("address", isFilteringOnPartialAddress) {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
@@ -105,10 +101,20 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[GetAggregatedVolumesOptions], _, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
-		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
+		switch operator {
+		case common.OperatorIn:
+			addresses, err := assetAddressArray(value)
+			if err != nil {
+				return "", nil, err
+			}
+
+			return "accounts_address IN (?)", []any{bun.In(addresses)}, nil
+		default:
+			return filterAccountAddress(value.(string), "accounts_address"), nil, nil
+		}
 	case common.MetadataRegex.Match([]byte(property)) || property == "metadata":
 		if property == "metadata" {
 			return "metadata -> ? is not null", []any{value}, nil

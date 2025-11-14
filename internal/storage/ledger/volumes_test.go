@@ -131,6 +131,25 @@ func TestVolumesList(t *testing.T) {
 			},
 		})
 	})
+	t.Run("Get all volumes with $in on accounts", func(t *testing.T) {
+		t.Parallel()
+		volumes, err := store.Volumes().Paginate(ctx, common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
+			Options: common.ResourceQuery[ledgerstore.GetVolumesOptions]{
+				Builder: query.In("account", []any{"account:1", "not-existing"}),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
+		require.Contains(t, volumes.Data, ledger.VolumesWithBalanceByAssetByAccount{
+			Account: "account:1",
+			Asset:   "USD",
+			VolumesWithBalance: ledger.VolumesWithBalance{
+				Input:   big.NewInt(200),
+				Output:  big.NewInt(50),
+				Balance: big.NewInt(150),
+			},
+		})
+	})
 
 	t.Run("Get all volumes with first account usage filter and PIT", func(t *testing.T) {
 		t.Parallel()
