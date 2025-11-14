@@ -99,31 +99,3 @@ func (e ErrInvalidAccount) Is(err error) bool {
 	_, ok := err.(ErrInvalidAccount)
 	return ok
 }
-
-type ErrDestinationNotAllowed struct {
-	source              string
-	destination         string
-	allowedDestinations []string
-}
-
-func (e ErrDestinationNotAllowed) Error() string {
-	return fmt.Sprintf("account `%v` cannot send to account `%v` (allowed destinations: %v)", e.source, e.destination, e.allowedDestinations)
-}
-func (e ErrDestinationNotAllowed) Is(err error) bool {
-	_, ok := err.(ErrDestinationNotAllowed)
-	return ok
-}
-
-type ErrSourceNotAllowed struct {
-	source         string
-	destination    string
-	allowedSources []string
-}
-
-func (e ErrSourceNotAllowed) Error() string {
-	return fmt.Sprintf("account `%v` cannot receive from account `%v` (allowed sources: %v)", e.destination, e.source, e.allowedSources)
-}
-func (e ErrSourceNotAllowed) Is(err error) bool {
-	_, ok := err.(ErrSourceNotAllowed)
-	return ok
-}
