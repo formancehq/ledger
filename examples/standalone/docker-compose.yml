@@ -54,6 +54,8 @@ services:
       EXPERIMENTAL_FEATURES: "true"
       AUTO_UPGRADE: "true"
       BULK_PARALLEL: "10"
+      EXPERIMENTAL_NUMSCRIPT_INTERPRETER: "true"
+      EXPERIMENTAL_NUMSCRIPT_INTERPRETER_FLAGS: "experimental-overdraft-function experimental-get-asset-function experimental-get-amount-function experimental-oneof experimental-account-interpolation experimental-mid-script-function-call experimental-asset-colors"
 
   gateway:
     image: ghcr.io/formancehq/gateway:v2.0.31
