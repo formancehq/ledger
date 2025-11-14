@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/internal/machine"
 
 	"errors"
+
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/logrusorgru/aurora"
 )
@@ -479,6 +480,8 @@ func (m *Machine) Execute() error {
 
 func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 
+	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
+
 	// map account/asset/resourceIndex
 	assignBalanceAsResource := map[string]map[string]int{}
 
@@ -510,7 +513,13 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 
 			asset := (*mon).(machine.HasAsset).GetAsset()
 			if string(accountAddress) == "world" {
-				m.Balances[accountAddress][asset] = machine.Zero
+				accountAssets, ok := m.Balances[accountAddress]
+				if !ok {
+					accountAssets = make(map[machine.Asset]*machine.MonetaryInt)
+					m.Balances[accountAddress] = accountAssets
+				}
+
+				accountAssets[asset] = machine.Zero
 				continue
 			}
 
@@ -518,7 +527,6 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 		}
 	}
 
-	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
 	if len(balancesQuery) > 0 {
 		balances, err := store.GetBalances(ctx, balancesQuery)
 		if err != nil {

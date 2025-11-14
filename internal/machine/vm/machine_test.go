@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/internal/machine"
 
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
@@ -178,6 +179,39 @@ func TestPrint(t *testing.T) {
 		Printed:  []machine.Value{&mi},
 		Postings: []Posting{},
 		Error:    nil,
+	}
+	test(t, tc)
+}
+
+func TestReproPanic(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `
+		vars {
+				monetary $fee
+				account $source
+		}
+
+		send $fee (
+				source = $source
+				destination = @holdings:organization:21bitcoin:custodian:bitstamp:available
+		)
+`)
+
+	tc.setVarsFromJSON(t, `{
+    "fee": "USD/2 100",
+    "source": "world"
+  }`)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "EUR/2",
+				Amount:      machine.NewMonetaryInt(100),
+				Source:      "alice",
+				Destination: "bob",
+			},
+		},
+		Error: nil,
 	}
 	test(t, tc)
 }
