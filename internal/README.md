@@ -53,9 +53,6 @@ import "github.com/formancehq/ledger/internal"
   - [func NewErrAlreadyStarted\(id string\) ErrAlreadyStarted](<#NewErrAlreadyStarted>)
   - [func \(e ErrAlreadyStarted\) Error\(\) string](<#ErrAlreadyStarted.Error>)
   - [func \(e ErrAlreadyStarted\) Is\(err error\) bool](<#ErrAlreadyStarted.Is>)
-- [type ErrDestinationNotAllowed](<#ErrDestinationNotAllowed>)
-  - [func \(e ErrDestinationNotAllowed\) Error\(\) string](<#ErrDestinationNotAllowed.Error>)
-  - [func \(e ErrDestinationNotAllowed\) Is\(err error\) bool](<#ErrDestinationNotAllowed.Is>)
 - [type ErrInvalidAccount](<#ErrInvalidAccount>)
   - [func \(e ErrInvalidAccount\) Error\(\) string](<#ErrInvalidAccount.Error>)
   - [func \(e ErrInvalidAccount\) Is\(err error\) bool](<#ErrInvalidAccount.Is>)
@@ -73,9 +70,6 @@ import "github.com/formancehq/ledger/internal"
   - [func NewErrPipelineNotFound\(id string\) ErrPipelineNotFound](<#NewErrPipelineNotFound>)
   - [func \(e ErrPipelineNotFound\) Error\(\) string](<#ErrPipelineNotFound.Error>)
   - [func \(e ErrPipelineNotFound\) Is\(err error\) bool](<#ErrPipelineNotFound.Is>)
-- [type ErrSourceNotAllowed](<#ErrSourceNotAllowed>)
-  - [func \(e ErrSourceNotAllowed\) Error\(\) string](<#ErrSourceNotAllowed.Error>)
-  - [func \(e ErrSourceNotAllowed\) Is\(err error\) bool](<#ErrSourceNotAllowed.Is>)
 - [type Exporter](<#Exporter>)
   - [func NewExporter\(configuration ExporterConfiguration\) Exporter](<#NewExporter>)
 - [type ExporterConfiguration](<#ExporterConfiguration>)
@@ -688,35 +682,6 @@ func (e ErrAlreadyStarted) Is(err error) bool
 
 
 
-<a name="ErrDestinationNotAllowed"></a>
-## type [ErrDestinationNotAllowed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L103-L107>)
-
-
-
-```go
-type ErrDestinationNotAllowed struct {
-    // contains filtered or unexported fields
-}
-```
-
-<a name="ErrDestinationNotAllowed.Error"></a>
-### func \(ErrDestinationNotAllowed\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L109>)
-
-```go
-func (e ErrDestinationNotAllowed) Error() string
-```
-
-
-
-<a name="ErrDestinationNotAllowed.Is"></a>
-### func \(ErrDestinationNotAllowed\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L112>)
-
-```go
-func (e ErrDestinationNotAllowed) Is(err error) bool
-```
-
-
-
 <a name="ErrInvalidAccount"></a>
 ## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L90-L93>)
 
@@ -872,35 +837,6 @@ func (e ErrPipelineNotFound) Error() string
 
 ```go
 func (e ErrPipelineNotFound) Is(err error) bool
-```
-
-
-
-<a name="ErrSourceNotAllowed"></a>
-## type [ErrSourceNotAllowed](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L117-L121>)
-
-
-
-```go
-type ErrSourceNotAllowed struct {
-    // contains filtered or unexported fields
-}
-```
-
-<a name="ErrSourceNotAllowed.Error"></a>
-### func \(ErrSourceNotAllowed\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L123>)
-
-```go
-func (e ErrSourceNotAllowed) Error() string
-```
-
-
-
-<a name="ErrSourceNotAllowed.Is"></a>
-### func \(ErrSourceNotAllowed\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L126>)
-
-```go
-func (e ErrSourceNotAllowed) Is(err error) bool
 ```
 
 
