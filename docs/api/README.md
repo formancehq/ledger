@@ -333,7 +333,7 @@ Accept: application/json
   "chart": {
     "users": {
       "$userID": {
-        ".pattern": "[0-9]{16}+"
+        ".pattern": "^[0-9]{16}+$"
       }
     }
   }
@@ -407,7 +407,7 @@ Accept: application/json
       "chart": {
         "users": {
           "$userID": {
-            ".pattern": "[0-9]{16}+"
+            ".pattern": "^[0-9]{16}+$"
           }
         }
       }
@@ -476,7 +476,7 @@ Accept: application/json
           "chart": {
             "users": {
               "$userID": {
-                ".pattern": "[0-9]{16}+"
+                ".pattern": "^[0-9]{16}+$"
               }
             }
           }
@@ -5473,7 +5473,7 @@ and
 {
   "users": {
     "$userID": {
-      ".pattern": "[0-9]{16}+"
+      ".pattern": "^[0-9]{16}+$"
     }
   }
 }
@@ -5504,7 +5504,7 @@ Segment within a chart of account
 {
   "users": {
     "$userID": {
-      ".pattern": "[0-9]{16}+"
+      ".pattern": "^[0-9]{16}+$"
     }
   }
 }
@@ -5531,7 +5531,7 @@ Chart of account
   "chart": {
     "users": {
       "$userID": {
-        ".pattern": "[0-9]{16}+"
+        ".pattern": "^[0-9]{16}+$"
       }
     }
   }
@@ -5562,7 +5562,7 @@ Schema data structure for ledger schemas
     "chart": {
       "users": {
         "$userID": {
-          ".pattern": "[0-9]{16}+"
+          ".pattern": "^[0-9]{16}+$"
         }
       }
     }
@@ -5597,7 +5597,7 @@ Complete schema structure with metadata
       "chart": {
         "users": {
           "$userID": {
-            ".pattern": "[0-9]{16}+"
+            ".pattern": "^[0-9]{16}+$"
           }
         }
       }
@@ -5631,7 +5631,7 @@ Complete schema structure with metadata
           "chart": {
             "users": {
               "$userID": {
-                ".pattern": "[0-9]{16}+"
+                ".pattern": "^[0-9]{16}+$"
               }
             }
           }
@@ -5669,7 +5669,7 @@ Complete schema structure with metadata
         "chart": {
           "users": {
             "$userID": {
-              ".pattern": "[0-9]{16}+"
+              ".pattern": "^[0-9]{16}+$"
             }
           }
         }

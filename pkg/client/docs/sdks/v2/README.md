@@ -270,7 +270,7 @@ func main() {
                 "users": components.V2ChartSegment{
                     AdditionalProperties: map[string]components.V2ChartSegment{
                         "$userID": components.V2ChartSegment{
-                            DotPattern: client.String("[0-9]{16}+"),
+                            DotPattern: client.String("^[0-9]{16}+$"),
                         },
                     },
                 },

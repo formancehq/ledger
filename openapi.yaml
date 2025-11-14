@@ -4399,7 +4399,7 @@ components:
       example:
         users:
           $userID:
-            .pattern: "[0-9]{16}+"
+            .pattern: "^[0-9]{16}+$"
     V2ChartOfAccounts:
       type: object
       description: "Chart of account"
@@ -4408,7 +4408,7 @@ components:
       example:
         users:
           $userID:
-            .pattern: "[0-9]{16}+"
+            .pattern: "^[0-9]{16}+$"
     V2SchemaData:
       type: object
       description: Schema data structure for ledger schemas
