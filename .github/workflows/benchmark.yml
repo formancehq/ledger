@@ -23,9 +23,10 @@ jobs:
   Benchmark:
     runs-on: "github-001"
     steps:
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: Setup Env
         uses: ./.github/actions/env
         with:

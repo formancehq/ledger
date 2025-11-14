@@ -30,9 +30,10 @@ jobs:
       GOPATH: /tmp/go
       GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     steps:
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: Setup Env
         uses: ./.github/actions/default
         with:
@@ -58,9 +59,10 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: Setup Env
         uses: ./.github/actions/default
         with:
@@ -89,9 +91,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: "latest"
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup Env
         uses: ./.github/actions/default
@@ -172,9 +175,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: "latest"
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: "Deploy in staging"
         env:
           TAG: ${{ github.sha }}
