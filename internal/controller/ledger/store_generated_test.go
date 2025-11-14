@@ -91,17 +91,17 @@ func (mr *MockStoreMockRecorder) BeginTX(ctx, options any) *gomock.Call {
 }
 
 // Commit mocks base method.
-func (m *MockStore) Commit() error {
+func (m *MockStore) Commit(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit")
+	ret := m.ctrl.Call(m, "Commit", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockStoreMockRecorder) Commit() *gomock.Call {
+func (mr *MockStoreMockRecorder) Commit(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStore)(nil).Commit))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStore)(nil).Commit), ctx)
 }
 
 // CommitTransaction mocks base method.
@@ -270,17 +270,17 @@ func (mr *MockStoreMockRecorder) RevertTransaction(ctx, id, at any) *gomock.Call
 }
 
 // Rollback mocks base method.
-func (m *MockStore) Rollback() error {
+func (m *MockStore) Rollback(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Rollback")
+	ret := m.ctrl.Call(m, "Rollback", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Rollback indicates an expected call of Rollback.
-func (mr *MockStoreMockRecorder) Rollback() *gomock.Call {
+func (mr *MockStoreMockRecorder) Rollback(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockStore)(nil).Rollback))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockStore)(nil).Rollback), ctx)
 }
 
 // Transactions mocks base method.

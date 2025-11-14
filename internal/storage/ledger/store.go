@@ -19,6 +19,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/tracing"
 )
 
 type Store struct {
@@ -43,6 +44,9 @@ type Store struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	updateBalancesHistogram            metric.Int64Histogram
 	getVolumesWithBalancesHistogram    metric.Int64Histogram
+	beginTXHistogram                   metric.Int64Histogram
+	commitTXHistogram                  metric.Int64Histogram
+	rollbackTXHistogram                metric.Int64Histogram
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -83,7 +87,10 @@ func (store *Store) Accounts() common.PaginatedResource[
 }
 
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {
-	tx, err := store.db.BeginTx(ctx, options)
+
+	tx, err := tracing.TraceWithMetric(ctx, "BeginTX", store.tracer, store.beginTXHistogram, func(ctx context.Context) (bun.Tx, error) {
+		return store.db.BeginTx(ctx, options)
+	})
 	if err != nil {
 		return nil, nil, postgres.ResolveError(err)
 	}
@@ -93,19 +100,25 @@ func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store
 	return &cp, &tx, nil
 }
 
-func (store *Store) Commit() error {
+func (store *Store) Commit(ctx context.Context) error {
 	switch db := store.db.(type) {
 	case bun.Tx:
-		return db.Commit()
+		_, err := tracing.TraceWithMetric(ctx, "Commit", store.tracer, store.commitTXHistogram, tracing.NoResult(func(ctx context.Context) error {
+			return db.Commit()
+		}))
+		return err
 	default:
 		return errors.New("cannot commit transaction: not in a transaction")
 	}
 }
 
-func (store *Store) Rollback() error {
+func (store *Store) Rollback(ctx context.Context) error {
 	switch db := store.db.(type) {
 	case bun.Tx:
-		return db.Rollback()
+		_, err := tracing.TraceWithMetric(ctx, "Rollback", store.tracer, store.rollbackTXHistogram, tracing.NoResult(func(ctx context.Context) error {
+			return db.Rollback()
+		}))
+		return err
 	default:
 		return errors.New("cannot rollback transaction: not in a transaction")
 	}
@@ -199,6 +212,21 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 	}
 
 	var err error
+	ret.beginTXHistogram, err = ret.meter.Int64Histogram("store.begin_tx")
+	if err != nil {
+		panic(err)
+	}
+
+	ret.commitTXHistogram, err = ret.meter.Int64Histogram("store.commit_tx")
+	if err != nil {
+		panic(err)
+	}
+
+	ret.rollbackTXHistogram, err = ret.meter.Int64Histogram("store.rollback_tx")
+	if err != nil {
+		panic(err)
+	}
+
 	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)

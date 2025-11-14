@@ -64,12 +64,12 @@ func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) 
 	}, tx, nil
 }
 
-func (d *DefaultStoreAdapter) Commit() error {
-	return d.Store.Commit()
+func (d *DefaultStoreAdapter) Commit(ctx context.Context) error {
+	return d.Store.Commit(ctx)
 }
 
-func (d *DefaultStoreAdapter) Rollback() error {
-	return d.Store.Rollback()
+func (d *DefaultStoreAdapter) Rollback(ctx context.Context) error {
+	return d.Store.Rollback(ctx)
 }
 
 func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions] {
