@@ -71,12 +71,12 @@ func (ctrl *DefaultController) BeginTX(ctx context.Context, options *sql.TxOptio
 	return &cp, tx, nil
 }
 
-func (ctrl *DefaultController) Commit(_ context.Context) error {
-	return ctrl.store.Commit()
+func (ctrl *DefaultController) Commit(ctx context.Context) error {
+	return ctrl.store.Commit(ctx)
 }
 
-func (ctrl *DefaultController) Rollback(_ context.Context) error {
-	return ctrl.store.Rollback()
+func (ctrl *DefaultController) Rollback(ctx context.Context) error {
+	return ctrl.store.Rollback(ctx)
 }
 
 func (ctrl *DefaultController) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
@@ -210,7 +210,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 		}
 		err = func() error {
 			defer func() {
-				_ = store.Rollback()
+				_ = store.Rollback(ctx)
 			}()
 
 			if err := ctrl.importLog(ctx, store, log); err != nil {
@@ -223,7 +223,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 				return fmt.Errorf("importing log %d: %w", *log.ID, err)
 			}
 
-			if err := store.Commit(); err != nil {
+			if err := store.Commit(ctx); err != nil {
 				return fmt.Errorf("committing transaction: %w", err)
 			}
 

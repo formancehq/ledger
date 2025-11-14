@@ -42,20 +42,20 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 
 	log, output, err := lp.runLog(ctx, store, parameters, fn)
 	if err != nil {
-		if rollbackErr := store.Rollback(); rollbackErr != nil {
+		if rollbackErr := store.Rollback(ctx); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 		return nil, nil, err
 	}
 
 	if parameters.DryRun {
-		if rollbackErr := store.Rollback(); rollbackErr != nil {
+		if rollbackErr := store.Rollback(ctx); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 		return log, output, nil
 	}
 
-	if err := store.Commit(); err != nil {
+	if err := store.Commit(ctx); err != nil {
 		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 

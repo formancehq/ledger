@@ -27,8 +27,8 @@ type Balance struct {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . Store
 type Store interface {
 	BeginTX(ctx context.Context, options *sql.TxOptions) (Store, *bun.Tx, error)
-	Commit() error
-	Rollback() error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query ledgerstore.BalanceQuery) (ledger.Balances, error)

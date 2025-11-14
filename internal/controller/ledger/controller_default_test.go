@@ -45,7 +45,7 @@ func TestCreateTransaction(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		Commit().
+		Commit(gomock.Any()).
 		Return(nil)
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
@@ -93,7 +93,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		Commit().
+		Commit(gomock.Any()).
 		Return(nil)
 
 	txToRevert := ledger.Transaction{
@@ -149,7 +149,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		Commit().
+		Commit(gomock.Any()).
 		Return(nil)
 
 	m := metadata.Metadata{
@@ -195,7 +195,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		Commit().
+		Commit(gomock.Any()).
 		Return(nil)
 
 	store.EXPECT().
