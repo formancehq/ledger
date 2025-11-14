@@ -16,10 +16,12 @@ func expectInvalidChart(t *testing.T, source string, expectedError string) {
 }
 
 func TestChartOfAccounts(t *testing.T) {
+	t.Parallel()
+
 	source := `{
     "banks": {
         "$iban": {
-            ".pattern": "[0-9]{10}",
+            ".pattern": "^[0-9]{10}$",
             "main": {
                 ".rules": {}
             },
@@ -37,7 +39,7 @@ func TestChartOfAccounts(t *testing.T) {
     "users": {
         "$userID": {
             ".self": {},
-            ".pattern": "[0-9]{5}",
+            ".pattern": "^[0-9]{5}$",
             ".rules": {},
             "main": {
                 ".rules": {}
@@ -49,7 +51,7 @@ func TestChartOfAccounts(t *testing.T) {
 		"banks": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "iban",
-				Pattern: "[0-9]{10}",
+				Pattern: "^[0-9]{10}$",
 				ChartSegment: ChartSegment{
 					FixedSegments: map[string]ChartSegment{
 						"main": {
@@ -74,7 +76,7 @@ func TestChartOfAccounts(t *testing.T) {
 		"users": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "userID",
-				Pattern: "[0-9]{5}",
+				Pattern: "^[0-9]{5}$",
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{},
 					FixedSegments: map[string]ChartSegment{
@@ -99,6 +101,8 @@ func TestChartOfAccounts(t *testing.T) {
 }
 
 func TestInvalidFixedSegment(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"banks": {
 			"main:40": {}
@@ -108,6 +112,8 @@ func TestInvalidFixedSegment(t *testing.T) {
 }
 
 func TestInvalidSubsegment(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"banks": {
 			"main": 42
@@ -117,10 +123,12 @@ func TestInvalidSubsegment(t *testing.T) {
 }
 
 func TestInvalidPatternOnFixed(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"banks": {
 			"main": {
-				".pattern": "[0-9]{3}"
+				".pattern": "^[0-9]{3}$"
 			}
 		}
 	}`
@@ -128,13 +136,15 @@ func TestInvalidPatternOnFixed(t *testing.T) {
 }
 
 func TestInvalidMultipleVariableSegments(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"users": {
 			"$userID": {
-				".pattern": "[0-9]{3}"
+				".pattern": "^[0-9]{3}$"
 			},
 			"$otherID": {
-				".pattern": "[0-9]{4}"
+				".pattern": "^[0-9]{4}$"
 			}
 		}
 	}`
@@ -142,6 +152,8 @@ func TestInvalidMultipleVariableSegments(t *testing.T) {
 }
 
 func TestInvalidVariableSegmentWithoutPattern(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"users": {
 			"$userID": {
@@ -155,6 +167,8 @@ func TestInvalidVariableSegmentWithoutPattern(t *testing.T) {
 }
 
 func TestInvalidMetadata(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"banks": {
 			"main": {
@@ -166,6 +180,8 @@ func TestInvalidMetadata(t *testing.T) {
 }
 
 func TestInvalidRules(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"banks": {
 			"main": {
@@ -177,6 +193,8 @@ func TestInvalidRules(t *testing.T) {
 }
 
 func TestInvalidAccountSchema(t *testing.T) {
+	t.Parallel()
+
 	src := `{
 		"banks": {
 			"main": {
@@ -190,29 +208,41 @@ func TestInvalidAccountSchema(t *testing.T) {
 }
 
 func TestInvalidRootIsAccount(t *testing.T) {
+	t.Parallel()
+
 	src := `{ ".self": { ".self": {} } }`
 	expectInvalidChart(t, src, "root cannot be an account")
 }
 func TestInvalidRootHasVariableSegment(t *testing.T) {
-	src := `{ "$banks": { ".pattern": "[0-9]+", ".self": {} } }`
+	t.Parallel()
+
+	src := `{ "$banks": { ".pattern": "^[0-9]+$", ".self": {} } }`
 	expectInvalidChart(t, src, "root cannot have a variable segment")
 }
 func TestRootSubsegmentIsInvalid(t *testing.T) {
+	t.Parallel()
+
 	src := `{ "abc:abc": { ".self": {} } }`
 	expectInvalidChart(t, src, "invalid segment name")
 }
 
 func TestInvalidPatternType(t *testing.T) {
+	t.Parallel()
+
 	src := `{ "banks": { "$bankID": { ".pattern": 42 } } }`
 	expectInvalidChart(t, src, "pattern must be a string")
 }
 
 func TestInvalidPatternRegex(t *testing.T) {
+	t.Parallel()
+
 	src := `{ "banks": { "$bankID": { ".pattern": "[[" } } }`
 	expectInvalidChart(t, src, "invalid pattern regex")
 }
 
 func TestInvalidSelf(t *testing.T) {
+	t.Parallel()
+
 	src := `{ "foo": {
 		".self": 42,
 		"bar": { "baz": {} }
@@ -233,7 +263,7 @@ func testChart() ChartOfAccounts {
 		"bank": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "bankID",
-				Pattern: "[0-9]{3}",
+				Pattern: "^[0-9]{3}$",
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{
 						Rules: ChartAccountRules{},
@@ -245,7 +275,7 @@ func testChart() ChartOfAccounts {
 		"users": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "userID",
-				Pattern: "[0-9]{3}",
+				Pattern: "^[0-9]{3}$",
 				ChartSegment: ChartSegment{
 					FixedSegments: map[string]ChartSegment{
 						"main": {
@@ -259,6 +289,8 @@ func testChart() ChartOfAccounts {
 }
 
 func TestAccountValidation(t *testing.T) {
+	t.Parallel()
+
 	chart := testChart()
 
 	_, err := chart.FindAccountSchema("world")
@@ -284,6 +316,8 @@ func TestAccountValidation(t *testing.T) {
 }
 
 func TestPostingValidation(t *testing.T) {
+	t.Parallel()
+
 	chart := testChart()
 
 	err := chart.ValidatePosting(Posting{

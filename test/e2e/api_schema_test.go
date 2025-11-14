@@ -62,7 +62,7 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("[0-9]{3}"),
+										DotPattern:  pointer.For("^[0-9]{3}$"),
 										DotRules:    &components.V2ChartRules{},
 										DotMetadata: map[string]string{},
 									},
@@ -71,7 +71,7 @@ var _ = Context("Ledger schema API tests", func() {
 							"bank": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$bankID": {
-										DotPattern: pointer.For("[0-9]{3}"),
+										DotPattern: pointer.For("^[0-9]{3}$"),
 									},
 								},
 							},
@@ -89,7 +89,7 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("[0-9]{3}"),
+										DotPattern:  pointer.For("^[0-9]{3}$"),
 										DotRules:    &components.V2ChartRules{},
 										DotMetadata: map[string]string{},
 									},
@@ -98,7 +98,7 @@ var _ = Context("Ledger schema API tests", func() {
 							"bank": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$bankID": {
-										DotPattern: pointer.For("[0-9]{3}"),
+										DotPattern: pointer.For("^[0-9]{3}$"),
 									},
 								},
 							},
@@ -116,7 +116,7 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("[0-9]{3}"),
+										DotPattern:  pointer.For("^[0-9]{3}$"),
 										DotRules:    &components.V2ChartRules{},
 										DotMetadata: map[string]string{},
 									},
@@ -125,7 +125,7 @@ var _ = Context("Ledger schema API tests", func() {
 							"bank": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$bankID": {
-										DotPattern: pointer.For("[0-9]{3}"),
+										DotPattern: pointer.For("^[0-9]{3}$"),
 									},
 								},
 							},
