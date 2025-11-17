@@ -54,6 +54,17 @@ type WorkerConfiguration struct {
 	BucketCleanupCRONSpec        cron.Schedule `mapstructure:"worker-bucket-cleanup-schedule"`
 }
 
+func (cfg WorkerConfiguration) Validate() error {
+	if cfg.BucketCleanupRetentionPeriod <= 0 {
+		return fmt.Errorf("bucket cleanup retention period must be greater than zero")
+	}
+	if cfg.BucketCleanupCRONSpec == nil {
+		return fmt.Errorf("bucket cleanup schedule must be set")
+	}
+
+	return nil
+}
+
 type WorkerCommandConfiguration struct {
 	WorkerConfiguration `mapstructure:",squash"`
 	commonConfig        `mapstructure:",squash"`
@@ -89,6 +100,10 @@ func NewWorkerCommand() *cobra.Command {
 			cfg, err := LoadConfig[WorkerCommandConfiguration](cmd)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+
+			if err := cfg.Validate(); err != nil {
+				return err
 			}
 
 			return service.New(cmd.OutOrStdout(),
