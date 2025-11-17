@@ -346,7 +346,7 @@ func assetAddressArray(v any) ([]string, error) {
 	})
 	for _, address := range addresses {
 		if isPartialAddress(address) {
-			return nil, fmt.Errorf("IN operator only supports full addresses")
+			return nil, NewErrInvalidQuery("IN operator only supports full addresses")
 		}
 	}
 
