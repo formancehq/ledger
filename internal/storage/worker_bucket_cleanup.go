@@ -85,12 +85,25 @@ func (r *BucketCleanupRunner) run(ctx context.Context) error {
 
 	span.SetAttributes(attribute.Int("buckets_to_delete", len(buckets)))
 
+	var failedBuckets []string
+	successCount := 0
+
 	for _, bucket := range buckets {
 		if err := r.processBucket(ctx, bucket); err != nil {
 			r.logger.Errorf("error processing bucket %s: %v", bucket, err)
+			failedBuckets = append(failedBuckets, bucket)
 			// Continue with other buckets even if one fails
 			continue
 		}
+	}
+
+	span.SetAttributes(
+		attribute.Int("buckets_deleted", successCount),
+		attribute.StringSlice("buckets_failed", failedBuckets),
+	)
+
+	if len(failedBuckets) > 0 {
+		r.logger.Errorf("bucket cleanup completed with %d failures: %v", len(failedBuckets), failedBuckets)
 	}
 
 	return nil
