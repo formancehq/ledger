@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -236,7 +235,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 	if variableSegment != nil {
 		matches, err := regexp.Match(variableSegment.Pattern, []byte(nextSegment))
 		if err != nil {
-			return nil, errors.New("invalid regex")
+			return nil, fmt.Errorf("invalid pattern regex: %v", err)
 		}
 		if matches {
 			if len(account) > 1 {

@@ -65,8 +65,14 @@ func (ctrl *DefaultController) UpdateSchema(ctx context.Context, parameters Para
 }
 
 func (ctrl *DefaultController) updateSchema(ctx context.Context, store Store, parameters Parameters[UpdateSchema]) (*ledger.UpdatedSchema, error) {
-	schema := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
+	schema, err := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
+	if err != nil {
+		return nil, fmt.Errorf("creating schema: %w", err)
+	}
 	if err := store.InsertSchema(ctx, &schema); err != nil {
+		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
+			return nil, newErrSchemaAlreadyExists(parameters.Input.Version)
+		}
 		return nil, err
 	}
 
@@ -427,29 +433,6 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 			}
 			for k, v := range values {
 				accountMetadata[account][k] = v
-			}
-		}
-	}
-
-	if parameters.SchemaVersion == "" {
-		// Only allow transactions without schema if the ledger has no schema
-		schemas, err := store.FindSchemas(ctx, storagecommon.InitialPaginatedQuery[any]{PageSize: 1})
-		if err != nil {
-			return nil, err
-		}
-		if len(schemas.Data) > 0 {
-			return nil, ErrSchemaRequired{}
-		}
-	} else {
-		schema, err := store.FindSchema(ctx, parameters.SchemaVersion)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, posting := range result.Postings {
-			err := schema.Chart.ValidatePosting(posting)
-			if err != nil {
-				return nil, err
 			}
 		}
 	}

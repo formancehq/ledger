@@ -3,7 +3,6 @@ package v2
 import (
 	"net/http"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 
@@ -58,8 +57,6 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 				api.BadRequest(w, common.ErrInterpreterParse, err)
 			case errors.Is(err, ledgercontroller.ErrRuntime{}):
 				api.BadRequest(w, common.ErrInterpreterRuntime, err)
-			case errors.Is(err, ledger.ErrInvalidAccount{}):
-				api.BadRequest(w, common.ErrValidation, err)
 			default:
 				common.HandleCommonWriteErrors(w, r, err)
 			}

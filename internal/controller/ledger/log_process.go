@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -72,9 +74,21 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 		schema, err = store.FindSchema(ctx, parameters.SchemaVersion)
 		if err != nil {
 			if errors.Is(err, postgres.ErrNotFound) {
-				return nil, nil, newErrSchemaNotFound()
+				return nil, nil, newErrSchemaNotFound(parameters.SchemaVersion)
 			}
 			return nil, nil, err
+		}
+	} else {
+		var payload OUTPUT
+		if payload.NeedsSchema() {
+			// Only allow a missing schema validation if the ledger doesn't have one
+			schemas, err := store.FindSchemas(ctx, storagecommon.InitialPaginatedQuery[any]{PageSize: 1})
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(schemas.Data) > 0 {
+				return nil, nil, newErrSchemaNotSpecified()
+			}
 		}
 	}
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/go-libs/v3/api"
@@ -92,6 +93,7 @@ func TestGetSchema(t *testing.T) {
 				var response struct {
 					Data ledger.Schema `json:"data"`
 				}
+				spew.Dump(response.Data)
 				api.Decode(t, rec.Body, &response)
 				require.Equal(t, tc.returnSchema.Version, response.Data.Version)
 				require.Equal(t, tc.returnSchema.CreatedAt, response.Data.CreatedAt)

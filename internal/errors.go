@@ -87,6 +87,18 @@ func NewErrAlreadyStarted(id string) ErrAlreadyStarted {
 	return ErrAlreadyStarted(id)
 }
 
+type ErrInvalidSchema struct {
+	err error
+}
+
+func (e ErrInvalidSchema) Error() string {
+	return fmt.Sprintf("invalid schema: %v", e.err)
+}
+func (e ErrInvalidSchema) Is(err error) bool {
+	_, ok := err.(ErrInvalidSchema)
+	return ok
+}
+
 type ErrInvalidAccount struct {
 	path    []string
 	segment string

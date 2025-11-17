@@ -4393,6 +4393,8 @@ This operation does not require authentication
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
+|*anonymous*|SCHEMA_ALREADY_EXISTS|
+|*anonymous*|SCHEMA_NOT_SPECIFIED|
 |*anonymous*|OUTDATED_SCHEMA|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
@@ -5545,7 +5547,7 @@ Schema data structure for ledger schemas
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|false|none|Chart of account|
+|chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|true|none|Chart of account|
 
 <h2 id="tocS_V2Schema">V2Schema</h2>
 <!-- backwards compatibility -->

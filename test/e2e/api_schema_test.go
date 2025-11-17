@@ -135,6 +135,18 @@ var _ = Context("Ledger schema API tests", func() {
 				Expect(err).To(BeNil())
 			})
 
+			It("should reject duplicate schemas", func(specContext SpecContext) {
+				// Invalid Schema - Missing chart
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
+					Ledger:  "default",
+					Version: "v3.0.0",
+					V2SchemaData: components.V2SchemaData{
+						Chart: map[string]components.V2ChartSegment{},
+					},
+				})
+				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumSchemaAlreadyExists)))
+			})
+
 			It("should be able to read all schema versions", func(specContext SpecContext) {
 				// Read v1.0.0
 				schemaV1, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetSchema(ctx, operations.V2GetSchemaRequest{
@@ -284,6 +296,31 @@ var _ = Context("Ledger schema API tests", func() {
 					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
 				})
 
+				It("should fail without a schema version", func(specContext SpecContext) {
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: nil,
+						V2PostTransaction: components.V2PostTransaction{
+							Force: pointer.For(true),
+							Postings: []components.V2Posting{
+								{
+									Source:      "bank:001",
+									Destination: "users:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+								{
+									Source:      "users:001",
+									Destination: "bank:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumSchemaNotSpecified)))
+				})
+
 				It("should fail with non-existent schema version", func(specContext SpecContext) {
 					schemaVersion := "non-existent"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
@@ -307,7 +344,7 @@ var _ = Context("Ledger schema API tests", func() {
 							},
 						},
 					})
-					Expect(err).ToNot(BeNil())
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumNotFound)))
 				})
 			})
 

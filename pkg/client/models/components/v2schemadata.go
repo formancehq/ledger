@@ -5,12 +5,12 @@ package components
 // V2SchemaData - Schema data structure for ledger schemas
 type V2SchemaData struct {
 	// Chart of account
-	Chart map[string]V2ChartSegment `json:"chart,omitempty"`
+	Chart map[string]V2ChartSegment `json:"chart"`
 }
 
 func (o *V2SchemaData) GetChart() map[string]V2ChartSegment {
 	if o == nil {
-		return nil
+		return map[string]V2ChartSegment{}
 	}
 	return o.Chart
 }
