@@ -70,9 +70,9 @@ func TestInsertSchema(t *testing.T) {
 			returnErr:         errors.New("database error"),
 		},
 		{
-			name:    "schema validation error",
-			version: "v1.0.0",
-			requestBody: map[string]interface{}{},
+			name:              "schema validation error",
+			version:           "v1.0.0",
+			requestBody:       map[string]interface{}{},
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: "VALIDATION",
 			expectBackendCall: true,

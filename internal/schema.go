@@ -1,11 +1,14 @@
 package ledger
 
 import (
+	"errors"
+
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/uptrace/bun"
 )
 
 type SchemaData struct {
+	Chart ChartOfAccounts `json:"chart" bun:"chart"`
 }
 
 type Schema struct {
@@ -16,9 +19,14 @@ type Schema struct {
 	CreatedAt time.Time `json:"createdAt" bun:"created_at,nullzero"`
 }
 
-func NewSchema(version string, data SchemaData) Schema {
+func NewSchema(version string, data SchemaData) (Schema, error) {
+	if data.Chart == nil {
+		return Schema{}, ErrInvalidSchema{
+			err: errors.New("missing chart of accounts"),
+		}
+	}
 	return Schema{
 		Version:    version,
 		SchemaData: data,
-	}
+	}, nil
 }

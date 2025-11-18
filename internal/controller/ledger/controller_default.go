@@ -65,8 +65,14 @@ func (ctrl *DefaultController) UpdateSchema(ctx context.Context, parameters Para
 }
 
 func (ctrl *DefaultController) updateSchema(ctx context.Context, store Store, parameters Parameters[UpdateSchema]) (*ledger.UpdatedSchema, error) {
-	schema := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
+	schema, err := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
+	if err != nil {
+		return nil, fmt.Errorf("creating schema: %w", err)
+	}
 	if err := store.InsertSchema(ctx, &schema); err != nil {
+		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
+			return nil, newErrSchemaAlreadyExists(parameters.Input.Version)
+		}
 		return nil, err
 	}
 

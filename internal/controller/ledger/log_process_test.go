@@ -2,6 +2,9 @@ package ledger
 
 import (
 	"context"
+	"testing"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -11,7 +14,6 @@ import (
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
-	"testing"
 )
 
 func TestForgeLogWithIKConflict(t *testing.T) {
@@ -28,6 +30,10 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
 		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		FindSchemas(gomock.Any(), gomock.Any()).
+		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
 
 	store.EXPECT().
 		Rollback().
@@ -61,6 +67,10 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
+		FindSchemas(gomock.Any(), gomock.Any()).
+		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+
+	store.EXPECT().
 		Rollback().
 		Return(nil)
 
@@ -68,6 +78,10 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
 		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		FindSchemas(gomock.Any(), gomock.Any()).
+		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).

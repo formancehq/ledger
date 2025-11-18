@@ -200,6 +200,7 @@ func NewLog(payload LogPayload) Log {
 
 type LogPayload interface {
 	Type() LogType
+	NeedsSchema() bool
 	ValidateWithSchema(schema Schema) error
 }
 
@@ -214,7 +215,17 @@ type CreatedTransaction struct {
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
+func (p CreatedTransaction) NeedsSchema() bool {
+	return true
+}
+
 func (p CreatedTransaction) ValidateWithSchema(schema Schema) error {
+	for _, posting := range p.Transaction.Postings {
+		err := schema.Chart.ValidatePosting(posting)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -259,6 +270,9 @@ type SavedMetadata struct {
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
+func (p SavedMetadata) NeedsSchema() bool {
+	return true
+}
 func (s SavedMetadata) ValidateWithSchema(schema Schema) error {
 	return nil
 }
@@ -308,6 +322,9 @@ type DeletedMetadata struct {
 	Key        string `json:"key"`
 }
 
+func (p DeletedMetadata) NeedsSchema() bool {
+	return true
+}
 func (s DeletedMetadata) ValidateWithSchema(schema Schema) error {
 	return nil
 }
@@ -356,6 +373,10 @@ type RevertedTransaction struct {
 	RevertTransaction   Transaction `json:"transaction"`
 }
 
+func (p RevertedTransaction) NeedsSchema() bool {
+	return true
+}
+
 func (r RevertedTransaction) ValidateWithSchema(schema Schema) error {
 	return nil
 }
@@ -398,6 +419,9 @@ type UpdatedSchema struct {
 	Schema Schema `json:"schema"`
 }
 
+func (p UpdatedSchema) NeedsSchema() bool {
+	return false
+}
 func (u UpdatedSchema) ValidateWithSchema(schema Schema) error {
 	return nil
 }

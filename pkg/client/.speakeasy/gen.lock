@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 8c2f32a3ee889608b8633931076c693c
+  docChecksum: 94c8d87c712d4c3aad62684de2e1df35
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -10,6 +10,7 @@ management:
 features:
   go:
     additionalDependencies: 0.1.0
+    additionalProperties: 0.1.2
     bigint: 0.0.2
     constsAndDefaults: 0.1.12
     core: 3.8.1
@@ -83,6 +84,8 @@ generatedFiles:
   - /models/components/v2bulkelementresult.go
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
+  - /models/components/v2chartrules.go
+  - /models/components/v2chartsegment.go
   - /models/components/v2configinforesponse.go
   - /models/components/v2createexporterresponse.go
   - /models/components/v2createledgerrequest.go
@@ -202,6 +205,7 @@ generatedFiles:
   - docs/models/components/contract.md
   - docs/models/components/cursor.md
   - docs/models/components/data.md
+  - docs/models/components/dotself.md
   - docs/models/components/errorresponse.md
   - docs/models/components/errorsenum.md
   - docs/models/components/expr.md
@@ -253,6 +257,8 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransaction.md
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
+  - docs/models/components/v2chartrules.md
+  - docs/models/components/v2chartsegment.md
   - docs/models/components/v2configinforesponse.md
   - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
@@ -1172,7 +1178,7 @@ examples:
           ledger: "ledger001"
           version: "v1.0.0"
       requestBody:
-        application/json: {}
+        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}+$"}}}}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -1184,7 +1190,7 @@ examples:
           version: "v1.0.0"
       responses:
         "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {}}}
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}+$"}}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListSchemas:

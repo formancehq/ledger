@@ -6,6 +6,7 @@ do $$
 			ledger varchar,
 			version text not null,
 			created_at timestamp without time zone not null default now(),
+			chart jsonb not null,
 			primary key (ledger, version)
 		);
 

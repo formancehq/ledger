@@ -3,8 +3,95 @@
   "$id": "https://github.com/formancehq/ledger/pkg/events/updated-schema",
   "$ref": "#/$defs/UpdatedSchema",
   "$defs": {
+    "ChartAccount": {
+      "properties": {
+        "Metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "Rules": {
+          "$ref": "#/$defs/ChartAccountRules"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Metadata",
+        "Rules"
+      ]
+    },
+    "ChartAccountRules": {
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ChartOfAccounts": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ChartSegment"
+      },
+      "type": "object"
+    },
+    "ChartSegment": {
+      "properties": {
+        "VariableSegment": {
+          "$ref": "#/$defs/ChartVariableSegment"
+        },
+        "FixedSegments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ChartSegment"
+          },
+          "type": "object"
+        },
+        "Account": {
+          "$ref": "#/$defs/ChartAccount"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "VariableSegment",
+        "FixedSegments",
+        "Account"
+      ]
+    },
+    "ChartVariableSegment": {
+      "properties": {
+        "VariableSegment": {
+          "$ref": "#/$defs/ChartVariableSegment"
+        },
+        "FixedSegments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ChartSegment"
+          },
+          "type": "object"
+        },
+        "Account": {
+          "$ref": "#/$defs/ChartAccount"
+        },
+        "Pattern": {
+          "type": "string"
+        },
+        "Label": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "VariableSegment",
+        "FixedSegments",
+        "Account",
+        "Pattern",
+        "Label"
+      ]
+    },
     "Schema": {
       "properties": {
+        "chart": {
+          "$ref": "#/$defs/ChartOfAccounts"
+        },
         "version": {
           "type": "string"
         },
@@ -15,6 +102,7 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
+        "chart",
         "version",
         "createdAt"
       ]
