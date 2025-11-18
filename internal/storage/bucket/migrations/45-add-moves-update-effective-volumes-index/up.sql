@@ -8,5 +8,5 @@ set search_path = '{{.Schema}}';
 -- This trigger runs on EVERY INSERT when MOVES_HISTORY feature is ON
 -- The trigger updates all moves with effective_date > new.effective_date
 -- Replaces/optimizes: moves_range_dates which has suboptimal column order
-create index idx_moves_update_effective_volumes
+create index {{ if not .Transactional }}concurrently{{end}} idx_moves_update_effective_volumes
     on "{{.Schema}}".moves (accounts_address, asset, effective_date);
