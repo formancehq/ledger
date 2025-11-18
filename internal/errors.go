@@ -86,3 +86,28 @@ func (e ErrAlreadyStarted) Is(err error) bool {
 func NewErrAlreadyStarted(id string) ErrAlreadyStarted {
 	return ErrAlreadyStarted(id)
 }
+
+type ErrInvalidSchema struct {
+	err error
+}
+
+func (e ErrInvalidSchema) Error() string {
+	return fmt.Sprintf("invalid schema: %v", e.err)
+}
+func (e ErrInvalidSchema) Is(err error) bool {
+	_, ok := err.(ErrInvalidSchema)
+	return ok
+}
+
+type ErrInvalidAccount struct {
+	path    []string
+	segment string
+}
+
+func (e ErrInvalidAccount) Error() string {
+	return fmt.Sprintf("segment `%v` is not allowed by the chart of accounts at `%v`", e.segment, e.path)
+}
+func (e ErrInvalidAccount) Is(err error) bool {
+	_, ok := err.(ErrInvalidAccount)
+	return ok
+}

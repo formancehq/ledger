@@ -143,6 +143,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
+			SchemaVersion:  data.SchemaVersion,
 			Input:          *rs,
 		})
 		if err != nil {
@@ -167,6 +168,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
+				SchemaVersion:  data.SchemaVersion,
 				Input: ledgercontroller.SaveAccountMetadata{
 					Address:  address,
 					Metadata: req.Metadata,
@@ -180,6 +182,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
+				SchemaVersion:  data.SchemaVersion,
 				Input: ledgercontroller.SaveTransactionMetadata{
 					TransactionID: transactionID,
 					Metadata:      req.Metadata,
@@ -199,6 +202,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
+			SchemaVersion:  data.SchemaVersion,
 			Input: ledgercontroller.RevertTransaction{
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
@@ -228,6 +232,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
+				SchemaVersion:  data.SchemaVersion,
 				Input: ledgercontroller.DeleteAccountMetadata{
 					Address: address,
 					Key:     req.Key,
@@ -242,6 +247,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
+				SchemaVersion:  data.SchemaVersion,
 				Input: ledgercontroller.DeleteTransactionMetadata{
 					TransactionID: transactionID,
 					Key:           req.Key,
