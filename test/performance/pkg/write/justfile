@@ -4,7 +4,7 @@ set positional-arguments
 tmpdir := `mktemp -d`
 
 # Run against the local branch
-run bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt':
+run bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt' postgresURI='':
     mkdir -p $(dirname {{output}})
     rm -f {{output}}
     go test -run ^$ -tags it,local \
@@ -13,6 +13,7 @@ run bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-o
         -count={{count}} \
         -test.benchtime {{benchtime}} ./... \
             -report.file $(pwd)/report/writes/report.json \
+            -postgres-uri "{{ postgresURI }}" \
             -parallelism {{p}} | tee -a {{output}}
 
 run-remote ledgerURL bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt':
@@ -28,12 +29,12 @@ run-remote ledgerURL bench='.' p='1' benchtime='1s' count='1' output='./report/w
             -parallelism {{p}} | tee -a {{output}}
 
 # Compare against main branch
-compare bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt':
+compare bench='.' p='1' benchtime='1s' count='1' output='./report/writes/benchmark-output.txt' postgresURI='' postgresURIRemote='':
     trap 'rm -rf {{tmpdir}}' EXIT
-    just run {{bench}} {{p}} {{benchtime}} {{count}} './report/writes/benchmark-output-local.txt'
+    just run {{bench}} {{p}} {{benchtime}} {{count}} './report/writes/benchmark-output-local.txt' {{postgresURI}}
     rm -f ./report/writes/benchmark-output-main.txt
     git clone --depth 1 -b main https://github.com/formancehq/ledger {{tmpdir}}
-    location=$(pwd) && cd {{tmpdir}}/test/performance && just run {{bench}} {{p}} {{benchtime}} {{count}} $location/report/writes/benchmark-output-main.txt
+    location=$(pwd) && cd {{tmpdir}}/test/performance/pkg/write && just run {{bench}} {{p}} {{benchtime}} {{count}} $location/report/writes/benchmark-output-main.txt {{postgresURIRemote}}
     benchstat ./report/writes/benchmark-output-main.txt ./report/writes/benchmark-output-local.txt > ./report/writes/benchmark-comparison.txt || true
 
 graphs:
