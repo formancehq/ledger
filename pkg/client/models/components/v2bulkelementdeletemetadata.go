@@ -30,9 +30,11 @@ func (o *V2BulkElementDeleteMetadataData) GetKey() string {
 }
 
 type V2BulkElementDeleteMetadata struct {
-	Action string                           `json:"action"`
-	Ik     *string                          `json:"ik,omitempty"`
-	Data   *V2BulkElementDeleteMetadataData `json:"data,omitempty"`
+	Action string  `json:"action"`
+	Ik     *string `json:"ik,omitempty"`
+	// Schema version to use for validation
+	SchemaVersion *string                          `json:"schemaVersion,omitempty"`
+	Data          *V2BulkElementDeleteMetadataData `json:"data,omitempty"`
 }
 
 func (o *V2BulkElementDeleteMetadata) GetAction() string {
@@ -47,6 +49,13 @@ func (o *V2BulkElementDeleteMetadata) GetIk() *string {
 		return nil
 	}
 	return o.Ik
+}
+
+func (o *V2BulkElementDeleteMetadata) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }
 
 func (o *V2BulkElementDeleteMetadata) GetData() *V2BulkElementDeleteMetadataData {
