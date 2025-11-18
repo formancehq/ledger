@@ -43,6 +43,7 @@ func NewRouter(
 				return true
 			},
 			AllowCredentials: true,
+			ExposedHeaders:   []string{"Count"},
 		}).Handler,
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
