@@ -245,3 +245,76 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		computedIdempotencyHash: gotIdempotencyHash,
 	}
 }
+
+type ErrSchemaNotFound struct {
+	requestedVersion string
+}
+
+func (e ErrSchemaNotFound) Error() string {
+	return fmt.Sprintf("schema version not found: `%s`", e.requestedVersion)
+}
+
+func (e ErrSchemaNotFound) Is(err error) bool {
+	_, ok := err.(ErrSchemaNotFound)
+	return ok
+}
+
+func newErrSchemaNotFound(requestedVersion string) ErrSchemaNotFound {
+	return ErrSchemaNotFound{
+		requestedVersion,
+	}
+}
+
+type ErrSchemaValidationError struct {
+	requestedSchema string
+	err             error
+}
+
+func (e ErrSchemaValidationError) Error() string {
+	return fmt.Sprintf("schema validation error with version %s: %s", e.requestedSchema, e.err)
+}
+
+func (e ErrSchemaValidationError) Is(err error) bool {
+	_, ok := err.(ErrSchemaValidationError)
+	return ok
+}
+
+func newErrSchemaValidationError(requestedSchema string, err error) ErrSchemaValidationError {
+	return ErrSchemaValidationError{
+		requestedSchema: requestedSchema,
+		err:             err,
+	}
+}
+
+type ErrSchemaNotSpecified struct{}
+
+func (e ErrSchemaNotSpecified) Error() string {
+	return "a schema version must be specified for this ledger"
+}
+
+func (e ErrSchemaNotSpecified) Is(err error) bool {
+	_, ok := err.(ErrSchemaNotSpecified)
+	return ok
+}
+func newErrSchemaNotSpecified() ErrSchemaNotSpecified {
+	return ErrSchemaNotSpecified{}
+}
+
+type ErrSchemaAlreadyExists struct {
+	version string
+}
+
+func (e ErrSchemaAlreadyExists) Error() string {
+	return fmt.Sprintf("schema version `%s` already exists", e.version)
+}
+
+func (e ErrSchemaAlreadyExists) Is(err error) bool {
+	_, ok := err.(ErrSchemaAlreadyExists)
+	return ok
+}
+
+func newErrSchemaAlreadyExists(version string) ErrSchemaAlreadyExists {
+	return ErrSchemaAlreadyExists{
+		version,
+	}
+}

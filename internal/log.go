@@ -98,6 +98,7 @@ type Log struct {
 	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
 	Hash            []byte  `json:"hash" bun:"hash,type:bytea"`
+	SchemaVersion   string  `json:"schemaVersion,omitempty" bun:"schema_version,nullzero"`
 }
 
 func (l Log) WithDate(date time.Time) Log {
@@ -165,6 +166,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		IdempotencyKey string    `json:"idempotencyKey"`
 		ID             int       `json:"id"`
 		Hash           []byte    `json:"hash"`
+		SchemaVersion  string    `json:"schemaVersion,omitempty"` // keep ",omitempty" for the hash!
 	}{
 		Type:           l.Type,
 		Data:           payload,
@@ -172,6 +174,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		IdempotencyKey: l.IdempotencyKey,
 		ID:             0,
 		Hash:           l.Hash,
+		SchemaVersion:  l.SchemaVersion,
 	}); err != nil {
 		panic(err)
 	}
@@ -184,6 +187,10 @@ func (l Log) WithID(i uint64) Log {
 	return l
 }
 
+func (l Log) ValidateWithSchema(schema Schema) error {
+	return l.Data.ValidateWithSchema(schema)
+}
+
 func NewLog(payload LogPayload) Log {
 	return Log{
 		Type: payload.Type(),
@@ -193,6 +200,8 @@ func NewLog(payload LogPayload) Log {
 
 type LogPayload interface {
 	Type() LogType
+	NeedsSchema() bool
+	ValidateWithSchema(schema Schema) error
 }
 
 type Memento interface {
@@ -204,6 +213,20 @@ type AccountMetadata map[string]metadata.Metadata
 type CreatedTransaction struct {
 	Transaction     Transaction     `json:"transaction"`
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
+}
+
+func (p CreatedTransaction) NeedsSchema() bool {
+	return true
+}
+
+func (p CreatedTransaction) ValidateWithSchema(schema Schema) error {
+	for _, posting := range p.Transaction.Postings {
+		err := schema.Chart.ValidatePosting(posting)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p CreatedTransaction) Type() LogType {
@@ -245,6 +268,13 @@ type SavedMetadata struct {
 	TargetType string            `json:"targetType"`
 	TargetID   any               `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
+}
+
+func (p SavedMetadata) NeedsSchema() bool {
+	return true
+}
+func (s SavedMetadata) ValidateWithSchema(schema Schema) error {
+	return nil
 }
 
 func (s SavedMetadata) Type() LogType {
@@ -292,6 +322,13 @@ type DeletedMetadata struct {
 	Key        string `json:"key"`
 }
 
+func (p DeletedMetadata) NeedsSchema() bool {
+	return true
+}
+func (s DeletedMetadata) ValidateWithSchema(schema Schema) error {
+	return nil
+}
+
 func (s DeletedMetadata) Type() LogType {
 	return DeleteMetadataLogType
 }
@@ -336,6 +373,14 @@ type RevertedTransaction struct {
 	RevertTransaction   Transaction `json:"transaction"`
 }
 
+func (p RevertedTransaction) NeedsSchema() bool {
+	return true
+}
+
+func (r RevertedTransaction) ValidateWithSchema(schema Schema) error {
+	return nil
+}
+
 func (r RevertedTransaction) Type() LogType {
 	return RevertedTransactionLogType
 }
@@ -374,9 +419,18 @@ type UpdatedSchema struct {
 	Schema Schema `json:"schema"`
 }
 
+func (p UpdatedSchema) NeedsSchema() bool {
+	return false
+}
+func (u UpdatedSchema) ValidateWithSchema(schema Schema) error {
+	return nil
+}
+
 func (u UpdatedSchema) Type() LogType {
 	return UpdatedSchemaLogType
 }
+
+var _ LogPayload = (*UpdatedSchema)(nil)
 
 func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any

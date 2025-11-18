@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: c799d8f791c545c49877a1857b01565e
+  docChecksum: 8c363535bcaa776c8e555068d94f3719
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -10,6 +10,7 @@ management:
 features:
   go:
     additionalDependencies: 0.1.0
+    additionalProperties: 0.1.2
     bigint: 0.0.2
     constsAndDefaults: 0.1.12
     core: 3.8.1
@@ -83,6 +84,8 @@ generatedFiles:
   - /models/components/v2bulkelementresult.go
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
+  - /models/components/v2chartrules.go
+  - /models/components/v2chartsegment.go
   - /models/components/v2configinforesponse.go
   - /models/components/v2createexporterresponse.go
   - /models/components/v2createledgerrequest.go
@@ -205,6 +208,7 @@ generatedFiles:
   - docs/models/components/contract.md
   - docs/models/components/cursor.md
   - docs/models/components/data.md
+  - docs/models/components/dotself.md
   - docs/models/components/errorresponse.md
   - docs/models/components/errorsenum.md
   - docs/models/components/expr.md
@@ -256,6 +260,8 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransaction.md
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
+  - docs/models/components/v2chartrules.md
+  - docs/models/components/v2chartsegment.md
   - docs/models/components/v2configinforesponse.md
   - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
@@ -809,6 +815,7 @@ examples:
           continueOnFailure: true
           atomic: true
           parallel: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: [{"action": "DELETE_METADATA"}]
       responses:
@@ -863,6 +870,7 @@ examples:
           address: "users:001"
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -921,6 +929,7 @@ examples:
           ledger: "ledger001"
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
           force: true
       requestBody:
         application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
@@ -948,6 +957,7 @@ examples:
           id: 1234
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -971,6 +981,7 @@ examples:
           id: 1234
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       responses:
         "201":
           application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -1210,7 +1221,7 @@ examples:
           ledger: "ledger001"
           version: "v1.0.0"
       requestBody:
-        application/json: {}
+        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}}
       responses:
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
@@ -1222,7 +1233,7 @@ examples:
           version: "v1.0.0"
       responses:
         "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {}}}
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "data": {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListSchemas:

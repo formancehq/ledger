@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -25,7 +26,14 @@ func insertSchema(w http.ResponseWriter, r *http.Request) {
 		Data:    data,
 		Version: chi.URLParam(r, "version"),
 	})); err != nil {
-		common.HandleCommonWriteErrors(w, r, err)
+		switch {
+		case errors.Is(err, ledgercontroller.ErrSchemaAlreadyExists{}):
+			api.BadRequest(w, common.ErrSchemaAlreadyExists, err)
+		case errors.Is(err, ledger.ErrInvalidSchema{}):
+			api.BadRequest(w, common.ErrValidation, err)
+		default:
+			common.HandleCommonWriteErrors(w, r, err)
+		}
 		return
 	}
 
