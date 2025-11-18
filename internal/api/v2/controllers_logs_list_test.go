@@ -82,6 +82,20 @@ func TestLogsList(t *testing.T) {
 			expectBackendCall: true,
 		},
 		{
+			name: "using type filter",
+			body: `{"$match": {"type": "NEW_TRANSACTION"}}`,
+			expectQuery: storagecommon.InitialPaginatedQuery[any]{
+				PageSize: bunpaginate.QueryDefaultPageSize,
+				Column:   "id",
+				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Options: storagecommon.ResourceQuery[any]{
+					Builder: query.Match("type", "NEW_TRANSACTION"),
+					Expand:  make([]string, 0),
+				},
+			},
+			expectBackendCall: true,
+		},
+		{
 			name: "using empty cursor",
 			queryParams: url.Values{
 				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{

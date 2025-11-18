@@ -18,6 +18,7 @@ func (h logsResourceHandler) Schema() common.EntitySchema {
 		Fields: map[string]common.Field{
 			"date": common.NewDateField().Paginated(),
 			"id":   common.NewNumericField().Paginated(),
+			"type": common.NewStringField(),
 		},
 	}
 }
@@ -32,6 +33,8 @@ func (h logsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator
 	switch property {
 	case "date", "id":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case "type":
+		return fmt.Sprintf("type %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	default:
 		return "", nil, fmt.Errorf("unknown key '%s' when building query", property)
 	}
