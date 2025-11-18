@@ -152,6 +152,68 @@ var _ = Context("Ledger logs list API tests", func() {
 			for _, data := range response.V2LogsCursorResponse.Cursor.Data {
 				Expect(data.Hash).NotTo(BeEmpty())
 			}
+		})
+		When("filtering logs by type", func() {
+			It("should filter by NEW_TRANSACTION type", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+					ctx,
+					operations.V2ListLogsRequest{
+						Ledger: "default",
+						RequestBody: map[string]interface{}{
+							"$match": map[string]any{
+								"type": "NEW_TRANSACTION",
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(2))
+				for _, log := range response.V2LogsCursorResponse.Cursor.Data {
+					Expect(log.Type).To(Equal(components.V2LogTypeNewTransaction))
+				}
+			})
+			It("should filter by SET_METADATA type", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+					ctx,
+					operations.V2ListLogsRequest{
+						Ledger: "default",
+						RequestBody: map[string]interface{}{
+							"$match": map[string]any{
+								"type": "SET_METADATA",
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(1))
+				Expect(response.V2LogsCursorResponse.Cursor.Data[0].Type).To(Equal(components.V2LogTypeSetMetadata))
+			})
+			It("should return empty when filtering by non-existent type", func(specContext SpecContext) {
+				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+					ctx,
+					operations.V2ListLogsRequest{
+						Ledger: "default",
+						RequestBody: map[string]interface{}{
+							"$match": map[string]any{
+								"type": "REVERTED_TRANSACTION",
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(0))
+			})
+		})
+		It("should be listed on api with ListLogs with details", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
+				ctx,
+				operations.V2ListLogsRequest{
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(3))
 
 			// Cannot check the date and the hash since they are changing at
 			// every run
