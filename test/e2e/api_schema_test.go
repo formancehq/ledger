@@ -136,7 +136,6 @@ var _ = Context("Ledger schema API tests", func() {
 			})
 
 			It("should reject duplicate schemas", func(specContext SpecContext) {
-				// Invalid Schema - Missing chart
 				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
 					Ledger:  "default",
 					Version: "v3.0.0",

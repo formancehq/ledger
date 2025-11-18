@@ -1521,7 +1521,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L12-L18>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L14-L20>)
 
 
 
@@ -1536,7 +1536,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L20>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L22>)
 
 ```go
 func NewSchema(version string, data SchemaData) (Schema, error)
@@ -1545,7 +1545,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L8-L10>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L10-L12>)
 
 
 

@@ -18,7 +18,9 @@ func TestSchemaUpdate(t *testing.T) {
 
 	store := newLedgerStore(t)
 
-	schema, err := ledger.NewSchema("1.0", ledger.SchemaData{})
+	schema, err := ledger.NewSchema("1.0", ledger.SchemaData{
+		Chart: map[string]ledger.ChartSegment{},
+	})
 	require.NoError(t, err)
 	err = store.InsertSchema(ctx, &schema)
 	require.NoError(t, err)
