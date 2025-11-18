@@ -50,6 +50,8 @@ type Controller interface {
 	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
+	DeleteBucket(ctx context.Context, bucket string) error
+	RestoreBucket(ctx context.Context, bucket string) error
 }
 
 type DefaultController struct {
@@ -229,6 +231,24 @@ func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param s
 	})))
 }
 
+func (ctrl *DefaultController) DeleteBucket(ctx context.Context, bucket string) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteBucket", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.driver.GetSystemStore().DeleteBucket(ctx, bucket)
+	})))
+}
+
+func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucket string) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "RestoreBucket", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.driver.GetSystemStore().RestoreBucket(ctx, bucket)
+	})))
+}
+
+// NewDefaultController creates a DefaultController configured with the provided
+// store, listener, replication backend, and optional functional options.
+//
+// The controller is initialized with a new StateRegistry and a default Numscript
+// parser; any of these defaults (and other fields) can be overridden by passing
+// Option values. The returned controller is ready for further initialization or use.
 func NewDefaultController(
 	store Driver,
 	listener ledgercontroller.Listener,

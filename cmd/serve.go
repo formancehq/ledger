@@ -82,6 +82,10 @@ func NewServeCommand() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 
+			if err := cfg.Validate(); err != nil {
+				return err
+			}
+
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 			if err != nil {
 				return err
