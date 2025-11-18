@@ -4,6 +4,7 @@ package write
 
 import (
 	"context"
+	"flag"
 	"io"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/testing/deferred"
@@ -22,6 +24,14 @@ import (
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/test/performance/pkg/env"
+)
+
+func init() {
+	flag.StringVar(&postgresURIFlag, "postgres-uri", "", "Postgres URI (optional - a containized version will be run if not specified - for local env only)")
+}
+
+var (
+	postgresURIFlag string
 )
 
 type TestServerEnv struct {
@@ -50,11 +60,17 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 
 	f.dockerPool = docker.NewPool(b, logging.Testing())
 
-	pgServer := pgtesting.CreatePostgresServer(b, f.dockerPool, pgtesting.WithPGCrypto())
+	var connectionOptions bunconnect.ConnectionOptions
+	if postgresURIFlag == "" {
+		pgServer := pgtesting.CreatePostgresServer(b, f.dockerPool, pgtesting.WithPGCrypto())
 
-	db := pgServer.NewDatabase(b)
-	b.Logf("database: %s", db.Name())
-	connectionOptions := db.ConnectionOptions()
+		db := pgServer.NewDatabase(b)
+		b.Logf("database: %s", db.Name())
+		connectionOptions = db.ConnectionOptions()
+	} else {
+		connectionOptions.DatabaseSourceName = postgresURIFlag
+	}
+
 	connectionOptions.MaxOpenConns = 100
 	connectionOptions.MaxIdleConns = 100
 	connectionOptions.ConnMaxIdleTime = time.Minute
