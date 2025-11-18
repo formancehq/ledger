@@ -180,5 +180,38 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
 			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(200)))
 		})
+		It("should be ok when aggregating using $in operator on address", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
+				ctx,
+				operations.V2GetBalancesAggregatedRequest{
+					RequestBody: map[string]any{
+						"$in": map[string]any{
+							"address": []any{"bank1", "bank2"},
+						},
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
+			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(400)))
+		})
+		It("should be ok when aggregating using $in operator on address with non-existing addresses", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
+				ctx,
+				operations.V2GetBalancesAggregatedRequest{
+					RequestBody: map[string]any{
+						"$in": map[string]any{
+							"address": []any{"not_existing", "also_not_existing"},
+						},
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(0))
+		})
 	})
 })

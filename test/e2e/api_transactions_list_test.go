@@ -753,6 +753,62 @@ var _ = Context("Ledger transactions list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
+
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+				ctx,
+				operations.V2CountTransactionsRequest{
+					Ledger: "default",
+					RequestBody: map[string]interface{}{
+						"$in": map[string]any{
+							"account": []any{"foo:foo", "foo:bar"},
+						},
+					},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
+
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+				ctx,
+				operations.V2CountTransactionsRequest{
+					Ledger: "default",
+					RequestBody: map[string]interface{}{
+						"$in": map[string]any{
+							"source": []any{"world"},
+						},
+					},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Headers["Count"]).To(Equal([]string{"3"}))
+
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+				ctx,
+				operations.V2CountTransactionsRequest{
+					Ledger: "default",
+					RequestBody: map[string]interface{}{
+						"$in": map[string]any{
+							"destination": []any{"foo:foo", "foo:baz"},
+						},
+					},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
+
+			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
+				ctx,
+				operations.V2CountTransactionsRequest{
+					Ledger: "default",
+					RequestBody: map[string]interface{}{
+						"$in": map[string]any{
+							"account": []any{"not_existing", "also_not_existing"},
+						},
+					},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 		})
 		It("should be listed on api", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
@@ -1012,6 +1068,74 @@ var _ = Context("Ledger transactions list API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
+			})
+			By("using $in operator on account", func() {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$in": map[string]any{
+								"account": []any{"foo:foo", "foo:bar"},
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).Should(Equal(t2.V2CreateTransactionResponse.Data.ID))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data[1].ID).Should(Equal(t1.V2CreateTransactionResponse.Data.ID))
+			})
+			By("using $in operator on source", func() {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$in": map[string]any{
+								"source": []any{"world"},
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(3))
+			})
+			By("using $in operator on destination", func() {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$in": map[string]any{
+								"destination": []any{"foo:foo", "foo:baz"},
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).Should(Equal(t3.V2CreateTransactionResponse.Data.ID))
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data[1].ID).Should(Equal(t1.V2CreateTransactionResponse.Data.ID))
+			})
+			By("using $in operator on account with non-existing addresses", func() {
+				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
+					ctx,
+					operations.V2ListTransactionsRequest{
+						Ledger: "default",
+						Expand: pointer.For("volumes,effectiveVolumes"),
+						RequestBody: map[string]interface{}{
+							"$in": map[string]any{
+								"account": []any{"not_existing", "also_not_existing"},
+							},
+						},
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
 			})
 		})
 		When("reverting a transaction", func() {

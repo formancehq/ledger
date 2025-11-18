@@ -9,6 +9,7 @@ import (
 
 const (
 	OperatorMatch  = "$match"
+	OperatorIn     = "$in"
 	OperatorExists = "$exists"
 	OperatorLike   = "$like"
 	OperatorLT     = "$lt"
@@ -19,7 +20,7 @@ const (
 
 type FieldType interface {
 	Operators() []string
-	ValidateValue(value any) error
+	ValidateValue(operator string, value any) error
 	IsIndexable() bool
 	IsPaginated() bool
 }
@@ -109,14 +110,30 @@ func (t TypeString) Operators() []string {
 	return []string{
 		OperatorMatch,
 		OperatorLike,
+		OperatorIn,
 	}
 }
 
-func (t TypeString) ValidateValue(value any) error {
-	_, ok := value.(string)
-	if !ok {
-		return fmt.Errorf("expected string value, got %T", value)
+func (t TypeString) ValidateValue(operator string, value any) error {
+	switch operator {
+	case OperatorIn:
+		values, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("expected array value for operator %s, got %T", OperatorIn, value)
+		}
+		for _, v := range values {
+			_, ok := v.(string)
+			if !ok {
+				return fmt.Errorf("expected string value in array for operator %s, got %T", OperatorIn, v)
+			}
+		}
+	default:
+		_, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("expected string value, got %T", value)
+		}
 	}
+
 	return nil
 }
 
@@ -146,7 +163,7 @@ func (t TypeDate) Operators() []string {
 	}
 }
 
-func (t TypeDate) ValidateValue(value any) error {
+func (t TypeDate) ValidateValue(_ string, value any) error {
 	switch value := value.(type) {
 	case string:
 		_, err := time.ParseTime(value)
@@ -182,8 +199,8 @@ func (t TypeMap) Operators() []string {
 	return append(t.underlyingType.Operators(), OperatorMatch, OperatorExists)
 }
 
-func (t TypeMap) ValidateValue(value any) error {
-	return t.underlyingType.ValidateValue(value)
+func (t TypeMap) ValidateValue(operator string, value any) error {
+	return t.underlyingType.ValidateValue(operator, value)
 }
 
 func NewTypeMap(underlyingType FieldType) TypeMap {
@@ -214,7 +231,7 @@ func (t TypeNumeric) Operators() []string {
 	}
 }
 
-func (t TypeNumeric) ValidateValue(value any) error {
+func (t TypeNumeric) ValidateValue(_ string, value any) error {
 	switch value.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float64, float32, big.Int,
 		*int, *int8, *int16, *int32, *int64, *uint, *uint8, *uint16, *uint32, *uint64, *float64, *float32, *big.Int:
@@ -246,7 +263,7 @@ func (t TypeBoolean) Operators() []string {
 	}
 }
 
-func (t TypeBoolean) ValidateValue(value any) error {
+func (t TypeBoolean) ValidateValue(_ string, value any) error {
 	_, ok := value.(bool)
 	if !ok {
 		return fmt.Errorf("expected boolean value, got %T", value)

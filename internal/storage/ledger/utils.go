@@ -52,3 +52,13 @@ func explodeAddress(address string) map[string]any {
 
 	return ret
 }
+
+func isFilteringOnPartialAddress(value any) bool {
+	switch value := value.(type) {
+	case string:
+		return isPartialAddress(value)
+	default:
+		// If an array is passed, addresses must be full
+		return false
+	}
+}

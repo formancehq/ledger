@@ -214,6 +214,48 @@ var _ = Context("Ledger accounts list API tests", func() {
 			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(0))
 		})
 	})
+	When("Get volumes and balances filter by $in operator on account", func() {
+		It("should be ok", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
+				ctx,
+				operations.V2GetVolumesWithBalancesRequest{
+					InsertionDate: pointer.For(true),
+					RequestBody: map[string]interface{}{
+						"$in": map[string]any{
+							"account": []any{"account:user1", "account:user2"},
+						},
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(2))
+			for _, volume := range response.V2VolumesWithBalanceCursorResponse.Cursor.Data {
+				if volume.Account == "account:user1" {
+					Expect(volume.Balance).To(Equal(big.NewInt(150)))
+				}
+				if volume.Account == "account:user2" {
+					Expect(volume.Balance).To(Equal(big.NewInt(50)))
+				}
+			}
+		})
+		It("should return empty when filtering with non-existing accounts", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
+				ctx,
+				operations.V2GetVolumesWithBalancesRequest{
+					InsertionDate: pointer.For(true),
+					RequestBody: map[string]interface{}{
+						"$in": map[string]any{
+							"account": []any{"not_existing", "also_not_existing"},
+						},
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(0))
+		})
+	})
 
 	When("Get volumes and balances filter With futures dates empty", func() {
 		It("should be ok", func(specContext SpecContext) {

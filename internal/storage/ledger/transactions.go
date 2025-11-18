@@ -338,3 +338,23 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 	}
 	return strings.Join(parts, " or ")
 }
+
+func assetAddressArray(v any) ([]string, error) {
+	value := v.([]any)
+	addresses := Map(value, func(v any) string {
+		return v.(string)
+	})
+	for _, address := range addresses {
+		if isPartialAddress(address) {
+			return nil, NewErrInvalidQuery("IN operator only supports full addresses")
+		}
+	}
+
+	return addresses, nil
+}
+
+func stringArrayToPostgresArray(values []string) (string, []any) {
+	placeholder := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
+
+	return "array[" + placeholder + "]", Map(values, ToAny)
+}
