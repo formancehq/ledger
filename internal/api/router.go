@@ -43,6 +43,7 @@ func NewRouter(
 				return true
 			},
 			AllowCredentials: true,
+			ExposedHeaders:   []string{"Count"},
 		}).Handler,
 		func(next http.Handler) http.Handler {
 			fn := func(w http.ResponseWriter, r *http.Request) {
