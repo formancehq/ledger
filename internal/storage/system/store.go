@@ -61,7 +61,6 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 		DistinctOn("bucket").
 		Model(&ledger.Ledger{}).
 		Column("bucket").
-		Where("deleted_at IS NULL").
 		Scan(ctx, &buckets)
 	if err != nil {
 		return nil, fmt.Errorf("getting buckets: %w", postgres.ResolveError(err))
