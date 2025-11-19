@@ -1,5 +1,3 @@
-set search_path = '{{.Schema}}';
-
 -- ========================================
 -- MOVES TABLE INDEX FOR TRIGGER OPTIMIZATION (3/5)
 -- ========================================

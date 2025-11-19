@@ -1,5 +1,3 @@
-set search_path = '{{.Schema}}';
-
 -- ========================================
 -- ACCOUNTS_METADATA TABLE OPTIMIZATION
 -- ========================================
