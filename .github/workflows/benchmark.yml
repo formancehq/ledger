@@ -3,17 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       bench:
-        description: 'Benchmarks to run'
+        description: "Benchmarks to run"
         required: false
-        default: '.'
+        default: "."
       parallelism:
-        description: 'Number of parallel benchmarks to run'
+        description: "Number of parallel benchmarks to run"
         required: false
         default: 5
       duration:
-        description: 'Duration of each benchmark'
+        description: "Duration of each benchmark"
         required: false
-        default: '10s'
+        default: "10s"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -35,15 +35,15 @@ jobs:
           /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
           develop --impure --command just
           --justfile ./test/performance/justfile
-          --working-directory ./test/performance 
+          --working-directory ./test/performance
           writes run ${{ inputs.bench }} ${{ inputs.parallelism }} ${{ inputs.duration }} 1
       - run: >
           /nix/var/nix/profiles/default/bin/nix --extra-experimental-features "nix-command" --extra-experimental-features "flakes"
-          develop --impure --command just 
-          --justfile ./test/performance/justfile 
-          --working-directory ./test/performance 
+          develop --impure --command just
+          --justfile ./test/performance/justfile
+          --working-directory ./test/performance
           writes graphs
       - uses: actions/upload-artifact@v4
         with:
           name: graphs
-          path: test/performance/report
+          path: test/performance/pkg/write/report
