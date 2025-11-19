@@ -152,6 +152,9 @@ type PostgresInstall struct {
 
 	// Password is the password for the Postgres database
 	Password string `json:"password" yaml:"password"`
+
+	// ChartVersion is the bitnami/postgres chart version
+	ChartVersion string `json:"chartVersion" yaml:"chartVersion"`
 }
 
 type PostgresDatabase struct {
@@ -180,6 +183,7 @@ func (a *PostgresDatabase) toInput() *storage.PostgresDatabaseArgs {
 		Install: &storage.PostgresInstallArgs{
 			Username: pulumix.Val(a.Install.Username),
 			Password: pulumix.Val(a.Install.Password),
+			ChartVersion: pulumix.Val(a.Install.ChartVersion),
 		},
 	}
 }
