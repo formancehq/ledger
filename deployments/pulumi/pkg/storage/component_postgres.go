@@ -56,14 +56,17 @@ func (cmp *PostgresDatabaseComponent) GetPort() pulumix.Input[int] {
 }
 
 type PostgresInstallArgs struct {
-	Username pulumix.Input[string]
-	Password pulumix.Input[string]
+	Username     pulumix.Input[string]
+	Password     pulumix.Input[string]
 	ChartVersion pulumix.Input[string]
 }
 
 func (args *PostgresInstallArgs) SetDefaults() {
 	if args.Username == nil {
 		args.Username = pulumix.Val("")
+	}
+	if args.ChartVersion == nil {
+		args.ChartVersion = pulumix.Val("")
 	}
 	args.Username = pulumix.Apply(args.Username, func(username string) string {
 		if username == "" {
