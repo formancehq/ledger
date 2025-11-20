@@ -149,6 +149,21 @@ func (mr *MockStoreMockRecorder) DeleteTransactionMetadata(ctx, transactionID, k
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTransactionMetadata", reflect.TypeOf((*MockStore)(nil).DeleteTransactionMetadata), ctx, transactionID, key, at)
 }
 
+// FindLatestSchemaVersion mocks base method.
+func (m *MockStore) FindLatestSchemaVersion(ctx context.Context) (*string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindLatestSchemaVersion", ctx)
+	ret0, _ := ret[0].(*string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindLatestSchemaVersion indicates an expected call of FindLatestSchemaVersion.
+func (mr *MockStoreMockRecorder) FindLatestSchemaVersion(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindLatestSchemaVersion", reflect.TypeOf((*MockStore)(nil).FindLatestSchemaVersion), ctx)
+}
+
 // FindSchema mocks base method.
 func (m *MockStore) FindSchema(ctx context.Context, version string) (*ledger.Schema, error) {
 	m.ctrl.T.Helper()

@@ -86,8 +86,8 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 			Return(&schema, nil)
 	} else {
 		store.EXPECT().
-			FindSchemas(gomock.Any(), gomock.Any()).
-			Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+			FindLatestSchemaVersion(gomock.Any()).
+			Return(nil, nil)
 	}
 
 	store.EXPECT().
@@ -135,8 +135,8 @@ func TestRevertTransaction(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindSchemas(gomock.Any(), gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Commit(gomock.Any()).
@@ -195,8 +195,8 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindSchemas(gomock.Any(), gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Commit(gomock.Any()).
@@ -245,8 +245,8 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindSchemas(gomock.Any(), gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Commit(gomock.Any()).

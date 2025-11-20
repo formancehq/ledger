@@ -2,6 +2,8 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
@@ -33,6 +35,25 @@ func (s *Store) FindSchema(ctx context.Context, version string) (*ledger.Schema,
 	}
 
 	return schema, nil
+}
+
+func (s *Store) FindLatestSchemaVersion(ctx context.Context) (*string, error) {
+	schema := &ledger.Schema{}
+	err := s.db.NewSelect().
+		Model(schema).
+		ModelTableExpr(s.GetPrefixedRelationName("schemas")).
+		Where("ledger = ?", s.ledger.Name).
+		Order("created_at DESC").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		} else {
+			return nil, postgres.ResolveError(err)
+		}
+	}
+	return &schema.Version, nil
 }
 
 func (s *Store) FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
