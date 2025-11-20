@@ -57,13 +57,17 @@ func (cmp *PostgresDatabaseComponent) GetPort() pulumix.Input[int] {
 }
 
 type PostgresInstallArgs struct {
-	Username pulumix.Input[string]
-	Password pulumix.Input[string]
+	Username     pulumix.Input[string]
+	Password     pulumix.Input[string]
+	ChartVersion pulumix.Input[string]
 }
 
 func (args *PostgresInstallArgs) SetDefaults() {
 	if args.Username == nil {
 		args.Username = pulumix.Val("")
+	}
+	if args.ChartVersion == nil {
+		args.ChartVersion = pulumix.Val("")
 	}
 	args.Username = pulumix.Apply(args.Username, func(username string) string {
 		if username == "" {
@@ -98,7 +102,7 @@ func newPostgresComponent(ctx *pulumi.Context, name string, args *PostgresCompon
 
 	cmp.Chart, err = helm.NewChart(ctx, "postgres", &helm.ChartArgs{
 		Chart:     pulumi.String("oci://registry-1.docker.io/bitnamicharts/postgresql"),
-		Version:   pulumi.String("16.4.7"),
+		Version:   args.ChartVersion.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 		Name:      pulumi.String("postgres"),
 		Namespace: args.Namespace.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 		Values: pulumi.Map{
