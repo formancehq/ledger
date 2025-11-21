@@ -17,6 +17,8 @@ type V2CreateTransactionRequest struct {
 	//
 	// Deprecated: This will be removed in a future release, please migrate away from it as soon as possible.
 	Force *bool `queryParam:"style=form,explode=true,name=force"`
+	// Schema version to use for validation
+	SchemaVersion *string `queryParam:"style=form,explode=true,name=schemaVersion"`
 	// The request body must contain at least one of the following objects:
 	//   - `postings`: suitable for simple transactions
 	//   - `script`: enabling more complex transactions with Numscript
@@ -50,6 +52,13 @@ func (o *V2CreateTransactionRequest) GetForce() *bool {
 		return nil
 	}
 	return o.Force
+}
+
+func (o *V2CreateTransactionRequest) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }
 
 func (o *V2CreateTransactionRequest) GetV2PostTransaction() components.V2PostTransaction {

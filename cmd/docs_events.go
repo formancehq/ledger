@@ -36,6 +36,7 @@ func NewDocEventsCommand() *cobra.Command {
 				events.DeletedMetadata{},
 				events.SavedMetadata{},
 				events.RevertedTransaction{},
+				events.UpdatedSchema{},
 			} {
 				schema := jsonschema.Reflect(o)
 				data, err := json.MarshalIndent(schema, "", "  ")

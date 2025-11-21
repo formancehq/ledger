@@ -315,6 +315,198 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
+## Insert or update a schema for a ledger
+
+<a id="opIdv2InsertSchema"></a>
+
+> Code samples
+
+```http
+POST http://localhost:8080/v2/{ledger}/schema/{version} HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+
+```
+
+`POST /v2/{ledger}/schema/{version}`
+
+> Body parameter
+
+```json
+{
+  "chart": {
+    "users": {
+      "$userID": {
+        ".pattern": "^[0-9]{16}$"
+      }
+    }
+  }
+}
+```
+
+<h3 id="insert-or-update-a-schema-for-a-ledger-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[V2SchemaData](#schemav2schemadata)|true|none|
+|ledger|path|string|true|Name of the ledger.|
+|version|path|string|true|Schema version.|
+
+> Example responses
+
+> default Response
+
+```json
+{
+  "errorCode": "VALIDATION",
+  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+}
+```
+
+<h3 id="insert-or-update-a-schema-for-a-ledger-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Schema inserted successfully|None|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:write )
+</aside>
+
+## Get a schema for a ledger by version
+
+<a id="opIdv2GetSchema"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/schema/{version} HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/schema/{version}`
+
+<h3 id="get-a-schema-for-a-ledger-by-version-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|ledger|path|string|true|Name of the ledger.|
+|version|path|string|true|Schema version.|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "data": {
+    "version": "v1.0.0",
+    "createdAt": "2023-01-01T00:00:00Z",
+    "data": {
+      "chart": {
+        "users": {
+          "$userID": {
+            ".pattern": "^[0-9]{16}$"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+<h3 id="get-a-schema-for-a-ledger-by-version-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Schema retrieved successfully|[V2SchemaResponse](#schemav2schemaresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
+## List all schemas for a ledger
+
+<a id="opIdv2ListSchemas"></a>
+
+> Code samples
+
+```http
+GET http://localhost:8080/v2/{ledger}/schema HTTP/1.1
+Host: localhost:8080
+Accept: application/json
+
+```
+
+`GET /v2/{ledger}/schema`
+
+<h3 id="list-all-schemas-for-a-ledger-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|cursor|query|string|false|The pagination cursor value|
+|pageSize|query|integer|false|The maximum number of results to return per page|
+|sort|query|string|false|The field to sort by|
+|order|query|string|false|The sort order|
+|ledger|path|string|true|Name of the ledger.|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|sort|created_at|
+|order|asc|
+|order|desc|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "cursor": {
+    "data": [
+      {
+        "version": "v1.0.0",
+        "createdAt": "2023-01-01T00:00:00Z",
+        "data": {
+          "chart": {
+            "users": {
+              "$userID": {
+                ".pattern": "^[0-9]{16}$"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "hasMore": true,
+    "next": "string",
+    "pageSize": 0
+  }
+}
+```
+
+<h3 id="list-all-schemas-for-a-ledger-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Schemas retrieved successfully|[V2SchemasCursorResponse](#schemav2schemascursorresponse)|
+|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+Authorization ( Scopes: ledger:read )
+</aside>
+
 ## Update ledger metadata
 
 <a id="opIdv2UpdateLedgerMetadata"></a>
@@ -495,6 +687,7 @@ Accept: application/json
   {
     "action": "string",
     "ik": "string",
+    "schemaVersion": "v1.0.0",
     "data": {
       "timestamp": "2019-08-24T14:15:22Z",
       "postings": [
@@ -538,6 +731,7 @@ Accept: application/json
 |continueOnFailure|query|boolean|false|Continue on failure|
 |atomic|query|boolean|false|Make bulk atomic|
 |parallel|query|boolean|false|Process bulk elements in parallel|
+|schemaVersion|query|string|false|Default schema version to use for validation (can be overridden per element)|
 |body|body|[V2Bulk](#schemav2bulk)|true|none|
 
 > Example responses
@@ -942,6 +1136,7 @@ Idempotency-Key: string
 |address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
 |dryRun|query|boolean|false|Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 #### Detailed descriptions
@@ -1368,6 +1563,7 @@ Idempotency-Key: string
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |force|query|boolean|false|Disable balance checks when passing postings|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2PostTransaction](#schemav2posttransaction)|true|The request body must contain at least one of the following objects:|
 
 #### Detailed descriptions
@@ -1643,6 +1839,7 @@ Idempotency-Key: string
 |id|path|integer(bigint)|true|Transaction ID.|
 |dryRun|query|boolean|false|Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 > Example responses
@@ -1707,6 +1904,7 @@ Accept: application/json
 |force|query|boolean|false|Force revert|
 |atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
 
 > Example responses
@@ -2018,7 +2216,8 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
         "type": "NEW_TRANSACTION",
         "data": {},
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-        "date": "2019-08-24T14:15:22Z"
+        "date": "2019-08-24T14:15:22Z",
+        "schemaVersion": "v1.0.0"
       }
     ]
   }
@@ -3304,7 +3503,8 @@ This operation does not require authentication
         "type": "NEW_TRANSACTION",
         "data": {},
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-        "date": "2019-08-24T14:15:22Z"
+        "date": "2019-08-24T14:15:22Z",
+        "schemaVersion": "v1.0.0"
       }
     ]
   }
@@ -3825,7 +4025,8 @@ This operation does not require authentication
   "type": "NEW_TRANSACTION",
   "data": {},
   "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-  "date": "2019-08-24T14:15:22Z"
+  "date": "2019-08-24T14:15:22Z",
+  "schemaVersion": "v1.0.0"
 }
 
 ```
@@ -3839,6 +4040,7 @@ This operation does not require authentication
 |data|object|true|none|none|
 |hash|string|true|none|none|
 |date|string(date-time)|true|none|none|
+|schemaVersion|string|false|none|Schema version used for validation|
 
 #### Enumerated Values
 
@@ -3848,6 +4050,7 @@ This operation does not require authentication
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
 |type|DELETE_METADATA|
+|type|UPDATED_SCHEMA|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -4347,6 +4550,8 @@ This operation does not require authentication
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
+|*anonymous*|SCHEMA_ALREADY_EXISTS|
+|*anonymous*|SCHEMA_NOT_SPECIFIED|
 |*anonymous*|OUTDATED_SCHEMA|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
@@ -4459,6 +4664,7 @@ This operation does not require authentication
   {
     "action": "string",
     "ik": "string",
+    "schemaVersion": "v1.0.0",
     "data": {
       "timestamp": "2019-08-24T14:15:22Z",
       "postings": [
@@ -4511,7 +4717,8 @@ This operation does not require authentication
 ```json
 {
   "action": "string",
-  "ik": "string"
+  "ik": "string",
+  "schemaVersion": "v1.0.0"
 }
 
 ```
@@ -4522,6 +4729,7 @@ This operation does not require authentication
 |---|---|---|---|---|
 |action|string|true|none|none|
 |ik|string|false|none|none|
+|schemaVersion|string|false|none|Schema version to use for validation|
 
 <h2 id="tocS_V2BulkElement">V2BulkElement</h2>
 <!-- backwards compatibility -->
@@ -4534,6 +4742,7 @@ This operation does not require authentication
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
@@ -4606,6 +4815,7 @@ xor
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
@@ -4718,6 +4928,7 @@ xor
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "targetId": "string",
     "targetType": "TRANSACTION",
@@ -4760,6 +4971,7 @@ and
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "id": 0,
     "force": true,
@@ -4802,6 +5014,7 @@ and
 {
   "action": "string",
   "ik": "string",
+  "schemaVersion": "v1.0.0",
   "data": {
     "targetId": "string",
     "targetType": "TRANSACTION",
@@ -5395,6 +5608,252 @@ and
 |» errorCode|string|true|none|none|
 |» errorDescription|string|true|none|none|
 |» errorDetails|string|false|none|none|
+
+<h2 id="tocS_V2ChartRules">V2ChartRules</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartrules"></a>
+<a id="schema_V2ChartRules"></a>
+<a id="tocSv2chartrules"></a>
+<a id="tocsv2chartrules"></a>
+
+```json
+{}
+
+```
+
+### Properties
+
+*None*
+
+<h2 id="tocS_V2ChartSegment">V2ChartSegment</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartsegment"></a>
+<a id="schema_V2ChartSegment"></a>
+<a id="tocSv2chartsegment"></a>
+<a id="tocsv2chartsegment"></a>
+
+```json
+{
+  "users": {
+    "$userID": {
+      ".pattern": "^[0-9]{16}$"
+    }
+  }
+}
+
+```
+
+Segment within a chart of account
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
+|.self|object|false|none|none|
+|.pattern|string|false|none|none|
+|.rules|[V2ChartRules](#schemav2chartrules)|false|none|none|
+|.metadata|object|false|none|none|
+|» **additionalProperties**|string|false|none|none|
+
+<h2 id="tocS_V2ChartOfAccounts">V2ChartOfAccounts</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartofaccounts"></a>
+<a id="schema_V2ChartOfAccounts"></a>
+<a id="tocSv2chartofaccounts"></a>
+<a id="tocsv2chartofaccounts"></a>
+
+```json
+{
+  "users": {
+    "$userID": {
+      ".pattern": "^[0-9]{16}$"
+    }
+  }
+}
+
+```
+
+Chart of account
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
+
+<h2 id="tocS_V2SchemaData">V2SchemaData</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemadata"></a>
+<a id="schema_V2SchemaData"></a>
+<a id="tocSv2schemadata"></a>
+<a id="tocsv2schemadata"></a>
+
+```json
+{
+  "chart": {
+    "users": {
+      "$userID": {
+        ".pattern": "^[0-9]{16}$"
+      }
+    }
+  }
+}
+
+```
+
+Schema data structure for ledger schemas
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|true|none|Chart of account|
+
+<h2 id="tocS_V2Schema">V2Schema</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schema"></a>
+<a id="schema_V2Schema"></a>
+<a id="tocSv2schema"></a>
+<a id="tocsv2schema"></a>
+
+```json
+{
+  "version": "v1.0.0",
+  "createdAt": "2023-01-01T00:00:00Z",
+  "data": {
+    "chart": {
+      "users": {
+        "$userID": {
+          ".pattern": "^[0-9]{16}$"
+        }
+      }
+    }
+  }
+}
+
+```
+
+Complete schema structure with metadata
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|version|string|true|none|Schema version|
+|createdAt|string(date-time)|true|none|Schema creation timestamp|
+|data|[V2SchemaData](#schemav2schemadata)|true|none|Schema data structure for ledger schemas|
+
+<h2 id="tocS_V2SchemaResponse">V2SchemaResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemaresponse"></a>
+<a id="schema_V2SchemaResponse"></a>
+<a id="tocSv2schemaresponse"></a>
+<a id="tocsv2schemaresponse"></a>
+
+```json
+{
+  "data": {
+    "version": "v1.0.0",
+    "createdAt": "2023-01-01T00:00:00Z",
+    "data": {
+      "chart": {
+        "users": {
+          "$userID": {
+            ".pattern": "^[0-9]{16}$"
+          }
+        }
+      }
+    }
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[V2Schema](#schemav2schema)|true|none|Complete schema structure with metadata|
+
+<h2 id="tocS_V2SchemasCursorResponse">V2SchemasCursorResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemascursorresponse"></a>
+<a id="schema_V2SchemasCursorResponse"></a>
+<a id="tocSv2schemascursorresponse"></a>
+<a id="tocsv2schemascursorresponse"></a>
+
+```json
+{
+  "cursor": {
+    "data": [
+      {
+        "version": "v1.0.0",
+        "createdAt": "2023-01-01T00:00:00Z",
+        "data": {
+          "chart": {
+            "users": {
+              "$userID": {
+                ".pattern": "^[0-9]{16}$"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "hasMore": true,
+    "next": "string",
+    "pageSize": 0
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|cursor|[V2SchemasCursor](#schemav2schemascursor)|true|none|none|
+
+<h2 id="tocS_V2SchemasCursor">V2SchemasCursor</h2>
+<!-- backwards compatibility -->
+<a id="schemav2schemascursor"></a>
+<a id="schema_V2SchemasCursor"></a>
+<a id="tocSv2schemascursor"></a>
+<a id="tocsv2schemascursor"></a>
+
+```json
+{
+  "data": [
+    {
+      "version": "v1.0.0",
+      "createdAt": "2023-01-01T00:00:00Z",
+      "data": {
+        "chart": {
+          "users": {
+            "$userID": {
+              ".pattern": "^[0-9]{16}$"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "hasMore": true,
+  "next": "string",
+  "pageSize": 0
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|data|[[V2Schema](#schemav2schema)]|true|none|[Complete schema structure with metadata]|
+|hasMore|boolean|true|none|none|
+|next|string|false|none|none|
+|pageSize|integer|true|none|none|
 
 <h2 id="tocS_V2CreateLedgerRequest">V2CreateLedgerRequest</h2>
 <!-- backwards compatibility -->

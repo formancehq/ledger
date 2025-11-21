@@ -24,6 +24,8 @@ const (
 	ErrMetadataOverride    = "METADATA_OVERRIDE"
 	ErrBulkSizeExceeded    = "BULK_SIZE_EXCEEDED"
 	ErrLedgerAlreadyExists = "LEDGER_ALREADY_EXISTS"
+	ErrSchemaAlreadyExists = "SCHEMA_ALREADY_EXISTS"
+	ErrSchemaNotSpecified  = "SCHEMA_NOT_SPECIFIED"
 
 	ErrInterpreterParse   = "INTERPRETER_PARSE"
 	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"
@@ -50,6 +52,12 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 		api.BadRequest(w, ErrValidation, err)
 	case errors.Is(err, ledgercontroller.ErrNotFound):
 		api.NotFound(w, err)
+	case errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
+		api.BadRequest(w, ErrValidation, errors.Unwrap(err))
+	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
+		api.BadRequest(w, ErrSchemaNotSpecified, errors.Unwrap(err))
+	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
+		api.NotFound(w, errors.Unwrap(err))
 	default:
 		HandleCommonErrors(w, r, err)
 	}
