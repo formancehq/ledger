@@ -49,6 +49,7 @@ type Store interface {
 	InsertSchema(ctx context.Context, data *ledger.Schema) error
 	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
 	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
+	FindLatestSchemaVersion(ctx context.Context) (*string, error)
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
 	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)

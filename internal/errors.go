@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+	"strings"
 )
 
 type ErrInvalidLedgerName struct {
@@ -100,12 +101,19 @@ func (e ErrInvalidSchema) Is(err error) bool {
 }
 
 type ErrInvalidAccount struct {
-	path    []string
-	segment string
+	path            []string
+	segment         string
+	patternMismatch bool
 }
 
 func (e ErrInvalidAccount) Error() string {
-	return fmt.Sprintf("segment `%v` is not allowed by the chart of accounts at `%v`", e.segment, e.path)
+	if len(e.path) == 0 {
+		return fmt.Sprintf("account starting with `%v` is not defined in the chart of accounts", e.segment)
+	} else if e.patternMismatch {
+		return fmt.Sprintf("segment `%v` defined by the chart of account at `%v` does not match the pattern", e.segment, strings.Join(e.path, ":"))
+	} else {
+		return fmt.Sprintf("segment `%v` is not allowed by the chart of accounts at `%v`", e.segment, strings.Join(e.path, ":"))
+	}
 }
 func (e ErrInvalidAccount) Is(err error) bool {
 	_, ok := err.(ErrInvalidAccount)

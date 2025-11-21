@@ -446,7 +446,7 @@ type ChartOfAccounts map[string]ChartSegment
 ```
 
 <a name="ChartOfAccounts.FindAccountSchema"></a>
-### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L252>)
+### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L264>)
 
 ```go
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error)
@@ -473,7 +473,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
 
 
 <a name="ChartOfAccounts.ValidatePosting"></a>
-### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L263>)
+### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L275>)
 
 ```go
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
@@ -673,7 +673,7 @@ func (s DeletedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="ErrAlreadyStarted"></a>
-## type [ErrAlreadyStarted](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L75>)
+## type [ErrAlreadyStarted](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L76>)
 
 
 
@@ -682,7 +682,7 @@ type ErrAlreadyStarted string
 ```
 
 <a name="NewErrAlreadyStarted"></a>
-### func [NewErrAlreadyStarted](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L86>)
+### func [NewErrAlreadyStarted](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L87>)
 
 ```go
 func NewErrAlreadyStarted(id string) ErrAlreadyStarted
@@ -691,7 +691,7 @@ func NewErrAlreadyStarted(id string) ErrAlreadyStarted
 
 
 <a name="ErrAlreadyStarted.Error"></a>
-### func \(ErrAlreadyStarted\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L77>)
+### func \(ErrAlreadyStarted\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L78>)
 
 ```go
 func (e ErrAlreadyStarted) Error() string
@@ -700,7 +700,7 @@ func (e ErrAlreadyStarted) Error() string
 
 
 <a name="ErrAlreadyStarted.Is"></a>
-### func \(ErrAlreadyStarted\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L81>)
+### func \(ErrAlreadyStarted\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L82>)
 
 ```go
 func (e ErrAlreadyStarted) Is(err error) bool
@@ -709,7 +709,7 @@ func (e ErrAlreadyStarted) Is(err error) bool
 
 
 <a name="ErrInvalidAccount"></a>
-## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L102-L105>)
+## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L103-L107>)
 
 
 
@@ -720,7 +720,7 @@ type ErrInvalidAccount struct {
 ```
 
 <a name="ErrInvalidAccount.Error"></a>
-### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L107>)
+### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L109>)
 
 ```go
 func (e ErrInvalidAccount) Error() string
@@ -729,7 +729,7 @@ func (e ErrInvalidAccount) Error() string
 
 
 <a name="ErrInvalidAccount.Is"></a>
-### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L110>)
+### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L118>)
 
 ```go
 func (e ErrInvalidAccount) Is(err error) bool
@@ -738,7 +738,7 @@ func (e ErrInvalidAccount) Is(err error) bool
 
 
 <a name="ErrInvalidBucketName"></a>
-## type [ErrInvalidBucketName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L25-L28>)
+## type [ErrInvalidBucketName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L26-L29>)
 
 
 
@@ -749,7 +749,7 @@ type ErrInvalidBucketName struct {
 ```
 
 <a name="ErrInvalidBucketName.Error"></a>
-### func \(ErrInvalidBucketName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L30>)
+### func \(ErrInvalidBucketName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L31>)
 
 ```go
 func (e ErrInvalidBucketName) Error() string
@@ -758,7 +758,7 @@ func (e ErrInvalidBucketName) Error() string
 
 
 <a name="ErrInvalidBucketName.Is"></a>
-### func \(ErrInvalidBucketName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L34>)
+### func \(ErrInvalidBucketName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L35>)
 
 ```go
 func (e ErrInvalidBucketName) Is(err error) bool
@@ -767,7 +767,7 @@ func (e ErrInvalidBucketName) Is(err error) bool
 
 
 <a name="ErrInvalidLedgerName"></a>
-## type [ErrInvalidLedgerName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L7-L10>)
+## type [ErrInvalidLedgerName](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L8-L11>)
 
 
 
@@ -778,7 +778,7 @@ type ErrInvalidLedgerName struct {
 ```
 
 <a name="ErrInvalidLedgerName.Error"></a>
-### func \(ErrInvalidLedgerName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L12>)
+### func \(ErrInvalidLedgerName\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L13>)
 
 ```go
 func (e ErrInvalidLedgerName) Error() string
@@ -787,7 +787,7 @@ func (e ErrInvalidLedgerName) Error() string
 
 
 <a name="ErrInvalidLedgerName.Is"></a>
-### func \(ErrInvalidLedgerName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L16>)
+### func \(ErrInvalidLedgerName\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L17>)
 
 ```go
 func (e ErrInvalidLedgerName) Is(err error) bool
@@ -796,7 +796,7 @@ func (e ErrInvalidLedgerName) Is(err error) bool
 
 
 <a name="ErrInvalidSchema"></a>
-## type [ErrInvalidSchema](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L90-L92>)
+## type [ErrInvalidSchema](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L91-L93>)
 
 
 
@@ -807,7 +807,7 @@ type ErrInvalidSchema struct {
 ```
 
 <a name="ErrInvalidSchema.Error"></a>
-### func \(ErrInvalidSchema\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L94>)
+### func \(ErrInvalidSchema\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L95>)
 
 ```go
 func (e ErrInvalidSchema) Error() string
@@ -816,7 +816,7 @@ func (e ErrInvalidSchema) Error() string
 
 
 <a name="ErrInvalidSchema.Is"></a>
-### func \(ErrInvalidSchema\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L97>)
+### func \(ErrInvalidSchema\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L98>)
 
 ```go
 func (e ErrInvalidSchema) Is(err error) bool
@@ -825,7 +825,7 @@ func (e ErrInvalidSchema) Is(err error) bool
 
 
 <a name="ErrPipelineAlreadyExists"></a>
-## type [ErrPipelineAlreadyExists](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L45>)
+## type [ErrPipelineAlreadyExists](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L46>)
 
 ErrPipelineAlreadyExists denotes a pipeline already created The store is in charge of returning this error on a failing call on Store.CreatePipeline
 
@@ -834,7 +834,7 @@ type ErrPipelineAlreadyExists PipelineConfiguration
 ```
 
 <a name="NewErrPipelineAlreadyExists"></a>
-### func [NewErrPipelineAlreadyExists](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L56>)
+### func [NewErrPipelineAlreadyExists](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L57>)
 
 ```go
 func NewErrPipelineAlreadyExists(pipelineConfiguration PipelineConfiguration) ErrPipelineAlreadyExists
@@ -843,7 +843,7 @@ func NewErrPipelineAlreadyExists(pipelineConfiguration PipelineConfiguration) Er
 
 
 <a name="ErrPipelineAlreadyExists.Error"></a>
-### func \(ErrPipelineAlreadyExists\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L47>)
+### func \(ErrPipelineAlreadyExists\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L48>)
 
 ```go
 func (e ErrPipelineAlreadyExists) Error() string
@@ -852,7 +852,7 @@ func (e ErrPipelineAlreadyExists) Error() string
 
 
 <a name="ErrPipelineAlreadyExists.Is"></a>
-### func \(ErrPipelineAlreadyExists\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L51>)
+### func \(ErrPipelineAlreadyExists\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L52>)
 
 ```go
 func (e ErrPipelineAlreadyExists) Is(err error) bool
@@ -861,7 +861,7 @@ func (e ErrPipelineAlreadyExists) Is(err error) bool
 
 
 <a name="ErrPipelineNotFound"></a>
-## type [ErrPipelineNotFound](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L60>)
+## type [ErrPipelineNotFound](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L61>)
 
 
 
@@ -870,7 +870,7 @@ type ErrPipelineNotFound string
 ```
 
 <a name="NewErrPipelineNotFound"></a>
-### func [NewErrPipelineNotFound](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L71>)
+### func [NewErrPipelineNotFound](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L72>)
 
 ```go
 func NewErrPipelineNotFound(id string) ErrPipelineNotFound
@@ -879,7 +879,7 @@ func NewErrPipelineNotFound(id string) ErrPipelineNotFound
 
 
 <a name="ErrPipelineNotFound.Error"></a>
-### func \(ErrPipelineNotFound\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L62>)
+### func \(ErrPipelineNotFound\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L63>)
 
 ```go
 func (e ErrPipelineNotFound) Error() string
@@ -888,7 +888,7 @@ func (e ErrPipelineNotFound) Error() string
 
 
 <a name="ErrPipelineNotFound.Is"></a>
-### func \(ErrPipelineNotFound\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L66>)
+### func \(ErrPipelineNotFound\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L67>)
 
 ```go
 func (e ErrPipelineNotFound) Is(err error) bool

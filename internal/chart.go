@@ -229,7 +229,11 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		} else if segment.Account != nil {
 			return segment.Account, nil
 		} else {
-			return nil, ErrInvalidAccount{path, nextSegment}
+			return nil, ErrInvalidAccount{
+				path:            path,
+				segment:         nextSegment,
+				patternMismatch: false,
+			}
 		}
 	}
 	if variableSegment != nil {
@@ -243,11 +247,19 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 			} else if variableSegment.Account != nil {
 				return variableSegment.Account, nil
 			} else {
-				return nil, ErrInvalidAccount{path, nextSegment}
+				return nil, ErrInvalidAccount{
+					path:            path,
+					segment:         nextSegment,
+					patternMismatch: false,
+				}
 			}
 		}
 	}
-	return nil, ErrInvalidAccount{path, nextSegment}
+	return nil, ErrInvalidAccount{
+		path:            path,
+		segment:         nextSegment,
+		patternMismatch: variableSegment != nil,
+	}
 }
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error) {
 	schema, err := findAccountSchema([]string{}, map[string]ChartSegment(*c), nil, strings.Split(account, ":"))

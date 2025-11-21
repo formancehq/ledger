@@ -248,21 +248,20 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 
 type ErrSchemaNotFound struct {
 	requestedVersion string
+	latestVersion    *string
 }
 
 func (e ErrSchemaNotFound) Error() string {
-	return fmt.Sprintf("schema version not found: `%s`", e.requestedVersion)
+	if e.latestVersion != nil {
+		return fmt.Sprintf("schema version `%s` not found, latest available version is `%s`", e.requestedVersion, *e.latestVersion)
+	} else {
+		return fmt.Sprintf("schema version `%s` not found, this ledger doesn't have a schema", e.requestedVersion)
+	}
 }
 
 func (e ErrSchemaNotFound) Is(err error) bool {
 	_, ok := err.(ErrSchemaNotFound)
 	return ok
-}
-
-func newErrSchemaNotFound(requestedVersion string) ErrSchemaNotFound {
-	return ErrSchemaNotFound{
-		requestedVersion,
-	}
 }
 
 type ErrSchemaValidationError struct {
@@ -271,7 +270,7 @@ type ErrSchemaValidationError struct {
 }
 
 func (e ErrSchemaValidationError) Error() string {
-	return fmt.Sprintf("schema validation error with version %s: %s", e.requestedSchema, e.err)
+	return fmt.Sprintf("schema version [%s]: %s", e.requestedSchema, e.err)
 }
 
 func (e ErrSchemaValidationError) Is(err error) bool {
@@ -286,18 +285,17 @@ func newErrSchemaValidationError(requestedSchema string, err error) ErrSchemaVal
 	}
 }
 
-type ErrSchemaNotSpecified struct{}
+type ErrSchemaNotSpecified struct {
+	latestVersion string
+}
 
 func (e ErrSchemaNotSpecified) Error() string {
-	return "a schema version must be specified for this ledger"
+	return fmt.Sprintf("a schema version must be specified for this ledger, latest available version is %v", e.latestVersion)
 }
 
 func (e ErrSchemaNotSpecified) Is(err error) bool {
 	_, ok := err.(ErrSchemaNotSpecified)
 	return ok
-}
-func newErrSchemaNotSpecified() ErrSchemaNotSpecified {
-	return ErrSchemaNotSpecified{}
 }
 
 type ErrSchemaAlreadyExists struct {

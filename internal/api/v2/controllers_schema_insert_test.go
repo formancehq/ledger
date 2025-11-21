@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -79,7 +80,7 @@ func TestInsertSchema(t *testing.T) {
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: "VALIDATION",
 			expectBackendCall: true,
-			returnErr:         ledgercontroller.ErrSchemaValidationError{},
+			returnErr:         fmt.Errorf("unexpected error while forging log: %w", ledgercontroller.ErrSchemaValidationError{}),
 		},
 	}
 

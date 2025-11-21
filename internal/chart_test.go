@@ -330,19 +330,24 @@ func TestAccountValidation(t *testing.T) {
 			},
 		},
 		{
+			name:          "invalid root segment",
+			address:       "bonk:012",
+			expectedError: "account starting with `bonk` is not defined in the chart of accounts",
+		},
+		{
 			name:          "invalid variable segment",
-			address:       "users:abc:main",
-			expectedError: "segment `abc` is not allowed by the chart of accounts at `[users]`",
+			address:       "bank:invalid",
+			expectedError: "segment `invalid` defined by the chart of account at `bank` does not match the pattern",
+		},
+		{
+			name:          "invalid non-root non-variable segment",
+			address:       "users:001:nope",
+			expectedError: "segment `nope` is not allowed by the chart of accounts at `users:001`",
 		},
 		{
 			name:          "non-account variable branch",
 			address:       "users:001",
-			expectedError: "segment `001` is not allowed by the chart of accounts at `[users]`",
-		},
-		{
-			name:          "non-account fixed branch",
-			address:       "users",
-			expectedError: "segment `users` is not allowed by the chart of accounts at `[]`",
+			expectedError: "segment `001` is not allowed by the chart of accounts at `users`",
 		},
 	} {
 		if tc.expectedAccount != nil {
