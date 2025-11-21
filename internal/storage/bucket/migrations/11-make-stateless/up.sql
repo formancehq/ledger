@@ -495,28 +495,6 @@ $do$
 			vsql = 'select setval(''"log_id_' || ledger.id || '"'', coalesce((select max(id) + 1 from logs where ledger = ''' || ledger.name || '''), 1)::bigint, false)';
 			execute vsql;
 
-			vsql = 'create trigger "set_effective_volumes_' || ledger.id || '" before insert on moves for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_effective_volumes()';
-			execute vsql;
-
-			vsql = 'create trigger "update_effective_volumes_' || ledger.id || '" after insert on moves for each row when (new.ledger = ''' || ledger.name || ''') execute procedure update_effective_volumes()';
-			execute vsql;
-
-			-- logs hash
-			vsql = 'create trigger "set_log_hash_' || ledger.id || '" before insert on logs for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_log_hash()';
-			execute vsql;
-
-			vsql = 'create trigger "update_account_metadata_history_' || ledger.id || '" after update on "accounts" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure update_account_metadata_history()';
-			execute vsql;
-
-			vsql = 'create trigger "insert_account_metadata_history_' || ledger.id || '" after insert on "accounts" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure insert_account_metadata_history()';
-			execute vsql;
-
-			vsql = 'create trigger "update_transaction_metadata_history_' || ledger.id || '" after update on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure update_transaction_metadata_history()';
-			execute vsql;
-
-			vsql = 'create trigger "insert_transaction_metadata_history_' || ledger.id || '" after insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure insert_transaction_metadata_history()';
-			execute vsql;
-
 			vsql = 'create trigger "transaction_set_addresses_' || ledger.id || '" before insert on transactions for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_transaction_addresses()';
 			execute vsql;
 
@@ -524,6 +502,35 @@ $do$
 			execute vsql;
 
 			vsql = 'create trigger "transaction_set_addresses_segments_' || ledger.id || '"	before insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_transaction_addresses_segments()';
+			execute vsql;
+		end loop;
+
+		for ledger in select * from _system.ledgers where bucket = current_schema and features->>'ACCOUNT_METADATA_HISTORY' = 'SYNC' loop
+			vsql = 'create trigger "update_account_metadata_history_' || ledger.id || '" after update on "accounts" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure update_account_metadata_history()';
+			execute vsql;
+
+			vsql = 'create trigger "insert_account_metadata_history_' || ledger.id || '" after insert on "accounts" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure insert_account_metadata_history()';
+			execute vsql;
+		end loop;
+
+		for ledger in select * from _system.ledgers where bucket = current_schema and features->>'TRANSACTION_METADATA_HISTORY' = 'SYNC' loop
+			vsql = 'create trigger "update_transaction_metadata_history_' || ledger.id || '" after update on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure update_transaction_metadata_history()';
+			execute vsql;
+
+			vsql = 'create trigger "insert_transaction_metadata_history_' || ledger.id || '" after insert on "transactions" for each row when (new.ledger = ''' || ledger.name || ''') execute procedure insert_transaction_metadata_history()';
+			execute vsql;
+		end loop;
+
+		for ledger in select * from _system.ledgers where bucket = current_schema and features->>'MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES' = 'SYNC' loop
+			vsql = 'create trigger "set_effective_volumes_' || ledger.id || '" before insert on moves for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_effective_volumes()';
+			execute vsql;
+
+			vsql = 'create trigger "update_effective_volumes_' || ledger.id || '" after insert on moves for each row when (new.ledger = ''' || ledger.name || ''') execute procedure update_effective_volumes()';
+			execute vsql;
+		end loop;
+
+		for ledger in select * from _system.ledgers where bucket = current_schema and features->>'HASH_LOGS' = 'SYNC' loop
+			vsql = 'create trigger "set_log_hash_' || ledger.id || '" before insert on logs for each row when (new.ledger = ''' || ledger.name || ''') execute procedure set_log_hash()';
 			execute vsql;
 		end loop;
 	END
