@@ -9,7 +9,6 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
@@ -34,8 +33,8 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindSchemas(gomock.Any(), gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Rollback(gomock.Any()).
@@ -69,8 +68,8 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindSchemas(gomock.Any(), gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Rollback(gomock.Any()).
@@ -82,8 +81,8 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindSchemas(gomock.Any(), gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Schema]{}, nil)
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).
