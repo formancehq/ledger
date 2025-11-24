@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 func TestChartValidation(t *testing.T) {
@@ -29,7 +32,7 @@ func TestChartValidation(t *testing.T) {
             },
             "out": {
                 ".metadata": {
-                    "key": "value"
+                    "foo": {}
                 },
                 ".rules": {}
             },
@@ -63,8 +66,8 @@ func TestChartValidation(t *testing.T) {
 								},
 								"out": {
 									Account: &ChartAccount{
-										Metadata: map[string]string{
-											"key": "value",
+										Metadata: map[string]ChartAccountMetadata{
+											"foo": {},
 										},
 									},
 								},
@@ -140,7 +143,7 @@ func TestChartValidation(t *testing.T) {
 				"users": {
 					"$userID": {
 						".metadata": {
-							"key": "value"
+							"foo": {}
 						}
 					}
 				}
@@ -255,15 +258,15 @@ func testChart() ChartOfAccounts {
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{
 						Rules: ChartAccountRules{},
-						Metadata: map[string]string{
-							"account_is": "bank subaccount",
+						Metadata: map[string]ChartAccountMetadata{
+							"bank_subaccount": {},
 						},
 					},
 				},
 			},
 			Account: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "main bank account",
+				Metadata: map[string]ChartAccountMetadata{
+					"root_bank_account": {},
 				},
 			},
 		},
@@ -275,8 +278,8 @@ func testChart() ChartOfAccounts {
 					FixedSegments: map[string]ChartSegment{
 						"main": {
 							Account: &ChartAccount{
-								Metadata: map[string]string{
-									"account_is": "main user account",
+								Metadata: map[string]ChartAccountMetadata{
+									"main_user_account": {},
 								},
 							},
 						},
@@ -309,8 +312,8 @@ func TestAccountValidation(t *testing.T) {
 			name:    "non-leaf account",
 			address: "bank",
 			expectedAccount: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "main bank account",
+				Metadata: map[string]ChartAccountMetadata{
+					"root_bank_account": {},
 				},
 			},
 		},
@@ -318,8 +321,8 @@ func TestAccountValidation(t *testing.T) {
 			name:    "leaf account",
 			address: "bank:012",
 			expectedAccount: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "bank subaccount",
+				Metadata: map[string]ChartAccountMetadata{
+					"bank_subaccount": {},
 				},
 			},
 		},
@@ -327,8 +330,8 @@ func TestAccountValidation(t *testing.T) {
 			name:    "address with inner variable segment",
 			address: "users:001:main",
 			expectedAccount: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "main user account",
+				Metadata: map[string]ChartAccountMetadata{
+					"main_user_account": {},
 				},
 			},
 		},
@@ -351,6 +354,11 @@ func TestAccountValidation(t *testing.T) {
 			name:          "non-account variable branch",
 			address:       "users:001",
 			expectedError: "segment `001` is not allowed by the chart of accounts at `users`",
+		},
+		{
+			name:          "non-account fixed branch",
+			address:       "users",
+			expectedError: "account `users` is not defined in the chart of accounts",
 		},
 	} {
 		if tc.expectedAccount != nil {
@@ -405,6 +413,54 @@ func TestPostingValidation(t *testing.T) {
 			require.ErrorIs(t, err, ErrInvalidAccount{}, tc.name)
 		} else {
 			err := chart.ValidatePosting(tc.posting)
+			require.NoError(t, err, tc.name)
+		}
+	}
+}
+
+func TestMetadataValidation(t *testing.T) {
+	t.Parallel()
+
+	chart := testChart()
+
+	type testCase struct {
+		name          string
+		account       string
+		metadata      metadata.Metadata
+		expectedError *string
+	}
+
+	for _, tc := range []testCase{
+		{
+			name:    "valid metadata",
+			account: "bank:001",
+			metadata: metadata.Metadata{
+				"bank_subaccount": "test",
+			},
+			expectedError: nil,
+		},
+		{
+			name:    "invalid metadata",
+			account: "bank:001",
+			metadata: metadata.Metadata{
+				"wrong": "test",
+			},
+			expectedError: pointer.For("invalid metadata: the chart of accounts does not allow key `wrong` on account `bank:001`"),
+		},
+		{
+			name:    "invalid account",
+			account: "bonk",
+			metadata: metadata.Metadata{
+				"bank_subaccount": "test",
+			},
+			expectedError: pointer.For("account `bonk` is not defined in the chart of accounts"),
+		},
+	} {
+		if tc.expectedError != nil {
+			err := chart.ValidateAccountMetadata(tc.account, tc.metadata)
+			require.EqualError(t, err, *tc.expectedError, tc.name)
+		} else {
+			err := chart.ValidateAccountMetadata(tc.account, tc.metadata)
 			require.NoError(t, err, tc.name)
 		}
 	}

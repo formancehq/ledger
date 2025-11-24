@@ -103,12 +103,17 @@ func (e ErrInvalidSchema) Is(err error) bool {
 type ErrInvalidAccount struct {
 	path            []string
 	segment         string
+	hasSubsegments  bool
 	patternMismatch bool
 }
 
 func (e ErrInvalidAccount) Error() string {
 	if len(e.path) == 0 {
-		return fmt.Sprintf("account starting with `%v` is not defined in the chart of accounts", e.segment)
+		if e.hasSubsegments {
+			return fmt.Sprintf("account starting with `%v` is not defined in the chart of accounts", e.segment)
+		} else {
+			return fmt.Sprintf("account `%v` is not defined in the chart of accounts", e.segment)
+		}
 	} else if e.patternMismatch {
 		return fmt.Sprintf("segment `%v` defined by the chart of account at `%v` does not match the pattern", e.segment, strings.Join(e.path, ":"))
 	} else {
@@ -117,5 +122,18 @@ func (e ErrInvalidAccount) Error() string {
 }
 func (e ErrInvalidAccount) Is(err error) bool {
 	_, ok := err.(ErrInvalidAccount)
+	return ok
+}
+
+type ErrInvalidMetadata struct {
+	account string
+	key     string
+}
+
+func (e ErrInvalidMetadata) Error() string {
+	return fmt.Sprintf("invalid metadata: the chart of accounts does not allow key `%s` on account `%s`", e.key, e.account)
+}
+func (e ErrInvalidMetadata) Is(err error) bool {
+	_, ok := err.(ErrInvalidMetadata)
 	return ok
 }

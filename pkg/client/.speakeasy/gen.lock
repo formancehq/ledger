@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: cb201f943232471bf3385bb49740ec3e
+  docChecksum: 0dff7fc81c577eff2014ac0a13919920
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -84,7 +84,8 @@ generatedFiles:
   - /models/components/v2bulkelementresult.go
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
-  - /models/components/v2chartrules.go
+  - /models/components/v2chartaccountmetadata.go
+  - /models/components/v2chartaccountrules.go
   - /models/components/v2chartsegment.go
   - /models/components/v2configinforesponse.go
   - /models/components/v2createexporterresponse.go
@@ -260,7 +261,8 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransaction.md
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
-  - docs/models/components/v2chartrules.md
+  - docs/models/components/v2chartaccountmetadata.md
+  - docs/models/components/v2chartaccountrules.md
   - docs/models/components/v2chartsegment.md
   - docs/models/components/v2configinforesponse.md
   - docs/models/components/v2createexporterresponse.md

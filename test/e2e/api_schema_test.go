@@ -63,9 +63,11 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("^[0-9]{3}$"),
-										DotRules:    &components.V2ChartRules{},
-										DotMetadata: map[string]string{},
+										DotPattern: pointer.For("^[0-9]{3}$"),
+										DotRules:   &components.V2ChartAccountRules{},
+										DotMetadata: map[string]components.V2ChartAccountMetadata{
+											"foo": {},
+										},
 									},
 								},
 							},
@@ -90,9 +92,11 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("^[0-9]{3}$"),
-										DotRules:    &components.V2ChartRules{},
-										DotMetadata: map[string]string{},
+										DotPattern: pointer.For("^[0-9]{3}$"),
+										DotRules:   &components.V2ChartAccountRules{},
+										DotMetadata: map[string]components.V2ChartAccountMetadata{
+											"foo": {},
+										},
 									},
 								},
 							},
@@ -117,9 +121,11 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("^[0-9]{3}$"),
-										DotRules:    &components.V2ChartRules{},
-										DotMetadata: map[string]string{},
+										DotPattern: pointer.For("^[0-9]{3}$"),
+										DotRules:   &components.V2ChartAccountRules{},
+										DotMetadata: map[string]components.V2ChartAccountMetadata{
+											"foo": {},
+										},
 									},
 								},
 							},
@@ -196,6 +202,11 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
+							AccountMetadata: map[string]map[string]string{
+								"users:001": {
+									"foo": "test",
+								},
+							},
 							Postings: []components.V2Posting{
 								{
 									Source:      "bank:001",
@@ -277,6 +288,37 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
+							Postings: []components.V2Posting{
+								{
+									Source:      "bank",
+									Destination: "users:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+								{
+									Source:      "users:001",
+									Destination: "bank",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
+
+				It("should fail with invalid metadata", func(specContext SpecContext) {
+					schemaVersion := "v1.0.0"
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force: pointer.For(true),
+							AccountMetadata: map[string]map[string]string{
+								"users:001": {
+									"invalid": "test",
+								},
+							},
 							Postings: []components.V2Posting{
 								{
 									Source:      "bank",

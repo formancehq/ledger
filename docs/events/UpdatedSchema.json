@@ -7,7 +7,7 @@
       "properties": {
         "Metadata": {
           "additionalProperties": {
-            "type": "string"
+            "$ref": "#/$defs/ChartAccountMetadata"
           },
           "type": "object"
         },
@@ -21,6 +21,11 @@
         "Metadata",
         "Rules"
       ]
+    },
+    "ChartAccountMetadata": {
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
     },
     "ChartAccountRules": {
       "properties": {},

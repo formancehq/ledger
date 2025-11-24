@@ -226,6 +226,12 @@ func (p CreatedTransaction) ValidateWithSchema(schema Schema) error {
 			return err
 		}
 	}
+	for account, metadata := range p.AccountMetadata {
+		err := schema.Chart.ValidateAccountMetadata(account, metadata)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

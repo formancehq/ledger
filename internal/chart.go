@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type ChartAccountRules struct{}
 
+type ChartAccountMetadata struct{}
+
 type ChartAccount struct {
-	Metadata map[string]string
+	Metadata map[string]ChartAccountMetadata
 	Rules    ChartAccountRules
 }
 
@@ -233,6 +237,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 				path:            path,
 				segment:         nextSegment,
 				patternMismatch: false,
+				hasSubsegments:  len(account) > 1,
 			}
 		}
 	}
@@ -251,6 +256,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 					path:            path,
 					segment:         nextSegment,
 					patternMismatch: false,
+					hasSubsegments:  len(account) > 1,
 				}
 			}
 		}
@@ -259,6 +265,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		path:            path,
 		segment:         nextSegment,
 		patternMismatch: variableSegment != nil,
+		hasSubsegments:  len(account) > 1,
 	}
 }
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error) {
@@ -277,6 +284,22 @@ func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
 	_, err = c.FindAccountSchema(posting.Destination)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *ChartOfAccounts) ValidateAccountMetadata(account string, metadata metadata.Metadata) error {
+	schema, err := c.FindAccountSchema(account)
+	if err != nil {
+		return err
+	}
+	for key := range metadata {
+		if _, ok := schema.Metadata[key]; !ok {
+			return ErrInvalidMetadata{
+				account: account,
+				key:     key,
+			}
+		}
 	}
 	return nil
 }

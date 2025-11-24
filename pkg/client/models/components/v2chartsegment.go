@@ -11,11 +11,11 @@ type DotSelf struct {
 
 // V2ChartSegment - Segment within a chart of account
 type V2ChartSegment struct {
-	DotSelf              *DotSelf                  `json:".self,omitempty"`
-	DotPattern           *string                   `json:".pattern,omitempty"`
-	DotRules             *V2ChartRules             `json:".rules,omitempty"`
-	DotMetadata          map[string]string         `json:".metadata,omitempty"`
-	AdditionalProperties map[string]V2ChartSegment `additionalProperties:"true" json:"-"`
+	DotSelf              *DotSelf                          `json:".self,omitempty"`
+	DotPattern           *string                           `json:".pattern,omitempty"`
+	DotRules             *V2ChartAccountRules              `json:".rules,omitempty"`
+	DotMetadata          map[string]V2ChartAccountMetadata `json:".metadata,omitempty"`
+	AdditionalProperties map[string]V2ChartSegment         `additionalProperties:"true" json:"-"`
 }
 
 func (v V2ChartSegment) MarshalJSON() ([]byte, error) {
@@ -43,14 +43,14 @@ func (o *V2ChartSegment) GetDotPattern() *string {
 	return o.DotPattern
 }
 
-func (o *V2ChartSegment) GetDotRules() *V2ChartRules {
+func (o *V2ChartSegment) GetDotRules() *V2ChartAccountRules {
 	if o == nil {
 		return nil
 	}
 	return o.DotRules
 }
 
-func (o *V2ChartSegment) GetDotMetadata() map[string]string {
+func (o *V2ChartSegment) GetDotMetadata() map[string]V2ChartAccountMetadata {
 	if o == nil {
 		return nil
 	}
