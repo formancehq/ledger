@@ -967,6 +967,12 @@ Idempotency-Key: string
 
 <h3 id="add-metadata-to-an-account-responseschema">Response Schema</h3>
 
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|204|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
+
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
@@ -1019,6 +1025,12 @@ Delete metadata by key
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <h3 id="delete-metadata-by-key-responseschema">Response Schema</h3>
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|2XX|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1471,6 +1483,12 @@ Idempotency-Key: string
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|[V2CreateTransactionResponse](#schemav2createtransactionresponse)|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|200|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
+
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
@@ -1661,6 +1679,12 @@ Idempotency-Key: string
 
 <h3 id="set-the-metadata-of-a-transaction-by-its-id-responseschema">Response Schema</h3>
 
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|204|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
+
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
@@ -1677,6 +1701,7 @@ POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Idempotency-Key: string
 
 ```
 
@@ -1702,6 +1727,7 @@ Accept: application/json
 |force|query|boolean|false|Force revert|
 |atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
+|Idempotency-Key|header|string|false|Use an idempotency key|
 |body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
 
 > Example responses
@@ -1803,6 +1829,12 @@ Accept: application/json
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|OK|[V2CreateTransactionResponse](#schemav2createtransactionresponse)|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
