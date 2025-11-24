@@ -362,11 +362,12 @@ func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q com
 	)
 }
 
-func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
 	var (
 		createdTransaction *ledger.CreatedTransaction
 		log                *ledger.Log
 		err                error
+		idempotencyHit bool
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -374,22 +375,23 @@ func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters
 		c.tracer,
 		c.createTransactionHistogram,
 		func(ctx context.Context) (any, error) {
-			log, createdTransaction, err = c.underlying.CreateTransaction(ctx, parameters)
+			log, createdTransaction, idempotencyHit, err = c.underlying.CreateTransaction(ctx, parameters)
 			return nil, err
 		},
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
-	return log, createdTransaction, nil
+	return log, createdTransaction, idempotencyHit, nil
 }
 
-func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, bool, error) {
 	var (
 		revertedTransaction *ledger.RevertedTransaction
 		log                 *ledger.Log
 		err                 error
+		idempotencyHit bool
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -397,63 +399,106 @@ func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters
 		c.tracer,
 		c.revertTransactionHistogram,
 		func(ctx context.Context) (any, error) {
-			log, revertedTransaction, err = c.underlying.RevertTransaction(ctx, parameters)
+			log, revertedTransaction, idempotencyHit, err = c.underlying.RevertTransaction(ctx, parameters)
 			return nil, err
 		},
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
-	return log, revertedTransaction, nil
+	return log, revertedTransaction, idempotencyHit, nil
 }
 
-func (c *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+func (c *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool, error) {
+	var (
+		idempotencyHit bool
+		err error
+		log *ledger.Log
+	)
+	_, err = tracing.TraceWithMetric(
 		ctx,
 		"SaveTransactionMetadata",
 		c.tracer,
 		c.saveTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
-			return c.underlying.SaveTransactionMetadata(ctx, parameters)
+			log, idempotencyHit, err = c.underlying.SaveTransactionMetadata(ctx, parameters)
+			return nil, err
 		},
 	)
+	if err != nil {
+		return nil, false, err
+	}
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, bool, error) {
+	var (
+		idempotencyHit bool
+		err error
+		log *ledger.Log
+	)
+	_, err = tracing.TraceWithMetric(
 		ctx,
 		"SaveAccountMetadata",
 		c.tracer,
 		c.saveAccountMetadataHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
-			return c.underlying.SaveAccountMetadata(ctx, parameters)
+			log, idempotencyHit, err = c.underlying.SaveAccountMetadata(ctx, parameters)
+			return nil, err
 		},
 	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+func (c *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
+	var (
+		idempotencyHit bool
+		err error
+		log *ledger.Log
+	)
+	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteTransactionMetadata",
 		c.tracer,
 		c.deleteTransactionMetadataHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
-			return c.underlying.DeleteTransactionMetadata(ctx, parameters)
+			log, idempotencyHit, err = c.underlying.DeleteTransactionMetadata(ctx, parameters)
+			return nil, err
 		},
 	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
-	return tracing.TraceWithMetric(
+func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
+	var (
+		idempotencyHit bool
+		err error
+		log *ledger.Log
+	)
+	_, err = tracing.TraceWithMetric(
 		ctx,
 		"DeleteAccountMetadata",
 		c.tracer,
 		c.deleteAccountMetadataHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
-			return c.underlying.DeleteAccountMetadata(ctx, parameters)
+			log, idempotencyHit, err = c.underlying.DeleteAccountMetadata(ctx, parameters)
+			return nil, err
 		},
 	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return log, idempotencyHit, nil
 }
 
 func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {

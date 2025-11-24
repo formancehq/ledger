@@ -91,14 +91,14 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	store Store,
 	parameters Parameters[INPUT],
 	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
-) (*ledger.Log, *OUTPUT, error) {
+) (*ledger.Log, *OUTPUT, bool, error) {
 	if parameters.IdempotencyKey != "" {
 		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 		if output != nil {
-			return log, output, nil
+			return log, output, true, nil
 		}
 	}
 
@@ -117,19 +117,19 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 			case errors.Is(err, ledgerstore.ErrIdempotencyKeyConflict{}):
 				log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, false, err
 				}
 				if output == nil {
 					panic("incoherent error, received duplicate IK but log not found in database")
 				}
 
-				return log, output, nil
+				return log, output, true, nil
 			default:
-				return nil, nil, fmt.Errorf("unexpected error while forging log: %w", err)
+				return nil, nil, false, fmt.Errorf("unexpected error while forging log: %w", err)
 			}
 		}
 
-		return log, output, nil
+		return log, output, false, nil
 	}
 }
 

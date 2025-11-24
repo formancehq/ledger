@@ -70,7 +70,7 @@ func TestAccountsDeleteMetadata(t *testing.T) {
 							Key:     "foo",
 						},
 					}).
-					Return(&ledger.Log{}, tc.returnErr)
+					Return(&ledger.Log{}, false, tc.returnErr)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")

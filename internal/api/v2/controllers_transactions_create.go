@@ -37,7 +37,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
+		_, res, _, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
 		if err != nil {
 			switch {
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):

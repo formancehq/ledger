@@ -412,7 +412,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 	}, err
 }
 
-func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 
@@ -482,7 +482,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 	}, nil
 }
 
-func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, bool, error) {
 	return ctrl.revertTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.revertTransaction)
 }
 
@@ -498,9 +498,9 @@ func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, stor
 	}, nil
 }
 
-func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
-	log, _, err := ctrl.saveTransactionMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.saveTransactionMetadata)
-	return log, err
+func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool,error) {
+	log, _, idempotencyHit, err := ctrl.saveTransactionMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.saveTransactionMetadata)
+	return log, idempotencyHit, err
 }
 
 func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
@@ -518,10 +518,10 @@ func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store St
 	}, nil
 }
 
-func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	log, _, err := ctrl.saveAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.saveAccountMetadata)
+func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, bool, error) {
+	log, _, idempotencyHit, err := ctrl.saveAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.saveAccountMetadata)
 
-	return log, err
+	return log, idempotencyHit, err
 }
 
 func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
@@ -541,9 +541,9 @@ func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, st
 	}, nil
 }
 
-func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
-	log, _, err := ctrl.deleteTransactionMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteTransactionMetadata)
-	return log, err
+func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
+	log, _, idempotencyHit, err := ctrl.deleteTransactionMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteTransactionMetadata)
+	return log, idempotencyHit, err
 }
 
 func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
@@ -559,9 +559,9 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 	}, nil
 }
 
-func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
-	log, _, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteAccountMetadata)
-	return log, err
+func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
+	log, _, idempotencyHit, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteAccountMetadata)
+	return log, idempotencyHit, err
 }
 
 var _ Controller = (*DefaultController)(nil)

@@ -80,7 +80,7 @@ func TestTransactionsRevert(t *testing.T) {
 				}).
 				Return(&ledger.Log{}, &ledger.RevertedTransaction{
 					RevertTransaction: tc.returnTx,
-				}, tc.returnErr)
+				}, false, tc.returnErr)
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
 
