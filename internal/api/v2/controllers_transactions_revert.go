@@ -36,7 +36,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_, ret, err := l.RevertTransaction(
+	_, ret, _, err := l.RevertTransaction(
 		r.Context(),
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "force"),

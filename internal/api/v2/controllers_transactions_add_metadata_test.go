@@ -95,7 +95,7 @@ func TestTransactionsAddMetadata(t *testing.T) {
 							Metadata:      testCase.body.(metadata.Metadata),
 						},
 					}).
-					Return(nil, testCase.returnErr)
+					Return(nil, false, testCase.returnErr)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")

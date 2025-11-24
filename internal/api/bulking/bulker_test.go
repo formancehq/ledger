@@ -74,7 +74,7 @@ func TestBulk(t *testing.T) {
 								Timestamp: now,
 							},
 						},
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []BulkElementResult{{
 				Data: ledger.Transaction{
@@ -112,7 +112,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -140,7 +140,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -161,7 +161,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, &ledger.RevertedTransaction{}, nil)
+					}, &ledger.RevertedTransaction{}, false, nil)
 			},
 			expectResults: []BulkElementResult{{
 				Data: ledger.Transaction{},
@@ -187,7 +187,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -211,7 +211,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []BulkElementResult{{}},
 		},
@@ -257,7 +257,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -267,7 +267,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil, errors.New("unexpected error"))
+					Return(nil, false, errors.New("unexpected error"))
 			},
 			expectResults: []BulkElementResult{{}, {
 				Error: errors.New("unexpected error"),
@@ -319,7 +319,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -329,7 +329,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil, errors.New("unexpected error"))
+					Return(nil, false, errors.New("unexpected error"))
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -341,7 +341,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []BulkElementResult{{}, {
 				Error: errors.New("unexpected error"),
@@ -388,7 +388,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -401,7 +401,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(1)),
-					}, nil)
+					}, false, nil)
 
 				mockLedger.EXPECT().
 					Commit(gomock.Any()).

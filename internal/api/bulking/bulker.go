@@ -140,7 +140,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			return nil, 0, fmt.Errorf("error parsing element: %s", err)
 		}
 
-		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
+		log, createTransactionResult, _, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input:          *rs,
@@ -164,7 +164,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			if err := json.Unmarshal(req.TargetID, &address); err != nil {
 				return nil, 0, err
 			}
-			log, err = ctrl.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
+			log, _, err = ctrl.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: ledgercontroller.SaveAccountMetadata{
@@ -177,7 +177,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			if err := json.Unmarshal(req.TargetID, &transactionID); err != nil {
 				return nil, 0, err
 			}
-			log, err = ctrl.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
+			log, _, err = ctrl.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: ledgercontroller.SaveTransactionMetadata{
@@ -196,7 +196,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 	case ActionRevertTransaction:
 		req := data.Data.(RevertTransactionRequest)
 
-		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
+		log, revertTransactionResult, _, err := ctrl.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
 			Input: ledgercontroller.RevertTransaction{
@@ -225,7 +225,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				return nil, 0, err
 			}
 
-			log, err = ctrl.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
+			log, _, err = ctrl.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: ledgercontroller.DeleteAccountMetadata{
@@ -239,7 +239,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 				return nil, 0, err
 			}
 
-			log, err = ctrl.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
+			log, _, err = ctrl.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
 				Input: ledgercontroller.DeleteTransactionMetadata{
