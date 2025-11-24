@@ -84,7 +84,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
+		_, res, _, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
 			RunScript: ledgercontroller.TxToScriptData(txData, false),
 		}))
 		if err != nil {
@@ -115,7 +115,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, res, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
+	_, res, _, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
 		RunScript: ledgercontroller.RunScript{
 			Script:    *script,
 			Timestamp: payload.Timestamp,

@@ -30,7 +30,7 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
+	if _, _, err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
 		TransactionID: txID,
 		Metadata:      m,
 	})); err != nil {
