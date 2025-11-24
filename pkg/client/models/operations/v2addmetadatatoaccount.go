@@ -60,6 +60,7 @@ func (o *V2AddMetadataToAccountRequest) GetRequestBody() map[string]string {
 
 type V2AddMetadataToAccountResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
+	Headers  map[string][]string
 }
 
 func (o *V2AddMetadataToAccountResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -67,4 +68,11 @@ func (o *V2AddMetadataToAccountResponse) GetHTTPMeta() components.HTTPMetadata {
 		return components.HTTPMetadata{}
 	}
 	return o.HTTPMeta
+}
+
+func (o *V2AddMetadataToAccountResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

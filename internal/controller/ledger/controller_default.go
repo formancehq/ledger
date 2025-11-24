@@ -498,7 +498,7 @@ func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, stor
 	}, nil
 }
 
-func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool,error) {
+func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool, error) {
 	log, _, idempotencyHit, err := ctrl.saveTransactionMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.saveTransactionMetadata)
 	return log, idempotencyHit, err
 }

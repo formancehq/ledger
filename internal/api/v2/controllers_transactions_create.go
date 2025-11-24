@@ -37,7 +37,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_, res, _, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
+		_, res, idempotencyHit, err := l.CreateTransaction(r.Context(), getCommandParameters(r, *createTransaction))
 		if err != nil {
 			switch {
 			case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
@@ -58,6 +58,9 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 				common.HandleCommonWriteErrors(w, r, err)
 			}
 			return
+		}
+		if idempotencyHit {
+			w.Header().Set("Idempotency-Hit", "true")
 		}
 
 		api.Ok(w, renderTransaction(r, res.Transaction))

@@ -60,6 +60,7 @@ func (o *V2DeleteTransactionMetadataRequest) GetIdempotencyKey() *string {
 
 type V2DeleteTransactionMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
+	Headers  map[string][]string
 }
 
 func (o *V2DeleteTransactionMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -67,4 +68,11 @@ func (o *V2DeleteTransactionMetadataResponse) GetHTTPMeta() components.HTTPMetad
 		return components.HTTPMetadata{}
 	}
 	return o.HTTPMeta
+}
+
+func (o *V2DeleteTransactionMetadataResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

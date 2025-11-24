@@ -367,7 +367,7 @@ func (c *ControllerWithTraces) CreateTransaction(ctx context.Context, parameters
 		createdTransaction *ledger.CreatedTransaction
 		log                *ledger.Log
 		err                error
-		idempotencyHit bool
+		idempotencyHit     bool
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -391,7 +391,7 @@ func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters
 		revertedTransaction *ledger.RevertedTransaction
 		log                 *ledger.Log
 		err                 error
-		idempotencyHit bool
+		idempotencyHit      bool
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -413,8 +413,8 @@ func (c *ControllerWithTraces) RevertTransaction(ctx context.Context, parameters
 func (c *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool, error) {
 	var (
 		idempotencyHit bool
-		err error
-		log *ledger.Log
+		err            error
+		log            *ledger.Log
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -435,8 +435,8 @@ func (c *ControllerWithTraces) SaveTransactionMetadata(ctx context.Context, para
 func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, bool, error) {
 	var (
 		idempotencyHit bool
-		err error
-		log *ledger.Log
+		err            error
+		log            *ledger.Log
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -458,8 +458,8 @@ func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, paramete
 func (c *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
 	var (
 		idempotencyHit bool
-		err error
-		log *ledger.Log
+		err            error
+		log            *ledger.Log
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
@@ -481,8 +481,8 @@ func (c *ControllerWithTraces) DeleteTransactionMetadata(ctx context.Context, pa
 func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	var (
 		idempotencyHit bool
-		err error
-		log *ledger.Log
+		err            error
+		log            *ledger.Log
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
