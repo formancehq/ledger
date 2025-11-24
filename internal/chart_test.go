@@ -245,6 +245,9 @@ func TestChartValidation(t *testing.T) {
 
 func testChart() ChartOfAccounts {
 	return ChartOfAccounts{
+		"world": {
+			Account: &ChartAccount{},
+		},
 		"bank": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "bankID",
