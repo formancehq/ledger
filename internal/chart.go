@@ -264,9 +264,6 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error) {
 	schema, err := findAccountSchema([]string{}, map[string]ChartSegment(*c), nil, strings.Split(account, ":"))
 	if err != nil {
-		if account == "world" {
-			return &ChartAccount{}, nil
-		}
 		return nil, err
 	}
 	return schema, nil
