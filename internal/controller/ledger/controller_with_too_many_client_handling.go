@@ -47,7 +47,7 @@ func (c *ControllerWithTooManyClientHandling) CreateTransaction(ctx context.Cont
 	var (
 		log                *ledger.Log
 		createdTransaction *ledger.CreatedTransaction
-		idempotencyHit bool
+		idempotencyHit     bool
 		err                error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
@@ -61,7 +61,7 @@ func (c *ControllerWithTooManyClientHandling) RevertTransaction(ctx context.Cont
 	var (
 		log                 *ledger.Log
 		revertedTransaction *ledger.RevertedTransaction
-		idempotencyHit bool
+		idempotencyHit      bool
 		err                 error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
@@ -74,9 +74,9 @@ func (c *ControllerWithTooManyClientHandling) RevertTransaction(ctx context.Cont
 
 func (c *ControllerWithTooManyClientHandling) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
+		log            *ledger.Log
 		idempotencyHit bool
-		err error
+		err            error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
 		log, idempotencyHit, err = c.Controller.SaveTransactionMetadata(ctx, parameters)
@@ -88,9 +88,9 @@ func (c *ControllerWithTooManyClientHandling) SaveTransactionMetadata(ctx contex
 
 func (c *ControllerWithTooManyClientHandling) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
+		log            *ledger.Log
 		idempotencyHit bool
-		err error
+		err            error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
 		log, idempotencyHit, err = c.Controller.SaveAccountMetadata(ctx, parameters)
@@ -102,9 +102,9 @@ func (c *ControllerWithTooManyClientHandling) SaveAccountMetadata(ctx context.Co
 
 func (c *ControllerWithTooManyClientHandling) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
+		log            *ledger.Log
 		idempotencyHit bool
-		err error
+		err            error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
 		log, idempotencyHit, err = c.Controller.DeleteTransactionMetadata(ctx, parameters)
@@ -116,9 +116,9 @@ func (c *ControllerWithTooManyClientHandling) DeleteTransactionMetadata(ctx cont
 
 func (c *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
+		log            *ledger.Log
 		idempotencyHit bool
-		err error
+		err            error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
 		log, idempotencyHit, err = c.Controller.DeleteAccountMetadata(ctx, parameters)
