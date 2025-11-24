@@ -19,7 +19,7 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := common.LedgerFromContext(r.Context()).
+	if _, _, err := common.LedgerFromContext(r.Context()).
 		DeleteAccountMetadata(
 			r.Context(),
 			getCommandParameters(r, ledger.DeleteAccountMetadata{

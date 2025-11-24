@@ -84,7 +84,7 @@ func TestBulk(t *testing.T) {
 								Timestamp: now,
 							},
 						},
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
@@ -128,7 +128,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				ResponseType: bulking.ActionAddMetadata,
@@ -158,7 +158,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				ResponseType: bulking.ActionAddMetadata,
@@ -188,7 +188,7 @@ func TestBulk(t *testing.T) {
 						RevertTransaction: ledger.Transaction{
 							ID: pointer.For(uint64(0)),
 						},
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
@@ -221,7 +221,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				ResponseType: bulking.ActionDeleteMetadata,
@@ -273,7 +273,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -283,7 +283,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil, errors.New("unexpected error"))
+					Return(nil, false, errors.New("unexpected error"))
 			},
 			expectResults: []bulking.APIResult{{
 				ResponseType: bulking.ActionAddMetadata,
@@ -347,7 +347,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -357,7 +357,7 @@ func TestBulk(t *testing.T) {
 							},
 						},
 					}).
-					Return(nil, errors.New("unexpected error"))
+					Return(nil, false, errors.New("unexpected error"))
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 						Input: ledgercontroller.SaveAccountMetadata{
@@ -369,7 +369,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				ResponseType: bulking.ActionAddMetadata,
@@ -425,7 +425,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 
 				mockLedger.EXPECT().
 					SaveAccountMetadata(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
@@ -438,7 +438,7 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(&ledger.Log{
 						ID: pointer.For(uint64(0)),
-					}, nil)
+					}, false, nil)
 
 				mockLedger.EXPECT().
 					Commit(gomock.Any()).
@@ -523,7 +523,7 @@ func TestBulk(t *testing.T) {
 								Timestamp: now,
 							},
 						},
-					}, nil)
+					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
