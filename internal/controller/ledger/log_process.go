@@ -33,7 +33,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	store, _, err := store.BeginTX(ctx, nil)
 	if err != nil {
@@ -66,7 +66,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 
 	var schema *ledger.Schema
@@ -102,7 +102,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 		}
 	}
 
-	output, err := fn(ctx, store, parameters)
+	output, err := fn(ctx, store, schema, parameters)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -130,7 +130,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	if parameters.IdempotencyKey != "" {
 		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)
