@@ -203,7 +203,7 @@ var _ = Context("Ledger schema API tests", func() {
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
-							Force: pointer.For(true),
+							Force:           pointer.For(true),
 							AccountMetadata: map[string]map[string]string{},
 							Postings: []components.V2Posting{
 								{

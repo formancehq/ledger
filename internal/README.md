@@ -66,9 +66,6 @@ import "github.com/formancehq/ledger/internal"
 - [type ErrInvalidLedgerName](<#ErrInvalidLedgerName>)
   - [func \(e ErrInvalidLedgerName\) Error\(\) string](<#ErrInvalidLedgerName.Error>)
   - [func \(e ErrInvalidLedgerName\) Is\(err error\) bool](<#ErrInvalidLedgerName.Is>)
-- [type ErrInvalidMetadata](<#ErrInvalidMetadata>)
-  - [func \(e ErrInvalidMetadata\) Error\(\) string](<#ErrInvalidMetadata.Error>)
-  - [func \(e ErrInvalidMetadata\) Is\(err error\) bool](<#ErrInvalidMetadata.Is>)
 - [type ErrInvalidSchema](<#ErrInvalidSchema>)
   - [func \(e ErrInvalidSchema\) Error\(\) string](<#ErrInvalidSchema.Error>)
   - [func \(e ErrInvalidSchema\) Is\(err error\) bool](<#ErrInvalidSchema.Is>)
@@ -816,35 +813,6 @@ func (e ErrInvalidLedgerName) Error() string
 
 ```go
 func (e ErrInvalidLedgerName) Is(err error) bool
-```
-
-
-
-<a name="ErrInvalidMetadata"></a>
-## type [ErrInvalidMetadata](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L128-L131>)
-
-
-
-```go
-type ErrInvalidMetadata struct {
-    // contains filtered or unexported fields
-}
-```
-
-<a name="ErrInvalidMetadata.Error"></a>
-### func \(ErrInvalidMetadata\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L133>)
-
-```go
-func (e ErrInvalidMetadata) Error() string
-```
-
-
-
-<a name="ErrInvalidMetadata.Is"></a>
-### func \(ErrInvalidMetadata\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L136>)
-
-```go
-func (e ErrInvalidMetadata) Is(err error) bool
 ```
 
 

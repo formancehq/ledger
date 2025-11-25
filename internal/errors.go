@@ -124,16 +124,3 @@ func (e ErrInvalidAccount) Is(err error) bool {
 	_, ok := err.(ErrInvalidAccount)
 	return ok
 }
-
-type ErrInvalidMetadata struct {
-	account string
-	key     string
-}
-
-func (e ErrInvalidMetadata) Error() string {
-	return fmt.Sprintf("invalid metadata: the chart of accounts does not allow key `%s` on account `%s`", e.key, e.account)
-}
-func (e ErrInvalidMetadata) Is(err error) bool {
-	_, ok := err.(ErrInvalidMetadata)
-	return ok
-}
