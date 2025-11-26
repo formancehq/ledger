@@ -27,7 +27,7 @@ do $$
 		) data
 		group by transactions_seq;
 
-		create index moves_view_idx on moves_view(transactions_seq);
+		create index moves_view_idx on moves_view(row_number) include (transactions_seq, volumes);
 		-- speed up hash join when updating rows later
 		alter table moves_view add foreign key(transactions_seq) references transactions(seq);
 

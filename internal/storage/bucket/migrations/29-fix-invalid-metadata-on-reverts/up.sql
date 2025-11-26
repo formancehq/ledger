@@ -17,7 +17,7 @@ do $$
 			from logs
 			where type = 'REVERTED_TRANSACTION'
 		)
-		select reversed.ledger, reversed.reversedTransactionID, reversed.revertedTransactionID, reversed.revertedAt
+		select row_number() over (order by transactions.seq) as row_number, reversed.ledger, reversed.reversedTransactionID, reversed.revertedTransactionID, reversed.revertedAt
 		from transactions
 		join reversed on
 			reversed.reversedTransactionID = transactions.id and
@@ -37,9 +37,7 @@ do $$
 			with data as (
 				select ledger, reversedTransactionID, revertedTransactionID, revertedAt
 				from txs_view
-				order by ledger, reversedTransactionID, revertedTransactionID
-				offset _offset
-				limit _batch_size
+				where row_number >= _offset and row_number < _offset + _batch_size
 			)
 			update transactions
 			set
