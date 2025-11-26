@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type ChartAccountRules struct{}
 
+type ChartAccountMetadata struct {
+	Default *string `json:"default,omitempty"`
+}
+
 type ChartAccount struct {
-	Metadata map[string]string
+	Metadata map[string]ChartAccountMetadata
 	Rules    ChartAccountRules
 }
 
@@ -233,6 +239,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 				path:            path,
 				segment:         nextSegment,
 				patternMismatch: false,
+				hasSubsegments:  len(account) > 1,
 			}
 		}
 	}
@@ -251,6 +258,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 					path:            path,
 					segment:         nextSegment,
 					patternMismatch: false,
+					hasSubsegments:  len(account) > 1,
 				}
 			}
 		}
@@ -259,6 +267,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		path:            path,
 		segment:         nextSegment,
 		patternMismatch: variableSegment != nil,
+		hasSubsegments:  len(account) > 1,
 	}
 }
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error) {
@@ -279,4 +288,17 @@ func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
 		return err
 	}
 	return nil
+}
+
+func (c *ChartOfAccounts) InsertDefaultAccountMetadata(account string, metadata metadata.Metadata) {
+	s, _ := c.FindAccountSchema(account)
+	if s != nil {
+		for key, meta := range s.Metadata {
+			if meta.Default != nil {
+				if _, ok := metadata[key]; !ok {
+					metadata[key] = *meta.Default
+				}
+			}
+		}
+	}
 }

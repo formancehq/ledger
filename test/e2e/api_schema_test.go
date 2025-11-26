@@ -63,9 +63,13 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("^[0-9]{3}$"),
-										DotRules:    &components.V2ChartRules{},
-										DotMetadata: map[string]string{},
+										DotPattern: pointer.For("^[0-9]{3}$"),
+										DotRules:   &components.V2ChartAccountRules{},
+										DotMetadata: map[string]components.V2ChartAccountMetadata{
+											"foo": {
+												Default: pointer.For("test"),
+											},
+										},
 									},
 								},
 							},
@@ -90,9 +94,11 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("^[0-9]{3}$"),
-										DotRules:    &components.V2ChartRules{},
-										DotMetadata: map[string]string{},
+										DotPattern: pointer.For("^[0-9]{3}$"),
+										DotRules:   &components.V2ChartAccountRules{},
+										DotMetadata: map[string]components.V2ChartAccountMetadata{
+											"foo": {},
+										},
 									},
 								},
 							},
@@ -117,9 +123,11 @@ var _ = Context("Ledger schema API tests", func() {
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
-										DotPattern:  pointer.For("^[0-9]{3}$"),
-										DotRules:    &components.V2ChartRules{},
-										DotMetadata: map[string]string{},
+										DotPattern: pointer.For("^[0-9]{3}$"),
+										DotRules:   &components.V2ChartAccountRules{},
+										DotMetadata: map[string]components.V2ChartAccountMetadata{
+											"foo": {},
+										},
 									},
 								},
 							},
@@ -195,7 +203,8 @@ var _ = Context("Ledger schema API tests", func() {
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
-							Force: pointer.For(true),
+							Force:           pointer.For(true),
+							AccountMetadata: map[string]map[string]string{},
 							Postings: []components.V2Posting{
 								{
 									Source:      "bank:001",
@@ -294,6 +303,110 @@ var _ = Context("Ledger schema API tests", func() {
 						},
 					})
 					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
+
+				It("should insert default metadata", func(specContext SpecContext) {
+					schemaVersion := "v1.0.0"
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force: pointer.For(true),
+							AccountMetadata: map[string]map[string]string{
+								"users:002": {
+									"bar": "test2",
+								},
+							},
+							Postings: []components.V2Posting{
+								{
+									Source:      "bank:001",
+									Destination: "users:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+								{
+									Source:      "users:001",
+									Destination: "bank:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(BeNil())
+
+					// involved in a posting
+					res, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
+						Ledger:  "default",
+						Address: "users:001",
+					})
+					Expect(err).To(BeNil())
+					Expect(res.V2AccountResponse.Data.Metadata).To(Equal(map[string]string{
+						"foo": "test",
+					}))
+
+					// involved in accountMetadata
+					res, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
+						Ledger:  "default",
+						Address: "users:002",
+					})
+					Expect(err).To(BeNil())
+					Expect(res.V2AccountResponse.Data.Metadata).To(Equal(map[string]string{
+						"foo": "test",
+						"bar": "test2",
+					}))
+				})
+
+				It("should not overwrite existing metadata", func(specContext SpecContext) {
+					schemaVersion := "v1.0.0"
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force:           pointer.For(true),
+							AccountMetadata: map[string]map[string]string{
+								"users:001": {
+									"foo": "preexisting_value",
+								},
+							},
+							Postings: []components.V2Posting{
+								{
+									Source:      "bank:001",
+									Destination: "users:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(BeNil())
+
+					_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force:           pointer.For(true),
+							AccountMetadata: map[string]map[string]string{},
+							Postings: []components.V2Posting{
+								{
+									Source:      "bank:001",
+									Destination: "users:001",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(BeNil())
+
+					res, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetAccount(ctx, operations.V2GetAccountRequest{
+						Ledger:  "default",
+						Address: "users:001",
+					})
+					Expect(err).To(BeNil())
+					Expect(res.V2AccountResponse.Data.Metadata).To(Equal(map[string]string{
+						"foo": "preexisting_value",
+					}))
 				})
 
 				It("should fail without a schema version", func(specContext SpecContext) {

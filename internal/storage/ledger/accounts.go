@@ -12,7 +12,6 @@ import (
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -100,7 +99,7 @@ func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key stri
 	return err
 }
 
-func (store *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
+func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, accounts ...*ledger.Account) error {
 	return tracing.SkipResult(tracing.TraceWithMetric(
 		ctx,
 		"UpsertAccounts",
@@ -115,13 +114,15 @@ func (store *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Acco
 				AddressArray    []string `bun:"address_array,type:jsonb"`
 			}
 
+			rows := Map(accounts, func(from *ledger.Account) account {
+				return account{
+					Account:      from,
+					AddressArray: strings.Split(from.Address, ":"),
+				}
+			})
+
 			ret, err := store.db.NewInsert().
-				Model(pointer.For(Map(accounts, func(from *ledger.Account) account {
-					return account{
-						Account:      from,
-						AddressArray: strings.Split(from.Address, ":"),
-					}
-				}))).
+				Model(&rows).
 				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				On("conflict (ledger, address) do update").
 				Set("first_usage = case when excluded.first_usage < accounts.first_usage then excluded.first_usage else accounts.first_usage end").
@@ -140,6 +141,24 @@ func (store *Store) UpsertAccounts(ctx context.Context, accounts ...*ledger.Acco
 				return err
 			}
 			span.SetAttributes(attribute.Int("upserted", int(rowsAffected)))
+
+			// Set default metadata from schema
+			if schema != nil {
+				updatedMetadata := map[string]metadata.Metadata{}
+				for _, account := range rows {
+					if account.UpdatedAt == account.FirstUsage {
+						metadata := account.Metadata
+						schema.Chart.InsertDefaultAccountMetadata(account.Address, metadata)
+						updatedMetadata[account.Address] = metadata
+					}
+				}
+				if len(updatedMetadata) > 0 {
+					err := store.UpdateAccountsMetadata(ctx, updatedMetadata, rows[0].FirstUsage)
+					if err != nil {
+						return err
+					}
+				}
+			}
 
 			return nil
 		}),

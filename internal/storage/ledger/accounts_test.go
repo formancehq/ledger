@@ -28,7 +28,7 @@ func TestAccountsList(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+	err := store.CommitTransaction(ctx, nil, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now).
 		WithInsertedAt(now)), nil)
@@ -52,25 +52,25 @@ func TestAccountsList(t *testing.T) {
 		},
 	}, time.Time{}))
 
-	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, nil, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now).
 		WithInsertedAt(now)), nil)
 	require.NoError(t, err)
 
-	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, nil, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(4*time.Minute)).
 		WithInsertedAt(now.Add(100*time.Millisecond))), nil)
 	require.NoError(t, err)
 
-	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, nil, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("account:1", "bank", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(3*time.Minute)).
 		WithInsertedAt(now.Add(200*time.Millisecond))), nil)
 	require.NoError(t, err)
 
-	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, nil, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(0))).
 		WithTimestamp(now.Add(-time.Minute)).
 		WithInsertedAt(now.Add(200*time.Millisecond))), nil)
@@ -343,7 +343,7 @@ func TestAccountsGet(t *testing.T) {
 	tx1 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now))
-	err := store.CommitTransaction(ctx, tx1, nil)
+	err := store.CommitTransaction(ctx, nil, tx1, nil)
 	require.NoError(t, err)
 
 	// sleep for at least the time precision to ensure the next transaction is inserted with a different timestamp
@@ -358,7 +358,7 @@ func TestAccountsGet(t *testing.T) {
 	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),
 	).WithTimestamp(now.Add(-time.Minute)))
-	err = store.CommitTransaction(ctx, tx2, nil)
+	err = store.CommitTransaction(ctx, nil, tx2, nil)
 	require.NoError(t, err)
 
 	t.Run("find account", func(t *testing.T) {
@@ -494,7 +494,7 @@ func TestAccountsCount(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().WithPostings(
+	err := store.CommitTransaction(ctx, nil, pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "central_bank", "USD/2", big.NewInt(100)),
 	)), nil)
 	require.NoError(t, err)
@@ -519,7 +519,7 @@ func TestAccountsUpsert(t *testing.T) {
 	}
 
 	// Initial insert
-	err := store.UpsertAccounts(ctx, &account1, &account2)
+	err := store.UpsertAccounts(ctx, nil, &account1, &account2)
 	require.NoError(t, err)
 
 	require.NotEmpty(t, account1.FirstUsage)
@@ -543,6 +543,6 @@ func TestAccountsUpsert(t *testing.T) {
 	}
 
 	// Upsert with no modification
-	err = store.UpsertAccounts(ctx, &account1)
+	err = store.UpsertAccounts(ctx, nil, &account1)
 	require.NoError(t, err)
 }

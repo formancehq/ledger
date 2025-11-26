@@ -2,5 +2,5 @@
 
 package components
 
-type V2ChartRules struct {
+type V2ChartAccountRules struct {
 }

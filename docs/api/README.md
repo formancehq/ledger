@@ -5609,12 +5609,12 @@ and
 |» errorDescription|string|true|none|none|
 |» errorDetails|string|false|none|none|
 
-<h2 id="tocS_V2ChartRules">V2ChartRules</h2>
+<h2 id="tocS_V2ChartAccountRules">V2ChartAccountRules</h2>
 <!-- backwards compatibility -->
-<a id="schemav2chartrules"></a>
-<a id="schema_V2ChartRules"></a>
-<a id="tocSv2chartrules"></a>
-<a id="tocsv2chartrules"></a>
+<a id="schemav2chartaccountrules"></a>
+<a id="schema_V2ChartAccountRules"></a>
+<a id="tocSv2chartaccountrules"></a>
+<a id="tocsv2chartaccountrules"></a>
 
 ```json
 {}
@@ -5624,6 +5624,26 @@ and
 ### Properties
 
 *None*
+
+<h2 id="tocS_V2ChartAccountMetadata">V2ChartAccountMetadata</h2>
+<!-- backwards compatibility -->
+<a id="schemav2chartaccountmetadata"></a>
+<a id="schema_V2ChartAccountMetadata"></a>
+<a id="tocSv2chartaccountmetadata"></a>
+<a id="tocsv2chartaccountmetadata"></a>
+
+```json
+{
+  "default": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|default|string|false|none|none|
 
 <h2 id="tocS_V2ChartSegment">V2ChartSegment</h2>
 <!-- backwards compatibility -->
@@ -5652,9 +5672,9 @@ Segment within a chart of account
 |**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
 |.self|object|false|none|none|
 |.pattern|string|false|none|none|
-|.rules|[V2ChartRules](#schemav2chartrules)|false|none|none|
+|.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|false|none|none|
 |.metadata|object|false|none|none|
-|» **additionalProperties**|string|false|none|none|
+|» **additionalProperties**|[V2ChartAccountMetadata](#schemav2chartaccountmetadata)|false|none|none|
 
 <h2 id="tocS_V2ChartOfAccounts">V2ChartOfAccounts</h2>
 <!-- backwards compatibility -->

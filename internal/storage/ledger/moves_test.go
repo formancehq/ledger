@@ -40,7 +40,7 @@ func TestMovesInsert(t *testing.T) {
 		account := &ledger.Account{
 			Address: "world",
 		}
-		err := store.UpsertAccounts(ctx, account)
+		err := store.UpsertAccounts(ctx, nil, account)
 		require.NoError(t, err)
 
 		now := time.Now()
@@ -160,7 +160,7 @@ func TestMovesInsert(t *testing.T) {
 					tx := ledger.NewTransaction().WithPostings(
 						ledger.NewPosting(src, dst, "USD", big.NewInt(1)),
 					)
-					err = storeCP.CommitTransaction(ctx, &tx, nil)
+					err = storeCP.CommitTransaction(ctx, nil, &tx, nil)
 					if errors.Is(err, postgres.ErrDeadlockDetected) {
 						require.NoError(t, sqlTx.Rollback())
 						continue
