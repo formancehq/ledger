@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -111,54 +112,88 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 
 			type account struct {
 				*ledger.Account `bun:",extend"`
-				AddressArray    []string `bun:"address_array,type:jsonb"`
+				AddressArray    []string          `bun:"address_array,type:jsonb"`
+				DefaultMetadata metadata.Metadata `bun:"default_metadata,type:jsonb"`
 			}
 
 			rows := Map(accounts, func(from *ledger.Account) account {
+				// Set default metadata from schema
+				defaultMetadata := metadata.Metadata{}
+				if schema != nil {
+					accountSchema, _ := schema.Chart.FindAccountSchema(from.Address)
+					if accountSchema != nil {
+						for key, value := range accountSchema.Metadata {
+							if value.Default != nil {
+								defaultMetadata[key] = *value.Default
+							}
+						}
+					}
+				}
+
+				if from.Metadata == nil {
+					from.Metadata = metadata.Metadata{}
+				}
+
 				return account{
-					Account:      from,
-					AddressArray: strings.Split(from.Address, ":"),
+					Account:         from,
+					AddressArray:    strings.Split(from.Address, ":"),
+					DefaultMetadata: defaultMetadata,
 				}
 			})
 
-			ret, err := store.db.NewInsert().
-				Model(&rows).
-				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
-				On("conflict (ledger, address) do update").
-				Set("first_usage = case when excluded.first_usage < accounts.first_usage then excluded.first_usage else accounts.first_usage end").
-				Set("metadata = accounts.metadata || excluded.metadata").
-				Set("updated_at = excluded.updated_at").
-				Value("ledger", "?", store.ledger.Name).
-				Returning("*").
-				Where("(excluded.first_usage < accounts.first_usage) or not accounts.metadata @> excluded.metadata").
-				Exec(ctx)
+			err := store.db.NewRaw(`
+				WITH
+					data_batch (address, metadata, first_usage, insertion_date, updated_at, address_array, default_metadata)
+						AS (?0),
+					existing_accounts AS (
+						SELECT a.address
+						FROM ?1.accounts a
+						JOIN data_batch d
+							ON a.address = d.address
+							AND a.ledger = ?2
+					),
+					updated_rows AS (
+						-- If present: update
+						UPDATE ?1.accounts a
+						SET
+							metadata = a.metadata || d.metadata,
+							first_usage = LEAST(d.first_usage, a.first_usage),
+							updated_at = COALESCE(d.updated_at, ?1.transaction_date())
+						FROM data_batch d
+						WHERE a.address = d.address and ledger = ?2 and (d.first_usage < a.first_usage or not a.metadata @> d.metadata)
+						RETURNING a.address, a.metadata, a.first_usage, a.updated_at, a.insertion_date
+					),
+					inserted_rows AS (
+						-- If not present: insert
+						INSERT INTO ?1.accounts (address, metadata, first_usage, updated_at, insertion_date, ledger, address_array)
+						SELECT
+							d.address,
+							d.default_metadata || d.metadata,
+							COALESCE(d.first_usage, ?1.transaction_date()),
+							COALESCE(d.updated_at, ?1.transaction_date()),
+							COALESCE(d.insertion_date, ?1.transaction_date()),
+							?2,
+							d.address_array
+						FROM data_batch d
+						WHERE d.address NOT IN (SELECT address FROM existing_accounts)
+						RETURNING address, metadata, first_usage, updated_at, insertion_date
+					)
+				SELECT * FROM updated_rows
+				UNION ALL SELECT * FROM inserted_rows`,
+				store.db.NewValues(&rows),
+				bun.Ident(store.ledger.Bucket),
+				store.ledger.Name,
+			).Scan(ctx, &rows)
+
 			if err != nil {
 				return fmt.Errorf("upserting accounts: %w", postgres.ResolveError(err))
 			}
 
-			rowsAffected, err := ret.RowsAffected()
-			if err != nil {
-				return err
-			}
-			span.SetAttributes(attribute.Int("upserted", int(rowsAffected)))
-
-			// Set default metadata from schema
-			if schema != nil {
-				updatedMetadata := map[string]metadata.Metadata{}
-				for _, account := range rows {
-					if account.UpdatedAt == account.FirstUsage {
-						metadata := account.Metadata
-						schema.Chart.InsertDefaultAccountMetadata(account.Address, metadata)
-						updatedMetadata[account.Address] = metadata
-					}
-				}
-				if len(updatedMetadata) > 0 {
-					err := store.UpdateAccountsMetadata(ctx, updatedMetadata, rows[0].FirstUsage)
-					if err != nil {
-						return err
-					}
-				}
-			}
+			// rowsAffected, err := returned.RowsAffected()
+			// if err != nil {
+			// 	return err
+			// }
+			// span.SetAttributes(attribute.Int("upserted", int(rowsAffected)))
 
 			return nil
 		}),

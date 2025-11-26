@@ -211,7 +211,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							Ledger: "default",
 						}
 					})
-					It("should be ok", func(specContext SpecContext) {
+					It("arstneio should be ok", func(specContext SpecContext) {
 						response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(
 							ctx,
 							operations.V2GetTransactionRequest{
