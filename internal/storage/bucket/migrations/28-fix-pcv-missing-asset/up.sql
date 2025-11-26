@@ -8,7 +8,8 @@ do $$
 		drop table if exists moves_view;
 
 		create table moves_view as
-		select transactions_seq, public.aggregate_objects(jsonb_build_object(accounts_address, volumes)) as volumes
+		select row_number() over (order by transactions_seq) as row_number,
+		       transactions_seq, public.aggregate_objects(jsonb_build_object(accounts_address, volumes)) as volumes
 		from (
 			select transactions_seq, accounts_address, public.aggregate_objects(json_build_object(asset, json_build_object('input', (post_commit_volumes).inputs, 'output', (post_commit_volumes).outputs))::jsonb) as volumes
 			from (
@@ -41,8 +42,7 @@ do $$
 			with data as (
 				select transactions_seq, volumes
 				from moves_view
-				offset _offset
-				limit _batch_size
+				where row_number >= _offset and row_number < _offset + _batch_size
 			)
 			update transactions
 			set post_commit_volumes = data.volumes
