@@ -1827,6 +1827,12 @@ paths:
       responses:
         "204":
           description: No Content
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
           content: {}
         default:
           description: Error
@@ -1874,6 +1880,12 @@ paths:
       responses:
         2XX:
           description: Key deleted
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
           content: {}
         default:
           description: Error
@@ -2099,6 +2111,12 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
           content:
             application/json:
               schema:
@@ -2210,6 +2228,12 @@ paths:
       responses:
         "204":
           description: No Content
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
           content: {}
         default:
           description: Error
@@ -2260,6 +2284,12 @@ paths:
       responses:
         2XX:
           description: Key deleted
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
           content: {}
         default:
           description: Error
@@ -2313,6 +2343,11 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       requestBody:
         content:
           application/json:
@@ -2321,6 +2356,12 @@ paths:
       responses:
         "201":
           description: OK
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
           content:
             application/json:
               schema:

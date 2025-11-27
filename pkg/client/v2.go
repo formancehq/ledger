@@ -2312,6 +2312,8 @@ func (s *V2) AddMetadataToAccount(ctx context.Context, request operations.V2AddM
 
 	switch {
 	case httpRes.StatusCode == 204:
+		res.Headers = httpRes.Header
+
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -2503,6 +2505,8 @@ func (s *V2) DeleteAccountMetadata(ctx context.Context, request operations.V2Del
 
 	switch {
 	case httpRes.StatusCode >= 200 && httpRes.StatusCode < 300:
+		res.Headers = httpRes.Header
+
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -3334,6 +3338,8 @@ func (s *V2) CreateTransaction(ctx context.Context, request operations.V2CreateT
 
 	switch {
 	case httpRes.StatusCode == 200:
+		res.Headers = httpRes.Header
+
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
 			rawBody, err := utils.ConsumeRawBody(httpRes)
@@ -3767,6 +3773,8 @@ func (s *V2) AddMetadataOnTransaction(ctx context.Context, request operations.V2
 
 	switch {
 	case httpRes.StatusCode == 204:
+		res.Headers = httpRes.Header
+
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -3958,6 +3966,8 @@ func (s *V2) DeleteTransactionMetadata(ctx context.Context, request operations.V
 
 	switch {
 	case httpRes.StatusCode >= 200 && httpRes.StatusCode < 300:
+		res.Headers = httpRes.Header
+
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -4044,6 +4054,8 @@ func (s *V2) RevertTransaction(ctx context.Context, request operations.V2RevertT
 	if reqContentType != "" {
 		req.Header.Set("Content-Type", reqContentType)
 	}
+
+	utils.PopulateHeaders(ctx, req, request, nil)
 
 	if err := utils.PopulateQueryParams(ctx, req, request, nil); err != nil {
 		return nil, fmt.Errorf("error populating query params: %w", err)
@@ -4157,6 +4169,8 @@ func (s *V2) RevertTransaction(ctx context.Context, request operations.V2RevertT
 
 	switch {
 	case httpRes.StatusCode == 201:
+		res.Headers = httpRes.Header
+
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
 			rawBody, err := utils.ConsumeRawBody(httpRes)
