@@ -114,8 +114,10 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 				*ledger.Account `bun:",extend"`
 				AddressArray    []string          `bun:"address_array,type:jsonb"`
 				DefaultMetadata metadata.Metadata `bun:"default_metadata,type:jsonb"`
+				Index           int               `bun:"batch_index,type:jsonb"`
 			}
 
+			batch_idx := 0
 			rows := Map(accounts, func(from *ledger.Account) account {
 				// Set default metadata from schema
 				defaultMetadata := metadata.Metadata{}
@@ -134,16 +136,21 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 					from.Metadata = metadata.Metadata{}
 				}
 
+				idx := batch_idx
+				batch_idx += 1
+
 				return account{
 					Account:         from,
 					AddressArray:    strings.Split(from.Address, ":"),
 					DefaultMetadata: defaultMetadata,
+					Index:           idx,
 				}
 			})
 
+			var returnedRows []account
 			err := store.db.NewRaw(`
 				WITH
-					data_batch (address, metadata, first_usage, insertion_date, updated_at, address_array, default_metadata)
+					data_batch (address, metadata, first_usage, insertion_date, updated_at, address_array, default_metadata, batch_index)
 						AS (?0),
 					existing_accounts AS (
 						SELECT a.address
@@ -161,7 +168,7 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 							updated_at = COALESCE(d.updated_at, ?1.transaction_date())
 						FROM data_batch d
 						WHERE a.address = d.address and ledger = ?2 and (d.first_usage < a.first_usage or not a.metadata @> d.metadata)
-						RETURNING a.address, a.metadata, a.first_usage, a.updated_at, a.insertion_date
+						RETURNING a.address, a.metadata, a.first_usage, a.updated_at, a.insertion_date, d.batch_index
 					),
 					inserted_rows AS (
 						-- If not present: insert
@@ -176,24 +183,27 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 							d.address_array
 						FROM data_batch d
 						WHERE d.address NOT IN (SELECT address FROM existing_accounts)
-						RETURNING address, metadata, first_usage, updated_at, insertion_date
+						RETURNING address, metadata, first_usage, updated_at, insertion_date,
+							(SELECT batch_index FROM data_batch WHERE address = ?1.accounts.address)
 					)
 				SELECT * FROM updated_rows
 				UNION ALL SELECT * FROM inserted_rows`,
 				store.db.NewValues(&rows),
 				bun.Ident(store.ledger.Bucket),
 				store.ledger.Name,
-			).Scan(ctx, &rows)
-
+			).Scan(ctx, &returnedRows)
 			if err != nil {
 				return fmt.Errorf("upserting accounts: %w", postgres.ResolveError(err))
 			}
 
-			// rowsAffected, err := returned.RowsAffected()
-			// if err != nil {
-			// 	return err
-			// }
-			// span.SetAttributes(attribute.Int("upserted", int(rowsAffected)))
+			for _, row := range returnedRows {
+				rows[row.Index].Metadata = row.Metadata
+				rows[row.Index].FirstUsage = row.FirstUsage
+				rows[row.Index].InsertionDate = row.InsertionDate
+				rows[row.Index].UpdatedAt = row.UpdatedAt
+			}
+
+			span.SetAttributes(attribute.Int("upserted", len(returnedRows)))
 
 			return nil
 		}),
