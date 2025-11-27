@@ -2,7 +2,6 @@ package provision
 
 import (
 	"fmt"
-
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -28,7 +27,7 @@ type LedgerConfigArgs struct {
 }
 
 type Args struct {
-	ProvisionerVersion pulumi.String
+	ProvisionerVersion pulumix.Input[string]
 	Ledgers            map[string]LedgerConfigArgs `json:"ledgers"`
 }
 
@@ -131,12 +130,10 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 								pulumi.String("--state-store"),
 								pulumi.Sprintf("k8s:///%s/provisioner", args.Namespace),
 							},
-							Image: utils.GetImage(pulumi.String("ledger-provisioner"), pulumix.Apply2(args.Tag, args.ProvisionerVersion, func(ledgerVersion, provisionerVersion string) string {
-								if provisionerVersion != "" {
-									return provisionerVersion
-								}
-								return ledgerVersion
-							})),
+							Image: utils.GetImage(
+								args.WithFallbackTag(args.ProvisionerVersion),
+								pulumi.String("ledger-provisioner"),
+							),
 							VolumeMounts: corev1.VolumeMountArray{
 								corev1.VolumeMountArgs{
 									Name:      pulumi.String("config"),

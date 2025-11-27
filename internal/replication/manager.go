@@ -217,7 +217,11 @@ func (m *Manager) synchronizePipelines(ctx context.Context) error {
 	for _, pipeline := range pipelines {
 		m.logger.Debugf("restoring pipeline %s", pipeline.ID)
 		if _, err := m.startPipeline(ctx, pipeline); err != nil {
-			return err
+			switch {
+			case errors.Is(err, ledger.ErrAlreadyStarted("")):
+			default:
+				return err
+			}
 		}
 	}
 

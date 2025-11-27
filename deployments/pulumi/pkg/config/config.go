@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/rds"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -186,8 +187,8 @@ func (a *PostgresDatabase) toInput() *storage.PostgresDatabaseArgs {
 
 	return &storage.PostgresDatabaseArgs{
 		Install: &storage.PostgresInstallArgs{
-			Username: pulumix.Val(a.Install.Username),
-			Password: pulumix.Val(a.Install.Password),
+			Username:     pulumix.Val(a.Install.Username),
+			Password:     pulumix.Val(a.Install.Password),
 			ChartVersion: pulumix.Val(a.Install.ChartVersion),
 		},
 	}
@@ -575,7 +576,11 @@ type Common struct {
 	Monitoring *Monitoring `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
 
 	// Tag is the version tag for the ledger
+	// deprecated
 	Tag string `json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Image configuration
+	Image *ImageConfiguration `json:"image"`
 
 	// ImagePullPolicy is the image pull policy for the ledger
 	ImagePullPolicy string `json:"image-pull-policy,omitempty" yaml:"image-pull-policy,omitempty"`
@@ -586,11 +591,11 @@ type Common struct {
 
 func (c Common) toInput() common.CommonArgs {
 	return common.CommonArgs{
-		Namespace:       pulumix.Val(c.Namespace),
-		Monitoring:      c.Monitoring.ToInput(),
-		Tag:             pulumix.Val(c.Tag),
-		ImagePullPolicy: pulumix.Val(c.ImagePullPolicy),
-		Debug:           pulumix.Val(c.Debug),
+		Namespace:          pulumix.Val(c.Namespace),
+		Monitoring:         c.Monitoring.ToInput(),
+		ImageConfiguration: imageConfigurationOrTag(c.Image, c.Tag),
+		ImagePullPolicy:    pulumix.Val(c.ImagePullPolicy),
+		Debug:              pulumix.Val(c.Debug),
 	}
 }
 
@@ -665,6 +670,7 @@ func (g GeneratorLedgerConfiguration) toInput() generator.LedgerConfiguration {
 
 type Generator struct {
 	// GeneratorVersion is the version of the generator
+	// deprecated
 	GeneratorVersion string `json:"generator-version" yaml:"generator-version"`
 
 	// Ledgers are the ledgers to run the generator against
@@ -726,6 +732,12 @@ func (cfg Config) ToInput() pulumi_ledger.ComponentArgs {
 		Exporters:     cfg.Exporters.toInput(),
 		Generator:     cfg.Generator.toInput(),
 	}
+}
+
+type ImageConfiguration struct {
+	Registry   string `json:"registry" yaml:"registry"`
+	Repository string `json:"repository" yaml:"repository"`
+	Tag        string `json:"version" yaml:"version"`
 }
 
 func Load(ctx *pulumi.Context) (*Config, error) {
@@ -798,6 +810,13 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		generator = nil
 	}
 
+	image := &ImageConfiguration{}
+	if err := cfg.TryObject("image", image); err != nil {
+		if !errors.Is(err, config.ErrMissingVar) {
+			return nil, fmt.Errorf("error reading generator config: %w", err)
+		}
+	}
+
 	namespace := cfg.Get("namespace")
 	if namespace == "" {
 		namespace = ctx.Stack()
@@ -810,6 +829,7 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 			Namespace:       namespace,
 			Tag:             cfg.Get("version"),
 			Monitoring:      monitoring,
+			Image:           image,
 			ImagePullPolicy: cfg.Get("image-pull-policy"),
 		},
 		InstallDevBox: cfg.GetBool("install-dev-box"),
@@ -821,4 +841,22 @@ func Load(ctx *pulumi.Context) (*Config, error) {
 		Provision:     provision,
 		Generator:     generator,
 	}, nil
+}
+
+func imageConfigurationOrTag(configuration *ImageConfiguration, tag string) utils.ImageConfiguration {
+	if configuration == nil {
+		return utils.ImageConfiguration{
+			Tag: pulumix.Val(tag),
+		}
+	}
+
+	if configuration.Tag != "" {
+		tag = configuration.Tag
+	}
+
+	return utils.ImageConfiguration{
+		Registry:   pulumix.Val(configuration.Registry),
+		Repository: pulumix.Val(configuration.Repository),
+		Tag:        pulumix.Val(tag),
+	}
 }

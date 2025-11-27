@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.25-alpine AS compiler
 WORKDIR /src
 COPY --from=root pkg pkg

@@ -39,7 +39,7 @@ func runMigrateJob(ctx *pulumi.Context, args migrationArgs, opts ...pulumi.Resou
 							Args: pulumi.StringArray{
 								pulumi.String("migrate"),
 							},
-							Image:           utils.GetMainImage(args.Tag),
+							Image:           utils.GetMainImage(args.ImageConfiguration),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 							Env:             envVars,
 						},
