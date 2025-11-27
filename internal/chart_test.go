@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/pointer"
 )
 
@@ -421,45 +420,5 @@ func TestPostingValidation(t *testing.T) {
 			err := chart.ValidatePosting(tc.posting)
 			require.NoError(t, err, tc.name)
 		}
-	}
-}
-
-func TestDefaultMetadata(t *testing.T) {
-	t.Parallel()
-
-	chart := testChart()
-
-	type testCase struct {
-		name             string
-		account          string
-		previousMetadata metadata.Metadata
-		expectedMetadata metadata.Metadata
-	}
-
-	for _, tc := range []testCase{
-		{
-			name:    "default metadata",
-			account: "bank:001",
-			previousMetadata: metadata.Metadata{
-				"thing": "should_still_be_here",
-			},
-			expectedMetadata: metadata.Metadata{
-				"bank_subaccount": "test",
-				"thing":           "should_still_be_here",
-			},
-		},
-		{
-			name:    "should not override existing",
-			account: "bank:001",
-			previousMetadata: metadata.Metadata{
-				"bank_subaccount": "should_stay_unchanged",
-			},
-			expectedMetadata: metadata.Metadata{
-				"bank_subaccount": "should_stay_unchanged",
-			},
-		},
-	} {
-		chart.InsertDefaultAccountMetadata(tc.account, tc.previousMetadata)
-		require.Equal(t, tc.previousMetadata, tc.expectedMetadata)
 	}
 }

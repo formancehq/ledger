@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type ChartAccountRules struct{}
@@ -288,17 +286,4 @@ func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
 		return err
 	}
 	return nil
-}
-
-func (c *ChartOfAccounts) InsertDefaultAccountMetadata(account string, metadata metadata.Metadata) {
-	s, _ := c.FindAccountSchema(account)
-	if s != nil {
-		for key, meta := range s.Metadata {
-			if meta.Default != nil {
-				if _, ok := metadata[key]; !ok {
-					metadata[key] = *meta.Default
-				}
-			}
-		}
-	}
 }
