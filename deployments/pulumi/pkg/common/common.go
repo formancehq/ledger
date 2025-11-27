@@ -2,14 +2,15 @@ package common
 
 import (
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/monitoring"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 )
 
 type CommonArgs struct {
+	utils.ImageConfiguration
 	Namespace       pulumix.Input[string]
 	Monitoring      *monitoring.Args
-	Tag             pulumix.Input[string]
 	ImagePullPolicy pulumix.Input[string]
 	Debug           pulumix.Input[bool]
 }
@@ -37,4 +38,5 @@ func (args *CommonArgs) SetDefaults() {
 	if args.Monitoring != nil {
 		args.Monitoring.SetDefaults()
 	}
+	args.ImageConfiguration.SetDefaults()
 }
