@@ -44,6 +44,8 @@ func (c *Driver) Start(ctx context.Context) error {
 
 func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]error, error) {
 
+	c.logger.Debugf("Prepare new batch of %d logs", len(logs))
+
 	batch, err := c.db.PrepareBatch(ctx, "insert into logs(ledger, id, type, date, data)")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to prepare batch")
