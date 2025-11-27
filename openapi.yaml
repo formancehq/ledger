@@ -4309,10 +4309,6 @@ components:
           type: string
         ik:
           type: string
-        schemaVersion:
-          type: string
-          description: Schema version to use for validation
-          example: v1.0.0
     V2BulkElement:
       type: object
       oneOf:

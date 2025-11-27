@@ -32,9 +32,7 @@ func (o *Data) GetMetadata() map[string]string {
 type V2BulkElementAddMetadata struct {
 	Action string  `json:"action"`
 	Ik     *string `json:"ik,omitempty"`
-	// Schema version to use for validation
-	SchemaVersion *string `json:"schemaVersion,omitempty"`
-	Data          *Data   `json:"data,omitempty"`
+	Data   *Data   `json:"data,omitempty"`
 }
 
 func (o *V2BulkElementAddMetadata) GetAction() string {
@@ -49,13 +47,6 @@ func (o *V2BulkElementAddMetadata) GetIk() *string {
 		return nil
 	}
 	return o.Ik
-}
-
-func (o *V2BulkElementAddMetadata) GetSchemaVersion() *string {
-	if o == nil {
-		return nil
-	}
-	return o.SchemaVersion
 }
 
 func (o *V2BulkElementAddMetadata) GetData() *Data {

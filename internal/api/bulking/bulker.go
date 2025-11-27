@@ -27,7 +27,7 @@ type Bulker struct {
 	tracer      trace.Tracer
 }
 
-func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, schemaVersion string, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
 
 	parallelism := 1
 	if parallel && b.parallelism != 0 {
@@ -61,7 +61,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 					}
 					return
 				}
-				ret, logID, err := b.processElement(ctx, ctrl, element)
+				ret, logID, err := b.processElement(ctx, ctrl, schemaVersion, element)
 				if err != nil {
 					hasError.Store(true)
 					otlp.RecordError(ctx, err)
@@ -90,7 +90,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, bulk
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResult, bulkOptions BulkingOptions) error {
+func (b *Bulker) Run(ctx context.Context, schemaVersion string, bulk Bulk, result chan BulkElementResult, bulkOptions BulkingOptions) error {
 
 	ctx, span := b.tracer.Start(ctx, "Bulk:Run", trace.WithAttributes(
 		attribute.Bool("atomic", bulkOptions.Atomic),
@@ -113,7 +113,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 		}
 	}
 
-	hasError := b.run(ctx, ctrl, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
+	hasError := b.run(ctx, ctrl, schemaVersion, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
 	if hasError && bulkOptions.Atomic {
 		if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
@@ -131,8 +131,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 	return nil
 }
 
-func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, data BulkElement) (any, uint64, error) {
-
+func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Controller, schemaVersion string, data BulkElement) (any, uint64, error) {
 	switch data.Action {
 	case ActionCreateTransaction:
 		rs, err := data.Data.(TransactionRequest).ToCore()
@@ -143,8 +142,8 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 		log, createTransactionResult, err := ctrl.CreateTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
-			SchemaVersion:  data.SchemaVersion,
 			Input:          *rs,
+			SchemaVersion:  schemaVersion,
 		})
 		if err != nil {
 			return nil, 0, err
@@ -168,7 +167,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.SaveAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				SchemaVersion:  data.SchemaVersion,
+				SchemaVersion:  schemaVersion,
 				Input: ledgercontroller.SaveAccountMetadata{
 					Address:  address,
 					Metadata: req.Metadata,
@@ -182,7 +181,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.SaveTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				SchemaVersion:  data.SchemaVersion,
+				SchemaVersion:  schemaVersion,
 				Input: ledgercontroller.SaveTransactionMetadata{
 					TransactionID: transactionID,
 					Metadata:      req.Metadata,
@@ -202,7 +201,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 		log, revertTransactionResult, err := ctrl.RevertTransaction(ctx, ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 			DryRun:         false,
 			IdempotencyKey: data.IdempotencyKey,
-			SchemaVersion:  data.SchemaVersion,
+			SchemaVersion:  schemaVersion,
 			Input: ledgercontroller.RevertTransaction{
 				Force:           req.Force,
 				AtEffectiveDate: req.AtEffectiveDate,
@@ -232,7 +231,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.DeleteAccountMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				SchemaVersion:  data.SchemaVersion,
+				SchemaVersion:  schemaVersion,
 				Input: ledgercontroller.DeleteAccountMetadata{
 					Address: address,
 					Key:     req.Key,
@@ -247,7 +246,7 @@ func (b *Bulker) processElement(ctx context.Context, ctrl ledgercontroller.Contr
 			log, err = ctrl.DeleteTransactionMetadata(ctx, ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]{
 				DryRun:         false,
 				IdempotencyKey: data.IdempotencyKey,
-				SchemaVersion:  data.SchemaVersion,
+				SchemaVersion:  schemaVersion,
 				Input: ledgercontroller.DeleteTransactionMetadata{
 					TransactionID: transactionID,
 					Key:           req.Key,

@@ -218,7 +218,6 @@ type CreatedTransaction struct {
 func (p CreatedTransaction) NeedsSchema() bool {
 	return true
 }
-
 func (p CreatedTransaction) ValidateWithSchema(schema Schema) error {
 	for _, posting := range p.Transaction.Postings {
 		err := schema.Chart.ValidatePosting(posting)
@@ -376,7 +375,6 @@ type RevertedTransaction struct {
 func (p RevertedTransaction) NeedsSchema() bool {
 	return true
 }
-
 func (r RevertedTransaction) ValidateWithSchema(schema Schema) error {
 	return nil
 }

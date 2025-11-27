@@ -54,11 +54,9 @@ func (o *V2BulkElementRevertTransactionData) GetMetadata() map[string]string {
 }
 
 type V2BulkElementRevertTransaction struct {
-	Action string  `json:"action"`
-	Ik     *string `json:"ik,omitempty"`
-	// Schema version to use for validation
-	SchemaVersion *string                             `json:"schemaVersion,omitempty"`
-	Data          *V2BulkElementRevertTransactionData `json:"data,omitempty"`
+	Action string                              `json:"action"`
+	Ik     *string                             `json:"ik,omitempty"`
+	Data   *V2BulkElementRevertTransactionData `json:"data,omitempty"`
 }
 
 func (o *V2BulkElementRevertTransaction) GetAction() string {
@@ -73,13 +71,6 @@ func (o *V2BulkElementRevertTransaction) GetIk() *string {
 		return nil
 	}
 	return o.Ik
-}
-
-func (o *V2BulkElementRevertTransaction) GetSchemaVersion() *string {
-	if o == nil {
-		return nil
-	}
-	return o.SchemaVersion
 }
 
 func (o *V2BulkElementRevertTransaction) GetData() *V2BulkElementRevertTransactionData {

@@ -39,6 +39,10 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
+	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
+		api.BadRequest(w, ErrSchemaNotSpecified, errors.Unwrap(err))
+	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
+		api.NotFound(w, errors.Unwrap(err))
 	default:
 		InternalServerError(w, r, err)
 	}

@@ -687,7 +687,6 @@ Accept: application/json
   {
     "action": "string",
     "ik": "string",
-    "schemaVersion": "v1.0.0",
     "data": {
       "timestamp": "2019-08-24T14:15:22Z",
       "postings": [
@@ -4664,7 +4663,6 @@ This operation does not require authentication
   {
     "action": "string",
     "ik": "string",
-    "schemaVersion": "v1.0.0",
     "data": {
       "timestamp": "2019-08-24T14:15:22Z",
       "postings": [
@@ -4717,8 +4715,7 @@ This operation does not require authentication
 ```json
 {
   "action": "string",
-  "ik": "string",
-  "schemaVersion": "v1.0.0"
+  "ik": "string"
 }
 
 ```
@@ -4729,7 +4726,6 @@ This operation does not require authentication
 |---|---|---|---|---|
 |action|string|true|none|none|
 |ik|string|false|none|none|
-|schemaVersion|string|false|none|Schema version to use for validation|
 
 <h2 id="tocS_V2BulkElement">V2BulkElement</h2>
 <!-- backwards compatibility -->
@@ -4742,7 +4738,6 @@ This operation does not require authentication
 {
   "action": "string",
   "ik": "string",
-  "schemaVersion": "v1.0.0",
   "data": {
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
@@ -4815,7 +4810,6 @@ xor
 {
   "action": "string",
   "ik": "string",
-  "schemaVersion": "v1.0.0",
   "data": {
     "timestamp": "2019-08-24T14:15:22Z",
     "postings": [
@@ -4928,7 +4922,6 @@ xor
 {
   "action": "string",
   "ik": "string",
-  "schemaVersion": "v1.0.0",
   "data": {
     "targetId": "string",
     "targetType": "TRANSACTION",
@@ -4971,7 +4964,6 @@ and
 {
   "action": "string",
   "ik": "string",
-  "schemaVersion": "v1.0.0",
   "data": {
     "id": 0,
     "force": true,
@@ -5014,7 +5006,6 @@ and
 {
   "action": "string",
   "ik": "string",
-  "schemaVersion": "v1.0.0",
   "data": {
     "targetId": "string",
     "targetType": "TRANSACTION",
