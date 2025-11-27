@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 func TestChartValidation(t *testing.T) {
@@ -29,7 +31,10 @@ func TestChartValidation(t *testing.T) {
             },
             "out": {
                 ".metadata": {
-                    "key": "value"
+                    "foo": {},
+                    "bar": {
+                        "default": "BAR"
+                    }
                 },
                 ".rules": {}
             },
@@ -63,8 +68,11 @@ func TestChartValidation(t *testing.T) {
 								},
 								"out": {
 									Account: &ChartAccount{
-										Metadata: map[string]string{
-											"key": "value",
+										Metadata: map[string]ChartAccountMetadata{
+											"foo": {},
+											"bar": {
+												Default: pointer.For("BAR"),
+											},
 										},
 									},
 								},
@@ -140,7 +148,7 @@ func TestChartValidation(t *testing.T) {
 				"users": {
 					"$userID": {
 						".metadata": {
-							"key": "value"
+							"foo": {}
 						}
 					}
 				}
@@ -232,11 +240,11 @@ func TestChartValidation(t *testing.T) {
 		if tc.expectedError == "" {
 			require.NoError(t, err, tc.name)
 
-			require.Equal(t, tc.expectedChart, chart, tc.name)
+			require.Equal(t, tc.expectedChart, chart, "data structure: %s", tc.name)
 
 			value, err := json.MarshalIndent(&chart, "", "    ")
 			require.NoError(t, err, tc.name)
-			require.JSONEq(t, tc.source, string(value), tc.name)
+			require.JSONEq(t, tc.source, string(value), "roundtrip: %s", tc.name)
 		} else {
 			require.ErrorContains(t, err, tc.expectedError, tc.name)
 		}
@@ -255,15 +263,17 @@ func testChart() ChartOfAccounts {
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{
 						Rules: ChartAccountRules{},
-						Metadata: map[string]string{
-							"account_is": "bank subaccount",
+						Metadata: map[string]ChartAccountMetadata{
+							"bank_subaccount": {
+								Default: pointer.For("test"),
+							},
 						},
 					},
 				},
 			},
 			Account: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "main bank account",
+				Metadata: map[string]ChartAccountMetadata{
+					"root_bank_account": {},
 				},
 			},
 		},
@@ -275,9 +285,7 @@ func testChart() ChartOfAccounts {
 					FixedSegments: map[string]ChartSegment{
 						"main": {
 							Account: &ChartAccount{
-								Metadata: map[string]string{
-									"account_is": "main user account",
-								},
+								Metadata: map[string]ChartAccountMetadata{},
 							},
 						},
 					},
@@ -309,8 +317,8 @@ func TestAccountValidation(t *testing.T) {
 			name:    "non-leaf account",
 			address: "bank",
 			expectedAccount: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "main bank account",
+				Metadata: map[string]ChartAccountMetadata{
+					"root_bank_account": {},
 				},
 			},
 		},
@@ -318,8 +326,10 @@ func TestAccountValidation(t *testing.T) {
 			name:    "leaf account",
 			address: "bank:012",
 			expectedAccount: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "bank subaccount",
+				Metadata: map[string]ChartAccountMetadata{
+					"bank_subaccount": {
+						Default: pointer.For("test"),
+					},
 				},
 			},
 		},
@@ -327,9 +337,7 @@ func TestAccountValidation(t *testing.T) {
 			name:    "address with inner variable segment",
 			address: "users:001:main",
 			expectedAccount: &ChartAccount{
-				Metadata: map[string]string{
-					"account_is": "main user account",
-				},
+				Metadata: map[string]ChartAccountMetadata{},
 			},
 		},
 		{
@@ -351,6 +359,11 @@ func TestAccountValidation(t *testing.T) {
 			name:          "non-account variable branch",
 			address:       "users:001",
 			expectedError: "segment `001` is not allowed by the chart of accounts at `users`",
+		},
+		{
+			name:          "non-account fixed branch",
+			address:       "users",
+			expectedError: "account `users` is not defined in the chart of accounts",
 		},
 	} {
 		if tc.expectedAccount != nil {

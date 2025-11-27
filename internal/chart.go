@@ -9,8 +9,12 @@ import (
 
 type ChartAccountRules struct{}
 
+type ChartAccountMetadata struct {
+	Default *string `json:"default,omitempty"`
+}
+
 type ChartAccount struct {
-	Metadata map[string]string
+	Metadata map[string]ChartAccountMetadata
 	Rules    ChartAccountRules
 }
 
@@ -233,6 +237,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 				path:            path,
 				segment:         nextSegment,
 				patternMismatch: false,
+				hasSubsegments:  len(account) > 1,
 			}
 		}
 	}
@@ -251,6 +256,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 					path:            path,
 					segment:         nextSegment,
 					patternMismatch: false,
+					hasSubsegments:  len(account) > 1,
 				}
 			}
 		}
@@ -259,6 +265,7 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		path:            path,
 		segment:         nextSegment,
 		patternMismatch: variableSegment != nil,
+		hasSubsegments:  len(account) > 1,
 	}
 }
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error) {

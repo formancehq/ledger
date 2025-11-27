@@ -4481,8 +4481,13 @@ components:
           required:
             - errorCode
             - errorDescription
-    V2ChartRules:
+    V2ChartAccountRules:
       type: object
+    V2ChartAccountMetadata:
+      type: object
+      properties:
+        default:
+          type: string
     V2ChartSegment:
       type: object
       description: "Segment within a chart of account"
@@ -4492,11 +4497,11 @@ components:
         .pattern:
           type: string
         .rules:
-          $ref: "#/components/schemas/V2ChartRules"
+          $ref: "#/components/schemas/V2ChartAccountRules"
         .metadata:
           type: object
           additionalProperties:
-            type: string
+            $ref: "#/components/schemas/V2ChartAccountMetadata"
       additionalProperties:
         $ref: "#/components/schemas/V2ChartSegment"
       example:

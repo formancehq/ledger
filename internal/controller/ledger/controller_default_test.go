@@ -41,7 +41,13 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 			SchemaData: ledger.SchemaData{
 				Chart: ledger.ChartOfAccounts{
 					"world": {
-						Account: &ledger.ChartAccount{},
+						Account: &ledger.ChartAccount{
+							Metadata: map[string]ledger.ChartAccountMetadata{
+								"foo": {
+									Default: pointer.For("bar"),
+								},
+							},
+						},
 					},
 					"bank": {
 						Account: &ledger.ChartAccount{},
@@ -90,9 +96,15 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 			Return(nil, nil)
 	}
 
-	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any(), map[string]metadata.Metadata{}).
-		Return(nil)
+	if withSchema {
+		store.EXPECT().
+			CommitTransaction(gomock.Any(), &schema, gomock.Any(), map[string]metadata.Metadata{}).
+			Return(nil)
+	} else {
+		store.EXPECT().
+			CommitTransaction(gomock.Any(), nil, gomock.Any(), map[string]metadata.Metadata{}).
+			Return(nil)
+	}
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
@@ -157,7 +169,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(map[string]map[string]*big.Int{}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any(), nil).
+		CommitTransaction(gomock.Any(), nil, gomock.Any(), nil).
 		Return(nil)
 
 	store.EXPECT().

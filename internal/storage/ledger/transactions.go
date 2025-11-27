@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 )
 
-func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
+func (store *Store) CommitTransaction(ctx context.Context, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
 	if accountMetadata == nil {
 		accountMetadata = make(map[string]metadata.Metadata)
 	}
@@ -47,7 +47,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 	slices.Sort(accountsToUpsert)
 	accountsToUpsert = slices.Compact(accountsToUpsert)
 
-	err = store.UpsertAccounts(ctx, Map(accountsToUpsert, func(address string) *ledger.Account {
+	err = store.UpsertAccounts(ctx, schema, Map(accountsToUpsert, func(address string) *ledger.Account {
 		return &ledger.Account{
 			Address:       address,
 			FirstUsage:    tx.Timestamp,

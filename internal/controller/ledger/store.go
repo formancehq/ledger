@@ -33,7 +33,7 @@ type Store interface {
 
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query ledgerstore.BalanceQuery) (ledger.Balances, error)
-	CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error
+	CommitTransaction(ctx context.Context, schema *ledger.Schema, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error
 	// RevertTransaction revert the transaction with identifier id
 	// It returns :
 	//  * the reverted transaction
@@ -44,7 +44,7 @@ type Store interface {
 	DeleteTransactionMetadata(ctx context.Context, transactionID uint64, key string, at time.Time) (*ledger.Transaction, bool, error)
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
-	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
+	UpsertAccounts(ctx context.Context, schema *ledger.Schema, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertSchema(ctx context.Context, data *ledger.Schema) error
 	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
