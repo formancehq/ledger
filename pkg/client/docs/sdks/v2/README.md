@@ -1016,6 +1016,7 @@ func main() {
     res, err := s.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
         Ledger: "ledger001",
         DryRun: client.Bool(true),
+        Force: client.Bool(true),
         V2PostTransaction: components.V2PostTransaction{
             Postings: []components.V2Posting{
                 components.V2Posting{
