@@ -19,16 +19,21 @@ func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, _, err := common.LedgerFromContext(r.Context()).
+	_, idempotencyHit, err := common.LedgerFromContext(r.Context()).
 		DeleteAccountMetadata(
 			r.Context(),
 			getCommandParameters(r, ledger.DeleteAccountMetadata{
 				Address: address,
 				Key:     chi.URLParam(r, "key"),
 			}),
-		); err != nil {
+		)
+	if err != nil {
 		common.HandleCommonWriteErrors(w, r, err)
 		return
+	}
+
+	if idempotencyHit {
+		w.Header().Set("Idempotency-Hit", "true")
 	}
 
 	api.NoContent(w)

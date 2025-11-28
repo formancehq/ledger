@@ -30,10 +30,11 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, _, err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
+	_, idempotencyHit, err := l.SaveTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.SaveTransactionMetadata{
 		TransactionID: txID,
 		Metadata:      m,
-	})); err != nil {
+	}))
+	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
@@ -41,6 +42,9 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
+	}
+	if idempotencyHit {
+		w.Header().Set("Idempotency-Hit", "true")
 	}
 
 	api.NoContent(w)
