@@ -68,6 +68,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 	for {
 		select {
 		case ch := <-p.stopChannel:
+			p.logger.Debugf("Pipeline terminated.")
 			close(ch)
 			return
 		case <-time.After(nextInterval):
@@ -93,6 +94,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				}
 			}
 
+			p.logger.Debugf("Got %d items", len(logs.Data))
 			if len(logs.Data) == 0 {
 				nextInterval = p.pipelineConfig.PullInterval
 				continue
@@ -118,6 +120,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			}
 
 			lastLogID := logs.Data[len(logs.Data)-1].ID
+			p.logger.Debugf("Move last log id to %d", lastLogID)
 			p.pipeline.LastLogID = lastLogID
 
 			select {

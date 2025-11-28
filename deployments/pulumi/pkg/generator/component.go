@@ -7,16 +7,15 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
-
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )
 
 type Component struct {
@@ -50,15 +49,6 @@ type Args struct {
 }
 
 func (a *Args) SetDefaults() {
-	if a.GeneratorVersion == nil {
-		a.GeneratorVersion = pulumix.Val("")
-	}
-	a.GeneratorVersion = pulumix.Apply(a.GeneratorVersion, func(generatorVersion string) string {
-		if generatorVersion == "" {
-			return "latest"
-		}
-		return generatorVersion
-	})
 	if a.Ledgers == nil {
 		a.Ledgers = make(map[string]LedgerConfiguration)
 	}
@@ -151,12 +141,10 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 				corev1.ContainerArgs{
 					Name: pulumi.String("generator"),
 					Args: generatorArgs.ToOutput(ctx.Context()).Untyped().(pulumi.StringArrayOutput),
-					Image: utils.GetImage(pulumi.String("ledger-generator"), pulumix.Apply2(args.GeneratorVersion, args.Tag, func(generatorVersion string, ledgerVersion string) string {
-						if generatorVersion == "" {
-							return ledgerVersion
-						}
-						return generatorVersion
-					})),
+					Image: utils.GetImage(
+						args.WithFallbackTag(args.GeneratorVersion),
+						pulumi.String("ledger-generator"),
+					),
 					ImagePullPolicy: pulumi.String("Always"),
 					VolumeMounts: corev1.VolumeMountArray{
 						corev1.VolumeMountArgs{
