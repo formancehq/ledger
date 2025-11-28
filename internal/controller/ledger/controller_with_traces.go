@@ -152,15 +152,15 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 	if err != nil {
 		panic(err)
 	}
-	ret.updateSchemaHistogram, err = meter.Int64Histogram("controller.update_schema")
+	ret.updateSchemaHistogram, err = meter.Int64Histogram("controller.update_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.getSchemaHistogram, err = meter.Int64Histogram("controller.get_schema")
+	ret.getSchemaHistogram, err = meter.Int64Histogram("controller.get_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
-	ret.listSchemasHistogram, err = meter.Int64Histogram("controller.list_schemas")
+	ret.listSchemasHistogram, err = meter.Int64Histogram("controller.list_schemas", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
