@@ -412,9 +412,9 @@ func TestTransactionCreate(t *testing.T) {
 				if tc.returnError == nil {
 					expect.Return(&ledger.Log{}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
-					}, nil)
+					}, false, nil)
 				} else {
-					expect.Return(nil, nil, tc.returnError)
+					expect.Return(nil, nil, false, tc.returnError)
 				}
 			}
 

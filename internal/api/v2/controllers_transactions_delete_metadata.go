@@ -23,12 +23,16 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 
 	metadataKey := chi.URLParam(r, "key")
 
-	if _, err := l.DeleteTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.DeleteTransactionMetadata{
+	_, idempotencyHit, err := l.DeleteTransactionMetadata(r.Context(), getCommandParameters(r, ledgercontroller.DeleteTransactionMetadata{
 		TransactionID: txID,
 		Key:           metadataKey,
-	})); err != nil {
+	}))
+	if err != nil {
 		common.HandleCommonWriteErrors(w, r, err)
 		return
+	}
+	if idempotencyHit {
+		w.Header().Set("Idempotency-Hit", "true")
 	}
 
 	api.NoContent(w)

@@ -89,7 +89,7 @@ type Log struct {
 	Date           time.Time  `json:"date" bun:"date,type:timestamptz,nullzero"`
 	IdempotencyKey string     `json:"idempotencyKey" bun:"idempotency_key,type:varchar(256),unique,nullzero"`
 	// IdempotencyHash is a signature used when using IdempotencyKey.
-	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
+	// It allows checking if the usage of IdempotencyKey matches inputs given on the first idempotency key usage.
 	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
 	Hash            []byte  `json:"hash" bun:"hash,type:bytea"`

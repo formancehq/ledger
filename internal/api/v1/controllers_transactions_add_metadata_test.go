@@ -62,7 +62,7 @@ func TestTransactionsAddMetadata(t *testing.T) {
 							Metadata:      testCase.body.(metadata.Metadata),
 						},
 					}).
-					Return(&ledger.Log{}, nil)
+					Return(&ledger.Log{}, false, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")

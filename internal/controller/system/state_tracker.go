@@ -111,83 +111,89 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 	return nil
 }
 
-func (c *controllerFacade) CreateTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (c *controllerFacade) CreateTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
 	var (
-		log *ledger.Log
-		ret *ledger.CreatedTransaction
-		err error
+		log            *ledger.Log
+		ret            *ledger.CreatedTransaction
+		idempotencyHit bool
+		err            error
 	)
 	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
-		log, ret, err = ctrl.CreateTransaction(ctx, parameters)
+		log, ret, idempotencyHit, err = ctrl.CreateTransaction(ctx, parameters)
 		return err
 	})
 
-	return log, ret, err
+	return log, ret, idempotencyHit, err
 }
 
-func (c *controllerFacade) RevertTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (c *controllerFacade) RevertTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, bool, error) {
 	var (
-		log *ledger.Log
-		ret *ledger.RevertedTransaction
-		err error
+		log            *ledger.Log
+		ret            *ledger.RevertedTransaction
+		idempotencyHit bool
+		err            error
 	)
 	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
-		log, ret, err = ctrl.RevertTransaction(ctx, parameters)
+		log, ret, idempotencyHit, err = ctrl.RevertTransaction(ctx, parameters)
 		return err
 	})
 
-	return log, ret, err
+	return log, ret, idempotencyHit, err
 }
 
-func (c *controllerFacade) SaveTransactionMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]) (*ledger.Log, error) {
+func (c *controllerFacade) SaveTransactionMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.SaveTransactionMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
-		err error
+		log            *ledger.Log
+		idempotencyHit bool
+		err            error
 	)
 	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
-		log, err = ctrl.SaveTransactionMetadata(ctx, parameters)
+		log, idempotencyHit, err = ctrl.SaveTransactionMetadata(ctx, parameters)
 		return err
 	})
 
-	return log, err
+	return log, idempotencyHit, err
 }
 
-func (c *controllerFacade) SaveAccountMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]) (*ledger.Log, error) {
+func (c *controllerFacade) SaveAccountMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.SaveAccountMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
-		err error
+		log            *ledger.Log
+		idempotencyHit bool
+		err            error
 	)
 	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
-		log, err = ctrl.SaveAccountMetadata(ctx, parameters)
+		log, idempotencyHit, err = ctrl.SaveAccountMetadata(ctx, parameters)
 		return err
 	})
 
-	return log, err
+	return log, idempotencyHit, err
 }
 
-func (c *controllerFacade) DeleteTransactionMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (c *controllerFacade) DeleteTransactionMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
-		err error
+		log            *ledger.Log
+		idempotencyHit bool
+		err            error
 	)
 	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
-		log, err = ctrl.DeleteTransactionMetadata(ctx, parameters)
+		log, idempotencyHit, err = ctrl.DeleteTransactionMetadata(ctx, parameters)
 		return err
 	})
 
-	return log, err
+	return log, idempotencyHit, err
 }
 
-func (c *controllerFacade) DeleteAccountMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]) (*ledger.Log, error) {
+func (c *controllerFacade) DeleteAccountMetadata(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	var (
-		log *ledger.Log
-		err error
+		log            *ledger.Log
+		idempotencyHit bool
+		err            error
 	)
 	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
-		log, err = ctrl.DeleteAccountMetadata(ctx, parameters)
+		log, idempotencyHit, err = ctrl.DeleteAccountMetadata(ctx, parameters)
 		return err
 	})
-	return log, err
+	return log, idempotencyHit, err
 }
 
 func (c *controllerFacade) Import(ctx context.Context, stream chan ledger.Log) error {

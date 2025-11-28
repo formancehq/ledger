@@ -1251,6 +1251,8 @@ func (s *V1) AddMetadataToAccount(ctx context.Context, request operations.AddMet
 
 	switch {
 	case httpRes.StatusCode == 204:
+		res.Headers = httpRes.Header
+
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -2696,6 +2698,8 @@ func (s *V1) CreateTransaction(ctx context.Context, request operations.CreateTra
 
 	switch {
 	case httpRes.StatusCode == 200:
+		res.Headers = httpRes.Header
+
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
 			rawBody, err := utils.ConsumeRawBody(httpRes)
@@ -3119,6 +3123,8 @@ func (s *V1) AddMetadataOnTransaction(ctx context.Context, request operations.Ad
 
 	switch {
 	case httpRes.StatusCode == 204:
+		res.Headers = httpRes.Header
+
 	default:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
@@ -3311,6 +3317,8 @@ func (s *V1) RevertTransaction(ctx context.Context, request operations.RevertTra
 
 	switch {
 	case httpRes.StatusCode == 201:
+		res.Headers = httpRes.Header
+
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
 			rawBody, err := utils.ConsumeRawBody(httpRes)
