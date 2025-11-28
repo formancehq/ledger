@@ -430,7 +430,7 @@ func TestBulk(t *testing.T) {
 			}
 			close(bulk)
 
-			require.NoError(t, bulker.Run(ctx, bulk, results, testCase.options))
+			require.NoError(t, bulker.Run(ctx, "", bulk, results, testCase.options))
 		})
 	}
 }
