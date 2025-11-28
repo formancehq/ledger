@@ -2,9 +2,9 @@
 
 set positional-arguments
 
-push-image version='latest':
+push-image version='latest' registry='ghcr.io':
     docker buildx build . \
         --build-context root=../.. \
-        -t ghcr.io/formancehq/ledger-provisioner:{{ version }} \
+        -t {{ registry }}/formancehq/ledger-provisioner:{{ version }} \
         --push \
         --platform linux/amd64,linux/arm64
