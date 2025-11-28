@@ -1,3 +1,22 @@
+do $$
+	begin
+		set search_path = '{{ .Schema }}';
+
+		create table schemas (
+			ledger varchar,
+			version text not null,
+			created_at timestamp without time zone not null default now(),
+			chart jsonb not null,
+			primary key (ledger, version)
+		);
+
+		alter type log_type add value 'UPDATED_SCHEMA';
+
+		alter table logs
+		add column schema_version text;
+	end
+$$;
+
 create or replace function compute_hash(previous_hash bytea, r logs)
 	returns bytea
 	language plpgsql
@@ -13,8 +32,11 @@ begin
 	       '"date":"' || (to_json(r.date::timestamp)#>>'{}') || 'Z",' ||
 	       '"idempotencyKey":"' || coalesce(r.idempotency_key, '') || '",' ||
 	       '"id":0,' ||
-	       '"hash":null' ||
-	       '}' into marshalledAsJSON;
+	       '"hash":null' into marshalledAsJSON;
+	if r.schema_version is not null then
+		marshalledAsJSON := marshalledAsJSON || ',"schemaVersion":"' || r.schema_version || '"';
+	end if;
+	marshalledAsJSON := marshalledAsJSON || '}';
 
 	return (select public.digest(
 			case
@@ -23,26 +45,5 @@ begin
 				else '"' || encode(previous_hash::bytea, 'base64')::bytea || E'"\n' || marshalledAsJSON::bytea
 				end || E'\n', 'sha256'::text
 	               ));
-end;
-$$ set search_path = '{{ .Schema }}';
-
-create or replace function set_log_hash()
-	returns trigger
-	security definer
-	language plpgsql
-as
-$$
-declare
-	previousHash bytea;
-begin
-	select hash into previousHash
-	from logs
-	where ledger = new.ledger
-	order by seq desc
-	limit 1;
-
-	new.hash = compute_hash(previousHash, new);
-
-	return new;
 end;
 $$ set search_path = '{{ .Schema }}';
