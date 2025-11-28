@@ -85,7 +85,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		_, res, _, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
+		_, res, idempotencyHit, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
 			RunScript: ledgercontroller.TxToScriptData(txData, false),
 		}))
 		if err != nil {
@@ -106,6 +106,11 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+
+		if idempotencyHit {
+			w.Header().Set("Idempotency-Hit", "true")
+		}
+
 		api.Ok(w, []any{mapTransactionToV1(res.Transaction)})
 		return
 	}
@@ -116,7 +121,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, res, _, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
+	_, res, idempotencyHit, err := l.CreateTransaction(r.Context(), getCommandParameters(r, ledgercontroller.CreateTransaction{
 		RunScript: ledgercontroller.RunScript{
 			Script:    *script,
 			Timestamp: payload.Timestamp,
@@ -140,6 +145,9 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
+	}
+	if idempotencyHit {
+		w.Header().Set("Idempotency-Hit", "true")
 	}
 
 	api.Ok(w, []any{mapTransactionToV1(res.Transaction)})
