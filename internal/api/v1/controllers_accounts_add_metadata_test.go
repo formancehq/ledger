@@ -23,12 +23,14 @@ func TestAccountsAddMetadata(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
-		name              string
-		queryParams       url.Values
-		expectStatusCode  int
-		expectedErrorCode string
-		account           string
-		body              any
+		name                      string
+		queryParams               url.Values
+		expectStatusCode          int
+		expectedErrorCode         string
+		account                   string
+		body                      any
+		returnIdempotencyHit      bool
+		expectIdempotencyHitHeader bool
 	}
 
 	testCases := []testCase{
@@ -38,6 +40,15 @@ func TestAccountsAddMetadata(t *testing.T) {
 			body: metadata.Metadata{
 				"foo": "bar",
 			},
+		},
+		{
+			name:    "with idempotency hit",
+			account: "world",
+			body: metadata.Metadata{
+				"foo": "bar",
+			},
+			returnIdempotencyHit:       true,
+			expectIdempotencyHitHeader: true,
 		},
 		{
 			name:    "nominal dash 1",
@@ -97,7 +108,7 @@ func TestAccountsAddMetadata(t *testing.T) {
 							Metadata: testCase.body.(metadata.Metadata),
 						},
 					}).
-					Return(&ledger.Log{}, false, nil)
+					Return(&ledger.Log{}, testCase.returnIdempotencyHit, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
@@ -114,6 +125,13 @@ func TestAccountsAddMetadata(t *testing.T) {
 				err := api.ErrorResponse{}
 				api.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
+			}
+			if testCase.expectStatusCode == http.StatusNoContent {
+				if testCase.expectIdempotencyHitHeader {
+					require.Equal(t, "true", rec.Header().Get("Idempotency-Hit"))
+				} else {
+					require.Empty(t, rec.Header().Get("Idempotency-Hit"))
+				}
 			}
 		})
 	}
