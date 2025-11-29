@@ -1,0 +1,25 @@
+name: Optimize Query Indexes - PIT Insertion (1/5)
+description: |
+  Create optimized index for Point-in-Time queries with insertion_date on moves table.
+  This is part of a multi-step migration where each index is created in a separate migration.
+
+changes:
+  moves_table:
+    - action: "CREATE"
+      new_index: "idx_moves_pit_insertion (account_address, asset, insertion_date desc, seq desc)"
+      reason: |
+        Creates index for PIT queries filtering on insertion_date.
+        Replaces moves_post_commit_volumes which used accounts_seq.
+        This index aligns with actual query patterns for better performance.
+
+affected_queries:
+  - "resource_aggregated_balances.go: PIT queries with DISTINCT ON (accounts_address, asset)"
+  - "resource_accounts.go: Account expansion volumes queries"
+
+performance_impact:
+  - "MAJOR improvement for Point-in-Time queries using insertion_date"
+
+migration_safety:
+  - "Uses CONCURRENTLY flag to avoid locking tables during index creation"
+  - "Each index creation is isolated in its own migration"
+  - "Old indexes will be dropped in migration 45 after all new indexes are created"

@@ -76,10 +76,14 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		})
 		When("restarting the service", func() {
 			BeforeEach(func(ctx context.Context) {
-				testServer, err := testServer.Wait(ctx)
+				srv, err := testServer.Wait(ctx)
 				Expect(err).To(BeNil())
 
-				Expect(testServer.Restart(ctx)).To(BeNil())
+				Expect(srv.Restart(ctx)).To(BeNil())
+
+				DeferCleanup(func(ctx context.Context) {
+					Expect(srv.Stop(ctx)).To(BeNil())
+				})
 			})
 			It("should be ok", func() {})
 		})

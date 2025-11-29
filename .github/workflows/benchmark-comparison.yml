@@ -17,7 +17,7 @@ on:
       count:
         description: "Number of times to run each benchmark "
         required: false
-        default: 1
+        default: 5
   pull_request:
     types: [assigned, opened, synchronize, reopened, labeled]
 
