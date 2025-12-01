@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.24-alpine AS compiler
 WORKDIR /src
 COPY --from=root pkg pkg
@@ -14,6 +15,7 @@ COPY cmd /src/tools/provisioner/cmd
 COPY pkg /src/tools/provisioner/pkg
 RUN --mount=type=cache,target=$GOPATH go build -o provisioner
 
+# syntax=docker/dockerfile:1
 FROM alpine:3.21
 LABEL org.opencontainers.image.source=https://github.com/formancehq/ledger
 COPY --from=compiler /src/tools/provisioner/provisioner /bin/provisioner
