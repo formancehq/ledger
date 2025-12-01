@@ -18,11 +18,14 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
-func testCreateTransaction(t *testing.T, withSchema bool) {
+func TestCreateTransactionWithoutSchema(t *testing.T) {
+	t.Parallel()
+
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -32,60 +35,6 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 	interpreterParser := NewMockNumscriptParser(ctrl)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-
-	var schema ledger.Schema
-	var schemaVersion string
-	if withSchema {
-		schemaVersion = "v1.0"
-		schema = ledger.Schema{
-			SchemaData: ledger.SchemaData{
-				Chart: ledger.ChartOfAccounts{
-					"world": {
-						Account: &ledger.ChartAccount{
-							Metadata: map[string]ledger.ChartAccountMetadata{
-								"foo": {
-									Default: pointer.For("bar"),
-								},
-							},
-						},
-					},
-					"bank": {
-						Account: &ledger.ChartAccount{},
-					},
-				},
-			},
-			Version: schemaVersion,
-		}
-
-		store.EXPECT().
-			BeginTX(gomock.Any(), nil).
-			Return(store, &bun.Tx{}, nil)
-
-		store.EXPECT().
-			InsertSchema(gomock.Any(), &schema).
-			Return(nil)
-
-		store.EXPECT().
-			Commit(gomock.Any()).
-			Return(nil)
-
-		store.EXPECT().
-			InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-				return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
-			})).
-			DoAndReturn(func(_ context.Context, log *ledger.Log) any {
-				log.ID = pointer.For(uint64(0))
-				return log
-			})
-
-		_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
-			Input: InsertSchema{
-				Version: schema.Version,
-				Data:    schema.SchemaData,
-			},
-		})
-		require.NoError(t, err)
-	}
 
 	runScript := RunScript{}
 
@@ -108,27 +57,14 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 			Postings: ledger.Postings{posting},
 		}, nil)
 
-	if withSchema {
-		store.EXPECT().
-			FindSchema(gomock.Any(), "v1.0").
-			Return(&schema, nil)
-	} else {
-		store.EXPECT().
-			FindLatestSchemaVersion(gomock.Any()).
-			Return(nil, nil)
-	}
+	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
-	if withSchema {
-		store.EXPECT().
-			CommitTransaction(gomock.Any(), gomock.Any()).
-			Return(nil)
-		store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
-	} else {
-		store.EXPECT().
-			CommitTransaction(gomock.Any(), gomock.Any()).
-			Return(nil)
-		store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
-	}
+	store.EXPECT().
+		CommitTransaction(gomock.Any(), gomock.Any()).
+		Return(nil)
+	store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
@@ -140,7 +76,6 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 		})
 
 	_, _, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
-		SchemaVersion: schemaVersion,
 		Input: CreateTransaction{
 			RunScript: runScript,
 		},
@@ -148,10 +83,132 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 	require.NoError(t, err)
 }
 
-func TestCreateTransaction(t *testing.T) {
+func TestCreateTransactionWithSchema(t *testing.T) {
 	t.Parallel()
-	testCreateTransaction(t, false)
-	testCreateTransaction(t, true)
+	ctrl := gomock.NewController(t)
+
+	store := NewMockStore(ctrl)
+	numscriptRuntime := NewMockNumscriptRuntime(ctrl)
+	parser := NewMockNumscriptParser(ctrl)
+	machineParser := NewMockNumscriptParser(ctrl)
+	interpreterParser := NewMockNumscriptParser(ctrl)
+
+	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
+
+	script := `
+var {
+	account $dest
+}
+send [EUR/2 100] (
+	source = world
+	destination = $dest
+)`
+
+	schemaVersion := "v1.0"
+	schema := ledger.Schema{
+		SchemaData: ledger.SchemaData{
+			Chart: ledger.ChartOfAccounts{
+				"world": {
+					Account: &ledger.ChartAccount{
+						Metadata: map[string]ledger.ChartAccountMetadata{
+							"foo": {
+								Default: pointer.For("bar"),
+							},
+						},
+					},
+				},
+				"bank": {
+					Account: &ledger.ChartAccount{},
+				},
+			},
+		},
+		Version: schemaVersion,
+	}
+
+	store.EXPECT().
+		BeginTX(gomock.Any(), nil).
+		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		InsertSchema(gomock.Any(), &schema).
+		Return(nil)
+
+	store.EXPECT().
+		Commit(gomock.Any()).
+		Return(nil)
+
+	store.EXPECT().
+		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
+			return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
+		})).
+		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
+			log.ID = pointer.For(uint64(0))
+			return log
+		})
+
+	_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
+		Input: InsertSchema{
+			Version: schema.Version,
+			Data:    schema.SchemaData,
+		},
+	})
+	require.NoError(t, err)
+
+	runScript := RunScript{
+		Script: vm.Script{
+			Plain:    "",
+			Template: "TRANSFER",
+			Vars: map[string]string{
+				"dest": "bank",
+			},
+		},
+	}
+
+	parser.EXPECT().
+		Parse(script).
+		Return(numscriptRuntime, nil)
+
+	store.EXPECT().
+		BeginTX(gomock.Any(), nil).
+		Return(store, &bun.Tx{}, nil)
+
+	numscriptRuntime.EXPECT().
+		Execute(gomock.Any(), store, runScript.Vars).
+		Return(&NumscriptExecutionResult{
+			Postings: ledger.Postings{
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+			},
+		}, nil)
+
+	store.EXPECT().
+		Commit(gomock.Any()).
+		Return(nil)
+
+	store.EXPECT().
+		FindSchema(gomock.Any(), "v1.0").
+		Return(&schema, nil)
+
+	store.EXPECT().
+		CommitTransaction(gomock.Any(), gomock.Any()).
+		Return(nil)
+	store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
+
+	store.EXPECT().
+		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
+			return x.(*ledger.Log).Type == ledger.NewTransactionLogType
+		})).
+		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
+			log.ID = pointer.For(uint64(0))
+			return log
+		})
+
+	_, _, _, err = l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+		SchemaVersion: schemaVersion,
+		Input: CreateTransaction{
+			RunScript: runScript,
+		},
+	})
+	require.NoError(t, err)
 }
 
 func TestRevertTransaction(t *testing.T) {

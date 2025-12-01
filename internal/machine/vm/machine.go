@@ -469,6 +469,7 @@ func (m *Machine) tick() (bool, error) {
 }
 
 func (m *Machine) Execute() error {
+	fmt.Printf("running machine!")
 	go m.Printer(m.printChan)
 	defer close(m.printChan)
 

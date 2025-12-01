@@ -342,7 +342,14 @@ Idempotency-Key: string
         ".pattern": "^[0-9]{16}$"
       }
     }
-  }
+  },
+  "transactions": [
+    {
+      "id": "string",
+      "description": "string",
+      "script": "string"
+    }
+  ]
 }
 ```
 
@@ -421,7 +428,14 @@ Accept: application/json
         "$userID": {
           ".pattern": "^[0-9]{16}$"
         }
-      }
+      },
+      "transactions": [
+        {
+          "id": "string",
+          "description": "string",
+          "script": "string"
+        }
+      ]
     }
   }
 }
@@ -488,7 +502,14 @@ Accept: application/json
             "$userID": {
               ".pattern": "^[0-9]{16}$"
             }
-          }
+          },
+          "transactions": [
+            {
+              "id": "string",
+              "description": "string",
+              "script": "string"
+            }
+          ]
         }
       }
     ],
@@ -703,6 +724,7 @@ Accept: application/json
         }
       ],
       "script": {
+        "template": "CUSTOMER_DEPOSIT",
         "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
         "vars": {
           "user": "users:042"
@@ -1549,6 +1571,7 @@ Idempotency-Key: string
     }
   ],
   "script": {
+    "template": "CUSTOMER_DEPOSIT",
     "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
     "vars": {
       "user": "users:042"
@@ -3979,6 +4002,7 @@ This operation does not require authentication
     }
   ],
   "script": {
+    "template": "CUSTOMER_DEPOSIT",
     "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
     "vars": {
       "user": "users:042"
@@ -4009,6 +4033,7 @@ This operation does not require authentication
 |timestamp|string(date-time)|false|none|none|
 |postings|[[V2Posting](#schemav2posting)]|false|none|none|
 |script|object|false|none|none|
+|» template|string|false|none|none|
 |» plain|string|true|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
@@ -4711,6 +4736,7 @@ This operation does not require authentication
         }
       ],
       "script": {
+        "template": "CUSTOMER_DEPOSIT",
         "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
         "vars": {
           "user": "users:042"
@@ -4786,6 +4812,7 @@ This operation does not require authentication
       }
     ],
     "script": {
+      "template": "CUSTOMER_DEPOSIT",
       "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
       "vars": {
         "user": "users:042"
@@ -4858,6 +4885,7 @@ xor
       }
     ],
     "script": {
+      "template": "CUSTOMER_DEPOSIT",
       "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
       "vars": {
         "user": "users:042"
@@ -5730,6 +5758,56 @@ Chart of account
 |---|---|---|---|---|
 |**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
 
+<h2 id="tocS_V2TransactionTemplate">V2TransactionTemplate</h2>
+<!-- backwards compatibility -->
+<a id="schemav2transactiontemplate"></a>
+<a id="schema_V2TransactionTemplate"></a>
+<a id="tocSv2transactiontemplate"></a>
+<a id="tocsv2transactiontemplate"></a>
+
+```json
+{
+  "id": "string",
+  "description": "string",
+  "script": "string"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|description|string|false|none|none|
+|script|string|false|none|none|
+
+<h2 id="tocS_V2TransactionTemplates">V2TransactionTemplates</h2>
+<!-- backwards compatibility -->
+<a id="schemav2transactiontemplates"></a>
+<a id="schema_V2TransactionTemplates"></a>
+<a id="tocSv2transactiontemplates"></a>
+<a id="tocsv2transactiontemplates"></a>
+
+```json
+[
+  {
+    "id": "string",
+    "description": "string",
+    "script": "string"
+  }
+]
+
+```
+
+Transaction templates
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[[V2TransactionTemplate](#schemav2transactiontemplate)]|false|none|Transaction templates|
+
 <h2 id="tocS_V2SchemaData">V2SchemaData</h2>
 <!-- backwards compatibility -->
 <a id="schemav2schemadata"></a>
@@ -5745,7 +5823,14 @@ Chart of account
         ".pattern": "^[0-9]{16}$"
       }
     }
-  }
+  },
+  "transactions": [
+    {
+      "id": "string",
+      "description": "string",
+      "script": "string"
+    }
+  ]
 }
 
 ```
@@ -5757,6 +5842,7 @@ Schema data structure for ledger schemas
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|true|none|Chart of account|
+|transactions|[V2TransactionTemplates](#schemav2transactiontemplates)|false|none|Transaction templates|
 
 <h2 id="tocS_V2Schema">V2Schema</h2>
 <!-- backwards compatibility -->
@@ -5774,7 +5860,14 @@ Schema data structure for ledger schemas
       "$userID": {
         ".pattern": "^[0-9]{16}$"
       }
-    }
+    },
+    "transactions": [
+      {
+        "id": "string",
+        "description": "string",
+        "script": "string"
+      }
+    ]
   }
 }
 
@@ -5815,7 +5908,14 @@ and
         "$userID": {
           ".pattern": "^[0-9]{16}$"
         }
-      }
+      },
+      "transactions": [
+        {
+          "id": "string",
+          "description": "string",
+          "script": "string"
+        }
+      ]
     }
   }
 }
@@ -5847,7 +5947,14 @@ and
             "$userID": {
               ".pattern": "^[0-9]{16}$"
             }
-          }
+          },
+          "transactions": [
+            {
+              "id": "string",
+              "description": "string",
+              "script": "string"
+            }
+          ]
         }
       }
     ],
@@ -5884,7 +5991,14 @@ and
           "$userID": {
             ".pattern": "^[0-9]{16}$"
           }
-        }
+        },
+        "transactions": [
+          {
+            "id": "string",
+            "description": "string",
+            "script": "string"
+          }
+        ]
       }
     }
   ],

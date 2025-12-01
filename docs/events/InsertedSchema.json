@@ -117,6 +117,9 @@
         "chart": {
           "$ref": "#/$defs/ChartOfAccounts"
         },
+        "transactions": {
+          "$ref": "#/$defs/TransactionTemplates"
+        },
         "version": {
           "type": "string"
         },
@@ -128,6 +131,7 @@
       "type": "object",
       "required": [
         "chart",
+        "transactions",
         "version",
         "createdAt"
       ]
@@ -136,6 +140,51 @@
       "type": "string",
       "format": "date-time",
       "title": "Normalized date"
+<<<<<<< HEAD:docs/events/InsertedSchema.json
+=======
+    },
+    "TransactionTemplate": {
+      "properties": {
+        "Description": {
+          "type": "string"
+        },
+        "Script": {
+          "type": "string"
+        },
+        "Runtime": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Description",
+        "Script",
+        "Runtime"
+      ]
+    },
+    "TransactionTemplates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/TransactionTemplate"
+      },
+      "type": "object"
+    },
+    "UpdatedSchema": {
+      "properties": {
+        "ledger": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/$defs/Schema"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ledger",
+        "schema"
+      ]
+>>>>>>> 4a8518f7 (wip):docs/events/UpdatedSchema.json
     }
   }
 }

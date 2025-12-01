@@ -65,6 +65,15 @@ func (ctrl *DefaultController) insertSchema(ctx context.Context, store Store, _s
 	if err != nil {
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
+
+	for id, template := range schema.Transactions {
+		parser := ctrl.getParser(RuntimeType(template.Runtime))
+		_, err := parser.Parse(template.Script)
+		if err != nil {
+			return nil, ledger.NewErrInvalidSchema(fmt.Errorf("invalid template %s: %w", id, err))
+		}
+	}
+
 	if err := store.InsertSchema(ctx, &schema); err != nil {
 		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
 			return nil, newErrSchemaAlreadyExists(parameters.Input.Version)
@@ -394,8 +403,8 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
-func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
-	switch tx.Runtime {
+func (ctrl *DefaultController) getParser(runtimeType RuntimeType) NumscriptParser {
+	switch runtimeType {
 	case RuntimeExperimentalInterpreter:
 		return ctrl.interpreterParser
 	case RuntimeMachine:
@@ -406,11 +415,21 @@ func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
 }
 
 func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
-
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	m, err := ctrl.getParser(parameters.Input).Parse(parameters.Input.Plain)
+	if schema != nil {
+		if parameters.Input.Template == "" {
+			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("transactions on this ledger must use a template"))
+		}
+		if template, ok := schema.SchemaData.Transactions[parameters.Input.Template]; ok {
+			parameters.Input.Plain = template.Script
+		} else {
+			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
+		}
+	}
+
+	m, err := ctrl.getParser(parameters.Input.Runtime).Parse(parameters.Input.Plain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}
@@ -421,7 +440,8 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		ctrl.tracer,
 		ctrl.executeMachineHistogram,
 		func(ctx context.Context) (*NumscriptExecutionResult, error) {
-			return m.Execute(ctx, store, parameters.Input.Vars)
+			a, err := m.Execute(ctx, store, parameters.Input.Vars)
+			return a, err
 		},
 	)
 	if err != nil {
@@ -482,7 +502,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	var (
 		hasBeenReverted bool
 		err             error
@@ -552,7 +572,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 	return ctrl.revertTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.revertTransaction)
 }
 
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
 	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
 		return nil, err
 	}
@@ -600,7 +620,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
 	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
@@ -622,7 +642,7 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
 	err := store.DeleteAccountMetadata(ctx, parameters.Input.Address, parameters.Input.Key)
 	if err != nil {
 		return nil, err

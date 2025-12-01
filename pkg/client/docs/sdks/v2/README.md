@@ -1223,6 +1223,7 @@ func main() {
                 },
             },
             Script: &components.V2PostTransactionScript{
+                Template: client.String("CUSTOMER_DEPOSIT"),
                 Plain: "vars {\n" +
                 "account $user\n" +
                 "}\n" +
