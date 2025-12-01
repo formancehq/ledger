@@ -2371,6 +2371,9 @@ components:
         script:
           type: object
           properties:
+            template:
+              type: string
+              example: CUSTOMER_DEPOSIT
             plain:
               type: string
               example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
@@ -2814,12 +2817,28 @@ components:
         users:
           $userID:
             .pattern: "^[0-9]{16}$"
+    V2TransactionTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        script:
+          type: string
+    V2TransactionTemplates:
+      type: array
+      description: Transaction templates
+      items:
+        $ref: "#/components/schemas/V2TransactionTemplate"
     V2SchemaData:
       type: object
       description: Schema data structure for ledger schemas
       properties:
         chart:
           $ref: "#/components/schemas/V2ChartOfAccounts"
+        transactions:
+          $ref: "#/components/schemas/V2TransactionTemplates"
       required:
         - chart
     V2Schema:

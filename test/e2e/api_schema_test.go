@@ -81,6 +81,20 @@ var _ = Context("Ledger schema API tests", func() {
 								},
 							},
 						},
+						Transactions: []components.V2TransactionTemplate{
+							{
+								ID: pointer.For("TEST_TEMPLATE"),
+								Script: pointer.For(`
+								vars {
+									account $a
+									account $b
+								}
+								send [USD 100] (
+									source = $a
+									destination = $b
+								)`),
+							},
+						},
 					},
 				})
 				Expect(err).To(BeNil())
@@ -203,20 +217,12 @@ var _ = Context("Ledger schema API tests", func() {
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
-							Force:           pointer.For(true),
-							AccountMetadata: map[string]map[string]string{},
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Force: pointer.For(true),
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("TEST_TEMPLATE"),
+								Vars: map[string]string{
+									"a": "world",
+									"b": "bank:001",
 								},
 							},
 						},
@@ -459,11 +465,8 @@ var _ = Context("Ledger schema API tests", func() {
 					})
 					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumNotFound)))
 				})
-			})
 
-			When("testing logs contain schema version", func() {
-				It("should include schema version in transaction logs", func(specContext SpecContext) {
-					// Create a transaction with schema version
+				It("should fail with a postings transaction", func(specContext SpecContext) {
 					schemaVersion := "v1.0.0"
 					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
@@ -482,6 +485,47 @@ var _ = Context("Ledger schema API tests", func() {
 									Destination: "bank:001",
 									Amount:      big.NewInt(100),
 									Asset:       "USD",
+								},
+							},
+						},
+					})
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
+
+				It("should fail with an ad-hoc script transaction", func(specContext SpecContext) {
+					schemaVersion := "v1.0.0"
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force: pointer.For(true),
+							Script: pointer.For(components.V2PostTransactionScript{
+								Plain: `
+send [EUR/2] (
+	source = $users:001
+	destination = $bank:001
+)`,
+							}),
+						},
+					})
+					Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+				})
+			})
+
+			When("testing logs contain schema version", func() {
+				It("should include schema version in transaction logs", func(specContext SpecContext) {
+					// Create a transaction with schema version
+					schemaVersion := "v1.0.0"
+					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger:        "default",
+						SchemaVersion: &schemaVersion,
+						V2PostTransaction: components.V2PostTransaction{
+							Force: pointer.For(true),
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("TEST_TEMPLATE"),
+								Vars: map[string]string{
+									"a": "world",
+									"b": "users:001",
 								},
 							},
 						},

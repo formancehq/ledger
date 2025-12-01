@@ -99,6 +99,9 @@ func (e ErrInvalidSchema) Is(err error) bool {
 	_, ok := err.(ErrInvalidSchema)
 	return ok
 }
+func NewErrInvalidSchema(err error) ErrInvalidSchema {
+	return ErrInvalidSchema{err}
+}
 
 type ErrInvalidAccount struct {
 	path            []string
