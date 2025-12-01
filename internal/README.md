@@ -66,6 +66,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(e ErrInvalidLedgerName\) Error\(\) string](<#ErrInvalidLedgerName.Error>)
   - [func \(e ErrInvalidLedgerName\) Is\(err error\) bool](<#ErrInvalidLedgerName.Is>)
 - [type ErrInvalidSchema](<#ErrInvalidSchema>)
+  - [func NewErrInvalidSchema\(err error\) ErrInvalidSchema](<#NewErrInvalidSchema>)
   - [func \(e ErrInvalidSchema\) Error\(\) string](<#ErrInvalidSchema.Error>)
   - [func \(e ErrInvalidSchema\) Is\(err error\) bool](<#ErrInvalidSchema.Is>)
 - [type ErrPipelineAlreadyExists](<#ErrPipelineAlreadyExists>)
@@ -135,6 +136,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(p RevertedTransaction\) NeedsSchema\(\) bool](<#RevertedTransaction.NeedsSchema>)
   - [func \(r RevertedTransaction\) Type\(\) LogType](<#RevertedTransaction.Type>)
   - [func \(r RevertedTransaction\) ValidateWithSchema\(schema Schema\) error](<#RevertedTransaction.ValidateWithSchema>)
+- [type RuntimeType](<#RuntimeType>)
 - [type SavedMetadata](<#SavedMetadata>)
   - [func \(p SavedMetadata\) NeedsSchema\(\) bool](<#SavedMetadata.NeedsSchema>)
   - [func \(s SavedMetadata\) Type\(\) LogType](<#SavedMetadata.Type>)
@@ -165,6 +167,10 @@ import "github.com/formancehq/ledger/internal"
 - [type TransactionData](<#TransactionData>)
   - [func NewTransactionData\(\) TransactionData](<#NewTransactionData>)
   - [func \(data TransactionData\) WithPostings\(postings ...Posting\) TransactionData](<#TransactionData.WithPostings>)
+- [type TransactionTemplate](<#TransactionTemplate>)
+- [type TransactionTemplates](<#TransactionTemplates>)
+  - [func \(t TransactionTemplates\) MarshalJSON\(\) \(\[\]byte, error\)](<#TransactionTemplates.MarshalJSON>)
+  - [func \(t \*TransactionTemplates\) UnmarshalJSON\(data \[\]byte\) error](<#TransactionTemplates.UnmarshalJSON>)
 - [type Transactions](<#Transactions>)
 - [type Volumes](<#Volumes>)
   - [func NewEmptyVolumes\(\) Volumes](<#NewEmptyVolumes>)
@@ -721,7 +727,7 @@ func (e ErrAlreadyStarted) Is(err error) bool
 
 
 <a name="ErrInvalidAccount"></a>
-## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L103-L108>)
+## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L106-L111>)
 
 
 
@@ -732,7 +738,7 @@ type ErrInvalidAccount struct {
 ```
 
 <a name="ErrInvalidAccount.Error"></a>
-### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L110>)
+### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L113>)
 
 ```go
 func (e ErrInvalidAccount) Error() string
@@ -741,7 +747,7 @@ func (e ErrInvalidAccount) Error() string
 
 
 <a name="ErrInvalidAccount.Is"></a>
-### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L123>)
+### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L126>)
 
 ```go
 func (e ErrInvalidAccount) Is(err error) bool
@@ -817,6 +823,15 @@ type ErrInvalidSchema struct {
     // contains filtered or unexported fields
 }
 ```
+
+<a name="NewErrInvalidSchema"></a>
+### func [NewErrInvalidSchema](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L102>)
+
+```go
+func NewErrInvalidSchema(err error) ErrInvalidSchema
+```
+
+
 
 <a name="ErrInvalidSchema.Error"></a>
 ### func \(ErrInvalidSchema\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L95>)
@@ -1522,6 +1537,24 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 
 
 
+<a name="RuntimeType"></a>
+## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L9>)
+
+
+
+```go
+type RuntimeType string
+```
+
+<a name="RuntimeExperimentalInterpreter"></a>
+
+```go
+const (
+    RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
+    RuntimeMachine                 RuntimeType = "machine"
+)
+```
+
 <a name="SavedMetadata"></a>
 ## type [SavedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L266-L270>)
 
@@ -1572,7 +1605,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L15-L21>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L16-L22>)
 
 
 
@@ -1587,7 +1620,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L23>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L24>)
 
 ```go
 func NewSchema(version string, data SchemaData) (Schema, error)
@@ -1596,13 +1629,14 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L13>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L14>)
 
 
 
 ```go
 type SchemaData struct {
-    Chart ChartOfAccounts `json:"chart" bun:"chart"`
+    Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
+    Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
 }
 ```
 
@@ -1822,6 +1856,46 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 ```
 
 
+
+<a name="TransactionTemplate"></a>
+## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L16-L20>)
+
+
+
+```go
+type TransactionTemplate struct {
+    Description string
+    Script      string
+    Runtime     RuntimeType
+}
+```
+
+<a name="TransactionTemplates"></a>
+## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L22>)
+
+
+
+```go
+type TransactionTemplates map[string]TransactionTemplate
+```
+
+<a name="TransactionTemplates.MarshalJSON"></a>
+### func \(TransactionTemplates\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L51>)
+
+```go
+func (t TransactionTemplates) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="TransactionTemplates.UnmarshalJSON"></a>
+### func \(\*TransactionTemplates\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L25>)
+
+```go
+func (t *TransactionTemplates) UnmarshalJSON(data []byte) error
+```
+
+Marshal that transforms a list of transactions with ids into a map
 
 <a name="Transactions"></a>
 ## type [Transactions](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L15-L17>)

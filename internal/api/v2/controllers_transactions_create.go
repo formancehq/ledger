@@ -2,6 +2,7 @@ package v2
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
@@ -16,13 +17,21 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	common.WithBody(w, r, func(payload bulking.TransactionRequest) {
 		l := common.LedgerFromContext(r.Context())
 
-		if len(payload.Postings) > 0 && payload.Script.Plain != "" {
-			api.BadRequest(w, common.ErrValidation, errors.New("cannot pass postings and numscript in the same request"))
-			return
+		txType := []string{}
+		if len(payload.Postings) > 0 {
+			txType = append(txType, "postings")
 		}
-
-		if len(payload.Postings) == 0 && payload.Script.Plain == "" {
-			api.BadRequest(w, common.ErrNoPostings, errors.New("you need to pass either a posting array or a numscript script"))
+		if payload.Script.Plain != "" {
+			txType = append(txType, "numscript")
+		}
+		if payload.Script.Template != "" {
+			txType = append(txType, "template")
+		}
+		if len(txType) > 1 {
+			api.BadRequest(w, common.ErrValidation, fmt.Errorf("cannot pass %v and %v in the same request", txType[0], txType[1]))
+			return
+		} else if len(txType) == 0 {
+			api.BadRequest(w, common.ErrNoPostings, errors.New("you must pass either a posting array, a numscript script, or a template"))
 			return
 		}
 		// nodes(gfyrag): parameter 'force' initially sent using a query param
