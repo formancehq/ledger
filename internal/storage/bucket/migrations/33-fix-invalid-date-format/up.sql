@@ -16,7 +16,7 @@ do $$
 			from logs
 			where type = 'REVERTED_TRANSACTION' and data->>'revertedTransactionID' is not null
 		)
-		select reversed.id as log_id, transactions.*
+		select row_number() over (order by transactions.seq) as row_number, reversed.id as log_id, transactions.*
 		from transactions
 		join reversed on
 			reversed.revertedTransactionID = transactions.id and
@@ -34,9 +34,7 @@ do $$
 			with data as (
 				select *
 				from txs_view
-				order by ledger, log_id, id
-				offset _offset
-				limit _batch_size
+				where row_number >= _offset and row_number < _offset + _batch_size
 			)
 			update logs
 			set data = data || jsonb_build_object('revertedTransaction', jsonb_build_object(
