@@ -482,7 +482,8 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		WithPostings(result.Postings...).
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
-		WithReference(parameters.Input.Reference)
+		WithReference(parameters.Input.Reference).
+		WithTemplate(parameters.Input.Template)
 	err = store.CommitTransaction(ctx, &transaction)
 	if err != nil {
 		return nil, err

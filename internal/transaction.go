@@ -49,6 +49,7 @@ type Transaction struct {
 	// PostCommitEffectiveVolumes are the volumes of each account/asset after the transaction TransactionData.Timestamp.
 	// Those volumes are also computed in flight, but can be updated if a transaction is inserted in the past.
 	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	Template                   string            `json:"template" bun:"template,type:text"`
 }
 
 func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema) {
@@ -92,7 +93,11 @@ func (tx Transaction) WithMetadata(m metadata.Metadata) Transaction {
 
 func (tx Transaction) WithInsertedAt(date time.Time) Transaction {
 	tx.InsertedAt = date
+	return tx
+}
 
+func (tx Transaction) WithTemplate(template string) Transaction {
+	tx.Template = template
 	return tx
 }
 

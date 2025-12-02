@@ -140,8 +140,6 @@
       "type": "string",
       "format": "date-time",
       "title": "Normalized date"
-<<<<<<< HEAD:docs/events/InsertedSchema.json
-=======
     },
     "TransactionTemplate": {
       "properties": {
@@ -168,23 +166,6 @@
         "$ref": "#/$defs/TransactionTemplate"
       },
       "type": "object"
-    },
-    "UpdatedSchema": {
-      "properties": {
-        "ledger": {
-          "type": "string"
-        },
-        "schema": {
-          "$ref": "#/$defs/Schema"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "ledger",
-        "schema"
-      ]
->>>>>>> 4a8518f7 (wip):docs/events/UpdatedSchema.json
     }
   }
 }

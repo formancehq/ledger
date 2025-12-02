@@ -121,9 +121,19 @@ send [EUR/2 100] (
 					Account: &ledger.ChartAccount{},
 				},
 			},
+			Transactions: ledger.TransactionTemplates{
+				"TRANSFER": {
+					Description: "Test tx template",
+					Script:      script,
+				},
+			},
 		},
 		Version: schemaVersion,
 	}
+
+	parser.EXPECT().
+		Parse(script).
+		Return(numscriptRuntime, nil)
 
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).

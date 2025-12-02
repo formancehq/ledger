@@ -15,6 +15,8 @@ type V2Schema struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// Chart of account
 	Chart map[string]V2ChartSegment `json:"chart"`
+	// Transaction templates
+	Transactions []V2TransactionTemplate `json:"transactions,omitempty"`
 }
 
 func (v V2Schema) MarshalJSON() ([]byte, error) {
@@ -47,4 +49,11 @@ func (o *V2Schema) GetChart() map[string]V2ChartSegment {
 		return map[string]V2ChartSegment{}
 	}
 	return o.Chart
+}
+
+func (o *V2Schema) GetTransactions() []V2TransactionTemplate {
+	if o == nil {
+		return nil
+	}
+	return o.Transactions
 }

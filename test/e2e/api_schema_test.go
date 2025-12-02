@@ -54,12 +54,42 @@ var _ = Context("Ledger schema API tests", func() {
 
 		When("inserting schemas with different validation rules", func() {
 			BeforeEach(func(specContext SpecContext) {
+				transactionTemplates := []components.V2TransactionTemplate{
+					{
+						ID: pointer.For("WORLD_TO_BANK"),
+						Script: pointer.For(`
+									vars {
+										account $b
+									}
+									send [USD 100] (
+										source = @world
+										destination = $b
+									)`),
+					},
+					{
+						ID: pointer.For("A_TO_B"),
+						Script: pointer.For(`
+									vars {
+										account $a
+										account $b
+									}
+									send [USD 100] (
+										source = $a allowing unbounded overdraft
+										destination = $b
+									)
+								`),
+					},
+				}
+
 				// Schema v1.0.0 - Basic validation
 				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(ctx, operations.V2InsertSchemaRequest{
 					Ledger:  "default",
 					Version: "v1.0.0",
 					V2SchemaData: components.V2SchemaData{
 						Chart: map[string]components.V2ChartSegment{
+							"world": {
+								DotSelf: &components.DotSelf{},
+							},
 							"users": {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
@@ -81,20 +111,7 @@ var _ = Context("Ledger schema API tests", func() {
 								},
 							},
 						},
-						Transactions: []components.V2TransactionTemplate{
-							{
-								ID: pointer.For("TEST_TEMPLATE"),
-								Script: pointer.For(`
-								vars {
-									account $a
-									account $b
-								}
-								send [USD 100] (
-									source = $a
-									destination = $b
-								)`),
-							},
-						},
+						Transactions: transactionTemplates,
 					},
 				})
 				Expect(err).To(BeNil())
@@ -124,6 +141,7 @@ var _ = Context("Ledger schema API tests", func() {
 								},
 							},
 						},
+						Transactions: transactionTemplates,
 					},
 				})
 				Expect(err).To(BeNil())
@@ -153,6 +171,7 @@ var _ = Context("Ledger schema API tests", func() {
 								},
 							},
 						},
+						Transactions: transactionTemplates,
 					},
 				})
 				Expect(err).To(BeNil())
@@ -219,9 +238,8 @@ var _ = Context("Ledger schema API tests", func() {
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
 							Script: &components.V2PostTransactionScript{
-								Template: pointer.For("TEST_TEMPLATE"),
+								Template: pointer.For("WORLD_TO_BANK"),
 								Vars: map[string]string{
-									"a": "world",
 									"b": "bank:001",
 								},
 							},
@@ -237,18 +255,11 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 							Metadata: map[string]string{
@@ -266,18 +277,11 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 						},
@@ -292,18 +296,11 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank",
+									"b": "users:001",
 								},
 							},
 						},
@@ -323,18 +320,11 @@ var _ = Context("Ledger schema API tests", func() {
 									"bar": "test2",
 								},
 							},
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 						},
@@ -375,12 +365,11 @@ var _ = Context("Ledger schema API tests", func() {
 									"foo": "preexisting_value",
 								},
 							},
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 						},
@@ -393,12 +382,11 @@ var _ = Context("Ledger schema API tests", func() {
 						V2PostTransaction: components.V2PostTransaction{
 							Force:           pointer.For(true),
 							AccountMetadata: map[string]map[string]string{},
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 						},
@@ -421,18 +409,11 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: nil,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 						},
@@ -447,18 +428,11 @@ var _ = Context("Ledger schema API tests", func() {
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
-							Postings: []components.V2Posting{
-								{
-									Source:      "bank:001",
-									Destination: "users:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
-								},
-								{
-									Source:      "users:001",
-									Destination: "bank:001",
-									Amount:      big.NewInt(100),
-									Asset:       "USD",
+							Script: &components.V2PostTransactionScript{
+								Template: pointer.For("A_TO_B"),
+								Vars: map[string]string{
+									"a": "bank:001",
+									"b": "users:001",
 								},
 							},
 						},
@@ -501,10 +475,10 @@ var _ = Context("Ledger schema API tests", func() {
 							Force: pointer.For(true),
 							Script: pointer.For(components.V2PostTransactionScript{
 								Plain: `
-send [EUR/2] (
-	source = $users:001
-	destination = $bank:001
-)`,
+								send [EUR/2] (
+									source = $users:001
+									destination = $bank:001
+								)`,
 							}),
 						},
 					})
@@ -522,9 +496,8 @@ send [EUR/2] (
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
 							Script: &components.V2PostTransactionScript{
-								Template: pointer.For("TEST_TEMPLATE"),
+								Template: pointer.For("WORLD_TO_BANK"),
 								Vars: map[string]string{
-									"a": "world",
 									"b": "users:001",
 								},
 							},
