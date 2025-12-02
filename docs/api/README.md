@@ -420,15 +420,15 @@ Accept: application/json
         "$userID": {
           ".pattern": "^[0-9]{16}$"
         }
-      },
-      "transactions": [
-        {
-          "id": "string",
-          "description": "string",
-          "script": "string"
-        }
-      ]
-    }
+      }
+    },
+    "transactions": [
+      {
+        "id": "string",
+        "description": "string",
+        "script": "string"
+      }
+    ]
   }
 }
 ```
@@ -494,15 +494,15 @@ Accept: application/json
             "$userID": {
               ".pattern": "^[0-9]{16}$"
             }
-          },
-          "transactions": [
-            {
-              "id": "string",
-              "description": "string",
-              "script": "string"
-            }
-          ]
-        }
+          }
+        },
+        "transactions": [
+          {
+            "id": "string",
+            "description": "string",
+            "script": "string"
+          }
+        ]
       }
     ],
     "hasMore": true,
@@ -5820,15 +5820,15 @@ Schema data structure for ledger schemas
       "$userID": {
         ".pattern": "^[0-9]{16}$"
       }
-    },
-    "transactions": [
-      {
-        "id": "string",
-        "description": "string",
-        "script": "string"
-      }
-    ]
-  }
+    }
+  },
+  "transactions": [
+    {
+      "id": "string",
+      "description": "string",
+      "script": "string"
+    }
+  ]
 }
 
 ```
@@ -5868,15 +5868,15 @@ and
         "$userID": {
           ".pattern": "^[0-9]{16}$"
         }
-      },
-      "transactions": [
-        {
-          "id": "string",
-          "description": "string",
-          "script": "string"
-        }
-      ]
-    }
+      }
+    },
+    "transactions": [
+      {
+        "id": "string",
+        "description": "string",
+        "script": "string"
+      }
+    ]
   }
 }
 
@@ -5907,15 +5907,15 @@ and
             "$userID": {
               ".pattern": "^[0-9]{16}$"
             }
-          },
-          "transactions": [
-            {
-              "id": "string",
-              "description": "string",
-              "script": "string"
-            }
-          ]
-        }
+          }
+        },
+        "transactions": [
+          {
+            "id": "string",
+            "description": "string",
+            "script": "string"
+          }
+        ]
       }
     ],
     "hasMore": true,
@@ -5951,15 +5951,15 @@ and
           "$userID": {
             ".pattern": "^[0-9]{16}$"
           }
-        },
-        "transactions": [
-          {
-            "id": "string",
-            "description": "string",
-            "script": "string"
-          }
-        ]
-      }
+        }
+      },
+      "transactions": [
+        {
+          "id": "string",
+          "description": "string",
+          "script": "string"
+        }
+      ]
     }
   ],
   "hasMore": true,
