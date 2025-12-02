@@ -134,7 +134,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 
 	err := exec(m)
 	if expected.Error != nil {
-		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %w, got: %v", expected.Error, err)
+		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %[1]v (%[1]T), got: %v", expected.Error, err)
 		if expected.ErrorContains != "" {
 			require.ErrorContains(t, err, expected.ErrorContains)
 		}
