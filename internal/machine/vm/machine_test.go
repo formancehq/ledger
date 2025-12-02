@@ -134,7 +134,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 
 	err := exec(m)
 	if expected.Error != nil {
-		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %v, got: %v", expected.Error, err)
+		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %w, got: %v", expected.Error, err)
 		if expected.ErrorContains != "" {
 			require.ErrorContains(t, err, expected.ErrorContains)
 		}
@@ -2264,6 +2264,25 @@ func TestSaveFromAccount(t *testing.T) {
 			Printed:  []machine.Value{},
 			Postings: []Posting{},
 			Error:    &machine.ErrNegativeAmount{},
+		}
+		test(t, tc)
+	})
+
+	t.Run("save all and overdraft", func(t *testing.T) {
+		script := `
+ 			save [USD *] from @alice
+
+ 			send [USD 10] (
+ 			   source = @alice allowing overdraft up to [USD 10]
+ 			   destination = @world
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", -10)
+		tc.expected = CaseResult{
+			Printed:       []machine.Value{},
+			ErrorContains: "insufficient funds",
+			Error:         &machine.ErrInsufficientFund{},
 		}
 		test(t, tc)
 	})
