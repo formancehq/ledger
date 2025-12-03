@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  node-1:
+    image: golang:1.25-alpine
+    working_dir: /app
+    environment:
+      - NODE_ID=node-1
+      - BIND_ADDR=0.0.0.0:7000
+      - ADVERTISE_ADDR=node-1:7000
+      - DATA_DIR=/data
+    ports:
+      - "7000:7000"
+    volumes:
+      - .:/app
+      - node1-data:/data
+      - go-mod-cache:/go/pkg/mod
+    networks:
+      - raft-network
+    command: >
+      sh -c "
+        go mod download &&
+        go run ./cmd/server --node-id node-1 --bind-addr 0.0.0.0:7000 --advertise-addr node-1:7000 --data-dir /data --peers node-2:7000,node-3:7000 --debug --bootstrap
+      "
+
+  node-2:
+    image: golang:1.25-alpine
+    working_dir: /app
+    environment:
+      - NODE_ID=node-2
+      - BIND_ADDR=0.0.0.0:7000
+      - ADVERTISE_ADDR=node-2:7000
+      - DATA_DIR=/data
+    ports:
+      - "7001:7000"
+    volumes:
+      - .:/app
+      - node2-data:/data
+      - go-mod-cache:/go/pkg/mod
+    networks:
+      - raft-network
+    depends_on:
+      - node-1
+    command: >
+      sh -c "
+        go mod download &&
+        go run ./cmd/server --node-id node-2 --bind-addr 0.0.0.0:7000 --advertise-addr node-2:7000 --data-dir /data --debug
+      "
+
+  node-3:
+    image: golang:1.25-alpine
+    working_dir: /app
+    environment:
+      - NODE_ID=node-3
+      - BIND_ADDR=0.0.0.0:7000
+      - ADVERTISE_ADDR=node-3:7000
+      - DATA_DIR=/data
+    ports:
+      - "7002:7000"
+    volumes:
+      - .:/app
+      - node3-data:/data
+      - go-mod-cache:/go/pkg/mod
+    networks:
+      - raft-network
+    depends_on:
+      - node-1
+    command: >
+      sh -c "
+        go mod download &&
+        go run ./cmd/server --node-id node-3 --bind-addr 0.0.0.0:7000 --advertise-addr node-3:7000 --data-dir /data --debug
+      "
+
+networks:
+  raft-network:
+    driver: bridge
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+  go-mod-cache:
+
