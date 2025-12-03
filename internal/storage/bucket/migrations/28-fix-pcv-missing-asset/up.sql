@@ -42,7 +42,7 @@ do $$
 			with data as (
 				select transactions_seq, volumes
 				from moves_view
-				where row_number >= _offset and row_number < _offset + _batch_size
+				where row_number > _offset and row_number <= _offset + _batch_size
 			)
 			update transactions
 			set post_commit_volumes = data.volumes
