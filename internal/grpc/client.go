@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/formancehq/ledger-v3-poc/api"
 	"go.uber.org/zap"
@@ -14,7 +13,7 @@ import (
 
 type Client struct {
 	conn   *grpc.ClientConn
-	client api.EchoServiceClient
+	client api.LedgerServiceClient
 	logger *zap.Logger
 	mu     sync.RWMutex
 }
@@ -43,30 +42,10 @@ func (c *Client) Connect(ctx context.Context, address string) error {
 	}
 
 	c.conn = conn
-	c.client = api.NewEchoServiceClient(conn)
+	c.client = api.NewLedgerServiceClient(conn)
 
 	c.logger.Info("Connected to leader gRPC server", zap.String("address", address))
 	return nil
-}
-
-func (c *Client) Echo(ctx context.Context, message string) (string, error) {
-	c.mu.RLock()
-	client := c.client
-	c.mu.RUnlock()
-
-	if client == nil {
-		return "", fmt.Errorf("not connected to leader")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	resp, err := client.Echo(ctx, &api.EchoRequest{Message: message})
-	if err != nil {
-		return "", fmt.Errorf("echo failed: %w", err)
-	}
-
-	return resp.Message, nil
 }
 
 func (c *Client) Close() error {

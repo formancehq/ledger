@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package ledger;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/api";
+
+// LedgerService provides ledger operations
+service LedgerService {
+  // CreateTransaction creates a new transaction
+  rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+}
+
+message Posting {
+  string source = 1;
+  string destination = 2;
+  string amount = 3; // big.Int as string
+  string asset = 4;
+}
+
+message CreateTransactionRequest {
+  map<string, google.protobuf.Struct> account_metadata = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  google.protobuf.Struct metadata = 3;
+  string reference = 4;
+  repeated Posting postings = 5;
+  bool dry_run = 6;
+  string idempotency_key = 7;
+}
+
+message CreateTransactionResponse {
+  Transaction transaction = 1;
+  map<string, google.protobuf.Struct> account_metadata = 2;
+}
+
+message Transaction {
+  repeated Posting postings = 1;
+  google.protobuf.Struct metadata = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string reference = 4;
+  uint64 id = 5;
+}
+

@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/grpc"
+	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
@@ -89,11 +90,15 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	ctx, cancel := context.WithCancel(parentCtx)
 
+	// Create store and ledger service
+	store := service.NewMemoryStore()
+	ledgerService := service.NewDefaultLedger(store)
+
 	return &RaftCluster{
 		raft:       r,
 		config:     cfg,
 		logger:     logger,
-		grpcServer: grpc.NewServer(cfg.GRPCPort, logger),
+		grpcServer: grpc.NewServer(cfg.GRPCPort, logger, ledgerService),
 		grpcClient: grpc.NewClient(logger),
 		ctx:        ctx,
 		cancel:     cancel,
