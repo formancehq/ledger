@@ -55,9 +55,9 @@ func TestInsertSchema(t *testing.T) {
 			expectBackendCall: true,
 		},
 		{
-			name:              "invalid JSON",
+			name:              "invalid body",
 			version:           "v1.0.0",
-			requestBody:       "invalid json string",
+			requestBody:       "not an object",
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: "VALIDATION",
 			expectBackendCall: false,
