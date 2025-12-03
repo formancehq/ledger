@@ -15,7 +15,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-//go:generate mockgen -write_source_comment=false -typed -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator -typed
+//go:generate mockgen -write_source_comment=false -typed -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator
 type DelayCalculator interface {
 	Next(int) time.Duration
 }

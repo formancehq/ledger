@@ -1,0 +1,2644 @@
+openapi: 3.0.3
+info:
+  title: Ledger API
+  contact: {}
+  version: v3
+  description: |
+    # Ledger API v3
+    
+    This is a work-in-progress specification for Ledger API v3.
+    
+    This version is being developed iteratively based on v2. Changes and planned modifications
+    are documented in the project's documentation.
+servers:
+  - url: http://localhost:8080/
+paths:
+  /_/info:
+    get:
+      tags:
+        - ledger
+      summary: Show server information
+      operationId: v2GetInfo
+      x-speakeasy-name-override: GetInfo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ConfigInfoResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        5XX:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /_/metrics:
+    get:
+      tags:
+        - ledger
+      summary: Read in memory metrics
+      operationId: getMetrics
+      x-speakeasy-name-override: GetMetrics
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2:
+    get:
+      summary: List ledgers
+      operationId: v2ListLedgers
+      x-speakeasy-name-override: ListLedgers
+      tags:
+        - ledger.v2
+      parameters:
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to
+            15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: includeDeleted
+          in: query
+          description: |
+            If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
+          schema:
+            type: boolean
+            default: false
+          example: false
+        - $ref: "#/components/parameters/sort"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2LedgerListResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    get:
+      summary: Get a ledger
+      operationId: v2GetLedger
+      x-speakeasy-name-override: GetLedger
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2GetLedgerResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+    post:
+      summary: Create a ledger
+      operationId: v2CreateLedger
+      x-speakeasy-name-override: CreateLedger
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2CreateLedgerRequest"
+      responses:
+        "204":
+          description: OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/metadata:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    put:
+      summary: Update ledger metadata
+      operationId: v2UpdateLedgerMetadata
+      x-speakeasy-name-override: UpdateLedgerMetadata
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2UpdateLedgerMetadataRequest"
+      responses:
+        "204":
+          description: OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+        5XX:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/metadata/{key}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: key
+        in: path
+        description: Key to remove.
+        required: true
+        schema:
+          type: string
+          example: foo
+    delete:
+      summary: Delete ledger metadata by key
+      operationId: v2DeleteLedgerMetadata
+      x-speakeasy-name-override: DeleteLedgerMetadata
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/_info:
+    get:
+      summary: Get information about a ledger
+      operationId: v2GetLedgerInfo
+      x-speakeasy-name-override: GetLedgerInfo
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2LedgerInfoResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/_bulk:
+    post:
+      summary: Bulk request
+      operationId: v2CreateBulk
+      x-speakeasy-name-override: CreateBulk
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: continueOnFailure
+          in: query
+          description: Continue on failure
+          schema:
+              type: boolean
+              example: true
+        - name: atomic
+          in: query
+          description: Make bulk atomic
+          schema:
+            type: boolean
+            example: true
+        - name: parallel
+          in: query
+          description: Process bulk elements in parallel
+          schema:
+            type: boolean
+            example: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2Bulk"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2BulkResponse"
+        "400":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2BulkResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/accounts:
+    head:
+      summary: Count the accounts from a ledger
+      operationId: v2CountAccounts
+      x-speakeasy-name-override: CountAccounts
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "204":
+          description: OK
+          headers:
+            Count:
+              schema:
+                type: integer
+                format: bigint
+                minimum: 0
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+    get:
+      summary: List accounts from a ledger
+      description: List accounts from a ledger, sorted by address in descending order.
+      operationId: v2ListAccounts
+      x-speakeasy-name-override: ListAccounts
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to
+            15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/sort"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2AccountsCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/accounts/{address}:
+    get:
+      summary: Get account by its address
+      operationId: v2GetAccount
+      x-speakeasy-name-override: GetAccount
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: path
+          description: >
+            Exact address of the account. It must match the following regular
+            expressions pattern:
+
+            ```
+
+            ^\w+(:\w+)*$
+
+            ```
+          required: true
+          schema:
+            type: string
+            example: users:001
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2AccountResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/accounts/{address}/metadata:
+    post:
+      summary: Add metadata to an account
+      operationId: v2AddMetadataToAccount
+      x-speakeasy-name-override: AddMetadataToAccount
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: path
+          description: >
+            Exact address of the account. It must match the following regular
+            expressions pattern:
+
+            ```
+
+            ^\w+(:\w+)*$
+
+            ```
+          required: true
+          schema:
+            type: string
+            example: users:001
+        - name: dryRun
+          in: query
+          description: >-
+            Set the dry run mode. Dry run mode doesn't add the logs to the
+            database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
+      requestBody:
+        description: metadata
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2Metadata"
+        required: true
+      responses:
+        "204":
+          description: No Content
+          content: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/accounts/{address}/metadata/{key}:
+    delete:
+      description: Delete metadata by key
+      operationId: v2DeleteAccountMetadata
+      x-speakeasy-name-override: DeleteAccountMetadata
+      tags:
+        - ledger.v2
+      summary: Delete metadata by key
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: path
+          description: Account address
+          required: true
+          schema:
+            type: string
+        - name: key
+          in: path
+          description: The key to remove.
+          required: true
+          schema:
+            type: string
+            example: foo
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
+      responses:
+        204:
+          description: Key deleted
+          content: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/stats:
+    get:
+      tags:
+        - ledger.v2
+      operationId: v2ReadStats
+      x-speakeasy-name-override: ReadStats
+      summary: Get statistics from a ledger
+      description: >
+        Get statistics from a ledger. (aggregate metrics on accounts and
+        transactions)
+      parameters:
+        - name: ledger
+          in: path
+          description: name of the ledger
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2StatsResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/transactions:
+    head:
+      tags:
+        - ledger.v2
+      summary: Count the transactions from a ledger
+      operationId: v2CountTransactions
+      x-speakeasy-name-override: CountTransactions
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "204":
+          description: OK
+          headers:
+            Count:
+              schema:
+                type: integer
+                format: int64
+                minimum: 0
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+    get:
+      tags:
+        - ledger.v2
+      summary: List transactions from a ledger
+      description: List transactions from a ledger, sorted by id in descending order.
+      operationId: v2ListTransactions
+      x-speakeasy-name-override: ListTransactions
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to
+            15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: order
+          in: query
+          required: false
+          deprecated: true
+          description: "Deprecated: Use sort param"
+          schema:
+            type: string
+            enum:
+              - effective
+        - name: reverse
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/sort"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2TransactionsCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+    post:
+      tags:
+        - ledger.v2
+      summary: Create a new transaction to a ledger
+      operationId: v2CreateTransaction
+      x-speakeasy-name-override: CreateTransaction
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: dryRun
+          in: query
+          description: >-
+            Set the dryRun mode. dry run mode doesn't add the logs to the
+            database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
+        - name: force
+          in: query
+          description: Disable balance checks when passing postings
+          schema:
+            type: boolean
+            example: true
+      requestBody:
+        required: true
+        description: |
+          The request body must contain at least one of the following objects:
+            - `postings`: suitable for simple transactions
+            - `script`: enabling more complex transactions with Numscript
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2PostTransaction"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2CreateTransactionResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/transactions/{id}:
+    get:
+      tags:
+        - ledger.v2
+      summary: Get transaction from a ledger by its ID
+      operationId: v2GetTransaction
+      x-speakeasy-name-override: GetTransaction
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: id
+          in: path
+          description: Transaction ID.
+          required: true
+          schema:
+            type: integer
+            format: bigint
+            minimum: 0
+            example: 1234
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2GetTransactionResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/transactions/{id}/metadata:
+    post:
+      tags:
+        - ledger.v2
+      summary: Set the metadata of a transaction by its ID
+      operationId: v2AddMetadataOnTransaction
+      x-speakeasy-name-override: AddMetadataOnTransaction
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: id
+          in: path
+          description: Transaction ID.
+          required: true
+          schema:
+            type: integer
+            format: bigint
+            minimum: 0
+            example: 1234
+        - name: dryRun
+          in: query
+          description: >-
+            Set the dryRun mode. Dry run mode doesn't add the logs to the
+            database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
+      requestBody:
+        required: true
+        description: metadata
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2Metadata"
+      responses:
+        "204":
+          description: No Content
+          content: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/transactions/{id}/metadata/{key}:
+    delete:
+      description: Delete metadata by key
+      operationId: v2DeleteTransactionMetadata
+      x-speakeasy-name-override: DeleteTransactionMetadata
+      summary: Delete metadata by key
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: id
+          in: path
+          description: Transaction ID.
+          required: true
+          schema:
+            type: integer
+            format: bigint
+            minimum: 0
+            example: 1234
+        - name: key
+          in: path
+          required: true
+          description: The key to remove.
+          schema:
+            type: string
+            example: foo
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
+      responses:
+        204:
+          description: Key deleted
+          content: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/transactions/{id}/revert:
+    post:
+      tags:
+        - ledger.v2
+      operationId: v2RevertTransaction
+      x-speakeasy-name-override: RevertTransaction
+      summary: Revert a ledger transaction by its ID
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: id
+          in: path
+          description: Transaction ID.
+          required: true
+          schema:
+            type: integer
+            format: bigint
+            minimum: 0
+            example: 1234
+        - name: force
+          in: query
+          description: Force revert
+          required: false
+          schema:
+            type: boolean
+        - name: atEffectiveDate
+          in: query
+          description: Revert transaction at effective date of the original tx
+          required: false
+          schema:
+            type: boolean
+        - name: dryRun
+          in: query
+          description: >-
+            Set the dryRun mode. dry run mode doesn't add the logs to the
+            database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2RevertTransactionRequest"
+      responses:
+        "201":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2RevertTransactionResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/aggregate/balances:
+    get:
+      tags:
+        - ledger.v2
+      summary: Get the aggregated balances from selected accounts
+      operationId: v2GetBalancesAggregated
+      x-speakeasy-name-override: GetBalancesAggregated
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: useInsertionDate
+          in: query
+          description: Use insertion date instead of effective date
+          required: false
+          schema:
+            type: boolean
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2AggregateBalancesResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/volumes:
+    get:
+      tags:
+        - ledger.v2
+      summary: Get list of volumes with balances for (account/asset)
+      operationId: v2GetVolumesWithBalances
+      x-speakeasy-name-override: GetVolumesWithBalances
+      parameters:
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to
+            15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: endTime
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: startTime
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: insertionDate
+          in: query
+          description: Use insertion date instead of effective date
+          required: false
+          schema:
+            type: boolean
+        - name: groupBy
+          in: query
+          description: Group volumes and balance by the level of the segment of the address
+          example: 3
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 1000
+        - $ref: "#/components/parameters/sort"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/logs:
+    get:
+      tags:
+        - ledger.v2
+      summary: List the logs from a ledger
+      description: List the logs from a ledger, sorted by ID in descending order.
+      operationId: v2ListLogs
+      x-speakeasy-name-override: ListLogs
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: >
+            Parameter used in pagination requests. Maximum page size is set to
+            15.
+
+            Set to the value of next for the next page of results.
+
+            Set to the value of previous for the previous page of results.
+
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/sort"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2LogsCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/logs/import:
+    post:
+      tags:
+        - ledger.v2
+      operationId: v2ImportLogs
+      x-speakeasy-name-override: ImportLogs
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              $ref: "#/components/schemas/V2ImportLogsRequest"
+      responses:
+        "204":
+          description: Import OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/{ledger}/logs/export:
+    post:
+      summary: Export logs
+      operationId: v2ExportLogs
+      x-speakeasy-name-override: ExportLogs
+      tags:
+        - ledger.v2
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      responses:
+        "200":
+          description: Import OK
+        default:
+          description: Error
+          content:
+            application/octet-stream:
+              schema:
+                title: bytes
+                type: string
+                format: binary
+      security:
+        - Authorization:
+            - ledger:write
+  /v2/_/exporters:
+    get:
+      summary: List exporters
+      operationId: v2ListExporters
+      x-speakeasy-name-override: ListExporters
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2ListExportersResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    post:
+      summary: Create exporter
+      operationId: v2CreateExporter
+      x-speakeasy-name-override: CreateExporter
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreateExporterRequest'
+      responses:
+        "201":
+          $ref: '#/components/responses/V2CreateExporterResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/_/exporters/{exporterID}:
+    parameters:
+      - name: exporterID
+        description: The exporter id
+        in: path
+        schema:
+          type: string
+        required: true
+    get:
+      summary: Get exporter state
+      operationId: v2GetExporterState
+      x-speakeasy-name-override: GetExporterState
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2GetExporterStateResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    put:
+      summary: Update exporter
+      operationId: v2UpdateExporter
+      x-speakeasy-name-override: UpdateExporter
+      tags:
+        - ledger.v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2UpdateExporterRequest'
+      responses:
+        "204":
+          description: Exporter updated
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+    delete:
+      summary: Delete exporter
+      operationId: v2DeleteExporter
+      x-speakeasy-name-override: DeleteExporter
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: Exporter deleted
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    get:
+      summary: List pipelines
+      operationId: v2ListPipelines
+      x-speakeasy-name-override: ListPipelines
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2ListPipelinesResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    post:
+      summary: Create pipeline
+      operationId: v2CreatePipeline
+      x-speakeasy-name-override: CreatePipeline
+      tags:
+        - ledger.v2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreatePipelineRequest'
+      responses:
+        "201":
+          $ref: '#/components/responses/V2CreatePipelineResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    get:
+      summary: Get pipeline state
+      operationId: v2GetPipelineState
+      x-speakeasy-name-override: GetPipelineState
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          $ref: '#/components/responses/V2GetPipelineStateResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+    delete:
+      summary: Delete pipeline
+      operationId: v2DeletePipeline
+      x-speakeasy-name-override: DeletePipeline
+      tags:
+        - ledger.v2
+      responses:
+        "204":
+          description: Pipeline deleted
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/reset:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Reset pipeline
+      operationId: v2ResetPipeline
+      x-speakeasy-name-override: ResetPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline reset
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/start:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Start pipeline
+      operationId: v2StartPipeline
+      x-speakeasy-name-override: StartPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline started
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+  /v2/{ledger}/pipelines/{pipelineID}/stop:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: pipelineID
+        description: The pipeline id
+        in: path
+        schema:
+          type: string
+        required: true
+    post:
+      summary: Stop pipeline
+      operationId: v2StopPipeline
+      x-speakeasy-name-override: StopPipeline
+      tags:
+        - ledger.v2
+      responses:
+        "202":
+          description: Pipeline stopped
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+components:
+  securitySchemes:
+    Authorization:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: "/oauth/token"
+          refreshUrl: "/oauth/token"
+          scopes: {}
+
+  parameters:
+    sort:
+      name: sort
+      in: query
+      description: |
+        Sort results using a field name and order (ascending or descending). 
+        Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+      required: false
+      schema:
+        type: string
+        example: id:desc
+  responses:
+    V2CreatePipelineResponse:
+      description: Created ipeline
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Pipeline'
+            required:
+              - data
+    V2ListPipelinesResponse:
+      description: Pipelines list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              cursor:
+                allOf:
+                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/V2Pipeline'
+
+    V2GetPipelineStateResponse:
+      description: Pipeline information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Pipeline'
+            required:
+              - data
+
+    V2CreateExporterResponse:
+      description: Created exporter
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Exporter'
+            required:
+              - data
+    V2ListExportersResponse:
+      description: Exporters list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              cursor:
+                allOf:
+                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/V2Exporter'
+
+    V2GetExporterStateResponse:
+      description: Exporter information
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/V2Exporter'
+            required:
+              - data
+  schemas:
+    V2ExportersCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Exporter"
+    V2PipelinesCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Pipeline"
+    V2AccountsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Account"
+    V2TransactionsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Transaction"
+    V2LogsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Log"
+    V2AccountResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Account"
+    V2AggregateBalancesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/V2AssetsBalances"
+    V2VolumesWithBalanceCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2VolumesWithBalance"
+    V2VolumesWithBalance:
+      type: object
+      properties:
+        account:
+          type: string
+        asset:
+          type: string
+        input:
+          type: integer
+          format: bigint
+        output:
+          type: integer
+          format: bigint
+        balance:
+          type: integer
+          format: bigint
+      required:
+        - account
+        - asset
+        - input
+        - output
+        - balance
+    V2Metadata:
+      type: object
+      additionalProperties:
+        type: string
+      example:
+        admin: "true"
+    V2ConfigInfo:
+      type: object
+      properties:
+        server:
+          type: string
+        version:
+          type: string
+      required:
+        - config
+        - server
+        - version
+    V2Account:
+      type: object
+      required:
+        - address
+        - metadata
+      properties:
+        address:
+          type: string
+          example: users:001
+        metadata:
+          type: object
+          properties: {}
+          additionalProperties:
+            type: string
+          example:
+            admin: "true"
+        insertionDate:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        firstUsage:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        volumes:
+          $ref: "#/components/schemas/V2Volumes"
+        effectiveVolumes:
+          $ref: "#/components/schemas/V2Volumes"
+    V2AssetsBalances:
+      type: object
+      additionalProperties:
+        type: integer
+        format: bigint
+      example:
+        USD: 100
+        EUR: 12
+    V2Posting:
+      type: object
+      properties:
+        amount:
+          type: integer
+          format: bigint
+          minimum: 0
+          example: 100
+        asset:
+          type: string
+          example: COIN
+        destination:
+          type: string
+          example: users:002
+        source:
+          type: string
+          example: users:001
+      required:
+        - amount
+        - asset
+        - destination
+        - source
+    V2Transaction:
+      type: object
+      properties:
+        insertedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        timestamp:
+          type: string
+          format: date-time
+        postings:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2Posting"
+        reference:
+          type: string
+          example: ref:001
+        metadata:
+          $ref: "#/components/schemas/V2Metadata"
+        id:
+          type: integer
+          format: bigint
+          minimum: 0
+        reverted:
+          type: boolean
+        revertedAt:
+          type: string
+          format: date-time
+      required:
+        - postings
+        - timestamp
+        - id
+        - metadata
+        - reverted
+    V2PostTransaction:
+      type: object
+      required:
+        - metadata
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        postings:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2Posting"
+        script:
+          type: object
+          properties:
+            plain:
+              type: string
+              example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
+            vars:
+              type: object
+              properties: {}
+              additionalProperties:
+                type: string
+              example:
+                user: users:042
+          required:
+            - plain
+        runtime:
+          description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+          type: string
+          enum:
+            - experimental-interpreter
+            - machine
+        reference:
+          type: string
+          example: ref:001
+        metadata:
+          $ref: "#/components/schemas/V2Metadata"
+        accountMetadata:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/V2Metadata"
+        force:
+          type: boolean
+    V2Stats:
+      type: object
+      properties:
+        accounts:
+          type: integer
+          format: int64
+          minimum: 0
+        transactions:
+          type: integer
+          format: bigint
+          minimum: 0
+      required:
+        - accounts
+        - transactions
+    V2Log:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: bigint
+          minimum: 0
+          example: 1234
+        type:
+          type: string
+          enum:
+            - NEW_TRANSACTION
+            - SET_METADATA
+            - REVERTED_TRANSACTION
+            - DELETE_METADATA
+        data:
+          type: object
+          properties: {}
+          additionalProperties: true
+        hash:
+          type: string
+          example: 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e
+        date:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - data
+        - hash
+        - date
+    V2CreateTransactionResponse:
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Transaction"
+      type: object
+      required:
+        - data
+    V2RevertTransactionResponse:
+      $ref: "#/components/schemas/V2CreateTransactionResponse"
+    V2GetTransactionResponse:
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Transaction"
+      type: object
+      required:
+        - data
+    V2StatsResponse:
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Stats"
+      type: object
+      required:
+        - data
+    V2ConfigInfoResponse:
+      $ref: "#/components/schemas/V2ConfigInfo"
+    V2Volume:
+      type: object
+      properties:
+        input:
+          type: integer
+          format: bigint
+        output:
+          type: integer
+          format: bigint
+        balance:
+          type: integer
+          format: bigint
+      required:
+        - input
+        - output
+      example:
+        input: 100
+        output: 20
+        balance: 80
+    V2Volumes:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/V2Volume"
+      example:
+        USD:
+          input: 100
+          output: 10
+          balance: 90
+        EUR:
+          input: 100
+          output: 10
+          balance: 90
+    V2AggregatedVolumes:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/V2Volumes"
+      example:
+        orders:1:
+          USD:
+            input: 100
+            output: 10
+            balance: 90
+        orders:2:
+          USD:
+            input: 100
+            output: 10
+            balance: 90
+    V2ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - errorMessage
+      properties:
+        errorCode:
+          $ref: "#/components/schemas/V2ErrorsEnum"
+        errorMessage:
+          type: string
+          example: "[VALIDATION] invalid 'cursor' query param"
+        details:
+          type: string
+          example: >-
+            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+    V2ErrorsEnum:
+      type: string
+      enum:
+        - INTERNAL
+        - INSUFFICIENT_FUND
+        - VALIDATION
+        - CONFLICT
+        - COMPILATION_FAILED
+        - METADATA_OVERRIDE
+        - NOT_FOUND
+        - REVERT_OCCURRING
+        - ALREADY_REVERT
+        - NO_POSTINGS
+        - LEDGER_NOT_FOUND
+        - IMPORT
+        - TIMEOUT
+        - BULK_SIZE_EXCEEDED
+        - INTERPRETER_PARSE
+        - INTERPRETER_RUNTIME
+        - LEDGER_ALREADY_EXISTS
+        - OUTDATED_SCHEMA
+      example: VALIDATION
+    V2LedgerInfoResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/V2LedgerInfo"
+    V2LedgerInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          example: ledger001
+        storage:
+          type: object
+          properties:
+            migrations:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2MigrationInfo"
+    V2MigrationInfo:
+      type: object
+      properties:
+        version:
+          type: string
+          example: 11
+        name:
+          type: string
+          example: migrations:001
+        date:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum:
+            - TO DO
+            - DONE
+            - PROGRESS
+    V2Bulk:
+      type: array
+      items:
+        $ref: "#/components/schemas/V2BulkElement"
+    V2BaseBulkElement:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+        ik:
+          type: string
+    V2BulkElement:
+      type: object
+      oneOf:
+        - $ref: "#/components/schemas/V2BulkElementCreateTransaction"
+        - $ref: "#/components/schemas/V2BulkElementAddMetadata"
+        - $ref: "#/components/schemas/V2BulkElementRevertTransaction"
+        - $ref: "#/components/schemas/V2BulkElementDeleteMetadata"
+      discriminator:
+        propertyName: action
+        mapping:
+          CREATE_TRANSACTION: "#/components/schemas/V2BulkElementCreateTransaction"
+          ADD_METADATA: "#/components/schemas/V2BulkElementAddMetadata"
+          REVERT_TRANSACTION: "#/components/schemas/V2BulkElementRevertTransaction"
+          DELETE_METADATA: "#/components/schemas/V2BulkElementDeleteMetadata"
+    V2BulkElementCreateTransaction:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElement"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/V2PostTransaction"
+    V2TargetId:
+      oneOf:
+        - type: string
+        - type: integer
+          format: bigint
+    V2TargetType:
+      type: string
+      enum:
+        - TRANSACTION
+        - ACCOUNT
+    V2BulkElementAddMetadata:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElement"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                targetId:
+                  $ref: "#/components/schemas/V2TargetId"
+                targetType:
+                  $ref: "#/components/schemas/V2TargetType"
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+              required:
+                - targetId
+                - targetType
+                - metadata
+    V2BulkElementRevertTransaction:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElement"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: bigint
+                force:
+                  type: boolean
+                atEffectiveDate:
+                  type: boolean
+                metadata:
+                  $ref: "#/components/schemas/V2Metadata"
+              required:
+                - id
+    V2BulkElementDeleteMetadata:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElement"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                targetId:
+                  $ref: "#/components/schemas/V2TargetId"
+                targetType:
+                  $ref: "#/components/schemas/V2TargetType"
+                key:
+                  type: string
+              required:
+                - targetId
+                - targetType
+                - key
+    V2BulkResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2BulkElementResult"
+        errorCode:
+          $ref: "#/components/schemas/V2ErrorsEnum"
+        errorMessage:
+          type: string
+          example: "[VALIDATION] invalid 'cursor' query param"
+    V2BulkElementResult:
+      type: object
+      oneOf:
+        - $ref: "#/components/schemas/V2BulkElementResultCreateTransaction"
+        - $ref: "#/components/schemas/V2BulkElementResultAddMetadata"
+        - $ref: "#/components/schemas/V2BulkElementResultRevertTransaction"
+        - $ref: "#/components/schemas/V2BulkElementResultDeleteMetadata"
+        - $ref: "#/components/schemas/V2BulkElementResultError"
+      discriminator:
+        propertyName: responseType
+        mapping:
+          CREATE_TRANSACTION: "#/components/schemas/V2BulkElementResultCreateTransaction"
+          ADD_METADATA: "#/components/schemas/V2BulkElementResultAddMetadata"
+          REVERT_TRANSACTION: "#/components/schemas/V2BulkElementResultRevertTransaction"
+          DELETE_METADATA: "#/components/schemas/V2BulkElementResultDeleteMetadata"
+          ERROR: "#/components/schemas/V2BulkElementResultError"
+    V2BaseBulkElementResult:
+      type: object
+      properties:
+        responseType:
+          type: string
+        logID:
+          type: integer
+      required:
+        - responseType
+        - logID
+    V2BulkElementResultCreateTransaction:
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/V2Transaction"
+          required:
+            - data
+    V2BulkElementResultAddMetadata:
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
+    V2BulkElementResultRevertTransaction:
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/V2Transaction"
+          required:
+            - data
+    V2BulkElementResultDeleteMetadata:
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
+    V2BulkElementResultError:
+      allOf:
+        - $ref: "#/components/schemas/V2BaseBulkElementResult"
+        - type: object
+          properties:
+            errorCode:
+              type: string
+            errorDescription:
+              type: string
+            errorDetails:
+              type: string
+          required:
+            - errorCode
+            - errorDescription
+    V2CreateLedgerRequest:
+      type: object
+      properties:
+        metadata:
+          $ref: "#/components/schemas/V2Metadata"
+        features:
+          type: object
+          additionalProperties:
+            type: string
+    V2Ledger:
+      type: object
+      properties:
+        name:
+          type: string
+        addedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/V2Metadata"
+        features:
+          type: object
+          additionalProperties:
+            type: string
+        id:
+          type: integer
+      required:
+        - name
+        - addedAt
+    V2LedgerListResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/V2Ledger"
+    V2UpdateLedgerMetadataRequest:
+      $ref: "#/components/schemas/V2Metadata"
+    V2GetLedgerResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Ledger"
+    V2ImportLogsRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+    V2RevertTransactionRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    V2CreatePipelineRequest:
+      type: object
+      properties:
+        exporterID:
+          type: string
+      required:
+        - exporterID
+    V2CreateExporterRequest:
+      $ref: '#/components/schemas/V2ExporterConfiguration'
+    V2UpdateExporterRequest:
+      $ref: '#/components/schemas/V2ExporterConfiguration'
+    V2PipelineConfiguration:
+      properties:
+        ledger:
+          type: string
+        exporterID:
+          type: string
+      required:
+        - ledger
+        - exporterID
+    V2ExporterConfiguration:
+      type: object
+      properties:
+        driver:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+      required:
+        - driver
+        - config
+    V2Exporter:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/V2ExporterConfiguration'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+          required:
+            - id
+            - createdAt
+    V2Pipeline:
+      allOf:
+        - $ref: '#/components/schemas/V2PipelineConfiguration'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+            lastLogID:
+              type: integer
+            enabled:
+              type: boolean
+          required:
+            - id
+            - createdAt

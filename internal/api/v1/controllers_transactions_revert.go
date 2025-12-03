@@ -22,7 +22,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ret, _, err := l.RevertTransaction(
+	_, ret, idempotencyHit, err := l.RevertTransaction(
 		r.Context(),
 		getCommandParameters(r, ledgercontroller.RevertTransaction{
 			Force:           api.QueryParamBool(r, "disableChecks"),
@@ -42,6 +42,9 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 			common.HandleCommonErrors(w, r, err)
 		}
 		return
+	}
+	if idempotencyHit {
+		w.Header().Set("Idempotency-Hit", "true")
 	}
 
 	api.Created(w, mapTransactionToV1(ret.RevertTransaction))
