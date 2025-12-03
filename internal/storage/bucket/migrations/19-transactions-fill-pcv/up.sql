@@ -42,7 +42,7 @@ do $$
 				select transactions_seq, volumes
 				from moves_view
 				-- play better than offset/limit
-				where transactions_seq >= _offset and transactions_seq < _offset + _batch_size
+				where transactions_seq > _offset and transactions_seq <= _offset + _batch_size
 			)
 			update transactions
 			set post_commit_volumes = data.volumes
