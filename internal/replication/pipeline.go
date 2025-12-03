@@ -164,7 +164,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 }
 
 func (p *PipelineHandler) Shutdown(ctx context.Context) error {
-	p.logger.Infof("Shutdowning pipeline")
+	p.logger.Infof("Shutting down pipeline")
 	errorChannel := make(chan error, 1)
 	select {
 	case <-ctx.Done():
