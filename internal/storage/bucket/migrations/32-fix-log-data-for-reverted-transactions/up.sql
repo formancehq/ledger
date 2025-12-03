@@ -23,7 +23,7 @@ do $$
 			reversed.revertedTransactionID = transactions.id and
 			reversed.ledger = transactions.ledger;
 
-		create index txs_view_idx on txs_view(log_id, id);
+		create index txs_view_idx on txs_view(row_number);
 
 		if (select count(*) from txs_view) = 0 then
 			return;
@@ -35,7 +35,7 @@ do $$
 			with data as (
 				select *
 				from txs_view
-				where row_number >= _offset and row_number < _offset + _batch_size
+				where row_number > _offset and row_number <= _offset + _batch_size
 			)
 			update logs
 			set data = data || jsonb_build_object('revertedTransaction', jsonb_build_object(
