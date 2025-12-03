@@ -21,8 +21,8 @@ const (
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
 	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
-	DeleteMetadataLogType
-	InsertedSchemaLogType // "INSERT_SCHEMA"
+	DeleteMetadataLogType                     // "DELETE_METADATA"
+	InsertedSchemaLogType                     // "INSERTED_SCHEMA"
 )
 
 type LogType int16
