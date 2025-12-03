@@ -15,7 +15,7 @@ do $$
 			with data as (
 				select *
 				from logs
-				where seq >= _offset and seq < _offset + _batch_size
+				where seq > _offset and seq <= _offset + _batch_size
 				order by seq
 			)
 			update logs
