@@ -1,0 +1,16 @@
+# OpenAPI generated root
+openapi.yaml linguist-generated=true
+
+# Generated SDK
+pkg/client/** linguist-generated=true
+
+# Generated docs
+docs/api/** linguist-generated=true
+docs/events/** linguist-generated=true
+
+# Generated Go/protobuf artifacts
+**/*_generated*.go linguist-generated=true
+**/*.pb.go linguist-generated=true
+
+# gomarkdoc
+internal/README.md linguist-generated=true
