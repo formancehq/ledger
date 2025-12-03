@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/config"
+	"github.com/formancehq/ledger-v3-poc/internal/grpc"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
@@ -16,12 +18,16 @@ import (
 )
 
 type RaftCluster struct {
-	raft   *raft.Raft
-	config *config.Config
-	logger *zap.Logger
+	raft       *raft.Raft
+	config     *config.Config
+	logger     *zap.Logger
+	grpcServer *grpc.Server
+	grpcClient *grpc.Client
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
-func NewRaftCluster(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*RaftCluster, error) {
+func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.Logger) (*RaftCluster, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -32,7 +38,7 @@ func NewRaftCluster(ctx context.Context, cfg *config.Config, logger *zap.Logger)
 	raftConfig.LocalID = raft.ServerID(cfg.NodeID)
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{
 		Output: &raftLogger{logger: logger},
-		Level:  hclog.Info,
+		Level:  hclog.Debug,
 	})
 
 	// Create transport
@@ -44,7 +50,7 @@ func NewRaftCluster(ctx context.Context, cfg *config.Config, logger *zap.Logger)
 
 	hclogger := hclog.New(&hclog.LoggerOptions{
 		Output: &raftLogger{logger: logger},
-		Level:  hclog.Info,
+		Level:  hclog.Debug,
 	})
 
 	transport, err := raft.NewTCPTransportWithLogger(cfg.BindAddr, advertiseAddr, 3, 10*time.Second, hclogger)
@@ -81,10 +87,16 @@ func NewRaftCluster(ctx context.Context, cfg *config.Config, logger *zap.Logger)
 		return nil, fmt.Errorf("creating raft: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(parentCtx)
+
 	return &RaftCluster{
-		raft:   r,
-		config: cfg,
-		logger: logger,
+		raft:       r,
+		config:     cfg,
+		logger:     logger,
+		grpcServer: grpc.NewServer(cfg.GRPCPort, logger),
+		grpcClient: grpc.NewClient(logger),
+		ctx:        ctx,
+		cancel:     cancel,
 	}, nil
 }
 
@@ -121,18 +133,100 @@ func (r *RaftCluster) Start() error {
 		future := r.raft.BootstrapCluster(configuration)
 		if err := future.Error(); err != nil {
 			// If cluster is already bootstrapped, this is fine
-			if err != raft.ErrCantBootstrap {
+			if !errors.Is(err, raft.ErrCantBootstrap) {
 				return fmt.Errorf("bootstrapping cluster: %w", err)
 			}
 		}
 		r.logger.Info("Cluster bootstrapped", zap.Int("servers", len(servers)))
 	}
 
+	// Start leader monitoring
+	go r.monitorLeader()
+
 	return nil
+}
+
+func (r *RaftCluster) monitorLeader() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	var lastLeaderAddr string
+
+	// Handle initial leader state
+	_, leaderID := r.raft.LeaderWithID()
+	leaderAddr := string(r.raft.Leader())
+	lastLeaderAddr = leaderAddr
+	r.handleLeaderChange(leaderID, leaderAddr)
+
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-ticker.C:
+			_, leaderID := r.raft.LeaderWithID()
+			leaderAddr := string(r.raft.Leader())
+
+			// Check if leader changed
+			if leaderAddr != lastLeaderAddr {
+				r.logger.Info("Leader changed", zap.String("old", lastLeaderAddr), zap.String("new", leaderAddr))
+				lastLeaderAddr = leaderAddr
+				r.handleLeaderChange(leaderID, leaderAddr)
+			}
+		}
+	}
+}
+
+func (r *RaftCluster) handleLeaderChange(leaderID raft.ServerID, leaderAddr string) {
+	// Check if we are the leader
+	isLeader := leaderID == raft.ServerID(r.config.NodeID)
+
+	if isLeader {
+		r.logger.Info("Became leader, starting gRPC server")
+		// Stop client if running
+		r.grpcClient.Close()
+
+		// Start gRPC server
+		go func() {
+			if err := r.grpcServer.Start(r.ctx); err != nil {
+				r.logger.Error("gRPC server error", zap.Error(err))
+			}
+		}()
+	} else if leaderAddr != "" {
+		r.logger.Info("Leader changed, connecting to new leader", zap.String("leader", leaderAddr))
+		// Stop server if running
+		r.grpcServer.Stop()
+
+		// Extract hostname from leader address and construct gRPC address
+		host, _, err := net.SplitHostPort(leaderAddr)
+		if err != nil {
+			r.logger.Error("Failed to parse leader address", zap.String("address", leaderAddr), zap.Error(err))
+			return
+		}
+
+		// Connect to leader's gRPC server (assume same host, different port)
+		grpcAddr := fmt.Sprintf("%s:%d", host, r.config.GRPCPort)
+		if err := r.grpcClient.Connect(r.ctx, grpcAddr); err != nil {
+			r.logger.Error("Failed to connect to leader gRPC", zap.String("address", grpcAddr), zap.Error(err))
+		}
+	} else {
+		r.logger.Debug("No leader available")
+		// Stop both server and client
+		r.grpcServer.Stop()
+		r.grpcClient.Close()
+	}
 }
 
 func (r *RaftCluster) Shutdown() error {
 	r.logger.Info("Shutting down Raft cluster")
+
+	// Cancel context to stop monitoring
+	r.cancel()
+
+	// Stop gRPC server and client
+	r.grpcServer.Stop()
+	r.grpcClient.Close()
+
+	// Shutdown Raft
 	future := r.raft.Shutdown()
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("shutting down raft: %w", err)

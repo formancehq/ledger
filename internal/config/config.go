@@ -10,6 +10,7 @@ type Config struct {
 	Peers         []string
 	Debug         bool
 	Bootstrap     bool
+	GRPCPort      int
 }
 
 func (c *Config) Validate() error {

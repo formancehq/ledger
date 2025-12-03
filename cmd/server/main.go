@@ -42,6 +42,7 @@ func init() {
 	rootCmd.Flags().StringSlice("peers", []string{}, "Initial peer addresses (comma-separated)")
 	rootCmd.Flags().Bool("debug", false, "Enable debug logging")
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
+	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -116,6 +117,7 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 		Peers:         viper.GetStringSlice("peers"),
 		Debug:         viper.GetBool("debug"),
 		Bootstrap:     viper.GetBool("bootstrap"),
+		GRPCPort:      viper.GetInt("grpc-port"),
 	}
 
 	return cfg, nil
