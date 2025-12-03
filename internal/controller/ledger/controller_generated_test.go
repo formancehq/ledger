@@ -298,6 +298,22 @@ func (mr *MockControllerMockRecorder) Info() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Info", reflect.TypeOf((*MockController)(nil).Info))
 }
 
+// InsertSchema mocks base method.
+func (m *MockController) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertSchema", ctx, parameters)
+	ret0, _ := ret[0].(*ledger.Log)
+	ret1, _ := ret[1].(*ledger.InsertedSchema)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// InsertSchema indicates an expected call of InsertSchema.
+func (mr *MockControllerMockRecorder) InsertSchema(ctx, parameters any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertSchema", reflect.TypeOf((*MockController)(nil).InsertSchema), ctx, parameters)
+}
+
 // IsDatabaseUpToDate mocks base method.
 func (m *MockController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()
@@ -448,20 +464,4 @@ func (m *MockController) SaveTransactionMetadata(ctx context.Context, parameters
 func (mr *MockControllerMockRecorder) SaveTransactionMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*MockController)(nil).SaveTransactionMetadata), ctx, parameters)
-}
-
-// UpdateSchema mocks base method.
-func (m *MockController) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateSchema", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.UpdatedSchema)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// UpdateSchema indicates an expected call of UpdateSchema.
-func (mr *MockControllerMockRecorder) UpdateSchema(ctx, parameters any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSchema", reflect.TypeOf((*MockController)(nil).UpdateSchema), ctx, parameters)
 }

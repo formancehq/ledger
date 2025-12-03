@@ -1456,7 +1456,7 @@ paths:
           type: string
           example: v1.0.0
     post:
-      summary: Insert or update a schema for a ledger
+      summary: Insert a schema for a ledger
       operationId: v2InsertSchema
       x-speakeasy-name-override: InsertSchema
       tags:
@@ -2837,7 +2837,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2UpdateExporterRequest'
+              $ref: "#/components/schemas/V2UpdateExporterRequest"
       responses:
         "204":
           description: Exporter updated
@@ -4128,7 +4128,7 @@ components:
             - SET_METADATA
             - REVERTED_TRANSACTION
             - DELETE_METADATA
-            - UPDATED_SCHEMA
+            - INSERTED_SCHEMA
         data:
           type: object
           properties: {}
@@ -4671,9 +4671,9 @@ components:
       required:
         - exporterID
     V2CreateExporterRequest:
-      $ref: '#/components/schemas/V2ExporterConfiguration'
+      $ref: "#/components/schemas/V2ExporterConfiguration"
     V2UpdateExporterRequest:
-      $ref: '#/components/schemas/V2ExporterConfiguration'
+      $ref: "#/components/schemas/V2ExporterConfiguration"
     V2PipelineConfiguration:
       properties:
         ledger:

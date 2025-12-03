@@ -51,14 +51,14 @@ type DefaultController struct {
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
 	deleteTransactionMetadataLp *logProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
-	updateSchemaLp              *logProcessor[UpdateSchema, ledger.UpdatedSchema]
+	insertSchemaLp              *logProcessor[InsertSchema, ledger.InsertedSchema]
 }
 
-func (ctrl *DefaultController) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
-	return ctrl.updateSchemaLp.forgeLog(ctx, ctrl.store, parameters, ctrl.updateSchema)
+func (ctrl *DefaultController) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
+	return ctrl.insertSchemaLp.forgeLog(ctx, ctrl.store, parameters, ctrl.insertSchema)
 }
 
-func (ctrl *DefaultController) updateSchema(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[UpdateSchema]) (*ledger.UpdatedSchema, error) {
+func (ctrl *DefaultController) insertSchema(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[InsertSchema]) (*ledger.InsertedSchema, error) {
 	schema, err := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
 	if err != nil {
 		return nil, fmt.Errorf("creating schema: %w", err)
@@ -70,7 +70,7 @@ func (ctrl *DefaultController) updateSchema(ctx context.Context, store Store, _s
 		return nil, err
 	}
 
-	return &ledger.UpdatedSchema{
+	return &ledger.InsertedSchema{
 		Schema: schema,
 	}, nil
 }
@@ -160,7 +160,7 @@ func NewDefaultController(
 	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
 	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter)
 	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter)
-	ret.updateSchemaLp = newLogProcessor[UpdateSchema, ledger.UpdatedSchema]("UpdateSchema", ret.deadLockCounter)
+	ret.insertSchemaLp = newLogProcessor[InsertSchema, ledger.InsertedSchema]("InsertSchema", ret.deadLockCounter)
 
 	return ret
 }
@@ -275,7 +275,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 		"ImportLog",
 		func(ctx context.Context) (any, error) {
 			switch payload := log.Data.(type) {
-			case ledger.UpdatedSchema:
+			case ledger.InsertedSchema:
 				if err := store.InsertSchema(ctx, &payload.Schema); err != nil {
 					return nil, fmt.Errorf("failed to insert schema: %w", err)
 				}

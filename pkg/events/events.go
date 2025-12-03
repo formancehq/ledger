@@ -8,5 +8,5 @@ const (
 	EventTypeSavedMetadata         = "SAVED_METADATA"
 	EventTypeRevertedTransaction   = "REVERTED_TRANSACTION"
 	EventTypeDeletedMetadata       = "DELETED_METADATA"
-	EventTypeUpdatedSchema         = "UPDATED_SCHEMA"
+	EventTypeInsertedSchema        = "INSERTED_SCHEMA"
 )

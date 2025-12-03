@@ -22,7 +22,7 @@ const (
 	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 	DeleteMetadataLogType
-	UpdatedSchemaLogType // "UPDATE_CHART_OF_ACCOUNT"
+	InsertedSchemaLogType // "INSERT_SCHEMA"
 )
 
 type LogType int16
@@ -61,8 +61,8 @@ func (lt LogType) String() string {
 		return "REVERTED_TRANSACTION"
 	case DeleteMetadataLogType:
 		return "DELETE_METADATA"
-	case UpdatedSchemaLogType:
-		return "UPDATED_SCHEMA"
+	case InsertedSchemaLogType:
+		return "INSERTED_SCHEMA"
 	}
 
 	panic("invalid log type")
@@ -78,8 +78,8 @@ func LogTypeFromString(logType string) LogType {
 		return RevertedTransactionLogType
 	case "DELETE_METADATA":
 		return DeleteMetadataLogType
-	case "UPDATED_SCHEMA":
-		return UpdatedSchemaLogType
+	case "INSERTED_SCHEMA":
+		return InsertedSchemaLogType
 	}
 
 	panic("invalid log type")
@@ -413,22 +413,22 @@ func (r RevertedTransaction) GetMemento() any {
 
 var _ Memento = (*RevertedTransaction)(nil)
 
-type UpdatedSchema struct {
+type InsertedSchema struct {
 	Schema Schema `json:"schema"`
 }
 
-func (p UpdatedSchema) NeedsSchema() bool {
+func (p InsertedSchema) NeedsSchema() bool {
 	return false
 }
-func (u UpdatedSchema) ValidateWithSchema(schema Schema) error {
+func (u InsertedSchema) ValidateWithSchema(schema Schema) error {
 	return nil
 }
 
-func (u UpdatedSchema) Type() LogType {
-	return UpdatedSchemaLogType
+func (u InsertedSchema) Type() LogType {
+	return InsertedSchemaLogType
 }
 
-var _ LogPayload = (*UpdatedSchema)(nil)
+var _ LogPayload = (*InsertedSchema)(nil)
 
 func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 	var payload any
@@ -441,8 +441,8 @@ func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 		payload = &DeletedMetadata{}
 	case RevertedTransactionLogType:
 		payload = &RevertedTransaction{}
-	case UpdatedSchemaLogType:
-		payload = &UpdatedSchema{}
+	case InsertedSchemaLogType:
+		payload = &InsertedSchema{}
 	default:
 		return nil, fmt.Errorf("unknown type '%s'", _type)
 	}

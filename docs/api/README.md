@@ -315,7 +315,7 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## Insert or update a schema for a ledger
+## Insert a schema for a ledger
 
 <a id="opIdv2InsertSchema"></a>
 
@@ -345,7 +345,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="insert-or-update-a-schema-for-a-ledger-parameters">Parameters</h3>
+<h3 id="insert-a-schema-for-a-ledger-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -365,7 +365,7 @@ Accept: application/json
 }
 ```
 
-<h3 id="insert-or-update-a-schema-for-a-ledger-responses">Responses</h3>
+<h3 id="insert-a-schema-for-a-ledger-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -4049,7 +4049,7 @@ This operation does not require authentication
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
 |type|DELETE_METADATA|
-|type|UPDATED_SCHEMA|
+|type|INSERTED_SCHEMA|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->

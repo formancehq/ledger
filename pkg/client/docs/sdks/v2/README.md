@@ -8,7 +8,7 @@
 * [ListLedgers](#listledgers) - List ledgers
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a ledger
-* [InsertSchema](#insertschema) - Insert or update a schema for a ledger
+* [InsertSchema](#insertschema) - Insert a schema for a ledger
 * [GetSchema](#getschema) - Get a schema for a ledger by version
 * [ListSchemas](#listschemas) - List all schemas for a ledger
 * [UpdateLedgerMetadata](#updateledgermetadata) - Update ledger metadata
@@ -239,7 +239,7 @@ func main() {
 
 ## InsertSchema
 
-Insert or update a schema for a ledger
+Insert a schema for a ledger
 
 ### Example Usage
 

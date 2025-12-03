@@ -22,7 +22,7 @@ func insertSchema(w http.ResponseWriter, r *http.Request) {
 	}
 
 	l := common.LedgerFromContext(r.Context())
-	if _, _, err := l.UpdateSchema(r.Context(), getCommandParameters(r, ledgercontroller.UpdateSchema{
+	if _, _, err := l.InsertSchema(r.Context(), getCommandParameters(r, ledgercontroller.InsertSchema{
 		Data:    data,
 		Version: chi.URLParam(r, "version"),
 	})); err != nil {

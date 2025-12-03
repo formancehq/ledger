@@ -80,6 +80,10 @@ import "github.com/formancehq/ledger/internal"
   - [func NewExporter\(configuration ExporterConfiguration\) Exporter](<#NewExporter>)
 - [type ExporterConfiguration](<#ExporterConfiguration>)
   - [func NewExporterConfiguration\(driver string, config json.RawMessage\) ExporterConfiguration](<#NewExporterConfiguration>)
+- [type InsertedSchema](<#InsertedSchema>)
+  - [func \(p InsertedSchema\) NeedsSchema\(\) bool](<#InsertedSchema.NeedsSchema>)
+  - [func \(u InsertedSchema\) Type\(\) LogType](<#InsertedSchema.Type>)
+  - [func \(u InsertedSchema\) ValidateWithSchema\(schema Schema\) error](<#InsertedSchema.ValidateWithSchema>)
 - [type Ledger](<#Ledger>)
   - [func MustNewWithDefault\(name string\) Ledger](<#MustNewWithDefault>)
   - [func New\(name string, configuration Configuration\) \(\*Ledger, error\)](<#New>)
@@ -162,10 +166,6 @@ import "github.com/formancehq/ledger/internal"
   - [func NewTransactionData\(\) TransactionData](<#NewTransactionData>)
   - [func \(data TransactionData\) WithPostings\(postings ...Posting\) TransactionData](<#TransactionData.WithPostings>)
 - [type Transactions](<#Transactions>)
-- [type UpdatedSchema](<#UpdatedSchema>)
-  - [func \(p UpdatedSchema\) NeedsSchema\(\) bool](<#UpdatedSchema.NeedsSchema>)
-  - [func \(u UpdatedSchema\) Type\(\) LogType](<#UpdatedSchema.Type>)
-  - [func \(u UpdatedSchema\) ValidateWithSchema\(schema Schema\) error](<#UpdatedSchema.ValidateWithSchema>)
 - [type Volumes](<#Volumes>)
   - [func NewEmptyVolumes\(\) Volumes](<#NewEmptyVolumes>)
   - [func NewVolumesInt64\(input, output int64\) Volumes](<#NewVolumesInt64>)
@@ -953,6 +953,44 @@ func NewExporterConfiguration(driver string, config json.RawMessage) ExporterCon
 
 
 
+<a name="InsertedSchema"></a>
+## type [InsertedSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L416-L418>)
+
+
+
+```go
+type InsertedSchema struct {
+    Schema Schema `json:"schema"`
+}
+```
+
+<a name="InsertedSchema.NeedsSchema"></a>
+### func \(InsertedSchema\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L420>)
+
+```go
+func (p InsertedSchema) NeedsSchema() bool
+```
+
+
+
+<a name="InsertedSchema.Type"></a>
+### func \(InsertedSchema\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L427>)
+
+```go
+func (u InsertedSchema) Type() LogType
+```
+
+
+
+<a name="InsertedSchema.ValidateWithSchema"></a>
+### func \(InsertedSchema\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L423>)
+
+```go
+func (u InsertedSchema) ValidateWithSchema(schema Schema) error
+```
+
+
+
 <a name="Ledger"></a>
 ## type [Ledger](<https://github.com/formancehq/ledger/blob/main/internal/ledger.go#L21-L30>)
 
@@ -1149,7 +1187,7 @@ const (
     NewTransactionLogType                     // "NEW_TRANSACTION"
     RevertedTransactionLogType                // "REVERTED_TRANSACTION"
     DeleteMetadataLogType
-    UpdatedSchemaLogType // "UPDATE_CHART_OF_ACCOUNT"
+    InsertedSchemaLogType // "INSERT_SCHEMA"
 )
 ```
 
@@ -1795,44 +1833,6 @@ type Transactions struct {
     Transactions []TransactionData `json:"transactions"`
 }
 ```
-
-<a name="UpdatedSchema"></a>
-## type [UpdatedSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L416-L418>)
-
-
-
-```go
-type UpdatedSchema struct {
-    Schema Schema `json:"schema"`
-}
-```
-
-<a name="UpdatedSchema.NeedsSchema"></a>
-### func \(UpdatedSchema\) [NeedsSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L420>)
-
-```go
-func (p UpdatedSchema) NeedsSchema() bool
-```
-
-
-
-<a name="UpdatedSchema.Type"></a>
-### func \(UpdatedSchema\) [Type](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L427>)
-
-```go
-func (u UpdatedSchema) Type() LogType
-```
-
-
-
-<a name="UpdatedSchema.ValidateWithSchema"></a>
-### func \(UpdatedSchema\) [ValidateWithSchema](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L423>)
-
-```go
-func (u UpdatedSchema) ValidateWithSchema(schema Schema) error
-```
-
-
 
 <a name="Volumes"></a>
 ## type [Volumes](<https://github.com/formancehq/ledger/blob/main/internal/volumes.go#L13-L16>)

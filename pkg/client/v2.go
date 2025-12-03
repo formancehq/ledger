@@ -653,7 +653,7 @@ func (s *V2) CreateLedger(ctx context.Context, request operations.V2CreateLedger
 
 }
 
-// InsertSchema - Insert or update a schema for a ledger
+// InsertSchema - Insert a schema for a ledger
 func (s *V2) InsertSchema(ctx context.Context, request operations.V2InsertSchemaRequest, opts ...operations.Option) (*operations.V2InsertSchemaResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{

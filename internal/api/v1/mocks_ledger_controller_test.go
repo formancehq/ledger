@@ -299,6 +299,22 @@ func (mr *LedgerControllerMockRecorder) Info() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Info", reflect.TypeOf((*LedgerController)(nil).Info))
 }
 
+// InsertSchema mocks base method.
+func (m *LedgerController) InsertSchema(ctx context.Context, parameters ledger0.Parameters[ledger0.InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertSchema", ctx, parameters)
+	ret0, _ := ret[0].(*ledger.Log)
+	ret1, _ := ret[1].(*ledger.InsertedSchema)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// InsertSchema indicates an expected call of InsertSchema.
+func (mr *LedgerControllerMockRecorder) InsertSchema(ctx, parameters any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertSchema", reflect.TypeOf((*LedgerController)(nil).InsertSchema), ctx, parameters)
+}
+
 // IsDatabaseUpToDate mocks base method.
 func (m *LedgerController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()
@@ -449,20 +465,4 @@ func (m *LedgerController) SaveTransactionMetadata(ctx context.Context, paramete
 func (mr *LedgerControllerMockRecorder) SaveTransactionMetadata(ctx, parameters any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*LedgerController)(nil).SaveTransactionMetadata), ctx, parameters)
-}
-
-// UpdateSchema mocks base method.
-func (m *LedgerController) UpdateSchema(ctx context.Context, parameters ledger0.Parameters[ledger0.UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateSchema", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.UpdatedSchema)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// UpdateSchema indicates an expected call of UpdateSchema.
-func (mr *LedgerControllerMockRecorder) UpdateSchema(ctx, parameters any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSchema", reflect.TypeOf((*LedgerController)(nil).UpdateSchema), ctx, parameters)
 }

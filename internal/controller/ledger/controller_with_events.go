@@ -153,14 +153,14 @@ func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parame
 	return log, nil
 }
 
-func (c *ControllerWithEvents) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
-	log, ret, err := c.Controller.UpdateSchema(ctx, parameters)
+func (c *ControllerWithEvents) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
+	log, ret, err := c.Controller.InsertSchema(ctx, parameters)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
-			c.listener.UpdatedSchema(ctx, c.ledger.Name, ret.Schema)
+			c.listener.InsertedSchema(ctx, c.ledger.Name, ret.Schema)
 		})
 	}
 

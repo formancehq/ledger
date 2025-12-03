@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/formancehq/ledger/pkg/events/updated-schema",
-  "$ref": "#/$defs/UpdatedSchema",
+  "$id": "https://github.com/formancehq/ledger/pkg/events/inserted-schema",
+  "$ref": "#/$defs/InsertedSchema",
   "$defs": {
     "ChartAccount": {
       "properties": {
@@ -96,6 +96,22 @@
         "Label"
       ]
     },
+    "InsertedSchema": {
+      "properties": {
+        "ledger": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/$defs/Schema"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ledger",
+        "schema"
+      ]
+    },
     "Schema": {
       "properties": {
         "chart": {
@@ -120,22 +136,6 @@
       "type": "string",
       "format": "date-time",
       "title": "Normalized date"
-    },
-    "UpdatedSchema": {
-      "properties": {
-        "ledger": {
-          "type": "string"
-        },
-        "schema": {
-          "$ref": "#/$defs/Schema"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "ledger",
-        "schema"
-      ]
     }
   }
 }

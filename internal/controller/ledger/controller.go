@@ -80,8 +80,8 @@ type Controller interface {
 	Import(ctx context.Context, stream chan ledger.Log) error
 	// Export allow to export the logs of a ledger
 	Export(ctx context.Context, w ExportWriter) error
-	// UpdateSchema Update the chart of account
-	UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error)
+	// InsertSchema Update the chart of account
+	InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error)
 	// GetSchema Get the chart of account by version
 	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
 	// ListSchemas List all schemas for the ledger
@@ -132,7 +132,7 @@ type DeleteAccountMetadata struct {
 	Key     string
 }
 
-type UpdateSchema struct {
+type InsertSchema struct {
 	Version string
 	Data    ledger.SchemaData
 }

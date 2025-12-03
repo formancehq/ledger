@@ -92,7 +92,7 @@ func TestInsertSchema(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
-					UpdateSchema(gomock.Any(), gomock.Any()).
+					InsertSchema(gomock.Any(), gomock.Any()).
 					Return(nil, nil, tc.returnErr)
 			}
 

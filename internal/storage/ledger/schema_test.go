@@ -12,7 +12,7 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-func TestSchemaUpdate(t *testing.T) {
+func TestSchemaInsert(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()

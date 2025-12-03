@@ -124,14 +124,14 @@ func (c *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.
 	return log, err
 }
 
-func (c *ControllerWithTooManyClientHandling) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+func (c *ControllerWithTooManyClientHandling) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
 	var (
 		log *ledger.Log
 		err error
-		ret *ledger.UpdatedSchema
+		ret *ledger.InsertedSchema
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
-		log, ret, err = c.Controller.UpdateSchema(ctx, parameters)
+		log, ret, err = c.Controller.InsertSchema(ctx, parameters)
 		return err
 	})
 

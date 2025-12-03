@@ -71,15 +71,15 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 
 		store.EXPECT().
 			InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-				return x.(*ledger.Log).Type == ledger.UpdatedSchemaLogType
+				return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
 			})).
 			DoAndReturn(func(_ context.Context, log *ledger.Log) any {
 				log.ID = pointer.For(uint64(0))
 				return log
 			})
 
-		_, _, err := l.UpdateSchema(context.Background(), Parameters[UpdateSchema]{
-			Input: UpdateSchema{
+		_, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
+			Input: InsertSchema{
 				Version: schema.Version,
 				Data:    schema.SchemaData,
 			},

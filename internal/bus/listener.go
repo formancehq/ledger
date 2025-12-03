@@ -26,9 +26,9 @@ func NewLedgerListener(publisher message.Publisher) *LedgerListener {
 	}
 }
 
-func (lis *LedgerListener) UpdatedSchema(ctx context.Context, l string, data ledger.Schema) {
-	lis.publish(ctx, events.EventTypeUpdatedSchema,
-		events.NewEventUpdatedSchema(events.UpdatedSchema{
+func (lis *LedgerListener) InsertedSchema(ctx context.Context, l string, data ledger.Schema) {
+	lis.publish(ctx, events.EventTypeInsertedSchema,
+		events.NewEventInsertedSchema(events.InsertedSchema{
 			Ledger: l,
 			Schema: data,
 		}))

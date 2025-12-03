@@ -130,7 +130,7 @@ func main() {
 * [ListLedgers](docs/sdks/v2/README.md#listledgers) - List ledgers
 * [GetLedger](docs/sdks/v2/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/v2/README.md#createledger) - Create a ledger
-* [InsertSchema](docs/sdks/v2/README.md#insertschema) - Insert or update a schema for a ledger
+* [InsertSchema](docs/sdks/v2/README.md#insertschema) - Insert a schema for a ledger
 * [GetSchema](docs/sdks/v2/README.md#getschema) - Get a schema for a ledger by version
 * [ListSchemas](docs/sdks/v2/README.md#listschemas) - List all schemas for a ledger
 * [UpdateLedgerMetadata](docs/sdks/v2/README.md#updateledgermetadata) - Update ledger metadata

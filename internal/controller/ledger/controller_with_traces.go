@@ -44,7 +44,7 @@ type ControllerWithTraces struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	deleteAccountMetadataHistogram     metric.Int64Histogram
 	lockLedgerHistogram                metric.Int64Histogram
-	updateSchemaHistogram              metric.Int64Histogram
+	insertSchemaHistogram              metric.Int64Histogram
 	getSchemaHistogram                 metric.Int64Histogram
 	listSchemasHistogram               metric.Int64Histogram
 }
@@ -152,7 +152,7 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 	if err != nil {
 		panic(err)
 	}
-	ret.updateSchemaHistogram, err = meter.Int64Histogram("controller.update_schema", metric.WithUnit("ms"))
+	ret.insertSchemaHistogram, err = meter.Int64Histogram("controller.insert_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)
 	}
@@ -471,19 +471,19 @@ func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parame
 	)
 }
 
-func (c *ControllerWithTraces) UpdateSchema(ctx context.Context, parameters Parameters[UpdateSchema]) (*ledger.Log, *ledger.UpdatedSchema, error) {
+func (c *ControllerWithTraces) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
 	var (
-		updatedSchema *ledger.UpdatedSchema
-		log           *ledger.Log
-		err           error
+		insertedSchema *ledger.InsertedSchema
+		log            *ledger.Log
+		err            error
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
-		"UpdatedSchema",
+		"InsertedSchema",
 		c.tracer,
-		c.updateSchemaHistogram,
+		c.insertSchemaHistogram,
 		func(ctx context.Context) (any, error) {
-			log, updatedSchema, err = c.underlying.UpdateSchema(ctx, parameters)
+			log, insertedSchema, err = c.underlying.InsertSchema(ctx, parameters)
 			return nil, err
 		},
 	)
@@ -491,7 +491,7 @@ func (c *ControllerWithTraces) UpdateSchema(ctx context.Context, parameters Para
 		return nil, nil, err
 	}
 
-	return log, updatedSchema, nil
+	return log, insertedSchema, nil
 }
 
 func (c *ControllerWithTraces) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
