@@ -34,7 +34,7 @@ do $$
 			with data as (
 				select *
 				from txs_view
-				where row_number >= _offset and row_number < _offset + _batch_size
+				where row_number > _offset and row_number <= _offset + _batch_size
 			)
 			update logs
 			set data = data || jsonb_build_object('revertedTransaction', jsonb_build_object(
