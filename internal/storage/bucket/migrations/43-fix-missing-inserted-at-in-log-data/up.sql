@@ -17,7 +17,7 @@ do $$
 			with _rows as (
 				select id, ledger, row_number
 				from logs_view
-				where row_number >= _offset and row_number < _offset + _batch_size
+				where row_number > _offset and row_number <= _offset + _batch_size
 			)
 			update logs
 			set data = jsonb_set(data, '{transaction, insertedAt}', to_jsonb(to_jsonb(date)#>>'{}' || 'Z'))

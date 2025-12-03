@@ -26,7 +26,7 @@ do $$
 			with data as (
 				select *
 				from txs_view
-				where row_number >= _offset and row_number < _offset+_batch_size
+				where row_number > _offset and row_number <= _offset+_batch_size
 			)
 			update transactions
 			set updated_at = transactions.inserted_at
