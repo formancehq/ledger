@@ -28,7 +28,7 @@ func insertSchema(w http.ResponseWriter, r *http.Request) {
 	})); err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrSchemaAlreadyExists{}):
-			api.BadRequest(w, common.ErrSchemaAlreadyExists, err)
+			api.WriteErrorResponse(w, http.StatusConflict, common.ErrSchemaAlreadyExists, err)
 		case errors.Is(err, ledger.ErrInvalidSchema{}):
 			api.BadRequest(w, common.ErrValidation, err)
 		default:
