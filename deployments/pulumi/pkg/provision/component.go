@@ -2,6 +2,7 @@ package provision
 
 import (
 	"fmt"
+
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/exporters"
@@ -19,14 +20,14 @@ type Component struct {
 }
 
 type LedgerConfigArgs struct {
-	Bucket   string            `json:"bucket"`
-	Metadata map[string]string `json:"metadata"`
+	Bucket    string            `json:"bucket"`
+	Metadata  map[string]string `json:"metadata"`
 	Features  map[string]string `json:"features"`
 	Exporters []string          `json:"exporters"`
 }
 
 type Args struct {
-	ProvisionerVersion pulumi.String
+	ProvisionerVersion pulumix.Input[string]
 	Ledgers            map[string]LedgerConfigArgs `json:"ledgers"`
 }
 
@@ -129,12 +130,10 @@ func NewComponent(ctx *pulumi.Context, name string, args ComponentArgs, opts ...
 								pulumi.String("--state-store"),
 								pulumi.Sprintf("k8s:///%s/provisioner", args.Namespace),
 							},
-							Image: utils.GetImage(pulumi.String("ledger-provisioner"), pulumix.Apply2(args.Tag, args.ProvisionerVersion, func(ledgerVersion, provisionerVersion string) string {
-								if provisionerVersion != "" {
-									return provisionerVersion
-								}
-								return ledgerVersion
-							})),
+							Image: utils.GetImage(
+								args.WithFallbackTag(args.ProvisionerVersion),
+								pulumi.String("ledger-provisioner"),
+							),
 							VolumeMounts: corev1.VolumeMountArray{
 								corev1.VolumeMountArgs{
 									Name:      pulumi.String("config"),

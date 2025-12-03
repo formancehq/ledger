@@ -45,7 +45,7 @@ func createDeployment(ctx *pulumi.Context, args ComponentArgs, resourceOptions .
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:            pulumi.String("worker"),
-							Image:           utils.GetMainImage(args.Tag),
+							Image:           utils.GetMainImage(args.ImageConfiguration),
 							ImagePullPolicy: args.ImagePullPolicy.ToOutput(ctx.Context()).Untyped().(pulumi.StringOutput),
 							Args: pulumi.StringArray{
 								pulumi.String("worker"),
