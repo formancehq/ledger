@@ -164,7 +164,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "name": "string",
@@ -489,7 +489,8 @@ Accept: application/json
       }
     ],
     "hasMore": true,
-    "next": "string",
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "pageSize": 0
   }
 }
@@ -965,7 +966,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "address": "users:001",
@@ -1398,7 +1399,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
@@ -2125,7 +2126,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "account": "string",
@@ -2208,7 +2209,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "id": 1234,
@@ -2352,7 +2353,7 @@ Accept: application/json
       "pageSize": 15,
       "hasMore": false,
       "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-      "next": "",
+      "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
       "data": [
         {
           "driver": "string",
@@ -2808,7 +2809,7 @@ Accept: application/json
       "pageSize": 15,
       "hasMore": false,
       "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-      "next": "",
+      "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
       "data": [
         {
           "id": "string",
@@ -3238,7 +3239,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "driver": "string",
@@ -3276,7 +3277,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "id": "string",
@@ -3314,7 +3315,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "address": "users:001",
@@ -3379,7 +3380,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
@@ -3495,7 +3496,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "id": 1234,
@@ -3610,7 +3611,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "account": "string",
@@ -5813,7 +5814,8 @@ Complete schema structure with metadata
       }
     ],
     "hasMore": true,
-    "next": "string",
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "pageSize": 0
   }
 }
@@ -5851,7 +5853,8 @@ Complete schema structure with metadata
     }
   ],
   "hasMore": true,
-  "next": "string",
+  "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+  "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
   "pageSize": 0
 }
 
@@ -5863,6 +5866,7 @@ Complete schema structure with metadata
 |---|---|---|---|---|
 |data|[[V2Schema](#schemav2schema)]|true|none|[Complete schema structure with metadata]|
 |hasMore|boolean|true|none|none|
+|previous|string|false|none|none|
 |next|string|false|none|none|
 |pageSize|integer|true|none|none|
 
@@ -5947,7 +5951,7 @@ Complete schema structure with metadata
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "name": "string",

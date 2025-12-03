@@ -77,13 +77,12 @@ func TestListSchemas(t *testing.T) {
 				"pageSize": []string{"10"},
 				"cursor":   []string{"eyJvZmZzZXQiOjB9"},
 			},
-			expectQuery: storagecommon.InitialPaginatedQuery[any]{
-				PageSize: 10,
-				Column:   "created_at",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				Options: storagecommon.ResourceQuery[any]{
-					Expand: make([]string, 0),
+			expectQuery: storagecommon.OffsetPaginatedQuery[any]{
+				InitialPaginatedQuery: storagecommon.InitialPaginatedQuery[any]{
+					PageSize: 10,
+					Options:  storagecommon.ResourceQuery[any]{},
 				},
+				Offset: 0,
 			},
 			expectStatusCode:  http.StatusOK,
 			expectBackendCall: true,
@@ -142,7 +141,7 @@ func TestListSchemas(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
-					ListSchemas(gomock.Any(), gomock.Any()).
+					ListSchemas(gomock.Any(), tc.expectQuery).
 					Return(tc.returnCursor, tc.returnErr)
 			}
 

@@ -5,6 +5,7 @@ package components
 type V2SchemasCursor struct {
 	Data     []V2Schema `json:"data"`
 	HasMore  bool       `json:"hasMore"`
+	Previous *string    `json:"previous,omitempty"`
 	Next     *string    `json:"next,omitempty"`
 	PageSize int64      `json:"pageSize"`
 }
@@ -21,6 +22,13 @@ func (o *V2SchemasCursor) GetHasMore() bool {
 		return false
 	}
 	return o.HasMore
+}
+
+func (o *V2SchemasCursor) GetPrevious() *string {
+	if o == nil {
+		return nil
+	}
+	return o.Previous
 }
 
 func (o *V2SchemasCursor) GetNext() *string {
