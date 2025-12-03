@@ -3,7 +3,6 @@ do $$
 		_ledger record;
 		_vsql text;
 		_batch_size integer := 1000;
-		_date timestamp without time zone;
 		_count integer := 0;
 	begin
 		set search_path = '{{.Schema}}';
@@ -19,17 +18,12 @@ do $$
 			execute _vsql;
 		end loop;
 
-		-- select the date where the "11-make-stateless" migration has been applied
-		select tstamp into _date
-		from goose_db_version
-		where version_id = 12;
-
 		create temporary table logs_transactions as
-		select id, ledger, date, (data->'transaction'->>'id')::bigint as transaction_id
+		select row_number() over (order by ledger, id) as row_number, ledger, date, (data->'transaction'->>'id')::bigint as transaction_id
 		from logs
-		where date <= _date;
+		where type = 'NEW_TRANSACTION' or type = 'REVERTED_TRANSACTION';
 
-		create index on logs_transactions (ledger, transaction_id) include (id, date);
+		create index on logs_transactions (row_number) include (ledger, date, transaction_id);
 
 		select count(*) into _count
 		from logs_transactions;
@@ -40,14 +34,12 @@ do $$
 			with _rows as (
 				select *
 				from logs_transactions
-				order by ledger, transaction_id
-				offset i
-				limit _batch_size
+				where row_number > i and row_number <= i + _batch_size
 			)
 			update transactions
 			set inserted_at = _rows.date
 			from _rows
-			where transactions.ledger = _rows.ledger and transactions.id = _rows.transaction_id;
+			where transactions.ledger = _rows.ledger and transactions.id = _rows.transaction_id and inserted_at is null;
 
 			commit;
 
