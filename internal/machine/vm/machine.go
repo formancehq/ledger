@@ -516,7 +516,7 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 		}
 		accountAddress := (*account).(machine.AccountAddress)
 		if string(accountAddress) == "world" {
-			return machine.NewErrInvalidVars("`@world` can only be used as a variable in the experimental interpreter")
+			return machine.NewErrInvalidVars("`@world` can only be used as a variable in the experimental interpreter, or if it is never used as a source")
 		}
 
 		// for every asset, register the query

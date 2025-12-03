@@ -1699,6 +1699,54 @@ func TestVariablesErrors(t *testing.T) {
 	test(t, tc)
 }
 
+func TestWorldSourceVariable(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $foo
+	}
+	send [COIN 1] (
+		source = $foo
+		destination = @bob
+	)`)
+	tc.vars = map[string]string{
+		"foo": "world",
+	}
+	tc.expected = CaseResult{
+		Printed:       []machine.Value{},
+		Postings:      []Posting{},
+		Error:         &machine.ErrInvalidVars{},
+		ErrorContains: "`@world` can only be used as a variable in the experimental interpreter, or if it is never used as a source",
+	}
+	test(t, tc)
+}
+
+func TestWorldNonSourceVariable(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $foo
+	}
+	send [COIN 1] (
+		source = @alice
+		destination = $foo
+	)`)
+	tc.setBalance("alice", "COIN", 1)
+	tc.vars = map[string]string{
+		"foo": "world",
+	}
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Source:      "alice",
+				Destination: "world",
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(1),
+			},
+		},
+	}
+	test(t, tc)
+}
+
 func TestSetVarsFromJSON(t *testing.T) {
 
 	type testCase struct {
