@@ -34,7 +34,7 @@ do $$
 			with _rows as (
 				select *
 				from logs_transactions
-				where row_number >= i and row_number < i + _batch_size
+				where row_number > i and row_number <= i + _batch_size
 			)
 			update transactions
 			set inserted_at = _rows.date
