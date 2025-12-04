@@ -123,6 +123,17 @@ func (s *MemoryStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
 	return &lastLog, nil
 }
 
+// GetAllLogs returns all logs in the store (implements LogReader)
+func (s *MemoryStore) GetAllLogs(ctx context.Context) ([]ledger.Log, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Return a copy of the logs slice to avoid external modifications
+	logs := make([]ledger.Log, len(s.logs))
+	copy(logs, s.logs)
+	return logs, nil
+}
+
 // processNewTransaction processes a new transaction log and updates volumes
 func (s *MemoryStore) processNewTransaction(log ledger.Log, volumes map[string]map[string]ledger.Volumes) error {
 	payload, ok := log.Data.(*ledger.CreatedTransaction)

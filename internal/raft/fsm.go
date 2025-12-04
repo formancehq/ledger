@@ -15,10 +15,10 @@ import (
 // FSM implements the raft.FSM interface
 type FSM struct {
 	logger *zap.Logger
-	store  service.LogStore
+	store  service.LogWriter
 }
 
-func NewFSM(logger *zap.Logger, store service.LogStore) *FSM {
+func NewFSM(logger *zap.Logger, store service.LogWriter) *FSM {
 	return &FSM{
 		logger: logger,
 		store:  store,

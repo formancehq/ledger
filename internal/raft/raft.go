@@ -95,9 +95,12 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		return nil, fmt.Errorf("creating raft: %w", err)
 	}
 
-	// Create ledger service (will use Raft to persist logs)
-	// Store implements both LogStore and VolumesStore, so we can pass it for both
-	defaultLedger := service.NewDefaultLedger(r, store, store, logger)
+	// Create RaftLogWriter for writing logs via Raft
+	raftLogWriter := service.NewRaftLogWriter(r, logger)
+
+	// Create ledger service (will use RaftLogWriter to persist logs via Raft)
+	// Store implements LogReader and VolumesStore
+	defaultLedger := service.NewDefaultLedger(raftLogWriter, store, store, logger)
 
 	return &Cluster{
 		raft:          r,
