@@ -38,6 +38,9 @@ type VolumesStore interface {
 	GetBalance(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error)
 }
 
+type LockedVolumesStore interface {
+	LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error)
+}
 // Store embeds LogWriter, LogReader and VolumesStore
 type Store interface {
 	LogWriter

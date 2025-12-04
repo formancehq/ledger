@@ -139,9 +139,12 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	// Create reconstructed volumes store (reconstructs volumes from logs)
 	volumesStore := service.NewReconstructedVolumesStore(appLogStore)
 
+	// Wrap volumes store with locked volumes store for concurrent access control
+	lockedVolumesStore := service.NewDefaultLockedVolumesStore(volumesStore)
+
 	// Create ledger service (will use RaftLogWriter to persist logs via Raft)
-	// appLogStore implements LogReader, volumesStore implements VolumesStore
-	defaultLedger := service.NewDefaultLedger(raftLogWriter, volumesStore, appLogStore, logger)
+	// appLogStore implements LogReader, lockedVolumesStore implements LockedVolumesStore
+	defaultLedger := service.NewDefaultLedger(raftLogWriter, lockedVolumesStore, appLogStore, logger)
 
 	cluster := &Cluster{
 		raft:          r,

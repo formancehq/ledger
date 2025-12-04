@@ -11,19 +11,19 @@ import (
 
 // DefaultLedger is the default implementation of the Ledger interface
 type DefaultLedger struct {
-	logWriter    LogWriter // Writes logs via Raft
-	volumesStore VolumesStore
-	logReader    LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
-	logger       *zap.Logger
+	logWriter          LogWriter // Writes logs via Raft
+	lockedVolumesStore LockedVolumesStore
+	logReader          LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
+	logger             *zap.Logger
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(logWriter LogWriter, volumesStore VolumesStore, logReader LogReader, logger *zap.Logger) *DefaultLedger {
+func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedVolumesStore, logReader LogReader, logger *zap.Logger) *DefaultLedger {
 	return &DefaultLedger{
-		logWriter:    logWriter,
-		volumesStore: volumesStore,
-		logReader:    logReader,
-		logger:       logger,
+		logWriter:          logWriter,
+		lockedVolumesStore: lockedVolumesStore,
+		logReader:          logReader,
+		logger:             logger,
 	}
 }
 
@@ -94,11 +94,16 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 		requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount)
 	}
 
-	// Check sufficient funds for all source accounts
-	balances, err := l.volumesStore.GetBalance(ctx, balanceQuery)
+	// Lock and check sufficient funds for all source accounts
+	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQuery)
 	if err != nil {
+		// GetBalance failed in LockBalances, return the error
+		// Locks are already released in LockBalances on error
 		return nil, nil, err
 	}
+
+	// Ensure locks are released when we're done
+	defer release()
 
 	// Check if accounts have sufficient funds
 	for account, assets := range requiredFunds {

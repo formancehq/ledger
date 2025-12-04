@@ -311,6 +311,11 @@ func loggingMiddleware(logger *zap.Logger, next http.Handler) http.Handler {
 		// Call next handler
 		next.ServeHTTP(rw, r)
 
+		// Skip logging for health check requests
+		if r.URL.Path == "/health" {
+			return
+		}
+
 		// Log the request
 		duration := stdtime.Since(start)
 		logger.Info("HTTP request",
