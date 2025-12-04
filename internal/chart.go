@@ -200,9 +200,11 @@ func (s ChartSegment) marshalJsonObject() (map[string]any, error) {
 		if s.Account.Metadata != nil {
 			out[METADATA_KEY] = s.Account.Metadata
 		}
-		out[RULES_KEY] = s.Account.Rules
-		if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
-			out[SELF_KEY] = map[string]interface{}{}
+		if s.Account.Rules != (ChartAccountRules{}) {
+			out[RULES_KEY] = s.Account.Rules
+			if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
+				out[SELF_KEY] = map[string]interface{}{}
+			}
 		}
 	}
 	return out, nil
