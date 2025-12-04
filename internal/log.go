@@ -92,7 +92,6 @@ type Log struct {
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
-	Hash            []byte  `json:"hash" bun:"hash,type:bytea"`
 }
 
 func (l Log) WithDate(date time.Time) Log {
@@ -108,7 +107,6 @@ func (l Log) WithIdempotencyKey(key string) Log {
 
 func (l Log) ChainLog(previous *Log) Log {
 	ret := l
-	ret.ComputeHash(previous)
 	if previous != nil {
 		ret.ID = pointer.For(*previous.ID + 1)
 	} else {
@@ -135,43 +133,6 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 	}
 	*l = Log(rawLog.auxLog)
 	return err
-}
-
-func (l *Log) ComputeHash(previous *Log) {
-	digest := sha256.New()
-	enc := json.NewEncoder(digest)
-
-	if previous != nil {
-		if err := enc.Encode(previous.Hash); err != nil {
-			panic(err)
-		}
-	}
-
-	payload := l.Data.(any)
-	if hv, ok := payload.(Memento); ok {
-		payload = hv.GetMemento()
-	}
-
-	if err := enc.Encode(struct {
-		// notes(gfyrag): Keep keys ordered! the order matter when hashing the log.
-		Type           LogType   `json:"type"`
-		Data           any       `json:"data"`
-		Date           time.Time `json:"date"`
-		IdempotencyKey string    `json:"idempotencyKey"`
-		ID             int       `json:"id"`
-		Hash           []byte    `json:"hash"`
-	}{
-		Type:           l.Type,
-		Data:           payload,
-		Date:           l.Date,
-		IdempotencyKey: l.IdempotencyKey,
-		ID:             0,
-		Hash:           l.Hash,
-	}); err != nil {
-		panic(err)
-	}
-
-	l.Hash = digest.Sum(nil)
 }
 
 func (l Log) WithID(i uint64) Log {
