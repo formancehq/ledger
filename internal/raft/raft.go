@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type RaftCluster struct {
+type Cluster struct {
 	raft       *raft.Raft
 	config     *config.Config
 	logger     *zap.Logger
@@ -28,7 +28,7 @@ type RaftCluster struct {
 	cancel     context.CancelFunc
 }
 
-func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.Logger) (*RaftCluster, error) {
+func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.Logger) (*Cluster, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -90,22 +90,22 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	ctx, cancel := context.WithCancel(parentCtx)
 
-	// Create store and ledger service
+	// Create store and ledger services
 	store := service.NewMemoryStore()
-	ledgerService := service.NewDefaultLedger(store)
+	defaultLedger := service.NewDefaultLedger(store)
 
-	return &RaftCluster{
+	return &Cluster{
 		raft:       r,
 		config:     cfg,
 		logger:     logger,
-		grpcServer: grpc.NewServer(cfg.GRPCPort, logger, ledgerService),
+		grpcServer: grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
 		grpcClient: grpc.NewClient(logger),
 		ctx:        ctx,
 		cancel:     cancel,
 	}, nil
 }
 
-func (r *RaftCluster) Start() error {
+func (r *Cluster) Start() error {
 	// If this is the first node, bootstrap the cluster
 	if _, serverID := r.raft.LeaderWithID(); serverID == "" && r.config.Bootstrap {
 		servers := []raft.Server{
@@ -118,7 +118,7 @@ func (r *RaftCluster) Start() error {
 		// Add peers if provided
 		// Extract node ID from peer address (assumes format "node-X:port")
 		for _, peerAddr := range r.config.Peers {
-			// Extract hostname from address (e.g., "node-1:7000" -> "node-1")
+			// Extract hostname from address (e.g., "node-1:8888" -> "node-1")
 			host, _, err := net.SplitHostPort(peerAddr)
 			if err != nil {
 				r.logger.Warn("Invalid peer address format, skipping", zap.String("peer", peerAddr), zap.Error(err))
@@ -151,7 +151,7 @@ func (r *RaftCluster) Start() error {
 	return nil
 }
 
-func (r *RaftCluster) monitorLeader() {
+func (r *Cluster) monitorLeader() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -181,7 +181,7 @@ func (r *RaftCluster) monitorLeader() {
 	}
 }
 
-func (r *RaftCluster) handleLeaderChange(leaderID raft.ServerID, leaderAddr string) {
+func (r *Cluster) handleLeaderChange(leaderID raft.ServerID, leaderAddr string) {
 	// Check if we are the leader
 	isLeader := leaderID == raft.ServerID(r.config.NodeID)
 
@@ -221,7 +221,7 @@ func (r *RaftCluster) handleLeaderChange(leaderID raft.ServerID, leaderAddr stri
 	}
 }
 
-func (r *RaftCluster) Shutdown() error {
+func (r *Cluster) Shutdown() error {
 	r.logger.Info("Shutting down Raft cluster")
 
 	// Cancel context to stop monitoring
@@ -239,8 +239,12 @@ func (r *RaftCluster) Shutdown() error {
 	return nil
 }
 
-func (r *RaftCluster) GetRaft() *raft.Raft {
+func (r *Cluster) GetRaft() *raft.Raft {
 	return r.raft
+}
+
+func (r *Cluster) GetGRPCClient() service.GRPCClient {
+	return r.grpcClient
 }
 
 // raftLogger adapts zap.Logger to raft.Logger interface

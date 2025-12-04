@@ -1,15 +1,14 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
-	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -36,13 +35,14 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().String("node-id", "", "Node ID for this instance")
-	rootCmd.Flags().String("bind-addr", "127.0.0.1:7000", "Address to bind to")
+	rootCmd.Flags().String("bind-addr", "127.0.0.1:8888", "Address to bind to")
 	rootCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
 	rootCmd.Flags().String("data-dir", "./data", "Data directory for Raft")
 	rootCmd.Flags().StringSlice("peers", []string{}, "Initial peer addresses (comma-separated)")
 	rootCmd.Flags().Bool("debug", false, "Enable debug logging")
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
 	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
+	rootCmd.Flags().Int("http-port", 9000, "HTTP server port")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -64,7 +64,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating logger: %w", err)
 	}
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			panic(err)
+		}
+	}()
 
 	logger.Info("Starting Ledger v3 POC",
 		zap.String("version", version),
@@ -74,21 +78,16 @@ func runServer(cmd *cobra.Command, args []string) error {
 		zap.String("advertise-addr", cfg.AdvertiseAddr),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Get context from Cobra
+	ctx := cmd.Context()
 
-	// Create Raft instance
-	raftInstance, err := raft.NewRaftCluster(ctx, cfg, logger)
-	if err != nil {
-		return fmt.Errorf("creating raft cluster: %w", err)
+	// Create application
+	app := application.New(cfg, logger)
+
+	// Start application
+	if err := app.Start(ctx); err != nil {
+		return fmt.Errorf("starting application: %w", err)
 	}
-
-	// Start Raft
-	if err := raftInstance.Start(); err != nil {
-		return fmt.Errorf("starting raft: %w", err)
-	}
-
-	logger.Info("Raft cluster started successfully")
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
@@ -97,7 +96,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	<-sigChan
 	logger.Info("Shutting down...")
 
-	return raftInstance.Shutdown()
+	return app.Shutdown()
 }
 
 func loadConfig(cmd *cobra.Command) (*config.Config, error) {
@@ -118,6 +117,7 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 		Debug:         viper.GetBool("debug"),
 		Bootstrap:     viper.GetBool("bootstrap"),
 		GRPCPort:      viper.GetInt("grpc-port"),
+		HTTPPort:      viper.GetInt("http-port"),
 	}
 
 	return cfg, nil

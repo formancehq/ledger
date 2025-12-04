@@ -4,7 +4,7 @@ build:
 
 # Run the application locally (single node)
 run:
-    go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:7000 --data-dir ./data/node-1
+    go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
 
 # Run tests
 test:

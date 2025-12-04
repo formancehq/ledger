@@ -6,11 +6,18 @@ services:
     working_dir: /app
     environment:
       - NODE_ID=node-1
-      - BIND_ADDR=0.0.0.0:7000
-      - ADVERTISE_ADDR=node-1:7000
+      - BIND_ADDR=0.0.0.0:8888
+      - ADVERTISE_ADDR=node-1:8888
       - DATA_DIR=/data
+      - PEERS=node-2:8888 node-3:8888
+      - DEBUG=true
+      - BOOTSTRAP=true
+      - GRPC_PORT=8000
+      - HTTP_PORT=9000
     ports:
-      - "7000:7000"
+      - "8888:8888"
+      - "8000:8000"
+      - "9000:9000"
     volumes:
       - .:/app
       - node1-data:/data
@@ -20,7 +27,7 @@ services:
     command: >
       sh -c "
         go mod download &&
-        go run ./cmd/server --node-id node-1 --bind-addr 0.0.0.0:7000 --advertise-addr node-1:7000 --data-dir /data --peers node-2:7000,node-3:7000 --debug --bootstrap
+        go run ./cmd/server
       "
 
   node-2:
@@ -28,11 +35,16 @@ services:
     working_dir: /app
     environment:
       - NODE_ID=node-2
-      - BIND_ADDR=0.0.0.0:7000
-      - ADVERTISE_ADDR=node-2:7000
+      - BIND_ADDR=0.0.0.0:8888
+      - ADVERTISE_ADDR=node-2:8888
       - DATA_DIR=/data
+      - DEBUG=true
+      - GRPC_PORT=8000
+      - HTTP_PORT=9000
     ports:
-      - "7001:7000"
+      - "8889:8888"
+      - "8001:8000"
+      - "9001:9000"
     volumes:
       - .:/app
       - node2-data:/data
@@ -44,7 +56,7 @@ services:
     command: >
       sh -c "
         go mod download &&
-        go run ./cmd/server --node-id node-2 --bind-addr 0.0.0.0:7000 --advertise-addr node-2:7000 --data-dir /data --debug
+        go run ./cmd/server
       "
 
   node-3:
@@ -52,11 +64,16 @@ services:
     working_dir: /app
     environment:
       - NODE_ID=node-3
-      - BIND_ADDR=0.0.0.0:7000
-      - ADVERTISE_ADDR=node-3:7000
+      - BIND_ADDR=0.0.0.0:8888
+      - ADVERTISE_ADDR=node-3:8888
       - DATA_DIR=/data
+      - DEBUG=true
+      - GRPC_PORT=8000
+      - HTTP_PORT=9000
     ports:
-      - "7002:7000"
+      - "8890:8888"
+      - "8002:8000"
+      - "9002:9000"
     volumes:
       - .:/app
       - node3-data:/data
@@ -68,7 +85,7 @@ services:
     command: >
       sh -c "
         go mod download &&
-        go run ./cmd/server --node-id node-3 --bind-addr 0.0.0.0:7000 --advertise-addr node-3:7000 --data-dir /data --debug
+        go run ./cmd/server
       "
 
 networks:

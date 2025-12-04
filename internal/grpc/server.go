@@ -209,6 +209,6 @@ func transactionToProto(tx ledger.Transaction) *api.Transaction {
 		Metadata:  metadata,
 		Timestamp: timestamp,
 		Reference: tx.Reference,
-		ID:        id,
+		Id:        id,
 	}
 }

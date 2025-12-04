@@ -48,6 +48,12 @@ func (c *Client) Connect(ctx context.Context, address string) error {
 	return nil
 }
 
+func (c *Client) GetClient() api.LedgerServiceClient {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.client
+}
+
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

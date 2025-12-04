@@ -11,6 +11,7 @@ type Config struct {
 	Debug         bool
 	Bootstrap     bool
 	GRPCPort      int
+	HTTPPort      int
 }
 
 func (c *Config) Validate() error {

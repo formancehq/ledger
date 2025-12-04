@@ -64,7 +64,7 @@ go mod download
 just run
 
 # Or manually
-go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:7000 --data-dir ./data/node-1
+go run ./cmd/server --node-id node-1 --bind-addr 127.0.0.1:8888 --data-dir ./data/node-1
 ```
 
 ### Multi-node cluster with Docker
@@ -90,7 +90,7 @@ The application can be configured via:
 
 Available options:
 - `--node-id` / `NODE_ID`: Unique node identifier (required)
-- `--bind-addr` / `BIND_ADDR`: Listen address (default: `127.0.0.1:7000`)
+- `--bind-addr` / `BIND_ADDR`: Listen address (default: `127.0.0.1:8888`)
 - `--advertise-addr` / `ADVERTISE_ADDR`: Address to advertise to other nodes (defaults to bind-addr)
 - `--data-dir` / `DATA_DIR`: Data storage directory (default: `./data`)
 - `--peers` / `PEERS`: List of peer addresses (comma-separated)
