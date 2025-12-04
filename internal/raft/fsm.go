@@ -16,16 +16,20 @@ import (
 
 // FSM implements the raft.FSM interface
 type FSM struct {
-	logger *zap.Logger
-	store  service.LogWriter
-	lastID uint64 // Last assigned log ID
+	logger    *zap.Logger
+	store     service.LogWriter
+	logReader service.LogReader // Needed for restore
+	lastID    uint64            // Last assigned log ID
+	logs      []ledger.Log      // In-memory logs waiting to be persisted
 }
 
-func NewFSM(logger *zap.Logger, store service.LogWriter) *FSM {
+func NewFSM(logger *zap.Logger, store service.LogWriter, logReader service.LogReader) *FSM {
 	return &FSM{
-		logger: logger,
-		store:  store,
-		lastID: 0, // Start at 0, first log will be 1
+		logger:    logger,
+		store:     store,
+		logReader: logReader,
+		lastID:    0, // Start at 0, first log will be 1
+		logs:      make([]ledger.Log, 0),
 	}
 }
 
@@ -40,28 +44,35 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		return fmt.Errorf("unmarshaling ledger logs: %w", err)
 	}
 
-	// Assign IDs to each log
+	// Assign IDs to each log and store them in memory
 	for i := range ledgerLogs {
 		f.lastID++
 		ledgerLogs[i].ID = pointer.For(f.lastID)
-	}
-	lastID := f.lastID
-
-	// Persist all logs to the store
-	ctx := context.Background() // FSM doesn't have context, use background
-	if err := f.store.InsertLogs(ctx, ledgerLogs...); err != nil {
-		f.logger.Error("Failed to insert logs into store", zap.Error(err))
-		return fmt.Errorf("inserting logs: %w", err)
+		f.logs = append(f.logs, ledgerLogs[i])
 	}
 
-	f.logger.Debug("Logs persisted successfully", zap.Uint64("index", log.Index), zap.Int("count", len(ledgerLogs)), zap.Uint64("lastID", lastID))
+	f.logger.Debug("Logs stored in memory", zap.Uint64("index", log.Index), zap.Int("count", len(ledgerLogs)), zap.Uint64("lastID", f.lastID), zap.Int("totalLogsInMemory", len(f.logs)))
 	return nil
 }
 
 // Snapshot returns a snapshot of the FSM state
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	f.logger.Debug("Creating snapshot", zap.Uint64("lastID", f.lastID))
-	return &snapshot{lastID: f.lastID}, nil
+	f.logger.Debug("Creating snapshot", zap.Uint64("lastID", f.lastID), zap.Int("logsToPersist", len(f.logs)))
+
+	// Create a copy of logs to pass to snapshot (will be persisted in Persist method)
+	logsCopy := make([]ledger.Log, len(f.logs))
+	copy(logsCopy, f.logs)
+
+	// Clear in-memory logs - they will be persisted in snapshot.Persist()
+	// If Persist() fails, Raft will replay the logs anyway
+	f.logs = f.logs[:0]
+
+	return &snapshot{
+		lastID: f.lastID,
+		logs:   logsCopy,
+		store:  f.store,
+		logger: f.logger,
+	}, nil
 }
 
 // Restore restores the FSM from a snapshot
@@ -78,6 +89,8 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 	}
 
 	f.lastID = lastID
+	// Clear in-memory logs - they will be replayed from Raft logs after restore
+	f.logs = make([]ledger.Log, 0)
 
 	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", lastID))
 	return nil
@@ -86,9 +99,23 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 // snapshot implements raft.FSMSnapshot
 type snapshot struct {
 	lastID uint64
+	logs   []ledger.Log
+	store  service.LogWriter
+	logger *zap.Logger
 }
 
 func (s *snapshot) Persist(sink raft.SnapshotSink) error {
+	// Write all logs to the store before persisting the snapshot
+	if len(s.logs) > 0 {
+		ctx := context.Background()
+		if err := s.store.InsertLogs(ctx, s.logs...); err != nil {
+			s.logger.Error("Failed to persist logs to store during snapshot persist", zap.Error(err))
+			return fmt.Errorf("persisting logs to store: %w", err)
+		}
+
+		s.logger.Debug("Logs persisted to store during snapshot persist", zap.Int("count", len(s.logs)))
+	}
+
 	// Write the last ID to the snapshot
 	if err := binary.Write(sink, binary.BigEndian, s.lastID); err != nil {
 		return fmt.Errorf("writing lastID to snapshot: %w", err)

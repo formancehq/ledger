@@ -85,8 +85,8 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	// Create store (will be used by FSM to persist logs)
 	store := service.NewMemoryStore()
 
-	// Create FSM (Finite State Machine) with store
-	fsm := NewFSM(logger, store)
+	// Create FSM (Finite State Machine) with store and logReader
+	fsm := NewFSM(logger, store, store)
 
 	// Create Raft instance
 	r, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
