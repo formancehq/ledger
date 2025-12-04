@@ -31,16 +31,22 @@ func (r *RaftLogWriter) InsertLogs(ctx context.Context, logs ...ledger.Log) erro
 		return nil
 	}
 
-	// Serialize the logs as an array (FSM expects an array of logs)
-	logData, err := json.Marshal(logs)
+	// Create an insert logs command
+	cmd, err := NewInsertLogsCommand(logs)
 	if err != nil {
-		return fmt.Errorf("marshaling logs: %w", err)
+		return fmt.Errorf("creating insert logs command: %w", err)
 	}
 
-	// Apply the logs via Raft (FSM will persist them to the store)
-	future := r.raft.Apply(logData, 10*time.Second)
+	// Serialize the command
+	cmdData, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("marshaling command: %w", err)
+	}
+
+	// Apply the command via Raft (FSM will execute it)
+	future := r.raft.Apply(cmdData, 10*time.Second)
 	if err := future.Error(); err != nil {
-		return fmt.Errorf("applying logs via raft: %w", err)
+		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
 	// Check if FSM returned an error
@@ -53,4 +59,3 @@ func (r *RaftLogWriter) InsertLogs(ctx context.Context, logs ...ledger.Log) erro
 	r.logger.Debug("Logs applied via Raft successfully", zap.Int("count", len(logs)))
 	return nil
 }
-

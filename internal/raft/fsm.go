@@ -37,21 +37,39 @@ func NewFSM(logger *zap.Logger, store service.LogWriter, logReader service.LogRe
 func (f *FSM) Apply(log *raft.Log) interface{} {
 	f.logger.Debug("Applying log entry", zap.Uint64("index", log.Index))
 
-	// Decode the array of ledger logs from the Raft log data
-	var ledgerLogs []ledger.Log
-	if err := json.Unmarshal(log.Data, &ledgerLogs); err != nil {
-		f.logger.Error("Failed to unmarshal ledger logs", zap.Error(err))
-		return fmt.Errorf("unmarshaling ledger logs: %w", err)
+	// Decode the command from the Raft log data
+	var cmd service.Command
+	if err := json.Unmarshal(log.Data, &cmd); err != nil {
+		f.logger.Error("Failed to unmarshal command", zap.Error(err))
+		return fmt.Errorf("unmarshaling command: %w", err)
+	}
+
+	// Route to the appropriate command handler
+	switch cmd.Type {
+	case service.CommandTypeInsertLogs:
+		return f.handleInsertLogs(cmd.Data, log.Index)
+	default:
+		f.logger.Error("Unknown command type", zap.String("type", string(cmd.Type)))
+		return fmt.Errorf("unknown command type: %s", cmd.Type)
+	}
+}
+
+// handleInsertLogs handles the insert logs command
+func (f *FSM) handleInsertLogs(data json.RawMessage, index uint64) error {
+	var insertCmd service.InsertLogsCommand
+	if err := json.Unmarshal(data, &insertCmd); err != nil {
+		f.logger.Error("Failed to unmarshal insert logs command", zap.Error(err))
+		return fmt.Errorf("unmarshaling insert logs command: %w", err)
 	}
 
 	// Assign IDs to each log and store them in memory
-	for i := range ledgerLogs {
+	for i := range insertCmd.Logs {
 		f.lastID++
-		ledgerLogs[i].ID = pointer.For(f.lastID)
-		f.logs = append(f.logs, ledgerLogs[i])
+		insertCmd.Logs[i].ID = pointer.For(f.lastID)
+		f.logs = append(f.logs, insertCmd.Logs[i])
 	}
 
-	f.logger.Debug("Logs stored in memory", zap.Uint64("index", log.Index), zap.Int("count", len(ledgerLogs)), zap.Uint64("lastID", f.lastID), zap.Int("totalLogsInMemory", len(f.logs)))
+	f.logger.Debug("Logs stored in memory", zap.Uint64("index", index), zap.Int("count", len(insertCmd.Logs)), zap.Uint64("lastID", f.lastID), zap.Int("totalLogsInMemory", len(f.logs)))
 	return nil
 }
 
