@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"runtime/debug"
-	"strings"
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/api"
@@ -16,6 +14,8 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 )
 
@@ -60,19 +60,26 @@ func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, clust
 }
 
 func (s *Server) Start(ctx context.Context) error {
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
 
-	// Register known routes first
-	mux.HandleFunc("/snapshot", s.handleSnapshot)
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/cluster/state", s.handleClusterState)
+	// Apply middlewares
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+	r.Use(s.loggingMiddleware)
 
-	// Register catch-all handler for ledger routes (must be last)
-	// This will handle /<ledger name> and /<ledger name>/transactions
-	mux.HandleFunc("/", s.handleLedgerRoutes)
+	// Register known routes
+	r.Post("/snapshot", s.handleSnapshot)
+	r.Get("/health", s.handleHealth)
+	r.Get("/cluster/state", s.handleClusterState)
 
-	// Wrap handler with middlewares
-	handler := s.middlewareChain(mux)
+	// Register ledger routes with dynamic parameter
+	r.Route("/{ledgerName}", func(r chi.Router) {
+		r.Post("/", s.handleCreateLedger)                  // POST /{ledgerName}
+		r.Post("/transactions", s.handleCreateTransaction) // POST /{ledgerName}/transactions
+	})
+
+	handler := r
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -141,9 +148,10 @@ type PostingResponse struct {
 	Asset       string   `json:"asset"`
 }
 
-func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request, ledgerName string) {
-	if r.Method != http.MethodPost {
-		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
+	ledgerName := chi.URLParam(r, "ledgerName")
+	if ledgerName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
 	}
 
@@ -311,55 +319,11 @@ func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
 	api.Ok(w, clusterState)
 }
 
-// handleLedgerRoutes handles ledger-specific routes
-// This is a catch-all handler that processes routes not matched by other handlers
-// Handles:
-//   - POST /<ledger name> - create a ledger
-//   - POST /<ledger name>/transactions - create a transaction
-func (s *Server) handleLedgerRoutes(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-
-	// Skip known routes (these should be handled by other handlers, but double-check)
-	if path == "/snapshot" || path == "/health" ||
-		path == "/cluster/state" || strings.HasPrefix(path, "/cluster/") {
-		api.WriteErrorResponse(w, http.StatusNotFound, "NOT_FOUND", errors.New("route not found"))
-		return
-	}
-
-	// Extract ledger name and sub-path from URL
-	// Path format: /<ledger name> or /<ledger name>/transactions
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) == 0 || parts[0] == "" {
-		api.WriteErrorResponse(w, http.StatusNotFound, "NOT_FOUND", errors.New("route not found"))
-		return
-	}
-
-	ledgerName := parts[0]
-	subPath := ""
-	if len(parts) > 1 {
-		subPath = parts[1]
-	}
-
-	// Handle POST /<ledger name> to create a ledger
-	if r.Method == http.MethodPost && subPath == "" {
-		s.handleCreateLedger(w, r, ledgerName)
-		return
-	}
-
-	// Handle POST /<ledger name>/transactions to create a transaction
-	if r.Method == http.MethodPost && subPath == "transactions" {
-		s.handleCreateTransaction(w, r, ledgerName)
-		return
-	}
-
-	// Method not allowed for other methods
-	api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
-}
-
-// handleCreateLedger handles POST /<ledger name> to create a new ledger
-func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request, ledgerName string) {
-	if r.Method != http.MethodPost {
-		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+// handleCreateLedger handles POST /{ledgerName} to create a new ledger
+func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
+	ledgerName := chi.URLParam(r, "ledgerName")
+	if ledgerName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
 	}
 
@@ -396,42 +360,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request, ledg
 	})
 }
 
-// middlewareChain applies all middlewares to the handler
-func (s *Server) middlewareChain(handler http.Handler) http.Handler {
-	// Apply panic recovery middleware first (outermost)
-	handler = recoveryMiddleware(s.logger, handler)
-
-	// Apply logging middleware
-	// Use the zap logger directly with a simple wrapper
-	handler = loggingMiddleware(s.logger, handler)
-
-	return handler
-}
-
-// recoveryMiddleware recovers from panics and returns a 500 error
-func recoveryMiddleware(logger *zap.Logger, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				// Log the panic with stack trace
-				logger.Error("Panic recovered",
-					zap.Any("error", err),
-					zap.String("stack", string(debug.Stack())),
-					zap.String("method", r.Method),
-					zap.String("path", r.URL.Path),
-				)
-
-				// Return 500 error
-				api.InternalServerError(w, r, fmt.Errorf("internal server error: %v", err))
-			}
-		}()
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-// loggingMiddleware logs HTTP requests
-func loggingMiddleware(logger *zap.Logger, next http.Handler) http.Handler {
+// loggingMiddleware logs HTTP requests (chi middleware)
+func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := stdtime.Now()
 
@@ -448,7 +378,7 @@ func loggingMiddleware(logger *zap.Logger, next http.Handler) http.Handler {
 
 		// Log the request
 		duration := stdtime.Since(start)
-		logger.Info("HTTP request",
+		s.logger.Info("HTTP request",
 			zap.String("method", r.Method),
 			zap.String("path", r.URL.Path),
 			zap.String("query", r.URL.RawQuery),
