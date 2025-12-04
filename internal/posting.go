@@ -3,6 +3,8 @@ package ledger
 import (
 	"errors"
 	"math/big"
+	"github.com/formancehq/ledger/pkg/accounts"
+	"github.com/formancehq/ledger/pkg/assets"
 )
 
 type Posting struct {
@@ -54,16 +56,15 @@ func (p Postings) Validate() (int, error) {
 		if p.Amount.Cmp(Zero) < 0 {
 			return i, errors.New("negative amount")
 		}
-		// todo: cannot import ledger, weird dependency error
-		//if !accounts.ValidateAddress(p.Source) {
-		//	return i, errors.New("invalid source address")
-		//}
-		//if !accounts.ValidateAddress(p.Destination) {
-		//	return i, errors.New("invalid destination address")
-		//}
-		//if !assets.IsValid(p.Asset) {
-		//	return i, errors.New("invalid asset")
-		//}
+		if !accounts.ValidateAddress(p.Source) {
+			return i, errors.New("invalid source address")
+		}
+		if !accounts.ValidateAddress(p.Destination) {
+			return i, errors.New("invalid destination address")
+		}
+		if !assets.IsValid(p.Asset) {
+			return i, errors.New("invalid asset")
+		}
 	}
 
 	return 0, nil
