@@ -91,9 +91,9 @@ func (s *ReconstructedVolumesStore) GetBalance(ctx context.Context, balanceQuery
 
 // processNewTransaction processes a new transaction log and updates volumes
 func (s *ReconstructedVolumesStore) processNewTransaction(log ledger.Log, volumes map[string]map[string]ledger.Volumes) error {
-	payload, ok := log.Data.(*ledger.CreatedTransaction)
+	payload, ok := log.Data.(ledger.CreatedTransaction)
 	if !ok {
-		return fmt.Errorf("invalid transaction payload type")
+		return fmt.Errorf("invalid transaction payload type, got %T", log.Data)
 	}
 
 	for _, posting := range payload.Transaction.Postings {

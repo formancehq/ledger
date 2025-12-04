@@ -30,6 +30,6 @@ storage:
 # Raft snapshot configuration
 raft:
   snapshot:
-    threshold: 16384  # Number of logs before triggering a snapshot (0 = use Raft default)
+    threshold: 100  # Number of logs before triggering a snapshot (0 = use Raft default)
     interval: 30s     # Minimum interval between snapshots (0 = use Raft default)
 
