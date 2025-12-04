@@ -458,7 +458,7 @@ type ChartOfAccounts map[string]ChartSegment
 ```
 
 <a name="ChartOfAccounts.FindAccountSchema"></a>
-### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L274>)
+### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L289>)
 
 ```go
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error)
@@ -467,7 +467,7 @@ func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, erro
 
 
 <a name="ChartOfAccounts.MarshalJSON"></a>
-### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L170>)
+### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L179>)
 
 ```go
 func (s ChartOfAccounts) MarshalJSON() ([]byte, error)
@@ -485,7 +485,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
 
 
 <a name="ChartOfAccounts.ValidatePosting"></a>
-### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L282>)
+### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L297>)
 
 ```go
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
@@ -507,7 +507,7 @@ type ChartSegment struct {
 ```
 
 <a name="ChartSegment.MarshalJSON"></a>
-### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L214>)
+### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L223>)
 
 ```go
 func (s ChartSegment) MarshalJSON() ([]byte, error)
@@ -516,7 +516,7 @@ func (s ChartSegment) MarshalJSON() ([]byte, error)
 
 
 <a name="ChartSegment.UnmarshalJSON"></a>
-### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L74>)
+### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L87>)
 
 ```go
 func (s *ChartSegment) UnmarshalJSON(data []byte) error
@@ -533,13 +533,13 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error
 type ChartVariableSegment struct {
     ChartSegment
 
-    Pattern string
+    Pattern *string
     Label   string
 }
 ```
 
 <a name="ChartVariableSegment.MarshalJSON"></a>
-### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L222>)
+### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L231>)
 
 ```go
 func (s ChartVariableSegment) MarshalJSON() ([]byte, error)

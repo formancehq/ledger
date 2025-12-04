@@ -27,7 +27,7 @@ type ChartSegment struct {
 type ChartVariableSegment struct {
 	ChartSegment
 
-	Pattern string
+	Pattern *string
 	Label   string
 }
 
@@ -61,6 +61,19 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error {
 		if strings.HasPrefix(key, PROPERTY_PREFIX) {
 			return fmt.Errorf("invalid key %v: the root cannot be an account", key)
 		}
+
+		// prevent .pattern on root segments
+		{
+			var segment map[string]any
+			err := json.Unmarshal(value, &segment)
+			if err != nil {
+				return fmt.Errorf("invalid segment: %v", err)
+			}
+			if _, ok := segment[PATTERN_KEY]; ok {
+				return fmt.Errorf("cannot have a pattern on a fixed segment")
+			}
+		}
+
 		var seg ChartSegment
 		err := seg.UnmarshalJSON(value)
 		if err != nil {
@@ -114,22 +127,18 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return fmt.Errorf("invalid segment: %v", err)
 			}
-			if pattern != nil {
-				if !strings.HasPrefix(key, "$") {
-					return fmt.Errorf("cannot have a pattern on a fixed segment")
-				}
+			if strings.HasPrefix(key, "$") {
 				if variableSegment != nil {
 					return fmt.Errorf("cannot have two variable segments with the same prefix")
 				}
 				variableSegment = &ChartVariableSegment{
 					ChartSegment: segment,
-					Pattern:      *pattern,
+					Pattern:      pattern,
 					Label:        key[1:],
 				}
+			} else if pattern != nil {
+				return fmt.Errorf("cannot have a pattern on a fixed segment")
 			} else {
-				if strings.HasPrefix(key, "$") {
-					return fmt.Errorf("cannot have a variable segment without a pattern")
-				}
 				if fixedSegments == nil {
 					fixedSegments = map[string]ChartSegment{}
 				}
@@ -224,7 +233,9 @@ func (s ChartVariableSegment) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out[PATTERN_KEY] = s.Pattern
+	if s.Pattern != nil {
+		out[PATTERN_KEY] = *s.Pattern
+	}
 	return json.Marshal(out)
 }
 
@@ -245,9 +256,13 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		}
 	}
 	if variableSegment != nil {
-		matches, err := regexp.Match(variableSegment.Pattern, []byte(nextSegment))
-		if err != nil {
-			return nil, fmt.Errorf("invalid pattern regex: %v", err)
+		matches := true
+		if variableSegment.Pattern != nil {
+			var err error
+			matches, err = regexp.Match(*variableSegment.Pattern, []byte(nextSegment))
+			if err != nil {
+				return nil, fmt.Errorf("invalid pattern regex: %v", err)
+			}
 		}
 		if matches {
 			if len(account) > 1 {

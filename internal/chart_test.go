@@ -41,7 +41,6 @@ func TestChartValidation(t *testing.T) {
     "users": {
         "$userID": {
             ".self": {},
-            ".pattern": "^[0-9]{5}$",
             "main": {}
         }
     }
@@ -50,7 +49,7 @@ func TestChartValidation(t *testing.T) {
 				"banks": {
 					VariableSegment: &ChartVariableSegment{
 						Label:   "iban",
-						Pattern: "^[0-9]{10}$",
+						Pattern: pointer.For("^[0-9]{10}$"),
 						ChartSegment: ChartSegment{
 							FixedSegments: map[string]ChartSegment{
 								"main": {
@@ -78,7 +77,7 @@ func TestChartValidation(t *testing.T) {
 				"users": {
 					VariableSegment: &ChartVariableSegment{
 						Label:   "userID",
-						Pattern: "^[0-9]{5}$",
+						Pattern: nil,
 						ChartSegment: ChartSegment{
 							Account: &ChartAccount{},
 							FixedSegments: map[string]ChartSegment{
@@ -121,6 +120,15 @@ func TestChartValidation(t *testing.T) {
 			expectedError: "cannot have a pattern on a fixed segment",
 		},
 		{
+			name: "pattern on fixed root segment",
+			source: `{
+				"banks": {
+					".pattern": "^[0-9]{3}$"
+				}
+			}`,
+			expectedError: "cannot have a pattern on a fixed segment",
+		},
+		{
 			name: "two variable segments with same prefix",
 			source: `{
 				"users": {
@@ -133,19 +141,6 @@ func TestChartValidation(t *testing.T) {
 				}
 			}`,
 			expectedError: "cannot have two variable segments with the same prefix",
-		},
-		{
-			name: "variable segment without a pattern",
-			source: `{
-				"users": {
-					"$userID": {
-						".metadata": {
-							"foo": {}
-						}
-					}
-				}
-			}`,
-			expectedError: "cannot have a variable segment without a pattern",
 		},
 		{
 			name: "invalid metadata",
@@ -251,7 +246,7 @@ func testChart() ChartOfAccounts {
 		"bank": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "bankID",
-				Pattern: "^[0-9]{3}$",
+				Pattern: pointer.For("^[0-9]{3}$"),
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{
 						Rules: ChartAccountRules{},
@@ -272,12 +267,26 @@ func testChart() ChartOfAccounts {
 		"users": {
 			VariableSegment: &ChartVariableSegment{
 				Label:   "userID",
-				Pattern: "^[0-9]{3}$",
+				Pattern: pointer.For("^[0-9]{3}$"),
 				ChartSegment: ChartSegment{
 					FixedSegments: map[string]ChartSegment{
 						"main": {
 							Account: &ChartAccount{
 								Metadata: map[string]ChartAccountMetadata{},
+							},
+						},
+					},
+				},
+			},
+		},
+		"shops": {
+			VariableSegment: &ChartVariableSegment{
+				Label: "shopID",
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{
+						Metadata: map[string]ChartAccountMetadata{
+							"shop_account": {
+								Default: pointer.For("foo"),
 							},
 						},
 					},
@@ -330,6 +339,17 @@ func TestAccountValidation(t *testing.T) {
 			address: "users:001:main",
 			expectedAccount: &ChartAccount{
 				Metadata: map[string]ChartAccountMetadata{},
+			},
+		},
+		{
+			name:    "patternless variable segment",
+			address: "shops:whatever_should-WORK0123",
+			expectedAccount: &ChartAccount{
+				Metadata: map[string]ChartAccountMetadata{
+					"shop_account": {
+						Default: pointer.For("foo"),
+					},
+				},
 			},
 		},
 		{
@@ -389,7 +409,7 @@ func TestPostingValidation(t *testing.T) {
 			},
 		},
 		{
-			name: "",
+			name: "invalid source",
 			posting: Posting{
 				Source:      "bank:invalid",
 				Destination: "users:001:main",
@@ -397,7 +417,7 @@ func TestPostingValidation(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "",
+			name: "invalid destination",
 			posting: Posting{
 				Source:      "bank:012",
 				Destination: "users:invalid:main",
