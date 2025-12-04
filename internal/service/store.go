@@ -22,9 +22,9 @@ type LogWriter interface {
 
 // LogReader handles log reading operations
 type LogReader interface {
-	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error)
-	GetLastLog(ctx context.Context) (*ledger.Log, error)
-	GetAllLogs(ctx context.Context) (*Cursor[ledger.Log], error)
+	GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error)
+	GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error)
+	GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error)
 }
 
 // LogStore embeds both LogWriter and LogReader for backward compatibility
@@ -35,12 +35,13 @@ type LogStore interface {
 
 // VolumesStore handles balance/volume queries
 type VolumesStore interface {
-	GetBalance(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error)
+	GetBalance(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error)
 }
 
 type LockedVolumesStore interface {
-	LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error)
+	LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error)
 }
+
 // Store embeds LogWriter, LogReader and VolumesStore
 type Store interface {
 	LogWriter

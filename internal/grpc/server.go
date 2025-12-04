@@ -122,8 +122,14 @@ func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *api.Cr
 		},
 	}
 
+	// Extract ledger name from request
+	ledgerName := req.Ledger
+	if ledgerName == "" {
+		ledgerName = "default" // Default ledger name for backward compatibility
+	}
+
 	// Call ledger service
-	_, createdTx, err := l.ledgerService.CreateTransaction(ctx, params)
+	_, createdTx, err := l.ledgerService.CreateTransaction(ctx, ledgerName, params)
 	if err != nil {
 		return nil, err
 	}

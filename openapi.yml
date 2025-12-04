@@ -14,13 +14,66 @@ servers:
     description: Docker Compose node-1
 
 paths:
-  /transactions:
+  /{ledgerName}:
+    post:
+      summary: Create a new ledger
+      description: Creates a new ledger with the specified name
+      operationId: createLedger
+      tags:
+        - Ledgers
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger to create
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLedgerRequest'
+      responses:
+        '201':
+          description: Ledger created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateLedgerResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Ledger already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /{ledgerName}/transactions:
     post:
       summary: Create a new transaction
-      description: Creates a new transaction in the ledger with the specified postings
+      description: Creates a new transaction in the specified ledger with the specified postings
       operationId: createTransaction
       tags:
         - Transactions
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
       requestBody:
         required: true
         content:
@@ -115,6 +168,30 @@ paths:
 
 components:
   schemas:
+    CreateLedgerRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional metadata for the ledger
+
+    CreateLedgerResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Name of the created ledger
+            metadata:
+              type: object
+              additionalProperties:
+                type: string
+              description: Metadata for the ledger
+
     CreateTransactionRequest:
       type: object
       required:

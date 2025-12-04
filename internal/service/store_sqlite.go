@@ -55,13 +55,18 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 			type TEXT NOT NULL,
 			data TEXT NOT NULL,
 			date TEXT,
+			ledger TEXT NOT NULL,
 			idempotency_key TEXT UNIQUE,
 			idempotency_hash TEXT UNIQUE
 		);
 		
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
 		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs(id);
+		CREATE INDEX IF NOT EXISTS idx_logs_ledger ON logs(ledger);
 	`)
+
+	// Add ledger column if it doesn't exist (for migration)
+	_, _ = s.db.ExecContext(ctx, `ALTER TABLE logs ADD COLUMN ledger TEXT;`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
 	}
@@ -88,8 +93,8 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO logs (type, data, date, idempotency_key, idempotency_hash, id)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO logs (type, data, date, ledger, idempotency_key, idempotency_hash, id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing insert statement: %w", err)
@@ -140,6 +145,7 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 			log.Type.String(),
 			string(dataJSON),
 			dateStr,
+			log.Ledger,
 			idempotencyKey,
 			idempotencyHash,
 			id,
@@ -158,12 +164,12 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 }
 
 // GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
-func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error) {
+func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, data, date, idempotency_key, idempotency_hash
+		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
 		FROM logs
-		WHERE idempotency_key = ?
-	`, idempotencyKey)
+		WHERE ledger = ? AND idempotency_key = ?
+	`, ledgerName, idempotencyKey)
 
 	log, err := s.scanLog(row)
 	if err != nil {
@@ -175,14 +181,15 @@ func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempoten
 	return log, nil
 }
 
-// GetLastLog retrieves the last log by ID (implements LogReader)
-func (s *SQLiteLogStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
+// GetLastLog retrieves the last log by ID for a specific ledger (implements LogReader)
+func (s *SQLiteLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, data, date, idempotency_key, idempotency_hash
+		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
 		FROM logs
+		WHERE ledger = ?
 		ORDER BY id DESC
 		LIMIT 1
-	`)
+	`, ledgerName)
 
 	log, err := s.scanLog(row)
 	if err != nil {
@@ -200,10 +207,11 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledger.Log, error) {
 	var logType string
 	var dataJSON string
 	var dateStr sql.NullString
+	var ledgerName string
 	var idempotencyKey sql.NullString
 	var idempotencyHash sql.NullString
 
-	err := row.Scan(&id, &logType, &dataJSON, &dateStr, &idempotencyKey, &idempotencyHash)
+	err := row.Scan(&id, &logType, &dataJSON, &dateStr, &ledgerName, &idempotencyKey, &idempotencyHash)
 	if err != nil {
 		return nil, err
 	}
@@ -263,10 +271,11 @@ func (c *sqliteLogCursor) Next(ctx context.Context) (ledger.Log, error) {
 	var logType string
 	var dataJSON string
 	var dateStr sql.NullString
+	var ledgerName string
 	var idempotencyKey sql.NullString
 	var idempotencyHash sql.NullString
 
-	err := c.rows.Scan(&id, &logType, &dataJSON, &dateStr, &idempotencyKey, &idempotencyHash)
+	err := c.rows.Scan(&id, &logType, &dataJSON, &dateStr, &ledgerName, &idempotencyKey, &idempotencyHash)
 	if err != nil {
 		return ledger.Log{}, fmt.Errorf("scanning log row: %w", err)
 	}
@@ -297,6 +306,9 @@ func (c *sqliteLogCursor) Next(ctx context.Context) (ledger.Log, error) {
 		log.Date = libtime.New(date)
 	}
 
+	// Set ledger
+	log.Ledger = ledgerName
+
 	// Set idempotency fields
 	if idempotencyKey.Valid {
 		log.IdempotencyKey = idempotencyKey.String
@@ -315,13 +327,14 @@ func (c *sqliteLogCursor) Close() error {
 	return nil
 }
 
-// GetAllLogs returns a cursor to iterate over all logs in the store (implements LogReader)
-func (s *SQLiteLogStore) GetAllLogs(ctx context.Context) (*Cursor[ledger.Log], error) {
+// GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
+func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, type, data, date, idempotency_key, idempotency_hash
+		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
 		FROM logs
+		WHERE ledger = ?
 		ORDER BY id ASC
-	`)
+	`, ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("querying logs: %w", err)
 	}

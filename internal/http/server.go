@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/api"
@@ -31,6 +32,7 @@ type ClusterClient interface {
 	Snapshot() error
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
+	CreateLedger(name string, metadata map[string]string) error
 }
 
 // ClusterState represents the state of the Raft cluster
@@ -59,10 +61,15 @@ func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, clust
 
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/transactions", s.handleCreateTransaction)
+
+	// Register known routes first
 	mux.HandleFunc("/snapshot", s.handleSnapshot)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/cluster/state", s.handleClusterState)
+
+	// Register catch-all handler for ledger routes (must be last)
+	// This will handle /<ledger name> and /<ledger name>/transactions
+	mux.HandleFunc("/", s.handleLedgerRoutes)
 
 	// Wrap handler with middlewares
 	handler := s.middlewareChain(mux)
@@ -134,7 +141,7 @@ type PostingResponse struct {
 	Asset       string   `json:"asset"`
 }
 
-func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request, ledgerName string) {
 	if r.Method != http.MethodPost {
 		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
 		return
@@ -182,7 +189,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Call ledger service
-	_, createdTx, err := s.ledgerService.CreateTransaction(r.Context(), params)
+	_, createdTx, err := s.ledgerService.CreateTransaction(r.Context(), ledgerName, params)
 	if err != nil {
 		s.logger.Error("Failed to create transaction", zap.Error(err))
 		api.InternalServerError(w, r, err)
@@ -302,6 +309,91 @@ func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Ok(w, clusterState)
+}
+
+// handleLedgerRoutes handles ledger-specific routes
+// This is a catch-all handler that processes routes not matched by other handlers
+// Handles:
+//   - POST /<ledger name> - create a ledger
+//   - POST /<ledger name>/transactions - create a transaction
+func (s *Server) handleLedgerRoutes(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+
+	// Skip known routes (these should be handled by other handlers, but double-check)
+	if path == "/snapshot" || path == "/health" ||
+		path == "/cluster/state" || strings.HasPrefix(path, "/cluster/") {
+		api.WriteErrorResponse(w, http.StatusNotFound, "NOT_FOUND", errors.New("route not found"))
+		return
+	}
+
+	// Extract ledger name and sub-path from URL
+	// Path format: /<ledger name> or /<ledger name>/transactions
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		api.WriteErrorResponse(w, http.StatusNotFound, "NOT_FOUND", errors.New("route not found"))
+		return
+	}
+
+	ledgerName := parts[0]
+	subPath := ""
+	if len(parts) > 1 {
+		subPath = parts[1]
+	}
+
+	// Handle POST /<ledger name> to create a ledger
+	if r.Method == http.MethodPost && subPath == "" {
+		s.handleCreateLedger(w, r, ledgerName)
+		return
+	}
+
+	// Handle POST /<ledger name>/transactions to create a transaction
+	if r.Method == http.MethodPost && subPath == "transactions" {
+		s.handleCreateTransaction(w, r, ledgerName)
+		return
+	}
+
+	// Method not allowed for other methods
+	api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+}
+
+// handleCreateLedger handles POST /<ledger name> to create a new ledger
+func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request, ledgerName string) {
+	if r.Method != http.MethodPost {
+		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+		return
+	}
+
+	// Parse request body (optional metadata)
+	var req struct {
+		Metadata map[string]string `json:"metadata,omitempty"`
+	}
+
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
+			api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+			return
+		}
+	}
+
+	// Create ledger via cluster
+	if err := s.cluster.CreateLedger(ledgerName, req.Metadata); err != nil {
+		s.logger.Error("Failed to create ledger", zap.String("name", ledgerName), zap.Error(err))
+
+		// Check if ledger already exists
+		if err.Error() == fmt.Sprintf("ledger already exists: %s", ledgerName) {
+			api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", err)
+			return
+		}
+
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	// Return success response
+	api.Created(w, map[string]interface{}{
+		"name":     ledgerName,
+		"metadata": req.Metadata,
+	})
 }
 
 // middlewareChain applies all middlewares to the handler

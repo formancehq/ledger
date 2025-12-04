@@ -14,6 +14,8 @@ const (
 	CommandTypeInsertLogs CommandType = "insert_logs"
 	// CommandTypeSetPublicAddr is the command type for setting a node's public address
 	CommandTypeSetPublicAddr CommandType = "set_public_addr"
+	// CommandTypeCreateLedger is the command type for creating a new ledger
+	CommandTypeCreateLedger CommandType = "create_ledger"
 )
 
 // Command represents a command to be executed in the FSM
@@ -56,6 +58,34 @@ func NewSetPublicAddrCommand(nodeID, publicAddr string) (*Command, error) {
 	}
 	return &Command{
 		Type: CommandTypeSetPublicAddr,
+		Data: data,
+	}, nil
+}
+
+// LedgerInfo represents information about a ledger
+type LedgerInfo struct {
+	Name      string            `json:"name"`      // Ledger name/ID
+	CreatedAt string            `json:"createdAt"` // Creation timestamp (ISO 8601)
+	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+// CreateLedgerCommand represents the data for a create ledger command
+type CreateLedgerCommand struct {
+	Name     string            `json:"name"`               // Ledger name/ID (required)
+	Metadata map[string]string `json:"metadata,omitempty"` // Optional metadata
+}
+
+// NewCreateLedgerCommand creates a new CreateLedgerCommand
+func NewCreateLedgerCommand(name string, metadata map[string]string) (*Command, error) {
+	data, err := json.Marshal(CreateLedgerCommand{
+		Name:     name,
+		Metadata: metadata,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Command{
+		Type: CommandTypeCreateLedger,
 		Data: data,
 	}, nil
 }

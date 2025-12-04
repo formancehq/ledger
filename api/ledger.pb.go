@@ -100,6 +100,7 @@ type CreateTransactionRequest struct {
 	Postings        []*Posting                  `protobuf:"bytes,5,rep,name=postings,proto3" json:"postings,omitempty"`
 	DryRun          bool                        `protobuf:"varint,6,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
 	IdempotencyKey  string                      `protobuf:"bytes,7,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	Ledger          string                      `protobuf:"bytes,8,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -179,6 +180,13 @@ func (x *CreateTransactionRequest) GetDryRun() bool {
 func (x *CreateTransactionRequest) GetIdempotencyKey() string {
 	if x != nil {
 		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreateTransactionRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
 	}
 	return ""
 }
@@ -320,7 +328,7 @@ const file_api_ledger_proto_rawDesc = "" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x02 \x01(\tR\vdestination\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\tR\x06amount\x12\x14\n" +
-	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xd5\x03\n" +
+	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xed\x03\n" +
 	"\x18CreateTransactionRequest\x12`\n" +
 	"\x10account_metadata\x18\x01 \x03(\v25.ledger.CreateTransactionRequest.AccountMetadataEntryR\x0faccountMetadata\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x123\n" +
@@ -328,7 +336,8 @@ const file_api_ledger_proto_rawDesc = "" +
 	"\treference\x18\x04 \x01(\tR\treference\x12+\n" +
 	"\bpostings\x18\x05 \x03(\v2\x0f.ledger.PostingR\bpostings\x12\x17\n" +
 	"\adry_run\x18\x06 \x01(\bR\x06dryRun\x12'\n" +
-	"\x0fidempotency_key\x18\a \x01(\tR\x0eidempotencyKey\x1a[\n" +
+	"\x0fidempotency_key\x18\a \x01(\tR\x0eidempotencyKey\x12\x16\n" +
+	"\x06ledger\x18\b \x01(\tR\x06ledger\x1a[\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
 	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\x92\x02\n" +

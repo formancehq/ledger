@@ -66,7 +66,7 @@ func (f *FileLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) error
 }
 
 // GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
-func (f *FileLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error) {
+func (f *FileLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error) {
 	if idempotencyKey == "" {
 		return nil, nil
 	}
@@ -87,7 +87,8 @@ func (f *FileLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotency
 			continue
 		}
 
-		if log.IdempotencyKey == idempotencyKey {
+		// Filter by ledger and idempotency key
+		if log.Ledger == ledgerName && log.IdempotencyKey == idempotencyKey {
 			return &log, nil
 		}
 	}
@@ -99,8 +100,8 @@ func (f *FileLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotency
 	return nil, nil
 }
 
-// GetLastLog retrieves the last log from the file (implements LogReader)
-func (f *FileLogStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
+// GetLastLog retrieves the last log from the file for a specific ledger (implements LogReader)
+func (f *FileLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -110,7 +111,7 @@ func (f *FileLogStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
 	}
 
 	// Read backwards to find the last line
-	// For simplicity, we'll read the entire file and get the last log
+	// For simplicity, we'll read the entire file and get the last log for the ledger
 	// In production, you might want to optimize this
 	if _, err := f.file.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seeking to start of file: %w", err)
@@ -124,7 +125,10 @@ func (f *FileLogStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
 			f.logger.Warn("Failed to unmarshal log line", zap.Error(err))
 			continue
 		}
-		lastLog = &log
+		// Filter by ledger
+		if log.Ledger == ledgerName {
+			lastLog = &log
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -136,25 +140,32 @@ func (f *FileLogStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
 
 // fileLogCursor implements Cursor[ledger.Log] for FileLogStore
 type fileLogCursor struct {
-	file    *os.File
-	scanner *bufio.Scanner
-	store   *FileLogStore
+	file       *os.File
+	scanner    *bufio.Scanner
+	store      *FileLogStore
+	ledgerName string
 }
 
 func (c *fileLogCursor) Next(ctx context.Context) (ledger.Log, error) {
-	if !c.scanner.Scan() {
-		if err := c.scanner.Err(); err != nil {
-			return ledger.Log{}, fmt.Errorf("reading file: %w", err)
+	for {
+		if !c.scanner.Scan() {
+			if err := c.scanner.Err(); err != nil {
+				return ledger.Log{}, fmt.Errorf("reading file: %w", err)
+			}
+			return ledger.Log{}, io.EOF
 		}
-		return ledger.Log{}, io.EOF
-	}
 
-	var log ledger.Log
-	if err := json.Unmarshal(c.scanner.Bytes(), &log); err != nil {
-		return ledger.Log{}, fmt.Errorf("unmarshaling log: %w", err)
-	}
+		var log ledger.Log
+		if err := json.Unmarshal(c.scanner.Bytes(), &log); err != nil {
+			return ledger.Log{}, fmt.Errorf("unmarshaling log: %w", err)
+		}
 
-	return log, nil
+		// Filter by ledger
+		if log.Ledger == c.ledgerName {
+			return log, nil
+		}
+		// Continue to next log if it doesn't match the ledger
+	}
 }
 
 func (c *fileLogCursor) Close() error {
@@ -162,8 +173,8 @@ func (c *fileLogCursor) Close() error {
 	return nil
 }
 
-// GetAllLogs returns a cursor to iterate over all logs in the file (implements LogReader)
-func (f *FileLogStore) GetAllLogs(ctx context.Context) (*Cursor[ledger.Log], error) {
+// GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
+func (f *FileLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
 	f.mu.RLock()
 	// Note: We don't unlock here because the cursor will read from the file
 	// The lock will be released when the cursor is closed or when reading is done
@@ -176,9 +187,10 @@ func (f *FileLogStore) GetAllLogs(ctx context.Context) (*Cursor[ledger.Log], err
 
 	scanner := bufio.NewScanner(f.file)
 	cursor := &fileLogCursor{
-		file:    f.file,
-		scanner: scanner,
-		store:   f,
+		file:       f.file,
+		scanner:    scanner,
+		store:      f,
+		ledgerName: ledgerName,
 	}
 
 	var cursorInterface Cursor[ledger.Log] = cursor

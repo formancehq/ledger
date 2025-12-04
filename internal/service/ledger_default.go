@@ -28,7 +28,7 @@ func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedVolumesStore
 }
 
 // CreateTransaction creates a new transaction
-func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	input := parameters.Input
 
 	// Validate postings
@@ -38,7 +38,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 
 	// Check idempotency: if idempotency key is provided, check if a log already exists
 	if parameters.IdempotencyKey != "" {
-		existingLog, err := l.logReader.GetLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
+		existingLog, err := l.logReader.GetLogWithIdempotencyKey(ctx, ledgerName, parameters.IdempotencyKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -95,7 +95,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	}
 
 	// Lock and check sufficient funds for all source accounts
-	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQuery)
+	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, ledgerName, balanceQuery)
 	if err != nil {
 		// GetBalance failed in LockBalances, return the error
 		// Locks are already released in LockBalances on error
@@ -125,7 +125,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	}
 
 	// Get last log to chain the new log
-	lastLog, err := l.logReader.GetLastLog(ctx)
+	lastLog, err := l.logReader.GetLastLog(ctx, ledgerName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -148,7 +148,8 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 
 	// Create log
 	log := ledger.NewLog(createdTx).
-		WithDate(input.Timestamp)
+		WithDate(input.Timestamp).
+		WithLedger(ledgerName)
 
 	if parameters.IdempotencyKey != "" {
 		log = log.WithIdempotencyKey(parameters.IdempotencyKey)
@@ -172,36 +173,36 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 }
 
 // RevertTransaction is not implemented yet
-func (l *DefaultLedger) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (l *DefaultLedger) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
 	return nil, nil, ErrNotFound
 }
 
 // SaveTransactionMetadata is not implemented yet
-func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
 // SaveAccountMetadata is not implemented yet
-func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
 // DeleteTransactionMetadata is not implemented yet
-func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
 // DeleteAccountMetadata is not implemented yet
-func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+func (l *DefaultLedger) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
 // Import is not implemented yet
-func (l *DefaultLedger) Import(ctx context.Context, stream chan ledger.Log) error {
+func (l *DefaultLedger) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
 	return ErrNotFound
 }
 
 // Export is not implemented yet
-func (l *DefaultLedger) Export(ctx context.Context, w ExportWriter) error {
+func (l *DefaultLedger) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return ErrNotFound
 }

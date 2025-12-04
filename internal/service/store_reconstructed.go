@@ -21,13 +21,13 @@ func NewReconstructedVolumesStore(logReader LogReader) *ReconstructedVolumesStor
 	}
 }
 
-// GetBalance reconstructs balances from all logs
-func (s *ReconstructedVolumesStore) GetBalance(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error) {
+// GetBalance reconstructs balances from all logs for a specific ledger
+func (s *ReconstructedVolumesStore) GetBalance(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
 	// Initialize volumes map
 	volumes := make(map[string]map[string]ledger.Volumes)
 
-	// Get cursor for all logs
-	cursorPtr, err := s.logReader.GetAllLogs(ctx)
+	// Get cursor for all logs of the ledger
+	cursorPtr, err := s.logReader.GetAllLogs(ctx, ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("getting all logs: %w", err)
 	}

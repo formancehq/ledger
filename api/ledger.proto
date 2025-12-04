@@ -28,6 +28,7 @@ message CreateTransactionRequest {
   repeated Posting postings = 5;
   bool dry_run = 6;
   string idempotency_key = 7;
+  string ledger = 8;
 }
 
 message CreateTransactionResponse {

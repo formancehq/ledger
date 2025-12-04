@@ -33,7 +33,7 @@ func NewDefaultLockedVolumesStore(volumesStore VolumesStore) *DefaultLockedVolum
 }
 
 // LockBalances locks the requested account:asset combinations and returns balances with a release function
-func (s *DefaultLockedVolumesStore) LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
+func (s *DefaultLockedVolumesStore) LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
 	// Extract all account:asset combinations from the query
 	lockKeys := make([]string, 0)
 	for account, assets := range balanceQuery {
@@ -55,7 +55,7 @@ func (s *DefaultLockedVolumesStore) LockBalances(ctx context.Context, balanceQue
 	}
 
 	// Get balances from the underlying store
-	balances, err := s.volumesStore.GetBalance(ctx, balanceQuery)
+	balances, err := s.volumesStore.GetBalance(ctx, ledgerName, balanceQuery)
 	if err != nil {
 		// Release all locks on error
 		s.releaseLocks(lockedKeys)

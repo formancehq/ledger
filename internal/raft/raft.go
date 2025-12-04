@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -21,6 +22,7 @@ import (
 
 type Cluster struct {
 	raft          *raft.Raft
+	fsm           *FSM
 	config        *config.Config
 	logger        *zap.Logger
 	grpcServer    *grpc.Server
@@ -149,6 +151,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	cluster := &Cluster{
 		raft:          r,
+		fsm:           fsm,
 		config:        cfg,
 		logger:        logger,
 		grpcServer:    grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
@@ -388,6 +391,37 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 		Nodes:     nodes,
 		LocalNode: r.config.NodeID,
 	}, nil
+}
+
+// CreateLedger creates a new ledger via a FSM command
+func (r *Cluster) CreateLedger(name string, metadata map[string]string) error {
+	// Create the command
+	cmd, err := service.NewCreateLedgerCommand(name, metadata)
+	if err != nil {
+		return fmt.Errorf("creating create ledger command: %w", err)
+	}
+
+	// Serialize the command
+	cmdData, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("marshaling command: %w", err)
+	}
+
+	// Apply the command via Raft (FSM will execute it)
+	future := r.raft.Apply(cmdData, 10*time.Second)
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("applying command via raft: %w", err)
+	}
+
+	// Check if FSM returned an error
+	if future.Response() != nil {
+		if err, ok := future.Response().(error); ok {
+			return err
+		}
+	}
+
+	r.logger.Info("Ledger created via Raft", zap.String("name", name))
+	return nil
 }
 
 // raftLogger adapts zap.Logger to raft.Logger interface

@@ -41,11 +41,11 @@ func (r *RoutedLedger) isLeader() bool {
 }
 
 // CreateTransaction creates a new transaction, routing to leader if needed
-func (r *RoutedLedger) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (r *RoutedLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	if r.isLeader() {
 		// We are the leader, call directly
 		r.logger.Debug("Node is leader, calling default ledger directly")
-		return r.defaultLedger.CreateTransaction(ctx, parameters)
+		return r.defaultLedger.CreateTransaction(ctx, ledgerName, parameters)
 	}
 
 	// We are a follower, forward via gRPC
@@ -62,7 +62,7 @@ func (r *RoutedLedger) CreateTransaction(ctx context.Context, parameters Paramet
 	}
 
 	// Convert service parameters to protobuf request
-	req, err := r.createTransactionRequestToProto(parameters)
+	req, err := r.createTransactionRequestToProto(ledgerName, parameters)
 	if err != nil {
 		return nil, nil, fmt.Errorf("converting request to protobuf: %w", err)
 	}
@@ -84,7 +84,7 @@ func (r *RoutedLedger) CreateTransaction(ctx context.Context, parameters Paramet
 
 // Helper functions for conversion
 
-func (r *RoutedLedger) createTransactionRequestToProto(params Parameters[CreateTransaction]) (*api.CreateTransactionRequest, error) {
+func (r *RoutedLedger) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*api.CreateTransactionRequest, error) {
 	input := params.Input
 
 	// Convert postings
@@ -128,6 +128,7 @@ func (r *RoutedLedger) createTransactionRequestToProto(params Parameters[CreateT
 		Postings:        postings,
 		DryRun:          params.DryRun,
 		IdempotencyKey:  params.IdempotencyKey,
+		Ledger:          ledgerName,
 	}, nil
 }
 
@@ -219,30 +220,30 @@ func metadataToStruct(md metadata.Metadata) (*structpb.Struct, error) {
 }
 
 // Stub methods for other Ledger interface methods
-func (r *RoutedLedger) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (r *RoutedLedger) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
 	return nil, nil, ErrNotFound
 }
 
-func (r *RoutedLedger) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+func (r *RoutedLedger) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
-func (r *RoutedLedger) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+func (r *RoutedLedger) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
-func (r *RoutedLedger) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (r *RoutedLedger) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
-func (r *RoutedLedger) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+func (r *RoutedLedger) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
 	return nil, ErrNotFound
 }
 
-func (r *RoutedLedger) Import(ctx context.Context, stream chan ledger.Log) error {
+func (r *RoutedLedger) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
 	return ErrNotFound
 }
 
-func (r *RoutedLedger) Export(ctx context.Context, w ExportWriter) error {
+func (r *RoutedLedger) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return ErrNotFound
 }
