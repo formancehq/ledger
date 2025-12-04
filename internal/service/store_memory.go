@@ -8,7 +8,7 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
-// MemoryStore is an in-memory implementation of the Store interface
+// MemoryStore is an in-memory implementation of both LogStore and VolumesStore interfaces
 type MemoryStore struct {
 	mu      sync.RWMutex
 	logs    []ledger.Log
