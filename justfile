@@ -15,6 +15,13 @@ clean:
     rm -f ledger-v3-poc
     rm -rf data/
 
+# Clean data directories (removes all node data)
+clean-data:
+    rm -rf data/node-1/*
+    rm -rf data/node-2/*
+    rm -rf data/node-3/*
+    @echo "Data directories cleaned"
+
 # Start Docker cluster
 docker-up:
     docker-compose up -d

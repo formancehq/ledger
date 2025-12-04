@@ -25,6 +25,7 @@ type Cluster struct {
 	grpcServer    *grpc.Server
 	grpcClient    *grpc.Client
 	defaultLedger *service.DefaultLedger
+	sqliteStore   *service.SQLiteLogStore
 	ctx           context.Context
 	cancel        context.CancelFunc
 }
@@ -82,25 +83,33 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	ctx, cancel := context.WithCancel(parentCtx)
 
-	// Create store (will be used by FSM to persist logs)
-	store := service.NewMemoryStore()
+	// Create SQLite log store (will be used by FSM to persist logs)
+	sqliteStore, err := service.NewSQLiteLogStore(ctx, cfg.SQLiteDSN, logger)
+	if err != nil {
+		cancel() // Clean up context on error
+		return nil, fmt.Errorf("creating sqlite store: %w", err)
+	}
 
-	// Create FSM (Finite State Machine) with store and logReader
-	fsm := NewFSM(logger, store, store)
+	// Create FSM (Finite State Machine) with SQLite store
+	fsm := NewFSM(logger, sqliteStore, sqliteStore)
 
 	// Create Raft instance
 	r, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
 	if err != nil {
 		cancel() // Clean up context on error
+		sqliteStore.Close()
 		return nil, fmt.Errorf("creating raft: %w", err)
 	}
 
 	// Create RaftLogWriter for writing logs via Raft
 	raftLogWriter := service.NewRaftLogWriter(r, logger)
 
+	// Create reconstructed volumes store (reconstructs volumes from logs)
+	volumesStore := service.NewReconstructedVolumesStore(sqliteStore)
+
 	// Create ledger service (will use RaftLogWriter to persist logs via Raft)
-	// Store implements LogReader and VolumesStore
-	defaultLedger := service.NewDefaultLedger(raftLogWriter, store, store, logger)
+	// sqliteStore implements LogReader, volumesStore implements VolumesStore
+	defaultLedger := service.NewDefaultLedger(raftLogWriter, volumesStore, sqliteStore, logger)
 
 	return &Cluster{
 		raft:          r,
@@ -109,6 +118,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		grpcServer:    grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
 		grpcClient:    grpc.NewClient(logger),
 		defaultLedger: defaultLedger,
+		sqliteStore:   sqliteStore,
 		ctx:           ctx,
 		cancel:        cancel,
 	}, nil
@@ -245,6 +255,14 @@ func (r *Cluster) Shutdown() error {
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("shutting down raft: %w", err)
 	}
+
+	// Close SQLite store
+	if r.sqliteStore != nil {
+		if err := r.sqliteStore.Close(); err != nil {
+			return fmt.Errorf("closing sqlite store: %w", err)
+		}
+	}
+
 	return nil
 }
 

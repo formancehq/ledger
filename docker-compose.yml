@@ -14,13 +14,14 @@ services:
       - BOOTSTRAP=true
       - GRPC_PORT=8000
       - HTTP_PORT=9000
+      - SQLITE_DSN=file:/data/ledger.db?cache=shared&mode=rwc
     ports:
       - "8888:8888"
       - "8000:8000"
       - "9000:9000"
     volumes:
       - .:/app
-      - node1-data:/data
+      - ./data/node-1:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -41,13 +42,14 @@ services:
       - DEBUG=true
       - GRPC_PORT=8000
       - HTTP_PORT=9000
+      - SQLITE_DSN=file:/data/ledger.db?cache=shared&mode=rwc
     ports:
       - "8889:8888"
       - "8001:8000"
       - "9001:9000"
     volumes:
       - .:/app
-      - node2-data:/data
+      - ./data/node-2:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -70,13 +72,14 @@ services:
       - DEBUG=true
       - GRPC_PORT=8000
       - HTTP_PORT=9000
+      - SQLITE_DSN=file:/data/ledger.db?cache=shared&mode=rwc
     ports:
       - "8890:8888"
       - "8002:8000"
       - "9002:9000"
     volumes:
       - .:/app
-      - node3-data:/data
+      - ./data/node-3:/data
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -93,8 +96,5 @@ networks:
     driver: bridge
 
 volumes:
-  node1-data:
-  node2-data:
-  node3-data:
   go-mod-cache:
 

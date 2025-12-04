@@ -43,6 +43,7 @@ func init() {
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
 	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
 	rootCmd.Flags().Int("http-port", 9000, "HTTP server port")
+	rootCmd.Flags().String("sqlite-dsn", "file:./data/ledger.db?cache=shared&mode=rwc", "SQLite DSN connection string")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -118,6 +119,7 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 		Bootstrap:     viper.GetBool("bootstrap"),
 		GRPCPort:      viper.GetInt("grpc-port"),
 		HTTPPort:      viper.GetInt("http-port"),
+		SQLiteDSN:     viper.GetString("sqlite-dsn"),
 	}
 
 	return cfg, nil

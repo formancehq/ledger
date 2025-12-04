@@ -12,6 +12,7 @@ type Config struct {
 	Bootstrap     bool
 	GRPCPort      int
 	HTTPPort      int
+	SQLiteDSN     string
 }
 
 func (c *Config) Validate() error {

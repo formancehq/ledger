@@ -10,7 +10,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.20.1
-	github.com/uptrace/bun v1.2.15
+	github.com/uptrace/bun v1.2.16
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.74.2
 )
@@ -48,6 +48,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
+	github.com/uptrace/bun/dialect/sqlitedialect v1.2.16 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240816141633-0a40785b4f41 // indirect
