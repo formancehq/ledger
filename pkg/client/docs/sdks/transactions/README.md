@@ -18,24 +18,24 @@ package main
 
 import(
 	"context"
-	"openapi"
-	"openapi/pkg/types"
-	"openapi/pkg/models/shared"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
 	"log"
 )
 
 func main() {
     ctx := context.Background()
 
-    s := openapi.New()
+    s := client.New()
 
-    res, err := s.Transactions.CreateTransaction(ctx, shared.CreateTransactionRequest{
-        Postings: []shared.PostingRequest{
-            shared.PostingRequest{
+    res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+        Postings: []components.PostingRequest{
+            components.PostingRequest{
+                Source: "<value>",
+                Destination: "<value>",
                 Amount: types.MustNewBigIntFromString("361192"),
                 Asset: "<value>",
-                Destination: "<value>",
-                Source: "<value>",
             },
         },
     })
@@ -50,15 +50,15 @@ func main() {
 
 ### Parameters
 
-| Parameter                                                                              | Type                                                                                   | Required                                                                               | Description                                                                            |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `ctx`                                                                                  | [context.Context](https://pkg.go.dev/context#Context)                                  | :heavy_check_mark:                                                                     | The context to use for the request.                                                    |
-| `request`                                                                              | [shared.CreateTransactionRequest](../../pkg/models/shared/createtransactionrequest.md) | :heavy_check_mark:                                                                     | The request object to use for the request.                                             |
-| `opts`                                                                                 | [][operations.Option](../../pkg/models/operations/option.md)                           | :heavy_minus_sign:                                                                     | The options for this request.                                                          |
+| Parameter                                                                                  | Type                                                                                       | Required                                                                                   | Description                                                                                |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `ctx`                                                                                      | [context.Context](https://pkg.go.dev/context#Context)                                      | :heavy_check_mark:                                                                         | The context to use for the request.                                                        |
+| `request`                                                                                  | [components.CreateTransactionRequest](../../models/components/createtransactionrequest.md) | :heavy_check_mark:                                                                         | The request object to use for the request.                                                 |
+| `opts`                                                                                     | [][operations.Option](../../models/operations/option.md)                                   | :heavy_minus_sign:                                                                         | The options for this request.                                                              |
 
 ### Response
 
-**[*operations.CreateTransactionResponse](../../pkg/models/operations/createtransactionresponse.md), error**
+**[*operations.CreateTransactionResponse](../../models/operations/createtransactionresponse.md), error**
 
 ### Errors
 

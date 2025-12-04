@@ -1,0 +1,12 @@
+# TransactionResponse
+
+
+## Fields
+
+| Field                                                                      | Type                                                                       | Required                                                                   | Description                                                                |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `Postings`                                                                 | [][components.PostingResponse](../../models/components/postingresponse.md) | :heavy_minus_sign:                                                         | N/A                                                                        |
+| `Metadata`                                                                 | map[string]*any*                                                           | :heavy_minus_sign:                                                         | N/A                                                                        |
+| `Timestamp`                                                                | [*time.Time](https://pkg.go.dev/time#Time)                                 | :heavy_minus_sign:                                                         | Transaction timestamp (ISO 8601 format)                                    |
+| `Reference`                                                                | **string*                                                                  | :heavy_minus_sign:                                                         | N/A                                                                        |
+| `ID`                                                                       | **int64*                                                                   | :heavy_minus_sign:                                                         | Transaction ID (assigned by the system)                                    |

@@ -3,8 +3,8 @@
 package config
 
 import (
+	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
 	"net/http"
-	"openapi/pkg/retry"
 	"time"
 )
 

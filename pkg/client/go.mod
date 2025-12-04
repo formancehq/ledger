@@ -1,5 +1,5 @@
 
-module openapi
+module github.com/formancehq/ledger-v3-poc/pkg/client
 
 go 1.22
 

@@ -42,7 +42,7 @@ Ledger V3 POC API: API for the Ledger V3 Proof of Concept with Raft consensus
 
 To add the SDK as a dependency to your project:
 ```bash
-go get openapi
+go get github.com/formancehq/ledger-v3-poc/pkg/client
 ```
 <!-- End SDK Installation [installation] -->
 
@@ -56,20 +56,31 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
-	"openapi"
 )
 
 func main() {
 	ctx := context.Background()
 
-	s := openapi.New()
+	s := client.New()
 
-	res, err := s.Cluster.CreateSnapshot(ctx)
+	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+		Postings: []components.PostingRequest{
+			components.PostingRequest{
+				Source:      "<value>",
+				Destination: "<value>",
+				Amount:      types.MustNewBigIntFromString("361192"),
+				Asset:       "<value>",
+			},
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.SnapshotResponse != nil {
+	if res.CreateTransactionResponse != nil {
 		// handle response
 	}
 }
@@ -106,18 +117,29 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
-	"openapi"
-	"openapi/pkg/retry"
-	"pkg/models/operations"
+	"models/operations"
 )
 
 func main() {
 	ctx := context.Background()
 
-	s := openapi.New()
+	s := client.New()
 
-	res, err := s.Cluster.CreateSnapshot(ctx, operations.WithRetries(
+	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+		Postings: []components.PostingRequest{
+			components.PostingRequest{
+				Source:      "<value>",
+				Destination: "<value>",
+				Amount:      types.MustNewBigIntFromString("361192"),
+				Asset:       "<value>",
+			},
+		},
+	}, operations.WithRetries(
 		retry.Config{
 			Strategy: "backoff",
 			Backoff: &retry.BackoffStrategy{
@@ -131,7 +153,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.SnapshotResponse != nil {
+	if res.CreateTransactionResponse != nil {
 		// handle response
 	}
 }
@@ -144,16 +166,18 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
-	"openapi"
-	"openapi/pkg/retry"
 )
 
 func main() {
 	ctx := context.Background()
 
-	s := openapi.New(
-		openapi.WithRetryConfig(
+	s := client.New(
+		client.WithRetryConfig(
 			retry.Config{
 				Strategy: "backoff",
 				Backoff: &retry.BackoffStrategy{
@@ -166,11 +190,20 @@ func main() {
 			}),
 	)
 
-	res, err := s.Cluster.CreateSnapshot(ctx)
+	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+		Postings: []components.PostingRequest{
+			components.PostingRequest{
+				Source:      "<value>",
+				Destination: "<value>",
+				Amount:      types.MustNewBigIntFromString("361192"),
+				Asset:       "<value>",
+			},
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.SnapshotResponse != nil {
+	if res.CreateTransactionResponse != nil {
 		// handle response
 	}
 }
@@ -185,12 +218,12 @@ Handling errors in this SDK should largely match your expectations. All operatio
 
 By Default, an API error will return `sdkerrors.SDKError`. When custom error responses are specified for an operation, the SDK may also return their associated error. You can refer to respective *Errors* tables in SDK docs for more details on possible error types for each operation.
 
-For example, the `CreateSnapshot` function may return the following errors:
+For example, the `CreateTransaction` function may return the following errors:
 
 | Error Type              | Status Code | Content Type     |
 | ----------------------- | ----------- | ---------------- |
-| sdkerrors.ErrorResponse | 405         | application/json |
-| sdkerrors.ErrorResponse | 500, 503    | application/json |
+| sdkerrors.ErrorResponse | 400         | application/json |
+| sdkerrors.ErrorResponse | 500         | application/json |
 | sdkerrors.SDKError      | 4XX, 5XX    | \*/\*            |
 
 ### Example
@@ -201,17 +234,28 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/sdkerrors"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
-	"openapi"
-	"openapi/pkg/models/sdkerrors"
 )
 
 func main() {
 	ctx := context.Background()
 
-	s := openapi.New()
+	s := client.New()
 
-	res, err := s.Cluster.CreateSnapshot(ctx)
+	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+		Postings: []components.PostingRequest{
+			components.PostingRequest{
+				Source:      "<value>",
+				Destination: "<value>",
+				Amount:      types.MustNewBigIntFromString("361192"),
+				Asset:       "<value>",
+			},
+		},
+	})
 	if err != nil {
 
 		var e *sdkerrors.ErrorResponse
@@ -256,22 +300,33 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
-	"openapi"
 )
 
 func main() {
 	ctx := context.Background()
 
-	s := openapi.New(
-		openapi.WithServerIndex(1),
+	s := client.New(
+		client.WithServerIndex(1),
 	)
 
-	res, err := s.Cluster.CreateSnapshot(ctx)
+	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+		Postings: []components.PostingRequest{
+			components.PostingRequest{
+				Source:      "<value>",
+				Destination: "<value>",
+				Amount:      types.MustNewBigIntFromString("361192"),
+				Asset:       "<value>",
+			},
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.SnapshotResponse != nil {
+	if res.CreateTransactionResponse != nil {
 		// handle response
 	}
 }
@@ -286,22 +341,33 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
-	"openapi"
 )
 
 func main() {
 	ctx := context.Background()
 
-	s := openapi.New(
-		openapi.WithServerURL("http://node-1:9000"),
+	s := client.New(
+		client.WithServerURL("http://node-1:9000"),
 	)
 
-	res, err := s.Cluster.CreateSnapshot(ctx)
+	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
+		Postings: []components.PostingRequest{
+			components.PostingRequest{
+				Source:      "<value>",
+				Destination: "<value>",
+				Amount:      types.MustNewBigIntFromString("361192"),
+				Asset:       "<value>",
+			},
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.SnapshotResponse != nil {
+	if res.CreateTransactionResponse != nil {
 		// handle response
 	}
 }

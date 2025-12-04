@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"openapi"
-
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -48,8 +47,8 @@ func runSnapshot(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	// Create SDK instance with custom server URL
-	sdk := openapi.New(
-		openapi.WithServerURL(serverURL),
+	sdk := client.New(
+		client.WithServerURL(serverURL),
 	)
 
 	// Call the snapshot endpoint

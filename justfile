@@ -45,10 +45,6 @@ docker-logs:
 # Generate SDK from OpenAPI specification using Speakeasy
 generate-sdk:
     @echo "Generating SDK from openapi.yml using Speakeasy..."
-    @mkdir -p pkg/client
-    @echo "go:" > pkg/client/gen.yaml
-    @echo "  packageName: github.com/formancehq/ledger-v3-poc/pkg/client" >> pkg/client/gen.yaml
-    @echo "  version: 1.0.0" >> pkg/client/gen.yaml
     @nix develop --command speakeasy generate sdk \
         --lang go \
         --schema openapi.yml \

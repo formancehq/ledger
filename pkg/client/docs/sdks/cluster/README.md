@@ -18,14 +18,14 @@ package main
 
 import(
 	"context"
-	"openapi"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
 	"log"
 )
 
 func main() {
     ctx := context.Background()
 
-    s := openapi.New()
+    s := client.New()
 
     res, err := s.Cluster.CreateSnapshot(ctx)
     if err != nil {
@@ -39,14 +39,14 @@ func main() {
 
 ### Parameters
 
-| Parameter                                                    | Type                                                         | Required                                                     | Description                                                  |
-| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| `ctx`                                                        | [context.Context](https://pkg.go.dev/context#Context)        | :heavy_check_mark:                                           | The context to use for the request.                          |
-| `opts`                                                       | [][operations.Option](../../pkg/models/operations/option.md) | :heavy_minus_sign:                                           | The options for this request.                                |
+| Parameter                                                | Type                                                     | Required                                                 | Description                                              |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| `ctx`                                                    | [context.Context](https://pkg.go.dev/context#Context)    | :heavy_check_mark:                                       | The context to use for the request.                      |
+| `opts`                                                   | [][operations.Option](../../models/operations/option.md) | :heavy_minus_sign:                                       | The options for this request.                            |
 
 ### Response
 
-**[*operations.CreateSnapshotResponse](../../pkg/models/operations/createsnapshotresponse.md), error**
+**[*operations.CreateSnapshotResponse](../../models/operations/createsnapshotresponse.md), error**
 
 ### Errors
 

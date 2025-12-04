@@ -4,6 +4,7 @@ go 1.25
 
 require (
 	github.com/formancehq/go-libs/v3 v3.6.0
+	github.com/formancehq/ledger-v3-poc/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/raft v1.6.0
 	github.com/hashicorp/raft-boltdb/v2 v2.2.2
@@ -15,7 +16,6 @@ require (
 	google.golang.org/grpc v1.74.2
 	google.golang.org/protobuf v1.36.8
 	modernc.org/sqlite v1.40.1
-	openapi v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -86,4 +86,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace openapi => ./pkg/client
+replace github.com/formancehq/ledger-v3-poc/pkg/client => ./pkg/client
