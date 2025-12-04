@@ -408,12 +408,10 @@ Accept: application/json
   "data": {
     "version": "v1.0.0",
     "createdAt": "2023-01-01T00:00:00Z",
-    "data": {
-      "chart": {
-        "users": {
-          "$userID": {
-            ".pattern": "^[0-9]{16}$"
-          }
+    "chart": {
+      "users": {
+        "$userID": {
+          ".pattern": "^[0-9]{16}$"
         }
       }
     }
@@ -477,12 +475,10 @@ Accept: application/json
       {
         "version": "v1.0.0",
         "createdAt": "2023-01-01T00:00:00Z",
-        "data": {
-          "chart": {
-            "users": {
-              "$userID": {
-                ".pattern": "^[0-9]{16}$"
-              }
+        "chart": {
+          "users": {
+            "$userID": {
+              ".pattern": "^[0-9]{16}$"
             }
           }
         }
@@ -5733,12 +5729,10 @@ Schema data structure for ledger schemas
 {
   "version": "v1.0.0",
   "createdAt": "2023-01-01T00:00:00Z",
-  "data": {
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
-        }
+  "chart": {
+    "users": {
+      "$userID": {
+        ".pattern": "^[0-9]{16}$"
       }
     }
   }
@@ -5750,11 +5744,19 @@ Complete schema structure with metadata
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|version|string|true|none|Schema version|
-|createdAt|string(date-time)|true|none|Schema creation timestamp|
-|data|[V2SchemaData](#schemav2schemadata)|true|none|Schema data structure for ledger schemas|
+|*anonymous*|object|false|none|none|
+|» version|string|true|none|Schema version|
+|» createdAt|string(date-time)|true|none|Schema creation timestamp|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[V2SchemaData](#schemav2schemadata)|false|none|Schema data structure for ledger schemas|
 
 <h2 id="tocS_V2SchemaResponse">V2SchemaResponse</h2>
 <!-- backwards compatibility -->
@@ -5768,12 +5770,10 @@ Complete schema structure with metadata
   "data": {
     "version": "v1.0.0",
     "createdAt": "2023-01-01T00:00:00Z",
-    "data": {
-      "chart": {
-        "users": {
-          "$userID": {
-            ".pattern": "^[0-9]{16}$"
-          }
+    "chart": {
+      "users": {
+        "$userID": {
+          ".pattern": "^[0-9]{16}$"
         }
       }
     }
@@ -5802,12 +5802,10 @@ Complete schema structure with metadata
       {
         "version": "v1.0.0",
         "createdAt": "2023-01-01T00:00:00Z",
-        "data": {
-          "chart": {
-            "users": {
-              "$userID": {
-                ".pattern": "^[0-9]{16}$"
-              }
+        "chart": {
+          "users": {
+            "$userID": {
+              ".pattern": "^[0-9]{16}$"
             }
           }
         }
@@ -5841,12 +5839,10 @@ Complete schema structure with metadata
     {
       "version": "v1.0.0",
       "createdAt": "2023-01-01T00:00:00Z",
-      "data": {
-        "chart": {
-          "users": {
-            "$userID": {
-              ".pattern": "^[0-9]{16}$"
-            }
+      "chart": {
+        "users": {
+          "$userID": {
+            ".pattern": "^[0-9]{16}$"
           }
         }
       }
