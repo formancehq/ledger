@@ -479,7 +479,7 @@ func (c *ControllerWithTraces) InsertSchema(ctx context.Context, parameters Para
 	)
 	_, err = tracing.TraceWithMetric(
 		ctx,
-		"InsertedSchema",
+		"InsertSchema",
 		c.tracer,
 		c.insertSchemaHistogram,
 		func(ctx context.Context) (any, error) {

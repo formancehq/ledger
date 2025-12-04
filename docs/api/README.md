@@ -5651,13 +5651,13 @@ and
 
 ```
 
-Segment within a chart of account
+Segment within a chart of accounts
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
+|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
 |.self|object|false|none|none|
 |.pattern|string|false|none|none|
 |.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|false|none|none|
@@ -5688,7 +5688,7 @@ Chart of account
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
+|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
 
 <h2 id="tocS_V2SchemaData">V2SchemaData</h2>
 <!-- backwards compatibility -->

@@ -4486,7 +4486,7 @@ components:
           type: string
     V2ChartSegment:
       type: object
-      description: "Segment within a chart of account"
+      description: "Segment within a chart of accounts"
       properties:
         .self:
           type: object

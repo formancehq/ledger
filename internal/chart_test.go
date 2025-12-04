@@ -348,7 +348,7 @@ func TestAccountValidation(t *testing.T) {
 		{
 			name:          "invalid variable segment",
 			address:       "bank:invalid",
-			expectedError: "segment `invalid` defined by the chart of account at `bank` does not match the pattern",
+			expectedError: "segment `invalid` defined by the chart of accounts at `bank` does not match the pattern",
 		},
 		{
 			name:          "invalid non-root non-variable segment",

@@ -1,6 +1,6 @@
 # V2ChartSegment
 
-Segment within a chart of account
+Segment within a chart of accounts
 
 
 ## Fields

@@ -115,7 +115,7 @@ func (e ErrInvalidAccount) Error() string {
 			return fmt.Sprintf("account `%v` is not defined in the chart of accounts", e.segment)
 		}
 	} else if e.patternMismatch {
-		return fmt.Sprintf("segment `%v` defined by the chart of account at `%v` does not match the pattern", e.segment, strings.Join(e.path, ":"))
+		return fmt.Sprintf("segment `%v` defined by the chart of accounts at `%v` does not match the pattern", e.segment, strings.Join(e.path, ":"))
 	} else {
 		return fmt.Sprintf("segment `%v` is not allowed by the chart of accounts at `%v`", e.segment, strings.Join(e.path, ":"))
 	}

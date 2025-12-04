@@ -80,9 +80,9 @@ type Controller interface {
 	Import(ctx context.Context, stream chan ledger.Log) error
 	// Export allow to export the logs of a ledger
 	Export(ctx context.Context, w ExportWriter) error
-	// InsertSchema Update the chart of account
+	// InsertSchema Insert a new schema
 	InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error)
-	// GetSchema Get the chart of account by version
+	// GetSchema Get the schema by version
 	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
 	// ListSchemas List all schemas for the ledger
 	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
