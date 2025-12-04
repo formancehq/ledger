@@ -6,18 +6,22 @@
 #   - bootstrap: Whether to bootstrap the cluster (BOOTSTRAP) - only for node-1
 
 # Network configuration
-bind-addr: "0.0.0.0:8888"
-data-dir: "/data"
+network:
+  bind-addr: "0.0.0.0:8888"
+  data-dir: "/data"
 
 # Logging
-debug: true
+logging:
+  debug: true
 
-# Server ports
-grpc-port: 8000
-http-port: 9000
+# Server configuration
+server:
+  grpc-port: 8000
+  http-port: 9000
 
 # Storage configuration - using file storage
-storage-type: "file"
-storage-file-path: "/data/logs.jsonl"
-#sqlite-dsn: "file:/data/ledger.db?cache=shared&mode=rwc"
+storage:
+  type: "file"
+  file:
+    path: "/data/logs.jsonl"
 

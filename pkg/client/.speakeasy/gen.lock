@@ -1,0 +1,98 @@
+lockVersion: 2.0.0
+id: 05f389a0-dbe5-434a-ae48-9aae0a4011ac
+management:
+  docChecksum: fc822ec14e2b2a68619d4a8927fe3d83
+  docVersion: 1.0.0
+  speakeasyVersion: 1.563.0
+  generationVersion: 2.629.1
+  releaseVersion: 1.1.0
+  configChecksum: 846454414b63a1ba44b77e2c0722d0a6
+features:
+  go:
+    additionalDependencies: 0.1.0
+    constsAndDefaults: 0.1.12
+    core: 3.8.1
+    defaultEnabledRetries: 0.2.0
+    envVarSecurityUsage: 0.3.2
+    globalSecurityCallbacks: 0.1.0
+    globalServerURLs: 2.82.3
+    intellisenseMarkdownSupport: 0.1.0
+    responseFormat: 0.1.2
+    retries: 2.83.3
+    sdkHooks: 0.2.0
+generatedFiles:
+  - .gitattributes
+  - /pkg/models/operations/createsnapshot.go
+  - /pkg/models/operations/createtransaction.go
+  - /pkg/models/sdkerrors/errorresponse.go
+  - /pkg/models/shared/createtransactionrequest.go
+  - /pkg/models/shared/createtransactionresponse.go
+  - /pkg/models/shared/postingrequest.go
+  - /pkg/models/shared/postingresponse.go
+  - /pkg/models/shared/snapshotresponse.go
+  - /pkg/models/shared/transactionresponse.go
+  - USAGE.md
+  - cluster.go
+  - docs/pkg/models/operations/createsnapshotresponse.md
+  - docs/pkg/models/operations/createtransactionresponse.md
+  - docs/pkg/models/operations/option.md
+  - docs/pkg/models/sdkerrors/error.md
+  - docs/pkg/models/sdkerrors/errorresponse.md
+  - docs/pkg/models/shared/createtransactionrequest.md
+  - docs/pkg/models/shared/createtransactionresponse.md
+  - docs/pkg/models/shared/data.md
+  - docs/pkg/models/shared/postingrequest.md
+  - docs/pkg/models/shared/postingresponse.md
+  - docs/pkg/models/shared/snapshotresponse.md
+  - docs/pkg/models/shared/snapshotresponsedata.md
+  - docs/pkg/models/shared/transactionresponse.md
+  - docs/sdks/cluster/README.md
+  - docs/sdks/sdk/README.md
+  - docs/sdks/transactions/README.md
+  - go.mod
+  - internal/config/sdkconfiguration.go
+  - internal/hooks/hooks.go
+  - pkg/models/operations/options.go
+  - pkg/models/sdkerrors/sdkerror.go
+  - pkg/retry/config.go
+  - pkg/types/bigint.go
+  - pkg/types/date.go
+  - pkg/types/datetime.go
+  - pkg/types/decimal.go
+  - pkg/types/pointers.go
+  - pkg/utils/contenttype.go
+  - pkg/utils/env.go
+  - pkg/utils/form.go
+  - pkg/utils/headers.go
+  - pkg/utils/json.go
+  - pkg/utils/pathparams.go
+  - pkg/utils/queryparams.go
+  - pkg/utils/requestbody.go
+  - pkg/utils/retries.go
+  - pkg/utils/security.go
+  - pkg/utils/utils.go
+  - sdk.go
+  - transactions.go
+examples:
+  createSnapshot:
+    speakeasy-default-create-snapshot:
+      responses:
+        "200":
+          application/json: {}
+        "405":
+          application/json: {}
+        "500":
+          application/json: {}
+  createTransaction:
+    speakeasy-default-create-transaction:
+      requestBody:
+        application/json: {"dryRun": false, "postings": [{"amount": "361.19", "asset": "<value>", "destination": "<value>", "source": "<value>"}]}
+      responses:
+        "201":
+          application/json: {}
+        "400":
+          application/json: {}
+        "500":
+          application/json: {}
+examplesVersion: 1.0.2
+generatedTests: {}

@@ -308,6 +308,16 @@ func (r *Cluster) GetDefaultLedger() *service.DefaultLedger {
 	return r.defaultLedger
 }
 
+// Snapshot forces a snapshot of the Raft cluster
+func (r *Cluster) Snapshot() error {
+	future := r.raft.Snapshot()
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("creating snapshot: %w", err)
+	}
+	r.logger.Info("Snapshot created successfully")
+	return nil
+}
+
 // raftLogger adapts zap.Logger to raft.Logger interface
 type raftLogger struct {
 	logger *zap.Logger

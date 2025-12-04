@@ -1,0 +1,216 @@
+openapi: 3.0.3
+info:
+  title: Ledger V3 POC API
+  description: API for the Ledger V3 Proof of Concept with Raft consensus
+  version: 1.0.0
+  contact:
+    name: Formance
+    url: https://formance.com
+
+servers:
+  - url: http://localhost:9000
+    description: Local development server
+  - url: http://node-1:9000
+    description: Docker Compose node-1
+
+paths:
+  /transactions:
+    post:
+      summary: Create a new transaction
+      description: Creates a new transaction in the ledger with the specified postings
+      operationId: createTransaction
+      tags:
+        - Transactions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransactionRequest'
+      responses:
+        '201':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /snapshot:
+    post:
+      summary: Create a Raft snapshot
+      description: Forces the creation of a Raft cluster snapshot (leader only)
+      operationId: createSnapshot
+      tags:
+        - Cluster
+      responses:
+        '200':
+          description: Snapshot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+        '405':
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    CreateTransactionRequest:
+      type: object
+      required:
+        - postings
+      properties:
+        accountMetadata:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+          description: Metadata for accounts involved in the transaction
+        timestamp:
+          type: string
+          format: date-time
+          description: Transaction timestamp (ISO 8601 format). If not provided, current time is used.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Transaction metadata
+        reference:
+          type: string
+          description: Transaction reference
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostingRequest'
+          description: List of postings for the transaction
+        dryRun:
+          type: boolean
+          default: false
+          description: If true, validate the transaction without applying it
+        idempotencyKey:
+          type: string
+          description: Idempotency key to prevent duplicate transactions
+
+    PostingRequest:
+      type: object
+      required:
+        - source
+        - destination
+        - amount
+        - asset
+      properties:
+        source:
+          type: string
+          description: Source account address
+        destination:
+          type: string
+          description: Destination account address
+        amount:
+          type: string
+          description: Amount as a string (supports large integers)
+          pattern: '^-?[0-9]+$'
+        asset:
+          type: string
+          description: Asset identifier
+
+    CreateTransactionResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            transaction:
+              $ref: '#/components/schemas/TransactionResponse'
+            accountMetadata:
+              type: object
+              additionalProperties:
+                type: object
+                additionalProperties: true
+              description: Metadata for accounts involved in the transaction
+
+    TransactionResponse:
+      type: object
+      properties:
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostingResponse'
+        metadata:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Transaction timestamp (ISO 8601 format)
+        reference:
+          type: string
+        id:
+          type: integer
+          format: int64
+          description: Transaction ID (assigned by the system)
+
+    PostingResponse:
+      type: object
+      properties:
+        source:
+          type: string
+        destination:
+          type: string
+        amount:
+          type: string
+          description: Amount as a string (supports large integers)
+        asset:
+          type: string
+
+    SnapshotResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Success message
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            errorCode:
+              type: string
+              description: Error code identifier
+            errorMessage:
+              type: string
+              description: Human-readable error message
+            details:
+              type: string
+              description: Additional error details (optional)
+

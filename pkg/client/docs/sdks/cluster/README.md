@@ -1,0 +1,57 @@
+# Cluster
+(*Cluster*)
+
+## Overview
+
+### Available Operations
+
+* [CreateSnapshot](#createsnapshot) - Create a Raft snapshot
+
+## CreateSnapshot
+
+Forces the creation of a Raft cluster snapshot (leader only)
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"openapi"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := openapi.New()
+
+    res, err := s.Cluster.CreateSnapshot(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.SnapshotResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                    | Type                                                         | Required                                                     | Description                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `ctx`                                                        | [context.Context](https://pkg.go.dev/context#Context)        | :heavy_check_mark:                                           | The context to use for the request.                          |
+| `opts`                                                       | [][operations.Option](../../pkg/models/operations/option.md) | :heavy_minus_sign:                                           | The options for this request.                                |
+
+### Response
+
+**[*operations.CreateSnapshotResponse](../../pkg/models/operations/createsnapshotresponse.md), error**
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | 405                     | application/json        |
+| sdkerrors.ErrorResponse | 500, 503                | application/json        |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

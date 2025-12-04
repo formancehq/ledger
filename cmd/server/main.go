@@ -133,17 +133,17 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 
 	cfg := &config.Config{
 		NodeID:          viper.GetString("node-id"),
-		BindAddr:        viper.GetString("bind-addr"),
+		BindAddr:        viper.GetString("network.bind-addr"),
 		AdvertiseAddr:   viper.GetString("advertise-addr"),
-		DataDir:         viper.GetString("data-dir"),
+		DataDir:         viper.GetString("network.data-dir"),
 		Peers:           viper.GetStringSlice("peers"),
-		Debug:           viper.GetBool("debug"),
+		Debug:           viper.GetBool("logging.debug"),
 		Bootstrap:       viper.GetBool("bootstrap"),
-		GRPCPort:        viper.GetInt("grpc-port"),
-		HTTPPort:        viper.GetInt("http-port"),
-		StorageType:     viper.GetString("storage-type"),
-		SQLiteDSN:       viper.GetString("sqlite-dsn"),
-		StorageFilePath: viper.GetString("storage-file-path"),
+		GRPCPort:        viper.GetInt("server.grpc-port"),
+		HTTPPort:        viper.GetInt("server.http-port"),
+		StorageType:     viper.GetString("storage.type"),
+		SQLiteDSN:       viper.GetString("storage.sqlite.dsn"),
+		StorageFilePath: viper.GetString("storage.file.path"),
 	}
 
 	return cfg, nil

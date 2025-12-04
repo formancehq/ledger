@@ -50,7 +50,7 @@ func (a *Application) Start(ctx context.Context) error {
 	a.ledgerService = routedLedger
 
 	// Create HTTP server
-	httpServer := http.NewServer(a.config.HTTPPort, a.logger, routedLedger)
+	httpServer := http.NewServer(a.config.HTTPPort, a.logger, routedLedger, cluster)
 	a.httpServer = httpServer
 
 	// Start Raft cluster

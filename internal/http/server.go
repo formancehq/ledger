@@ -3,11 +3,14 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
+	"runtime/debug"
 	stdtime "time"
 
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
@@ -16,16 +19,23 @@ import (
 )
 
 type Server struct {
-	server     *http.Server
-	logger     *zap.Logger
+	server        *http.Server
+	logger        *zap.Logger
 	ledgerService service.Ledger
-	port       int
+	cluster       ClusterClient
+	port          int
 }
 
-func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger) *Server {
+// ClusterClient is an interface for cluster operations
+type ClusterClient interface {
+	Snapshot() error
+}
+
+func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, cluster ClusterClient) *Server {
 	return &Server{
 		logger:        logger,
 		ledgerService: ledgerService,
+		cluster:       cluster,
 		port:          port,
 	}
 }
@@ -33,10 +43,14 @@ func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger) *Serv
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/transactions", s.handleCreateTransaction)
+	mux.HandleFunc("/snapshot", s.handleSnapshot)
+
+	// Wrap handler with middlewares
+	handler := s.middlewareChain(mux)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
-		Handler: mux,
+		Handler: handler,
 	}
 
 	s.logger.Info("Starting HTTP server", zap.Int("port", s.port))
@@ -66,12 +80,12 @@ func (s *Server) Stop() error {
 
 type CreateTransactionRequest struct {
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
-	Timestamp      string                          `json:"timestamp,omitempty"` // ISO 8601 format
-	Metadata       metadata.Metadata               `json:"metadata,omitempty"`
-	Reference      string                          `json:"reference,omitempty"`
-	Postings       []PostingRequest                `json:"postings"`
-	DryRun         bool                            `json:"dryRun,omitempty"`
-	IdempotencyKey string                          `json:"idempotencyKey,omitempty"`
+	Timestamp       string                       `json:"timestamp,omitempty"` // ISO 8601 format
+	Metadata        metadata.Metadata            `json:"metadata,omitempty"`
+	Reference       string                       `json:"reference,omitempty"`
+	Postings        []PostingRequest             `json:"postings"`
+	DryRun          bool                         `json:"dryRun,omitempty"`
+	IdempotencyKey  string                       `json:"idempotencyKey,omitempty"`
 }
 
 type PostingRequest struct {
@@ -81,17 +95,17 @@ type PostingRequest struct {
 	Asset       string `json:"asset"`
 }
 
-type CreateTransactionResponse struct {
-	Transaction     TransactionResponse `json:"transaction"`
+type CreateTransactionData struct {
+	Transaction     TransactionResponse          `json:"transaction"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
 }
 
 type TransactionResponse struct {
-	Postings  []PostingResponse    `json:"postings"`
-	Metadata  metadata.Metadata    `json:"metadata,omitempty"`
-	Timestamp string                `json:"timestamp"` // ISO 8601 format
-	Reference string                `json:"reference,omitempty"`
-	ID        *uint64               `json:"id,omitempty"`
+	Postings  []PostingResponse `json:"postings"`
+	Metadata  metadata.Metadata `json:"metadata,omitempty"`
+	Timestamp string            `json:"timestamp"` // ISO 8601 format
+	Reference string            `json:"reference,omitempty"`
+	ID        *uint64           `json:"id,omitempty"`
 }
 
 type PostingResponse struct {
@@ -103,13 +117,13 @@ type PostingResponse struct {
 
 func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
 		return
 	}
 
 	var req CreateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		api.BadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request: %w", err))
 		return
 	}
 
@@ -118,7 +132,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	for _, p := range req.Postings {
 		amount, ok := new(big.Int).SetString(p.Amount, 10)
 		if !ok {
-			http.Error(w, fmt.Sprintf("Invalid amount: %s", p.Amount), http.StatusBadRequest)
+			api.BadRequest(w, "INVALID_AMOUNT", fmt.Errorf("invalid amount: %s", p.Amount))
 			return
 		}
 		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, amount))
@@ -129,7 +143,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	if req.Timestamp != "" {
 		parsed, err := stdtime.Parse(stdtime.RFC3339, req.Timestamp)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid timestamp format: %v", err), http.StatusBadRequest)
+			api.BadRequest(w, "INVALID_TIMESTAMP", fmt.Errorf("invalid timestamp format: %w", err))
 			return
 		}
 		timestamp = time.New(parsed)
@@ -153,21 +167,17 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	_, createdTx, err := s.ledgerService.CreateTransaction(r.Context(), params)
 	if err != nil {
 		s.logger.Error("Failed to create transaction", zap.Error(err))
-		http.Error(w, fmt.Sprintf("Failed to create transaction: %v", err), http.StatusInternalServerError)
+		api.InternalServerError(w, r, err)
 		return
 	}
 
 	// Convert response to JSON
-	response := CreateTransactionResponse{
+	response := CreateTransactionData{
 		Transaction:     transactionToResponse(createdTx.Transaction),
 		AccountMetadata: createdTx.AccountMetadata,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		s.logger.Error("Failed to encode response", zap.Error(err))
-	}
+	api.Created(w, response)
 }
 
 func transactionToResponse(tx ledger.Transaction) TransactionResponse {
@@ -200,3 +210,100 @@ func transactionToResponse(tx ledger.Transaction) TransactionResponse {
 	}
 }
 
+type SnapshotData struct {
+	Message string `json:"message"`
+}
+
+func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	if err := s.cluster.Snapshot(); err != nil {
+		s.logger.Error("Failed to create snapshot", zap.Error(err))
+		api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
+		return
+	}
+
+	response := SnapshotData{
+		Message: "Snapshot created successfully",
+	}
+
+	api.Ok(w, response)
+}
+
+// middlewareChain applies all middlewares to the handler
+func (s *Server) middlewareChain(handler http.Handler) http.Handler {
+	// Apply panic recovery middleware first (outermost)
+	handler = recoveryMiddleware(s.logger, handler)
+
+	// Apply logging middleware
+	// Use the zap logger directly with a simple wrapper
+	handler = loggingMiddleware(s.logger, handler)
+
+	return handler
+}
+
+// recoveryMiddleware recovers from panics and returns a 500 error
+func recoveryMiddleware(logger *zap.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				// Log the panic with stack trace
+				logger.Error("Panic recovered",
+					zap.Any("error", err),
+					zap.String("stack", string(debug.Stack())),
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+				)
+
+				// Return 500 error
+				api.InternalServerError(w, r, fmt.Errorf("internal server error: %v", err))
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// loggingMiddleware logs HTTP requests
+func loggingMiddleware(logger *zap.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := stdtime.Now()
+
+		// Create a response writer wrapper to capture status code
+		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Call next handler
+		next.ServeHTTP(rw, r)
+
+		// Log the request
+		duration := stdtime.Since(start)
+		logger.Info("HTTP request",
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+			zap.String("query", r.URL.RawQuery),
+			zap.Int("status", rw.statusCode),
+			zap.Duration("duration", duration),
+			zap.String("remote_addr", r.RemoteAddr),
+			zap.String("user_agent", r.UserAgent()),
+		)
+	})
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
