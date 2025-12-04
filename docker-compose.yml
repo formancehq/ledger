@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   node-1:
@@ -20,6 +20,12 @@ services:
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 2
+      start_period: 10s
     command: >
       sh -c "
         go mod download &&
@@ -45,6 +51,12 @@ services:
       - raft-network
     depends_on:
       - node-1
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 2
+      start_period: 10s
     command: >
       sh -c "
         go mod download &&
@@ -70,6 +82,12 @@ services:
       - raft-network
     depends_on:
       - node-1
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 2
+      start_period: 10s
     command: >
       sh -c "
         go mod download &&

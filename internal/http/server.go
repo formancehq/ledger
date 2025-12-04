@@ -29,6 +29,7 @@ type Server struct {
 // ClusterClient is an interface for cluster operations
 type ClusterClient interface {
 	Snapshot() error
+	IsHealthy() bool
 }
 
 func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, cluster ClusterClient) *Server {
@@ -44,6 +45,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/transactions", s.handleCreateTransaction)
 	mux.HandleFunc("/snapshot", s.handleSnapshot)
+	mux.HandleFunc("/health", s.handleHealth)
 
 	// Wrap handler with middlewares
 	handler := s.middlewareChain(mux)
@@ -232,6 +234,33 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 
 	response := SnapshotData{
 		Message: "Snapshot created successfully",
+	}
+
+	api.Ok(w, response)
+}
+
+type HealthData struct {
+	Status string `json:"status"`
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	if !s.cluster.IsHealthy() {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "UNHEALTHY", errors.New("node is not connected to the cluster"))
+		return
+	}
+
+	response := HealthData{
+		Status: "ok",
 	}
 
 	api.Ok(w, response)

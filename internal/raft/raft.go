@@ -326,6 +326,13 @@ func (r *Cluster) Snapshot() error {
 	return nil
 }
 
+// IsHealthy returns true if the node is connected to the cluster (leader or follower)
+func (r *Cluster) IsHealthy() bool {
+	state := r.raft.State()
+	// Node is healthy if it's a leader or follower (not shutdown or candidate for too long)
+	return state == raft.Leader || state == raft.Follower
+}
+
 // raftLogger adapts zap.Logger to raft.Logger interface
 type raftLogger struct {
 	logger *zap.Logger
