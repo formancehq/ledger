@@ -26,31 +26,23 @@ func TestChartValidation(t *testing.T) {
     "banks": {
         "$iban": {
             ".pattern": "^[0-9]{10}$",
-            "main": {
-                ".rules": {}
-            },
+            "main": {},
             "out": {
                 ".metadata": {
                     "foo": {},
                     "bar": {
                         "default": "BAR"
                     }
-                },
-                ".rules": {}
+                }
             },
-            "pending_out": {
-                ".rules": {}
-            }
+            "pending_out": {}
         }
     },
     "users": {
         "$userID": {
             ".self": {},
             ".pattern": "^[0-9]{5}$",
-            ".rules": {},
-            "main": {
-                ".rules": {}
-            }
+            "main": {}
         }
     }
 }`,
