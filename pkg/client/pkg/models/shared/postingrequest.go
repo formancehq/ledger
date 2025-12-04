@@ -2,9 +2,14 @@
 
 package shared
 
+import (
+	"math/big"
+	"openapi/pkg/utils"
+)
+
 type PostingRequest struct {
-	// Amount as a string (supports large integers)
-	Amount string `json:"amount"`
+	// Amount as a big integer
+	Amount *big.Int `bigint:"string" json:"amount"`
 	// Asset identifier
 	Asset string `json:"asset"`
 	// Destination account address
@@ -13,9 +18,20 @@ type PostingRequest struct {
 	Source string `json:"source"`
 }
 
-func (o *PostingRequest) GetAmount() string {
+func (p PostingRequest) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(p, "", false)
+}
+
+func (p *PostingRequest) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &p, "", false, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *PostingRequest) GetAmount() *big.Int {
 	if o == nil {
-		return ""
+		return big.NewInt(0)
 	}
 	return o.Amount
 }

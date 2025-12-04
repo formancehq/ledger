@@ -89,10 +89,10 @@ type CreateTransactionRequest struct {
 }
 
 type PostingRequest struct {
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Amount      string `json:"amount"` // big.Int as string
-	Asset       string `json:"asset"`
+	Source      string   `json:"source"`
+	Destination string   `json:"destination"`
+	Amount      *big.Int `json:"amount"`
+	Asset       string   `json:"asset"`
 }
 
 type CreateTransactionData struct {
@@ -109,10 +109,10 @@ type TransactionResponse struct {
 }
 
 type PostingResponse struct {
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Amount      string `json:"amount"` // big.Int as string
-	Asset       string `json:"asset"`
+	Source      string   `json:"source"`
+	Destination string   `json:"destination"`
+	Amount      *big.Int `json:"amount"`
+	Asset       string   `json:"asset"`
 }
 
 func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
@@ -130,12 +130,11 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	// Convert request to service parameters
 	postings := make(ledger.Postings, 0, len(req.Postings))
 	for _, p := range req.Postings {
-		amount, ok := new(big.Int).SetString(p.Amount, 10)
-		if !ok {
-			api.BadRequest(w, "INVALID_AMOUNT", fmt.Errorf("invalid amount: %s", p.Amount))
+		if p.Amount == nil {
+			api.BadRequest(w, "INVALID_AMOUNT", errors.New("amount is required"))
 			return
 		}
-		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, amount))
+		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, p.Amount))
 	}
 
 	// Parse timestamp
@@ -186,7 +185,7 @@ func transactionToResponse(tx ledger.Transaction) TransactionResponse {
 		postings = append(postings, PostingResponse{
 			Source:      p.Source,
 			Destination: p.Destination,
-			Amount:      p.Amount.String(),
+			Amount:      p.Amount,
 			Asset:       p.Asset,
 		})
 	}

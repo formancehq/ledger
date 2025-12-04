@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
-id: 05f389a0-dbe5-434a-ae48-9aae0a4011ac
+id: fa65509f-1741-44d1-87e5-09bff5c1a04d
 management:
-  docChecksum: fc822ec14e2b2a68619d4a8927fe3d83
+  docChecksum: adbb5d34adba0de0fdfab57b327e22ec
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -10,6 +10,7 @@ management:
 features:
   go:
     additionalDependencies: 0.1.0
+    bigint: 0.0.2
     constsAndDefaults: 0.1.12
     core: 3.8.1
     defaultEnabledRetries: 0.2.0
@@ -86,7 +87,7 @@ examples:
   createTransaction:
     speakeasy-default-create-transaction:
       requestBody:
-        application/json: {"dryRun": false, "postings": [{"amount": "361.19", "asset": "<value>", "destination": "<value>", "source": "<value>"}]}
+        application/json: {"dryRun": false, "postings": [{"amount": "361192", "asset": "<value>", "destination": "<value>", "source": "<value>"}]}
       responses:
         "201":
           application/json: {}

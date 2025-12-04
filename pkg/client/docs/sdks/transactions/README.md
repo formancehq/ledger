@@ -19,6 +19,7 @@ package main
 import(
 	"context"
 	"openapi"
+	"openapi/pkg/types"
 	"openapi/pkg/models/shared"
 	"log"
 )
@@ -31,7 +32,7 @@ func main() {
     res, err := s.Transactions.CreateTransaction(ctx, shared.CreateTransactionRequest{
         Postings: []shared.PostingRequest{
             shared.PostingRequest{
-                Amount: "361.19",
+                Amount: types.MustNewBigIntFromString("361192"),
                 Asset: "<value>",
                 Destination: "<value>",
                 Source: "<value>",

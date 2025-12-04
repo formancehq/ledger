@@ -133,8 +133,8 @@ components:
           description: Destination account address
         amount:
           type: string
-          description: Amount as a string (supports large integers)
-          pattern: '^-?[0-9]+$'
+          format: bigint
+          description: Amount as a big integer
         asset:
           type: string
           description: Asset identifier
@@ -184,7 +184,8 @@ components:
           type: string
         amount:
           type: string
-          description: Amount as a string (supports large integers)
+          format: bigint
+          description: Amount as a big integer
         asset:
           type: string
 

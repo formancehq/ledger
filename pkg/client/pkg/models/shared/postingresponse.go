@@ -2,15 +2,31 @@
 
 package shared
 
+import (
+	"math/big"
+	"openapi/pkg/utils"
+)
+
 type PostingResponse struct {
-	// Amount as a string (supports large integers)
-	Amount      *string `json:"amount,omitempty"`
-	Asset       *string `json:"asset,omitempty"`
-	Destination *string `json:"destination,omitempty"`
-	Source      *string `json:"source,omitempty"`
+	// Amount as a big integer
+	Amount      *big.Int `bigint:"string" json:"amount,omitempty"`
+	Asset       *string  `json:"asset,omitempty"`
+	Destination *string  `json:"destination,omitempty"`
+	Source      *string  `json:"source,omitempty"`
 }
 
-func (o *PostingResponse) GetAmount() *string {
+func (p PostingResponse) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(p, "", false)
+}
+
+func (p *PostingResponse) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &p, "", false, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o *PostingResponse) GetAmount() *big.Int {
 	if o == nil {
 		return nil
 	}
