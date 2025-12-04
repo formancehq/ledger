@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/grpc"
+	"github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -334,6 +335,59 @@ func (r *Cluster) IsHealthy() bool {
 	state := r.raft.State()
 	// Node is healthy if it's a leader or follower (not shutdown or candidate for too long)
 	return state == raft.Leader || state == raft.Follower
+}
+
+// GetClusterState returns the current state of the Raft cluster
+func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
+	state := r.raft.State()
+
+	// Get leader
+	_, leaderID := r.raft.LeaderWithID()
+	leader := ""
+	if leaderID != "" {
+		leader = string(leaderID)
+	}
+
+	// Get cluster configuration
+	configFuture := r.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		return nil, fmt.Errorf("getting cluster configuration: %w", err)
+	}
+	config := configFuture.Configuration()
+
+	// Convert state to string
+	stateStr := "Unknown"
+	switch state {
+	case raft.Leader:
+		stateStr = "Leader"
+	case raft.Follower:
+		stateStr = "Follower"
+	case raft.Candidate:
+		stateStr = "Candidate"
+	case raft.Shutdown:
+		stateStr = "Shutdown"
+	}
+
+	// Build nodes list
+	nodes := make([]http.NodeInfo, 0, len(config.Servers))
+	for _, server := range config.Servers {
+		suffrage := "Voter"
+		if server.Suffrage == raft.Nonvoter {
+			suffrage = "Nonvoter"
+		}
+		nodes = append(nodes, http.NodeInfo{
+			ID:       string(server.ID),
+			Address:  string(server.Address),
+			Suffrage: suffrage,
+		})
+	}
+
+	return &http.ClusterState{
+		State:     stateStr,
+		Leader:    leader,
+		Nodes:     nodes,
+		LocalNode: r.config.NodeID,
+	}, nil
 }
 
 // raftLogger adapts zap.Logger to raft.Logger interface

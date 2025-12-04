@@ -30,6 +30,22 @@ type Server struct {
 type ClusterClient interface {
 	Snapshot() error
 	IsHealthy() bool
+	GetClusterState() (*ClusterState, error)
+}
+
+// ClusterState represents the state of the Raft cluster
+type ClusterState struct {
+	State     string     `json:"state"`     // Leader, Follower, Candidate, Shutdown
+	Leader    string     `json:"leader"`    // ID of the current leader (empty if no leader)
+	Nodes     []NodeInfo `json:"nodes"`     // List of all nodes in the cluster
+	LocalNode string     `json:"localNode"` // ID of the local node
+}
+
+// NodeInfo represents information about a node in the cluster
+type NodeInfo struct {
+	ID       string `json:"id"`       // Node ID
+	Address  string `json:"address"`  // Node address
+	Suffrage string `json:"suffrage"` // Voter or Nonvoter
 }
 
 func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, cluster ClusterClient) *Server {
@@ -46,6 +62,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/transactions", s.handleCreateTransaction)
 	mux.HandleFunc("/snapshot", s.handleSnapshot)
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/cluster/state", s.handleClusterState)
 
 	// Wrap handler with middlewares
 	handler := s.middlewareChain(mux)
@@ -264,6 +281,27 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Ok(w, response)
+}
+
+func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	clusterState, err := s.cluster.GetClusterState()
+	if err != nil {
+		s.logger.Error("Failed to get cluster state", zap.Error(err))
+		api.WriteErrorResponse(w, http.StatusInternalServerError, "CLUSTER_STATE_ERROR", err)
+		return
+	}
+
+	api.Ok(w, clusterState)
 }
 
 // middlewareChain applies all middlewares to the handler

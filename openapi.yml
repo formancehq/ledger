@@ -80,6 +80,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /cluster/state:
+    get:
+      summary: Get cluster state
+      description: Returns the current state of the Raft cluster, including the list of nodes and the current leader
+      operationId: getClusterState
+      tags:
+        - Cluster
+      responses:
+        '200':
+          description: Cluster state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStateResponse'
+        '405':
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     CreateTransactionRequest:
@@ -198,6 +231,42 @@ components:
             message:
               type: string
               description: Success message
+
+    ClusterStateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            state:
+              type: string
+              enum: [Leader, Follower, Candidate, Shutdown, Unknown]
+              description: Current state of the local node
+            leader:
+              type: string
+              description: ID of the current leader (empty if no leader)
+            localNode:
+              type: string
+              description: ID of the local node
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/NodeInfo'
+              description: List of all nodes in the cluster
+
+    NodeInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Node ID
+        address:
+          type: string
+          description: Node address
+        suffrage:
+          type: string
+          enum: [Voter, Nonvoter]
+          description: Node suffrage (Voter or Nonvoter)
 
     ErrorResponse:
       type: object

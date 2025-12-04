@@ -112,9 +112,9 @@ func WithTimeout(timeout time.Duration) SDKOption {
 // New creates a new instance of the SDK with the provided options
 func New(opts ...SDKOption) *Formance {
 	sdk := &Formance{
-		SDKVersion: "0.10.2",
+		SDKVersion: "0.10.3",
 		sdkConfiguration: config.SDKConfiguration{
-			UserAgent:  "speakeasy-sdk/go 0.10.2 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
+			UserAgent:  "speakeasy-sdk/go 0.10.3 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
 			ServerList: ServerList,
 		},
 		hooks: hooks.New(),
@@ -128,7 +128,12 @@ func New(opts ...SDKOption) *Formance {
 		sdk.sdkConfiguration.Client = &http.Client{Timeout: 60 * time.Second}
 	}
 
-	sdk.sdkConfiguration = sdk.hooks.SDKInit(sdk.sdkConfiguration)
+	currentServerURL, _ := sdk.sdkConfiguration.GetServerDetails()
+	serverURL := currentServerURL
+	serverURL, sdk.sdkConfiguration.Client = sdk.hooks.SDKInit(currentServerURL, sdk.sdkConfiguration.Client)
+	if currentServerURL != serverURL {
+		sdk.sdkConfiguration.ServerURL = serverURL
+	}
 
 	sdk.Transactions = newTransactions(sdk, sdk.sdkConfiguration, sdk.hooks)
 	sdk.Cluster = newCluster(sdk, sdk.sdkConfiguration, sdk.hooks)

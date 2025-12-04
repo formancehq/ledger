@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: 7adbc82e-ea64-4a2c-babd-0d70816ec99e
 management:
-  docChecksum: adbb5d34adba0de0fdfab57b327e22ec
+  docChecksum: eed9f2ddb71638768c11e7b9fd3bb777
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.10.2
-  configChecksum: 42d12446c9fc2fac835f701acb506fe5
+  releaseVersion: 0.10.3
+  configChecksum: 676306a4ada031eb25716f5435f86281
 features:
   go:
     additionalDependencies: 0.1.0
@@ -27,29 +27,38 @@ generatedFiles:
   - .devcontainer/devcontainer.json
   - .devcontainer/setup.sh
   - .gitattributes
+  - /models/components/clusterstateresponse.go
   - /models/components/createtransactionrequest.go
   - /models/components/createtransactionresponse.go
   - /models/components/httpmetadata.go
+  - /models/components/nodeinfo.go
   - /models/components/postingrequest.go
   - /models/components/postingresponse.go
   - /models/components/snapshotresponse.go
   - /models/components/transactionresponse.go
   - /models/operations/createsnapshot.go
   - /models/operations/createtransaction.go
+  - /models/operations/getclusterstate.go
   - /models/sdkerrors/errorresponse.go
   - USAGE.md
   - cluster.go
+  - docs/models/components/clusterstateresponse.md
+  - docs/models/components/clusterstateresponsedata.md
   - docs/models/components/createtransactionrequest.md
   - docs/models/components/createtransactionresponse.md
   - docs/models/components/data.md
   - docs/models/components/httpmetadata.md
+  - docs/models/components/nodeinfo.md
   - docs/models/components/postingrequest.md
   - docs/models/components/postingresponse.md
   - docs/models/components/snapshotresponse.md
   - docs/models/components/snapshotresponsedata.md
+  - docs/models/components/state.md
+  - docs/models/components/suffrage.md
   - docs/models/components/transactionresponse.md
   - docs/models/operations/createsnapshotresponse.md
   - docs/models/operations/createtransactionresponse.md
+  - docs/models/operations/getclusterstateresponse.md
   - docs/models/operations/option.md
   - docs/models/sdkerrors/error.md
   - docs/models/sdkerrors/errorresponse.md
@@ -94,6 +103,15 @@ examples:
           application/json: {}
   createSnapshot:
     speakeasy-default-create-snapshot:
+      responses:
+        "200":
+          application/json: {}
+        "405":
+          application/json: {}
+        "500":
+          application/json: {}
+  getClusterState:
+    speakeasy-default-get-cluster-state:
       responses:
         "200":
           application/json: {}
