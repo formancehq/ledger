@@ -45,6 +45,14 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		Level:  hclog.Debug,
 	})
 
+	// Configure snapshot parameters
+	if cfg.SnapshotThreshold > 0 {
+		raftConfig.SnapshotThreshold = cfg.SnapshotThreshold
+	}
+	if cfg.SnapshotInterval > 0 {
+		raftConfig.SnapshotInterval = cfg.SnapshotInterval
+	}
+
 	// Create transport
 	// Resolve advertise address for Raft (this is what other nodes will connect to)
 	advertiseAddr, err := net.ResolveTCPAddr("tcp", cfg.AdvertiseAddr)

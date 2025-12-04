@@ -47,6 +47,8 @@ func init() {
 	rootCmd.Flags().String("storage-type", "sqlite", "Storage type: 'sqlite' or 'file'")
 	rootCmd.Flags().String("sqlite-dsn", "file:./data/ledger.db?cache=shared&mode=rwc", "SQLite DSN connection string (required when storage-type is 'sqlite')")
 	rootCmd.Flags().String("storage-file-path", "./data/logs.jsonl", "Path to log file (required when storage-type is 'file')")
+	rootCmd.Flags().Uint64("snapshot-threshold", 0, "Number of logs before triggering a snapshot (0 = use Raft default)")
+	rootCmd.Flags().Duration("snapshot-interval", 0, "Minimum interval between snapshots (0 = use Raft default, e.g., 30s)")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -132,18 +134,28 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 	}
 
 	cfg := &config.Config{
-		NodeID:          viper.GetString("node-id"),
-		BindAddr:        viper.GetString("network.bind-addr"),
-		AdvertiseAddr:   viper.GetString("advertise-addr"),
-		DataDir:         viper.GetString("network.data-dir"),
-		Peers:           viper.GetStringSlice("peers"),
-		Debug:           viper.GetBool("logging.debug"),
-		Bootstrap:       viper.GetBool("bootstrap"),
-		GRPCPort:        viper.GetInt("server.grpc-port"),
-		HTTPPort:        viper.GetInt("server.http-port"),
-		StorageType:     viper.GetString("storage.type"),
-		SQLiteDSN:       viper.GetString("storage.sqlite.dsn"),
-		StorageFilePath: viper.GetString("storage.file.path"),
+		NodeID:            viper.GetString("node-id"),
+		BindAddr:          viper.GetString("network.bind-addr"),
+		AdvertiseAddr:     viper.GetString("advertise-addr"),
+		DataDir:           viper.GetString("network.data-dir"),
+		Peers:             viper.GetStringSlice("peers"),
+		Debug:             viper.GetBool("logging.debug"),
+		Bootstrap:         viper.GetBool("bootstrap"),
+		GRPCPort:          viper.GetInt("server.grpc-port"),
+		HTTPPort:          viper.GetInt("server.http-port"),
+		StorageType:       viper.GetString("storage.type"),
+		SQLiteDSN:         viper.GetString("storage.sqlite.dsn"),
+		StorageFilePath:   viper.GetString("storage.file.path"),
+		SnapshotThreshold: viper.GetUint64("snapshot-threshold"),  // Can be set via flag or config file
+		SnapshotInterval:  viper.GetDuration("snapshot-interval"), // Can be set via flag or config file
+	}
+
+	// Also check hierarchical config keys if flags weren't set
+	if cfg.SnapshotThreshold == 0 {
+		cfg.SnapshotThreshold = viper.GetUint64("raft.snapshot.threshold")
+	}
+	if cfg.SnapshotInterval == 0 {
+		cfg.SnapshotInterval = viper.GetDuration("raft.snapshot.interval")
 	}
 
 	return cfg, nil

@@ -1,20 +1,25 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type Config struct {
-	NodeID          string
-	BindAddr        string
-	AdvertiseAddr   string
-	DataDir         string
-	Peers           []string
-	Debug           bool
-	Bootstrap       bool
-	GRPCPort        int
-	HTTPPort        int
-	StorageType     string // "sqlite" or "file"
-	SQLiteDSN       string
-	StorageFilePath string // Path to log file when using "file" storage type
+	NodeID            string
+	BindAddr          string
+	AdvertiseAddr     string
+	DataDir           string
+	Peers             []string
+	Debug             bool
+	Bootstrap         bool
+	GRPCPort          int
+	HTTPPort          int
+	StorageType       string // "sqlite" or "file"
+	SQLiteDSN         string
+	StorageFilePath   string        // Path to log file when using "file" storage type
+	SnapshotThreshold uint64        // Number of logs before triggering a snapshot
+	SnapshotInterval  time.Duration // Minimum interval between snapshots
 }
 
 func (c *Config) Validate() error {
