@@ -3,57 +3,48 @@ package service
 import (
 	"context"
 	"math/big"
-	"sync"
 
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
-// MemoryStore is an in-memory implementation of both LogStore and VolumesStore interfaces
-type MemoryStore struct {
-	mu      sync.RWMutex
-	logs    []ledger.Log
-	volumes map[string]map[string]ledger.Volumes // account -> asset -> volumes
+// ReconstructedVolumesStore is a VolumesStore implementation that reconstructs volumes
+// from logs stored in a LogStore
+type ReconstructedVolumesStore struct {
+	logStore LogStore
 }
 
-// NewMemoryStore creates a new in-memory store
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{
-		logs:    make([]ledger.Log, 0),
-		volumes: make(map[string]map[string]ledger.Volumes),
+// NewReconstructedVolumesStore creates a new VolumesStore that reconstructs volumes from logs
+func NewReconstructedVolumesStore(logStore LogStore) *ReconstructedVolumesStore {
+	return &ReconstructedVolumesStore{
+		logStore: logStore,
 	}
 }
 
-// InsertLogs inserts logs into the store and updates volumes incrementally
-func (s *MemoryStore) InsertLogs(ctx context.Context, logs ...ledger.Log) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// GetBalance reconstructs volumes from all logs and returns balances based on the query
+func (r *ReconstructedVolumesStore) GetBalance(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error) {
+	// Get all logs
+	logs, err := r.logStore.GetAllLogs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Reconstruct volumes from logs
+	volumes := make(map[string]map[string]ledger.Volumes) // account -> asset -> volumes
 
 	for _, log := range logs {
-		s.logs = append(s.logs, log)
-
-		// Update volumes incrementally
 		switch log.Type {
 		case ledger.NewTransactionLogType:
-			if err := s.processNewTransaction(log, s.volumes); err != nil {
-				return err
+			if err := r.processNewTransaction(log, volumes); err != nil {
+				return nil, err
 			}
 		case ledger.RevertedTransactionLogType:
-			if err := s.processRevertedTransaction(log, s.volumes); err != nil {
-				return err
+			if err := r.processRevertedTransaction(log, volumes); err != nil {
+				return nil, err
 			}
 		}
 	}
 
-	return nil
-}
-
-// GetBalance returns balances from pre-calculated volumes based on the query
-// balanceQuery: map where keys are account addresses and values are arrays of assets
-func (s *MemoryStore) GetBalance(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Convert pre-calculated volumes to balances with filtering
+	// Convert volumes to balances with filtering
 	balances := make(ledger.Balances)
 
 	// If query is empty, return empty balances
@@ -63,7 +54,7 @@ func (s *MemoryStore) GetBalance(ctx context.Context, balanceQuery map[string][]
 
 	// Filter by account and assets specified in query
 	for account, requestedAssets := range balanceQuery {
-		accountVolumes, ok := s.volumes[account]
+		accountVolumes, ok := volumes[account]
 		if !ok {
 			// Account doesn't exist, return empty balances for this account
 			balances[account] = make(map[string]*big.Int)
@@ -95,47 +86,8 @@ func (s *MemoryStore) GetBalance(ctx context.Context, balanceQuery map[string][]
 	return balances, nil
 }
 
-// GetLogWithIdempotencyKey returns the log with the given idempotency key
-func (s *MemoryStore) GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for i := len(s.logs) - 1; i >= 0; i-- {
-		if s.logs[i].IdempotencyKey == idempotencyKey {
-			log := s.logs[i]
-			return &log, nil
-		}
-	}
-
-	return nil, nil
-}
-
-// GetLastLog returns the last log inserted in the store
-func (s *MemoryStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if len(s.logs) == 0 {
-		return nil, nil
-	}
-
-	lastLog := s.logs[len(s.logs)-1]
-	return &lastLog, nil
-}
-
-// GetAllLogs returns all logs in the store (implements LogIterator)
-func (s *MemoryStore) GetAllLogs(ctx context.Context) ([]ledger.Log, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Return a copy of the logs slice to avoid external modifications
-	logs := make([]ledger.Log, len(s.logs))
-	copy(logs, s.logs)
-	return logs, nil
-}
-
 // processNewTransaction processes a new transaction log and updates volumes
-func (s *MemoryStore) processNewTransaction(log ledger.Log, volumes map[string]map[string]ledger.Volumes) error {
+func (r *ReconstructedVolumesStore) processNewTransaction(log ledger.Log, volumes map[string]map[string]ledger.Volumes) error {
 	payload, ok := log.Data.(*ledger.CreatedTransaction)
 	if !ok {
 		return nil // Skip if not a CreatedTransaction
@@ -176,7 +128,7 @@ func (s *MemoryStore) processNewTransaction(log ledger.Log, volumes map[string]m
 
 // processRevertedTransaction processes a reverted transaction log
 // The RevertTransaction contains the postings that reverse the original transaction
-func (s *MemoryStore) processRevertedTransaction(log ledger.Log, volumes map[string]map[string]ledger.Volumes) error {
+func (r *ReconstructedVolumesStore) processRevertedTransaction(log ledger.Log, volumes map[string]map[string]ledger.Volumes) error {
 	payload, ok := log.Data.(*ledger.RevertedTransaction)
 	if !ok {
 		return nil // Skip if not a RevertedTransaction
@@ -214,4 +166,19 @@ func (s *MemoryStore) processRevertedTransaction(log ledger.Log, volumes map[str
 	}
 
 	return nil
+}
+
+// ReconstructedStore combines a LogStore with a ReconstructedVolumesStore to create a Store
+type ReconstructedStore struct {
+	LogStore
+	VolumesStore
+}
+
+// NewReconstructedStore creates a new Store that uses a LogStore for logs
+// and reconstructs volumes from logs for balance queries
+func NewReconstructedStore(logStore LogStore) *ReconstructedStore {
+	return &ReconstructedStore{
+		LogStore:     logStore,
+		VolumesStore: NewReconstructedVolumesStore(logStore),
+	}
 }
