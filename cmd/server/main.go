@@ -34,6 +34,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.Flags().String("config", "", "Path to configuration file (supports yaml, json, toml)")
 	rootCmd.Flags().String("node-id", "", "Node ID for this instance")
 	rootCmd.Flags().String("bind-addr", "127.0.0.1:8888", "Address to bind to")
 	rootCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
@@ -43,7 +44,9 @@ func init() {
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
 	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
 	rootCmd.Flags().Int("http-port", 9000, "HTTP server port")
-	rootCmd.Flags().String("sqlite-dsn", "file:./data/ledger.db?cache=shared&mode=rwc", "SQLite DSN connection string")
+	rootCmd.Flags().String("storage-type", "sqlite", "Storage type: 'sqlite' or 'file'")
+	rootCmd.Flags().String("sqlite-dsn", "file:./data/ledger.db?cache=shared&mode=rwc", "SQLite DSN connection string (required when storage-type is 'sqlite')")
+	rootCmd.Flags().String("storage-file-path", "./data/logs.jsonl", "Path to log file (required when storage-type is 'file')")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -104,22 +107,43 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.AutomaticEnv()
 
-	// Bind flags to viper
+	// Check if config file is specified
+	configFile, _ := cmd.Flags().GetString("config")
+	if configFile != "" {
+		// Use explicit config file (Viper will auto-detect format from extension)
+		viper.SetConfigFile(configFile)
+		if err := viper.ReadInConfig(); err != nil {
+			return nil, fmt.Errorf("reading config file: %w", err)
+		}
+	} else {
+		// Look for config file in common locations
+		// Viper will try multiple formats automatically (yaml, json, toml, etc.)
+		viper.SetConfigName("config")
+		viper.AddConfigPath(".")
+		viper.AddConfigPath("./config")
+		viper.AddConfigPath("$HOME/.ledger-v3-poc")
+		// Config file is optional, ignore error if not found
+		_ = viper.ReadInConfig()
+	}
+
+	// Bind flags to viper (flags override config file and env vars)
 	if err := viper.BindPFlags(cmd.Flags()); err != nil {
 		return nil, fmt.Errorf("binding flags: %w", err)
 	}
 
 	cfg := &config.Config{
-		NodeID:        viper.GetString("node-id"),
-		BindAddr:      viper.GetString("bind-addr"),
-		AdvertiseAddr: viper.GetString("advertise-addr"),
-		DataDir:       viper.GetString("data-dir"),
-		Peers:         viper.GetStringSlice("peers"),
-		Debug:         viper.GetBool("debug"),
-		Bootstrap:     viper.GetBool("bootstrap"),
-		GRPCPort:      viper.GetInt("grpc-port"),
-		HTTPPort:      viper.GetInt("http-port"),
-		SQLiteDSN:     viper.GetString("sqlite-dsn"),
+		NodeID:          viper.GetString("node-id"),
+		BindAddr:        viper.GetString("bind-addr"),
+		AdvertiseAddr:   viper.GetString("advertise-addr"),
+		DataDir:         viper.GetString("data-dir"),
+		Peers:           viper.GetStringSlice("peers"),
+		Debug:           viper.GetBool("debug"),
+		Bootstrap:       viper.GetBool("bootstrap"),
+		GRPCPort:        viper.GetInt("grpc-port"),
+		HTTPPort:        viper.GetInt("http-port"),
+		StorageType:     viper.GetString("storage-type"),
+		SQLiteDSN:       viper.GetString("sqlite-dsn"),
+		StorageFilePath: viper.GetString("storage-file-path"),
 	}
 
 	return cfg, nil

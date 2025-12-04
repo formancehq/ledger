@@ -1,0 +1,23 @@
+# Shared configuration for all nodes in the Docker Compose cluster
+# Node-specific values are set via environment variables in docker-compose.yml:
+#   - node-id: Unique identifier for each node (NODE_ID)
+#   - advertise-addr: Address advertised to other nodes (ADVERTISE_ADDR)
+#   - peers: List of peer addresses (PEERS) - only for node-1
+#   - bootstrap: Whether to bootstrap the cluster (BOOTSTRAP) - only for node-1
+
+# Network configuration
+bind-addr: "0.0.0.0:8888"
+data-dir: "/data"
+
+# Logging
+debug: true
+
+# Server ports
+grpc-port: 8000
+http-port: 9000
+
+# Storage configuration - using file storage
+storage-type: "file"
+storage-file-path: "/data/logs.jsonl"
+#sqlite-dsn: "file:/data/ledger.db?cache=shared&mode=rwc"
+

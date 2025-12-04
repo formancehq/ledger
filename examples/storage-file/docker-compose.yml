@@ -14,7 +14,7 @@ services:
       - "8000:8000"
       - "9000:9000"
     volumes:
-      - .:/app
+      - ../..:/app
       - ./data/node-1:/data
       - ./default-config.yml:/app/default-config.yml:ro
       - go-mod-cache:/go/pkg/mod
@@ -37,7 +37,7 @@ services:
       - "8001:8000"
       - "9001:9000"
     volumes:
-      - .:/app
+      - ../..:/app
       - ./data/node-2:/data
       - ./default-config.yml:/app/default-config.yml:ro
       - go-mod-cache:/go/pkg/mod
@@ -62,7 +62,7 @@ services:
       - "8002:8000"
       - "9002:9000"
     volumes:
-      - .:/app
+      - ../..:/app
       - ./data/node-3:/data
       - ./default-config.yml:/app/default-config.yml:ro
       - go-mod-cache:/go/pkg/mod

@@ -25,7 +25,8 @@ type Cluster struct {
 	grpcServer    *grpc.Server
 	grpcClient    *grpc.Client
 	defaultLedger *service.DefaultLedger
-	sqliteStore   *service.SQLiteLogStore
+	logStore      service.LogStore // Can be SQLiteLogStore or FileLogStore
+	closeStore    func() error     // Function to close the store
 	ctx           context.Context
 	cancel        context.CancelFunc
 }
@@ -61,11 +62,11 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		return nil, fmt.Errorf("creating transport: %w", err)
 	}
 
-	// Create log store
-	logStorePath := filepath.Join(cfg.DataDir, "raft-log.db")
-	logStore, err := raftboltdb.NewBoltStore(logStorePath)
+	// Create Raft log store (for Raft's internal logs)
+	raftLogStorePath := filepath.Join(cfg.DataDir, "raft-log.db")
+	raftLogStore, err := raftboltdb.NewBoltStore(raftLogStorePath)
 	if err != nil {
-		return nil, fmt.Errorf("creating log store: %w", err)
+		return nil, fmt.Errorf("creating raft log store: %w", err)
 	}
 
 	// Create stable store
@@ -83,21 +84,44 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	ctx, cancel := context.WithCancel(parentCtx)
 
-	// Create SQLite log store (will be used by FSM to persist logs)
-	sqliteStore, err := service.NewSQLiteLogStore(ctx, cfg.SQLiteDSN, logger)
-	if err != nil {
+	// Create application log store based on storage type
+	var appLogStore service.LogStore
+	var closeStore func() error
+
+	switch cfg.StorageType {
+	case "sqlite":
+		sqliteStore, err := service.NewSQLiteLogStore(ctx, cfg.SQLiteDSN, logger)
+		if err != nil {
+			cancel() // Clean up context on error
+			return nil, fmt.Errorf("creating sqlite store: %w", err)
+		}
+		appLogStore = sqliteStore
+		closeStore = func() error {
+			return sqliteStore.Close()
+		}
+	case "file":
+		fileStore, err := service.NewFileLogStore(cfg.StorageFilePath, logger)
+		if err != nil {
+			cancel() // Clean up context on error
+			return nil, fmt.Errorf("creating file store: %w", err)
+		}
+		appLogStore = fileStore
+		closeStore = func() error {
+			return fileStore.Close()
+		}
+	default:
 		cancel() // Clean up context on error
-		return nil, fmt.Errorf("creating sqlite store: %w", err)
+		return nil, fmt.Errorf("unsupported storage type: %s", cfg.StorageType)
 	}
 
-	// Create FSM (Finite State Machine) with SQLite store
-	fsm := NewFSM(logger, sqliteStore, sqliteStore)
+	// Create FSM (Finite State Machine) with application log store
+	fsm := NewFSM(logger, appLogStore, appLogStore)
 
-	// Create Raft instance
-	r, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
+	// Create Raft instance (using Raft's log store, not application log store)
+	r, err := raft.NewRaft(raftConfig, fsm, raftLogStore, stableStore, snapshotStore, transport)
 	if err != nil {
 		cancel() // Clean up context on error
-		sqliteStore.Close()
+		closeStore()
 		return nil, fmt.Errorf("creating raft: %w", err)
 	}
 
@@ -105,23 +129,28 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	raftLogWriter := service.NewRaftLogWriter(r, logger)
 
 	// Create reconstructed volumes store (reconstructs volumes from logs)
-	volumesStore := service.NewReconstructedVolumesStore(sqliteStore)
+	volumesStore := service.NewReconstructedVolumesStore(appLogStore)
 
 	// Create ledger service (will use RaftLogWriter to persist logs via Raft)
-	// sqliteStore implements LogReader, volumesStore implements VolumesStore
-	defaultLedger := service.NewDefaultLedger(raftLogWriter, volumesStore, sqliteStore, logger)
+	// appLogStore implements LogReader, volumesStore implements VolumesStore
+	defaultLedger := service.NewDefaultLedger(raftLogWriter, volumesStore, appLogStore, logger)
 
-	return &Cluster{
+	cluster := &Cluster{
 		raft:          r,
 		config:        cfg,
 		logger:        logger,
 		grpcServer:    grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
 		grpcClient:    grpc.NewClient(logger),
 		defaultLedger: defaultLedger,
-		sqliteStore:   sqliteStore,
+		logStore:      appLogStore,
 		ctx:           ctx,
 		cancel:        cancel,
-	}, nil
+	}
+
+	// Store close function for shutdown
+	cluster.closeStore = closeStore
+
+	return cluster, nil
 }
 
 func (r *Cluster) Start() error {
@@ -256,10 +285,10 @@ func (r *Cluster) Shutdown() error {
 		return fmt.Errorf("shutting down raft: %w", err)
 	}
 
-	// Close SQLite store
-	if r.sqliteStore != nil {
-		if err := r.sqliteStore.Close(); err != nil {
-			return fmt.Errorf("closing sqlite store: %w", err)
+	// Close log store
+	if r.closeStore != nil {
+		if err := r.closeStore(); err != nil {
+			return fmt.Errorf("closing log store: %w", err)
 		}
 	}
 
