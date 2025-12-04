@@ -30,16 +30,15 @@ func New(cfg *config.Config, logger *zap.Logger) *Application {
 
 // Start starts all application components
 func (a *Application) Start(ctx context.Context) error {
-	// Create Raft cluster
+	// Create Raft cluster (creates store internally and passes it to FSM)
 	cluster, err := raft.NewRaftCluster(ctx, a.config, a.logger)
 	if err != nil {
 		return fmt.Errorf("creating raft cluster: %w", err)
 	}
 	a.cluster = cluster
 
-	// Create store and ledger services
-	store := service.NewMemoryStore()
-	defaultLedger := service.NewDefaultLedger(store)
+	// Get the default ledger from the cluster (it uses Raft to persist logs)
+	defaultLedger := cluster.GetDefaultLedger()
 
 	// Create routed ledger that will route to leader
 	routedLedger := service.NewRoutedLedger(

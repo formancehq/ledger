@@ -19,13 +19,14 @@ import (
 )
 
 type Cluster struct {
-	raft       *raft.Raft
-	config     *config.Config
-	logger     *zap.Logger
-	grpcServer *grpc.Server
-	grpcClient *grpc.Client
-	ctx        context.Context
-	cancel     context.CancelFunc
+	raft          *raft.Raft
+	config        *config.Config
+	logger        *zap.Logger
+	grpcServer    *grpc.Server
+	grpcClient    *grpc.Client
+	defaultLedger *service.DefaultLedger
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.Logger) (*Cluster, error) {
@@ -79,29 +80,34 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		return nil, fmt.Errorf("creating snapshot store: %w", err)
 	}
 
-	// Create FSM (Finite State Machine)
-	fsm := NewFSM(logger)
+	ctx, cancel := context.WithCancel(parentCtx)
+
+	// Create store (will be used by FSM to persist logs)
+	store := service.NewMemoryStore()
+
+	// Create FSM (Finite State Machine) with store
+	fsm := NewFSM(logger, store)
 
 	// Create Raft instance
 	r, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
 	if err != nil {
+		cancel() // Clean up context on error
 		return nil, fmt.Errorf("creating raft: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(parentCtx)
-
-	// Create store and ledger services
-	store := service.NewMemoryStore()
-	defaultLedger := service.NewDefaultLedger(store)
+	// Create ledger service (will use Raft to persist logs)
+	// Store implements both LogStore and VolumesStore, so we can pass it for both
+	defaultLedger := service.NewDefaultLedger(r, store, store, logger)
 
 	return &Cluster{
-		raft:       r,
-		config:     cfg,
-		logger:     logger,
-		grpcServer: grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
-		grpcClient: grpc.NewClient(logger),
-		ctx:        ctx,
-		cancel:     cancel,
+		raft:          r,
+		config:        cfg,
+		logger:        logger,
+		grpcServer:    grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
+		grpcClient:    grpc.NewClient(logger),
+		defaultLedger: defaultLedger,
+		ctx:           ctx,
+		cancel:        cancel,
 	}, nil
 }
 
@@ -245,6 +251,11 @@ func (r *Cluster) GetRaft() *raft.Raft {
 
 func (r *Cluster) GetGRPCClient() service.GRPCClient {
 	return r.grpcClient
+}
+
+// GetDefaultLedger returns the default ledger service
+func (r *Cluster) GetDefaultLedger() *service.DefaultLedger {
+	return r.defaultLedger
 }
 
 // raftLogger adapts zap.Logger to raft.Logger interface

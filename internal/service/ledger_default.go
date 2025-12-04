@@ -2,20 +2,31 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"math/big"
+	"time"
 
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/hashicorp/raft"
+	"go.uber.org/zap"
 )
 
 // DefaultLedger is the default implementation of the Ledger interface
 type DefaultLedger struct {
-	store Store
+	raft         *raft.Raft
+	volumesStore VolumesStore
+	logStore     LogStore // Needed for GetLastLog and GetLogWithIdempotencyKey
+	logger       *zap.Logger
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(store Store) *DefaultLedger {
+func NewDefaultLedger(raft *raft.Raft, volumesStore VolumesStore, logStore LogStore, logger *zap.Logger) *DefaultLedger {
 	return &DefaultLedger{
-		store: store,
+		raft:         raft,
+		volumesStore: volumesStore,
+		logStore:     logStore,
+		logger:       logger,
 	}
 }
 
@@ -30,7 +41,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 
 	// Check idempotency: if idempotency key is provided, check if a log already exists
 	if parameters.IdempotencyKey != "" {
-		existingLog, err := l.store.GetLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
+		existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -87,7 +98,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	}
 
 	// Check sufficient funds for all source accounts
-	balances, err := l.store.GetBalance(ctx, balanceQuery)
+	balances, err := l.volumesStore.GetBalance(ctx, balanceQuery)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -112,7 +123,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	}
 
 	// Get last log to chain the new log
-	lastLog, err := l.store.GetLastLog(ctx)
+	lastLog, err := l.logStore.GetLastLog(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -146,11 +157,28 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 	// Chain log with previous log
 	log = log.ChainLog(lastLog)
 
-	// If not dry run, insert the log
+	// If not dry run, apply the log via Raft
 	if !parameters.DryRun {
-		if err := l.store.InsertLogs(ctx, log); err != nil {
-			return nil, nil, err
+		// Serialize the log to JSON for Raft
+		logData, err := json.Marshal(log)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshaling log: %w", err)
 		}
+
+		// Apply the log via Raft (FSM will persist it to the store)
+		future := l.raft.Apply(logData, 10*time.Second)
+		if err := future.Error(); err != nil {
+			return nil, nil, fmt.Errorf("applying log via raft: %w", err)
+		}
+
+		// Check if FSM returned an error
+		if future.Response() != nil {
+			if err, ok := future.Response().(error); ok {
+				return nil, nil, fmt.Errorf("fsm error: %w", err)
+			}
+		}
+
+		l.logger.Debug("Log applied via Raft successfully")
 	}
 
 	return &log, createdTx, nil

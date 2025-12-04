@@ -11,7 +11,6 @@ type LogStore interface {
 	InsertLogs(ctx context.Context, logs ...ledger.Log) error
 	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error)
 	GetLastLog(ctx context.Context) (*ledger.Log, error)
-	GetAllLogs(ctx context.Context) ([]ledger.Log, error)
 }
 
 // VolumesStore handles balance/volume queries
