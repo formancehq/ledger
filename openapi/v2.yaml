@@ -2772,22 +2772,23 @@ components:
     V2Schema:
       type: object
       description: Complete schema structure with metadata
-      properties:
-        version:
-          type: string
-          description: Schema version
-          example: "v1.0.0"
-        createdAt:
-          type: string
-          format: date-time
-          description: Schema creation timestamp
-          example: "2023-01-01T00:00:00Z"
-        data:
-          $ref: "#/components/schemas/V2SchemaData"
-      required:
+
+      allOf:
+      - type: object
+        required:
         - version
         - createdAt
-        - data
+        properties:
+          version:
+            type: string
+            description: Schema version
+            example: "v1.0.0"
+          createdAt:
+            type: string
+            format: date-time
+            description: Schema creation timestamp
+            example: "2023-01-01T00:00:00Z"
+      - $ref: "#/components/schemas/V2SchemaData"
     V2SchemaResponse:
       properties:
         data:

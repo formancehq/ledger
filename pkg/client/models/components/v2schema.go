@@ -13,8 +13,8 @@ type V2Schema struct {
 	Version string `json:"version"`
 	// Schema creation timestamp
 	CreatedAt time.Time `json:"createdAt"`
-	// Schema data structure for ledger schemas
-	Data V2SchemaData `json:"data"`
+	// Chart of account
+	Chart map[string]V2ChartSegment `json:"chart"`
 }
 
 func (v V2Schema) MarshalJSON() ([]byte, error) {
@@ -42,9 +42,9 @@ func (o *V2Schema) GetCreatedAt() time.Time {
 	return o.CreatedAt
 }
 
-func (o *V2Schema) GetData() V2SchemaData {
+func (o *V2Schema) GetChart() map[string]V2ChartSegment {
 	if o == nil {
-		return V2SchemaData{}
+		return map[string]V2ChartSegment{}
 	}
-	return o.Data
+	return o.Chart
 }
