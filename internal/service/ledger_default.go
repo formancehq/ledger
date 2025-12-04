@@ -159,16 +159,17 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 
 	// If not dry run, apply the log via Raft
 	if !parameters.DryRun {
-		// Serialize the log to JSON for Raft
-		logData, err := json.Marshal(log)
+		// Serialize the log as an array (FSM expects an array of logs)
+		logsArray := []ledger.Log{log}
+		logData, err := json.Marshal(logsArray)
 		if err != nil {
-			return nil, nil, fmt.Errorf("marshaling log: %w", err)
+			return nil, nil, fmt.Errorf("marshaling logs: %w", err)
 		}
 
-		// Apply the log via Raft (FSM will persist it to the store)
+		// Apply the logs via Raft (FSM will persist them to the store)
 		future := l.raft.Apply(logData, 10*time.Second)
 		if err := future.Error(); err != nil {
-			return nil, nil, fmt.Errorf("applying log via raft: %w", err)
+			return nil, nil, fmt.Errorf("applying logs via raft: %w", err)
 		}
 
 		// Check if FSM returned an error
@@ -178,7 +179,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, parameters Parame
 			}
 		}
 
-		l.logger.Debug("Log applied via Raft successfully")
+		l.logger.Debug("Logs applied via Raft successfully", zap.Int("count", len(logsArray)))
 	}
 
 	return &log, createdTx, nil

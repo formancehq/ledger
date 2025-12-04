@@ -29,21 +29,21 @@ func NewFSM(logger *zap.Logger, store service.LogStore) *FSM {
 func (f *FSM) Apply(log *raft.Log) interface{} {
 	f.logger.Debug("Applying log entry", zap.Uint64("index", log.Index))
 
-	// Decode the ledger log from the Raft log data
-	var ledgerLog ledger.Log
-	if err := json.Unmarshal(log.Data, &ledgerLog); err != nil {
-		f.logger.Error("Failed to unmarshal ledger log", zap.Error(err))
-		return fmt.Errorf("unmarshaling ledger log: %w", err)
+	// Decode the array of ledger logs from the Raft log data
+	var ledgerLogs []ledger.Log
+	if err := json.Unmarshal(log.Data, &ledgerLogs); err != nil {
+		f.logger.Error("Failed to unmarshal ledger logs", zap.Error(err))
+		return fmt.Errorf("unmarshaling ledger logs: %w", err)
 	}
 
-	// Persist the log to the store
+	// Persist all logs to the store
 	ctx := context.Background() // FSM doesn't have context, use background
-	if err := f.store.InsertLogs(ctx, ledgerLog); err != nil {
-		f.logger.Error("Failed to insert log into store", zap.Error(err))
-		return fmt.Errorf("inserting log: %w", err)
+	if err := f.store.InsertLogs(ctx, ledgerLogs...); err != nil {
+		f.logger.Error("Failed to insert logs into store", zap.Error(err))
+		return fmt.Errorf("inserting logs: %w", err)
 	}
 
-	f.logger.Debug("Log persisted successfully", zap.Uint64("index", log.Index))
+	f.logger.Debug("Logs persisted successfully", zap.Uint64("index", log.Index), zap.Int("count", len(ledgerLogs)))
 	return nil
 }
 
