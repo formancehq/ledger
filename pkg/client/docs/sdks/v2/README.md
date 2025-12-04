@@ -271,9 +271,11 @@ func main() {
         V2SchemaData: components.V2SchemaData{
             Chart: map[string]components.V2ChartSegment{
                 "users": components.V2ChartSegment{
+                    DotRules: components.V2ChartAccountRules{},
                     AdditionalProperties: map[string]components.V2ChartSegment{
                         "$userID": components.V2ChartSegment{
                             DotPattern: client.String("^[0-9]{16}$"),
+                            DotRules: components.V2ChartAccountRules{},
                         },
                     },
                 },

@@ -5660,7 +5660,7 @@ Segment within a chart of account
 |**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of account|
 |.self|object|false|none|none|
 |.pattern|string|false|none|none|
-|.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|false|none|none|
+|.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|true|none|none|
 |.metadata|object|false|none|none|
 |» **additionalProperties**|[V2ChartAccountMetadata](#schemav2chartaccountmetadata)|false|none|none|
 

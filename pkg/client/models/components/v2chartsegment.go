@@ -13,7 +13,7 @@ type DotSelf struct {
 type V2ChartSegment struct {
 	DotSelf              *DotSelf                          `json:".self,omitempty"`
 	DotPattern           *string                           `json:".pattern,omitempty"`
-	DotRules             *V2ChartAccountRules              `json:".rules,omitempty"`
+	DotRules             V2ChartAccountRules               `json:".rules"`
 	DotMetadata          map[string]V2ChartAccountMetadata `json:".metadata,omitempty"`
 	AdditionalProperties map[string]V2ChartSegment         `additionalProperties:"true" json:"-"`
 }
@@ -43,9 +43,9 @@ func (o *V2ChartSegment) GetDotPattern() *string {
 	return o.DotPattern
 }
 
-func (o *V2ChartSegment) GetDotRules() *V2ChartAccountRules {
+func (o *V2ChartSegment) GetDotRules() V2ChartAccountRules {
 	if o == nil {
-		return nil
+		return V2ChartAccountRules{}
 	}
 	return o.DotRules
 }

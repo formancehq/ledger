@@ -64,7 +64,7 @@ var _ = Context("Ledger schema API tests", func() {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
 										DotPattern: pointer.For("^[0-9]{3}$"),
-										DotRules:   &components.V2ChartAccountRules{},
+										DotRules:   components.V2ChartAccountRules{},
 										DotMetadata: map[string]components.V2ChartAccountMetadata{
 											"foo": {
 												Default: pointer.For("test"),
@@ -95,7 +95,7 @@ var _ = Context("Ledger schema API tests", func() {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
 										DotPattern: pointer.For("^[0-9]{3}$"),
-										DotRules:   &components.V2ChartAccountRules{},
+										DotRules:   components.V2ChartAccountRules{},
 										DotMetadata: map[string]components.V2ChartAccountMetadata{
 											"foo": {},
 										},
@@ -124,7 +124,7 @@ var _ = Context("Ledger schema API tests", func() {
 								AdditionalProperties: map[string]components.V2ChartSegment{
 									"$userID": {
 										DotPattern: pointer.For("^[0-9]{3}$"),
-										DotRules:   &components.V2ChartAccountRules{},
+										DotRules:   components.V2ChartAccountRules{},
 										DotMetadata: map[string]components.V2ChartAccountMetadata{
 											"foo": {},
 										},
