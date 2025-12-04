@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"math/big"
 	"sync"
 
@@ -123,15 +124,40 @@ func (s *MemoryStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
 	return &lastLog, nil
 }
 
-// GetAllLogs returns all logs in the store (implements LogReader)
-func (s *MemoryStore) GetAllLogs(ctx context.Context) ([]ledger.Log, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// logCursor implements Cursor[ledger.Log] for MemoryStore
+type logCursor struct {
+	logs  []ledger.Log
+	index int
+}
 
-	// Return a copy of the logs slice to avoid external modifications
+func (c *logCursor) Next(ctx context.Context) (ledger.Log, error) {
+	if c.index >= len(c.logs) {
+		return ledger.Log{}, io.EOF
+	}
+	log := c.logs[c.index]
+	c.index++
+	return log, nil
+}
+
+func (c *logCursor) Close() error {
+	// Nothing to clean up for in-memory cursor
+	return nil
+}
+
+// GetAllLogs returns a cursor to iterate over all logs in the store (implements LogReader)
+func (s *MemoryStore) GetAllLogs(ctx context.Context) (*Cursor[ledger.Log], error) {
+	s.mu.RLock()
+	// Create a copy of the logs slice to avoid external modifications
 	logs := make([]ledger.Log, len(s.logs))
 	copy(logs, s.logs)
-	return logs, nil
+	s.mu.RUnlock()
+
+	cursor := &logCursor{
+		logs:  logs,
+		index: 0,
+	}
+	var cursorInterface Cursor[ledger.Log] = cursor
+	return &cursorInterface, nil
 }
 
 // processNewTransaction processes a new transaction log and updates volumes
