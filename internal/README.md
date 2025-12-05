@@ -66,6 +66,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(e ErrInvalidLedgerName\) Error\(\) string](<#ErrInvalidLedgerName.Error>)
   - [func \(e ErrInvalidLedgerName\) Is\(err error\) bool](<#ErrInvalidLedgerName.Is>)
 - [type ErrInvalidSchema](<#ErrInvalidSchema>)
+  - [func NewErrInvalidSchema\(err error\) ErrInvalidSchema](<#NewErrInvalidSchema>)
   - [func \(e ErrInvalidSchema\) Error\(\) string](<#ErrInvalidSchema.Error>)
   - [func \(e ErrInvalidSchema\) Is\(err error\) bool](<#ErrInvalidSchema.Is>)
 - [type ErrPipelineAlreadyExists](<#ErrPipelineAlreadyExists>)
@@ -135,6 +136,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(p RevertedTransaction\) NeedsSchema\(\) bool](<#RevertedTransaction.NeedsSchema>)
   - [func \(r RevertedTransaction\) Type\(\) LogType](<#RevertedTransaction.Type>)
   - [func \(r RevertedTransaction\) ValidateWithSchema\(schema Schema\) error](<#RevertedTransaction.ValidateWithSchema>)
+- [type RuntimeType](<#RuntimeType>)
 - [type SavedMetadata](<#SavedMetadata>)
   - [func \(p SavedMetadata\) NeedsSchema\(\) bool](<#SavedMetadata.NeedsSchema>)
   - [func \(s SavedMetadata\) Type\(\) LogType](<#SavedMetadata.Type>)
@@ -160,11 +162,16 @@ import "github.com/formancehq/ledger/internal"
   - [func \(tx Transaction\) WithPostings\(postings ...Posting\) Transaction](<#Transaction.WithPostings>)
   - [func \(tx Transaction\) WithReference\(ref string\) Transaction](<#Transaction.WithReference>)
   - [func \(tx Transaction\) WithRevertedAt\(timestamp time.Time\) Transaction](<#Transaction.WithRevertedAt>)
+  - [func \(tx Transaction\) WithTemplate\(template string\) Transaction](<#Transaction.WithTemplate>)
   - [func \(tx Transaction\) WithTimestamp\(ts time.Time\) Transaction](<#Transaction.WithTimestamp>)
   - [func \(tx Transaction\) WithUpdatedAt\(at time.Time\) Transaction](<#Transaction.WithUpdatedAt>)
 - [type TransactionData](<#TransactionData>)
   - [func NewTransactionData\(\) TransactionData](<#NewTransactionData>)
   - [func \(data TransactionData\) WithPostings\(postings ...Posting\) TransactionData](<#TransactionData.WithPostings>)
+- [type TransactionTemplate](<#TransactionTemplate>)
+- [type TransactionTemplates](<#TransactionTemplates>)
+  - [func \(t TransactionTemplates\) MarshalJSON\(\) \(\[\]byte, error\)](<#TransactionTemplates.MarshalJSON>)
+  - [func \(t \*TransactionTemplates\) UnmarshalJSON\(data \[\]byte\) error](<#TransactionTemplates.UnmarshalJSON>)
 - [type Transactions](<#Transactions>)
 - [type Volumes](<#Volumes>)
   - [func NewEmptyVolumes\(\) Volumes](<#NewEmptyVolumes>)
@@ -721,7 +728,7 @@ func (e ErrAlreadyStarted) Is(err error) bool
 
 
 <a name="ErrInvalidAccount"></a>
-## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L103-L108>)
+## type [ErrInvalidAccount](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L106-L111>)
 
 
 
@@ -732,7 +739,7 @@ type ErrInvalidAccount struct {
 ```
 
 <a name="ErrInvalidAccount.Error"></a>
-### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L110>)
+### func \(ErrInvalidAccount\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L113>)
 
 ```go
 func (e ErrInvalidAccount) Error() string
@@ -741,7 +748,7 @@ func (e ErrInvalidAccount) Error() string
 
 
 <a name="ErrInvalidAccount.Is"></a>
-### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L123>)
+### func \(ErrInvalidAccount\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L126>)
 
 ```go
 func (e ErrInvalidAccount) Is(err error) bool
@@ -817,6 +824,15 @@ type ErrInvalidSchema struct {
     // contains filtered or unexported fields
 }
 ```
+
+<a name="NewErrInvalidSchema"></a>
+### func [NewErrInvalidSchema](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L102>)
+
+```go
+func NewErrInvalidSchema(err error) ErrInvalidSchema
+```
+
+
 
 <a name="ErrInvalidSchema.Error"></a>
 ### func \(ErrInvalidSchema\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/errors.go#L95>)
@@ -1522,6 +1538,24 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 
 
 
+<a name="RuntimeType"></a>
+## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L9>)
+
+
+
+```go
+type RuntimeType string
+```
+
+<a name="RuntimeExperimentalInterpreter"></a>
+
+```go
+const (
+    RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
+    RuntimeMachine                 RuntimeType = "machine"
+)
+```
+
 <a name="SavedMetadata"></a>
 ## type [SavedMetadata](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L266-L270>)
 
@@ -1572,7 +1606,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L15-L21>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L16-L22>)
 
 
 
@@ -1587,7 +1621,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L23>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L24>)
 
 ```go
 func NewSchema(version string, data SchemaData) (Schema, error)
@@ -1596,18 +1630,19 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L13>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L14>)
 
 
 
 ```go
 type SchemaData struct {
-    Chart ChartOfAccounts `json:"chart" bun:"chart"`
+    Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
+    Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
 }
 ```
 
 <a name="Transaction"></a>
-## type [Transaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L37-L51>)
+## type [Transaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L37-L52>)
 
 
 
@@ -1626,11 +1661,12 @@ type Transaction struct {
     // PostCommitEffectiveVolumes are the volumes of each account/asset after the transaction TransactionData.Timestamp.
     // Those volumes are also computed in flight, but can be updated if a transaction is inserted in the past.
     PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+    Template                   string            `json:"template" bun:"template,type:text"`
 }
 ```
 
 <a name="NewTransaction"></a>
-### func [NewTransaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L228>)
+### func [NewTransaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L233>)
 
 ```go
 func NewTransaction() Transaction
@@ -1639,7 +1675,7 @@ func NewTransaction() Transaction
 
 
 <a name="Transaction.InvolvedAccounts"></a>
-### func \(Transaction\) [InvolvedAccounts](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L112>)
+### func \(Transaction\) [InvolvedAccounts](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L117>)
 
 ```go
 func (tx Transaction) InvolvedAccounts() []string
@@ -1648,7 +1684,7 @@ func (tx Transaction) InvolvedAccounts() []string
 
 
 <a name="Transaction.InvolvedDestinations"></a>
-### func \(Transaction\) [InvolvedDestinations](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L98>)
+### func \(Transaction\) [InvolvedDestinations](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L103>)
 
 ```go
 func (tx Transaction) InvolvedDestinations() map[string][]string
@@ -1657,7 +1693,7 @@ func (tx Transaction) InvolvedDestinations() map[string][]string
 
 
 <a name="Transaction.IsReverted"></a>
-### func \(Transaction\) [IsReverted](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L201>)
+### func \(Transaction\) [IsReverted](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L206>)
 
 ```go
 func (tx Transaction) IsReverted() bool
@@ -1666,7 +1702,7 @@ func (tx Transaction) IsReverted() bool
 
 
 <a name="Transaction.JSONSchemaExtend"></a>
-### func \(Transaction\) [JSONSchemaExtend](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L53>)
+### func \(Transaction\) [JSONSchemaExtend](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L54>)
 
 ```go
 func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema)
@@ -1675,7 +1711,7 @@ func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema)
 
 
 <a name="Transaction.MarshalJSON"></a>
-### func \(Transaction\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L184>)
+### func \(Transaction\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L189>)
 
 ```go
 func (tx Transaction) MarshalJSON() ([]byte, error)
@@ -1684,7 +1720,7 @@ func (tx Transaction) MarshalJSON() ([]byte, error)
 
 
 <a name="Transaction.Reverse"></a>
-### func \(Transaction\) [Reverse](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L62>)
+### func \(Transaction\) [Reverse](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L63>)
 
 ```go
 func (tx Transaction) Reverse() Transaction
@@ -1693,7 +1729,7 @@ func (tx Transaction) Reverse() Transaction
 
 
 <a name="Transaction.VolumeUpdates"></a>
-### func \(Transaction\) [VolumeUpdates](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L123>)
+### func \(Transaction\) [VolumeUpdates](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L128>)
 
 ```go
 func (tx Transaction) VolumeUpdates() []AccountsVolumes
@@ -1702,7 +1738,7 @@ func (tx Transaction) VolumeUpdates() []AccountsVolumes
 
 
 <a name="Transaction.WithID"></a>
-### func \(Transaction\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L67>)
+### func \(Transaction\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L68>)
 
 ```go
 func (tx Transaction) WithID(id uint64) Transaction
@@ -1711,7 +1747,7 @@ func (tx Transaction) WithID(id uint64) Transaction
 
 
 <a name="Transaction.WithInsertedAt"></a>
-### func \(Transaction\) [WithInsertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L92>)
+### func \(Transaction\) [WithInsertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L93>)
 
 ```go
 func (tx Transaction) WithInsertedAt(date time.Time) Transaction
@@ -1720,7 +1756,7 @@ func (tx Transaction) WithInsertedAt(date time.Time) Transaction
 
 
 <a name="Transaction.WithMetadata"></a>
-### func \(Transaction\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L87>)
+### func \(Transaction\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L88>)
 
 ```go
 func (tx Transaction) WithMetadata(m metadata.Metadata) Transaction
@@ -1729,7 +1765,7 @@ func (tx Transaction) WithMetadata(m metadata.Metadata) Transaction
 
 
 <a name="Transaction.WithPostCommitEffectiveVolumes"></a>
-### func \(Transaction\) [WithPostCommitEffectiveVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L216>)
+### func \(Transaction\) [WithPostCommitEffectiveVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L221>)
 
 ```go
 func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) Transaction
@@ -1738,7 +1774,7 @@ func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) 
 
 
 <a name="Transaction.WithPostCommitVolumes"></a>
-### func \(Transaction\) [WithPostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L210>)
+### func \(Transaction\) [WithPostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L215>)
 
 ```go
 func (tx Transaction) WithPostCommitVolumes(volumes PostCommitVolumes) Transaction
@@ -1747,7 +1783,7 @@ func (tx Transaction) WithPostCommitVolumes(volumes PostCommitVolumes) Transacti
 
 
 <a name="Transaction.WithPostings"></a>
-### func \(Transaction\) [WithPostings](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L72>)
+### func \(Transaction\) [WithPostings](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L73>)
 
 ```go
 func (tx Transaction) WithPostings(postings ...Posting) Transaction
@@ -1756,7 +1792,7 @@ func (tx Transaction) WithPostings(postings ...Posting) Transaction
 
 
 <a name="Transaction.WithReference"></a>
-### func \(Transaction\) [WithReference](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L77>)
+### func \(Transaction\) [WithReference](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L78>)
 
 ```go
 func (tx Transaction) WithReference(ref string) Transaction
@@ -1765,7 +1801,7 @@ func (tx Transaction) WithReference(ref string) Transaction
 
 
 <a name="Transaction.WithRevertedAt"></a>
-### func \(Transaction\) [WithRevertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L205>)
+### func \(Transaction\) [WithRevertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L210>)
 
 ```go
 func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction
@@ -1773,8 +1809,17 @@ func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction
 
 
 
+<a name="Transaction.WithTemplate"></a>
+### func \(Transaction\) [WithTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L98>)
+
+```go
+func (tx Transaction) WithTemplate(template string) Transaction
+```
+
+
+
 <a name="Transaction.WithTimestamp"></a>
-### func \(Transaction\) [WithTimestamp](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L82>)
+### func \(Transaction\) [WithTimestamp](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L83>)
 
 ```go
 func (tx Transaction) WithTimestamp(ts time.Time) Transaction
@@ -1783,7 +1828,7 @@ func (tx Transaction) WithTimestamp(ts time.Time) Transaction
 
 
 <a name="Transaction.WithUpdatedAt"></a>
-### func \(Transaction\) [WithUpdatedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L222>)
+### func \(Transaction\) [WithUpdatedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L227>)
 
 ```go
 func (tx Transaction) WithUpdatedAt(at time.Time) Transaction
@@ -1822,6 +1867,46 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 ```
 
 
+
+<a name="TransactionTemplate"></a>
+## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L16-L20>)
+
+
+
+```go
+type TransactionTemplate struct {
+    Description string
+    Script      string
+    Runtime     RuntimeType
+}
+```
+
+<a name="TransactionTemplates"></a>
+## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L22>)
+
+
+
+```go
+type TransactionTemplates map[string]TransactionTemplate
+```
+
+<a name="TransactionTemplates.MarshalJSON"></a>
+### func \(TransactionTemplates\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L51>)
+
+```go
+func (t TransactionTemplates) MarshalJSON() ([]byte, error)
+```
+
+
+
+<a name="TransactionTemplates.UnmarshalJSON"></a>
+### func \(\*TransactionTemplates\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L25>)
+
+```go
+func (t *TransactionTemplates) UnmarshalJSON(data []byte) error
+```
+
+Marshal that transforms a list of transactions with ids into a map
 
 <a name="Transactions"></a>
 ## type [Transactions](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L15-L17>)

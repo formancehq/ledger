@@ -10,8 +10,16 @@ import (
 )
 
 type V2PostTransactionScript struct {
-	Plain string            `json:"plain"`
-	Vars  map[string]string `json:"vars,omitempty"`
+	Template *string           `json:"template,omitempty"`
+	Plain    string            `json:"plain"`
+	Vars     map[string]string `json:"vars,omitempty"`
+}
+
+func (o *V2PostTransactionScript) GetTemplate() *string {
+	if o == nil {
+		return nil
+	}
+	return o.Template
 }
 
 func (o *V2PostTransactionScript) GetPlain() string {
