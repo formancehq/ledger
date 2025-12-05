@@ -38,6 +38,7 @@ services:
     environment:
       - NODE_ID=node-2
       - ADVERTISE_ADDR=node-2:8888
+      - PEERS=node-1:8888 node-3:8888
     ports:
       - "8889:8888"
       - "8001:8000"
@@ -69,6 +70,7 @@ services:
     environment:
       - NODE_ID=node-3
       - ADVERTISE_ADDR=node-3:8888
+      - PEERS=node-1:8888 node-2:8888
     ports:
       - "8890:8888"
       - "8002:8000"

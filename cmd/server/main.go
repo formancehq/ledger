@@ -71,9 +71,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating logger: %w", err)
 	}
 	defer func() {
-		if err := logger.Sync(); err != nil {
-			panic(err)
-		}
+		// Sync can fail in Docker containers when using /dev/stderr
+		// Ignore the error to avoid panics
+		_ = logger.Sync()
 	}()
 
 	logger.Info("Starting Ledger v3 POC",

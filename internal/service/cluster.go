@@ -2,12 +2,12 @@ package service
 
 import (
 	"github.com/formancehq/ledger-v3-poc/api"
-	"github.com/hashicorp/raft"
+	"go.etcd.io/etcd/raft/v3"
 )
 
 // ClusterClient provides access to Raft and gRPC client
 type ClusterClient interface {
-	GetRaft() *raft.Raft
+	GetRaft() *raft.RawNode
 	GetGRPCClient() GRPCClient
 }
 
@@ -15,4 +15,3 @@ type ClusterClient interface {
 type GRPCClient interface {
 	GetClient() api.LedgerServiceClient
 }
-

@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/api"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"github.com/hashicorp/raft"
+	"go.etcd.io/etcd/raft/v3"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -36,8 +36,8 @@ func NewRoutedLedger(cluster ClusterClient, nodeID string, defaultLedger Ledger,
 // isLeader checks if the current node is the leader
 func (r *RoutedLedger) isLeader() bool {
 	raftInstance := r.cluster.GetRaft()
-	_, leaderID := raftInstance.LeaderWithID()
-	return leaderID == raft.ServerID(r.nodeID)
+	status := raftInstance.Status()
+	return status.RaftState == raft.StateLeader
 }
 
 // CreateTransaction creates a new transaction, routing to leader if needed

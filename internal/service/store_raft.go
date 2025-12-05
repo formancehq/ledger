@@ -4,23 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"github.com/hashicorp/raft"
+	"go.etcd.io/etcd/raft/v3"
 	"go.uber.org/zap"
 )
 
 // RaftLogWriter is a LogWriter implementation that writes logs via Raft
 type RaftLogWriter struct {
-	raft   *raft.Raft
+	node   *raft.RawNode
 	logger *zap.Logger
 }
 
 // NewRaftLogWriter creates a new RaftLogWriter
-func NewRaftLogWriter(raft *raft.Raft, logger *zap.Logger) *RaftLogWriter {
+func NewRaftLogWriter(node *raft.RawNode, logger *zap.Logger) *RaftLogWriter {
 	return &RaftLogWriter{
-		raft:   raft,
+		node:   node,
 		logger: logger,
 	}
 }
@@ -43,19 +42,11 @@ func (r *RaftLogWriter) InsertLogs(ctx context.Context, logs ...ledger.Log) erro
 		return fmt.Errorf("marshaling command: %w", err)
 	}
 
-	// Apply the command via Raft (FSM will execute it)
-	future := r.raft.Apply(cmdData, 10*time.Second)
-	if err := future.Error(); err != nil {
-		return fmt.Errorf("applying command via raft: %w", err)
+	// Propose the command via Raft (will be applied in readyLoop)
+	if err := r.node.Propose(cmdData); err != nil {
+		return fmt.Errorf("proposing command via raft: %w", err)
 	}
 
-	// Check if FSM returned an error
-	if future.Response() != nil {
-		if err, ok := future.Response().(error); ok {
-			return fmt.Errorf("fsm error: %w", err)
-		}
-	}
-
-	r.logger.Debug("Logs applied via Raft successfully", zap.Int("count", len(logs)))
+	r.logger.Debug("Logs proposed via Raft successfully", zap.Int("count", len(logs)))
 	return nil
 }
