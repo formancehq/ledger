@@ -458,7 +458,7 @@ type ChartOfAccounts map[string]ChartSegment
 ```
 
 <a name="ChartOfAccounts.FindAccountSchema"></a>
-### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L289>)
+### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L296>)
 
 ```go
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error)
@@ -467,7 +467,7 @@ func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, erro
 
 
 <a name="ChartOfAccounts.MarshalJSON"></a>
-### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L179>)
+### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L186>)
 
 ```go
 func (s ChartOfAccounts) MarshalJSON() ([]byte, error)
@@ -485,7 +485,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
 
 
 <a name="ChartOfAccounts.ValidatePosting"></a>
-### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L297>)
+### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L304>)
 
 ```go
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
@@ -507,7 +507,7 @@ type ChartSegment struct {
 ```
 
 <a name="ChartSegment.MarshalJSON"></a>
-### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L223>)
+### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L230>)
 
 ```go
 func (s ChartSegment) MarshalJSON() ([]byte, error)
@@ -539,7 +539,7 @@ type ChartVariableSegment struct {
 ```
 
 <a name="ChartVariableSegment.MarshalJSON"></a>
-### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L231>)
+### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L238>)
 
 ```go
 func (s ChartVariableSegment) MarshalJSON() ([]byte, error)

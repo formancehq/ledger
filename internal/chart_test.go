@@ -129,6 +129,26 @@ func TestChartValidation(t *testing.T) {
 			expectedError: "cannot have a pattern on a fixed segment",
 		},
 		{
+			name: "metadata on non-account segment",
+			source: `{
+				"banks": {
+					".metadata": {},
+					"main": {}
+				}
+			}`,
+			expectedError: "cannot have .metadata on a non-account segment",
+		},
+		{
+			name: "rules on non-account segment",
+			source: `{
+				"banks": {
+					".rules": {},
+					"main": {}
+				}
+			}`,
+			expectedError: "cannot have .rules on a non-account segment",
+		},
+		{
 			name: "two variable segments with same prefix",
 			source: `{
 				"users": {

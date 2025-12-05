@@ -173,6 +173,13 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 	s.FixedSegments = fixedSegments
 	s.VariableSegment = variableSegment
 
+	if _, ok := segment[METADATA_KEY]; ok && !isAccount {
+		return fmt.Errorf("cannot have %v on a non-account segment", METADATA_KEY)
+	}
+	if _, ok := segment[RULES_KEY]; ok && !isAccount {
+		return fmt.Errorf("cannot have %v on a non-account segment", RULES_KEY)
+	}
+
 	return nil
 }
 
@@ -214,7 +221,7 @@ func (s ChartSegment) marshalJsonObject() (map[string]any, error) {
 			out[RULES_KEY] = s.Account.Rules
 		}
 		if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
-			out[SELF_KEY] = map[string]interface{}{}
+			out[SELF_KEY] = map[string]any{}
 		}
 	}
 	return out, nil
