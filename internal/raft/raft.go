@@ -232,13 +232,12 @@ func (r *Cluster) readyLoop() {
 			r.node.Step(msg)
 		case peerID := <-r.transport.Unreachable():
 			// Report unreachable peer to Raft
-			r.logger.Info("Reporting peer as unreachable", zap.Uint64("peer", peerID))
-			r.node.ReportUnreachable(peerID)
-			// Check if we should trigger an election
-			status := r.node.Status()
-			if status.RaftState == raft.StateFollower && status.Lead == peerID {
-				r.logger.Info("Leader is unreachable, checking if election should be triggered", zap.Uint64("leader", peerID))
+			peerAddr := r.findPeerAddress(peerID)
+			if peerAddr == "" {
+				peerAddr = strconv.FormatUint(peerID, 10)
 			}
+			r.logger.Info("Reporting peer as unreachable", zap.String("peer", peerAddr))
+			r.node.ReportUnreachable(peerID)
 		}
 
 		// Process Ready structures
@@ -348,7 +347,15 @@ func (r *Cluster) monitorLeader() {
 
 			// Check if leader changed
 			if leaderID != lastLeaderID {
-				r.logger.Info("Leader changed", zap.Uint64("old", lastLeaderID), zap.Uint64("new", leaderID))
+				oldLeaderAddr := r.findPeerAddress(lastLeaderID)
+				if oldLeaderAddr == "" && lastLeaderID != 0 && lastLeaderID != raft.None {
+					oldLeaderAddr = strconv.FormatUint(lastLeaderID, 10)
+				}
+				newLeaderAddr := r.findPeerAddress(leaderID)
+				if newLeaderAddr == "" && leaderID != 0 && leaderID != raft.None {
+					newLeaderAddr = strconv.FormatUint(leaderID, 10)
+				}
+				r.logger.Info("Leader changed", zap.String("old", oldLeaderAddr), zap.String("new", newLeaderAddr))
 				lastLeaderID = leaderID
 				r.handleLeaderChange(leaderID)
 			}
@@ -360,7 +367,7 @@ func (r *Cluster) monitorLeader() {
 					// Try a simple TCP connection to verify leader is reachable
 					conn, err := net.DialTimeout("tcp", leaderAddr, 500*time.Millisecond)
 					if err != nil {
-						r.logger.Info("Leader appears unreachable, reporting", zap.Uint64("leader", leaderID), zap.String("addr", leaderAddr), zap.Error(err))
+						r.logger.Info("Leader appears unreachable, reporting", zap.String("leader", leaderAddr), zap.Error(err))
 						r.node.ReportUnreachable(leaderID)
 					} else {
 						conn.Close()
@@ -387,16 +394,15 @@ func (r *Cluster) handleLeaderChange(leaderID uint64) {
 			}
 		}()
 	} else if leaderID != 0 {
-		r.logger.Info("Leader changed, connecting to new leader", zap.Uint64("leader", leaderID))
-		// Stop server if running
-		r.grpcServer.Stop()
-
 		// Find leader address from transport or config
 		leaderAddr := r.findPeerAddress(leaderID)
 		if leaderAddr == "" {
 			r.logger.Error("Failed to find leader address", zap.Uint64("leaderID", leaderID))
 			return
 		}
+		r.logger.Info("Leader changed, connecting to new leader", zap.String("leader", leaderAddr))
+		// Stop server if running
+		r.grpcServer.Stop()
 
 		// Extract hostname from leader address and construct gRPC address
 		host, _, err := net.SplitHostPort(leaderAddr)
