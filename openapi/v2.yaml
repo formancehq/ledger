@@ -2350,12 +2350,15 @@ components:
           $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitEffectiveVolumes:
           $ref: "#/components/schemas/V2AggregatedVolumes"
+        template:
+          type: string
       required:
         - postings
         - timestamp
         - id
         - metadata
         - reverted
+        - template
     V2PostTransaction:
       type: object
       required:
@@ -2387,11 +2390,7 @@ components:
           required:
             - plain
         runtime:
-          description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
-          type: string
-          enum:
-            - experimental-interpreter
-            - machine
+          $ref: "#/components/schemas/Runtime"
         reference:
           type: string
           example: ref:001
@@ -2817,19 +2816,27 @@ components:
         users:
           $userID:
             .pattern: "^[0-9]{16}$"
+    Runtime:
+      type: string
+      description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+      enum:
+        - experimental-interpreter
+        - machine
     V2TransactionTemplate:
       type: object
       properties:
-        id:
-          type: string
         description:
           type: string
         script:
           type: string
+        runtime:
+          $ref: "#/components/schemas/Runtime"
+      required:
+        - script
     V2TransactionTemplates:
-      type: array
+      type: object
       description: Transaction templates
-      items:
+      additionalProperties:
         $ref: "#/components/schemas/V2TransactionTemplate"
     V2SchemaData:
       type: object

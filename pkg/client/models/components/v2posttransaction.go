@@ -3,8 +3,6 @@
 package components
 
 import (
-	"encoding/json"
-	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"time"
 )
@@ -34,33 +32,6 @@ func (o *V2PostTransactionScript) GetVars() map[string]string {
 		return nil
 	}
 	return o.Vars
-}
-
-// Runtime - The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
-type Runtime string
-
-const (
-	RuntimeExperimentalInterpreter Runtime = "experimental-interpreter"
-	RuntimeMachine                 Runtime = "machine"
-)
-
-func (e Runtime) ToPointer() *Runtime {
-	return &e
-}
-func (e *Runtime) UnmarshalJSON(data []byte) error {
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	switch v {
-	case "experimental-interpreter":
-		fallthrough
-	case "machine":
-		*e = Runtime(v)
-		return nil
-	default:
-		return fmt.Errorf("invalid value for Runtime: %v", v)
-	}
 }
 
 type V2PostTransaction struct {

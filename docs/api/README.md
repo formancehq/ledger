@@ -343,13 +343,18 @@ Idempotency-Key: string
       }
     }
   },
-  "transactions": [
-    {
-      "id": "string",
+  "transactions": {
+    "property1": {
       "description": "string",
-      "script": "string"
+      "script": "string",
+      "runtime": "experimental-interpreter"
+    },
+    "property2": {
+      "description": "string",
+      "script": "string",
+      "runtime": "experimental-interpreter"
     }
-  ]
+  }
 }
 ```
 
@@ -430,13 +435,18 @@ Accept: application/json
         }
       }
     },
-    "transactions": [
-      {
-        "id": "string",
+    "transactions": {
+      "property1": {
         "description": "string",
-        "script": "string"
+        "script": "string",
+        "runtime": "experimental-interpreter"
+      },
+      "property2": {
+        "description": "string",
+        "script": "string",
+        "runtime": "experimental-interpreter"
       }
-    ]
+    }
   }
 }
 ```
@@ -504,13 +514,18 @@ Accept: application/json
             }
           }
         },
-        "transactions": [
-          {
-            "id": "string",
+        "transactions": {
+          "property1": {
             "description": "string",
-            "script": "string"
+            "script": "string",
+            "runtime": "experimental-interpreter"
+          },
+          "property2": {
+            "description": "string",
+            "script": "string",
+            "runtime": "experimental-interpreter"
           }
-        ]
+        }
       }
     ],
     "hasMore": true,
@@ -852,7 +867,8 @@ Accept: application/json
               "balance": 90
             }
           }
-        }
+        },
+        "template": "string"
       }
     }
   ],
@@ -1521,7 +1537,8 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
               "balance": 90
             }
           }
-        }
+        },
+        "template": "string"
       }
     ]
   }
@@ -1699,7 +1716,8 @@ Idempotency-Key: string
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 ```
@@ -1834,7 +1852,8 @@ Accept: application/json
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 ```
@@ -2048,7 +2067,8 @@ Idempotency-Key: string
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 ```
@@ -3523,7 +3543,8 @@ This operation does not require authentication
               "balance": 90
             }
           }
-        }
+        },
+        "template": "string"
       }
     ]
   }
@@ -3960,7 +3981,8 @@ This operation does not require authentication
         "balance": 90
       }
     }
-  }
+  },
+  "template": "string"
 }
 
 ```
@@ -3982,6 +4004,7 @@ This operation does not require authentication
 |postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 |preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 |postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
+|template|string|true|none|none|
 
 <h2 id="tocS_V2PostTransaction">V2PostTransaction</h2>
 <!-- backwards compatibility -->
@@ -4037,19 +4060,12 @@ This operation does not require authentication
 |» plain|string|true|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
-|runtime|string|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
+|runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 |reference|string|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 |accountMetadata|object|false|none|none|
 |» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
 |force|boolean|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|runtime|experimental-interpreter|
-|runtime|machine|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -4204,7 +4220,8 @@ This operation does not require authentication
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 
@@ -4307,7 +4324,8 @@ This operation does not require authentication
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 
@@ -4408,7 +4426,8 @@ This operation does not require authentication
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 
@@ -5193,7 +5212,8 @@ and
               "balance": 90
             }
           }
-        }
+        },
+        "template": "string"
       }
     }
   ],
@@ -5304,7 +5324,8 @@ and
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 
@@ -5457,7 +5478,8 @@ xor
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 
@@ -5590,7 +5612,8 @@ and
           "balance": 90
         }
       }
-    }
+    },
+    "template": "string"
   }
 }
 
@@ -5758,6 +5781,33 @@ Chart of account
 |---|---|---|---|---|
 |**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
 
+<h2 id="tocS_Runtime">Runtime</h2>
+<!-- backwards compatibility -->
+<a id="schemaruntime"></a>
+<a id="schema_Runtime"></a>
+<a id="tocSruntime"></a>
+<a id="tocsruntime"></a>
+
+```json
+"experimental-interpreter"
+
+```
+
+The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|experimental-interpreter|
+|*anonymous*|machine|
+
 <h2 id="tocS_V2TransactionTemplate">V2TransactionTemplate</h2>
 <!-- backwards compatibility -->
 <a id="schemav2transactiontemplate"></a>
@@ -5767,9 +5817,9 @@ Chart of account
 
 ```json
 {
-  "id": "string",
   "description": "string",
-  "script": "string"
+  "script": "string",
+  "runtime": "experimental-interpreter"
 }
 
 ```
@@ -5778,9 +5828,9 @@ Chart of account
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
 |description|string|false|none|none|
-|script|string|false|none|none|
+|script|string|true|none|none|
+|runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 
 <h2 id="tocS_V2TransactionTemplates">V2TransactionTemplates</h2>
 <!-- backwards compatibility -->
@@ -5790,13 +5840,18 @@ Chart of account
 <a id="tocsv2transactiontemplates"></a>
 
 ```json
-[
-  {
-    "id": "string",
+{
+  "property1": {
     "description": "string",
-    "script": "string"
+    "script": "string",
+    "runtime": "experimental-interpreter"
+  },
+  "property2": {
+    "description": "string",
+    "script": "string",
+    "runtime": "experimental-interpreter"
   }
-]
+}
 
 ```
 
@@ -5806,7 +5861,7 @@ Transaction templates
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[V2TransactionTemplate](#schemav2transactiontemplate)]|false|none|Transaction templates|
+|**additionalProperties**|[V2TransactionTemplate](#schemav2transactiontemplate)|false|none|none|
 
 <h2 id="tocS_V2SchemaData">V2SchemaData</h2>
 <!-- backwards compatibility -->
@@ -5824,13 +5879,18 @@ Transaction templates
       }
     }
   },
-  "transactions": [
-    {
-      "id": "string",
+  "transactions": {
+    "property1": {
       "description": "string",
-      "script": "string"
+      "script": "string",
+      "runtime": "experimental-interpreter"
+    },
+    "property2": {
+      "description": "string",
+      "script": "string",
+      "runtime": "experimental-interpreter"
     }
-  ]
+  }
 }
 
 ```
@@ -5862,13 +5922,18 @@ Schema data structure for ledger schemas
       }
     }
   },
-  "transactions": [
-    {
-      "id": "string",
+  "transactions": {
+    "property1": {
       "description": "string",
-      "script": "string"
+      "script": "string",
+      "runtime": "experimental-interpreter"
+    },
+    "property2": {
+      "description": "string",
+      "script": "string",
+      "runtime": "experimental-interpreter"
     }
-  ]
+  }
 }
 
 ```
@@ -5910,13 +5975,18 @@ and
         }
       }
     },
-    "transactions": [
-      {
-        "id": "string",
+    "transactions": {
+      "property1": {
         "description": "string",
-        "script": "string"
+        "script": "string",
+        "runtime": "experimental-interpreter"
+      },
+      "property2": {
+        "description": "string",
+        "script": "string",
+        "runtime": "experimental-interpreter"
       }
-    ]
+    }
   }
 }
 
@@ -5949,13 +6019,18 @@ and
             }
           }
         },
-        "transactions": [
-          {
-            "id": "string",
+        "transactions": {
+          "property1": {
             "description": "string",
-            "script": "string"
+            "script": "string",
+            "runtime": "experimental-interpreter"
+          },
+          "property2": {
+            "description": "string",
+            "script": "string",
+            "runtime": "experimental-interpreter"
           }
-        ]
+        }
       }
     ],
     "hasMore": true,
@@ -5993,13 +6068,18 @@ and
           }
         }
       },
-      "transactions": [
-        {
-          "id": "string",
+      "transactions": {
+        "property1": {
           "description": "string",
-          "script": "string"
+          "script": "string",
+          "runtime": "experimental-interpreter"
+        },
+        "property2": {
+          "description": "string",
+          "script": "string",
+          "runtime": "experimental-interpreter"
         }
-      ]
+      }
     }
   ],
   "hasMore": true,

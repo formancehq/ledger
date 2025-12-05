@@ -54,30 +54,27 @@ var _ = Context("Ledger schema API tests", func() {
 
 		When("inserting schemas with different validation rules", func() {
 			BeforeEach(func(specContext SpecContext) {
-				transactionTemplates := []components.V2TransactionTemplate{
-					{
-						ID: pointer.For("WORLD_TO_BANK"),
-						Script: pointer.For(`
-									vars {
-										account $b
-									}
-									send [USD 100] (
-										source = @world
-										destination = $b
-									)`),
+				transactionTemplates := map[string]components.V2TransactionTemplate{
+					"WORLD_TO_BANK": {
+						Script: `
+							vars {
+								account $b
+							}
+							send [USD 100] (
+								source = @world
+								destination = $b
+							)`,
 					},
-					{
-						ID: pointer.For("A_TO_B"),
-						Script: pointer.For(`
-									vars {
-										account $a
-										account $b
-									}
-									send [USD 100] (
-										source = $a allowing unbounded overdraft
-										destination = $b
-									)
-								`),
+					"A_TO_B": {
+						Script: `
+							vars {
+								account $a
+								account $b
+							}
+							send [USD 100] (
+								source = $a allowing unbounded overdraft
+								destination = $b
+							)`,
 					},
 				}
 
@@ -232,7 +229,7 @@ var _ = Context("Ledger schema API tests", func() {
 			When("testing transaction creation with schema validation", func() {
 				It("should create transaction with v1.0.0 schema", func(specContext SpecContext) {
 					schemaVersion := "v1.0.0"
-					_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+					res, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
 						Ledger:        "default",
 						SchemaVersion: &schemaVersion,
 						V2PostTransaction: components.V2PostTransaction{
@@ -246,6 +243,12 @@ var _ = Context("Ledger schema API tests", func() {
 						},
 					})
 					Expect(err).To(BeNil())
+					getTxRes, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetTransaction(ctx, operations.V2GetTransactionRequest{
+						Ledger: "default",
+						ID:     res.V2CreateTransactionResponse.Data.ID,
+					})
+					Expect(err).To(BeNil())
+					Expect(getTxRes.V2GetTransactionResponse.Data.Template).To(Equal("WORLD_TO_BANK"))
 				})
 
 				It("should create transaction with v2.0.0 schema", func(specContext SpecContext) {

@@ -173,7 +173,6 @@ import "github.com/formancehq/ledger/internal"
   - [func \(data TransactionData\) WithPostings\(postings ...Posting\) TransactionData](<#TransactionData.WithPostings>)
 - [type TransactionTemplate](<#TransactionTemplate>)
 - [type TransactionTemplates](<#TransactionTemplates>)
-  - [func \(t TransactionTemplates\) MarshalJSON\(\) \(\[\]byte, error\)](<#TransactionTemplates.MarshalJSON>)
   - [func \(t \*TransactionTemplates\) UnmarshalJSON\(data \[\]byte\) error](<#TransactionTemplates.UnmarshalJSON>)
 - [type Transactions](<#Transactions>)
 - [type Volumes](<#Volumes>)
@@ -1563,7 +1562,7 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 
 
 <a name="RuntimeType"></a>
-## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L9>)
+## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L7>)
 
 
 
@@ -1902,7 +1901,7 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 
 
 <a name="TransactionTemplate"></a>
-## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L16-L20>)
+## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L14-L18>)
 
 
 
@@ -1915,7 +1914,7 @@ type TransactionTemplate struct {
 ```
 
 <a name="TransactionTemplates"></a>
-## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L22>)
+## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L20>)
 
 
 
@@ -1923,23 +1922,14 @@ type TransactionTemplate struct {
 type TransactionTemplates map[string]TransactionTemplate
 ```
 
-<a name="TransactionTemplates.MarshalJSON"></a>
-### func \(TransactionTemplates\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L51>)
-
-```go
-func (t TransactionTemplates) MarshalJSON() ([]byte, error)
-```
-
-
-
 <a name="TransactionTemplates.UnmarshalJSON"></a>
-### func \(\*TransactionTemplates\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L25>)
+### func \(\*TransactionTemplates\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L22>)
 
 ```go
 func (t *TransactionTemplates) UnmarshalJSON(data []byte) error
 ```
 
-Marshal that transforms a list of transactions with ids into a map
+
 
 <a name="Transactions"></a>
 ## type [Transactions](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L16-L18>)

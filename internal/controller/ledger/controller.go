@@ -92,17 +92,10 @@ type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
 
-type RuntimeType string
-
-const (
-	RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
-	RuntimeMachine                 RuntimeType = "machine"
-)
-
 type CreateTransaction struct {
 	RunScript
 	AccountMetadata map[string]metadata.Metadata
-	Runtime         RuntimeType
+	Runtime         ledger.RuntimeType
 }
 
 type RevertTransaction struct {
