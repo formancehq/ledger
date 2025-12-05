@@ -17,6 +17,7 @@ const (
 	V2LogTypeSetMetadata         V2LogType = "SET_METADATA"
 	V2LogTypeRevertedTransaction V2LogType = "REVERTED_TRANSACTION"
 	V2LogTypeDeleteMetadata      V2LogType = "DELETE_METADATA"
+	V2LogTypeInsertedSchema      V2LogType = "INSERTED_SCHEMA"
 )
 
 func (e V2LogType) ToPointer() *V2LogType {
@@ -35,6 +36,8 @@ func (e *V2LogType) UnmarshalJSON(data []byte) error {
 	case "REVERTED_TRANSACTION":
 		fallthrough
 	case "DELETE_METADATA":
+		fallthrough
+	case "INSERTED_SCHEMA":
 		*e = V2LogType(v)
 		return nil
 	default:
@@ -48,6 +51,8 @@ type V2Log struct {
 	Data map[string]any `json:"data"`
 	Hash string         `json:"hash"`
 	Date time.Time      `json:"date"`
+	// Schema version used for validation
+	SchemaVersion *string `json:"schemaVersion,omitempty"`
 }
 
 func (v V2Log) MarshalJSON() ([]byte, error) {
@@ -94,4 +99,11 @@ func (o *V2Log) GetDate() time.Time {
 		return time.Time{}
 	}
 	return o.Date
+}
+
+func (o *V2Log) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }

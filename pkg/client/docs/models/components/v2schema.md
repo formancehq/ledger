@@ -1,0 +1,12 @@
+# V2Schema
+
+Complete schema structure with metadata
+
+
+## Fields
+
+| Field                                                                             | Type                                                                              | Required                                                                          | Description                                                                       | Example                                                                           |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `Version`                                                                         | *string*                                                                          | :heavy_check_mark:                                                                | Schema version                                                                    | v1.0.0                                                                            |
+| `CreatedAt`                                                                       | [time.Time](https://pkg.go.dev/time#Time)                                         | :heavy_check_mark:                                                                | Schema creation timestamp                                                         | 2023-01-01T00:00:00Z                                                              |
+| `Chart`                                                                           | map[string][components.V2ChartSegment](../../models/components/v2chartsegment.md) | :heavy_check_mark:                                                                | Chart of account                                                                  | {<br/>"users": {<br/>"$userID": {<br/>".pattern": "^[0-9]{16}$"<br/>}<br/>}<br/>} |

@@ -475,4 +475,52 @@ var _ = Context("Idempotency-Hit header tests", func() {
 			Expect(httpResponse.Header.Get("Idempotency-Hit")).To(Equal("true"))
 		})
 	})
+
+	When("inserting schema with idempotency key", func() {
+		var (
+			insertSchemaRequest = operations.V2InsertSchemaRequest{
+				V2SchemaData: components.V2SchemaData{
+					Chart: map[string]components.V2ChartSegment{
+						"bank": {},
+					},
+				},
+				Version:        "v1.0.0",
+				Ledger:         "default",
+				IdempotencyKey: pointer.For("insert-schema-key-header-1"),
+			}
+		)
+		It("should not have Idempotency-Hit header on first call", func(specContext SpecContext) {
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(
+				ctx,
+				insertSchemaRequest,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response).ToNot(BeNil())
+
+			httpResponse := response.HTTPMeta.GetResponse()
+			Expect(httpResponse).ToNot(BeNil())
+			Expect(httpResponse.Header.Get("Idempotency-Hit")).To(BeEmpty())
+		})
+
+		It("should have Idempotency-Hit header on second call with same key", func(specContext SpecContext) {
+			// First call
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(
+				ctx,
+				insertSchemaRequest,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Second call with same idempotency key
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(
+				ctx,
+				insertSchemaRequest,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response).ToNot(BeNil())
+
+			httpResponse := response.HTTPMeta.GetResponse()
+			Expect(httpResponse).ToNot(BeNil())
+			Expect(httpResponse.Header.Get("Idempotency-Hit")).To(Equal("true"))
+		})
+	})
 })

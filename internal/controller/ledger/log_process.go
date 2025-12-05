@@ -33,7 +33,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	store, _, err := store.BeginTX(ctx, nil)
 	if err != nil {
@@ -66,16 +66,56 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 
-	output, err := fn(ctx, store, parameters)
+	var schema *ledger.Schema
+	if parameters.SchemaVersion != "" {
+		var err error
+		schema, err = store.FindSchema(ctx, parameters.SchemaVersion)
+		if err != nil {
+			if errors.Is(err, postgres.ErrNotFound) {
+				latestVersion, err := store.FindLatestSchemaVersion(ctx)
+				if err != nil {
+					return nil, nil, err
+				}
+				return nil, nil, ErrSchemaNotFound{
+					requestedVersion: parameters.SchemaVersion,
+					latestVersion:    latestVersion,
+				}
+			}
+			return nil, nil, err
+		}
+	} else {
+		var payload OUTPUT
+		if payload.NeedsSchema() {
+			// Only allow a missing schema validation if the ledger doesn't have one
+			latestVersion, err := store.FindLatestSchemaVersion(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			if latestVersion != nil {
+				return nil, nil, ErrSchemaNotSpecified{
+					latestVersion: *latestVersion,
+				}
+			}
+		}
+	}
+
+	output, err := fn(ctx, store, schema, parameters)
 	if err != nil {
 		return nil, nil, err
 	}
 	log := ledger.NewLog(*output)
 	log.IdempotencyKey = parameters.IdempotencyKey
 	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
+	log.SchemaVersion = parameters.SchemaVersion
+
+	if schema != nil {
+		if err := log.ValidateWithSchema(*schema); err != nil {
+			return nil, nil, newErrSchemaValidationError(parameters.SchemaVersion, err)
+		}
+	}
 
 	err = store.InsertLog(ctx, &log)
 	if err != nil {
@@ -90,7 +130,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, bool, error) {
 	if parameters.IdempotencyKey != "" {
 		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)

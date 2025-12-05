@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+	"strings"
 )
 
 type ErrInvalidLedgerName struct {
@@ -85,4 +86,41 @@ func (e ErrAlreadyStarted) Is(err error) bool {
 
 func NewErrAlreadyStarted(id string) ErrAlreadyStarted {
 	return ErrAlreadyStarted(id)
+}
+
+type ErrInvalidSchema struct {
+	err error
+}
+
+func (e ErrInvalidSchema) Error() string {
+	return fmt.Sprintf("invalid schema: %v", e.err)
+}
+func (e ErrInvalidSchema) Is(err error) bool {
+	_, ok := err.(ErrInvalidSchema)
+	return ok
+}
+
+type ErrInvalidAccount struct {
+	path            []string
+	segment         string
+	hasSubsegments  bool
+	patternMismatch bool
+}
+
+func (e ErrInvalidAccount) Error() string {
+	if len(e.path) == 0 {
+		if e.hasSubsegments {
+			return fmt.Sprintf("account starting with `%v` is not defined in the chart of accounts", e.segment)
+		} else {
+			return fmt.Sprintf("account `%v` is not defined in the chart of accounts", e.segment)
+		}
+	} else if e.patternMismatch {
+		return fmt.Sprintf("segment `%v` defined by the chart of accounts at `%v` does not match the pattern", e.segment, strings.Join(e.path, ":"))
+	} else {
+		return fmt.Sprintf("segment `%v` is not allowed by the chart of accounts at `%v`", e.segment, strings.Join(e.path, ":"))
+	}
+}
+func (e ErrInvalidAccount) Is(err error) bool {
+	_, ok := err.(ErrInvalidAccount)
+	return ok
 }

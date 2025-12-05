@@ -19,6 +19,8 @@ type V2RevertTransactionRequest struct {
 	AtEffectiveDate *bool `queryParam:"style=form,explode=true,name=atEffectiveDate"`
 	// Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
 	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
+	// Schema version to use for validation
+	SchemaVersion *string `queryParam:"style=form,explode=true,name=schemaVersion"`
 	// Use an idempotency key
 	IdempotencyKey             *string                                `header:"style=simple,explode=false,name=Idempotency-Key"`
 	V2RevertTransactionRequest *components.V2RevertTransactionRequest `request:"mediaType=application/json"`
@@ -68,6 +70,13 @@ func (o *V2RevertTransactionRequest) GetDryRun() *bool {
 		return nil
 	}
 	return o.DryRun
+}
+
+func (o *V2RevertTransactionRequest) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }
 
 func (o *V2RevertTransactionRequest) GetIdempotencyKey() *string {

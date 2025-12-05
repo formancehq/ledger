@@ -1463,6 +1463,142 @@ paths:
       security:
         - Authorization:
             - ledger:write
+  /v2/{ledger}/schema/{version}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: version
+        in: path
+        description: Schema version.
+        required: true
+        schema:
+          type: string
+          example: v1.0.0
+    post:
+      summary: Insert a schema for a ledger
+      operationId: v2InsertSchema
+      x-speakeasy-name-override: InsertSchema
+      tags:
+        - ledger.v2
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V2SchemaData"
+      responses:
+        "204":
+          description: Schema inserted successfully
+          headers:
+            Idempotency-Hit:
+              description: Indicates that the request was processed using an idempotency key that was already used
+              schema:
+                type: string
+                example: "true"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:write
+    get:
+      summary: Get a schema for a ledger by version
+      operationId: v2GetSchema
+      x-speakeasy-name-override: GetSchema
+      tags:
+        - ledger.v2
+      responses:
+        "200":
+          description: Schema retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2SchemaResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
+  /v2/{ledger}/schema:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+    get:
+      summary: List all schemas for a ledger
+      operationId: v2ListSchemas
+      x-speakeasy-name-override: ListSchemas
+      tags:
+        - ledger.v2
+      parameters:
+        - name: cursor
+          in: query
+          description: The pagination cursor value
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          description: The maximum number of results to return per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 15
+        - name: sort
+          in: query
+          description: The field to sort by
+          schema:
+            type: string
+            enum:
+              - created_at
+            default: created_at
+        - name: order
+          in: query
+          description: The sort order
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: Schemas retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2SchemasCursorResponse"
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/metadata:
     parameters:
       - name: ledger
@@ -1600,6 +1736,12 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: schemaVersion
+          in: query
+          description: Default schema version to use for validation (can be overridden per element)
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         required: true
         content:
@@ -1849,6 +1991,12 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         description: metadata
         content:
@@ -2129,6 +2277,12 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         required: true
         description: |
@@ -2249,6 +2403,12 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
       requestBody:
         required: true
         description: metadata
@@ -2374,6 +2534,12 @@ paths:
           schema:
             type: boolean
             example: true
+        - name: schemaVersion
+          in: query
+          description: Schema version to use for validation
+          schema:
+            type: string
+            example: v1.0.0
         - name: Idempotency-Key
           in: header
           description: Use an idempotency key
@@ -2686,7 +2852,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: '#/components/responses/V2ListExportersResponse'
+          $ref: "#/components/responses/V2ListExportersResponse"
         default:
           description: Error
           content:
@@ -2704,10 +2870,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2CreateExporterRequest'
+              $ref: "#/components/schemas/V2CreateExporterRequest"
       responses:
         "201":
-          $ref: '#/components/responses/V2CreateExporterResponse'
+          $ref: "#/components/responses/V2CreateExporterResponse"
         default:
           description: Error
           content:
@@ -2730,7 +2896,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: '#/components/responses/V2GetExporterStateResponse'
+          $ref: "#/components/responses/V2GetExporterStateResponse"
         default:
           description: Error
           content:
@@ -2748,7 +2914,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2UpdateExporterRequest'
+              $ref: "#/components/schemas/V2UpdateExporterRequest"
       responses:
         "204":
           description: Exporter updated
@@ -2861,7 +3027,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: '#/components/responses/V2ListPipelinesResponse'
+          $ref: "#/components/responses/V2ListPipelinesResponse"
         default:
           description: Error
           content:
@@ -2878,10 +3044,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/V2CreatePipelineRequest'
+              $ref: "#/components/schemas/V2CreatePipelineRequest"
       responses:
         "201":
-          $ref: '#/components/responses/V2CreatePipelineResponse'
+          $ref: "#/components/responses/V2CreatePipelineResponse"
         default:
           description: Error
           content:
@@ -2911,7 +3077,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: '#/components/responses/V2GetPipelineStateResponse'
+          $ref: "#/components/responses/V2GetPipelineStateResponse"
         default:
           description: Error
           content:
@@ -3647,7 +3813,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -3678,7 +3844,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -3709,7 +3875,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -3740,7 +3906,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -3771,7 +3937,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -3816,7 +3982,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -4039,6 +4205,7 @@ components:
             - SET_METADATA
             - REVERTED_TRANSACTION
             - DELETE_METADATA
+            - INSERTED_SCHEMA
         data:
           type: object
           properties: {}
@@ -4049,6 +4216,10 @@ components:
         date:
           type: string
           format: date-time
+        schemaVersion:
+          type: string
+          description: Schema version used for validation
+          example: v1.0.0
       required:
         - id
         - type
@@ -4162,6 +4333,8 @@ components:
         - INTERPRETER_PARSE
         - INTERPRETER_RUNTIME
         - LEDGER_ALREADY_EXISTS
+        - SCHEMA_ALREADY_EXISTS
+        - SCHEMA_NOT_SPECIFIED
         - OUTDATED_SCHEMA
       example: VALIDATION
     V2LedgerInfoResponse:
@@ -4381,6 +4554,104 @@ components:
           required:
             - errorCode
             - errorDescription
+    V2ChartAccountRules:
+      type: object
+    V2ChartAccountMetadata:
+      type: object
+      properties:
+        default:
+          type: string
+    V2ChartSegment:
+      type: object
+      description: "Segment within a chart of accounts"
+      properties:
+        .self:
+          type: object
+        .pattern:
+          type: string
+        .rules:
+          $ref: "#/components/schemas/V2ChartAccountRules"
+        .metadata:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/V2ChartAccountMetadata"
+      additionalProperties:
+        $ref: "#/components/schemas/V2ChartSegment"
+      example:
+        users:
+          $userID:
+            .pattern: "^[0-9]{16}$"
+    V2ChartOfAccounts:
+      type: object
+      description: "Chart of account"
+      additionalProperties:
+        $ref: "#/components/schemas/V2ChartSegment"
+      example:
+        users:
+          $userID:
+            .pattern: "^[0-9]{16}$"
+    V2SchemaData:
+      type: object
+      description: Schema data structure for ledger schemas
+      properties:
+        chart:
+          $ref: "#/components/schemas/V2ChartOfAccounts"
+      required:
+        - chart
+    V2Schema:
+      type: object
+      description: Complete schema structure with metadata
+      allOf:
+        - type: object
+          required:
+            - version
+            - createdAt
+          properties:
+            version:
+              type: string
+              description: Schema version
+              example: "v1.0.0"
+            createdAt:
+              type: string
+              format: date-time
+              description: Schema creation timestamp
+              example: "2023-01-01T00:00:00Z"
+        - $ref: "#/components/schemas/V2SchemaData"
+    V2SchemaResponse:
+      properties:
+        data:
+          $ref: "#/components/schemas/V2Schema"
+      type: object
+      required:
+        - data
+    V2SchemasCursorResponse:
+      properties:
+        cursor:
+          $ref: "#/components/schemas/V2SchemasCursor"
+      type: object
+      required:
+        - cursor
+    V2SchemasCursor:
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/V2Schema"
+        hasMore:
+          type: boolean
+        previous:
+          type: string
+          example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+        next:
+          type: string
+          example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+        pageSize:
+          type: integer
+      type: object
+      required:
+        - data
+        - hasMore
+        - pageSize
     V2CreateLedgerRequest:
       type: object
       properties:
@@ -4444,7 +4715,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: ""
+              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
             data:
               type: array
               items:
@@ -4481,9 +4752,9 @@ components:
       required:
         - exporterID
     V2CreateExporterRequest:
-      $ref: '#/components/schemas/V2ExporterConfiguration'
+      $ref: "#/components/schemas/V2ExporterConfiguration"
     V2UpdateExporterRequest:
-      $ref: '#/components/schemas/V2ExporterConfiguration'
+      $ref: "#/components/schemas/V2ExporterConfiguration"
     V2PipelineConfiguration:
       properties:
         ledger:
@@ -4507,7 +4778,7 @@ components:
     V2Exporter:
       type: object
       allOf:
-        - $ref: '#/components/schemas/V2ExporterConfiguration'
+        - $ref: "#/components/schemas/V2ExporterConfiguration"
         - type: object
           properties:
             id:
@@ -4520,7 +4791,7 @@ components:
             - createdAt
     V2Pipeline:
       allOf:
-        - $ref: '#/components/schemas/V2PipelineConfiguration'
+        - $ref: "#/components/schemas/V2PipelineConfiguration"
         - type: object
           properties:
             id:
@@ -4553,7 +4824,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Pipeline'
+                $ref: "#/components/schemas/V2Pipeline"
             required:
               - data
     V2ListPipelinesResponse:
@@ -4565,12 +4836,12 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
+                  - $ref: "#/components/schemas/V2PipelinesCursorResponse"
                   - properties:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/V2Pipeline'
+                          $ref: "#/components/schemas/V2Pipeline"
     V2GetPipelineStateResponse:
       description: Pipeline information
       content:
@@ -4579,7 +4850,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Pipeline'
+                $ref: "#/components/schemas/V2Pipeline"
             required:
               - data
     V2CreateExporterResponse:
@@ -4590,7 +4861,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Exporter'
+                $ref: "#/components/schemas/V2Exporter"
             required:
               - data
     V2ListExportersResponse:
@@ -4602,13 +4873,13 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
+                  - $ref: "#/components/schemas/V2ExportersCursorResponse"
                   - type: object
                     properties:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/V2Exporter'
+                          $ref: "#/components/schemas/V2Exporter"
     V2GetExporterStateResponse:
       description: Exporter information
       content:
@@ -4617,7 +4888,7 @@ components:
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/V2Exporter'
+                $ref: "#/components/schemas/V2Exporter"
             required:
               - data
 servers:

@@ -33,6 +33,10 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
+
+	store.EXPECT().
 		Rollback(gomock.Any()).
 		Return(nil)
 
@@ -45,7 +49,7 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
 	_, _, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
 		IdempotencyKey: "foo",
-	}, func(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+	}, func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 		return nil, ledgerstore.NewErrIdempotencyKeyConflict("foo")
 	})
 	require.NoError(t, err)
@@ -64,6 +68,10 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
+
+	store.EXPECT().
 		Rollback(gomock.Any()).
 		Return(nil)
 
@@ -71,6 +79,10 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 	store.EXPECT().
 		BeginTX(gomock.Any(), gomock.Any()).
 		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Any()).
@@ -85,7 +97,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 
 	firstCall := true
 	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
-	_, _, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, func(ctx context.Context, store Store, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
+	_, _, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 		if firstCall {
 			firstCall = false
 			return nil, postgres.ErrDeadlockDetected

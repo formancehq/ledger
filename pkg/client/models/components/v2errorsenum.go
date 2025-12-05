@@ -27,6 +27,8 @@ const (
 	V2ErrorsEnumInterpreterParse    V2ErrorsEnum = "INTERPRETER_PARSE"
 	V2ErrorsEnumInterpreterRuntime  V2ErrorsEnum = "INTERPRETER_RUNTIME"
 	V2ErrorsEnumLedgerAlreadyExists V2ErrorsEnum = "LEDGER_ALREADY_EXISTS"
+	V2ErrorsEnumSchemaAlreadyExists V2ErrorsEnum = "SCHEMA_ALREADY_EXISTS"
+	V2ErrorsEnumSchemaNotSpecified  V2ErrorsEnum = "SCHEMA_NOT_SPECIFIED"
 	V2ErrorsEnumOutdatedSchema      V2ErrorsEnum = "OUTDATED_SCHEMA"
 )
 
@@ -72,6 +74,10 @@ func (e *V2ErrorsEnum) UnmarshalJSON(data []byte) error {
 	case "INTERPRETER_RUNTIME":
 		fallthrough
 	case "LEDGER_ALREADY_EXISTS":
+		fallthrough
+	case "SCHEMA_ALREADY_EXISTS":
+		fallthrough
+	case "SCHEMA_NOT_SPECIFIED":
 		fallthrough
 	case "OUTDATED_SCHEMA":
 		*e = V2ErrorsEnum(v)
