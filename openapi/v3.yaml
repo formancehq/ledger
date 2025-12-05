@@ -2,7 +2,14 @@ openapi: 3.0.3
 info:
   title: Ledger API
   contact: {}
-  version: v2
+  version: v3
+  description: |
+    # Ledger API v3
+    
+    This is a work-in-progress specification for Ledger API v3.
+    
+    This version is being developed iteratively based on v2. Changes and planned modifications
+    are documented in the project's documentation.
 servers:
   - url: http://localhost:8080/
 paths:
@@ -575,12 +582,6 @@ paths:
       responses:
         "204":
           description: No Content
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
           content: {}
         default:
           description: Error
@@ -628,12 +629,6 @@ paths:
       responses:
         204:
           description: Key deleted
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
           content: {}
         default:
           description: Error
@@ -859,12 +854,6 @@ paths:
       responses:
         "200":
           description: OK
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
           content:
             application/json:
               schema:
@@ -977,12 +966,6 @@ paths:
       responses:
         "204":
           description: No Content
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
           content: {}
         default:
           description: Error
@@ -1033,12 +1016,6 @@ paths:
       responses:
         204:
           description: Key deleted
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
           content: {}
         default:
           description: Error
@@ -1093,11 +1070,6 @@ paths:
           schema:
             type: boolean
             example: true
-        - name: Idempotency-Key
-          in: header
-          description: Use an idempotency key
-          schema:
-            type: string
       requestBody:
         content:
           application/json:
@@ -1106,12 +1078,6 @@ paths:
       responses:
         "201":
           description: OK
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
           content:
             application/json:
               schema:
@@ -1495,76 +1461,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
-  /v2/_/buckets/{bucket}:
-    parameters:
-      - name: bucket
-        description: The bucket name
-        in: path
-        schema:
-          type: string
-        required: true
-    delete:
-      summary: Delete bucket
-      operationId: v2DeleteBucket
-      x-speakeasy-name-override: DeleteBucket
-      tags:
-        - ledger.v2
-      description: >-
-        Delete a bucket by marking all ledgers in the bucket as deleted (soft delete).
-        All ledgers in the bucket will have their deleted_at field set to the current timestamp.
-      responses:
-        "204":
-          description: Bucket deleted
-        "404":
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:write
-  /v2/_/buckets/{bucket}/restore:
-    parameters:
-      - name: bucket
-        description: The bucket name
-        in: path
-        schema:
-          type: string
-        required: true
-    post:
-      summary: Restore bucket
-      operationId: v2RestoreBucket
-      x-speakeasy-name-override: RestoreBucket
-      tags:
-        - ledger.v2
-      description: >-
-        Restore a deleted bucket by unmarking all ledgers in the bucket as deleted.
-        All ledgers in the bucket will have their deleted_at field set to NULL.
-      responses:
-        "204":
-          description: Bucket restored
-        "404":
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:write
   /v2/{ledger}/pipelines:
     parameters:
       - name: ledger
@@ -2176,14 +2072,6 @@ components:
         revertedAt:
           type: string
           format: date-time
-        preCommitVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-        postCommitVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-        preCommitEffectiveVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-        postCommitEffectiveVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
       required:
         - postings
         - timestamp
@@ -2608,8 +2496,6 @@ components:
     V2CreateLedgerRequest:
       type: object
       properties:
-        bucket:
-          type: string
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:
@@ -2624,8 +2510,6 @@ components:
         addedAt:
           type: string
           format: date-time
-        bucket:
-          type: string
         deletedAt:
           type: string
           format: date-time
@@ -2641,7 +2525,6 @@ components:
       required:
         - name
         - addedAt
-        - bucket
     V2LedgerListResponse:
       type: object
       required:

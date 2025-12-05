@@ -238,7 +238,7 @@ func TestTransactionsCreate(t *testing.T) {
 						ID: pointer.For(uint64(0)),
 					}, &ledger.CreatedTransaction{
 						Transaction: expectedTx,
-					}, nil)
+					}, false, nil)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
