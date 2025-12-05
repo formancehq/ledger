@@ -2,8 +2,6 @@ package ledger
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 )
 
 type RuntimeType string
@@ -21,49 +19,18 @@ type TransactionTemplate struct {
 
 type TransactionTemplates map[string]TransactionTemplate
 
-// Marshal that transforms a list of transactions with ids into a map
 func (t *TransactionTemplates) UnmarshalJSON(data []byte) error {
-	var rawList []struct {
-		ID          string
-		Description string
-		Script      string
-	}
-	if err := json.Unmarshal(data, &rawList); err != nil {
+	type Templates TransactionTemplates
+	var templates Templates
+	if err := json.Unmarshal(data, &templates); err != nil {
 		return err
 	}
-	out := make(map[string]TransactionTemplate)
-	for _, item := range rawList {
-		if item.ID == "" {
-			return errors.New("transaction template id cannot be empty")
-		}
-		if _, exists := out[item.ID]; exists {
-			return fmt.Errorf("duplicate transaction template id: %v", item.ID)
-		}
-		out[item.ID] = TransactionTemplate{
-			Description: item.Description,
-			Script:      item.Script,
+	for id, tmpl := range templates {
+		if tmpl.Runtime == "" {
+			tmpl.Runtime = RuntimeMachine
+			templates[id] = tmpl
 		}
 	}
-	*t = out
+	*t = TransactionTemplates(templates)
 	return nil
-}
-
-func (t TransactionTemplates) MarshalJSON() ([]byte, error) {
-	var rawList []struct {
-		ID          string
-		Description string
-		Script      string
-	}
-	for id, item := range t {
-		rawList = append(rawList, struct {
-			ID          string
-			Description string
-			Script      string
-		}{
-			ID:          id,
-			Description: item.Description,
-			Script:      item.Script,
-		})
-	}
-	return json.Marshal(rawList)
 }

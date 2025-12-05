@@ -3,16 +3,10 @@
 package components
 
 type V2TransactionTemplate struct {
-	ID          *string `json:"id,omitempty"`
 	Description *string `json:"description,omitempty"`
-	Script      *string `json:"script,omitempty"`
-}
-
-func (o *V2TransactionTemplate) GetID() *string {
-	if o == nil {
-		return nil
-	}
-	return o.ID
+	Script      string  `json:"script"`
+	// The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+	Runtime *Runtime `json:"runtime,omitempty"`
 }
 
 func (o *V2TransactionTemplate) GetDescription() *string {
@@ -22,9 +16,16 @@ func (o *V2TransactionTemplate) GetDescription() *string {
 	return o.Description
 }
 
-func (o *V2TransactionTemplate) GetScript() *string {
+func (o *V2TransactionTemplate) GetScript() string {
+	if o == nil {
+		return ""
+	}
+	return o.Script
+}
+
+func (o *V2TransactionTemplate) GetRuntime() *Runtime {
 	if o == nil {
 		return nil
 	}
-	return o.Script
+	return o.Runtime
 }

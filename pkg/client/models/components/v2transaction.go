@@ -22,6 +22,7 @@ type V2Transaction struct {
 	PostCommitVolumes          map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
 	PreCommitEffectiveVolumes  map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
 	PostCommitEffectiveVolumes map[string]map[string]V2Volume `json:"postCommitEffectiveVolumes,omitempty"`
+	Template                   string                         `json:"template"`
 }
 
 func (v V2Transaction) MarshalJSON() ([]byte, error) {
@@ -124,4 +125,11 @@ func (o *V2Transaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2
 		return nil
 	}
 	return o.PostCommitEffectiveVolumes
+}
+
+func (o *V2Transaction) GetTemplate() string {
+	if o == nil {
+		return ""
+	}
+	return o.Template
 }

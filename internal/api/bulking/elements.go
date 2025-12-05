@@ -103,7 +103,7 @@ type TransactionRequest struct {
 	Reference       string                       `json:"reference"`
 	Metadata        metadata.Metadata            `json:"metadata" swaggertype:"object"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
-	Runtime         ledgercontroller.RuntimeType `json:"runtime,omitempty"`
+	Runtime         ledger.RuntimeType           `json:"runtime,omitempty"`
 	Force           bool                         `json:"force"`
 }
 

@@ -67,7 +67,7 @@ func (ctrl *DefaultController) insertSchema(ctx context.Context, store Store, _s
 	}
 
 	for id, template := range schema.Transactions {
-		parser := ctrl.getParser(RuntimeType(template.Runtime))
+		parser := ctrl.getParser(ledger.RuntimeType(template.Runtime))
 		_, err := parser.Parse(template.Script)
 		if err != nil {
 			return nil, ledger.NewErrInvalidSchema(fmt.Errorf("invalid template %s: %w", id, err))
@@ -387,11 +387,11 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
-func (ctrl *DefaultController) getParser(runtimeType RuntimeType) NumscriptParser {
+func (ctrl *DefaultController) getParser(runtimeType ledger.RuntimeType) NumscriptParser {
 	switch runtimeType {
-	case RuntimeExperimentalInterpreter:
+	case ledger.RuntimeExperimentalInterpreter:
 		return ctrl.interpreterParser
-	case RuntimeMachine:
+	case ledger.RuntimeMachine:
 		return ctrl.machineParser
 	default:
 		return ctrl.parser
@@ -408,6 +408,9 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		}
 		if template, ok := schema.SchemaData.Transactions[parameters.Input.Template]; ok {
 			parameters.Input.Plain = template.Script
+			if parameters.Input.Runtime == "" {
+				parameters.Input.Runtime = ledger.RuntimeType(template.Runtime)
+			}
 		} else {
 			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
 		}
