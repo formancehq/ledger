@@ -20,7 +20,9 @@ type V2RevertTransactionRequest struct {
 	// Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
 	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
 	// Schema version to use for validation
-	SchemaVersion              *string                                `queryParam:"style=form,explode=true,name=schemaVersion"`
+	SchemaVersion *string `queryParam:"style=form,explode=true,name=schemaVersion"`
+	// Use an idempotency key
+	IdempotencyKey             *string                                `header:"style=simple,explode=false,name=Idempotency-Key"`
 	V2RevertTransactionRequest *components.V2RevertTransactionRequest `request:"mediaType=application/json"`
 }
 
@@ -77,6 +79,13 @@ func (o *V2RevertTransactionRequest) GetSchemaVersion() *string {
 	return o.SchemaVersion
 }
 
+func (o *V2RevertTransactionRequest) GetIdempotencyKey() *string {
+	if o == nil {
+		return nil
+	}
+	return o.IdempotencyKey
+}
+
 func (o *V2RevertTransactionRequest) GetV2RevertTransactionRequest() *components.V2RevertTransactionRequest {
 	if o == nil {
 		return nil
@@ -88,6 +97,7 @@ type V2RevertTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
 	V2CreateTransactionResponse *components.V2CreateTransactionResponse
+	Headers                     map[string][]string
 }
 
 func (o *V2RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -102,4 +112,11 @@ func (o *V2RevertTransactionResponse) GetV2CreateTransactionResponse() *componen
 		return nil
 	}
 	return o.V2CreateTransactionResponse
+}
+
+func (o *V2RevertTransactionResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

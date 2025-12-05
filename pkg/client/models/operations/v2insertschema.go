@@ -10,8 +10,10 @@ type V2InsertSchemaRequest struct {
 	// Name of the ledger.
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 	// Schema version.
-	Version      string                  `pathParam:"style=simple,explode=false,name=version"`
-	V2SchemaData components.V2SchemaData `request:"mediaType=application/json"`
+	Version string `pathParam:"style=simple,explode=false,name=version"`
+	// Use an idempotency key
+	IdempotencyKey *string                 `header:"style=simple,explode=false,name=Idempotency-Key"`
+	V2SchemaData   components.V2SchemaData `request:"mediaType=application/json"`
 }
 
 func (o *V2InsertSchemaRequest) GetLedger() string {
@@ -28,6 +30,13 @@ func (o *V2InsertSchemaRequest) GetVersion() string {
 	return o.Version
 }
 
+func (o *V2InsertSchemaRequest) GetIdempotencyKey() *string {
+	if o == nil {
+		return nil
+	}
+	return o.IdempotencyKey
+}
+
 func (o *V2InsertSchemaRequest) GetV2SchemaData() components.V2SchemaData {
 	if o == nil {
 		return components.V2SchemaData{}
@@ -37,6 +46,7 @@ func (o *V2InsertSchemaRequest) GetV2SchemaData() components.V2SchemaData {
 
 type V2InsertSchemaResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
+	Headers  map[string][]string
 }
 
 func (o *V2InsertSchemaResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -44,4 +54,11 @@ func (o *V2InsertSchemaResponse) GetHTTPMeta() components.HTTPMetadata {
 		return components.HTTPMetadata{}
 	}
 	return o.HTTPMeta
+}
+
+func (o *V2InsertSchemaResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

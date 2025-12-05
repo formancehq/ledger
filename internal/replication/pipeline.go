@@ -64,14 +64,21 @@ type PipelineHandler struct {
 }
 
 func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
+	p.logger.Debugf("Pipeline started.")
 	nextInterval := time.Duration(0)
+
+	stop := func(ch chan error) {
+		p.logger.Debugf("Pipeline terminated.")
+		close(ch)
+	}
+
 	for {
 		select {
 		case ch := <-p.stopChannel:
-			p.logger.Debugf("Pipeline terminated.")
-			close(ch)
+			stop(ch)
 			return
 		case <-time.After(nextInterval):
+			p.logger.Debugf("Fetch next batch.")
 			var builder query.Builder
 			if p.pipeline.LastLogID != nil {
 				builder = query.Gt("id", *p.pipeline.LastLogID)
@@ -87,7 +94,8 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			if err != nil {
 				p.logger.Errorf("Error fetching logs: %s", err)
 				select {
-				case <-ctx.Done():
+				case ch := <-p.stopChannel:
+					stop(ch)
 					return
 				case <-time.After(p.pipelineConfig.PullInterval):
 					continue
@@ -101,26 +109,42 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			}
 
 			for {
-				_, err := p.exporter.Accept(ctx, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
-					return drivers.LogWithLedger{
-						Log:    log,
-						Ledger: p.pipeline.Ledger,
+				p.logger.Debugf("Send data to exporter.")
+				errChan := make(chan error, 1)
+				exportContext, cancel := context.WithCancel(ctx)
+				go func() {
+					_, err := p.exporter.Accept(exportContext, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
+						return drivers.LogWithLedger{
+							Log:    log,
+							Ledger: p.pipeline.Ledger,
+						}
+					})...)
+					errChan <- err
+				}()
+				select {
+				case err := <-errChan:
+					cancel()
+					if err != nil {
+						p.logger.Errorf("Error pushing data on exporter: %s, waiting for: %s", err, p.pipelineConfig.PushRetryPeriod)
+						select {
+						case ch := <-p.stopChannel:
+							stop(ch)
+							return
+						case <-time.After(p.pipelineConfig.PushRetryPeriod):
+							continue
+						}
 					}
-				})...)
-				if err != nil {
-					p.logger.Errorf("Error pushing data on exporter: %s, waiting for: %s", err, p.pipelineConfig.PushRetryPeriod)
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(p.pipelineConfig.PushRetryPeriod):
-						continue
-					}
+				case ch := <-p.stopChannel:
+					cancel()
+					stop(ch)
+					return
 				}
+
 				break
 			}
 
 			lastLogID := logs.Data[len(logs.Data)-1].ID
-			p.logger.Debugf("Move last log id to %d", lastLogID)
+			p.logger.Debugf("Move last log id to %d", *lastLogID)
 			p.pipeline.LastLogID = lastLogID
 
 			select {
@@ -132,6 +156,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			if !logs.HasMore {
 				nextInterval = p.pipelineConfig.PullInterval
 			} else {
+				p.logger.Debugf("Has more logs to fetch.")
 				nextInterval = 0
 			}
 		}
@@ -139,7 +164,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 }
 
 func (p *PipelineHandler) Shutdown(ctx context.Context) error {
-	p.logger.Infof("shutdowning pipeline")
+	p.logger.Infof("Shutting down pipeline")
 	errorChannel := make(chan error, 1)
 	select {
 	case <-ctx.Done():

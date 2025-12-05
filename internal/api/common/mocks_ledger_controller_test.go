@@ -107,13 +107,14 @@ func (mr *LedgerControllerMockRecorder) CountTransactions(ctx, query any) *gomoc
 }
 
 // CreateTransaction mocks base method.
-func (m *LedgerController) CreateTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (m *LedgerController) CreateTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
 	ret1, _ := ret[1].(*ledger.CreatedTransaction)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret2, _ := ret[2].(bool)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
 }
 
 // CreateTransaction indicates an expected call of CreateTransaction.
@@ -123,12 +124,13 @@ func (mr *LedgerControllerMockRecorder) CreateTransaction(ctx, parameters any) *
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *LedgerController) DeleteAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteAccountMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) DeleteAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // DeleteAccountMetadata indicates an expected call of DeleteAccountMetadata.
@@ -138,12 +140,13 @@ func (mr *LedgerControllerMockRecorder) DeleteAccountMetadata(ctx, parameters an
 }
 
 // DeleteTransactionMetadata mocks base method.
-func (m *LedgerController) DeleteTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteTransactionMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) DeleteTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteTransactionMetadata", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // DeleteTransactionMetadata indicates an expected call of DeleteTransactionMetadata.
@@ -300,13 +303,14 @@ func (mr *LedgerControllerMockRecorder) Info() *gomock.Call {
 }
 
 // InsertSchema mocks base method.
-func (m *LedgerController) InsertSchema(ctx context.Context, parameters ledger0.Parameters[ledger0.InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
+func (m *LedgerController) InsertSchema(ctx context.Context, parameters ledger0.Parameters[ledger0.InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertSchema", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
 	ret1, _ := ret[1].(*ledger.InsertedSchema)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret2, _ := ret[2].(bool)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
 }
 
 // InsertSchema indicates an expected call of InsertSchema.
@@ -408,13 +412,14 @@ func (mr *LedgerControllerMockRecorder) LockLedger(ctx any) *gomock.Call {
 }
 
 // RevertTransaction mocks base method.
-func (m *LedgerController) RevertTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+func (m *LedgerController) RevertTransaction(ctx context.Context, parameters ledger0.Parameters[ledger0.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
 	ret1, _ := ret[1].(*ledger.RevertedTransaction)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret2, _ := ret[2].(bool)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
 }
 
 // RevertTransaction indicates an expected call of RevertTransaction.
@@ -438,12 +443,13 @@ func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 }
 
 // SaveAccountMetadata mocks base method.
-func (m *LedgerController) SaveAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveAccountMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) SaveAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveAccountMetadata]) (*ledger.Log, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveAccountMetadata", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // SaveAccountMetadata indicates an expected call of SaveAccountMetadata.
@@ -453,12 +459,13 @@ func (mr *LedgerControllerMockRecorder) SaveAccountMetadata(ctx, parameters any)
 }
 
 // SaveTransactionMetadata mocks base method.
-func (m *LedgerController) SaveTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveTransactionMetadata]) (*ledger.Log, error) {
+func (m *LedgerController) SaveTransactionMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveTransactionMetadata]) (*ledger.Log, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveTransactionMetadata", ctx, parameters)
 	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // SaveTransactionMetadata indicates an expected call of SaveTransactionMetadata.

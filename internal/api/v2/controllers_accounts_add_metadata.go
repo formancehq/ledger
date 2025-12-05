@@ -23,13 +23,16 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	common.WithBody(w, r, func(m metadata.Metadata) {
-		_, err = l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
+		_, idempotencyHit, err := l.SaveAccountMetadata(r.Context(), getCommandParameters(r, ledger.SaveAccountMetadata{
 			Address:  address,
 			Metadata: m,
 		}))
 		if err != nil {
 			common.HandleCommonWriteErrors(w, r, err)
 			return
+		}
+		if idempotencyHit {
+			w.Header().Set("Idempotency-Hit", "true")
 		}
 
 		api.NoContent(w)

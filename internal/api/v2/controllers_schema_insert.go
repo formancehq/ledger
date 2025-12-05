@@ -22,10 +22,11 @@ func insertSchema(w http.ResponseWriter, r *http.Request) {
 	}
 
 	l := common.LedgerFromContext(r.Context())
-	if _, _, err := l.InsertSchema(r.Context(), getCommandParameters(r, ledgercontroller.InsertSchema{
+	_, _, idempotencyHit, err := l.InsertSchema(r.Context(), getCommandParameters(r, ledgercontroller.InsertSchema{
 		Data:    data,
 		Version: chi.URLParam(r, "version"),
-	})); err != nil {
+	}))
+	if err != nil {
 		switch {
 		case errors.Is(err, ledgercontroller.ErrSchemaAlreadyExists{}):
 			api.WriteErrorResponse(w, http.StatusConflict, common.ErrSchemaAlreadyExists, err)
@@ -35,6 +36,9 @@ func insertSchema(w http.ResponseWriter, r *http.Request) {
 			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
+	}
+	if idempotencyHit {
+		w.Header().Set("Idempotency-Hit", "true")
 	}
 
 	w.WriteHeader(http.StatusNoContent)

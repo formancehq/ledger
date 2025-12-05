@@ -8,7 +8,7 @@ do $$
 		drop table if exists txs_view;
 
 		create table txs_view as
-		select *
+		select row_number() over (order by transactions.seq) as row_number, *
 		from transactions
 		where updated_at is null;
 
@@ -26,9 +26,7 @@ do $$
 			with data as (
 				select *
 				from txs_view
-				order by seq
-				offset _offset
-				limit _batch_size
+				where row_number > _offset and row_number <= _offset+_batch_size
 			)
 			update transactions
 			set updated_at = transactions.inserted_at

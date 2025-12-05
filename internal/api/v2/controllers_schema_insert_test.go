@@ -93,7 +93,7 @@ func TestInsertSchema(t *testing.T) {
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
 					InsertSchema(gomock.Any(), gomock.Any()).
-					Return(nil, nil, tc.returnErr)
+					Return(nil, nil, false, tc.returnErr)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop")

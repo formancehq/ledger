@@ -40,10 +40,10 @@ func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
 	c.atCommit = append(c.atCommit, fn)
 }
 
-func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
-	log, ret, err := c.Controller.CreateTransaction(ctx, parameters)
+func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
+	log, ret, idempotencyHit, err := c.Controller.CreateTransaction(ctx, parameters)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -51,13 +51,13 @@ func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters
 		})
 	}
 
-	return log, ret, nil
+	return log, ret, idempotencyHit, nil
 }
 
-func (c *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
-	log, ret, err := c.Controller.RevertTransaction(ctx, parameters)
+func (c *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, bool, error) {
+	log, ret, idempotencyHit, err := c.Controller.RevertTransaction(ctx, parameters)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -70,13 +70,13 @@ func (c *ControllerWithEvents) RevertTransaction(ctx context.Context, parameters
 		})
 	}
 
-	return log, ret, nil
+	return log, ret, idempotencyHit, nil
 }
 
-func (c *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
-	log, err := c.Controller.SaveTransactionMetadata(ctx, parameters)
+func (c *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, bool, error) {
+	log, idempotencyHit, err := c.Controller.SaveTransactionMetadata(ctx, parameters)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -90,13 +90,13 @@ func (c *ControllerWithEvents) SaveTransactionMetadata(ctx context.Context, para
 		})
 	}
 
-	return log, nil
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	log, err := c.Controller.SaveAccountMetadata(ctx, parameters)
+func (c *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, bool, error) {
+	log, idempotencyHit, err := c.Controller.SaveAccountMetadata(ctx, parameters)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -110,13 +110,13 @@ func (c *ControllerWithEvents) SaveAccountMetadata(ctx context.Context, paramete
 		})
 	}
 
-	return log, nil
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
-	log, err := c.Controller.DeleteTransactionMetadata(ctx, parameters)
+func (c *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, bool, error) {
+	log, idempotencyHit, err := c.Controller.DeleteTransactionMetadata(ctx, parameters)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -130,13 +130,13 @@ func (c *ControllerWithEvents) DeleteTransactionMetadata(ctx context.Context, pa
 		})
 	}
 
-	return log, nil
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
-	log, err := c.Controller.DeleteAccountMetadata(ctx, parameters)
+func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
+	log, idempotencyHit, err := c.Controller.DeleteAccountMetadata(ctx, parameters)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -150,13 +150,13 @@ func (c *ControllerWithEvents) DeleteAccountMetadata(ctx context.Context, parame
 		})
 	}
 
-	return log, nil
+	return log, idempotencyHit, nil
 }
 
-func (c *ControllerWithEvents) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, error) {
-	log, ret, err := c.Controller.InsertSchema(ctx, parameters)
+func (c *ControllerWithEvents) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
+	log, ret, idempotencyHit, err := c.Controller.InsertSchema(ctx, parameters)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if !parameters.DryRun {
 		c.handleEvent(ctx, func() {
@@ -164,7 +164,7 @@ func (c *ControllerWithEvents) InsertSchema(ctx context.Context, parameters Para
 		})
 	}
 
-	return log, ret, nil
+	return log, ret, idempotencyHit, nil
 }
 
 func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {

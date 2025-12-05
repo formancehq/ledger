@@ -70,6 +70,7 @@ type V2CreateTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
 	V2CreateTransactionResponse *components.V2CreateTransactionResponse
+	Headers                     map[string][]string
 }
 
 func (o *V2CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -84,4 +85,11 @@ func (o *V2CreateTransactionResponse) GetV2CreateTransactionResponse() *componen
 		return nil
 	}
 	return o.V2CreateTransactionResponse
+}
+
+func (o *V2CreateTransactionResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

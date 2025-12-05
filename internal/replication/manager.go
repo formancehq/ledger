@@ -219,6 +219,7 @@ func (m *Manager) synchronizePipelines(ctx context.Context) error {
 		if _, err := m.startPipeline(ctx, pipeline); err != nil {
 			switch {
 			case errors.Is(err, ledger.ErrAlreadyStarted("")):
+				m.logger.Debugf("Pipeline already started, skipping")
 			default:
 				return err
 			}

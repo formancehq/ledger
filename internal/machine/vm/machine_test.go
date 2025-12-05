@@ -134,7 +134,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 
 	err := exec(m)
 	if expected.Error != nil {
-		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %v, got: %v", expected.Error, err)
+		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %[1]v (%[1]T), got: %v", expected.Error, err)
 		if expected.ErrorContains != "" {
 			require.ErrorContains(t, err, expected.ErrorContains)
 		}
@@ -1699,6 +1699,54 @@ func TestVariablesErrors(t *testing.T) {
 	test(t, tc)
 }
 
+func TestWorldSourceVariable(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $foo
+	}
+	send [COIN 1] (
+		source = $foo
+		destination = @bob
+	)`)
+	tc.vars = map[string]string{
+		"foo": "world",
+	}
+	tc.expected = CaseResult{
+		Printed:       []machine.Value{},
+		Postings:      []Posting{},
+		Error:         &machine.ErrInvalidVars{},
+		ErrorContains: "`@world` can only be used as a variable in the experimental interpreter, or if it is never used as a source",
+	}
+	test(t, tc)
+}
+
+func TestWorldNonSourceVariable(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $foo
+	}
+	send [COIN 1] (
+		source = @alice
+		destination = $foo
+	)`)
+	tc.setBalance("alice", "COIN", 1)
+	tc.vars = map[string]string{
+		"foo": "world",
+	}
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Source:      "alice",
+				Destination: "world",
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(1),
+			},
+		},
+	}
+	test(t, tc)
+}
+
 func TestSetVarsFromJSON(t *testing.T) {
 
 	type testCase struct {
@@ -2264,6 +2312,25 @@ func TestSaveFromAccount(t *testing.T) {
 			Printed:  []machine.Value{},
 			Postings: []Posting{},
 			Error:    &machine.ErrNegativeAmount{},
+		}
+		test(t, tc)
+	})
+
+	t.Run("save all and overdraft", func(t *testing.T) {
+		script := `
+ 			save [USD *] from @alice
+
+ 			send [USD 10] (
+ 			   source = @alice allowing overdraft up to [USD 10]
+ 			   destination = @world
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", -10)
+		tc.expected = CaseResult{
+			Printed:       []machine.Value{},
+			ErrorContains: "insufficient funds",
+			Error:         &machine.ErrInsufficientFund{},
 		}
 		test(t, tc)
 	})
