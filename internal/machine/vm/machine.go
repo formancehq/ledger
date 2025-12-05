@@ -434,11 +434,23 @@ func (m *Machine) tick() (bool, error) {
 	case program.OP_SAVE:
 		a := pop[machine.AccountAddress](m)
 		v := m.popValue()
+		// note: if the balance is not present, it means it's never used as a source so we don't need to save anything
 		switch v := v.(type) {
 		case machine.Asset:
-			m.Balances[a][v] = machine.Zero
+			if balances, ok := m.Balances[a]; ok {
+				if balance, ok := balances[v]; ok {
+					if balance.ToBigInt().Sign() > 0 {
+						balances[v] = machine.Zero
+					}
+				}
+			}
+
 		case machine.Monetary:
-			m.Balances[a][v.Asset] = m.Balances[a][v.Asset].Sub(v.Amount)
+			if balances, ok := m.Balances[a]; ok {
+				if balance, ok := balances[v.Asset]; ok {
+					balances[v.Asset] = balance.Sub(v.Amount)
+				}
+			}
 		default:
 			panic(fmt.Errorf("invalid value type: %T", v))
 		}
@@ -494,6 +506,8 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 		assignBalanceAsResource[address][string(monetary.Asset)] = resourceIndex
 	}
 
+	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
+
 	// for every account that we need balances of, check if it's there
 	for addr, neededAssets := range m.Program.NeededBalances {
 		account, ok := m.getResource(addr)
@@ -501,6 +515,9 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 			return errors.New("invalid program (resolve balances: invalid address of account)")
 		}
 		accountAddress := (*account).(machine.AccountAddress)
+		if string(accountAddress) == "world" {
+			return machine.NewErrInvalidVars("`@world` can only be used as a variable in the experimental interpreter, or if it is never used as a source")
+		}
 
 		// for every asset, register the query
 		for addr := range neededAssets {
@@ -510,16 +527,11 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 			}
 
 			asset := (*mon).(machine.HasAsset).GetAsset()
-			if string(accountAddress) == "world" {
-				m.Balances[accountAddress][asset] = machine.Zero
-				continue
-			}
 
 			balancesQuery[string(accountAddress)] = append(balancesQuery[string(accountAddress)], string(asset))
 		}
 	}
 
-	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
 	if len(balancesQuery) > 0 {
 		balances, err := store.GetBalances(ctx, balancesQuery)
 		if err != nil {
