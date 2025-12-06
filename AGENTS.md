@@ -103,3 +103,23 @@ When modifying any `.proto` file:
 2. Run `just generate-proto` to regenerate the Go code for all proto files
 3. Update any code that uses the generated types if the API has changed
 4. Rebuild the project to ensure everything compiles
+
+## Finite State Machine (FSM) Design Principles
+
+### No I/O Operations
+
+**CRITICAL**: FSMs must never perform any I/O operations (file system, network, database, etc.). All data must be stored in memory and accessed directly from the FSM's internal state.
+
+**Rationale**: 
+- FSMs are deterministic state machines that must produce identical results when replaying the same sequence of commands
+- I/O operations introduce non-determinism (network delays, file system state, etc.)
+- I/O operations can fail, making the FSM unreliable
+- Performance: in-memory operations are orders of magnitude faster
+
+**What to do instead**:
+- Store all necessary data in the FSM's internal state (maps, slices, etc.)
+- Access data directly from memory structures
+- If you need to persist data, do it during snapshot creation (which happens outside the FSM)
+- If you need to read persisted data, restore it from snapshots during FSM initialization
+
+**Example**: Instead of calling `logReader.GetLogWithIdempotencyKey()` in the FSM, maintain an `idempotencyKeys map[string]IdempotencyKeyInfo` in the FSM state and look up directly from this map.

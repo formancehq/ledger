@@ -467,7 +467,7 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 	case bucketfsm.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd, entry.Index)
 	case bucketfsm.CommandTypeCreateTransaction:
-		_, err := g.fsm.HandleCreateTransaction(cmd, entry.Index, g.logStore)
+		_, err := g.fsm.HandleCreateTransaction(cmd, entry.Index)
 		return err
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))

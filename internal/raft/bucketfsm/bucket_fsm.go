@@ -85,7 +85,7 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) error 
 }
 
 // HandleCreateTransaction handles the create transaction command by creating a log
-func (f *BucketFSM) HandleCreateTransaction(cmd service.Command, index uint64, logReader service.LogReader) (*ledger.Log, error) {
+func (f *BucketFSM) HandleCreateTransaction(cmd service.Command, index uint64) (*ledger.Log, error) {
 	var createCmd CreateTransactionCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.Error("Failed to unmarshal create transaction command", zap.Error(err))
@@ -104,24 +104,11 @@ func (f *BucketFSM) HandleCreateTransaction(cmd service.Command, index uint64, l
 					zap.String("expectedHash", expectedHash))
 				return nil, service.ErrIdempotencyKeyConflict
 			}
-			// Hash matches, retrieve existing log
-			existingLog, err := logReader.GetLogWithIdempotencyKey(context.Background(), createCmd.LedgerName, createCmd.IdempotencyKey)
-			if err != nil {
-				return nil, fmt.Errorf("retrieving existing log for idempotency key: %w", err)
-			}
-			if existingLog == nil {
-				// Log not found but key exists in FSM (shouldn't happen, but handle gracefully)
-				f.logger.Warn("Idempotency key exists in FSM but log not found",
-					zap.String("idempotencyKey", createCmd.IdempotencyKey),
-					zap.Uint64("logID", existingInfo.LogID))
-				// Continue with creation, will update the idempotency key entry
-			} else {
-				// Return existing log
-				f.logger.Info("Returning existing transaction for idempotency key",
-					zap.String("idempotencyKey", createCmd.IdempotencyKey),
-					zap.Uint64("logID", existingInfo.LogID))
-				return existingLog, nil
-			}
+			// Hash matches, return error indicating the transaction already exists
+			f.logger.Info("Idempotency key already exists with matching hash",
+				zap.String("idempotencyKey", createCmd.IdempotencyKey),
+				zap.Uint64("logID", existingInfo.LogID))
+			return nil, service.ErrIdempotencyKeyConflict
 		}
 	}
 
