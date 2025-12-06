@@ -2,7 +2,6 @@ package raft
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"time"
 
@@ -41,8 +40,8 @@ func NewNodeWrapper(node *raft.RawNode, logger *zap.Logger) *NodeWrapper {
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
 func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64, error) {
-	// Serialize the command
-	cmdData, err := json.Marshal(cmd)
+	// Serialize the command to binary format
+	cmdData, err := cmd.MarshalBinary()
 	if err != nil {
 		return 0, err
 	}

@@ -1,7 +1,8 @@
 package bucketfsm
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
@@ -23,17 +24,18 @@ type CreateLedgerCommand struct {
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
 func NewCreateLedgerCommand(name string, metadata metadata.Metadata) (*service.Command, error) {
-	data, err := json.Marshal(CreateLedgerCommand{
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(CreateLedgerCommand{
 		Name:     name,
 		Metadata: metadata,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
 		Type: CommandTypeCreateLedger,
-		Data: data,
+		Data: buf.Bytes(),
 		Date: time.Now(),
 	}, nil
 }
@@ -48,19 +50,27 @@ type CreateTransactionCommand struct {
 
 // NewCreateTransactionCommand creates a new CreateTransactionCommand
 func NewCreateTransactionCommand(ledgerName string, createTx service.CreateTransaction, idempotencyKey string, dryRun bool) (*service.Command, error) {
-	data, err := json.Marshal(CreateTransactionCommand{
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(CreateTransactionCommand{
 		LedgerName:        ledgerName,
 		CreateTransaction: createTx,
 		IdempotencyKey:    idempotencyKey,
 		DryRun:            dryRun,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
 		Type: CommandTypeCreateTransaction,
-		Data: data,
+		Data: buf.Bytes(),
 		Date: time.Now(),
 	}, nil
+}
+
+// UnmarshalCommandData unmarshals command data from binary format
+func UnmarshalCommandData(data []byte, v interface{}) error {
+	buf := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(buf)
+	return dec.Decode(v)
 }

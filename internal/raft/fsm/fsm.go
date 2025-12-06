@@ -30,7 +30,7 @@ func NewFSM(logger *zap.Logger) *FSM {
 // HandleCreateBucket handles the create bucket command
 func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 	var createCmd CreateBucketCommand
-	if err := json.Unmarshal(cmd.Data, &createCmd); err != nil {
+	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.Error("Failed to unmarshal create bucket command", zap.Error(err))
 		return fmt.Errorf("unmarshaling create bucket command: %w", err)
 	}
@@ -64,7 +64,7 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 // HandleDeleteBucket handles the delete bucket command
 func (f *FSM) HandleDeleteBucket(cmd service.Command, index uint64) error {
 	var deleteCmd DeleteBucketCommand
-	if err := json.Unmarshal(cmd.Data, &deleteCmd); err != nil {
+	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
 		f.logger.Error("Failed to unmarshal delete bucket command", zap.Error(err))
 		return fmt.Errorf("unmarshaling delete bucket command: %w", err)
 	}

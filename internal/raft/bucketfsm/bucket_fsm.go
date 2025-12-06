@@ -51,7 +51,7 @@ func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
 // HandleCreateLedger handles the create ledger command for this bucket
 func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) error {
 	var createCmd CreateLedgerCommand
-	if err := json.Unmarshal(cmd.Data, &createCmd); err != nil {
+	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.Error("Failed to unmarshal create ledger command", zap.Error(err))
 		return fmt.Errorf("unmarshaling create ledger command: %w", err)
 	}
@@ -87,7 +87,7 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) error 
 // HandleCreateTransaction handles the create transaction command by creating a log
 func (f *BucketFSM) HandleCreateTransaction(cmd service.Command, index uint64, logReader service.LogReader) (*ledger.Log, error) {
 	var createCmd CreateTransactionCommand
-	if err := json.Unmarshal(cmd.Data, &createCmd); err != nil {
+	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.Error("Failed to unmarshal create transaction command", zap.Error(err))
 		return nil, fmt.Errorf("unmarshaling create transaction command: %w", err)
 	}

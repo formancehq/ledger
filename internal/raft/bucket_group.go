@@ -2,7 +2,6 @@ package raft
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -317,7 +316,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 
 				// Decode the command to get its ID
 				var cmd service.Command
-				if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 					g.logger.Error("Failed to unmarshal command for notification", zap.Uint64("index", entry.Index), zap.Error(err))
 					continue
 				}
@@ -459,7 +458,7 @@ func (g *BucketRaftGroup) Snapshot() error {
 func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 	// Decode the command from the Raft log data
 	var cmd service.Command
-	if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+	if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 		return fmt.Errorf("unmarshaling command: %w", err)
 	}
 

@@ -2,7 +2,6 @@ package raft
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -306,7 +305,7 @@ func (r *Cluster) readyLoop() {
 				}
 				// Decode the command to get its ID
 				var cmd service.Command
-				if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 					r.logger.Error("Failed to unmarshal command for notification", zap.Uint64("index", entry.Index), zap.Error(err))
 					continue
 				}
@@ -329,7 +328,7 @@ func (r *Cluster) readyLoop() {
 func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 	// Decode the command from the Raft log data
 	var cmd service.Command
-	if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+	if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 		return fmt.Errorf("unmarshaling command: %w", err)
 	}
 
@@ -343,7 +342,7 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 			// Start Raft group for the bucket after successful creation
 			// The bucket Raft group info is now stored in the FSM, so we retrieve it from there
 			var createCmd fsm.CreateBucketCommand
-			if unmarshalErr := json.Unmarshal(cmd.Data, &createCmd); unmarshalErr == nil {
+			if unmarshalErr := fsm.UnmarshalCommandData(cmd.Data, &createCmd); unmarshalErr == nil {
 				bucketInfo, exists := r.fsm.GetBucket(createCmd.Name)
 				if exists {
 					bucketRaftGroups := r.fsm.GetAllBucketRaftGroups()
@@ -362,7 +361,7 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 		if err == nil {
 			// Stop Raft group for the bucket after successful deletion
 			var deleteCmd fsm.DeleteBucketCommand
-			if unmarshalErr := json.Unmarshal(cmd.Data, &deleteCmd); unmarshalErr == nil {
+			if unmarshalErr := fsm.UnmarshalCommandData(cmd.Data, &deleteCmd); unmarshalErr == nil {
 				if stopErr := r.stopBucketRaftGroup(deleteCmd.Name); stopErr != nil {
 					r.logger.Error("Failed to stop bucket Raft group", zap.String("bucket", deleteCmd.Name), zap.Error(stopErr))
 					// Don't fail the entry application, just log the error

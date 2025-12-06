@@ -1,7 +1,8 @@
 package fsm
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 
 	"github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -23,18 +24,19 @@ type CreateBucketCommand struct {
 
 // NewCreateBucketCommand creates a new CreateBucketCommand
 func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*service.Command, error) {
-	data, err := json.Marshal(CreateBucketCommand{
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(CreateBucketCommand{
 		Name:   name,
 		Driver: driver,
 		Config: config,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
 		Type: CommandTypeCreateBucket,
-		Data: data,
+		Data: buf.Bytes(),
 		Date: time.Now(),
 	}, nil
 }
@@ -46,16 +48,24 @@ type DeleteBucketCommand struct {
 
 // NewDeleteBucketCommand creates a new DeleteBucketCommand
 func NewDeleteBucketCommand(name string) (*service.Command, error) {
-	data, err := json.Marshal(DeleteBucketCommand{
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(DeleteBucketCommand{
 		Name: name,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
 		Type: CommandTypeDeleteBucket,
-		Data: data,
+		Data: buf.Bytes(),
 		Date: time.Now(),
 	}, nil
+}
+
+// UnmarshalCommandData unmarshals command data from binary format
+func UnmarshalCommandData(data []byte, v interface{}) error {
+	buf := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(buf)
+	return dec.Decode(v)
 }
