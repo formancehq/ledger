@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
@@ -27,6 +28,7 @@ type BucketFSM struct {
 	lastLogIDs         map[string]uint64                         // Map of ledger name -> last log ID
 	idempotencyKeys    map[string]IdempotencyKeyInfo             // Map of idempotency key -> log ID and hash
 	balances           map[string]map[string]map[string]*big.Int // Map of ledger name -> account -> asset -> balance
+	accountMetadata    map[string]map[string]map[string]string   // Map of ledger name -> account -> metadata key -> metadata value
 	logs               []ledger.Log                              // Logs stored in memory until snapshot
 	createdLogs        map[uint64]*ledger.Log                    // Map of entry index -> created log (for retrieving logs after application)
 	logger             *zap.Logger
@@ -42,6 +44,7 @@ func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
 		lastLogIDs:         make(map[string]uint64),
 		idempotencyKeys:    make(map[string]IdempotencyKeyInfo),
 		balances:           make(map[string]map[string]map[string]*big.Int),
+		accountMetadata:    make(map[string]map[string]map[string]string),
 		logs:               make([]ledger.Log, 0),
 		createdLogs:        make(map[uint64]*ledger.Log),
 		logger:             logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-fsm")),
@@ -185,6 +188,10 @@ func (f *BucketFSM) HandleCreateTransaction(cmd service.Command, index uint64) (
 		}
 		// Update balances for each posting
 		f.updateBalances(createCmd.LedgerName, createCmd.CreateTransaction.Postings)
+		// Store account metadata if provided
+		if len(createCmd.CreateTransaction.AccountMetadata) > 0 {
+			f.storeAccountMetadata(createCmd.LedgerName, createCmd.CreateTransaction.AccountMetadata)
+		}
 		// Store created log for retrieval by entry index
 		f.createdLogs[index] = &log
 		f.logger.Info("Transaction log created and stored in memory", zap.Uint64("index", index), zap.Uint64("logID", newLogID), zap.String("ledger", createCmd.LedgerName))
@@ -332,6 +339,22 @@ func (f *BucketFSM) cleanupZeroBalance(ledgerName, account, asset string) {
 	}
 }
 
+// storeAccountMetadata stores account metadata for the given ledger
+func (f *BucketFSM) storeAccountMetadata(ledgerName string, accountMetadata map[string]metadata.Metadata) {
+	if f.accountMetadata[ledgerName] == nil {
+		f.accountMetadata[ledgerName] = make(map[string]map[string]string)
+	}
+	for account, metadata := range accountMetadata {
+		if f.accountMetadata[ledgerName][account] == nil {
+			f.accountMetadata[ledgerName][account] = make(map[string]string)
+		}
+		// Merge metadata (new values override existing ones)
+		for k, v := range metadata {
+			f.accountMetadata[ledgerName][account][k] = v
+		}
+	}
+}
+
 // GetCreatedLog returns the log created at the given entry index
 func (f *BucketFSM) GetCreatedLog(index uint64) (*ledger.Log, bool) {
 	log, ok := f.createdLogs[index]
@@ -352,6 +375,21 @@ func (f *BucketFSM) GetAllLedgers() map[string]service.LedgerInfo {
 		result[k] = v
 	}
 	return result
+}
+
+// GetAccountMetadata returns the metadata for a specific account in a ledger
+func (f *BucketFSM) GetAccountMetadata(ledgerName, account string) (metadata.Metadata, bool) {
+	if ledgerAccounts, ok := f.accountMetadata[ledgerName]; ok {
+		if accountMetadata, ok := ledgerAccounts[account]; ok {
+			// Convert map[string]string to metadata.Metadata
+			result := make(metadata.Metadata, len(accountMetadata))
+			for k, v := range accountMetadata {
+				result[k] = v
+			}
+			return result, true
+		}
+	}
+	return nil, false
 }
 
 // CreateSnapshot creates a snapshot of the bucket FSM state
@@ -379,6 +417,9 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 		}
 	}
 
+	// Account metadata is already in JSON-serializable format
+	accountMetadataJSON := f.accountMetadata
+
 	snapshotData := map[string]interface{}{
 		"ledgers":            f.ledgers,
 		"nextLedgerID":       f.nextLedgerID,
@@ -386,6 +427,7 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 		"lastLogIDs":         f.lastLogIDs,
 		"idempotencyKeys":    f.idempotencyKeys,
 		"balances":           balancesJSON,
+		"accountMetadata":    accountMetadataJSON,
 	}
 
 	// Marshal to JSON
@@ -406,6 +448,7 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 		LastLogIDs         map[string]uint64                       `json:"lastLogIDs"`
 		IdempotencyKeys    map[string]IdempotencyKeyInfo           `json:"idempotencyKeys"`
 		Balances           map[string]map[string]map[string]string `json:"balances"`
+		AccountMetadata    map[string]map[string]map[string]string `json:"accountMetadata"`
 	}
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
@@ -472,6 +515,12 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 		}
 	}
 
-	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)), zap.Uint64("nextLedgerID", f.nextLedgerID), zap.Int("lastLogIDsCount", len(f.lastLogIDs)), zap.Int("idempotencyKeysCount", len(f.idempotencyKeys)), zap.Int("balancesCount", len(f.balances)))
+	// Restore account metadata
+	f.accountMetadata = snapshotData.AccountMetadata
+	if f.accountMetadata == nil {
+		f.accountMetadata = make(map[string]map[string]map[string]string)
+	}
+
+	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)), zap.Uint64("nextLedgerID", f.nextLedgerID), zap.Int("lastLogIDsCount", len(f.lastLogIDs)), zap.Int("idempotencyKeysCount", len(f.idempotencyKeys)), zap.Int("balancesCount", len(f.balances)), zap.Int("accountMetadataCount", len(f.accountMetadata)))
 	return nil
 }
