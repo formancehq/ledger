@@ -28,6 +28,7 @@ const (
 type Command struct {
 	Type CommandType     `json:"type"`
 	Data json.RawMessage `json:"data"`
+	Date time.Time       `json:"date"` // Creation date in UTC, rounded to microsecond
 }
 
 // InsertLogsCommand represents the data for an insert logs command
@@ -44,6 +45,7 @@ func NewInsertLogsCommand(logs []ledger.Log) (*Command, error) {
 	return &Command{
 		Type: CommandTypeInsertLogs,
 		Data: data,
+		Date: time.Now().UTC().Truncate(time.Microsecond),
 	}, nil
 }
 
@@ -65,6 +67,7 @@ func NewSetPublicAddrCommand(nodeID, publicAddr string) (*Command, error) {
 	return &Command{
 		Type: CommandTypeSetPublicAddr,
 		Data: data,
+		Date: time.Now().UTC().Truncate(time.Microsecond),
 	}, nil
 }
 
@@ -95,6 +98,7 @@ func NewCreateLedgerCommand(name string, metadata metadata.Metadata) (*Command, 
 	return &Command{
 		Type: CommandTypeCreateLedger,
 		Data: data,
+		Date: time.Now().UTC().Truncate(time.Microsecond),
 	}, nil
 }
 
@@ -127,6 +131,7 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}) 
 	return &Command{
 		Type: CommandTypeCreateBucket,
 		Data: data,
+		Date: time.Now().UTC().Truncate(time.Microsecond),
 	}, nil
 }
 
@@ -146,5 +151,6 @@ func NewDeleteBucketCommand(name string) (*Command, error) {
 	return &Command{
 		Type: CommandTypeDeleteBucket,
 		Data: data,
+		Date: time.Now().UTC().Truncate(time.Microsecond),
 	}, nil
 }
