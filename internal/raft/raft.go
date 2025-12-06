@@ -24,7 +24,7 @@ import (
 )
 
 type Cluster struct {
-	node          *raft.RawNode
+	node          *NodeWrapper
 	fsm           *fsm.FSM
 	storage       *Storage
 	transport     *Transport
@@ -80,12 +80,15 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	}
 
 	// Create RawNode
-	node, err := raft.NewRawNode(raftConfig)
+	rawNode, err := raft.NewRawNode(raftConfig)
 	if err != nil {
 		cancel()
 		transport.Stop()
 		return nil, fmt.Errorf("creating raw node: %w", err)
 	}
+
+	// Wrap the RawNode with our wrapper
+	node := NewNodeWrapper(rawNode, logger)
 
 	// Build peers list if bootstrap and storage is empty
 	if cfg.Bootstrap {
@@ -116,7 +119,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 			}
 
 			// Bootstrap the cluster
-			if err := node.Bootstrap(peers); err != nil {
+			if err := node.RawNode().Bootstrap(peers); err != nil {
 				cancel()
 				transport.Stop()
 				return nil, fmt.Errorf("bootstrapping cluster: %w", err)
@@ -212,7 +215,7 @@ func (r *Cluster) readyLoop() {
 		case <-r.ctx.Done():
 			return
 		case <-ticker.C:
-			r.node.Tick()
+			r.node.RawNode().Tick()
 		case msg := <-r.transport.Recv():
 			// Route messages: if node ID >= 0x10000, it's for a bucket group
 			// Otherwise, it's for the main cluster
@@ -223,7 +226,7 @@ func (r *Cluster) readyLoop() {
 			} else {
 				r.logger.Debug("Received message for main cluster", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
 				// Process message for main cluster
-				r.node.Step(msg)
+				r.node.RawNode().Step(msg)
 			}
 		case peerID := <-r.transport.Unreachable():
 			// Report unreachable peer to Raft
@@ -234,13 +237,13 @@ func (r *Cluster) readyLoop() {
 			} else {
 				// Report to main cluster
 				r.logger.Debug("Received unreachable message for main cluster", zap.String("peer", fmt.Sprintf("%x", peerID)))
-				r.node.ReportUnreachable(peerID)
+				r.node.RawNode().ReportUnreachable(peerID)
 			}
 		}
 
 		// Process Ready structures
-		for r.node.HasReady() {
-			rd := r.node.Ready()
+		for r.node.RawNode().HasReady() {
+			rd := r.node.RawNode().Ready()
 
 			// Save HardState, Entries and Snapshot to storage
 			if !raft.IsEmptyHardState(rd.HardState) {
@@ -288,7 +291,7 @@ func (r *Cluster) readyLoop() {
 						zap.String("type", cc.Type.String()),
 						zap.String("nodeID", fmt.Sprintf("%x", cc.NodeID)))
 					// Apply the conf change to update the ConfState
-					r.node.ApplyConfChange(cc)
+					r.node.RawNode().ApplyConfChange(cc)
 					continue
 				}
 				// Skip other non-normal entries
@@ -301,13 +304,23 @@ func (r *Cluster) readyLoop() {
 					r.logger.Debug("Skipping empty entry", zap.Uint64("index", entry.Index))
 					continue
 				}
-				if err := r.applyEntry(entry); err != nil {
-					r.logger.Error("Failed to apply entry", zap.Uint64("index", entry.Index), zap.Error(err))
+				// Decode the command to get its ID
+				var cmd service.Command
+				if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+					r.logger.Error("Failed to unmarshal command for notification", zap.Uint64("index", entry.Index), zap.Error(err))
+					continue
+				}
+
+				applyErr := r.applyEntry(entry)
+				// Notify the wrapper that this command has been applied using its ID
+				r.node.NotifyApplied(cmd.ID, entry.Index, applyErr)
+				if applyErr != nil {
+					r.logger.Error("Failed to apply entry", zap.Uint64("index", entry.Index), zap.Uint64("commandID", cmd.ID), zap.Error(applyErr))
 				}
 			}
 
 			// Advance the node
-			r.node.Advance(rd)
+			r.node.RawNode().Advance(rd)
 		}
 	}
 }
@@ -324,12 +337,12 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 	var err error
 	switch cmd.Type {
 	// Note: InsertLogs and CreateLedger are now handled by bucket Raft groups, not the main cluster
-	case service.CommandTypeCreateBucket:
-		err = r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
+	case fsm.CommandTypeCreateBucket:
+		err = r.fsm.HandleCreateBucket(cmd, entry.Index)
 		if err == nil {
 			// Start Raft group for the bucket after successful creation
 			// The bucket Raft group info is now stored in the FSM, so we retrieve it from there
-			var createCmd service.CreateBucketCommand
+			var createCmd fsm.CreateBucketCommand
 			if unmarshalErr := json.Unmarshal(cmd.Data, &createCmd); unmarshalErr == nil {
 				bucketInfo, exists := r.fsm.GetBucket(createCmd.Name)
 				if exists {
@@ -344,11 +357,11 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 				}
 			}
 		}
-	case service.CommandTypeDeleteBucket:
-		err = r.fsm.HandleDeleteBucket(cmd.Data, entry.Index)
+	case fsm.CommandTypeDeleteBucket:
+		err = r.fsm.HandleDeleteBucket(cmd, entry.Index)
 		if err == nil {
 			// Stop Raft group for the bucket after successful deletion
-			var deleteCmd service.DeleteBucketCommand
+			var deleteCmd fsm.DeleteBucketCommand
 			if unmarshalErr := json.Unmarshal(cmd.Data, &deleteCmd); unmarshalErr == nil {
 				if stopErr := r.stopBucketRaftGroup(deleteCmd.Name); stopErr != nil {
 					r.logger.Error("Failed to stop bucket Raft group", zap.String("bucket", deleteCmd.Name), zap.Error(stopErr))
@@ -375,7 +388,7 @@ func (r *Cluster) monitorLeader() {
 			r.logger.Info("Context cancelled, stopping leader monitoring")
 			return
 		case <-ticker.C:
-			status := r.node.Status()
+			status := r.node.RawNode().Status()
 			leaderID := status.Lead
 
 			// Check if leader changed
@@ -405,7 +418,7 @@ func (r *Cluster) monitorLeader() {
 					conn, err := net.DialTimeout("tcp", leaderAddr, 500*time.Millisecond)
 					if err != nil {
 						r.logger.Info("Leader appears unreachable, reporting", zap.String("leader", leaderAddr), zap.Error(err))
-						r.node.ReportUnreachable(leaderID)
+						r.node.RawNode().ReportUnreachable(leaderID)
 					} else {
 						conn.Close()
 					}
@@ -609,7 +622,7 @@ func (r *Cluster) Shutdown() error {
 }
 
 func (r *Cluster) GetRaft() *raft.RawNode {
-	return r.node
+	return r.node.RawNode()
 }
 
 // GetLedgerService returns the ledger service that routes to bucket Raft groups
@@ -942,23 +955,18 @@ func (r *Cluster) GetAllLedgers(bucketName string) (map[string]service.LedgerInf
 // CreateBucket creates a new bucket via a FSM command
 func (r *Cluster) CreateBucket(name, driver string, config map[string]interface{}) error {
 	// Create the command
-	cmd, err := service.NewCreateBucketCommand(name, driver, config)
+	cmd, err := fsm.NewCreateBucketCommand(name, driver, config)
 	if err != nil {
 		return fmt.Errorf("creating create bucket command: %w", err)
 	}
 
-	// Serialize the command
-	cmdData, err := json.Marshal(cmd)
+	// Apply the command via Raft (waits for application)
+	_, err = r.node.Apply(cmd, 5*time.Second)
 	if err != nil {
-		return fmt.Errorf("marshaling command: %w", err)
+		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	// Propose the command via Raft (will be applied in readyLoop)
-	if err := r.node.Propose(cmdData); err != nil {
-		return fmt.Errorf("proposing command via raft: %w", err)
-	}
-
-	r.logger.Info("Bucket creation proposed via Raft", zap.String("name", name), zap.String("driver", driver))
+	r.logger.Info("Bucket created via Raft", zap.String("name", name), zap.String("driver", driver), zap.Uint64("commandID", cmd.ID))
 	return nil
 }
 
@@ -975,23 +983,18 @@ func (r *Cluster) GetAllBuckets() map[string]service.BucketInfo {
 // DeleteBucket deletes a bucket via a FSM command
 func (r *Cluster) DeleteBucket(name string) error {
 	// Create the command
-	cmd, err := service.NewDeleteBucketCommand(name)
+	cmd, err := fsm.NewDeleteBucketCommand(name)
 	if err != nil {
 		return fmt.Errorf("creating delete bucket command: %w", err)
 	}
 
-	// Serialize the command
-	cmdData, err := json.Marshal(cmd)
+	// Apply the command via Raft (waits for application)
+	_, err = r.node.Apply(cmd, 5*time.Second)
 	if err != nil {
-		return fmt.Errorf("marshaling command: %w", err)
+		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	// Propose the command via Raft (will be applied in readyLoop)
-	if err := r.node.Propose(cmdData); err != nil {
-		return fmt.Errorf("proposing command via raft: %w", err)
-	}
-
-	r.logger.Info("Bucket deletion proposed via Raft", zap.String("name", name))
+	r.logger.Info("Bucket deleted via Raft", zap.String("name", name), zap.Uint64("commandID", cmd.ID))
 	return nil
 }
 

@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/bucketfsm"
@@ -23,7 +25,7 @@ import (
 // BucketRaftGroup represents a Raft group for a specific bucket
 type BucketRaftGroup struct {
 	bucketName    string
-	node          *raft.RawNode
+	node          *NodeWrapper
 	storage       *Storage
 	bucketStorage service.BucketStorage // Storage for bucket data (SQLite or File)
 	fsm           *bucketfsm.BucketFSM  // FSM for managing ledgers in this bucket
@@ -37,6 +39,7 @@ type BucketRaftGroup struct {
 	msgCh         chan raftpb.Message    // Channel for receiving messages routed from main cluster
 	defaultLedger *service.DefaultLedger // Ledger service for this bucket
 	logStore      service.LogStore       // Log store for this bucket
+	mu            sync.RWMutex           // Mutex for thread-safe access
 }
 
 // bucketGroupID generates a unique ID for a bucket Raft group based on the bucket's sequential ID
@@ -99,11 +102,15 @@ func NewBucketRaftGroup(
 	}
 
 	// Create RawNode
-	node, err := raft.NewRawNode(raftConfig)
+	rawNode, err := raft.NewRawNode(raftConfig)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("creating raw node for bucket %s: %w", bucketName, err)
 	}
+
+	// Wrap the RawNode with our wrapper
+	bucketLogger := logger.With(zap.String("bucket", bucketName))
+	nodeWrapper := NewNodeWrapper(rawNode, bucketLogger)
 
 	// Bootstrap if storage is empty
 	// For bucket groups, each node has a unique ID: groupID + nodeOffset
@@ -135,7 +142,7 @@ func NewBucketRaftGroup(
 			peers = append(peers, raft.Peer{ID: peerID})
 		}
 
-		if err := node.Bootstrap(peers); err != nil {
+		if err := nodeWrapper.RawNode().Bootstrap(peers); err != nil {
 			cancel()
 			return nil, fmt.Errorf("bootstrapping bucket group %s: %w", bucketName, err)
 		}
@@ -148,7 +155,6 @@ func NewBucketRaftGroup(
 
 	// Create application log store for this bucket based on bucket driver
 	var appLogStore service.LogStore
-	bucketLogger := logger.With(zap.String("bucket", bucketName))
 	switch bucketInfo.Driver {
 	case "sqlite":
 		dsn, ok := bucketInfo.Config["dsn"].(string)
@@ -181,22 +187,10 @@ func NewBucketRaftGroup(
 		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", bucketInfo.Driver)
 	}
 
-	// Create RaftLogWriter for writing logs via Raft (using bucket's node)
-	raftLogWriter := service.NewRaftLogWriter(node, bucketLogger)
-
-	// Create reconstructed volumes store (reconstructs volumes from logs)
-	volumesStore := service.NewReconstructedVolumesStore(appLogStore)
-
-	// Wrap volumes store with locked volumes store for concurrent access control
-	lockedVolumesStore := service.NewDefaultLockedVolumesStore(volumesStore)
-
-	// Create ledger service for this bucket (will use RaftLogWriter to persist logs via bucket Raft)
-	// appLogStore implements LogReader, lockedVolumesStore implements LockedVolumesStore
-	defaultLedger := service.NewDefaultLedger(raftLogWriter, lockedVolumesStore, appLogStore, bucketLogger)
-
+	// Create bucket group first (will be used as TransactionCreator)
 	group := &BucketRaftGroup{
 		bucketName:    bucketName,
-		node:          node,
+		node:          nodeWrapper,
 		storage:       storage,
 		bucketStorage: bucketStorage,
 		fsm:           bucketFSM,
@@ -208,9 +202,12 @@ func NewBucketRaftGroup(
 		nodeID:        groupNodeID, // Use bucket-specific node ID
 		groupID:       groupID,
 		msgCh:         make(chan raftpb.Message, 100), // Channel for messages routed from main cluster
-		defaultLedger: defaultLedger,
 		logStore:      appLogStore,
 	}
+
+	// Create ledger service for this bucket (will use BucketRaftGroup as TransactionCreator)
+	defaultLedger := service.NewDefaultLedger(group, bucketLogger)
+	group.defaultLedger = defaultLedger
 
 	return group, nil
 }
@@ -241,14 +238,14 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 		case <-g.ctx.Done():
 			return
 		case <-ticker.C:
-			g.node.Tick()
+			g.node.RawNode().Tick()
 		case msg := <-msgCh:
 			// Messages are already filtered by the transport subscription
 			// Only messages where To or From matches groupNodeID are received
 			// Verify that this is indeed a bucket group message (node ID >= 0x10000)
 			if msg.To >= 0x10000 || msg.From >= 0x10000 {
 				g.logger.Debug("Received message for bucket group", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
-				g.node.Step(msg)
+				g.node.RawNode().Step(msg)
 			} else {
 				g.logger.Warn("Received message for main cluster in bucket group, ignoring",
 					zap.String("to", fmt.Sprintf("%x", msg.To)),
@@ -261,8 +258,8 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 		}
 
 		// Process Ready structures
-		for g.node.HasReady() {
-			rd := g.node.Ready()
+		for g.node.RawNode().HasReady() {
+			rd := g.node.RawNode().Ready()
 
 			// Save HardState, Entries and Snapshot to storage
 			if !raft.IsEmptyHardState(rd.HardState) {
@@ -304,7 +301,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 					g.logger.Info("Applying configuration change",
 						zap.String("type", cc.Type.String()),
 						zap.String("nodeID", fmt.Sprintf("%x", cc.NodeID)))
-					g.node.ApplyConfChange(cc)
+					g.node.RawNode().ApplyConfChange(cc)
 					continue
 				}
 
@@ -318,20 +315,31 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 					continue
 				}
 
-				// Apply bucket-specific entries to bucket FSM
-				if err := g.applyEntry(entry); err != nil {
-					g.logger.Error("Failed to apply entry to bucket FSM",
-						zap.Error(err),
-						zap.String("entry", string(entry.Data)))
+				// Decode the command to get its ID
+				var cmd service.Command
+				if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+					g.logger.Error("Failed to unmarshal command for notification", zap.Uint64("index", entry.Index), zap.Error(err))
 					continue
+				}
+
+				// Apply bucket-specific entries to bucket FSM
+				applyErr := g.applyEntry(entry)
+				// Notify the wrapper that this command has been applied using its ID
+				g.node.NotifyApplied(cmd.ID, entry.Index, applyErr)
+				if applyErr != nil {
+					g.logger.Error("Failed to apply entry to bucket FSM",
+						zap.Error(applyErr),
+						zap.Uint64("index", entry.Index),
+						zap.Uint64("commandID", cmd.ID),
+						zap.String("entry", string(entry.Data)))
 				}
 			}
 
 			// Advance the node
-			g.node.Advance(rd)
+			g.node.RawNode().Advance(rd)
 
 			// Check if we need to create a snapshot (every 1000 entries or when log is getting large)
-			status := g.node.Status()
+			status := g.node.RawNode().Status()
 			if status.Applied > 0 && status.Applied%1000 == 0 {
 				// Create snapshot: write logs to store and create snapshot data
 				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
@@ -368,7 +376,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 func (g *BucketRaftGroup) reportUnreachable(peerID uint64) {
 	// Extract the node ID from the peerID in the bucket group context
 	// peerID = groupID + nodeID, so we need to report the full peerID
-	g.node.ReportUnreachable(peerID)
+	g.node.RawNode().ReportUnreachable(peerID)
 }
 
 // Stop stops the bucket Raft group
@@ -407,10 +415,11 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 
 	// Route to the appropriate command handler
 	switch cmd.Type {
-	case service.CommandTypeCreateLedger:
-		return g.fsm.HandleCreateLedger(cmd.Data, entry.Index)
-	case service.CommandTypeInsertLogs:
-		return g.fsm.HandleInsertLogs(cmd.Data, entry.Index)
+	case bucketfsm.CommandTypeCreateLedger:
+		return g.fsm.HandleCreateLedger(cmd, entry.Index)
+	case bucketfsm.CommandTypeCreateTransaction:
+		_, err := g.fsm.HandleCreateTransaction(cmd, entry.Index, g.logStore)
+		return err
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
 		return nil // Don't fail on unknown commands
@@ -420,24 +429,46 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 // CreateLedger creates a new ledger in this bucket via a FSM command
 func (g *BucketRaftGroup) CreateLedger(name string, metadata metadata.Metadata) error {
 	// Create the command
-	cmd, err := service.NewCreateLedgerCommand(name, metadata)
+	cmd, err := bucketfsm.NewCreateLedgerCommand(name, metadata)
 	if err != nil {
 		return fmt.Errorf("creating create ledger command: %w", err)
 	}
 
-	// Serialize the command
-	cmdData, err := json.Marshal(cmd)
+	// Apply the command via Raft (waits for application)
+	_, err = g.node.Apply(cmd, 5*time.Second)
 	if err != nil {
-		return fmt.Errorf("marshaling command: %w", err)
+		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	// Propose the command via Raft (will be applied in readyLoop)
-	if err := g.node.Propose(cmdData); err != nil {
-		return fmt.Errorf("proposing command via raft: %w", err)
-	}
-
-	g.logger.Info("Ledger creation proposed via bucket Raft", zap.String("name", name), zap.String("bucket", g.bucketName))
+	g.logger.Info("Ledger created via bucket Raft", zap.String("name", name), zap.String("bucket", g.bucketName), zap.Uint64("commandID", cmd.ID))
 	return nil
+}
+
+// CreateTransaction creates a transaction via a FSM command and returns the created log
+func (g *BucketRaftGroup) CreateTransaction(ledgerName string, createTx service.CreateTransaction, idempotencyKey string, dryRun bool) (*ledger.Log, error) {
+	// Create the command
+	cmd, err := bucketfsm.NewCreateTransactionCommand(ledgerName, createTx, idempotencyKey, dryRun)
+	if err != nil {
+		return nil, fmt.Errorf("creating create transaction command: %w", err)
+	}
+
+	// Apply the command via Raft (waits for application)
+	appliedIndex, err := g.node.Apply(cmd, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("applying command via raft: %w", err)
+	}
+
+	// Retrieve the created log from the FSM
+	g.mu.RLock()
+	log, ok := g.fsm.GetCreatedLog(appliedIndex)
+	g.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("log not found for entry index %d", appliedIndex)
+	}
+
+	g.logger.Info("Transaction created via bucket Raft", zap.String("ledger", ledgerName), zap.Uint64("index", appliedIndex), zap.Uint64("commandID", cmd.ID))
+	return log, nil
 }
 
 // GetLedger returns the ledger info for a given name in this bucket
@@ -452,7 +483,7 @@ func (g *BucketRaftGroup) GetAllLedgers() map[string]service.LedgerInfo {
 
 // GetRaftState returns the current state of the bucket Raft group
 func (g *BucketRaftGroup) GetRaftState() *http.ClusterState {
-	status := g.node.Status()
+	status := g.node.RawNode().Status()
 
 	// Get leader
 	leaderID := status.Lead

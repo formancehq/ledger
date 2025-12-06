@@ -3,27 +3,21 @@ package service
 import (
 	"context"
 	"fmt"
-	"math/big"
 
-	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"go.uber.org/zap"
 )
 
 // DefaultLedger is the default implementation of the Ledger interface
 type DefaultLedger struct {
-	logWriter          LogWriter // Writes logs via Raft
-	lockedVolumesStore LockedVolumesStore
-	logReader          LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
+	transactionCreator TransactionCreator // Creates transactions via Raft FSM
 	logger             *zap.Logger
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedVolumesStore, logReader LogReader, logger *zap.Logger) *DefaultLedger {
+func NewDefaultLedger(transactionCreator TransactionCreator, logger *zap.Logger) *DefaultLedger {
 	return &DefaultLedger{
-		logWriter:          logWriter,
-		lockedVolumesStore: lockedVolumesStore,
-		logReader:          logReader,
+		transactionCreator: transactionCreator,
 		logger:             logger,
 	}
 }
@@ -37,147 +31,20 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		return nil, nil, ErrInvalidVars
 	}
 
-	// Check idempotency: if idempotency key is provided, check if a log already exists
-	if parameters.IdempotencyKey != "" {
-		existingLog, err := l.logReader.GetLogWithIdempotencyKey(ctx, ledgerName, parameters.IdempotencyKey)
-		if err != nil {
-			return nil, nil, err
-		}
-		if existingLog != nil {
-			// Log already exists with this idempotency key
-			// Verify that the idempotency hash matches
-			expectedHash := ledger.ComputeIdempotencyHash(input)
-			if existingLog.IdempotencyHash != expectedHash {
-				return nil, nil, ErrIdempotencyKeyConflict
-			}
-			// Same transaction, return the existing log
-			createdTx, ok := existingLog.Data.(*ledger.CreatedTransaction)
-			if !ok {
-				return nil, nil, ErrIdempotencyKeyConflict
-			}
-			return existingLog, createdTx, nil
-		}
-	}
-
-	// Group postings by source account and asset to check balances
-	// Build balance query: map[account] = [assets]
-	balanceQuery := make(map[string][]string)
-	requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
-
-	for _, posting := range input.Postings {
-		if posting.Source == ledger.WORLD {
-			continue // WORLD account has infinite funds
-		}
-
-		// Add account and asset to query
-		if balanceQuery[posting.Source] == nil {
-			balanceQuery[posting.Source] = make([]string, 0)
-		}
-		// Check if asset is already in the list
-		assetExists := false
-		for _, asset := range balanceQuery[posting.Source] {
-			if asset == posting.Asset {
-				assetExists = true
-				break
-			}
-		}
-		if !assetExists {
-			balanceQuery[posting.Source] = append(balanceQuery[posting.Source], posting.Asset)
-		}
-
-		// Track required funds
-		if requiredFunds[posting.Source] == nil {
-			requiredFunds[posting.Source] = make(map[string]*big.Int)
-		}
-		if requiredFunds[posting.Source][posting.Asset] == nil {
-			requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
-		}
-		requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount)
-	}
-
-	// Lock and check sufficient funds for all source accounts
-	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, ledgerName, balanceQuery)
+	// Create transaction via TransactionCreator (which will use Raft FSM)
+	// Balance checking, idempotency key checking, and dry run handling are all done in the FSM
+	createdLog, err := l.transactionCreator.CreateTransaction(ledgerName, input, parameters.IdempotencyKey, parameters.DryRun)
 	if err != nil {
-		// GetBalance failed in LockBalances, return the error
-		// Locks are already released in LockBalances on error
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("creating transaction: %w", err)
 	}
 
-	// Ensure locks are released when we're done
-	defer release()
-
-	// Check if accounts have sufficient funds
-	for account, assets := range requiredFunds {
-		accountBalances, ok := balances[account]
-		if !ok {
-			accountBalances = make(map[string]*big.Int)
-		}
-
-		for asset, requiredAmount := range assets {
-			balance, ok := accountBalances[asset]
-			if !ok {
-				balance = big.NewInt(0)
-			}
-
-			if balance.Cmp(requiredAmount) < 0 {
-				return nil, nil, ErrInsufficientFunds
-			}
-		}
+	// Extract CreatedTransaction from log
+	createdTx, ok := createdLog.Data.(*ledger.CreatedTransaction)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid log data type")
 	}
 
-	// Get last log to chain the new log
-	lastLog, err := l.logReader.GetLastLog(ctx, ledgerName)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Determine timestamp: use provided timestamp or current time if not provided
-	timestamp := input.Timestamp
-	if timestamp == nil {
-		now := time.Now()
-		timestamp = &now
-	}
-
-	// Create transaction
-	tx := ledger.NewTransaction().
-		WithPostings(input.Postings...).
-		WithTimestamp(*timestamp).
-		WithMetadata(input.Metadata)
-
-	if input.Reference != "" {
-		tx = tx.WithReference(input.Reference)
-	}
-
-	// Create CreatedTransaction payload
-	createdTx := &ledger.CreatedTransaction{
-		Transaction:     tx,
-		AccountMetadata: ledger.AccountMetadata(input.AccountMetadata),
-	}
-
-	// Create log
-	log := ledger.NewLog(createdTx).
-		WithDate(*timestamp).
-		WithLedger(ledgerName)
-
-	if parameters.IdempotencyKey != "" {
-		log = log.WithIdempotencyKey(parameters.IdempotencyKey)
-		idempotencyHash := ledger.ComputeIdempotencyHash(input)
-		log.IdempotencyHash = idempotencyHash
-	}
-
-	// Chain log with previous log
-	log = log.ChainLog(lastLog)
-
-	// If not dry run, write the log via LogWriter (which will use Raft)
-	if !parameters.DryRun {
-		if err := l.logWriter.InsertLogs(ctx, log); err != nil {
-			return nil, nil, fmt.Errorf("inserting logs: %w", err)
-		}
-
-		l.logger.Debug("Logs written successfully", zap.Int("count", 1))
-	}
-
-	return &log, createdTx, nil
+	return createdLog, createdTx, nil
 }
 
 // RevertTransaction is not implemented yet

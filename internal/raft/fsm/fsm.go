@@ -3,7 +3,6 @@ package fsm
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
@@ -29,9 +28,9 @@ func NewFSM(logger *zap.Logger) *FSM {
 // Ledgers and logs are now managed by bucket Raft groups, not the main FSM.
 
 // HandleCreateBucket handles the create bucket command
-func (f *FSM) HandleCreateBucket(data json.RawMessage, index uint64) error {
-	var createCmd service.CreateBucketCommand
-	if err := json.Unmarshal(data, &createCmd); err != nil {
+func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
+	var createCmd CreateBucketCommand
+	if err := json.Unmarshal(cmd.Data, &createCmd); err != nil {
 		f.logger.Error("Failed to unmarshal create bucket command", zap.Error(err))
 		return fmt.Errorf("unmarshaling create bucket command: %w", err)
 	}
@@ -46,26 +45,26 @@ func (f *FSM) HandleCreateBucket(data json.RawMessage, index uint64) error {
 	bucketID := f.nextBucketID
 	f.nextBucketID++
 
-	// Create bucket info
+	// Create bucket info using the command date
 	bucketInfo := service.BucketInfo{
 		ID:        bucketID,
 		Name:      createCmd.Name,
 		Driver:    createCmd.Driver,
 		Config:    createCmd.Config,
-		CreatedAt: time.Now().UTC(), // TODO: We MUST not use time.Now() in FSM as state must be deterministic
+		CreatedAt: cmd.Date,
 	}
 
 	// Store the bucket
 	f.buckets[createCmd.Name] = bucketInfo
 
-	f.logger.Info("Bucket created", zap.Uint64("index", index), zap.Uint64("id", bucketID), zap.String("name", createCmd.Name))
+	f.logger.Info("Bucket created", zap.Uint64("index", index), zap.Uint64("id", bucketID), zap.String("name", createCmd.Name), zap.Uint64("commandID", cmd.ID))
 	return nil
 }
 
 // HandleDeleteBucket handles the delete bucket command
-func (f *FSM) HandleDeleteBucket(data json.RawMessage, index uint64) error {
-	var deleteCmd service.DeleteBucketCommand
-	if err := json.Unmarshal(data, &deleteCmd); err != nil {
+func (f *FSM) HandleDeleteBucket(cmd service.Command, index uint64) error {
+	var deleteCmd DeleteBucketCommand
+	if err := json.Unmarshal(cmd.Data, &deleteCmd); err != nil {
 		f.logger.Error("Failed to unmarshal delete bucket command", zap.Error(err))
 		return fmt.Errorf("unmarshaling delete bucket command: %w", err)
 	}
@@ -79,7 +78,7 @@ func (f *FSM) HandleDeleteBucket(data json.RawMessage, index uint64) error {
 	// Delete the bucket
 	delete(f.buckets, deleteCmd.Name)
 
-	f.logger.Info("Bucket deleted", zap.Uint64("index", index), zap.String("name", deleteCmd.Name))
+	f.logger.Info("Bucket deleted", zap.Uint64("index", index), zap.String("name", deleteCmd.Name), zap.Uint64("commandID", cmd.ID))
 	return nil
 }
 
