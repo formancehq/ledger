@@ -451,6 +451,12 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate bucket configuration
+	if err := service.ValidateBucketConfig(req.Driver, req.Config); err != nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_CONFIG", err)
+		return
+	}
+
 	// Create bucket via cluster
 	if err := s.cluster.CreateBucket(bucketName, req.Driver, req.Config); err != nil {
 		s.logger.Error("Failed to create bucket", zap.String("name", bucketName), zap.Error(err))

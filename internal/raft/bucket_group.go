@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
+	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.uber.org/zap"
@@ -18,17 +19,18 @@ import (
 
 // BucketRaftGroup represents a Raft group for a specific bucket
 type BucketRaftGroup struct {
-	bucketName string
-	node       *raft.RawNode
-	storage    *Storage
-	transport  *Transport
-	config     *config.Config
-	logger     *zap.Logger
-	ctx        context.Context
-	cancel     context.CancelFunc
-	nodeID     uint64
-	groupID    uint64              // Unique ID for this bucket group
-	msgCh      chan raftpb.Message // Channel for receiving messages routed from main cluster
+	bucketName    string
+	node          *raft.RawNode
+	storage       *Storage
+	bucketStorage service.BucketStorage // Storage for bucket data (SQLite or File)
+	transport     *Transport
+	config        *config.Config
+	logger        *zap.Logger
+	ctx           context.Context
+	cancel        context.CancelFunc
+	nodeID        uint64
+	groupID       uint64              // Unique ID for this bucket group
+	msgCh         chan raftpb.Message // Channel for receiving messages routed from main cluster
 }
 
 // bucketGroupID generates a unique ID for a bucket Raft group based on the bucket's sequential ID
@@ -44,6 +46,7 @@ func NewBucketRaftGroup(
 	parentCtx context.Context,
 	bucketName string,
 	bucketID uint64,
+	bucketInfo service.BucketInfo,
 	transport *Transport,
 	cfg *config.Config,
 	logger *zap.Logger,
@@ -53,18 +56,25 @@ func NewBucketRaftGroup(
 	// Generate unique group ID for this bucket based on its sequential ID
 	groupID := bucketGroupID(bucketID)
 
-	// Create data directory for this bucket group
-	bucketDataDir := filepath.Join(cfg.DataDir, "buckets", bucketName)
+	// Create data directory for this bucket group (for Raft storage)
+	bucketDataDir := filepath.Join(cfg.DataDir, "buckets", bucketName, "raft")
 	if err := os.MkdirAll(bucketDataDir, 0755); err != nil {
 		cancel()
 		return nil, fmt.Errorf("creating bucket data directory: %w", err)
 	}
 
-	// Create storage for this bucket group
+	// Create Raft storage for this bucket group
 	storage, err := NewStorage(bucketDataDir, logger.With(zap.String("bucket", bucketName)))
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("creating storage for bucket %s: %w", bucketName, err)
+	}
+
+	// Create bucket storage based on driver
+	bucketStorage, err := service.NewBucketStorage(ctx, bucketInfo.Driver, bucketInfo.Config, logger.With(zap.String("bucket", bucketName)))
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("creating bucket storage for bucket %s: %w", bucketName, err)
 	}
 
 	groupNodeID := groupID + cfg.NodeID // Unique ID for this node in this bucket group
@@ -128,17 +138,18 @@ func NewBucketRaftGroup(
 	}
 
 	group := &BucketRaftGroup{
-		bucketName: bucketName,
-		node:       node,
-		storage:    storage,
-		transport:  transport,
-		config:     cfg,
-		logger:     logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-raft-group")),
-		ctx:        ctx,
-		cancel:     cancel,
-		nodeID:     groupNodeID, // Use bucket-specific node ID
-		groupID:    groupID,
-		msgCh:      make(chan raftpb.Message, 100), // Channel for messages routed from main cluster
+		bucketName:    bucketName,
+		node:          node,
+		storage:       storage,
+		bucketStorage: bucketStorage,
+		transport:     transport,
+		config:        cfg,
+		logger:        logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-raft-group")),
+		ctx:           ctx,
+		cancel:        cancel,
+		nodeID:        groupNodeID, // Use bucket-specific node ID
+		groupID:       groupID,
+		msgCh:         make(chan raftpb.Message, 100), // Channel for messages routed from main cluster
 	}
 
 	return group, nil
@@ -246,6 +257,15 @@ func (g *BucketRaftGroup) reportUnreachable(peerID uint64) {
 func (g *BucketRaftGroup) Stop() error {
 	g.cancel()
 	close(g.msgCh)
+
+	// Close bucket storage
+	if g.bucketStorage != nil {
+		if err := g.bucketStorage.Close(); err != nil {
+			g.logger.Error("Failed to close bucket storage", zap.Error(err))
+			return fmt.Errorf("closing bucket storage: %w", err)
+		}
+	}
+
 	return nil
 }
 

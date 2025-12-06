@@ -864,14 +864,14 @@ func (r *Cluster) startBucketRaftGroup(bucketName string) error {
 		return nil
 	}
 
-	// Get bucket info to retrieve its ID
+	// Get bucket info to retrieve its ID and configuration
 	bucketInfo, exists := r.fsm.GetBucket(bucketName)
 	if !exists {
 		return fmt.Errorf("bucket %s not found", bucketName)
 	}
 
 	// Create new bucket Raft group
-	group, err := NewBucketRaftGroup(r.ctx, bucketName, bucketInfo.ID, r.transport, r.config, r.logger)
+	group, err := NewBucketRaftGroup(r.ctx, bucketName, bucketInfo.ID, bucketInfo, r.transport, r.config, r.logger)
 	if err != nil {
 		return fmt.Errorf("creating bucket Raft group: %w", err)
 	}

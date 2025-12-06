@@ -121,6 +121,12 @@ func (f *FSM) HandleCreateBucket(data json.RawMessage, index uint64) error {
 		return fmt.Errorf("bucket already exists: %s", createCmd.Name)
 	}
 
+	// Validate bucket configuration
+	if err := service.ValidateBucketConfig(createCmd.Driver, createCmd.Config); err != nil {
+		f.logger.Error("Invalid bucket configuration", zap.String("name", createCmd.Name), zap.String("driver", createCmd.Driver), zap.Error(err))
+		return fmt.Errorf("invalid bucket configuration: %w", err)
+	}
+
 	// Assign sequential bucket ID
 	bucketID := f.nextBucketID
 	f.nextBucketID++
