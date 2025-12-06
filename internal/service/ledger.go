@@ -11,11 +11,6 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
-// TransactionCreator is an interface for creating transactions via Raft
-type TransactionCreator interface {
-	CreateTransaction(ledgerName string, createTx CreateTransaction, idempotencyKey string, dryRun bool) (*ledger.Log, error)
-}
-
 type Ledger interface {
 	CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error)
 	RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error)

@@ -186,7 +186,7 @@ func NewBucketRaftGroup(
 		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", bucketInfo.Driver)
 	}
 
-	// Create bucket group first (will be used as TransactionCreator)
+	// Create bucket group first
 	group := &BucketRaftGroup{
 		bucketName:    bucketName,
 		node:          nodeWrapper,
@@ -204,8 +204,14 @@ func NewBucketRaftGroup(
 		logStore:      appLogStore,
 	}
 
-	// Create ledger service for this bucket (will use BucketRaftGroup as TransactionCreator)
-	defaultLedger := service.NewDefaultLedger(group, bucketLogger)
+	// Create reconstructed volumes store
+	reconstructedVolumesStore := service.NewReconstructedVolumesStore(appLogStore)
+
+	// Create locked volumes store
+	lockedVolumesStore := service.NewDefaultLockedVolumesStore(reconstructedVolumesStore)
+
+	// Create ledger service for this bucket (will use stores for balance checking and log writing)
+	defaultLedger := service.NewDefaultLedger(group, lockedVolumesStore, appLogStore, bucketLogger)
 	group.defaultLedger = defaultLedger
 
 	return group, nil
@@ -322,7 +328,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				}
 
 				// Apply bucket-specific entries to bucket FSM
-				result,applyErr := g.applyEntry(entry)
+				result, applyErr := g.applyEntry(entry)
 				// Notify the wrapper that this command has been applied using its ID
 				g.node.NotifyApplied(cmd.ID, result, entry.Index, applyErr)
 				if applyErr != nil {
@@ -456,8 +462,8 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) (any, error) {
 	switch cmd.Type {
 	case bucketfsm.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd, entry.Index)
-	case bucketfsm.CommandTypeCreateTransaction:
-		return g.fsm.HandleCreateTransaction(cmd, entry.Index)
+	case bucketfsm.CommandTypeInsertLog:
+		return nil, g.fsm.HandleInsertLog(cmd, entry.Index, g.logStore)
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
 		return nil, nil // Don't fail on unknown commands
@@ -482,22 +488,30 @@ func (g *BucketRaftGroup) CreateLedger(name string, metadata metadata.Metadata) 
 	return nil
 }
 
-// CreateTransaction creates a transaction via a FSM command and returns the created log
-func (g *BucketRaftGroup) CreateTransaction(ledgerName string, createTx service.CreateTransaction, idempotencyKey string, dryRun bool) (*ledger.Log, error) {
-	// Create the command
-	cmd, err := bucketfsm.NewCreateTransactionCommand(ledgerName, createTx, idempotencyKey, dryRun)
-	if err != nil {
-		return nil, fmt.Errorf("creating create transaction command: %w", err)
+// InsertLogs writes logs via Raft (implements LogWriter)
+func (g *BucketRaftGroup) InsertLogs(ctx context.Context, logs ...ledger.Log) error {
+	if len(logs) == 0 {
+		return nil
 	}
 
-	// Apply the command via Raft (waits for application)
-	appliedIndex, result, err := g.node.Apply(cmd, 5*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("applying command via raft: %w", err)
+	// For each log, create a command to insert it via Raft
+	for _, log := range logs {
+		// Create a command to insert the log
+		cmd, err := bucketfsm.NewInsertLogCommand(log)
+		if err != nil {
+			return fmt.Errorf("creating insert log command: %w", err)
+		}
+
+		// Apply the command via Raft (waits for application)
+		_, _, err = g.node.Apply(cmd, 5*time.Second)
+		if err != nil {
+			return fmt.Errorf("applying insert log command via raft: %w", err)
+		}
+
+		g.logger.Debug("Log inserted via bucket Raft", zap.String("ledger", log.Ledger), zap.Uint64("commandID", cmd.ID))
 	}
 
-	g.logger.Info("Transaction created via bucket Raft", zap.String("ledger", ledgerName), zap.Uint64("index", appliedIndex), zap.Uint64("commandID", cmd.ID))
-	return result.(*ledger.Log), nil
+	return nil
 }
 
 // GetLedger returns the ledger info for a given name in this bucket

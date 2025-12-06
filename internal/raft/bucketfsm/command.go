@@ -6,14 +6,15 @@ import (
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
 const (
 	// CommandTypeCreateLedger is the command type for creating a new ledger
 	CommandTypeCreateLedger service.CommandType = "create_ledger"
-	// CommandTypeCreateTransaction is the command type for creating a transaction
-	CommandTypeCreateTransaction service.CommandType = "create_transaction"
+	// CommandTypeInsertLog is the command type for inserting a log
+	CommandTypeInsertLog service.CommandType = "insert_log"
 )
 
 // CreateLedgerCommand represents the data for a create ledger command
@@ -40,29 +41,23 @@ func NewCreateLedgerCommand(name string, metadata metadata.Metadata) (*service.C
 	}, nil
 }
 
-// CreateTransactionCommand represents the data for a create transaction command
-type CreateTransactionCommand struct {
-	LedgerName        string                    `json:"ledgerName"`               // Ledger name (required)
-	CreateTransaction service.CreateTransaction `json:"createTransaction"`        // Transaction creation parameters
-	IdempotencyKey    string                    `json:"idempotencyKey,omitempty"` // Optional idempotency key
-	DryRun            bool                      `json:"dryRun"`                   // Whether this is a dry run
+// InsertLogCommand represents the data for an insert log command
+type InsertLogCommand struct {
+	Log ledger.Log `json:"log"` // Log to insert
 }
 
-// NewCreateTransactionCommand creates a new CreateTransactionCommand
-func NewCreateTransactionCommand(ledgerName string, createTx service.CreateTransaction, idempotencyKey string, dryRun bool) (*service.Command, error) {
+// NewInsertLogCommand creates a new InsertLogCommand
+func NewInsertLogCommand(log ledger.Log) (*service.Command, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(CreateTransactionCommand{
-		LedgerName:        ledgerName,
-		CreateTransaction: createTx,
-		IdempotencyKey:    idempotencyKey,
-		DryRun:            dryRun,
+	if err := enc.Encode(InsertLogCommand{
+		Log: log,
 	}); err != nil {
 		return nil, err
 	}
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
-		Type: CommandTypeCreateTransaction,
+		Type: CommandTypeInsertLog,
 		Data: buf.Bytes(),
 		Date: time.Now(),
 	}, nil
