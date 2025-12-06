@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
@@ -30,9 +31,7 @@ type Cluster struct {
 	logger        *zap.Logger
 	grpcServer    *grpc.Server
 	grpcClient    *grpc.Client
-	defaultLedger *service.DefaultLedger
-	logStore      service.LogStore // Can be SQLiteLogStore or FileLogStore
-	closeStore    func() error     // Function to close the store
+	ledgerService service.Ledger // Routed ledger service that routes to bucket Raft groups
 	ctx           context.Context
 	cancel        context.CancelFunc
 	nodeID        uint64
@@ -125,54 +124,8 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		}
 	}
 
-	// Create application log store based on storage type
-	var appLogStore service.LogStore
-	var closeStore func() error
-
-	switch cfg.StorageType {
-	case "sqlite":
-		sqliteStore, err := service.NewSQLiteLogStore(ctx, cfg.SQLiteDSN, logger)
-		if err != nil {
-			cancel() // Clean up context on error
-			transport.Stop()
-			return nil, fmt.Errorf("creating sqlite store: %w", err)
-		}
-		appLogStore = sqliteStore
-		closeStore = func() error {
-			return sqliteStore.Close()
-		}
-	case "file":
-		fileStore, err := service.NewFileLogStore(cfg.StorageFilePath, logger)
-		if err != nil {
-			cancel() // Clean up context on error
-			transport.Stop()
-			return nil, fmt.Errorf("creating file store: %w", err)
-		}
-		appLogStore = fileStore
-		closeStore = func() error {
-			return fileStore.Close()
-		}
-	default:
-		cancel() // Clean up context on error
-		transport.Stop()
-		return nil, fmt.Errorf("unsupported storage type: %s", cfg.StorageType)
-	}
-
 	// Create FSM (Finite State Machine)
 	fsm := NewFSM(logger)
-
-	// Create RaftLogWriter for writing logs via Raft (using node instead of raft)
-	raftLogWriter := service.NewRaftLogWriter(node, logger)
-
-	// Create reconstructed volumes store (reconstructs volumes from logs)
-	volumesStore := service.NewReconstructedVolumesStore(appLogStore)
-
-	// Wrap volumes store with locked volumes store for concurrent access control
-	lockedVolumesStore := service.NewDefaultLockedVolumesStore(volumesStore)
-
-	// Create ledger service (will use RaftLogWriter to persist logs via Raft)
-	// appLogStore implements LogReader, lockedVolumesStore implements LockedVolumesStore
-	defaultLedger := service.NewDefaultLedger(raftLogWriter, lockedVolumesStore, appLogStore, logger)
 
 	// Extract port from BindAddr for the unified gRPC server
 	// The unified server listens on the same port as Raft transport (BindAddr)
@@ -190,24 +143,23 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	}
 
 	cluster := &Cluster{
-		node:          node,
-		fsm:           fsm,
-		storage:       storage,
-		transport:     transport,
-		config:        cfg,
-		logger:        logger,
-		grpcServer:    grpc.NewServer(grpcPort, logger, defaultLedger, transport),
-		grpcClient:    grpc.NewClient(logger),
-		defaultLedger: defaultLedger,
-		logStore:      appLogStore,
-		ctx:           ctx,
-		cancel:        cancel,
-		nodeID:        nodeID,
-		bucketGroups:  make(map[string]*BucketRaftGroup),
+		node:         node,
+		fsm:          fsm,
+		storage:      storage,
+		transport:    transport,
+		config:       cfg,
+		logger:       logger,
+		grpcClient:   grpc.NewClient(logger),
+		ctx:          ctx,
+		cancel:       cancel,
+		nodeID:       nodeID,
+		bucketGroups: make(map[string]*BucketRaftGroup),
 	}
 
-	// Store close function for shutdown
-	cluster.closeStore = closeStore
+	// Create a routed ledger service that routes to the appropriate bucket
+	routedLedger := service.NewRoutedLedger(cluster, &bucketLedgerRouter{cluster: cluster}, logger)
+	cluster.ledgerService = routedLedger
+	cluster.grpcServer = grpc.NewServer(grpcPort, logger, routedLedger, transport)
 
 	// Add peers to transport
 	// Peers are in format "<id>/<address>", parse them
@@ -651,11 +603,6 @@ func (r *Cluster) Shutdown() error {
 	// The node will be stopped when the context is cancelled
 
 	// Close log store
-	if r.closeStore != nil {
-		if err := r.closeStore(); err != nil {
-			return fmt.Errorf("closing log store: %w", err)
-		}
-	}
 
 	return nil
 }
@@ -664,13 +611,116 @@ func (r *Cluster) GetRaft() *raft.RawNode {
 	return r.node
 }
 
+// GetLedgerService returns the ledger service that routes to bucket Raft groups
+func (r *Cluster) GetLedgerService() service.Ledger {
+	return r.ledgerService
+}
+
 func (r *Cluster) GetGRPCClient() service.GRPCClient {
 	return r.grpcClient
 }
 
-// GetDefaultLedger returns the default ledger service
-func (r *Cluster) GetDefaultLedger() *service.DefaultLedger {
-	return r.defaultLedger
+// bucketLedgerRouter routes ledger requests to the appropriate bucket's DefaultLedger
+type bucketLedgerRouter struct {
+	cluster *Cluster
+}
+
+// getBucketLedger gets the DefaultLedger for a given ledger name
+func (r *bucketLedgerRouter) getBucketLedger(ledgerName string) (*service.DefaultLedger, error) {
+	// Find the bucket containing this ledger
+	bucketName, err := r.cluster.FindBucketForLedger(ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("finding bucket for ledger %s: %w", ledgerName, err)
+	}
+
+	// Get the bucket Raft group
+	r.cluster.muGroups.RLock()
+	bucketGroup, exists := r.cluster.bucketGroups[bucketName]
+	r.cluster.muGroups.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("bucket Raft group not found for bucket: %s", bucketName)
+	}
+
+	// Get the default ledger from the bucket group
+	defaultLedger := bucketGroup.GetDefaultLedger()
+	if defaultLedger == nil {
+		return nil, fmt.Errorf("default ledger not found for bucket: %s", bucketName)
+	}
+
+	return defaultLedger, nil
+}
+
+// CreateTransaction routes the transaction creation to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return nil, nil, err
+	}
+	return defaultLedger.CreateTransaction(ctx, ledgerName, parameters)
+}
+
+// RevertTransaction routes the transaction reversion to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) RevertTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return nil, nil, err
+	}
+	return defaultLedger.RevertTransaction(ctx, ledgerName, parameters)
+}
+
+// SaveTransactionMetadata routes the metadata save to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.SaveTransactionMetadata]) (*ledger.Log, error) {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return nil, err
+	}
+	return defaultLedger.SaveTransactionMetadata(ctx, ledgerName, parameters)
+}
+
+// SaveAccountMetadata routes the account metadata save to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.SaveAccountMetadata]) (*ledger.Log, error) {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return nil, err
+	}
+	return defaultLedger.SaveAccountMetadata(ctx, ledgerName, parameters)
+}
+
+// DeleteTransactionMetadata routes the metadata deletion to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.DeleteTransactionMetadata]) (*ledger.Log, error) {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return nil, err
+	}
+	return defaultLedger.DeleteTransactionMetadata(ctx, ledgerName, parameters)
+}
+
+// DeleteAccountMetadata routes the account metadata deletion to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters service.Parameters[service.DeleteAccountMetadata]) (*ledger.Log, error) {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return nil, err
+	}
+	return defaultLedger.DeleteAccountMetadata(ctx, ledgerName, parameters)
+}
+
+// Import routes the import to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return err
+	}
+	return defaultLedger.Import(ctx, ledgerName, stream)
+}
+
+// Export routes the export to the appropriate bucket's ledger service
+func (r *bucketLedgerRouter) Export(ctx context.Context, ledgerName string, w service.ExportWriter) error {
+	defaultLedger, err := r.getBucketLedger(ledgerName)
+	if err != nil {
+		return err
+	}
+	return defaultLedger.Export(ctx, ledgerName, w)
 }
 
 // Snapshot forces a snapshot of the Raft cluster
@@ -854,16 +904,6 @@ func (r *Cluster) GetLedger(bucketName, ledgerName string) (service.LedgerInfo, 
 		return service.LedgerInfo{}, false, nil
 	}
 
-	// Get last log ID from logStore
-	if r.logStore != nil {
-		lastLog, err := r.logStore.GetLastLog(r.ctx, ledgerName)
-		if err != nil {
-			r.logger.Warn("Failed to get last log for ledger", zap.String("ledger", ledgerName), zap.Error(err))
-		} else if lastLog != nil && lastLog.ID != nil {
-			ledgerInfo.LastLogID = lastLog.ID
-		}
-	}
-
 	return ledgerInfo, true, nil
 }
 
@@ -894,19 +934,6 @@ func (r *Cluster) GetAllLedgers(bucketName string) (map[string]service.LedgerInf
 
 	// Get all ledgers from bucket Raft group
 	ledgers := group.GetAllLedgers()
-
-	// Enrich each ledger with last log ID from logStore
-	if r.logStore != nil {
-		for name, ledgerInfo := range ledgers {
-			lastLog, err := r.logStore.GetLastLog(r.ctx, name)
-			if err != nil {
-				r.logger.Warn("Failed to get last log for ledger", zap.String("ledger", name), zap.Error(err))
-			} else if lastLog != nil && lastLog.ID != nil {
-				ledgerInfo.LastLogID = lastLog.ID
-				ledgers[name] = ledgerInfo
-			}
-		}
-	}
 
 	return ledgers, nil
 }

@@ -37,19 +37,11 @@ func (a *Application) Start(ctx context.Context) error {
 	}
 	a.cluster = cluster
 
-	// Get the default ledger from the cluster (it uses Raft to persist logs)
-	defaultLedger := cluster.GetDefaultLedger()
-
-	// Create routed ledger that will route to leader
-	routedLedger := service.NewRoutedLedger(
-		cluster,
-		defaultLedger,
-		a.logger,
-	)
-	a.ledgerService = routedLedger
+	// Get the ledger service from the cluster (it routes to bucket Raft groups)
+	a.ledgerService = cluster.GetLedgerService()
 
 	// Create HTTP server
-	httpServer := http.NewServer(a.config.HTTPPort, a.logger, routedLedger, cluster)
+	httpServer := http.NewServer(a.config.HTTPPort, a.logger, a.ledgerService, cluster)
 	a.httpServer = httpServer
 
 	// Start Raft cluster

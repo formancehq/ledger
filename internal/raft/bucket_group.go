@@ -32,8 +32,10 @@ type BucketRaftGroup struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	nodeID        uint64
-	groupID       uint64              // Unique ID for this bucket group
-	msgCh         chan raftpb.Message // Channel for receiving messages routed from main cluster
+	groupID       uint64                 // Unique ID for this bucket group
+	msgCh         chan raftpb.Message    // Channel for receiving messages routed from main cluster
+	defaultLedger *service.DefaultLedger // Ledger service for this bucket
+	logStore      service.LogStore       // Log store for this bucket
 }
 
 // bucketGroupID generates a unique ID for a bucket Raft group based on the bucket's sequential ID
@@ -143,6 +145,54 @@ func NewBucketRaftGroup(
 			zap.Int("peers", len(peers)))
 	}
 
+	// Create application log store for this bucket based on bucket driver
+	var appLogStore service.LogStore
+	bucketLogger := logger.With(zap.String("bucket", bucketName))
+	switch bucketInfo.Driver {
+	case "sqlite":
+		dsn, ok := bucketInfo.Config["dsn"].(string)
+		if !ok || dsn == "" {
+			cancel()
+			return nil, fmt.Errorf("sqlite driver requires 'dsn' configuration for bucket %s", bucketName)
+		}
+		sqliteStore, err := service.NewSQLiteLogStore(ctx, dsn, bucketLogger)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("creating sqlite log store for bucket %s: %w", bucketName, err)
+		}
+		appLogStore = sqliteStore
+	case "file":
+		path, ok := bucketInfo.Config["path"].(string)
+		if !ok || path == "" {
+			cancel()
+			return nil, fmt.Errorf("file driver requires 'path' configuration for bucket %s", bucketName)
+		}
+		// Create logs directory within the bucket path
+		logsPath := filepath.Join(path, "logs.jsonl")
+		fileStore, err := service.NewFileLogStore(logsPath, bucketLogger)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("creating file log store for bucket %s: %w", bucketName, err)
+		}
+		appLogStore = fileStore
+	default:
+		cancel()
+		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", bucketInfo.Driver)
+	}
+
+	// Create RaftLogWriter for writing logs via Raft (using bucket's node)
+	raftLogWriter := service.NewRaftLogWriter(node, bucketLogger)
+
+	// Create reconstructed volumes store (reconstructs volumes from logs)
+	volumesStore := service.NewReconstructedVolumesStore(appLogStore)
+
+	// Wrap volumes store with locked volumes store for concurrent access control
+	lockedVolumesStore := service.NewDefaultLockedVolumesStore(volumesStore)
+
+	// Create ledger service for this bucket (will use RaftLogWriter to persist logs via bucket Raft)
+	// appLogStore implements LogReader, lockedVolumesStore implements LockedVolumesStore
+	defaultLedger := service.NewDefaultLedger(raftLogWriter, lockedVolumesStore, appLogStore, bucketLogger)
+
 	group := &BucketRaftGroup{
 		bucketName:    bucketName,
 		node:          node,
@@ -151,12 +201,14 @@ func NewBucketRaftGroup(
 		fsm:           bucketFSM,
 		transport:     transport,
 		config:        cfg,
-		logger:        logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-raft-group")),
+		logger:        bucketLogger.With(zap.String("component", "bucket-raft-group")),
 		ctx:           ctx,
 		cancel:        cancel,
 		nodeID:        groupNodeID, // Use bucket-specific node ID
 		groupID:       groupID,
 		msgCh:         make(chan raftpb.Message, 100), // Channel for messages routed from main cluster
+		defaultLedger: defaultLedger,
+		logStore:      appLogStore,
 	}
 
 	return group, nil
@@ -166,6 +218,11 @@ func NewBucketRaftGroup(
 func (g *BucketRaftGroup) Start() error {
 	go g.readyLoopWithChannel(g.msgCh)
 	return nil
+}
+
+// GetDefaultLedger returns the default ledger service for this bucket
+func (g *BucketRaftGroup) GetDefaultLedger() *service.DefaultLedger {
+	return g.defaultLedger
 }
 
 // GetMessageChannel returns the message channel for this bucket group
@@ -316,14 +373,39 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 		return fmt.Errorf("unmarshaling command: %w", err)
 	}
 
-	// Route to the appropriate command handler in bucket FSM
+	// Route to the appropriate command handler
 	switch cmd.Type {
 	case service.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd.Data, entry.Index)
+	case service.CommandTypeInsertLogs:
+		return g.handleInsertLogs(cmd.Data)
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
 		return nil // Don't fail on unknown commands
 	}
+}
+
+// handleInsertLogs handles the insert logs command by writing logs to the bucket's log store
+func (g *BucketRaftGroup) handleInsertLogs(data json.RawMessage) error {
+	var insertCmd service.InsertLogsCommand
+	if err := json.Unmarshal(data, &insertCmd); err != nil {
+		g.logger.Error("Failed to unmarshal insert logs command", zap.Error(err))
+		return fmt.Errorf("unmarshaling insert logs command: %w", err)
+	}
+
+	if len(insertCmd.Logs) == 0 {
+		g.logger.Debug("Insert logs command with no logs, skipping")
+		return nil
+	}
+
+	// Insert logs into the bucket's log store
+	if err := g.logStore.InsertLogs(g.ctx, insertCmd.Logs...); err != nil {
+		g.logger.Error("Failed to insert logs into log store", zap.Error(err), zap.Int("count", len(insertCmd.Logs)))
+		return fmt.Errorf("inserting logs into log store: %w", err)
+	}
+
+	g.logger.Info("Logs inserted into bucket log store", zap.Int("count", len(insertCmd.Logs)))
+	return nil
 }
 
 // CreateLedger creates a new ledger in this bucket via a FSM command
