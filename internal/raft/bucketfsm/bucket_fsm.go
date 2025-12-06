@@ -1,10 +1,12 @@
 package bucketfsm
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
 )
@@ -15,6 +17,7 @@ type BucketFSM struct {
 	bucketName   string
 	ledgers      map[string]service.LedgerInfo // Map of ledger name -> ledger info
 	nextLedgerID uint64                        // Next sequential ledger ID
+	logs         []ledger.Log                  // Logs stored in memory until snapshot
 	logger       *zap.Logger
 }
 
@@ -24,6 +27,7 @@ func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
 		bucketName:   bucketName,
 		ledgers:      make(map[string]service.LedgerInfo),
 		nextLedgerID: 1, // Start at 1, first ledger will have ID 1
+		logs:         make([]ledger.Log, 0),
 		logger:       logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-fsm")),
 	}
 }
@@ -61,6 +65,26 @@ func (f *BucketFSM) HandleCreateLedger(data json.RawMessage, index uint64) error
 	return nil
 }
 
+// HandleInsertLogs handles the insert logs command by storing logs in memory
+func (f *BucketFSM) HandleInsertLogs(data json.RawMessage, index uint64) error {
+	var insertCmd service.InsertLogsCommand
+	if err := json.Unmarshal(data, &insertCmd); err != nil {
+		f.logger.Error("Failed to unmarshal insert logs command", zap.Error(err))
+		return fmt.Errorf("unmarshaling insert logs command: %w", err)
+	}
+
+	if len(insertCmd.Logs) == 0 {
+		f.logger.Debug("Insert logs command with no logs, skipping")
+		return nil
+	}
+
+	// Store logs in memory (will be written to store during snapshot)
+	f.logs = append(f.logs, insertCmd.Logs...)
+
+	f.logger.Info("Logs stored in memory", zap.Int("count", len(insertCmd.Logs)), zap.Int("totalLogs", len(f.logs)))
+	return nil
+}
+
 // GetLedger returns the ledger info for a given name in this bucket
 func (f *BucketFSM) GetLedger(name string) (service.LedgerInfo, bool) {
 	info, ok := f.ledgers[name]
@@ -78,7 +102,18 @@ func (f *BucketFSM) GetAllLedgers() map[string]service.LedgerInfo {
 }
 
 // CreateSnapshot creates a snapshot of the bucket FSM state
-func (f *BucketFSM) CreateSnapshot() ([]byte, error) {
+// It writes logs to the log store and returns snapshot data
+func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWriter) ([]byte, error) {
+	// Write logs to the store before creating snapshot
+	if len(f.logs) > 0 {
+		if err := logStore.InsertLogs(ctx, f.logs...); err != nil {
+			return nil, fmt.Errorf("writing logs to store during snapshot: %w", err)
+		}
+		f.logger.Info("Logs written to store during snapshot", zap.Int("count", len(f.logs)))
+		// Clear logs from memory after writing to store
+		f.logs = make([]ledger.Log, 0)
+	}
+
 	snapshotData := map[string]interface{}{
 		"ledgers":      f.ledgers,
 		"nextLedgerID": f.nextLedgerID,
@@ -125,4 +160,3 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)), zap.Uint64("nextLedgerID", f.nextLedgerID))
 	return nil
 }
-

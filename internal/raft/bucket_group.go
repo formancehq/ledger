@@ -329,6 +329,37 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 
 			// Advance the node
 			g.node.Advance(rd)
+
+			// Check if we need to create a snapshot (every 1000 entries or when log is getting large)
+			status := g.node.Status()
+			if status.Applied > 0 && status.Applied%1000 == 0 {
+				// Create snapshot: write logs to store and create snapshot data
+				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
+				if err != nil {
+					g.logger.Error("Failed to create snapshot data", zap.Error(err))
+					continue
+				}
+
+				// Get current configuration state from storage
+				_, confState, err := g.storage.InitialState()
+				if err != nil {
+					g.logger.Error("Failed to get initial state for snapshot", zap.Error(err))
+					continue
+				}
+
+				// Create snapshot in storage
+				_, err = g.storage.CreateSnapshot(status.Applied, &confState, snapshotData)
+				if err != nil {
+					// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
+					if err != ErrSnapOutOfDate {
+						g.logger.Error("Failed to create snapshot in storage", zap.Error(err))
+					}
+					// ErrSnapOutOfDate is expected if snapshot was already created
+					continue
+				}
+
+				g.logger.Info("Snapshot created for bucket", zap.String("bucket", g.bucketName), zap.Uint64("index", status.Applied))
+			}
 		}
 	}
 }
@@ -379,34 +410,11 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 	case service.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd.Data, entry.Index)
 	case service.CommandTypeInsertLogs:
-		return g.handleInsertLogs(cmd.Data)
+		return g.fsm.HandleInsertLogs(cmd.Data, entry.Index)
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
 		return nil // Don't fail on unknown commands
 	}
-}
-
-// handleInsertLogs handles the insert logs command by writing logs to the bucket's log store
-func (g *BucketRaftGroup) handleInsertLogs(data json.RawMessage) error {
-	var insertCmd service.InsertLogsCommand
-	if err := json.Unmarshal(data, &insertCmd); err != nil {
-		g.logger.Error("Failed to unmarshal insert logs command", zap.Error(err))
-		return fmt.Errorf("unmarshaling insert logs command: %w", err)
-	}
-
-	if len(insertCmd.Logs) == 0 {
-		g.logger.Debug("Insert logs command with no logs, skipping")
-		return nil
-	}
-
-	// Insert logs into the bucket's log store
-	if err := g.logStore.InsertLogs(g.ctx, insertCmd.Logs...); err != nil {
-		g.logger.Error("Failed to insert logs into log store", zap.Error(err), zap.Int("count", len(insertCmd.Logs)))
-		return fmt.Errorf("inserting logs into log store: %w", err)
-	}
-
-	g.logger.Info("Logs inserted into bucket log store", zap.Int("count", len(insertCmd.Logs)))
-	return nil
 }
 
 // CreateLedger creates a new ledger in this bucket via a FSM command
