@@ -89,6 +89,7 @@ func main() {
 ### [Buckets](docs/sdks/buckets/README.md)
 
 * [ListBuckets](docs/sdks/buckets/README.md#listbuckets) - List all buckets
+* [GetBucket](docs/sdks/buckets/README.md#getbucket) - Get a bucket
 * [CreateBucket](docs/sdks/buckets/README.md#createbucket) - Create a new bucket
 * [DeleteBucket](docs/sdks/buckets/README.md#deletebucket) - Delete a bucket
 

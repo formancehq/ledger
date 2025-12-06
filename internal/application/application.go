@@ -43,7 +43,6 @@ func (a *Application) Start(ctx context.Context) error {
 	// Create routed ledger that will route to leader
 	routedLedger := service.NewRoutedLedger(
 		cluster,
-		a.config.NodeID,
 		defaultLedger,
 		a.logger,
 	)

@@ -194,6 +194,38 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /buckets/{bucketName}:
+    get:
+      summary: Get a bucket
+      description: Retrieves a bucket with its Raft cluster state
+      operationId: getBucket
+      tags:
+        - Buckets
+      parameters:
+        - name: bucketName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the bucket to retrieve
+      responses:
+        '200':
+          description: Bucket retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBucketResponse'
+        '404':
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Create a new bucket
       description: Creates a new bucket with the specified name, driver, and configuration
@@ -470,6 +502,10 @@ components:
         data:
           type: object
           properties:
+            id:
+              type: integer
+              format: int64
+              description: Sequential bucket ID
             name:
               type: string
               description: Name of the created bucket
@@ -490,9 +526,60 @@ components:
             $ref: '#/components/schemas/BucketInfo'
           description: List of buckets
 
+    GetBucketResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/BucketWithRaftState'
+
+    BucketWithRaftState:
+      allOf:
+        - $ref: '#/components/schemas/BucketInfo'
+        - type: object
+          properties:
+            raftState:
+              $ref: '#/components/schemas/ClusterState'
+              nullable: true
+              description: Raft cluster state for this bucket (null if Raft group not started)
+
+    ClusterState:
+      type: object
+      properties:
+        state:
+          type: string
+          description: Current state of the Raft node (Leader, Follower, Candidate, PreCandidate, Unknown)
+        leader:
+          type: string
+          description: ID of the current leader (empty if no leader)
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeInfo'
+          description: List of all nodes in the cluster
+        localNode:
+          type: string
+          description: ID of the local node
+
+    NodeInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Node ID in the bucket Raft group
+        address:
+          type: string
+          description: Node address (global node ID)
+        suffrage:
+          type: string
+          description: Node suffrage (Voter or Learner)
+
     BucketInfo:
       type: object
       properties:
+        id:
+          type: integer
+          format: int64
+          description: Sequential bucket ID
         name:
           type: string
           description: Bucket name

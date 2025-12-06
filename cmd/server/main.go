@@ -35,11 +35,11 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().String("config", "", "Path to configuration file (supports yaml, json, toml)")
-	rootCmd.Flags().String("node-id", "", "Node ID for this instance")
+	rootCmd.Flags().Uint64("node-id", 0, "Numeric node ID for this instance (must be non-zero)")
 	rootCmd.Flags().String("bind-addr", "127.0.0.1:8888", "Address to bind to")
 	rootCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
 	rootCmd.Flags().String("data-dir", "./data", "Data directory for Raft")
-	rootCmd.Flags().StringSlice("peers", []string{}, "Initial peer addresses (comma-separated)")
+	rootCmd.Flags().StringSlice("peers", []string{}, "Initial peer list (comma-separated, format: <id>/<address>, e.g., \"1/node-1:8888,2/node-2:8888\")")
 	rootCmd.Flags().Bool("debug", false, "Enable debug logging")
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
 	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
@@ -79,7 +79,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	logger.Info("Starting Ledger v3 POC",
 		zap.String("version", version),
 		zap.String("commit", commit),
-		zap.String("node-id", cfg.NodeID),
+		zap.Uint64("node-id", cfg.NodeID),
 		zap.String("bind-addr", cfg.BindAddr),
 		zap.String("advertise-addr", cfg.AdvertiseAddr),
 	)
@@ -134,7 +134,7 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 	}
 
 	cfg := &config.Config{
-		NodeID:            viper.GetString("node-id"),
+		NodeID:            viper.GetUint64("node-id"),
 		BindAddr:          viper.GetString("network.bind-addr"),
 		AdvertiseAddr:     viper.GetString("advertise-addr"),
 		DataDir:           viper.GetString("network.data-dir"),

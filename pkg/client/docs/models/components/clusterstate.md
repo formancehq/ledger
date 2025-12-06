@@ -1,0 +1,11 @@
+# ClusterState
+
+
+## Fields
+
+| Field                                                                               | Type                                                                                | Required                                                                            | Description                                                                         |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `State`                                                                             | **string*                                                                           | :heavy_minus_sign:                                                                  | Current state of the Raft node (Leader, Follower, Candidate, PreCandidate, Unknown) |
+| `Leader`                                                                            | **string*                                                                           | :heavy_minus_sign:                                                                  | ID of the current leader (empty if no leader)                                       |
+| `Nodes`                                                                             | [][components.NodeInfo](../../models/components/nodeinfo.md)                        | :heavy_minus_sign:                                                                  | List of all nodes in the cluster                                                    |
+| `LocalNode`                                                                         | **string*                                                                           | :heavy_minus_sign:                                                                  | ID of the local node                                                                |

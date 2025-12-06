@@ -36,6 +36,7 @@ type ClusterClient interface {
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
 	GetAllBuckets() map[string]service.BucketInfo
+	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
 }
 
 // ClusterState represents the state of the Raft cluster
@@ -51,6 +52,12 @@ type NodeInfo struct {
 	ID       string `json:"id"`       // Node ID
 	Address  string `json:"address"`  // Node address
 	Suffrage string `json:"suffrage"` // Voter or Nonvoter
+}
+
+// BucketWithRaftState represents a bucket with its Raft cluster state
+type BucketWithRaftState struct {
+	service.BucketInfo
+	RaftState *ClusterState `json:"raftState"`
 }
 
 func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, cluster ClusterClient) *Server {
@@ -85,6 +92,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register bucket routes
 	r.Get("/buckets", s.handleListBuckets) // GET /buckets
 	r.Route("/buckets/{bucketName}", func(r chi.Router) {
+		r.Get("/", s.handleGetBucket)        // GET /buckets/{bucketName}
 		r.Post("/", s.handleCreateBucket)   // POST /buckets/{bucketName}
 		r.Delete("/", s.handleDeleteBucket) // DELETE /buckets/{bucketName}
 	})
@@ -463,6 +471,34 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		"driver":   req.Driver,
 		"config":   req.Config,
 	})
+}
+
+// handleGetBucket handles GET /buckets/{bucketName} to get a bucket with its Raft state
+func (s *Server) handleGetBucket(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
+	if bucketName == "" {
+		api.BadRequest(w, "bucket name is required", errors.New("bucket name is required"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	bucket, err := s.cluster.GetBucketWithRaftState(bucketName)
+	if err != nil {
+		s.logger.Error("Failed to get bucket", zap.String("bucket", bucketName), zap.Error(err))
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	if bucket == nil {
+		api.NotFound(w, errors.New("bucket not found"))
+		return
+	}
+
+	api.Ok(w, bucket)
 }
 
 // handleDeleteBucket handles DELETE /buckets/{bucketName} to delete a bucket

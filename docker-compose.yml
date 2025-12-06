@@ -5,9 +5,9 @@ services:
     image: golang:1.25-alpine
     working_dir: /app
     environment:
-      - NODE_ID=node-1
+      - NODE_ID=1
       - ADVERTISE_ADDR=node-1:8888
-      - PEERS=node-2:8888 node-3:8888
+      - PEERS=2/node-2:8888 3/node-3:8888
       - BOOTSTRAP=true
     ports:
       - "8888:8888"
@@ -36,9 +36,9 @@ services:
     image: golang:1.25-alpine
     working_dir: /app
     environment:
-      - NODE_ID=node-2
+      - NODE_ID=2
       - ADVERTISE_ADDR=node-2:8888
-      - PEERS=node-1:8888 node-3:8888
+      - PEERS=1/node-1:8888 3/node-3:8888
     ports:
       - "8889:8888"
       - "8001:8000"
@@ -68,9 +68,9 @@ services:
     image: golang:1.25-alpine
     working_dir: /app
     environment:
-      - NODE_ID=node-3
+      - NODE_ID=3
       - ADVERTISE_ADDR=node-3:8888
-      - PEERS=node-1:8888 node-2:8888
+      - PEERS=1/node-1:8888 2/node-2:8888
     ports:
       - "8890:8888"
       - "8002:8000"

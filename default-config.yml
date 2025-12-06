@@ -1,8 +1,8 @@
 # Shared configuration for all nodes in the Docker Compose cluster
 # Node-specific values are set via environment variables in docker-compose.yml:
-#   - node-id: Unique identifier for each node (NODE_ID)
+#   - node-id: Numeric ID for each node (NODE_ID, e.g., 1, 2, 3)
 #   - advertise-addr: Address advertised to other nodes (ADVERTISE_ADDR)
-#   - peers: List of peer addresses (PEERS) - only for node-1
+#   - peers: List of peers in format "<id>/<address>" (PEERS, e.g., "1/node-1:8888 2/node-2:8888")
 #   - bootstrap: Whether to bootstrap the cluster (BOOTSTRAP) - only for node-1
 
 # Network configuration

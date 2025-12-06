@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/config"
@@ -33,6 +35,8 @@ type Cluster struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	nodeID        uint64
+	bucketGroups  map[string]*BucketRaftGroup // Map of bucket name -> bucket Raft group
+	muGroups      sync.RWMutex                // Mutex for bucketGroups map
 }
 
 func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.Logger) (*Cluster, error) {
@@ -43,11 +47,8 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	ctx, cancel := context.WithCancel(parentCtx)
 
-	// Convert node ID to uint64 (simple hash for now, you might want to use a proper ID system)
-	nodeID := uint64(0)
-	for _, c := range cfg.NodeID {
-		nodeID = nodeID*31 + uint64(c)
-	}
+	// Use numeric node ID directly from config
+	nodeID := cfg.NodeID
 
 	// Create storage for etcd/raft
 	storage, err := NewStorage(cfg.DataDir, logger)
@@ -97,18 +98,21 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 			peers = append(peers, raft.Peer{ID: nodeID})
 
 			// Add peers if provided
-			for _, peerAddr := range cfg.Peers {
-				// Extract hostname from address (e.g., "node-1:8888" -> "node-1")
-				host, _, err := net.SplitHostPort(peerAddr)
-				if err != nil {
-					logger.Warn("Invalid peer address format, skipping", zap.String("peer", peerAddr), zap.Error(err))
+			// Peers are in format "<id>/<address>", parse them
+			for _, peerEntry := range cfg.Peers {
+				parts := strings.SplitN(peerEntry, "/", 2)
+				if len(parts) != 2 {
+					logger.Warn("Invalid peer format, skipping", zap.String("peer", peerEntry))
 					continue
 				}
-				// Convert hostname to uint64 (simple hash)
-				peerID := uint64(0)
-				for _, c := range host {
-					peerID = peerID*31 + uint64(c)
+				peerIDStr := parts[0]
+
+				peerID, err := strconv.ParseUint(peerIDStr, 10, 64)
+				if err != nil {
+					logger.Warn("Invalid peer ID, skipping", zap.String("peer", peerEntry), zap.Error(err))
+					continue
 				}
+
 				peers = append(peers, raft.Peer{ID: peerID})
 			}
 
@@ -185,21 +189,29 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		ctx:           ctx,
 		cancel:        cancel,
 		nodeID:        nodeID,
+		bucketGroups:  make(map[string]*BucketRaftGroup),
 	}
 
 	// Store close function for shutdown
 	cluster.closeStore = closeStore
 
 	// Add peers to transport
-	for _, peerAddr := range cfg.Peers {
-		host, _, err := net.SplitHostPort(peerAddr)
-		if err != nil {
+	// Peers are in format "<id>/<address>", parse them
+	for _, peerEntry := range cfg.Peers {
+		parts := strings.SplitN(peerEntry, "/", 2)
+		if len(parts) != 2 {
+			logger.Warn("Invalid peer format, skipping", zap.String("peer", peerEntry))
 			continue
 		}
-		peerID := uint64(0)
-		for _, c := range host {
-			peerID = peerID*31 + uint64(c)
+		peerIDStr := parts[0]
+		peerAddr := parts[1]
+
+		peerID, err := strconv.ParseUint(peerIDStr, 10, 64)
+		if err != nil {
+			logger.Warn("Invalid peer ID, skipping", zap.String("peer", peerEntry), zap.Error(err))
+			continue
 		}
+
 		transport.AddPeer(peerID, peerAddr)
 	}
 
@@ -207,11 +219,21 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 }
 
 func (r *Cluster) Start() error {
-	// Start the Ready loop
+	// Start the Ready loop - it will receive all messages and route them appropriately
 	go r.readyLoop()
 
 	// Start leader monitoring
 	go r.monitorLeader()
+
+	// Start Raft groups for existing buckets
+	// This ensures that buckets created before this node started have their Raft groups running
+	buckets := r.fsm.GetAllBuckets()
+	for bucketName := range buckets {
+		if err := r.startBucketRaftGroup(bucketName); err != nil {
+			r.logger.Error("Failed to start Raft group for existing bucket", zap.String("bucket", bucketName), zap.Error(err))
+			// Continue with other buckets even if one fails
+		}
+	}
 
 	return nil
 }
@@ -228,16 +250,28 @@ func (r *Cluster) readyLoop() {
 		case <-ticker.C:
 			r.node.Tick()
 		case msg := <-r.transport.Recv():
-			// Process incoming messages from transport
-			r.node.Step(msg)
+			// Route messages: if node ID >= 0x10000, it's for a bucket group
+			// Otherwise, it's for the main cluster
+			if msg.To >= 0x10000 || msg.From >= 0x10000 {
+				// Route to appropriate bucket group
+				r.logger.Debug("Received message for bucket group", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
+				r.routeMessageToBucketGroup(msg)
+			} else {
+				r.logger.Debug("Received message for main cluster", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
+				// Process message for main cluster
+				r.node.Step(msg)
+			}
 		case peerID := <-r.transport.Unreachable():
 			// Report unreachable peer to Raft
-			peerAddr := r.findPeerAddress(peerID)
-			if peerAddr == "" {
-				peerAddr = strconv.FormatUint(peerID, 10)
+			// If peerID >= 0x10000, it's for a bucket group, route it there
+			if peerID >= 0x10000 {
+				r.logger.Debug("Received unreachable message for bucket group", zap.String("peer", fmt.Sprintf("%x", peerID)))
+				r.routeUnreachableToBucketGroup(peerID)
+			} else {
+				// Report to main cluster
+				r.logger.Debug("Received unreachable message for main cluster", zap.String("peer", fmt.Sprintf("%x", peerID)))
+				r.node.ReportUnreachable(peerID)
 			}
-			r.logger.Info("Reporting peer as unreachable", zap.String("peer", peerAddr))
-			r.node.ReportUnreachable(peerID)
 		}
 
 		// Process Ready structures
@@ -285,7 +319,7 @@ func (r *Cluster) readyLoop() {
 					}
 					r.logger.Info("Applying configuration change",
 						zap.String("type", cc.Type.String()),
-						zap.Uint64("nodeID", cc.NodeID))
+						zap.String("nodeID", fmt.Sprintf("%x", cc.NodeID)))
 					// Apply the conf change to update the ConfState
 					r.node.ApplyConfChange(cc)
 					continue
@@ -320,18 +354,41 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 	}
 
 	// Route to the appropriate command handler in FSM
+	var err error
 	switch cmd.Type {
 	case service.CommandTypeInsertLogs:
-		return r.fsm.HandleInsertLogs(cmd.Data, entry.Index)
+		err = r.fsm.HandleInsertLogs(cmd.Data, entry.Index)
 	case service.CommandTypeCreateLedger:
-		return r.fsm.HandleCreateLedger(cmd.Data, entry.Index)
+		err = r.fsm.HandleCreateLedger(cmd.Data, entry.Index)
 	case service.CommandTypeCreateBucket:
-		return r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
+		err = r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
+		if err == nil {
+			// Start Raft group for the bucket after successful creation
+			var createCmd service.CreateBucketCommand
+			if unmarshalErr := json.Unmarshal(cmd.Data, &createCmd); unmarshalErr == nil {
+				if startErr := r.startBucketRaftGroup(createCmd.Name); startErr != nil {
+					r.logger.Error("Failed to start bucket Raft group", zap.String("bucket", createCmd.Name), zap.Error(startErr))
+					// Don't fail the entry application, just log the error
+				}
+			}
+		}
 	case service.CommandTypeDeleteBucket:
-		return r.fsm.HandleDeleteBucket(cmd.Data, entry.Index)
+		err = r.fsm.HandleDeleteBucket(cmd.Data, entry.Index)
+		if err == nil {
+			// Stop Raft group for the bucket after successful deletion
+			var deleteCmd service.DeleteBucketCommand
+			if unmarshalErr := json.Unmarshal(cmd.Data, &deleteCmd); unmarshalErr == nil {
+				if stopErr := r.stopBucketRaftGroup(deleteCmd.Name); stopErr != nil {
+					r.logger.Error("Failed to stop bucket Raft group", zap.String("bucket", deleteCmd.Name), zap.Error(stopErr))
+					// Don't fail the entry application, just log the error
+				}
+			}
+		}
 	default:
 		return fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
+
+	return err
 }
 
 func (r *Cluster) monitorLeader() {
@@ -353,13 +410,17 @@ func (r *Cluster) monitorLeader() {
 			if leaderID != lastLeaderID {
 				oldLeaderAddr := r.findPeerAddress(lastLeaderID)
 				if oldLeaderAddr == "" && lastLeaderID != 0 && lastLeaderID != raft.None {
-					oldLeaderAddr = strconv.FormatUint(lastLeaderID, 10)
+					oldLeaderAddr = fmt.Sprintf("%x", lastLeaderID)
 				}
 				newLeaderAddr := r.findPeerAddress(leaderID)
 				if newLeaderAddr == "" && leaderID != 0 && leaderID != raft.None {
-					newLeaderAddr = strconv.FormatUint(leaderID, 10)
+					newLeaderAddr = fmt.Sprintf("%x", leaderID)
 				}
-				r.logger.Info("Leader changed", zap.String("old", oldLeaderAddr), zap.String("new", newLeaderAddr))
+				r.logger.Info("Leader changed",
+					zap.String("oldLeaderID", fmt.Sprintf("%x", lastLeaderID)),
+					zap.String("old", oldLeaderAddr),
+					zap.String("newLeaderID", fmt.Sprintf("%x", leaderID)),
+					zap.String("new", newLeaderAddr))
 				lastLeaderID = leaderID
 				r.handleLeaderChange(leaderID)
 			}
@@ -401,7 +462,7 @@ func (r *Cluster) handleLeaderChange(leaderID uint64) {
 		// Find leader address from transport or config
 		leaderAddr := r.findPeerAddress(leaderID)
 		if leaderAddr == "" {
-			r.logger.Error("Failed to find leader address", zap.Uint64("leaderID", leaderID))
+			r.logger.Error("Failed to find leader address", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
 			return
 		}
 		r.logger.Info("Leader changed, connecting to new leader", zap.String("leader", leaderAddr))
@@ -467,14 +528,18 @@ func (r *Cluster) findPeerAddress(peerID uint64) string {
 	r.transport.mu.RUnlock()
 
 	// Fallback: try to find it in the config peers
-	for _, peerAddr := range r.config.Peers {
-		host, _, err := net.SplitHostPort(peerAddr)
-		if err != nil {
+	// Peers are in format "<id>/<address>", parse them
+	for _, peerEntry := range r.config.Peers {
+		parts := strings.SplitN(peerEntry, "/", 2)
+		if len(parts) != 2 {
 			continue
 		}
-		id := uint64(0)
-		for _, c := range host {
-			id = id*31 + uint64(c)
+		peerIDStr := parts[0]
+		peerAddr := parts[1]
+
+		id, err := strconv.ParseUint(peerIDStr, 10, 64)
+		if err != nil {
+			continue
 		}
 		if id == peerID {
 			return peerAddr
@@ -484,8 +549,87 @@ func (r *Cluster) findPeerAddress(peerID uint64) string {
 	return ""
 }
 
+// routeMessageToBucketGroup routes a message to the appropriate bucket Raft group
+func (r *Cluster) routeMessageToBucketGroup(msg raftpb.Message) {
+	r.muGroups.RLock()
+	defer r.muGroups.RUnlock()
+
+	// Find the bucket group that should receive this message
+	// Messages are for bucket groups if To or From >= 0x10000
+	targetNodeID := msg.To
+	if msg.From >= 0x10000 {
+		targetNodeID = msg.From
+	}
+
+	// Extract groupID from nodeID: groupID = nodeID & 0xFFFF0000 (upper bits)
+	groupID := targetNodeID & 0xFFFF0000
+
+	// Find bucket group with matching groupID
+	for _, group := range r.bucketGroups {
+		if group.groupID == groupID {
+			select {
+			case group.msgCh <- msg:
+			default:
+				r.logger.Warn("Bucket group message channel full, dropping message",
+					zap.String("bucket", group.bucketName),
+					zap.String("to", fmt.Sprintf("%x", msg.To)),
+					zap.String("from", fmt.Sprintf("%x", msg.From)))
+			}
+			return
+		}
+	}
+
+	r.logger.Debug("No bucket group found for message",
+		zap.String("to", fmt.Sprintf("%x", msg.To)),
+		zap.String("from", fmt.Sprintf("%x", msg.From)),
+		zap.String("groupID", fmt.Sprintf("%x", groupID)))
+}
+
+// routeUnreachableToBucketGroup routes an unreachable peer notification to the appropriate bucket group
+func (r *Cluster) routeUnreachableToBucketGroup(peerID uint64) {
+	r.muGroups.RLock()
+	defer r.muGroups.RUnlock()
+
+	// Extract groupID from peerID: groupID = peerID & 0xFFFF0000 (upper bits)
+	groupID := peerID & 0xFFFF0000
+
+	// Extract the actual peer node ID in the bucket group context
+	// peerID = groupID + nodeID, so nodeID = peerID - groupID
+	// But we need to report the full peerID to the bucket group
+	// Actually, etcd/raft expects the node ID as configured, which is groupNodeID
+	// So we should report peerID directly
+
+	// Find bucket group with matching groupID
+	for _, group := range r.bucketGroups {
+		if group.groupID == groupID {
+			// Report unreachable to the bucket group's Raft node
+			// We need to call ReportUnreachable on the group's node
+			// But we can't access it directly from here. We'll need to add a method.
+			// For now, we'll create a mechanism to pass this through the message channel
+			// Actually, bucket groups should handle this themselves when they receive messages
+			// Let's add a method to report unreachable
+			group.reportUnreachable(peerID)
+			return
+		}
+	}
+
+	r.logger.Debug("No bucket group found for unreachable peer",
+		zap.String("peerID", fmt.Sprintf("%x", peerID)),
+		zap.String("groupID", fmt.Sprintf("%x", groupID)))
+}
+
 func (r *Cluster) Shutdown() error {
 	r.logger.Info("Shutting down Raft cluster")
+
+	// Stop all bucket Raft groups
+	r.muGroups.Lock()
+	for bucketName, group := range r.bucketGroups {
+		if err := group.Stop(); err != nil {
+			r.logger.Error("Failed to stop bucket Raft group", zap.String("bucket", bucketName), zap.Error(err))
+		}
+	}
+	r.bucketGroups = make(map[string]*BucketRaftGroup)
+	r.muGroups.Unlock()
 
 	// Cancel context to stop monitoring
 	r.cancel()
@@ -587,7 +731,7 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 	leaderID := status.Lead
 	leader := ""
 	if leaderID != 0 {
-		leader = strconv.FormatUint(leaderID, 10)
+		leader = fmt.Sprintf("%x", leaderID)
 	}
 
 	// Convert state to string
@@ -613,10 +757,10 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 		}
 		addr := r.findPeerAddress(id)
 		if addr == "" {
-			addr = strconv.FormatUint(id, 10)
+			addr = fmt.Sprintf("%x", id)
 		}
 		nodes = append(nodes, http.NodeInfo{
-			ID:       strconv.FormatUint(id, 10),
+			ID:       fmt.Sprintf("%x", id),
 			Address:  addr,
 			Suffrage: suffrage,
 		})
@@ -626,7 +770,7 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 		State:     stateStr,
 		Leader:    leader,
 		Nodes:     nodes,
-		LocalNode: r.config.NodeID,
+		LocalNode: fmt.Sprintf("%x", r.config.NodeID),
 	}, nil
 }
 
@@ -707,4 +851,91 @@ func (r *Cluster) DeleteBucket(name string) error {
 
 	r.logger.Info("Bucket deletion proposed via Raft", zap.String("name", name))
 	return nil
+}
+
+// startBucketRaftGroup starts a Raft group for a bucket
+func (r *Cluster) startBucketRaftGroup(bucketName string) error {
+	r.muGroups.Lock()
+	defer r.muGroups.Unlock()
+
+	// Check if group already exists
+	if _, exists := r.bucketGroups[bucketName]; exists {
+		r.logger.Warn("Bucket Raft group already exists", zap.String("bucket", bucketName))
+		return nil
+	}
+
+	// Get bucket info to retrieve its ID
+	bucketInfo, exists := r.fsm.GetBucket(bucketName)
+	if !exists {
+		return fmt.Errorf("bucket %s not found", bucketName)
+	}
+
+	// Create new bucket Raft group
+	group, err := NewBucketRaftGroup(r.ctx, bucketName, bucketInfo.ID, r.transport, r.config, r.logger)
+	if err != nil {
+		return fmt.Errorf("creating bucket Raft group: %w", err)
+	}
+
+	// Start the group
+	if err := group.Start(); err != nil {
+		return fmt.Errorf("starting bucket Raft group: %w", err)
+	}
+
+	// Store the group
+	r.bucketGroups[bucketName] = group
+
+	r.logger.Info("Bucket Raft group started", zap.String("bucket", bucketName))
+	return nil
+}
+
+// stopBucketRaftGroup stops a Raft group for a bucket
+func (r *Cluster) stopBucketRaftGroup(bucketName string) error {
+	r.muGroups.Lock()
+	defer r.muGroups.Unlock()
+
+	group, exists := r.bucketGroups[bucketName]
+	if !exists {
+		r.logger.Warn("Bucket Raft group does not exist", zap.String("bucket", bucketName))
+		return nil
+	}
+
+	// Stop the group
+	if err := group.Stop(); err != nil {
+		return fmt.Errorf("stopping bucket Raft group: %w", err)
+	}
+
+	// Remove from map
+	delete(r.bucketGroups, bucketName)
+
+	r.logger.Info("Bucket Raft group stopped", zap.String("bucket", bucketName))
+	return nil
+}
+
+// GetBucketRaftGroup returns the Raft group for a bucket
+func (r *Cluster) GetBucketRaftGroup(bucketName string) (*BucketRaftGroup, bool) {
+	r.muGroups.RLock()
+	defer r.muGroups.RUnlock()
+	group, exists := r.bucketGroups[bucketName]
+	return group, exists
+}
+
+// GetBucketWithRaftState returns a bucket with its Raft cluster state
+func (r *Cluster) GetBucketWithRaftState(name string) (*http.BucketWithRaftState, error) {
+	// Get bucket info from FSM
+	bucketInfo, exists := r.fsm.GetBucket(name)
+	if !exists {
+		return nil, nil // Bucket not found
+	}
+
+	// Get Raft group state if it exists
+	var raftState *http.ClusterState
+	group, exists := r.GetBucketRaftGroup(name)
+	if exists {
+		raftState = group.GetRaftState()
+	}
+
+	return &http.BucketWithRaftState{
+		BucketInfo: bucketInfo,
+		RaftState:  raftState,
+	}, nil
 }

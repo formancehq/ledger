@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type BucketInfo struct {
+type BucketWithRaftState struct {
 	// Sequential bucket ID
 	ID *int64 `json:"id,omitempty"`
 	// Bucket name
@@ -17,51 +17,59 @@ type BucketInfo struct {
 	// Driver-specific configuration
 	Config map[string]any `json:"config,omitempty"`
 	// Creation timestamp (ISO 8601 format)
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	CreatedAt *time.Time    `json:"createdAt,omitempty"`
+	RaftState *ClusterState `json:"raftState,omitempty"`
 }
 
-func (b BucketInfo) MarshalJSON() ([]byte, error) {
+func (b BucketWithRaftState) MarshalJSON() ([]byte, error) {
 	return utils.MarshalJSON(b, "", false)
 }
 
-func (b *BucketInfo) UnmarshalJSON(data []byte) error {
+func (b *BucketWithRaftState) UnmarshalJSON(data []byte) error {
 	if err := utils.UnmarshalJSON(data, &b, "", false, false); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *BucketInfo) GetID() *int64 {
+func (o *BucketWithRaftState) GetID() *int64 {
 	if o == nil {
 		return nil
 	}
 	return o.ID
 }
 
-func (o *BucketInfo) GetName() *string {
+func (o *BucketWithRaftState) GetName() *string {
 	if o == nil {
 		return nil
 	}
 	return o.Name
 }
 
-func (o *BucketInfo) GetDriver() *string {
+func (o *BucketWithRaftState) GetDriver() *string {
 	if o == nil {
 		return nil
 	}
 	return o.Driver
 }
 
-func (o *BucketInfo) GetConfig() map[string]any {
+func (o *BucketWithRaftState) GetConfig() map[string]any {
 	if o == nil {
 		return nil
 	}
 	return o.Config
 }
 
-func (o *BucketInfo) GetCreatedAt() *time.Time {
+func (o *BucketWithRaftState) GetCreatedAt() *time.Time {
 	if o == nil {
 		return nil
 	}
 	return o.CreatedAt
+}
+
+func (o *BucketWithRaftState) GetRaftState() *ClusterState {
+	if o == nil {
+		return nil
+	}
+	return o.RaftState
 }

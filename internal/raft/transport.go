@@ -105,7 +105,18 @@ func (t *Transport) RemovePeer(id uint64) {
 // Send sends a message to a peer
 func (t *Transport) Send(msg raftpb.Message) {
 	t.mu.RLock()
-	ch, exists := t.sendChs[msg.To]
+
+	// Determine the target peer ID for routing
+	// If msg.To >= 0x10000, it's a bucket group message, extract the global node ID
+	targetPeerID := msg.To
+	if msg.To >= 0x10000 {
+		// Extract global node ID from bucket group node ID
+		// groupNodeID = groupID + nodeID, where groupID = bucketID << 16
+		// So nodeID = groupNodeID & 0xFFFF (lower 16 bits)
+		targetPeerID = msg.To & 0xFFFF
+	}
+
+	ch, exists := t.sendChs[targetPeerID]
 	t.mu.RUnlock()
 
 	if exists {
@@ -113,8 +124,14 @@ func (t *Transport) Send(msg raftpb.Message) {
 		case ch <- msg:
 		case <-t.ctx.Done():
 		default:
-			t.logger.Warn("Send channel full, dropping message", zap.Uint64("to", msg.To))
+			t.logger.Warn("Send channel full, dropping message",
+				zap.String("to", fmt.Sprintf("%x", msg.To)),
+				zap.String("targetPeerID", fmt.Sprintf("%x", targetPeerID)))
 		}
+	} else {
+		t.logger.Warn("No send channel for peer, dropping message",
+			zap.String("to", fmt.Sprintf("%x", msg.To)),
+			zap.String("targetPeerID", fmt.Sprintf("%x", targetPeerID)))
 	}
 }
 
@@ -163,9 +180,14 @@ func (t *Transport) handleConnection(conn net.Conn) {
 				return
 			}
 
-			// Message already has From set by the sender
+			// Send message to recvCh for processing by the cluster
 			select {
 			case t.recvCh <- msg:
+				t.logger.Debug("Received message",
+					zap.String("type", msg.Type.String()),
+					zap.String("from", fmt.Sprintf("%x", msg.From)),
+					zap.String("to", fmt.Sprintf("%x", msg.To)),
+					zap.String("targetPeerID", fmt.Sprintf("%x", msg.To&0xFFFF)))
 			case <-t.ctx.Done():
 				return
 			default:
@@ -189,21 +211,27 @@ func (t *Transport) sendLoop(peerID uint64, addr string) {
 			// Connect to peer
 			conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 			if err != nil {
-				t.logger.Warn("Failed to connect to peer", zap.Uint64("peer", peerID), zap.String("addr", addr), zap.Error(err))
+				t.logger.Warn("Failed to connect to peer", zap.String("peer", fmt.Sprintf("%x", peerID)), zap.String("addr", addr), zap.Error(err))
 				// Report peer as unreachable
 				select {
 				case t.unreachableCh <- peerID:
+					t.logger.Warn("Reported peer as unreachable", zap.String("peer", fmt.Sprintf("%x", peerID)))
 				case <-t.ctx.Done():
 					return
 				default:
+					t.logger.Warn("Unreachable channel full, skipping report", zap.String("peer", fmt.Sprintf("%x", peerID)))
 					// Channel full, skip
 				}
 				continue
 			}
 
 			// Send message
+			t.logger.Debug("Sending message to peer",
+				zap.String("type", msg.Type.String()),
+				zap.String("peer", fmt.Sprintf("%x", peerID)),
+				zap.String("addr", addr))
 			if err := t.writeMessage(conn, msg); err != nil {
-				t.logger.Warn("Failed to send message", zap.Uint64("peer", peerID), zap.Error(err))
+				t.logger.Warn("Failed to send message", zap.String("peer", fmt.Sprintf("%x", peerID)), zap.Error(err))
 				conn.Close()
 				// Report peer as unreachable
 				select {

@@ -2,45 +2,13 @@
 
 package components
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
-// Suffrage - Node suffrage (Voter or Nonvoter)
-type Suffrage string
-
-const (
-	SuffrageVoter    Suffrage = "Voter"
-	SuffrageNonvoter Suffrage = "Nonvoter"
-)
-
-func (e Suffrage) ToPointer() *Suffrage {
-	return &e
-}
-func (e *Suffrage) UnmarshalJSON(data []byte) error {
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	switch v {
-	case "Voter":
-		fallthrough
-	case "Nonvoter":
-		*e = Suffrage(v)
-		return nil
-	default:
-		return fmt.Errorf("invalid value for Suffrage: %v", v)
-	}
-}
-
 type NodeInfo struct {
-	// Node ID
+	// Node ID in the bucket Raft group
 	ID *string `json:"id,omitempty"`
-	// Node address
+	// Node address (global node ID)
 	Address *string `json:"address,omitempty"`
-	// Node suffrage (Voter or Nonvoter)
-	Suffrage *Suffrage `json:"suffrage,omitempty"`
+	// Node suffrage (Voter or Learner)
+	Suffrage *string `json:"suffrage,omitempty"`
 }
 
 func (o *NodeInfo) GetID() *string {
@@ -57,7 +25,7 @@ func (o *NodeInfo) GetAddress() *string {
 	return o.Address
 }
 
-func (o *NodeInfo) GetSuffrage() *Suffrage {
+func (o *NodeInfo) GetSuffrage() *string {
 	if o == nil {
 		return nil
 	}

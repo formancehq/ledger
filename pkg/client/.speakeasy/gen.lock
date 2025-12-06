@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: 7adbc82e-ea64-4a2c-babd-0d70816ec99e
 management:
-  docChecksum: 3a2bc3c8a983e76bd277beb270879199
+  docChecksum: 6b1ea2f6c99f78b45efa898751bec81e
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.10.6
-  configChecksum: d81271dd944a4e3ca2d58e7ae7970c7f
+  releaseVersion: 0.10.8
+  configChecksum: 2ff20e5fc1fb17eb66d52982dbb7a1bc
 features:
   go:
     additionalDependencies: 0.1.0
@@ -28,6 +28,8 @@ generatedFiles:
   - .devcontainer/setup.sh
   - .gitattributes
   - /models/components/bucketinfo.go
+  - /models/components/bucketwithraftstate.go
+  - /models/components/clusterstate.go
   - /models/components/clusterstateresponse.go
   - /models/components/createbucketrequest.go
   - /models/components/createbucketresponse.go
@@ -36,6 +38,7 @@ generatedFiles:
   - /models/components/createtransactionrequest.go
   - /models/components/createtransactionresponse.go
   - /models/components/deletebucketresponse.go
+  - /models/components/getbucketresponse.go
   - /models/components/httpmetadata.go
   - /models/components/listbucketsresponse.go
   - /models/components/nodeinfo.go
@@ -48,6 +51,7 @@ generatedFiles:
   - /models/operations/createsnapshot.go
   - /models/operations/createtransaction.go
   - /models/operations/deletebucket.go
+  - /models/operations/getbucket.go
   - /models/operations/getclusterstate.go
   - /models/operations/listbuckets.go
   - /models/sdkerrors/errorresponse.go
@@ -55,6 +59,8 @@ generatedFiles:
   - buckets.go
   - cluster.go
   - docs/models/components/bucketinfo.md
+  - docs/models/components/bucketwithraftstate.md
+  - docs/models/components/clusterstate.md
   - docs/models/components/clusterstateresponse.md
   - docs/models/components/clusterstateresponsedata.md
   - docs/models/components/createbucketrequest.md
@@ -68,6 +74,7 @@ generatedFiles:
   - docs/models/components/data.md
   - docs/models/components/deletebucketresponse.md
   - docs/models/components/deletebucketresponsedata.md
+  - docs/models/components/getbucketresponse.md
   - docs/models/components/httpmetadata.md
   - docs/models/components/listbucketsresponse.md
   - docs/models/components/nodeinfo.md
@@ -76,7 +83,6 @@ generatedFiles:
   - docs/models/components/snapshotresponse.md
   - docs/models/components/snapshotresponsedata.md
   - docs/models/components/state.md
-  - docs/models/components/suffrage.md
   - docs/models/components/transactionresponse.md
   - docs/models/operations/createbucketrequest.md
   - docs/models/operations/createbucketresponse.md
@@ -87,6 +93,8 @@ generatedFiles:
   - docs/models/operations/createtransactionresponse.md
   - docs/models/operations/deletebucketrequest.md
   - docs/models/operations/deletebucketresponse.md
+  - docs/models/operations/getbucketrequest.md
+  - docs/models/operations/getbucketresponse.md
   - docs/models/operations/getclusterstateresponse.md
   - docs/models/operations/listbucketsresponse.md
   - docs/models/operations/option.md
@@ -190,6 +198,18 @@ examples:
           application/json: {}
   deleteBucket:
     speakeasy-default-delete-bucket:
+      parameters:
+        path:
+          bucketName: "<value>"
+      responses:
+        "200":
+          application/json: {}
+        "404":
+          application/json: {}
+        "500":
+          application/json: {}
+  getBucket:
+    speakeasy-default-get-bucket:
       parameters:
         path:
           bucketName: "<value>"

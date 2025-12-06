@@ -3,12 +3,21 @@
 package components
 
 type CreateBucketResponseData struct {
+	// Sequential bucket ID
+	ID *int64 `json:"id,omitempty"`
 	// Name of the created bucket
 	Name *string `json:"name,omitempty"`
 	// Driver name
 	Driver *string `json:"driver,omitempty"`
 	// Driver-specific configuration
 	Config map[string]any `json:"config,omitempty"`
+}
+
+func (o *CreateBucketResponseData) GetID() *int64 {
+	if o == nil {
+		return nil
+	}
+	return o.ID
 }
 
 func (o *CreateBucketResponseData) GetName() *string {

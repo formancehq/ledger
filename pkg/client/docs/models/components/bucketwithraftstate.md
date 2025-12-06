@@ -1,0 +1,13 @@
+# BucketWithRaftState
+
+
+## Fields
+
+| Field                                                               | Type                                                                | Required                                                            | Description                                                         |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `ID`                                                                | **int64*                                                            | :heavy_minus_sign:                                                  | Sequential bucket ID                                                |
+| `Name`                                                              | **string*                                                           | :heavy_minus_sign:                                                  | Bucket name                                                         |
+| `Driver`                                                            | **string*                                                           | :heavy_minus_sign:                                                  | Driver name                                                         |
+| `Config`                                                            | map[string]*any*                                                    | :heavy_minus_sign:                                                  | Driver-specific configuration                                       |
+| `CreatedAt`                                                         | [*time.Time](https://pkg.go.dev/time#Time)                          | :heavy_minus_sign:                                                  | Creation timestamp (ISO 8601 format)                                |
+| `RaftState`                                                         | [*components.ClusterState](../../models/components/clusterstate.md) | :heavy_minus_sign:                                                  | N/A                                                                 |

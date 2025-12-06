@@ -18,16 +18,14 @@ import (
 // RoutedLedger routes requests to the leader, either directly or via gRPC
 type RoutedLedger struct {
 	cluster       ClusterClient
-	nodeID        string
 	defaultLedger Ledger
 	logger        *zap.Logger
 }
 
 // NewRoutedLedger creates a new routed ledger service
-func NewRoutedLedger(cluster ClusterClient, nodeID string, defaultLedger Ledger, logger *zap.Logger) *RoutedLedger {
+func NewRoutedLedger(cluster ClusterClient, defaultLedger Ledger, logger *zap.Logger) *RoutedLedger {
 	return &RoutedLedger{
 		cluster:       cluster,
-		nodeID:        nodeID,
 		defaultLedger: defaultLedger,
 		logger:        logger,
 	}

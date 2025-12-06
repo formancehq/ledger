@@ -96,6 +96,7 @@ func NewCreateLedgerCommand(name string, metadata map[string]string) (*Command, 
 
 // BucketInfo represents information about a bucket
 type BucketInfo struct {
+	ID         uint64                 `json:"id"`                   // Sequential bucket ID
 	Name       string                 `json:"name"`                 // Bucket name/ID
 	Driver     string                 `json:"driver"`               // Driver name (e.g., "postgres", "s3", etc.)
 	Config     map[string]interface{} `json:"config"`                // Driver-specific configuration
