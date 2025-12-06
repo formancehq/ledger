@@ -16,6 +16,10 @@ const (
 	CommandTypeSetPublicAddr CommandType = "set_public_addr"
 	// CommandTypeCreateLedger is the command type for creating a new ledger
 	CommandTypeCreateLedger CommandType = "create_ledger"
+	// CommandTypeCreateBucket is the command type for creating a new bucket
+	CommandTypeCreateBucket CommandType = "create_bucket"
+	// CommandTypeDeleteBucket is the command type for deleting a bucket
+	CommandTypeDeleteBucket CommandType = "delete_bucket"
 )
 
 // Command represents a command to be executed in the FSM
@@ -86,6 +90,56 @@ func NewCreateLedgerCommand(name string, metadata map[string]string) (*Command, 
 	}
 	return &Command{
 		Type: CommandTypeCreateLedger,
+		Data: data,
+	}, nil
+}
+
+// BucketInfo represents information about a bucket
+type BucketInfo struct {
+	Name       string                 `json:"name"`                 // Bucket name/ID
+	Driver     string                 `json:"driver"`               // Driver name (e.g., "postgres", "s3", etc.)
+	Config     map[string]interface{} `json:"config"`                // Driver-specific configuration
+	CreatedAt  string                 `json:"createdAt"`           // Creation timestamp (ISO 8601)
+}
+
+// CreateBucketCommand represents the data for a create bucket command
+type CreateBucketCommand struct {
+	Name   string                 `json:"name"`   // Bucket name/ID (required)
+	Driver string                 `json:"driver"` // Driver name (required)
+	Config map[string]interface{} `json:"config"` // Driver-specific configuration (required)
+}
+
+// NewCreateBucketCommand creates a new CreateBucketCommand
+func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*Command, error) {
+	data, err := json.Marshal(CreateBucketCommand{
+		Name:   name,
+		Driver: driver,
+		Config: config,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Command{
+		Type: CommandTypeCreateBucket,
+		Data: data,
+	}, nil
+}
+
+// DeleteBucketCommand represents the data for a delete bucket command
+type DeleteBucketCommand struct {
+	Name string `json:"name"` // Bucket name/ID (required)
+}
+
+// NewDeleteBucketCommand creates a new DeleteBucketCommand
+func NewDeleteBucketCommand(name string) (*Command, error) {
+	data, err := json.Marshal(DeleteBucketCommand{
+		Name: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Command{
+		Type: CommandTypeDeleteBucket,
 		Data: data,
 	}, nil
 }

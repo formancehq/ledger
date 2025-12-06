@@ -325,6 +325,10 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 		return r.fsm.HandleInsertLogs(cmd.Data, entry.Index)
 	case service.CommandTypeCreateLedger:
 		return r.fsm.HandleCreateLedger(cmd.Data, entry.Index)
+	case service.CommandTypeCreateBucket:
+		return r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
+	case service.CommandTypeDeleteBucket:
+		return r.fsm.HandleDeleteBucket(cmd.Data, entry.Index)
 	default:
 		return fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
@@ -646,5 +650,61 @@ func (r *Cluster) CreateLedger(name string, metadata map[string]string) error {
 	}
 
 	r.logger.Info("Ledger creation proposed via Raft", zap.String("name", name))
+	return nil
+}
+
+// CreateBucket creates a new bucket via a FSM command
+func (r *Cluster) CreateBucket(name, driver string, config map[string]interface{}) error {
+	// Create the command
+	cmd, err := service.NewCreateBucketCommand(name, driver, config)
+	if err != nil {
+		return fmt.Errorf("creating create bucket command: %w", err)
+	}
+
+	// Serialize the command
+	cmdData, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("marshaling command: %w", err)
+	}
+
+	// Propose the command via Raft (will be applied in readyLoop)
+	if err := r.node.Propose(cmdData); err != nil {
+		return fmt.Errorf("proposing command via raft: %w", err)
+	}
+
+	r.logger.Info("Bucket creation proposed via Raft", zap.String("name", name), zap.String("driver", driver))
+	return nil
+}
+
+// GetBucket returns the bucket info for a given name
+func (r *Cluster) GetBucket(name string) (service.BucketInfo, bool) {
+	return r.fsm.GetBucket(name)
+}
+
+// GetAllBuckets returns all buckets
+func (r *Cluster) GetAllBuckets() map[string]service.BucketInfo {
+	return r.fsm.GetAllBuckets()
+}
+
+// DeleteBucket deletes a bucket via a FSM command
+func (r *Cluster) DeleteBucket(name string) error {
+	// Create the command
+	cmd, err := service.NewDeleteBucketCommand(name)
+	if err != nil {
+		return fmt.Errorf("creating delete bucket command: %w", err)
+	}
+
+	// Serialize the command
+	cmdData, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("marshaling command: %w", err)
+	}
+
+	// Propose the command via Raft (will be applied in readyLoop)
+	if err := r.node.Propose(cmdData); err != nil {
+		return fmt.Errorf("proposing command via raft: %w", err)
+	}
+
+	r.logger.Info("Bucket deletion proposed via Raft", zap.String("name", name))
 	return nil
 }

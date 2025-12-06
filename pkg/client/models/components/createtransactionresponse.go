@@ -2,20 +2,20 @@
 
 package components
 
-type Data struct {
+type CreateTransactionResponseData struct {
 	Transaction *TransactionResponse `json:"transaction,omitempty"`
 	// Metadata for accounts involved in the transaction
 	AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
 }
 
-func (o *Data) GetTransaction() *TransactionResponse {
+func (o *CreateTransactionResponseData) GetTransaction() *TransactionResponse {
 	if o == nil {
 		return nil
 	}
 	return o.Transaction
 }
 
-func (o *Data) GetAccountMetadata() map[string]map[string]any {
+func (o *CreateTransactionResponseData) GetAccountMetadata() map[string]map[string]any {
 	if o == nil {
 		return nil
 	}
@@ -23,10 +23,10 @@ func (o *Data) GetAccountMetadata() map[string]map[string]any {
 }
 
 type CreateTransactionResponse struct {
-	Data *Data `json:"data,omitempty"`
+	Data *CreateTransactionResponseData `json:"data,omitempty"`
 }
 
-func (o *CreateTransactionResponse) GetData() *Data {
+func (o *CreateTransactionResponse) GetData() *CreateTransactionResponseData {
 	if o == nil {
 		return nil
 	}

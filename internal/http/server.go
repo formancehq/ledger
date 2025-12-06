@@ -33,6 +33,9 @@ type ClusterClient interface {
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
 	CreateLedger(name string, metadata map[string]string) error
+	CreateBucket(name, driver string, config map[string]interface{}) error
+	DeleteBucket(name string) error
+	GetAllBuckets() map[string]service.BucketInfo
 }
 
 // ClusterState represents the state of the Raft cluster
@@ -77,6 +80,13 @@ func (s *Server) Start(ctx context.Context) error {
 	r.Route("/{ledgerName}", func(r chi.Router) {
 		r.Post("/", s.handleCreateLedger)                  // POST /{ledgerName}
 		r.Post("/transactions", s.handleCreateTransaction) // POST /{ledgerName}/transactions
+	})
+
+	// Register bucket routes
+	r.Get("/buckets", s.handleListBuckets) // GET /buckets
+	r.Route("/buckets/{bucketName}", func(r chi.Router) {
+		r.Post("/", s.handleCreateBucket)   // POST /buckets/{bucketName}
+		r.Delete("/", s.handleDeleteBucket) // DELETE /buckets/{bucketName}
 	})
 
 	handler := r
@@ -357,6 +367,134 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	api.Created(w, map[string]interface{}{
 		"name":     ledgerName,
 		"metadata": req.Metadata,
+	})
+}
+
+// handleListBuckets handles GET /buckets to list all buckets
+func (s *Server) handleListBuckets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		api.WriteErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", errors.New("method not allowed"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	// Get all buckets from cluster
+	buckets := s.cluster.GetAllBuckets()
+
+	// Convert to response format matching BucketInfo structure from SDK
+	// The SDK expects createdAt as *time.Time, so we need to parse the string
+	bucketsList := make([]map[string]interface{}, 0, len(buckets))
+	for name, bucket := range buckets {
+		bucketMap := map[string]interface{}{
+			"name":   name,
+			"driver": bucket.Driver,
+			"config": bucket.Config,
+		}
+		
+		// Parse createdAt string to time.Time for SDK compatibility
+		if bucket.CreatedAt != "" {
+			if createdAt, err := stdtime.Parse(stdtime.RFC3339, bucket.CreatedAt); err == nil {
+				bucketMap["createdAt"] = createdAt
+			} else {
+				// If parsing fails, include as string (shouldn't happen with valid data)
+				bucketMap["createdAt"] = bucket.CreatedAt
+			}
+		}
+		
+		bucketsList = append(bucketsList, bucketMap)
+	}
+
+	// Return success response matching ListBucketsResponse schema
+	// api.Ok wraps the response in {"data": ...}, so we pass the list directly
+	api.Ok(w, bucketsList)
+}
+
+// handleCreateBucket handles POST /buckets/{bucketName} to create a new bucket
+func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
+	if bucketName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
+		return
+	}
+
+	// Parse request body (driver and config are required)
+	var req struct {
+		Driver string                 `json:"driver"`
+		Config map[string]interface{} `json:"config"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+
+	// Validate required fields
+	if req.Driver == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("driver is required"))
+		return
+	}
+
+	if req.Config == nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("config is required"))
+		return
+	}
+
+	// Create bucket via cluster
+	if err := s.cluster.CreateBucket(bucketName, req.Driver, req.Config); err != nil {
+		s.logger.Error("Failed to create bucket", zap.String("name", bucketName), zap.Error(err))
+
+		// Check if bucket already exists
+		if err.Error() == fmt.Sprintf("bucket already exists: %s", bucketName) {
+			api.WriteErrorResponse(w, http.StatusConflict, "BUCKET_ALREADY_EXISTS", err)
+			return
+		}
+
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	// Return success response
+	api.Created(w, map[string]interface{}{
+		"name":     bucketName,
+		"driver":   req.Driver,
+		"config":   req.Config,
+	})
+}
+
+// handleDeleteBucket handles DELETE /buckets/{bucketName} to delete a bucket
+func (s *Server) handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
+	if bucketName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	// Delete bucket via cluster
+	if err := s.cluster.DeleteBucket(bucketName); err != nil {
+		s.logger.Error("Failed to delete bucket", zap.String("name", bucketName), zap.Error(err))
+
+		// Check if bucket does not exist
+		if err.Error() == fmt.Sprintf("bucket does not exist: %s", bucketName) {
+			api.WriteErrorResponse(w, http.StatusNotFound, "BUCKET_NOT_FOUND", err)
+			return
+		}
+
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	// Return success response
+	api.Ok(w, map[string]interface{}{
+		"message": fmt.Sprintf("Bucket %s deleted successfully", bucketName),
 	})
 }
 

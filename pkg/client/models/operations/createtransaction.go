@@ -6,6 +6,26 @@ import (
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
 )
 
+type CreateTransactionRequest struct {
+	// Name of the ledger
+	LedgerName               string                              `pathParam:"style=simple,explode=false,name=ledgerName"`
+	CreateTransactionRequest components.CreateTransactionRequest `request:"mediaType=application/json"`
+}
+
+func (o *CreateTransactionRequest) GetLedgerName() string {
+	if o == nil {
+		return ""
+	}
+	return o.LedgerName
+}
+
+func (o *CreateTransactionRequest) GetCreateTransactionRequest() components.CreateTransactionRequest {
+	if o == nil {
+		return components.CreateTransactionRequest{}
+	}
+	return o.CreateTransactionRequest
+}
+
 type CreateTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Transaction created successfully

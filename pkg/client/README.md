@@ -57,8 +57,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -67,20 +66,13 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateTransactionResponse != nil {
+	if res.CreateLedgerResponse != nil {
 		// handle response
 	}
 }
@@ -94,11 +86,21 @@ func main() {
 <details open>
 <summary>Available methods</summary>
 
+### [Buckets](docs/sdks/buckets/README.md)
+
+* [ListBuckets](docs/sdks/buckets/README.md#listbuckets) - List all buckets
+* [CreateBucket](docs/sdks/buckets/README.md#createbucket) - Create a new bucket
+* [DeleteBucket](docs/sdks/buckets/README.md#deletebucket) - Delete a bucket
+
 ### [Cluster](docs/sdks/cluster/README.md)
 
 * [CreateSnapshot](docs/sdks/cluster/README.md#createsnapshot) - Create a Raft snapshot
 * [GetClusterState](docs/sdks/cluster/README.md#getclusterstate) - Get cluster state
 
+
+### [Ledgers](docs/sdks/ledgers/README.md)
+
+* [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
 
 ### [Transactions](docs/sdks/transactions/README.md)
 
@@ -119,9 +121,8 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
 	"models/operations"
 )
@@ -131,15 +132,8 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	}, operations.WithRetries(
 		retry.Config{
 			Strategy: "backoff",
@@ -154,7 +148,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateTransactionResponse != nil {
+	if res.CreateLedgerResponse != nil {
 		// handle response
 	}
 }
@@ -168,9 +162,8 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
 )
 
@@ -191,20 +184,13 @@ func main() {
 			}),
 	)
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateTransactionResponse != nil {
+	if res.CreateLedgerResponse != nil {
 		// handle response
 	}
 }
@@ -219,11 +205,11 @@ Handling errors in this SDK should largely match your expectations. All operatio
 
 By Default, an API error will return `sdkerrors.SDKError`. When custom error responses are specified for an operation, the SDK may also return their associated error. You can refer to respective *Errors* tables in SDK docs for more details on possible error types for each operation.
 
-For example, the `CreateTransaction` function may return the following errors:
+For example, the `CreateLedger` function may return the following errors:
 
 | Error Type              | Status Code | Content Type     |
 | ----------------------- | ----------- | ---------------- |
-| sdkerrors.ErrorResponse | 400         | application/json |
+| sdkerrors.ErrorResponse | 400, 409    | application/json |
 | sdkerrors.ErrorResponse | 500         | application/json |
 | sdkerrors.SDKError      | 4XX, 5XX    | \*/\*            |
 
@@ -236,9 +222,8 @@ import (
 	"context"
 	"errors"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/sdkerrors"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
 	"log"
 )
 
@@ -247,15 +232,8 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	})
 	if err != nil {
 
@@ -302,8 +280,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -314,20 +291,13 @@ func main() {
 		client.WithServerIndex(1),
 	)
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateTransactionResponse != nil {
+	if res.CreateLedgerResponse != nil {
 		// handle response
 	}
 }
@@ -343,8 +313,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -355,20 +324,13 @@ func main() {
 		client.WithServerURL("http://node-1:9000"),
 	)
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateTransactionResponse != nil {
+	if res.CreateLedgerResponse != nil {
 		// handle response
 	}
 }

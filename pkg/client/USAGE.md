@@ -5,8 +5,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/types"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -15,20 +14,13 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Transactions.CreateTransaction(ctx, components.CreateTransactionRequest{
-		Postings: []components.PostingRequest{
-			components.PostingRequest{
-				Source:      "<value>",
-				Destination: "<value>",
-				Amount:      types.MustNewBigIntFromString("361192"),
-				Asset:       "<value>",
-			},
-		},
+	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+		LedgerName: "<value>",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateTransactionResponse != nil {
+	if res.CreateLedgerResponse != nil {
 		// handle response
 	}
 }

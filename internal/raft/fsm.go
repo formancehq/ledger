@@ -22,6 +22,7 @@ type FSM struct {
 	lastID    uint64                        // Last assigned log ID
 	logs      []ledger.Log                  // In-memory logs waiting to be persisted
 	ledgers   map[string]service.LedgerInfo // Map of ledger name -> ledger info
+	buckets   map[string]service.BucketInfo // Map of bucket name -> bucket info
 }
 
 func NewFSM(logger *zap.Logger, store service.LogWriter, logReader service.LogReader) *FSM {
@@ -32,6 +33,7 @@ func NewFSM(logger *zap.Logger, store service.LogWriter, logReader service.LogRe
 		lastID:    0, // Start at 0, first log will be 1
 		logs:      make([]ledger.Log, 0),
 		ledgers:   make(map[string]service.LedgerInfo),
+		buckets:   make(map[string]service.BucketInfo),
 	}
 }
 
@@ -103,6 +105,72 @@ func (f *FSM) GetAllLedgers() map[string]service.LedgerInfo {
 	return result
 }
 
+// HandleCreateBucket handles the create bucket command
+func (f *FSM) HandleCreateBucket(data json.RawMessage, index uint64) error {
+	var createCmd service.CreateBucketCommand
+	if err := json.Unmarshal(data, &createCmd); err != nil {
+		f.logger.Error("Failed to unmarshal create bucket command", zap.Error(err))
+		return fmt.Errorf("unmarshaling create bucket command: %w", err)
+	}
+
+	// Check if bucket already exists
+	if _, exists := f.buckets[createCmd.Name]; exists {
+		f.logger.Warn("Bucket already exists", zap.String("name", createCmd.Name))
+		return fmt.Errorf("bucket already exists: %s", createCmd.Name)
+	}
+
+	// Create bucket info
+	bucketInfo := service.BucketInfo{
+		Name:      createCmd.Name,
+		Driver:    createCmd.Driver,
+		Config:    createCmd.Config,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Store the bucket
+	f.buckets[createCmd.Name] = bucketInfo
+
+	f.logger.Info("Bucket created", zap.Uint64("index", index), zap.String("name", createCmd.Name), zap.String("driver", createCmd.Driver))
+	return nil
+}
+
+// GetBucket returns the bucket info for a given name
+func (f *FSM) GetBucket(name string) (service.BucketInfo, bool) {
+	info, ok := f.buckets[name]
+	return info, ok
+}
+
+// GetAllBuckets returns all buckets
+func (f *FSM) GetAllBuckets() map[string]service.BucketInfo {
+	// Return a copy to avoid external modifications
+	result := make(map[string]service.BucketInfo, len(f.buckets))
+	for k, v := range f.buckets {
+		result[k] = v
+	}
+	return result
+}
+
+// HandleDeleteBucket handles the delete bucket command
+func (f *FSM) HandleDeleteBucket(data json.RawMessage, index uint64) error {
+	var deleteCmd service.DeleteBucketCommand
+	if err := json.Unmarshal(data, &deleteCmd); err != nil {
+		f.logger.Error("Failed to unmarshal delete bucket command", zap.Error(err))
+		return fmt.Errorf("unmarshaling delete bucket command: %w", err)
+	}
+
+	// Check if bucket exists
+	if _, exists := f.buckets[deleteCmd.Name]; !exists {
+		f.logger.Warn("Bucket does not exist", zap.String("name", deleteCmd.Name))
+		return fmt.Errorf("bucket does not exist: %s", deleteCmd.Name)
+	}
+
+	// Delete the bucket
+	delete(f.buckets, deleteCmd.Name)
+
+	f.logger.Info("Bucket deleted", zap.Uint64("index", index), zap.String("name", deleteCmd.Name))
+	return nil
+}
+
 // Snapshot returns a snapshot of the FSM state
 // CreateSnapshot creates a snapshot for etcd/raft
 func (f *FSM) CreateSnapshot(index uint64) ([]byte, error) {
@@ -129,6 +197,7 @@ func (f *FSM) CreateSnapshot(index uint64) ([]byte, error) {
 	snapshotData := map[string]interface{}{
 		"lastID":  f.lastID,
 		"ledgers": f.ledgers,
+		"buckets": f.buckets,
 	}
 
 	// Marshal to JSON
@@ -157,18 +226,28 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 	// Clear in-memory logs - they will be replayed from Raft logs after restore
 	f.logs = make([]ledger.Log, 0)
 
-	// Try to read ledgers from snapshot (optional, for backward compatibility)
+	// Try to read ledgers and buckets from snapshot (optional, for backward compatibility)
 	decoder := json.NewDecoder(reader)
-	var ledgers map[string]service.LedgerInfo
-	if err := decoder.Decode(&ledgers); err != nil {
-		// If we can't read ledgers (old snapshot format), start with empty map
-		ledgers = make(map[string]service.LedgerInfo)
-		f.logger.Debug("Could not read ledgers from snapshot, starting with empty map", zap.Error(err))
+	var snapshotData struct {
+		Ledgers map[string]service.LedgerInfo `json:"ledgers"`
+		Buckets map[string]service.BucketInfo `json:"buckets"`
+	}
+	if err := decoder.Decode(&snapshotData); err != nil {
+		// If we can't read (old snapshot format), start with empty maps
+		f.ledgers = make(map[string]service.LedgerInfo)
+		f.buckets = make(map[string]service.BucketInfo)
+		f.logger.Debug("Could not read ledgers/buckets from snapshot, starting with empty maps", zap.Error(err))
 	} else {
-		f.ledgers = ledgers
+		f.ledgers = snapshotData.Ledgers
+		if snapshotData.Buckets != nil {
+			f.buckets = snapshotData.Buckets
+		} else {
+			// For backward compatibility, initialize empty buckets map if not present
+			f.buckets = make(map[string]service.BucketInfo)
+		}
 	}
 
-	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", lastID), zap.Int("ledgersCount", len(f.ledgers)))
+	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", lastID), zap.Int("ledgersCount", len(f.ledgers)), zap.Int("bucketsCount", len(f.buckets)))
 	return nil
 }
 
@@ -177,6 +256,7 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 	var snapshotData struct {
 		LastID  uint64                        `json:"lastID"`
 		Ledgers map[string]service.LedgerInfo `json:"ledgers"`
+		Buckets map[string]service.BucketInfo `json:"buckets"`
 	}
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
@@ -185,8 +265,14 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 
 	f.lastID = snapshotData.LastID
 	f.ledgers = snapshotData.Ledgers
+	if snapshotData.Buckets != nil {
+		f.buckets = snapshotData.Buckets
+	} else {
+		// For backward compatibility, initialize empty buckets map if not present
+		f.buckets = make(map[string]service.BucketInfo)
+	}
 	f.logs = make([]ledger.Log, 0)
 
-	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", f.lastID), zap.Int("ledgersCount", len(f.ledgers)))
+	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", f.lastID), zap.Int("ledgersCount", len(f.ledgers)), zap.Int("bucketsCount", len(f.buckets)))
 	return nil
 }

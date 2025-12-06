@@ -16,23 +16,23 @@ import (
 	"net/http"
 )
 
-type Transactions struct {
+type Ledgers struct {
 	rootSDK          *Formance
 	sdkConfiguration config.SDKConfiguration
 	hooks            *hooks.Hooks
 }
 
-func newTransactions(rootSDK *Formance, sdkConfig config.SDKConfiguration, hooks *hooks.Hooks) *Transactions {
-	return &Transactions{
+func newLedgers(rootSDK *Formance, sdkConfig config.SDKConfiguration, hooks *hooks.Hooks) *Ledgers {
+	return &Ledgers{
 		rootSDK:          rootSDK,
 		sdkConfiguration: sdkConfig,
 		hooks:            hooks,
 	}
 }
 
-// CreateTransaction - Create a new transaction
-// Creates a new transaction in the specified ledger with the specified postings
-func (s *Transactions) CreateTransaction(ctx context.Context, request operations.CreateTransactionRequest, opts ...operations.Option) (*operations.CreateTransactionResponse, error) {
+// CreateLedger - Create a new ledger
+// Creates a new ledger with the specified name
+func (s *Ledgers) CreateLedger(ctx context.Context, request operations.CreateLedgerRequest, opts ...operations.Option) (*operations.CreateLedgerResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
 		operations.SupportedOptionRetries,
@@ -51,7 +51,7 @@ func (s *Transactions) CreateTransaction(ctx context.Context, request operations
 	} else {
 		baseURL = *o.ServerURL
 	}
-	opURL, err := utils.GenerateURL(ctx, baseURL, "/{ledgerName}/transactions", request, nil)
+	opURL, err := utils.GenerateURL(ctx, baseURL, "/{ledgerName}", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error generating URL: %w", err)
 	}
@@ -61,11 +61,11 @@ func (s *Transactions) CreateTransaction(ctx context.Context, request operations
 		SDKConfiguration: s.sdkConfiguration,
 		BaseURL:          baseURL,
 		Context:          ctx,
-		OperationID:      "createTransaction",
+		OperationID:      "createLedger",
 		OAuth2Scopes:     []string{},
 		SecuritySource:   nil,
 	}
-	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, false, false, "CreateTransactionRequest", "json", `request:"mediaType=application/json"`)
+	bodyReader, reqContentType, err := utils.SerializeRequestBody(ctx, request, false, true, "CreateLedgerRequest", "json", `request:"mediaType=application/json"`)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (s *Transactions) CreateTransaction(ctx context.Context, request operations
 
 			_, err = s.hooks.AfterError(hooks.AfterErrorContext{HookContext: hookCtx}, nil, err)
 			return nil, err
-		} else if utils.MatchStatusCodes([]string{"400", "4XX", "500", "5XX"}, httpRes.StatusCode) {
+		} else if utils.MatchStatusCodes([]string{"400", "409", "4XX", "500", "5XX"}, httpRes.StatusCode) {
 			_httpRes, err := s.hooks.AfterError(hooks.AfterErrorContext{HookContext: hookCtx}, httpRes, nil)
 			if err != nil {
 				return nil, err
@@ -186,7 +186,7 @@ func (s *Transactions) CreateTransaction(ctx context.Context, request operations
 		}
 	}
 
-	res := &operations.CreateTransactionResponse{
+	res := &operations.CreateLedgerResponse{
 		HTTPMeta: components.HTTPMetadata{
 			Request:  req,
 			Response: httpRes,
@@ -202,12 +202,12 @@ func (s *Transactions) CreateTransaction(ctx context.Context, request operations
 				return nil, err
 			}
 
-			var out components.CreateTransactionResponse
+			var out components.CreateLedgerResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.CreateTransactionResponse = &out
+			res.CreateLedgerResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {
@@ -216,6 +216,8 @@ func (s *Transactions) CreateTransaction(ctx context.Context, request operations
 			return nil, sdkerrors.NewSDKError(fmt.Sprintf("unknown content-type received: %s", httpRes.Header.Get("Content-Type")), httpRes.StatusCode, string(rawBody), httpRes)
 		}
 	case httpRes.StatusCode == 400:
+		fallthrough
+	case httpRes.StatusCode == 409:
 		switch {
 		case utils.MatchContentType(httpRes.Header.Get("Content-Type"), `application/json`):
 			rawBody, err := utils.ConsumeRawBody(httpRes)
