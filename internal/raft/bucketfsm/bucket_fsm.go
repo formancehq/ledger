@@ -1,4 +1,4 @@
-package raft
+package bucketfsm
 
 import (
 	"encoding/json"
@@ -50,7 +50,7 @@ func (f *BucketFSM) HandleCreateLedger(data json.RawMessage, index uint64) error
 	ledgerInfo := service.LedgerInfo{
 		ID:        ledgerID,
 		Name:      createCmd.Name,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		CreatedAt: time.Now().UTC(),
 		Metadata:  createCmd.Metadata,
 	}
 
@@ -125,3 +125,4 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)), zap.Uint64("nextLedgerID", f.nextLedgerID))
 	return nil
 }
+

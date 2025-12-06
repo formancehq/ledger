@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
+	"github.com/formancehq/ledger-v3-poc/internal/raft/bucketfsm"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -25,7 +26,7 @@ type BucketRaftGroup struct {
 	node          *raft.RawNode
 	storage       *Storage
 	bucketStorage service.BucketStorage // Storage for bucket data (SQLite or File)
-	fsm           *BucketFSM            // FSM for managing ledgers in this bucket
+	fsm           *bucketfsm.BucketFSM  // FSM for managing ledgers in this bucket
 	transport     *Transport
 	config        *config.Config
 	logger        *zap.Logger
@@ -83,7 +84,7 @@ func NewBucketRaftGroup(
 	}
 
 	// Create bucket FSM for managing ledgers
-	bucketFSM := NewBucketFSM(bucketName, logger)
+	bucketFSM := bucketfsm.NewBucketFSM(bucketName, logger)
 
 	groupNodeID := groupID + cfg.NodeID // Unique ID for this node in this bucket group
 

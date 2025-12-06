@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
+	"github.com/formancehq/ledger-v3-poc/internal/raft/fsm"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -24,7 +25,7 @@ import (
 
 type Cluster struct {
 	node          *raft.RawNode
-	fsm           *FSM
+	fsm           *fsm.FSM
 	storage       *Storage
 	transport     *Transport
 	config        *config.Config
@@ -125,7 +126,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	}
 
 	// Create FSM (Finite State Machine)
-	fsm := NewFSM(logger)
+	mainFSM := fsm.NewFSM(logger)
 
 	// Extract port from BindAddr for the unified gRPC server
 	// The unified server listens on the same port as Raft transport (BindAddr)
@@ -144,7 +145,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	cluster := &Cluster{
 		node:         node,
-		fsm:          fsm,
+		fsm:          mainFSM,
 		storage:      storage,
 		transport:    transport,
 		config:       cfg,
@@ -742,7 +743,7 @@ func (r *Cluster) Snapshot() error {
 	if status.Applied > 0 {
 		r.logger.Debug("Creating snapshot data via FSM", zap.Uint64("applied", status.Applied))
 		// Create snapshot data via FSM
-		snapshotData, err := r.fsm.CreateSnapshot(status.Applied)
+		snapshotData, err := r.fsm.CreateSnapshot()
 		if err != nil {
 			r.logger.Error("Failed to create snapshot data", zap.Error(err))
 			return fmt.Errorf("creating snapshot data: %w", err)

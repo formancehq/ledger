@@ -15,7 +15,6 @@ type Posting struct {
 	Asset       string   `json:"asset"`
 }
 
-
 func (p Posting) GetSource() string {
 	return p.Source
 }

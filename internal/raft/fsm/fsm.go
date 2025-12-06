@@ -1,4 +1,4 @@
-package raft
+package fsm
 
 import (
 	"encoding/json"
@@ -52,41 +52,14 @@ func (f *FSM) HandleCreateBucket(data json.RawMessage, index uint64) error {
 		Name:      createCmd.Name,
 		Driver:    createCmd.Driver,
 		Config:    createCmd.Config,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		CreatedAt: time.Now().UTC(), // TODO: We MUST not use time.Now() in FSM as state must be deterministic
 	}
 
 	// Store the bucket
 	f.buckets[createCmd.Name] = bucketInfo
 
-	f.logger.Info("Bucket created", zap.Uint64("index", index), zap.Uint64("bucketID", bucketID), zap.String("name", createCmd.Name), zap.String("driver", createCmd.Driver))
+	f.logger.Info("Bucket created", zap.Uint64("index", index), zap.Uint64("id", bucketID), zap.String("name", createCmd.Name))
 	return nil
-}
-
-// GetBucket returns the bucket info for a given name
-func (f *FSM) GetBucket(name string) (service.BucketInfo, bool) {
-	info, ok := f.buckets[name]
-	return info, ok
-}
-
-// GetAllBuckets returns all buckets
-func (f *FSM) GetAllBuckets() map[string]service.BucketInfo {
-	// Return a copy to avoid external modifications
-	result := make(map[string]service.BucketInfo, len(f.buckets))
-	for k, v := range f.buckets {
-		result[k] = v
-	}
-	return result
-}
-
-// GetAllBucketRaftGroups returns all bucket Raft groups information
-// Reconstructed from buckets (bucket name -> bucket ID)
-func (f *FSM) GetAllBucketRaftGroups() map[string]uint64 {
-	// Reconstruct from buckets
-	result := make(map[string]uint64, len(f.buckets))
-	for name, bucket := range f.buckets {
-		result[name] = bucket.ID
-	}
-	return result
 }
 
 // HandleDeleteBucket handles the delete bucket command
@@ -110,13 +83,34 @@ func (f *FSM) HandleDeleteBucket(data json.RawMessage, index uint64) error {
 	return nil
 }
 
-// Snapshot returns a snapshot of the FSM state
-// CreateSnapshot creates a snapshot for etcd/raft
-func (f *FSM) CreateSnapshot(index uint64) ([]byte, error) {
-	f.logger.Info("FSM: Creating snapshot", zap.Uint64("index", index), zap.Int("bucketsCount", len(f.buckets)))
+// GetBucket returns the bucket info for a given name
+func (f *FSM) GetBucket(name string) (service.BucketInfo, bool) {
+	info, ok := f.buckets[name]
+	return info, ok
+}
 
-	// Create snapshot data
-	// Note: ledgers and logs are now managed by bucket Raft groups, not the main FSM
+// GetAllBuckets returns all buckets
+func (f *FSM) GetAllBuckets() map[string]service.BucketInfo {
+	// Return a copy to avoid external modifications
+	result := make(map[string]service.BucketInfo, len(f.buckets))
+	for k, v := range f.buckets {
+		result[k] = v
+	}
+	return result
+}
+
+// GetAllBucketRaftGroups returns a map of bucket name -> bucket ID for all buckets
+// This is used to reconstruct bucket Raft groups on startup
+func (f *FSM) GetAllBucketRaftGroups() map[string]uint64 {
+	result := make(map[string]uint64, len(f.buckets))
+	for name, bucket := range f.buckets {
+		result[name] = bucket.ID
+	}
+	return result
+}
+
+// CreateSnapshot creates a snapshot of the FSM state
+func (f *FSM) CreateSnapshot() ([]byte, error) {
 	snapshotData := map[string]interface{}{
 		"buckets":      f.buckets,
 		"nextBucketID": f.nextBucketID,
@@ -131,10 +125,9 @@ func (f *FSM) CreateSnapshot(index uint64) ([]byte, error) {
 	return data, nil
 }
 
-// RestoreSnapshot restores FSM state from snapshot data
+// RestoreSnapshot restores the FSM from a snapshot
 func (f *FSM) RestoreSnapshot(data []byte) error {
 	var snapshotData struct {
-		LastID       uint64                        `json:"lastID"` // Ignored, kept for backward compatibility
 		Buckets      map[string]service.BucketInfo `json:"buckets"`
 		NextBucketID uint64                        `json:"nextBucketID"`
 	}
@@ -143,25 +136,24 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 		return fmt.Errorf("unmarshaling snapshot data: %w", err)
 	}
 
-	if snapshotData.Buckets != nil {
-		f.buckets = snapshotData.Buckets
-		// Calculate nextBucketID from existing buckets if not present in snapshot
-		if snapshotData.NextBucketID == 0 {
-			maxID := uint64(0)
-			for _, bucket := range f.buckets {
-				if bucket.ID > maxID {
-					maxID = bucket.ID
-				}
-			}
-			f.nextBucketID = maxID + 1
-		} else {
-			f.nextBucketID = snapshotData.NextBucketID
-		}
-	} else {
+	f.buckets = snapshotData.Buckets
+	if f.buckets == nil {
 		f.buckets = make(map[string]service.BucketInfo)
-		f.nextBucketID = 1
 	}
 
-	f.logger.Info("FSM restored from snapshot", zap.Uint64("nextBucketID", f.nextBucketID), zap.Int("bucketsCount", len(f.buckets)))
+	// Restore nextBucketID, or calculate from existing buckets if not present
+	if snapshotData.NextBucketID == 0 {
+		maxID := uint64(0)
+		for _, bucket := range f.buckets {
+			if bucket.ID > maxID {
+				maxID = bucket.ID
+			}
+		}
+		f.nextBucketID = maxID + 1
+	} else {
+		f.nextBucketID = snapshotData.NextBucketID
+	}
+
+	f.logger.Info("FSM restored from snapshot", zap.Int("bucketCount", len(f.buckets)), zap.Uint64("nextBucketID", f.nextBucketID))
 	return nil
 }
