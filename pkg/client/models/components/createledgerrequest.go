@@ -3,8 +3,17 @@
 package components
 
 type CreateLedgerRequest struct {
+	// Name of the bucket where the ledger will be created
+	Bucket string `json:"bucket"`
 	// Optional metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+func (o *CreateLedgerRequest) GetBucket() string {
+	if o == nil {
+		return ""
+	}
+	return o.Bucket
 }
 
 func (o *CreateLedgerRequest) GetMetadata() map[string]string {

@@ -8,23 +8,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	getLedgerBucketName string
-	getLedgerName       string
-)
+var getLedgerName string
 
 var ledgersGetCmd = &cobra.Command{
 	Use:          "get",
 	Short:        "Get a ledger",
-	Long:         "Retrieves a ledger from the specified bucket",
+	Long:         "Retrieves a ledger by its name (bucket is found automatically)",
 	RunE:         runGetLedger,
 	SilenceUsage: true,
 }
 
 func init() {
-	ledgersGetCmd.Flags().StringVar(&getLedgerBucketName, "bucket", "", "Bucket name (required)")
 	ledgersGetCmd.Flags().StringVar(&getLedgerName, "name", "", "Ledger name (required)")
-	ledgersGetCmd.MarkFlagRequired("bucket")
 	ledgersGetCmd.MarkFlagRequired("name")
 }
 
@@ -32,9 +27,6 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	// Validate required flags
-	if getLedgerBucketName == "" {
-		return fmt.Errorf("bucket name is required (use --bucket)")
-	}
 	if getLedgerName == "" {
 		return fmt.Errorf("ledger name is required (use --name)")
 	}
@@ -43,19 +35,23 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	sdk := newSDKClient()
 
 	// Get ledger request
-	req := operations.GetLedgerFromBucketRequest{
-		BucketName: getLedgerBucketName,
+	req := operations.GetLedgerRequest{
 		LedgerName: getLedgerName,
 	}
 
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledger...")
+
 	// Call the get ledger endpoint
-	res, err := sdk.Ledgers.GetLedgerFromBucket(ctx, req)
+	res, err := sdk.Ledgers.GetLedger(ctx, req)
 	if err != nil {
+		spinner.Fail("Failed to get ledger: " + err.Error())
 		return fmt.Errorf("failed to get ledger: %w", err)
 	}
 
+	spinner.Success("Ledger retrieved successfully")
+
 	// Extract response data
-	ledgerResponse := res.GetGetLedgerFromBucketResponse()
+	ledgerResponse := res.GetGetLedgerResponse()
 	if ledgerResponse == nil || ledgerResponse.Data == nil {
 		return fmt.Errorf("no ledger data in response")
 	}

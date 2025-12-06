@@ -157,8 +157,8 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		return nil, fmt.Errorf("unsupported storage type: %s", cfg.StorageType)
 	}
 
-	// Create FSM (Finite State Machine) with application log store
-	fsm := NewFSM(logger, appLogStore, appLogStore)
+	// Create FSM (Finite State Machine)
+	fsm := NewFSM(logger)
 
 	// Create RaftLogWriter for writing logs via Raft (using node instead of raft)
 	raftLogWriter := service.NewRaftLogWriter(node, logger)
@@ -369,9 +369,7 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 	// Route to the appropriate command handler in FSM
 	var err error
 	switch cmd.Type {
-	case service.CommandTypeInsertLogs:
-		err = r.fsm.HandleInsertLogs(cmd.Data, entry.Index)
-	// Note: CreateLedger is now handled by bucket Raft groups, not the main cluster
+	// Note: InsertLogs and CreateLedger are now handled by bucket Raft groups, not the main cluster
 	case service.CommandTypeCreateBucket:
 		err = r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
 		if err == nil {
@@ -811,6 +809,33 @@ func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata map[strin
 	return nil
 }
 
+// FindBucketForLedger finds the bucket that contains a ledger with the given name
+func (r *Cluster) FindBucketForLedger(ledgerName string) (string, error) {
+	r.muGroups.RLock()
+	bucketNames := make([]string, 0, len(r.bucketGroups))
+	for name := range r.bucketGroups {
+		bucketNames = append(bucketNames, name)
+	}
+	r.muGroups.RUnlock()
+
+	for _, bucketName := range bucketNames {
+		r.muGroups.RLock()
+		group, exists := r.bucketGroups[bucketName]
+		r.muGroups.RUnlock()
+
+		if !exists {
+			continue
+		}
+
+		_, ledgerExists := group.GetLedger(ledgerName)
+		if ledgerExists {
+			return bucketName, nil
+		}
+	}
+
+	return "", fmt.Errorf("ledger %s not found in any bucket", ledgerName)
+}
+
 // GetLedger retrieves a ledger from a bucket
 func (r *Cluster) GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error) {
 	// Get the bucket Raft group
@@ -839,6 +864,20 @@ func (r *Cluster) GetLedger(bucketName, ledgerName string) (service.LedgerInfo, 
 	}
 
 	return ledgerInfo, true, nil
+}
+
+// GetLedgerByName retrieves a ledger by its name, finding the bucket automatically
+func (r *Cluster) GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error) {
+	bucketName, err := r.FindBucketForLedger(ledgerName)
+	if err != nil {
+		return service.LedgerInfo{}, "", false, nil
+	}
+
+	ledgerInfo, exists, err := r.GetLedger(bucketName, ledgerName)
+	if err != nil {
+		return service.LedgerInfo{}, "", false, err
+	}
+	return ledgerInfo, bucketName, exists, nil
 }
 
 // GetAllLedgers retrieves all ledgers from a bucket

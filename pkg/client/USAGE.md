@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -14,13 +13,11 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	})
+	res, err := s.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateLedgerResponse != nil {
+	if res.ListAllLedgersResponse != nil {
 		// handle response
 	}
 }

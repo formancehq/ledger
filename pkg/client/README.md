@@ -57,7 +57,6 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -66,13 +65,11 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	})
+	res, err := s.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateLedgerResponse != nil {
+	if res.ListAllLedgersResponse != nil {
 		// handle response
 	}
 }
@@ -101,10 +98,9 @@ func main() {
 
 ### [Ledgers](docs/sdks/ledgers/README.md)
 
+* [ListAllLedgers](docs/sdks/ledgers/README.md#listallledgers) - List all ledgers across all buckets
+* [GetLedger](docs/sdks/ledgers/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
-* [ListLedgersInBucket](docs/sdks/ledgers/README.md#listledgersinbucket) - List all ledgers in a bucket
-* [GetLedgerFromBucket](docs/sdks/ledgers/README.md#getledgerfrombucket) - Get a ledger from a bucket
-* [CreateLedgerInBucket](docs/sdks/ledgers/README.md#createledgerinbucket) - Create a new ledger in a bucket
 
 ### [Transactions](docs/sdks/transactions/README.md)
 
@@ -125,7 +121,6 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
 	"log"
 	"models/operations"
@@ -136,9 +131,7 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	}, operations.WithRetries(
+	res, err := s.Ledgers.ListAllLedgers(ctx, operations.WithRetries(
 		retry.Config{
 			Strategy: "backoff",
 			Backoff: &retry.BackoffStrategy{
@@ -152,7 +145,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateLedgerResponse != nil {
+	if res.ListAllLedgersResponse != nil {
 		// handle response
 	}
 }
@@ -166,7 +159,6 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/retry"
 	"log"
 )
@@ -188,13 +180,11 @@ func main() {
 			}),
 	)
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	})
+	res, err := s.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateLedgerResponse != nil {
+	if res.ListAllLedgersResponse != nil {
 		// handle response
 	}
 }
@@ -209,11 +199,10 @@ Handling errors in this SDK should largely match your expectations. All operatio
 
 By Default, an API error will return `sdkerrors.SDKError`. When custom error responses are specified for an operation, the SDK may also return their associated error. You can refer to respective *Errors* tables in SDK docs for more details on possible error types for each operation.
 
-For example, the `CreateLedger` function may return the following errors:
+For example, the `ListAllLedgers` function may return the following errors:
 
 | Error Type              | Status Code | Content Type     |
 | ----------------------- | ----------- | ---------------- |
-| sdkerrors.ErrorResponse | 400, 409    | application/json |
 | sdkerrors.ErrorResponse | 500         | application/json |
 | sdkerrors.SDKError      | 4XX, 5XX    | \*/\*            |
 
@@ -226,7 +215,6 @@ import (
 	"context"
 	"errors"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/sdkerrors"
 	"log"
 )
@@ -236,16 +224,8 @@ func main() {
 
 	s := client.New()
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	})
+	res, err := s.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
-
-		var e *sdkerrors.ErrorResponse
-		if errors.As(err, &e) {
-			// handle error
-			log.Fatal(e.Error())
-		}
 
 		var e *sdkerrors.ErrorResponse
 		if errors.As(err, &e) {
@@ -284,7 +264,6 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -295,13 +274,11 @@ func main() {
 		client.WithServerIndex(1),
 	)
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	})
+	res, err := s.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateLedgerResponse != nil {
+	if res.ListAllLedgersResponse != nil {
 		// handle response
 	}
 }
@@ -317,7 +294,6 @@ package main
 import (
 	"context"
 	"github.com/formancehq/ledger-v3-poc/pkg/client"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"log"
 )
 
@@ -328,13 +304,11 @@ func main() {
 		client.WithServerURL("http://node-1:9000"),
 	)
 
-	res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-		LedgerName: "<value>",
-	})
+	res, err := s.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.CreateLedgerResponse != nil {
+	if res.ListAllLedgersResponse != nil {
 		// handle response
 	}
 }

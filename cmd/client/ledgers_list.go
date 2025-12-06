@@ -3,50 +3,36 @@ package main
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
-var listLedgerBucketName string
-
 var ledgersListCmd = &cobra.Command{
 	Use:          "list",
-	Short:        "List all ledgers in a bucket",
-	Long:         "Returns a list of all ledgers in the specified bucket",
+	Short:        "List all ledgers across all buckets",
+	Long:         "Returns a list of all ledgers from all buckets",
 	RunE:         runListLedgers,
 	SilenceUsage: true,
-}
-
-func init() {
-	ledgersListCmd.Flags().StringVar(&listLedgerBucketName, "bucket", "", "Bucket name (required)")
-	ledgersListCmd.MarkFlagRequired("bucket")
 }
 
 func runListLedgers(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
-	// Validate required flag
-	if listLedgerBucketName == "" {
-		return fmt.Errorf("bucket name is required (use --bucket)")
-	}
-
 	// Create SDK instance with custom server URL
 	sdk := newSDKClient()
 
-	// List ledgers request
-	req := operations.ListLedgersInBucketRequest{
-		BucketName: listLedgerBucketName,
-	}
-
-	// Call the list ledgers endpoint
-	res, err := sdk.Ledgers.ListLedgersInBucket(ctx, req)
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledgers...")
+	
+	// Call the list all ledgers endpoint
+	res, err := sdk.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
+		spinner.Fail("Failed to list ledgers: " + err.Error())
 		return fmt.Errorf("failed to list ledgers: %w", err)
 	}
+	spinner.Success("Ledgers retrieved successfully")
 
 	// Extract response data
-	ledgersResponse := res.GetListLedgersInBucketResponse()
+	ledgersResponse := res.GetListAllLedgersResponse()
 	if ledgersResponse == nil || ledgersResponse.Data == nil {
 		pterm.Info.Println("No ledgers found")
 		return nil
@@ -87,8 +73,7 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 		tableData = append(tableData, []string{id, name, bucket, createdAt, lastLogID})
 	}
 
-	pterm.DefaultHeader.WithFullWidth().Println(fmt.Sprintf("Ledgers in bucket: %s", listLedgerBucketName))
-	pterm.Println()
+	pterm.DefaultSection.Println("All Ledgers")
 	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
 	return nil

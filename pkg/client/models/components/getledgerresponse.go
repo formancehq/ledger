@@ -2,11 +2,11 @@
 
 package components
 
-type CreateLedgerInBucketResponse struct {
+type GetLedgerResponse struct {
 	Data *LedgerInfo `json:"data,omitempty"`
 }
 
-func (o *CreateLedgerInBucketResponse) GetData() *LedgerInfo {
+func (o *GetLedgerResponse) GetData() *LedgerInfo {
 	if o == nil {
 		return nil
 	}

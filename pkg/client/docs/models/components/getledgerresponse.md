@@ -1,4 +1,4 @@
-# CreateLedgerInBucketResponse
+# GetLedgerResponse
 
 
 ## Fields

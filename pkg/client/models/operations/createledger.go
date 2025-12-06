@@ -8,8 +8,8 @@ import (
 
 type CreateLedgerRequest struct {
 	// Name of the ledger to create
-	LedgerName          string                          `pathParam:"style=simple,explode=false,name=ledgerName"`
-	CreateLedgerRequest *components.CreateLedgerRequest `request:"mediaType=application/json"`
+	LedgerName          string                         `pathParam:"style=simple,explode=false,name=ledgerName"`
+	CreateLedgerRequest components.CreateLedgerRequest `request:"mediaType=application/json"`
 }
 
 func (o *CreateLedgerRequest) GetLedgerName() string {
@@ -19,9 +19,9 @@ func (o *CreateLedgerRequest) GetLedgerName() string {
 	return o.LedgerName
 }
 
-func (o *CreateLedgerRequest) GetCreateLedgerRequest() *components.CreateLedgerRequest {
+func (o *CreateLedgerRequest) GetCreateLedgerRequest() components.CreateLedgerRequest {
 	if o == nil {
-		return nil
+		return components.CreateLedgerRequest{}
 	}
 	return o.CreateLedgerRequest
 }

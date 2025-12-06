@@ -2,32 +2,11 @@
 
 package components
 
-type Data struct {
-	// Name of the created ledger
-	Name *string `json:"name,omitempty"`
-	// Metadata for the ledger
-	Metadata map[string]string `json:"metadata,omitempty"`
-}
-
-func (o *Data) GetName() *string {
-	if o == nil {
-		return nil
-	}
-	return o.Name
-}
-
-func (o *Data) GetMetadata() map[string]string {
-	if o == nil {
-		return nil
-	}
-	return o.Metadata
-}
-
 type CreateLedgerResponse struct {
-	Data *Data `json:"data,omitempty"`
+	Data *LedgerInfo `json:"data,omitempty"`
 }
 
-func (o *CreateLedgerResponse) GetData() *Data {
+func (o *CreateLedgerResponse) GetData() *LedgerInfo {
 	if o == nil {
 		return nil
 	}

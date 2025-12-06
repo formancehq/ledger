@@ -1,9 +1,0 @@
-# ListLedgersInBucketResponse
-
-
-## Fields
-
-| Field                                                                                             | Type                                                                                              | Required                                                                                          | Description                                                                                       |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `HTTPMeta`                                                                                        | [components.HTTPMetadata](../../models/components/httpmetadata.md)                                | :heavy_check_mark:                                                                                | N/A                                                                                               |
-| `ListLedgersInBucketResponse`                                                                     | [*components.ListLedgersInBucketResponse](../../models/components/listledgersinbucketresponse.md) | :heavy_minus_sign:                                                                                | List of ledgers retrieved successfully                                                            |

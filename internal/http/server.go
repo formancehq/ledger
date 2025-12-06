@@ -30,6 +30,8 @@ type ClusterClient interface {
 	GetClusterState() (*ClusterState, error)
 	CreateLedger(bucketName, ledgerName string, metadata map[string]string) error
 	GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error)
+	GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error)
+	FindBucketForLedger(ledgerName string) (string, error)
 	GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error)
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
@@ -83,7 +85,7 @@ func (s *Server) Start(ctx context.Context) error {
 	r.Use(middleware.Recoverer)
 	r.Use(s.loggingMiddleware)
 
-	// Register known routes
+	// Register known routes (specific routes first)
 	r.Post("/snapshot", s.handleSnapshot)
 	r.Get("/health", s.handleHealth)
 	r.Get("/cluster/state", s.handleClusterState)
@@ -91,13 +93,16 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register bucket routes
 	r.Get("/buckets", s.handleListBuckets) // GET /buckets
 	r.Route("/buckets/{bucketName}", func(r chi.Router) {
-		r.Get("/", s.handleGetBucket)                         // GET /buckets/{bucketName}
-		r.Post("/", s.handleCreateBucket)                     // POST /buckets/{bucketName}
-		r.Delete("/", s.handleDeleteBucket)                   // DELETE /buckets/{bucketName}
-		r.Get("/ledgers", s.handleListLedgers)                // GET /buckets/{bucketName}/ledgers
-		r.Post("/ledgers/{ledgerName}", s.handleCreateLedger) // POST /buckets/{bucketName}/ledgers/{ledgerName}
-		r.Get("/ledgers/{ledgerName}", s.handleGetLedger)     // GET /buckets/{bucketName}/ledgers/{ledgerName}
+		r.Get("/", s.handleGetBucket)       // GET /buckets/{bucketName}
+		r.Post("/", s.handleCreateBucket)   // POST /buckets/{bucketName}
+		r.Delete("/", s.handleDeleteBucket) // DELETE /buckets/{bucketName}
 	})
+
+	// Register ledger routes at root (without /ledgers prefix)
+	// Note: Routes with parameters must come before the root route
+	r.Post("/{ledgerName}", s.handleCreateLedger) // POST /{ledgerName}
+	r.Get("/{ledgerName}", s.handleGetLedger)     // GET /{ledgerName}
+	r.Get("/", s.handleListAllLedgers)            // GET / (cross-bucket) - must be last
 
 	handler := r
 
@@ -207,21 +212,31 @@ func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
 	api.Ok(w, clusterState)
 }
 
-// handleCreateLedger handles POST /buckets/{bucketName}/ledgers/{ledgerName} to create a new ledger in a bucket
+// handleCreateLedger handles POST /ledgers/{ledgerName} to create a new ledger
+// The bucket is determined by checking if the ledger already exists, or by trying to create it in the first available bucket
 func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
-	bucketName := chi.URLParam(r, "bucketName")
 	ledgerName := chi.URLParam(r, "ledgerName")
-	if bucketName == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
-		return
-	}
 	if ledgerName == "" {
 		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
 	}
 
-	// Parse request body (optional metadata)
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	// Check if ledger already exists to find its bucket
+	bucketName, err := s.cluster.FindBucketForLedger(ledgerName)
+	if err == nil {
+		// Ledger already exists
+		api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", fmt.Errorf("ledger %s already exists in bucket %s", ledgerName, bucketName))
+		return
+	}
+
+	// Parse request body (bucket and optional metadata)
 	var req struct {
+		Bucket   string            `json:"bucket"`
 		Metadata map[string]string `json:"metadata,omitempty"`
 	}
 
@@ -232,16 +247,22 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Bucket is required in request body
+	if req.Bucket == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required in request body"))
+		return
+	}
+
 	// Create ledger via cluster in the specified bucket
-	if err := s.cluster.CreateLedger(bucketName, ledgerName, req.Metadata); err != nil {
-		s.logger.Error("Failed to create ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
+	if err := s.cluster.CreateLedger(req.Bucket, ledgerName, req.Metadata); err != nil {
+		s.logger.Error("Failed to create ledger", zap.String("bucket", req.Bucket), zap.String("name", ledgerName), zap.Error(err))
 
 		// Check if ledger already exists (in this bucket or globally)
 		errMsg := err.Error()
-		if errMsg == fmt.Sprintf("ledger already exists in bucket %s: %s", bucketName, ledgerName) ||
+		if errMsg == fmt.Sprintf("ledger already exists in bucket %s: %s", req.Bucket, ledgerName) ||
 			errMsg == fmt.Sprintf("ledger with name %s already exists in bucket", ledgerName) ||
-			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger already exists in bucket %s: %s", bucketName, bucketName, ledgerName) ||
-			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger with name %s already exists in bucket", bucketName, ledgerName) {
+			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger already exists in bucket %s: %s", req.Bucket, req.Bucket, ledgerName) ||
+			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger with name %s already exists in bucket", req.Bucket, ledgerName) {
 			api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", err)
 			return
 		}
@@ -251,16 +272,16 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the created ledger to return it
-	ledgerInfo, exists, err := s.cluster.GetLedger(bucketName, ledgerName)
+	ledgerInfo, exists, err := s.cluster.GetLedger(req.Bucket, ledgerName)
 	if err != nil || !exists {
-		s.logger.Warn("Failed to retrieve created ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
+		s.logger.Warn("Failed to retrieve created ledger", zap.String("bucket", req.Bucket), zap.String("name", ledgerName), zap.Error(err))
 		// Still return success since creation succeeded
 		api.Created(w, LedgerResponse{
 			LedgerInfo: service.LedgerInfo{
 				Name:     ledgerName,
 				Metadata: req.Metadata,
 			},
-			Bucket: bucketName,
+			Bucket: req.Bucket,
 		})
 		return
 	}
@@ -268,51 +289,42 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	// Return the ledger info with bucket name
 	api.Created(w, LedgerResponse{
 		LedgerInfo: ledgerInfo,
-		Bucket:     bucketName,
+		Bucket:     req.Bucket,
 	})
 }
 
-// handleListLedgers handles GET /buckets/{bucketName}/ledgers to list all ledgers in a bucket
-func (s *Server) handleListLedgers(w http.ResponseWriter, r *http.Request) {
-	bucketName := chi.URLParam(r, "bucketName")
-	if bucketName == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
-		return
-	}
-
+// handleListAllLedgers handles GET /ledgers to list all ledgers across all buckets
+func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 	if s.cluster == nil {
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
 		return
 	}
 
-	// Get all ledgers from the bucket
-	ledgers, err := s.cluster.GetAllLedgers(bucketName)
-	if err != nil {
-		s.logger.Error("Failed to list ledgers", zap.String("bucket", bucketName), zap.Error(err))
-		api.InternalServerError(w, r, err)
-		return
-	}
+	// Get all buckets
+	buckets := s.cluster.GetAllBuckets()
 
-	// Convert to response format with bucket name
-	ledgersList := make([]LedgerResponse, 0, len(ledgers))
-	for _, ledgerInfo := range ledgers {
-		ledgersList = append(ledgersList, LedgerResponse{
-			LedgerInfo: ledgerInfo,
-			Bucket:     bucketName,
-		})
+	// Collect all ledgers with their bucket names
+	ledgersList := make([]LedgerResponse, 0)
+	for bucketName := range buckets {
+		ledgers, err := s.cluster.GetAllLedgers(bucketName)
+		if err != nil {
+			s.logger.Warn("Failed to get ledgers from bucket", zap.String("bucket", bucketName), zap.Error(err))
+			continue
+		}
+		for _, ledgerInfo := range ledgers {
+			ledgersList = append(ledgersList, LedgerResponse{
+				LedgerInfo: ledgerInfo,
+				Bucket:     bucketName,
+			})
+		}
 	}
 
 	api.Ok(w, ledgersList)
 }
 
-// handleGetLedger handles GET /buckets/{bucketName}/ledgers/{ledgerName} to get a ledger
+// handleGetLedger handles GET /ledgers/{ledgerName} to get a ledger
 func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
-	bucketName := chi.URLParam(r, "bucketName")
 	ledgerName := chi.URLParam(r, "ledgerName")
-	if bucketName == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
-		return
-	}
 	if ledgerName == "" {
 		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
@@ -323,16 +335,16 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get ledger from the bucket
-	ledgerInfo, exists, err := s.cluster.GetLedger(bucketName, ledgerName)
+	// Get ledger by name (finds bucket automatically)
+	ledgerInfo, bucketName, exists, err := s.cluster.GetLedgerByName(ledgerName)
 	if err != nil {
-		s.logger.Error("Failed to get ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
+		s.logger.Error("Failed to get ledger", zap.String("name", ledgerName), zap.Error(err))
 		api.InternalServerError(w, r, err)
 		return
 	}
 
 	if !exists {
-		api.NotFound(w, errors.New("ledger not found"))
+		api.WriteErrorResponse(w, http.StatusNotFound, "LEDGER_NOT_FOUND", fmt.Errorf("ledger %s not found", ledgerName))
 		return
 	}
 

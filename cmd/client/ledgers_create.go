@@ -53,10 +53,10 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 	sdk := newSDKClient()
 
 	// Create ledger request
-	req := operations.CreateLedgerInBucketRequest{
-		BucketName: ledgerBucketName,
+	req := operations.CreateLedgerRequest{
 		LedgerName: ledgerName,
-		CreateLedgerRequest: &components.CreateLedgerRequest{
+		CreateLedgerRequest: components.CreateLedgerRequest{
+			Bucket:   ledgerBucketName,
 			Metadata: metadata,
 		},
 	}
@@ -65,14 +65,14 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 	spinner, _ := pterm.DefaultSpinner.Start("Creating ledger...")
 
 	// Call the create ledger endpoint
-	res, err := sdk.Ledgers.CreateLedgerInBucket(ctx, req)
+	res, err := sdk.Ledgers.CreateLedger(ctx, req)
 	if err != nil {
 		spinner.Fail("Failed to create ledger")
 		return fmt.Errorf("failed to create ledger: %w", err)
 	}
 
 	// Extract response data
-	ledgerResponse := res.GetCreateLedgerInBucketResponse()
+	ledgerResponse := res.GetCreateLedgerResponse()
 	if ledgerResponse == nil || ledgerResponse.Data == nil {
 		spinner.Success("Ledger created successfully")
 		return nil

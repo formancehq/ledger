@@ -14,10 +14,63 @@ servers:
     description: Docker Compose node-1
 
 paths:
+  /:
+    get:
+      summary: List all ledgers across all buckets
+      description: Returns a list of all ledgers from all buckets
+      operationId: listAllLedgers
+      tags:
+        - Ledgers
+      responses:
+        '200':
+          description: List of ledgers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAllLedgersResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}:
+    get:
+      summary: Get a ledger
+      description: Retrieves a ledger by its name (bucket is found automatically)
+      operationId: getLedger
+      tags:
+        - Ledgers
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger to retrieve
+      responses:
+        '200':
+          description: Ledger retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLedgerResponse'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Create a new ledger
-      description: Creates a new ledger with the specified name
+      description: Creates a new ledger in the specified bucket
       operationId: createLedger
       tags:
         - Ledgers
@@ -29,7 +82,7 @@ paths:
             type: string
           description: Name of the ledger to create
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
@@ -303,129 +356,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /buckets/{bucketName}/ledgers:
-    get:
-      summary: List all ledgers in a bucket
-      description: Returns a list of all ledgers in the specified bucket
-      operationId: listLedgersInBucket
-      tags:
-        - Ledgers
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket
-      responses:
-        '200':
-          description: List of ledgers retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListLedgersInBucketResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /buckets/{bucketName}/ledgers/{ledgerName}:
-    get:
-      summary: Get a ledger from a bucket
-      description: Retrieves a ledger from the specified bucket
-      operationId: getLedgerFromBucket
-      tags:
-        - Ledgers
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger to retrieve
-      responses:
-        '200':
-          description: Ledger retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetLedgerFromBucketResponse'
-        '404':
-          description: Ledger not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    post:
-      summary: Create a new ledger in a bucket
-      description: Creates a new ledger in the specified bucket
-      operationId: createLedgerInBucket
-      tags:
-        - Ledgers
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger to create
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateLedgerRequest'
-      responses:
-        '201':
-          description: Ledger created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateLedgerInBucketResponse'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Ledger already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
 components:
   schemas:
     CreateLedgerRequest:
       type: object
+      required:
+        - bucket
       properties:
+        bucket:
+          type: string
+          description: Name of the bucket where the ledger will be created
         metadata:
           type: object
           additionalProperties:
@@ -436,31 +376,22 @@ components:
       type: object
       properties:
         data:
-          type: object
-          properties:
-            name:
-              type: string
-              description: Name of the created ledger
-            metadata:
-              type: object
-              additionalProperties:
-                type: string
-              description: Metadata for the ledger
+          $ref: '#/components/schemas/LedgerInfo'
 
-    CreateLedgerInBucketResponse:
+    GetLedgerResponse:
       type: object
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
 
-    ListLedgersInBucketResponse:
+    ListAllLedgersResponse:
       type: object
       properties:
         data:
           type: array
           items:
             $ref: '#/components/schemas/LedgerInfo'
-          description: List of ledgers in the bucket
+          description: List of all ledgers across all buckets
 
     GetLedgerFromBucketResponse:
       type: object

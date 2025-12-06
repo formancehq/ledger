@@ -2,12 +2,12 @@
 
 package components
 
-type ListLedgersInBucketResponse struct {
-	// List of ledgers in the bucket
+type ListAllLedgersResponse struct {
+	// List of all ledgers across all buckets
 	Data []LedgerInfo `json:"data,omitempty"`
 }
 
-func (o *ListLedgersInBucketResponse) GetData() []LedgerInfo {
+func (o *ListAllLedgersResponse) GetData() []LedgerInfo {
 	if o == nil {
 		return nil
 	}
