@@ -102,6 +102,9 @@ func main() {
 ### [Ledgers](docs/sdks/ledgers/README.md)
 
 * [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
+* [ListLedgersInBucket](docs/sdks/ledgers/README.md#listledgersinbucket) - List all ledgers in a bucket
+* [GetLedgerFromBucket](docs/sdks/ledgers/README.md#getledgerfrombucket) - Get a ledger from a bucket
+* [CreateLedgerInBucket](docs/sdks/ledgers/README.md#createledgerinbucket) - Create a new ledger in a bucket
 
 ### [Transactions](docs/sdks/transactions/README.md)
 

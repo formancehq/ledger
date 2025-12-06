@@ -20,7 +20,7 @@ generation:
     oAuth2ClientCredentialsEnabled: true
     oAuth2PasswordEnabled: false
 go:
-  version: 0.10.8
+  version: 0.10.10
   additionalDependencies: {}
   allowUnknownFieldsInWeakUnions: false
   baseErrorName: FormanceError

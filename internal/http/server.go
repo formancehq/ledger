@@ -33,6 +33,8 @@ type ClusterClient interface {
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
 	CreateLedger(bucketName, ledgerName string, metadata map[string]string) error
+	GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error)
+	GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error)
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
 	GetAllBuckets() map[string]service.BucketInfo
@@ -92,9 +94,12 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register bucket routes
 	r.Get("/buckets", s.handleListBuckets) // GET /buckets
 	r.Route("/buckets/{bucketName}", func(r chi.Router) {
-		r.Get("/", s.handleGetBucket)       // GET /buckets/{bucketName}
-		r.Post("/", s.handleCreateBucket)   // POST /buckets/{bucketName}
-		r.Delete("/", s.handleDeleteBucket) // DELETE /buckets/{bucketName}
+		r.Get("/", s.handleGetBucket)                         // GET /buckets/{bucketName}
+		r.Post("/", s.handleCreateBucket)                     // POST /buckets/{bucketName}
+		r.Delete("/", s.handleDeleteBucket)                   // DELETE /buckets/{bucketName}
+		r.Get("/ledgers", s.handleListLedgers)                // GET /buckets/{bucketName}/ledgers
+		r.Post("/ledgers/{ledgerName}", s.handleCreateLedger) // POST /buckets/{bucketName}/ledgers/{ledgerName}
+		r.Get("/ledgers/{ledgerName}", s.handleGetLedger)     // GET /buckets/{bucketName}/ledgers/{ledgerName}
 	})
 
 	handler := r
@@ -381,6 +386,82 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		"name":     ledgerName,
 		"bucket":   bucketName,
 		"metadata": req.Metadata,
+	})
+}
+
+// handleListLedgers handles GET /buckets/{bucketName}/ledgers to list all ledgers in a bucket
+func (s *Server) handleListLedgers(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
+	if bucketName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	// Get all ledgers from the bucket
+	ledgers, err := s.cluster.GetAllLedgers(bucketName)
+	if err != nil {
+		s.logger.Error("Failed to list ledgers", zap.String("bucket", bucketName), zap.Error(err))
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	// Convert to list format
+	ledgersList := make([]map[string]interface{}, 0, len(ledgers))
+	for name, ledgerInfo := range ledgers {
+		ledgerMap := map[string]interface{}{
+			"name":      name,
+			"bucket":    bucketName,
+			"metadata":  ledgerInfo.Metadata,
+			"createdAt": ledgerInfo.CreatedAt,
+		}
+		ledgersList = append(ledgersList, ledgerMap)
+	}
+
+	api.Ok(w, ledgersList)
+}
+
+// handleGetLedger handles GET /buckets/{bucketName}/ledgers/{ledgerName} to get a ledger
+func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
+	ledgerName := chi.URLParam(r, "ledgerName")
+	if bucketName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
+		return
+	}
+	if ledgerName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	// Get ledger from the bucket
+	ledgerInfo, exists, err := s.cluster.GetLedger(bucketName, ledgerName)
+	if err != nil {
+		s.logger.Error("Failed to get ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	if !exists {
+		api.NotFound(w, errors.New("ledger not found"))
+		return
+	}
+
+	// Return ledger info
+	api.Ok(w, map[string]interface{}{
+		"name":      ledgerName,
+		"bucket":    bucketName,
+		"metadata":  ledgerInfo.Metadata,
+		"createdAt": ledgerInfo.CreatedAt,
 	})
 }
 

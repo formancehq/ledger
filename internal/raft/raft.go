@@ -793,6 +793,38 @@ func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata map[strin
 	return nil
 }
 
+// GetLedger retrieves a ledger from a bucket
+func (r *Cluster) GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error) {
+	// Get the bucket Raft group
+	r.muGroups.RLock()
+	group, exists := r.bucketGroups[bucketName]
+	r.muGroups.RUnlock()
+
+	if !exists {
+		return service.LedgerInfo{}, false, fmt.Errorf("bucket %s not found or Raft group not started", bucketName)
+	}
+
+	// Get ledger from bucket Raft group
+	ledgerInfo, exists := group.GetLedger(ledgerName)
+	return ledgerInfo, exists, nil
+}
+
+// GetAllLedgers retrieves all ledgers from a bucket
+func (r *Cluster) GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error) {
+	// Get the bucket Raft group
+	r.muGroups.RLock()
+	group, exists := r.bucketGroups[bucketName]
+	r.muGroups.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("bucket %s not found or Raft group not started", bucketName)
+	}
+
+	// Get all ledgers from bucket Raft group
+	ledgers := group.GetAllLedgers()
+	return ledgers, nil
+}
+
 // CreateBucket creates a new bucket via a FSM command
 func (r *Cluster) CreateBucket(name, driver string, config map[string]interface{}) error {
 	// Create the command

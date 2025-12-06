@@ -261,8 +261,8 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 
 				// Apply bucket-specific entries to bucket FSM
 				if err := g.applyEntry(entry); err != nil {
-					g.logger.Error("Failed to apply entry to bucket FSM", 
-						zap.Error(err), 
+					g.logger.Error("Failed to apply entry to bucket FSM",
+						zap.Error(err),
 						zap.String("entry", string(entry.Data)))
 					continue
 				}
