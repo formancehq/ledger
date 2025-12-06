@@ -32,7 +32,7 @@ type ClusterClient interface {
 	Snapshot() error
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
-	CreateLedger(name string, metadata map[string]string) error
+	CreateLedger(bucketName, ledgerName string, metadata map[string]string) error
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
 	GetAllBuckets() map[string]service.BucketInfo
@@ -83,16 +83,16 @@ func (s *Server) Start(ctx context.Context) error {
 	r.Get("/health", s.handleHealth)
 	r.Get("/cluster/state", s.handleClusterState)
 
-	// Register ledger routes with dynamic parameter
+	// Register ledger routes with dynamic parameter (deprecated, use bucket routes instead)
+	// Note: These routes are kept for backward compatibility but may be removed in the future
 	r.Route("/{ledgerName}", func(r chi.Router) {
-		r.Post("/", s.handleCreateLedger)                  // POST /{ledgerName}
 		r.Post("/transactions", s.handleCreateTransaction) // POST /{ledgerName}/transactions
 	})
 
 	// Register bucket routes
 	r.Get("/buckets", s.handleListBuckets) // GET /buckets
 	r.Route("/buckets/{bucketName}", func(r chi.Router) {
-		r.Get("/", s.handleGetBucket)        // GET /buckets/{bucketName}
+		r.Get("/", s.handleGetBucket)       // GET /buckets/{bucketName}
 		r.Post("/", s.handleCreateBucket)   // POST /buckets/{bucketName}
 		r.Delete("/", s.handleDeleteBucket) // DELETE /buckets/{bucketName}
 	})
@@ -337,9 +337,14 @@ func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
 	api.Ok(w, clusterState)
 }
 
-// handleCreateLedger handles POST /{ledgerName} to create a new ledger
+// handleCreateLedger handles POST /buckets/{bucketName}/ledgers/{ledgerName} to create a new ledger in a bucket
 func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
 	ledgerName := chi.URLParam(r, "ledgerName")
+	if bucketName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
+		return
+	}
 	if ledgerName == "" {
 		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
 		return
@@ -357,12 +362,12 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create ledger via cluster
-	if err := s.cluster.CreateLedger(ledgerName, req.Metadata); err != nil {
-		s.logger.Error("Failed to create ledger", zap.String("name", ledgerName), zap.Error(err))
+	// Create ledger via cluster in the specified bucket
+	if err := s.cluster.CreateLedger(bucketName, ledgerName, req.Metadata); err != nil {
+		s.logger.Error("Failed to create ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
 
 		// Check if ledger already exists
-		if err.Error() == fmt.Sprintf("ledger already exists: %s", ledgerName) {
+		if err.Error() == fmt.Sprintf("ledger already exists in bucket %s: %s", bucketName, ledgerName) {
 			api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", err)
 			return
 		}
@@ -374,6 +379,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	// Return success response
 	api.Created(w, map[string]interface{}{
 		"name":     ledgerName,
+		"bucket":   bucketName,
 		"metadata": req.Metadata,
 	})
 }
@@ -402,7 +408,7 @@ func (s *Server) handleListBuckets(w http.ResponseWriter, r *http.Request) {
 			"driver": bucket.Driver,
 			"config": bucket.Config,
 		}
-		
+
 		// Parse createdAt string to time.Time for SDK compatibility
 		if bucket.CreatedAt != "" {
 			if createdAt, err := stdtime.Parse(stdtime.RFC3339, bucket.CreatedAt); err == nil {
@@ -412,7 +418,7 @@ func (s *Server) handleListBuckets(w http.ResponseWriter, r *http.Request) {
 				bucketMap["createdAt"] = bucket.CreatedAt
 			}
 		}
-		
+
 		bucketsList = append(bucketsList, bucketMap)
 	}
 
@@ -473,9 +479,9 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 
 	// Return success response
 	api.Created(w, map[string]interface{}{
-		"name":     bucketName,
-		"driver":   req.Driver,
-		"config":   req.Config,
+		"name":   bucketName,
+		"driver": req.Driver,
+		"config": req.Config,
 	})
 }
 

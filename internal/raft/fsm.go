@@ -207,9 +207,9 @@ func (f *FSM) CreateSnapshot(index uint64) ([]byte, error) {
 	}
 
 	// Create snapshot data
+	// Note: ledgers are now managed by bucket Raft groups, not the main FSM
 	snapshotData := map[string]interface{}{
 		"lastID":       f.lastID,
-		"ledgers":      f.ledgers,
 		"buckets":      f.buckets,
 		"nextBucketID": f.nextBucketID,
 	}
@@ -240,10 +240,11 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 	// Clear in-memory logs - they will be replayed from Raft logs after restore
 	f.logs = make([]ledger.Log, 0)
 
-	// Try to read ledgers and buckets from snapshot (optional, for backward compatibility)
+	// Try to read buckets from snapshot (optional, for backward compatibility)
+	// Note: ledgers are now managed by bucket Raft groups, not the main FSM
 	decoder := json.NewDecoder(reader)
 	var snapshotData struct {
-		Ledgers      map[string]service.LedgerInfo `json:"ledgers"`
+		Ledgers      map[string]service.LedgerInfo `json:"ledgers"` // For backward compatibility, but not used anymore
 		Buckets      map[string]service.BucketInfo `json:"buckets"`
 		NextBucketID uint64                        `json:"nextBucketID"`
 	}
@@ -252,9 +253,11 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 		f.ledgers = make(map[string]service.LedgerInfo)
 		f.buckets = make(map[string]service.BucketInfo)
 		f.nextBucketID = 1
-		f.logger.Debug("Could not read ledgers/buckets from snapshot, starting with empty maps", zap.Error(err))
+		f.logger.Debug("Could not read buckets from snapshot, starting with empty maps", zap.Error(err))
 	} else {
-		f.ledgers = snapshotData.Ledgers
+		// Ledgers are no longer stored in main FSM (they're in bucket FSMs)
+		// But we keep the field for backward compatibility during migration
+		f.ledgers = make(map[string]service.LedgerInfo)
 		if snapshotData.Buckets != nil {
 			f.buckets = snapshotData.Buckets
 			// Calculate nextBucketID from existing buckets if not present in snapshot

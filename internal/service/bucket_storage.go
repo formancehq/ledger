@@ -117,4 +117,3 @@ func (f *FileBucketStorage) Close() error {
 func (f *FileBucketStorage) GetPath() string {
 	return f.path
 }
-

@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ type BucketRaftGroup struct {
 	node          *raft.RawNode
 	storage       *Storage
 	bucketStorage service.BucketStorage // Storage for bucket data (SQLite or File)
+	fsm           *BucketFSM            // FSM for managing ledgers in this bucket
 	transport     *Transport
 	config        *config.Config
 	logger        *zap.Logger
@@ -76,6 +78,9 @@ func NewBucketRaftGroup(
 		cancel()
 		return nil, fmt.Errorf("creating bucket storage for bucket %s: %w", bucketName, err)
 	}
+
+	// Create bucket FSM for managing ledgers
+	bucketFSM := NewBucketFSM(bucketName, logger)
 
 	groupNodeID := groupID + cfg.NodeID // Unique ID for this node in this bucket group
 
@@ -142,6 +147,7 @@ func NewBucketRaftGroup(
 		node:          node,
 		storage:       storage,
 		bucketStorage: bucketStorage,
+		fsm:           bucketFSM,
 		transport:     transport,
 		config:        cfg,
 		logger:        logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-raft-group")),
@@ -216,6 +222,11 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 					g.logger.Error("Failed to apply snapshot to storage", zap.Error(err))
 					continue
 				}
+				// Restore bucket FSM from snapshot
+				if err := g.fsm.RestoreSnapshot(rd.Snapshot.Data); err != nil {
+					g.logger.Error("Failed to restore bucket FSM from snapshot", zap.Error(err))
+					continue
+				}
 			}
 
 			// Send messages via transport
@@ -237,7 +248,24 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 					g.node.ApplyConfChange(cc)
 					continue
 				}
-				// TODO: Apply bucket-specific entries to bucket FSM
+
+				if entry.Type != raftpb.EntryNormal {
+					g.logger.Debug("Skipping non-normal entry", zap.Uint64("index", entry.Index), zap.Uint64("type", uint64(entry.Type)))
+					continue
+				}
+				// Skip empty entries (they might be used for heartbeat or other Raft internal purposes)
+				if len(entry.Data) == 0 {
+					g.logger.Debug("Skipping empty entry", zap.Uint64("index", entry.Index))
+					continue
+				}
+
+				// Apply bucket-specific entries to bucket FSM
+				if err := g.applyEntry(entry); err != nil {
+					g.logger.Error("Failed to apply entry to bucket FSM", 
+						zap.Error(err), 
+						zap.String("entry", string(entry.Data)))
+					continue
+				}
 			}
 
 			// Advance the node
@@ -277,6 +305,57 @@ func (g *BucketRaftGroup) GetBucketName() string {
 // GetGroupID returns the group ID
 func (g *BucketRaftGroup) GetGroupID() uint64 {
 	return g.groupID
+}
+
+// applyEntry applies a Raft log entry to the bucket FSM
+func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
+	// Decode the command from the Raft log data
+	var cmd service.Command
+	if err := json.Unmarshal(entry.Data, &cmd); err != nil {
+		return fmt.Errorf("unmarshaling command: %w", err)
+	}
+
+	// Route to the appropriate command handler in bucket FSM
+	switch cmd.Type {
+	case service.CommandTypeCreateLedger:
+		return g.fsm.HandleCreateLedger(cmd.Data, entry.Index)
+	default:
+		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
+		return nil // Don't fail on unknown commands
+	}
+}
+
+// CreateLedger creates a new ledger in this bucket via a FSM command
+func (g *BucketRaftGroup) CreateLedger(name string, metadata map[string]string) error {
+	// Create the command
+	cmd, err := service.NewCreateLedgerCommand(name, metadata)
+	if err != nil {
+		return fmt.Errorf("creating create ledger command: %w", err)
+	}
+
+	// Serialize the command
+	cmdData, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("marshaling command: %w", err)
+	}
+
+	// Propose the command via Raft (will be applied in readyLoop)
+	if err := g.node.Propose(cmdData); err != nil {
+		return fmt.Errorf("proposing command via raft: %w", err)
+	}
+
+	g.logger.Info("Ledger creation proposed via bucket Raft", zap.String("name", name), zap.String("bucket", g.bucketName))
+	return nil
+}
+
+// GetLedger returns the ledger info for a given name in this bucket
+func (g *BucketRaftGroup) GetLedger(name string) (service.LedgerInfo, bool) {
+	return g.fsm.GetLedger(name)
+}
+
+// GetAllLedgers returns all ledgers in this bucket
+func (g *BucketRaftGroup) GetAllLedgers() map[string]service.LedgerInfo {
+	return g.fsm.GetAllLedgers()
 }
 
 // GetRaftState returns the current state of the bucket Raft group

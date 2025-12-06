@@ -9,6 +9,7 @@ services:
       - ADVERTISE_ADDR=node-1:8888
       - PEERS=2/node-2:8888 3/node-3:8888
       - BOOTSTRAP=true
+      - LOGGING_LEVEL=${DEBUG:-false}
     ports:
       - "8888:8888"
       - "8000:8000"
@@ -39,6 +40,7 @@ services:
       - NODE_ID=2
       - ADVERTISE_ADDR=node-2:8888
       - PEERS=1/node-1:8888 3/node-3:8888
+      - LOGGING_LEVEL=${DEBUG:-false}
     ports:
       - "8889:8888"
       - "8001:8000"
@@ -71,6 +73,7 @@ services:
       - NODE_ID=3
       - ADVERTISE_ADDR=node-3:8888
       - PEERS=1/node-1:8888 2/node-2:8888
+      - LOGGING_LEVEL=${DEBUG:-false}
     ports:
       - "8890:8888"
       - "8002:8000"

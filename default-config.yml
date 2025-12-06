@@ -10,10 +10,6 @@ network:
   bind-addr: "0.0.0.0:8888"
   data-dir: "/data"
 
-# Logging
-logging:
-  debug: true
-
 # Server configuration
 server:
   grpc-port: 8000

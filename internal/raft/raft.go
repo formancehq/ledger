@@ -358,8 +358,7 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 	switch cmd.Type {
 	case service.CommandTypeInsertLogs:
 		err = r.fsm.HandleInsertLogs(cmd.Data, entry.Index)
-	case service.CommandTypeCreateLedger:
-		err = r.fsm.HandleCreateLedger(cmd.Data, entry.Index)
+	// Note: CreateLedger is now handled by bucket Raft groups, not the main cluster
 	case service.CommandTypeCreateBucket:
 		err = r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
 		if err == nil {
@@ -774,26 +773,23 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 	}, nil
 }
 
-// CreateLedger creates a new ledger via a FSM command
-func (r *Cluster) CreateLedger(name string, metadata map[string]string) error {
-	// Create the command
-	cmd, err := service.NewCreateLedgerCommand(name, metadata)
-	if err != nil {
-		return fmt.Errorf("creating create ledger command: %w", err)
+// CreateLedger creates a new ledger in a bucket via the bucket's Raft group
+func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata map[string]string) error {
+	// Get the bucket Raft group
+	r.muGroups.RLock()
+	group, exists := r.bucketGroups[bucketName]
+	r.muGroups.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("bucket %s not found or Raft group not started", bucketName)
 	}
 
-	// Serialize the command
-	cmdData, err := json.Marshal(cmd)
-	if err != nil {
-		return fmt.Errorf("marshaling command: %w", err)
+	// Create ledger via bucket Raft group
+	if err := group.CreateLedger(ledgerName, metadata); err != nil {
+		return fmt.Errorf("creating ledger in bucket %s: %w", bucketName, err)
 	}
 
-	// Propose the command via Raft (will be applied in readyLoop)
-	if err := r.node.Propose(cmdData); err != nil {
-		return fmt.Errorf("proposing command via raft: %w", err)
-	}
-
-	r.logger.Info("Ledger creation proposed via Raft", zap.String("name", name))
+	r.logger.Info("Ledger creation proposed via bucket Raft", zap.String("bucket", bucketName), zap.String("name", ledgerName))
 	return nil
 }
 
