@@ -347,7 +347,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 			status := g.node.RawNode().Status()
 			if status.Applied > 0 && status.Applied%1000 == 0 {
 				// Create snapshot: write logs to store and create snapshot data
-				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
+				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore, g.bucketStorage)
 				if err != nil {
 					g.logger.Error("Failed to create snapshot data", zap.Error(err))
 					continue
@@ -416,7 +416,7 @@ func (g *BucketRaftGroup) Snapshot() error {
 	// Trigger snapshot creation
 	if status.Applied > 0 {
 		// Create snapshot data via FSM
-		snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
+		snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore, g.bucketStorage)
 		if err != nil {
 			g.logger.Error("Failed to create snapshot data", zap.Error(err))
 			return fmt.Errorf("creating snapshot data: %w", err)
