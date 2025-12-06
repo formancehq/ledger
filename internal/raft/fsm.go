@@ -115,12 +115,6 @@ func (f *FSM) HandleCreateBucket(data json.RawMessage, index uint64) error {
 		return fmt.Errorf("unmarshaling create bucket command: %w", err)
 	}
 
-	// Check if bucket already exists
-	if _, exists := f.buckets[createCmd.Name]; exists {
-		f.logger.Warn("Bucket already exists", zap.String("name", createCmd.Name))
-		return fmt.Errorf("bucket already exists: %s", createCmd.Name)
-	}
-
 	// Validate bucket configuration
 	if err := service.ValidateBucketConfig(createCmd.Driver, createCmd.Config); err != nil {
 		f.logger.Error("Invalid bucket configuration", zap.String("name", createCmd.Name), zap.String("driver", createCmd.Driver), zap.Error(err))
@@ -159,6 +153,17 @@ func (f *FSM) GetAllBuckets() map[string]service.BucketInfo {
 	result := make(map[string]service.BucketInfo, len(f.buckets))
 	for k, v := range f.buckets {
 		result[k] = v
+	}
+	return result
+}
+
+// GetAllBucketRaftGroups returns all bucket Raft groups information
+// Reconstructed from buckets (bucket name -> bucket ID)
+func (f *FSM) GetAllBucketRaftGroups() map[string]uint64 {
+	// Reconstruct from buckets
+	result := make(map[string]uint64, len(f.buckets))
+	for name, bucket := range f.buckets {
+		result[name] = bucket.ID
 	}
 	return result
 }
@@ -306,6 +311,7 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 		f.buckets = make(map[string]service.BucketInfo)
 		f.nextBucketID = 1
 	}
+
 	f.logs = make([]ledger.Log, 0)
 
 	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", f.lastID), zap.Uint64("nextBucketID", f.nextBucketID), zap.Int("bucketsCount", len(f.buckets)))

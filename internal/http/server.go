@@ -403,19 +403,15 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if bucket already exists (validation en amont)
+	if _, exists := s.cluster.GetBucket(bucketName); exists {
+		api.WriteErrorResponse(w, http.StatusConflict, "BUCKET_ALREADY_EXISTS", fmt.Errorf("bucket %s already exists", bucketName))
+		return
+	}
+
 	// Create bucket via cluster
 	if err := s.cluster.CreateBucket(bucketName, req.Driver, req.Config); err != nil {
 		s.logger.Error("Failed to create bucket", zap.String("name", bucketName), zap.Error(err))
-
-		// Check if bucket already exists
-		errMsg := err.Error()
-		if errMsg == fmt.Sprintf("bucket already exists: %s", bucketName) ||
-			errMsg == fmt.Sprintf("bucket %s already exists", bucketName) ||
-			errMsg == fmt.Sprintf("proposing command via raft: bucket already exists: %s", bucketName) {
-			api.WriteErrorResponse(w, http.StatusConflict, "BUCKET_ALREADY_EXISTS", err)
-			return
-		}
-
 		api.InternalServerError(w, r, err)
 		return
 	}

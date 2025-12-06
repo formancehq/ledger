@@ -245,16 +245,6 @@ func (r *Cluster) Start() error {
 	// Start leader monitoring
 	go r.monitorLeader()
 
-	// Start Raft groups for existing buckets
-	// This ensures that buckets created before this node started have their Raft groups running
-	buckets := r.fsm.GetAllBuckets()
-	for bucketName := range buckets {
-		if err := r.startBucketRaftGroup(bucketName); err != nil {
-			r.logger.Error("Failed to start Raft group for existing bucket", zap.String("bucket", bucketName), zap.Error(err))
-			// Continue with other buckets even if one fails
-		}
-	}
-
 	return nil
 }
 
@@ -321,6 +311,9 @@ func (r *Cluster) readyLoop() {
 					r.logger.Error("Failed to restore FSM from snapshot", zap.Error(err))
 					continue
 				}
+				// Start Raft groups for existing buckets from FSM after snapshot restoration
+				// This ensures that buckets created before this node started have their Raft groups running
+				r.startBucketRaftGroupsFromFSM()
 			}
 
 			// Send messages via transport
@@ -383,11 +376,19 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 		err = r.fsm.HandleCreateBucket(cmd.Data, entry.Index)
 		if err == nil {
 			// Start Raft group for the bucket after successful creation
+			// The bucket Raft group info is now stored in the FSM, so we retrieve it from there
 			var createCmd service.CreateBucketCommand
 			if unmarshalErr := json.Unmarshal(cmd.Data, &createCmd); unmarshalErr == nil {
-				if startErr := r.startBucketRaftGroup(createCmd.Name); startErr != nil {
-					r.logger.Error("Failed to start bucket Raft group", zap.String("bucket", createCmd.Name), zap.Error(startErr))
-					// Don't fail the entry application, just log the error
+				bucketInfo, exists := r.fsm.GetBucket(createCmd.Name)
+				if exists {
+					bucketRaftGroups := r.fsm.GetAllBucketRaftGroups()
+					bucketID, hasGroup := bucketRaftGroups[createCmd.Name]
+					if hasGroup {
+						if startErr := r.startBucketRaftGroupFromFSM(createCmd.Name, bucketID, bucketInfo); startErr != nil {
+							r.logger.Error("Failed to start bucket Raft group", zap.String("bucket", createCmd.Name), zap.Error(startErr))
+							// Don't fail the entry application, just log the error
+						}
+					}
 				}
 			}
 		}
@@ -926,8 +927,25 @@ func (r *Cluster) DeleteBucket(name string) error {
 	return nil
 }
 
-// startBucketRaftGroup starts a Raft group for a bucket
-func (r *Cluster) startBucketRaftGroup(bucketName string) error {
+// startBucketRaftGroupsFromFSM starts all Raft groups for existing buckets from FSM
+func (r *Cluster) startBucketRaftGroupsFromFSM() {
+	bucketRaftGroups := r.fsm.GetAllBucketRaftGroups()
+	buckets := r.fsm.GetAllBuckets()
+	for bucketName, bucketID := range bucketRaftGroups {
+		bucketInfo, exists := buckets[bucketName]
+		if !exists {
+			r.logger.Warn("Bucket Raft group found but bucket info missing", zap.String("bucket", bucketName))
+			continue
+		}
+		if err := r.startBucketRaftGroupFromFSM(bucketName, bucketID, bucketInfo); err != nil {
+			r.logger.Error("Failed to start Raft group for existing bucket", zap.String("bucket", bucketName), zap.Error(err))
+			// Continue with other buckets even if one fails
+		}
+	}
+}
+
+// startBucketRaftGroupFromFSM starts a Raft group for a bucket using information from the FSM
+func (r *Cluster) startBucketRaftGroupFromFSM(bucketName string, bucketID uint64, bucketInfo service.BucketInfo) error {
 	r.muGroups.Lock()
 	defer r.muGroups.Unlock()
 
@@ -937,14 +955,8 @@ func (r *Cluster) startBucketRaftGroup(bucketName string) error {
 		return nil
 	}
 
-	// Get bucket info to retrieve its ID and configuration
-	bucketInfo, exists := r.fsm.GetBucket(bucketName)
-	if !exists {
-		return fmt.Errorf("bucket %s not found", bucketName)
-	}
-
 	// Create new bucket Raft group
-	group, err := NewBucketRaftGroup(r.ctx, bucketName, bucketInfo.ID, bucketInfo, r.transport, r.config, r.logger)
+	group, err := NewBucketRaftGroup(r.ctx, bucketName, bucketID, bucketInfo, r.transport, r.config, r.logger)
 	if err != nil {
 		return fmt.Errorf("creating bucket Raft group: %w", err)
 	}
@@ -957,7 +969,7 @@ func (r *Cluster) startBucketRaftGroup(bucketName string) error {
 	// Store the group
 	r.bucketGroups[bucketName] = group
 
-	r.logger.Info("Bucket Raft group started", zap.String("bucket", bucketName))
+	r.logger.Info("Bucket Raft group started from FSM", zap.String("bucket", bucketName), zap.Uint64("bucketID", bucketID))
 	return nil
 }
 
