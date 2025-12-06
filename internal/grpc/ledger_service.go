@@ -17,15 +17,17 @@ import (
 // ledgerServiceServer implements the LedgerService
 type ledgerServiceServer struct {
 	service.UnimplementedLedgerServiceServer
-	logger        *zap.Logger
-	ledgerService service.Ledger
+	logger         *zap.Logger
+	ledgerService  service.Ledger
+	snapshotClient SnapshotClient
 }
 
 // newLedgerServiceServer creates a new ledger service server
-func newLedgerServiceServer(logger *zap.Logger, ledgerService service.Ledger) *ledgerServiceServer {
+func newLedgerServiceServer(logger *zap.Logger, ledgerService service.Ledger, snapshotClient SnapshotClient) *ledgerServiceServer {
 	return &ledgerServiceServer{
-		logger:        logger,
-		ledgerService: ledgerService,
+		logger:         logger,
+		ledgerService:  ledgerService,
+		snapshotClient: snapshotClient,
 	}
 }
 
@@ -172,4 +174,40 @@ func transactionToProto(tx ledger.Transaction) *service.Transaction {
 		Reference: tx.Reference,
 		Id:        id,
 	}
+}
+
+func (l *ledgerServiceServer) CreateClusterSnapshot(ctx context.Context, req *service.CreateClusterSnapshotRequest) (*service.CreateClusterSnapshotResponse, error) {
+	l.logger.Debug("CreateClusterSnapshot request received")
+
+	if l.snapshotClient == nil {
+		return nil, fmt.Errorf("snapshot client not available")
+	}
+
+	if err := l.snapshotClient.Snapshot(); err != nil {
+		return nil, fmt.Errorf("creating cluster snapshot: %w", err)
+	}
+
+	return &service.CreateClusterSnapshotResponse{
+		Message: "Snapshot created successfully",
+	}, nil
+}
+
+func (l *ledgerServiceServer) CreateBucketSnapshot(ctx context.Context, req *service.CreateBucketSnapshotRequest) (*service.CreateBucketSnapshotResponse, error) {
+	l.logger.Debug("CreateBucketSnapshot request received", zap.String("bucket", req.BucketName))
+
+	if l.snapshotClient == nil {
+		return nil, fmt.Errorf("snapshot client not available")
+	}
+
+	if req.BucketName == "" {
+		return nil, fmt.Errorf("bucket name is required")
+	}
+
+	if err := l.snapshotClient.CreateBucketSnapshot(req.BucketName); err != nil {
+		return nil, fmt.Errorf("creating bucket snapshot: %w", err)
+	}
+
+	return &service.CreateBucketSnapshotResponse{
+		Message: "Snapshot created successfully",
+	}, nil
 }

@@ -405,6 +405,56 @@ func (g *BucketRaftGroup) GetGroupID() uint64 {
 	return g.groupID
 }
 
+// Snapshot forces a snapshot of the bucket Raft group
+func (g *BucketRaftGroup) Snapshot() error {
+	g.logger.Info("Snapshot request received for bucket", zap.String("bucket", g.bucketName))
+
+	// Check if we are the leader (only leader can create snapshots)
+	status := g.node.RawNode().Status()
+	if status.RaftState != raft.StateLeader {
+		g.logger.Warn("Snapshot requested but not leader", zap.String("state", status.RaftState.String()))
+		return fmt.Errorf("only leader can create snapshots, current state: %v", status.RaftState)
+	}
+
+	g.logger.Info("Creating snapshot for bucket", zap.String("bucket", g.bucketName), zap.Uint64("applied", status.Applied))
+
+	// Trigger snapshot creation
+	if status.Applied > 0 {
+		// Create snapshot data via FSM
+		snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
+		if err != nil {
+			g.logger.Error("Failed to create snapshot data", zap.Error(err))
+			return fmt.Errorf("creating snapshot data: %w", err)
+		}
+		g.logger.Debug("Snapshot data created", zap.Int("size", len(snapshotData)))
+
+		// Get current configuration state from storage
+		_, confState, err := g.storage.InitialState()
+		if err != nil {
+			g.logger.Error("Failed to get initial state", zap.Error(err))
+			return fmt.Errorf("getting initial state: %w", err)
+		}
+
+		// Create snapshot via storage
+		_, err = g.storage.CreateSnapshot(status.Applied, &confState, snapshotData)
+		if err != nil {
+			// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
+			if err != ErrSnapOutOfDate {
+				g.logger.Error("Failed to create snapshot in storage", zap.Error(err))
+				return fmt.Errorf("creating snapshot: %w", err)
+			}
+			// ErrSnapOutOfDate is expected if snapshot was already created
+			g.logger.Info("Snapshot already exists", zap.Uint64("index", status.Applied))
+			return nil
+		}
+
+		g.logger.Info("Snapshot created successfully for bucket", zap.String("bucket", g.bucketName), zap.Uint64("applied", status.Applied))
+	} else {
+		g.logger.Warn("No applied entries to snapshot", zap.Uint64("applied", status.Applied))
+	}
+	return nil
+}
+
 // applyEntry applies a Raft log entry to the bucket FSM
 func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 	// Decode the command from the Raft log data

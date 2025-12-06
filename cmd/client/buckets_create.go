@@ -62,7 +62,7 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, file)", bucketDriver)
 	}
 
-	// Create SDK instance with custom server URL
+	// Create SDK instance
 	sdk := newSDKClient()
 
 	// Create bucket request
@@ -126,4 +126,3 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-

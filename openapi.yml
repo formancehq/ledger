@@ -356,6 +356,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /buckets/{bucketName}/snapshot:
+    post:
+      summary: Create a snapshot for a bucket
+      description: Creates a snapshot of the bucket's Raft cluster state
+      operationId: createBucketSnapshot
+      tags:
+        - Buckets
+      parameters:
+        - name: bucketName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the bucket to create a snapshot for
+      responses:
+        '200':
+          description: Snapshot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateBucketSnapshotResponse'
+        '400':
+          description: Bad request (e.g., not leader)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     CreateLedgerRequest:
@@ -677,6 +717,13 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
+
+    CreateBucketSnapshotResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Success message
 
     DeleteBucketResponse:
       type: object

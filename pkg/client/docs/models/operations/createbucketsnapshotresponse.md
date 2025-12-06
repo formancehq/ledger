@@ -1,0 +1,9 @@
+# CreateBucketSnapshotResponse
+
+
+## Fields
+
+| Field                                                                                               | Type                                                                                                | Required                                                                                            | Description                                                                                         |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `HTTPMeta`                                                                                          | [components.HTTPMetadata](../../models/components/httpmetadata.md)                                  | :heavy_check_mark:                                                                                  | N/A                                                                                                 |
+| `CreateBucketSnapshotResponse`                                                                      | [*components.CreateBucketSnapshotResponse](../../models/components/createbucketsnapshotresponse.md) | :heavy_minus_sign:                                                                                  | Snapshot created successfully                                                                       |

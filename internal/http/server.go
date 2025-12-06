@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"go.etcd.io/etcd/raft/v3"
 	"go.uber.org/zap"
 )
 
@@ -36,9 +37,12 @@ type ClusterClient interface {
 	GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error)
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
+	CreateBucketSnapshot(bucketName string) error
 	GetAllBuckets() map[string]service.BucketInfo
 	GetBucket(name string) (service.BucketInfo, bool)
 	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
+	GetGRPCClient() service.GRPCClient
+	GetRaft() *raft.RawNode
 }
 
 // ClusterState represents the state of the Raft cluster
@@ -94,9 +98,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Register bucket routes
 	r.Get("/buckets", s.handleListBuckets) // GET /buckets
 	r.Route("/buckets/{bucketName}", func(r chi.Router) {
-		r.Get("/", s.handleGetBucket)       // GET /buckets/{bucketName}
-		r.Post("/", s.handleCreateBucket)   // POST /buckets/{bucketName}
-		r.Delete("/", s.handleDeleteBucket) // DELETE /buckets/{bucketName}
+		r.Get("/", s.handleGetBucket)                     // GET /buckets/{bucketName}
+		r.Post("/", s.handleCreateBucket)                 // POST /buckets/{bucketName}
+		r.Delete("/", s.handleDeleteBucket)               // DELETE /buckets/{bucketName}
+		r.Post("/snapshot", s.handleCreateBucketSnapshot) // POST /buckets/{bucketName}/snapshot
 	})
 
 	// Register ledger routes at root (without /ledgers prefix)
@@ -153,16 +158,46 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.cluster.Snapshot(); err != nil {
-		s.logger.Error("Failed to create snapshot", zap.Error(err))
+	// Check if we are the leader
+	if s.isLeader() {
+		// We are the leader, call directly
+		if err := s.cluster.Snapshot(); err != nil {
+			s.logger.Error("Failed to create snapshot", zap.Error(err))
+			api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
+			return
+		}
+
+		response := SnapshotData{
+			Message: "Snapshot created successfully",
+		}
+		api.Ok(w, response)
+		return
+	}
+
+	// We are a follower, forward via gRPC
+	grpcClient := s.cluster.GetGRPCClient()
+	if grpcClient == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
+		return
+	}
+
+	client := grpcClient.GetClient()
+	if client == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("gRPC client not available"))
+		return
+	}
+
+	// Call leader via gRPC
+	resp, err := client.CreateClusterSnapshot(r.Context(), &service.CreateClusterSnapshotRequest{})
+	if err != nil {
+		s.logger.Error("Failed to create snapshot via gRPC", zap.Error(err))
 		api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
 		return
 	}
 
 	response := SnapshotData{
-		Message: "Snapshot created successfully",
+		Message: resp.Message,
 	}
-
 	api.Ok(w, response)
 }
 
@@ -552,6 +587,84 @@ func (s *Server) handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
 	api.Ok(w, map[string]interface{}{
 		"message": fmt.Sprintf("Bucket %s deleted successfully", bucketName),
 	})
+}
+
+// handleCreateBucketSnapshot handles POST /buckets/{bucketName}/snapshot to create a snapshot for a bucket
+func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Request) {
+	bucketName := chi.URLParam(r, "bucketName")
+	if bucketName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required"))
+		return
+	}
+
+	if s.cluster == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
+		return
+	}
+
+	// Check if we are the leader
+	if s.isLeader() {
+		// We are the leader, call directly
+		if err := s.cluster.CreateBucketSnapshot(bucketName); err != nil {
+			s.logger.Error("Failed to create bucket snapshot", zap.String("bucket", bucketName), zap.Error(err))
+
+			// Check if bucket does not exist
+			if err.Error() == fmt.Sprintf("bucket does not exist: %s", bucketName) {
+				api.WriteErrorResponse(w, http.StatusNotFound, "BUCKET_NOT_FOUND", err)
+				return
+			}
+
+			api.InternalServerError(w, r, err)
+			return
+		}
+
+		// Return success response
+		api.Ok(w, map[string]interface{}{
+			"message": fmt.Sprintf("Snapshot created successfully for bucket %s", bucketName),
+		})
+		return
+	}
+
+	// We are a follower, forward via gRPC
+	grpcClient := s.cluster.GetGRPCClient()
+	if grpcClient == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
+		return
+	}
+
+	client := grpcClient.GetClient()
+	if client == nil {
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("gRPC client not available"))
+		return
+	}
+
+	// Call leader via gRPC
+	resp, err := client.CreateBucketSnapshot(r.Context(), &service.CreateBucketSnapshotRequest{
+		BucketName: bucketName,
+	})
+	if err != nil {
+		s.logger.Error("Failed to create bucket snapshot via gRPC", zap.String("bucket", bucketName), zap.Error(err))
+		api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
+		return
+	}
+
+	// Return success response
+	api.Ok(w, map[string]interface{}{
+		"message": resp.Message,
+	})
+}
+
+// isLeader checks if the current node is the leader
+func (s *Server) isLeader() bool {
+	if s.cluster == nil {
+		return false
+	}
+	raftInstance := s.cluster.GetRaft()
+	if raftInstance == nil {
+		return false
+	}
+	status := raftInstance.Status()
+	return status.RaftState == raft.StateLeader
 }
 
 // loggingMiddleware logs HTTP requests (chi middleware)

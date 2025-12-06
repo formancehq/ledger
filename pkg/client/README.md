@@ -1,9 +1,9 @@
-# openapi
+# github.com/formancehq/ledger-v3-poc/pkg/client
 
-Developer-friendly & type-safe Go SDK specifically catered to leverage *openapi* API.
+Developer-friendly & type-safe Go SDK specifically catered to leverage *github.com/formancehq/ledger-v3-poc/pkg/client* API.
 
 <div align="left">
-    <a href="https://www.speakeasy.com/?utm_source=openapi&utm_campaign=go"><img src="https://custom-icon-badges.demolab.com/badge/-Built%20By%20Speakeasy-212015?style=for-the-badge&logoColor=FBE331&logo=speakeasy&labelColor=545454" /></a>
+    <a href="https://www.speakeasy.com/?utm_source=github-com/formancehq/ledger-v3-poc/pkg/client&utm_campaign=go"><img src="https://custom-icon-badges.demolab.com/badge/-Built%20By%20Speakeasy-212015?style=for-the-badge&logoColor=FBE331&logo=speakeasy&labelColor=545454" /></a>
     <a href="https://opensource.org/licenses/MIT">
         <img src="https://img.shields.io/badge/License-MIT-blue.svg" style="width: 100px; height: 28px;" />
     </a>
@@ -23,7 +23,7 @@ Ledger V3 POC API: API for the Ledger V3 Proof of Concept with Raft consensus
 <!-- Start Table of Contents [toc] -->
 ## Table of Contents
 <!-- $toc-max-depth=2 -->
-* [openapi](#openapi)
+* [github.com/formancehq/ledger-v3-poc/pkg/client](#githubcomformancehqledger-v3-pocpkgclient)
   * [SDK Installation](#sdk-installation)
   * [SDK Example Usage](#sdk-example-usage)
   * [Available Resources and Operations](#available-resources-and-operations)
@@ -89,6 +89,7 @@ func main() {
 * [GetBucket](docs/sdks/buckets/README.md#getbucket) - Get a bucket
 * [CreateBucket](docs/sdks/buckets/README.md#createbucket) - Create a new bucket
 * [DeleteBucket](docs/sdks/buckets/README.md#deletebucket) - Delete a bucket
+* [CreateBucketSnapshot](docs/sdks/buckets/README.md#createbucketsnapshot) - Create a snapshot for a bucket
 
 ### [Cluster](docs/sdks/cluster/README.md)
 
@@ -360,4 +361,4 @@ looking for the latest version.
 While we value open-source contributions to this SDK, this library is generated programmatically. Any manual changes added to internal files will be overwritten on the next generation. 
 We look forward to hearing your feedback. Feel free to open a PR or an issue with a proof of concept and we'll do our best to include it in a future release. 
 
-### SDK Created by [Speakeasy](https://www.speakeasy.com/?utm_source=openapi&utm_campaign=go)
+### SDK Created by [Speakeasy](https://www.speakeasy.com/?utm_source=github-com/formancehq/ledger-v3-poc/pkg/client&utm_campaign=go)

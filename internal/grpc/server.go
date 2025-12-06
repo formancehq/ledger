@@ -10,6 +10,12 @@ import (
 	"google.golang.org/grpc"
 )
 
+// SnapshotClient is an interface for snapshot operations
+type SnapshotClient interface {
+	Snapshot() error
+	CreateBucketSnapshot(bucketName string) error
+}
+
 // RaftTransportHandler is an interface for registering Raft transport service on a gRPC server
 type RaftTransportHandler interface {
 	RegisterRaftService(*grpc.Server)
@@ -22,9 +28,10 @@ type Server struct {
 	port                 int
 	ledgerService        service.Ledger
 	raftTransportHandler RaftTransportHandler // Handler for registering Raft service (required)
+	snapshotClient       SnapshotClient       // Client for snapshot operations
 }
 
-func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, raftHandler RaftTransportHandler) *Server {
+func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, raftHandler RaftTransportHandler, snapshotClient SnapshotClient) *Server {
 	if raftHandler == nil {
 		panic("raftHandler cannot be nil - unified gRPC server requires Raft transport handler")
 	}
@@ -33,6 +40,7 @@ func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, raftH
 		logger:               logger,
 		ledgerService:        ledgerService,
 		raftTransportHandler: raftHandler,
+		snapshotClient:       snapshotClient,
 	}
 }
 
@@ -46,7 +54,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.server = grpc.NewServer()
 
 	// Register LedgerService
-	service.RegisterLedgerServiceServer(s.server, newLedgerServiceServer(s.logger, s.ledgerService))
+	service.RegisterLedgerServiceServer(s.server, newLedgerServiceServer(s.logger, s.ledgerService, s.snapshotClient))
 
 	// Register RaftTransportService (always required for unified server)
 	s.raftTransportHandler.RegisterRaftService(s.server)

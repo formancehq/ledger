@@ -19,7 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_CreateTransaction_FullMethodName = "/ledger.LedgerService/CreateTransaction"
+	LedgerService_CreateTransaction_FullMethodName     = "/ledger.LedgerService/CreateTransaction"
+	LedgerService_CreateClusterSnapshot_FullMethodName = "/ledger.LedgerService/CreateClusterSnapshot"
+	LedgerService_CreateBucketSnapshot_FullMethodName  = "/ledger.LedgerService/CreateBucketSnapshot"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -30,6 +32,10 @@ const (
 type LedgerServiceClient interface {
 	// CreateTransaction creates a new transaction
 	CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*CreateTransactionResponse, error)
+	// CreateClusterSnapshot creates a snapshot of the root Raft cluster
+	CreateClusterSnapshot(ctx context.Context, in *CreateClusterSnapshotRequest, opts ...grpc.CallOption) (*CreateClusterSnapshotResponse, error)
+	// CreateBucketSnapshot creates a snapshot of a bucket's Raft cluster
+	CreateBucketSnapshot(ctx context.Context, in *CreateBucketSnapshotRequest, opts ...grpc.CallOption) (*CreateBucketSnapshotResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -50,6 +56,26 @@ func (c *ledgerServiceClient) CreateTransaction(ctx context.Context, in *CreateT
 	return out, nil
 }
 
+func (c *ledgerServiceClient) CreateClusterSnapshot(ctx context.Context, in *CreateClusterSnapshotRequest, opts ...grpc.CallOption) (*CreateClusterSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateClusterSnapshotResponse)
+	err := c.cc.Invoke(ctx, LedgerService_CreateClusterSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) CreateBucketSnapshot(ctx context.Context, in *CreateBucketSnapshotRequest, opts ...grpc.CallOption) (*CreateBucketSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateBucketSnapshotResponse)
+	err := c.cc.Invoke(ctx, LedgerService_CreateBucketSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerServiceServer is the server API for LedgerService service.
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
@@ -58,6 +84,10 @@ func (c *ledgerServiceClient) CreateTransaction(ctx context.Context, in *CreateT
 type LedgerServiceServer interface {
 	// CreateTransaction creates a new transaction
 	CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error)
+	// CreateClusterSnapshot creates a snapshot of the root Raft cluster
+	CreateClusterSnapshot(context.Context, *CreateClusterSnapshotRequest) (*CreateClusterSnapshotResponse, error)
+	// CreateBucketSnapshot creates a snapshot of a bucket's Raft cluster
+	CreateBucketSnapshot(context.Context, *CreateBucketSnapshotRequest) (*CreateBucketSnapshotResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -70,6 +100,12 @@ type UnimplementedLedgerServiceServer struct{}
 
 func (UnimplementedLedgerServiceServer) CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTransaction not implemented")
+}
+func (UnimplementedLedgerServiceServer) CreateClusterSnapshot(context.Context, *CreateClusterSnapshotRequest) (*CreateClusterSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateClusterSnapshot not implemented")
+}
+func (UnimplementedLedgerServiceServer) CreateBucketSnapshot(context.Context, *CreateBucketSnapshotRequest) (*CreateBucketSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateBucketSnapshot not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
 func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
@@ -110,6 +146,42 @@ func _LedgerService_CreateTransaction_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_CreateClusterSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateClusterSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).CreateClusterSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_CreateClusterSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).CreateClusterSnapshot(ctx, req.(*CreateClusterSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_CreateBucketSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateBucketSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).CreateBucketSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_CreateBucketSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).CreateBucketSnapshot(ctx, req.(*CreateBucketSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -120,6 +192,14 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateTransaction",
 			Handler:    _LedgerService_CreateTransaction_Handler,
+		},
+		{
+			MethodName: "CreateClusterSnapshot",
+			Handler:    _LedgerService_CreateClusterSnapshot_Handler,
+		},
+		{
+			MethodName: "CreateBucketSnapshot",
+			Handler:    _LedgerService_CreateBucketSnapshot_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

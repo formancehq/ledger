@@ -163,7 +163,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	// Create a routed ledger service that routes to the appropriate bucket
 	routedLedger := service.NewRoutedLedger(cluster, &bucketLedgerRouter{cluster: cluster}, logger)
 	cluster.ledgerService = routedLedger
-	cluster.grpcServer = grpc.NewServer(grpcPort, logger, routedLedger, transport)
+	cluster.grpcServer = grpc.NewServer(grpcPort, logger, routedLedger, transport, cluster)
 
 	// Add peers to transport
 	// Peers are in format "<id>/<address>", parse them
@@ -1073,6 +1073,16 @@ func (r *Cluster) GetBucketRaftGroup(bucketName string) (*BucketRaftGroup, bool)
 	defer r.muGroups.RUnlock()
 	group, exists := r.bucketGroups[bucketName]
 	return group, exists
+}
+
+// CreateBucketSnapshot creates a snapshot for a specific bucket's Raft group
+func (r *Cluster) CreateBucketSnapshot(bucketName string) error {
+	group, exists := r.GetBucketRaftGroup(bucketName)
+	if !exists {
+		return fmt.Errorf("bucket does not exist: %s", bucketName)
+	}
+
+	return group.Snapshot()
 }
 
 // GetBucketWithRaftState returns a bucket with its Raft cluster state
