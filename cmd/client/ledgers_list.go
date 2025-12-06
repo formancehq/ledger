@@ -60,10 +60,14 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 
 	// Create table data
 	tableData := pterm.TableData{
-		{"Name", "Bucket", "Created At"},
+		{"ID", "Name", "Bucket", "Created At", "Last Log ID"},
 	}
 
 	for _, ledger := range ledgers {
+		id := "N/A"
+		if ledger.ID != nil {
+			id = fmt.Sprintf("%d", *ledger.ID)
+		}
 		name := "N/A"
 		if ledger.Name != nil {
 			name = *ledger.Name
@@ -76,7 +80,11 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 		if ledger.CreatedAt != nil {
 			createdAt = ledger.CreatedAt.Format("2006-01-02 15:04:05")
 		}
-		tableData = append(tableData, []string{name, bucket, createdAt})
+		lastLogID := "N/A"
+		if ledger.LastLogID != nil {
+			lastLogID = fmt.Sprintf("%d", *ledger.LastLogID)
+		}
+		tableData = append(tableData, []string{id, name, bucket, createdAt, lastLogID})
 	}
 
 	pterm.DefaultHeader.WithFullWidth().Println(fmt.Sprintf("Ledgers in bucket: %s", listLedgerBucketName))

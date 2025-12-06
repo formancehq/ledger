@@ -64,6 +64,9 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 
 	// Create info panel
 	panelData := ""
+	if data.ID != nil {
+		panelData += fmt.Sprintf("ID: %d\n", *data.ID)
+	}
 	if data.Name != nil {
 		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
 	}
@@ -72,6 +75,9 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	}
 	if data.CreatedAt != nil {
 		panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
+	}
+	if data.LastLogID != nil {
+		panelData += fmt.Sprintf("Last Log ID: %d\n", *data.LastLogID)
 	}
 	if len(data.Metadata) > 0 {
 		panelData += "\nMetadata:\n"

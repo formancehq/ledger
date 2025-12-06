@@ -451,19 +451,7 @@ components:
       type: object
       properties:
         data:
-          type: object
-          properties:
-            name:
-              type: string
-              description: Name of the created ledger
-            bucket:
-              type: string
-              description: Name of the bucket containing the ledger
-            metadata:
-              type: object
-              additionalProperties:
-                type: string
-              description: Metadata for the ledger
+          $ref: '#/components/schemas/LedgerInfo'
 
     ListLedgersInBucketResponse:
       type: object
@@ -483,6 +471,10 @@ components:
     LedgerInfo:
       type: object
       properties:
+        id:
+          type: integer
+          format: int64
+          description: Sequential ID for the ledger
         name:
           type: string
           description: Name of the ledger
@@ -498,6 +490,11 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
+        lastLogId:
+          type: integer
+          format: int64
+          description: ID of the last log for this ledger
+          nullable: true
 
     CreateTransactionRequest:
       type: object
@@ -670,22 +667,7 @@ components:
       type: object
       properties:
         data:
-          type: object
-          properties:
-            id:
-              type: integer
-              format: int64
-              description: Sequential bucket ID
-            name:
-              type: string
-              description: Name of the created bucket
-            driver:
-              type: string
-              description: Driver name
-            config:
-              type: object
-              additionalProperties: true
-              description: Driver-specific configuration
+          $ref: '#/components/schemas/BucketInfo'
 
     ListBucketsResponse:
       type: object

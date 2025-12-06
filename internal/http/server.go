@@ -5,14 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"net/http"
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/go-libs/v3/metadata"
-	"github.com/formancehq/go-libs/v3/time"
-	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -38,6 +34,7 @@ type ClusterClient interface {
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
 	GetAllBuckets() map[string]service.BucketInfo
+	GetBucket(name string) (service.BucketInfo, bool)
 	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
 }
 
@@ -62,6 +59,12 @@ type BucketWithRaftState struct {
 	RaftState *ClusterState `json:"raftState"`
 }
 
+// LedgerResponse represents a ledger with its bucket name
+type LedgerResponse struct {
+	service.LedgerInfo
+	Bucket string `json:"bucket"`
+}
+
 func NewServer(port int, logger *zap.Logger, ledgerService service.Ledger, cluster ClusterClient) *Server {
 	return &Server{
 		logger:        logger,
@@ -84,12 +87,6 @@ func (s *Server) Start(ctx context.Context) error {
 	r.Post("/snapshot", s.handleSnapshot)
 	r.Get("/health", s.handleHealth)
 	r.Get("/cluster/state", s.handleClusterState)
-
-	// Register ledger routes with dynamic parameter (deprecated, use bucket routes instead)
-	// Note: These routes are kept for backward compatibility but may be removed in the future
-	r.Route("/{ledgerName}", func(r chi.Router) {
-		r.Post("/transactions", s.handleCreateTransaction) // POST /{ledgerName}/transactions
-	})
 
 	// Register bucket routes
 	r.Get("/buckets", s.handleListBuckets) // GET /buckets
@@ -133,138 +130,6 @@ func (s *Server) Stop() error {
 }
 
 // Request/Response structures for JSON
-
-type CreateTransactionRequest struct {
-	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
-	Timestamp       string                       `json:"timestamp,omitempty"` // ISO 8601 format
-	Metadata        metadata.Metadata            `json:"metadata,omitempty"`
-	Reference       string                       `json:"reference,omitempty"`
-	Postings        []PostingRequest             `json:"postings"`
-	DryRun          bool                         `json:"dryRun,omitempty"`
-	IdempotencyKey  string                       `json:"idempotencyKey,omitempty"`
-}
-
-type PostingRequest struct {
-	Source      string   `json:"source"`
-	Destination string   `json:"destination"`
-	Amount      *big.Int `json:"amount"`
-	Asset       string   `json:"asset"`
-}
-
-type CreateTransactionData struct {
-	Transaction     TransactionResponse          `json:"transaction"`
-	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
-}
-
-type TransactionResponse struct {
-	Postings  []PostingResponse `json:"postings"`
-	Metadata  metadata.Metadata `json:"metadata,omitempty"`
-	Timestamp string            `json:"timestamp"` // ISO 8601 format
-	Reference string            `json:"reference,omitempty"`
-	ID        *uint64           `json:"id,omitempty"`
-}
-
-type PostingResponse struct {
-	Source      string   `json:"source"`
-	Destination string   `json:"destination"`
-	Amount      *big.Int `json:"amount"`
-	Asset       string   `json:"asset"`
-}
-
-func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
-		return
-	}
-
-	var req CreateTransactionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.BadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request: %w", err))
-		return
-	}
-
-	// Convert request to service parameters
-	postings := make(ledger.Postings, 0, len(req.Postings))
-	for _, p := range req.Postings {
-		if p.Amount == nil {
-			api.BadRequest(w, "INVALID_AMOUNT", errors.New("amount is required"))
-			return
-		}
-		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, p.Amount))
-	}
-
-	// Parse timestamp
-	var timestamp time.Time
-	if req.Timestamp != "" {
-		parsed, err := stdtime.Parse(stdtime.RFC3339, req.Timestamp)
-		if err != nil {
-			api.BadRequest(w, "INVALID_TIMESTAMP", fmt.Errorf("invalid timestamp format: %w", err))
-			return
-		}
-		timestamp = time.New(parsed)
-	} else {
-		timestamp = time.Now()
-	}
-
-	params := service.Parameters[service.CreateTransaction]{
-		DryRun:         req.DryRun,
-		IdempotencyKey: req.IdempotencyKey,
-		Input: service.CreateTransaction{
-			AccountMetadata: req.AccountMetadata,
-			Timestamp:       timestamp,
-			Metadata:        req.Metadata,
-			Reference:       req.Reference,
-			Postings:        postings,
-		},
-	}
-
-	// Call ledger service
-	_, createdTx, err := s.ledgerService.CreateTransaction(r.Context(), ledgerName, params)
-	if err != nil {
-		s.logger.Error("Failed to create transaction", zap.Error(err))
-		api.InternalServerError(w, r, err)
-		return
-	}
-
-	// Convert response to JSON
-	response := CreateTransactionData{
-		Transaction:     transactionToResponse(createdTx.Transaction),
-		AccountMetadata: createdTx.AccountMetadata,
-	}
-
-	api.Created(w, response)
-}
-
-func transactionToResponse(tx ledger.Transaction) TransactionResponse {
-	postings := make([]PostingResponse, 0, len(tx.Postings))
-	for _, p := range tx.Postings {
-		postings = append(postings, PostingResponse{
-			Source:      p.Source,
-			Destination: p.Destination,
-			Amount:      p.Amount,
-			Asset:       p.Asset,
-		})
-	}
-
-	var id *uint64
-	if tx.ID != nil {
-		id = tx.ID
-	}
-
-	timestamp := ""
-	if !tx.Timestamp.IsZero() {
-		timestamp = tx.Timestamp.Time.Format(stdtime.RFC3339)
-	}
-
-	return TransactionResponse{
-		Postings:  postings,
-		Metadata:  tx.Metadata,
-		Timestamp: timestamp,
-		Reference: tx.Reference,
-		ID:        id,
-	}
-}
 
 type SnapshotData struct {
 	Message string `json:"message"`
@@ -371,8 +236,12 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	if err := s.cluster.CreateLedger(bucketName, ledgerName, req.Metadata); err != nil {
 		s.logger.Error("Failed to create ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
 
-		// Check if ledger already exists
-		if err.Error() == fmt.Sprintf("ledger already exists in bucket %s: %s", bucketName, ledgerName) {
+		// Check if ledger already exists (in this bucket or globally)
+		errMsg := err.Error()
+		if errMsg == fmt.Sprintf("ledger already exists in bucket %s: %s", bucketName, ledgerName) ||
+			errMsg == fmt.Sprintf("ledger with name %s already exists in bucket", ledgerName) ||
+			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger already exists in bucket %s: %s", bucketName, bucketName, ledgerName) ||
+			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger with name %s already exists in bucket", bucketName, ledgerName) {
 			api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", err)
 			return
 		}
@@ -381,11 +250,25 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return success response
-	api.Created(w, map[string]interface{}{
-		"name":     ledgerName,
-		"bucket":   bucketName,
-		"metadata": req.Metadata,
+	// Get the created ledger to return it
+	ledgerInfo, exists, err := s.cluster.GetLedger(bucketName, ledgerName)
+	if err != nil || !exists {
+		s.logger.Warn("Failed to retrieve created ledger", zap.String("bucket", bucketName), zap.String("name", ledgerName), zap.Error(err))
+		// Still return success since creation succeeded
+		api.Created(w, LedgerResponse{
+			LedgerInfo: service.LedgerInfo{
+				Name:     ledgerName,
+				Metadata: req.Metadata,
+			},
+			Bucket: bucketName,
+		})
+		return
+	}
+
+	// Return the ledger info with bucket name
+	api.Created(w, LedgerResponse{
+		LedgerInfo: ledgerInfo,
+		Bucket:     bucketName,
 	})
 }
 
@@ -410,16 +293,13 @@ func (s *Server) handleListLedgers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to list format
-	ledgersList := make([]map[string]interface{}, 0, len(ledgers))
-	for name, ledgerInfo := range ledgers {
-		ledgerMap := map[string]interface{}{
-			"name":      name,
-			"bucket":    bucketName,
-			"metadata":  ledgerInfo.Metadata,
-			"createdAt": ledgerInfo.CreatedAt,
-		}
-		ledgersList = append(ledgersList, ledgerMap)
+	// Convert to response format with bucket name
+	ledgersList := make([]LedgerResponse, 0, len(ledgers))
+	for _, ledgerInfo := range ledgers {
+		ledgersList = append(ledgersList, LedgerResponse{
+			LedgerInfo: ledgerInfo,
+			Bucket:     bucketName,
+		})
 	}
 
 	api.Ok(w, ledgersList)
@@ -456,12 +336,10 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return ledger info
-	api.Ok(w, map[string]interface{}{
-		"name":      ledgerName,
-		"bucket":    bucketName,
-		"metadata":  ledgerInfo.Metadata,
-		"createdAt": ledgerInfo.CreatedAt,
+	// Return ledger info with bucket name
+	api.Ok(w, LedgerResponse{
+		LedgerInfo: ledgerInfo,
+		Bucket:     bucketName,
 	})
 }
 
@@ -480,31 +358,12 @@ func (s *Server) handleListBuckets(w http.ResponseWriter, r *http.Request) {
 	// Get all buckets from cluster
 	buckets := s.cluster.GetAllBuckets()
 
-	// Convert to response format matching BucketInfo structure from SDK
-	// The SDK expects createdAt as *time.Time, so we need to parse the string
-	bucketsList := make([]map[string]interface{}, 0, len(buckets))
-	for name, bucket := range buckets {
-		bucketMap := map[string]interface{}{
-			"name":   name,
-			"driver": bucket.Driver,
-			"config": bucket.Config,
-		}
-
-		// Parse createdAt string to time.Time for SDK compatibility
-		if bucket.CreatedAt != "" {
-			if createdAt, err := stdtime.Parse(stdtime.RFC3339, bucket.CreatedAt); err == nil {
-				bucketMap["createdAt"] = createdAt
-			} else {
-				// If parsing fails, include as string (shouldn't happen with valid data)
-				bucketMap["createdAt"] = bucket.CreatedAt
-			}
-		}
-
-		bucketsList = append(bucketsList, bucketMap)
+	// Convert map to slice
+	bucketsList := make([]service.BucketInfo, 0, len(buckets))
+	for _, bucket := range buckets {
+		bucketsList = append(bucketsList, bucket)
 	}
 
-	// Return success response matching ListBucketsResponse schema
-	// api.Ok wraps the response in {"data": ...}, so we pass the list directly
 	api.Ok(w, bucketsList)
 }
 
@@ -549,7 +408,10 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("Failed to create bucket", zap.String("name", bucketName), zap.Error(err))
 
 		// Check if bucket already exists
-		if err.Error() == fmt.Sprintf("bucket already exists: %s", bucketName) {
+		errMsg := err.Error()
+		if errMsg == fmt.Sprintf("bucket already exists: %s", bucketName) ||
+			errMsg == fmt.Sprintf("bucket %s already exists", bucketName) ||
+			errMsg == fmt.Sprintf("proposing command via raft: bucket already exists: %s", bucketName) {
 			api.WriteErrorResponse(w, http.StatusConflict, "BUCKET_ALREADY_EXISTS", err)
 			return
 		}
@@ -558,12 +420,21 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return success response
-	api.Created(w, map[string]interface{}{
-		"name":   bucketName,
-		"driver": req.Driver,
-		"config": req.Config,
-	})
+	// Get the created bucket to return it
+	bucket, exists := s.cluster.GetBucket(bucketName)
+	if !exists {
+		s.logger.Warn("Failed to retrieve created bucket", zap.String("name", bucketName))
+		// Still return success since creation succeeded
+		api.Created(w, service.BucketInfo{
+			Name:   bucketName,
+			Driver: req.Driver,
+			Config: req.Config,
+		})
+		return
+	}
+
+	// Return the bucket info
+	api.Created(w, bucket)
 }
 
 // handleGetBucket handles GET /buckets/{bucketName} to get a bucket with its Raft state

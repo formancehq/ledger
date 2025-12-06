@@ -64,7 +64,6 @@ func NewTransport(id uint64, addr string, logger *zap.Logger) *Transport {
 // Instead, register the transport on the unified server using RegisterRaftTransportServiceServer.
 func (t *Transport) Start() error {
 	// Don't start a separate server - it will be handled by the unified gRPC server
-	// This method is kept for backward compatibility but does nothing when using unified server
 	t.logger.Info("Transport Start() called - using unified gRPC server, skipping separate server startup")
 	return nil
 }

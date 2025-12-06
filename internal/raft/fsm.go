@@ -240,64 +240,17 @@ func (f *FSM) Restore(reader io.ReadCloser) error {
 	// Clear in-memory logs - they will be replayed from Raft logs after restore
 	f.logs = make([]ledger.Log, 0)
 
-	// Try to read buckets from snapshot (optional, for backward compatibility)
-	// Note: ledgers are now managed by bucket Raft groups, not the main FSM
+	// Read buckets from snapshot
 	decoder := json.NewDecoder(reader)
 	var snapshotData struct {
-		Ledgers      map[string]service.LedgerInfo `json:"ledgers"` // For backward compatibility, but not used anymore
 		Buckets      map[string]service.BucketInfo `json:"buckets"`
 		NextBucketID uint64                        `json:"nextBucketID"`
 	}
 	if err := decoder.Decode(&snapshotData); err != nil {
-		// If we can't read (old snapshot format), start with empty maps
-		f.ledgers = make(map[string]service.LedgerInfo)
-		f.buckets = make(map[string]service.BucketInfo)
-		f.nextBucketID = 1
-		f.logger.Debug("Could not read buckets from snapshot, starting with empty maps", zap.Error(err))
-	} else {
-		// Ledgers are no longer stored in main FSM (they're in bucket FSMs)
-		// But we keep the field for backward compatibility during migration
-		f.ledgers = make(map[string]service.LedgerInfo)
-		if snapshotData.Buckets != nil {
-			f.buckets = snapshotData.Buckets
-			// Calculate nextBucketID from existing buckets if not present in snapshot
-			if snapshotData.NextBucketID == 0 {
-				maxID := uint64(0)
-				for _, bucket := range f.buckets {
-					if bucket.ID > maxID {
-						maxID = bucket.ID
-					}
-				}
-				f.nextBucketID = maxID + 1
-			} else {
-				f.nextBucketID = snapshotData.NextBucketID
-			}
-		} else {
-			// For backward compatibility, initialize empty buckets map if not present
-			f.buckets = make(map[string]service.BucketInfo)
-			f.nextBucketID = 1
-		}
+		return fmt.Errorf("decoding snapshot data: %w", err)
 	}
 
-	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", lastID), zap.Uint64("nextBucketID", f.nextBucketID), zap.Int("ledgersCount", len(f.ledgers)), zap.Int("bucketsCount", len(f.buckets)))
-	return nil
-}
-
-// RestoreSnapshot restores FSM state from snapshot data
-func (f *FSM) RestoreSnapshot(data []byte) error {
-	var snapshotData struct {
-		LastID       uint64                        `json:"lastID"`
-		Ledgers      map[string]service.LedgerInfo `json:"ledgers"`
-		Buckets      map[string]service.BucketInfo `json:"buckets"`
-		NextBucketID uint64                        `json:"nextBucketID"`
-	}
-
-	if err := json.Unmarshal(data, &snapshotData); err != nil {
-		return fmt.Errorf("unmarshaling snapshot data: %w", err)
-	}
-
-	f.lastID = snapshotData.LastID
-	f.ledgers = snapshotData.Ledgers
+	f.ledgers = make(map[string]service.LedgerInfo)
 	if snapshotData.Buckets != nil {
 		f.buckets = snapshotData.Buckets
 		// Calculate nextBucketID from existing buckets if not present in snapshot
@@ -313,12 +266,48 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 			f.nextBucketID = snapshotData.NextBucketID
 		}
 	} else {
-		// For backward compatibility, initialize empty buckets map if not present
+		f.buckets = make(map[string]service.BucketInfo)
+		f.nextBucketID = 1
+	}
+
+	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", lastID), zap.Uint64("nextBucketID", f.nextBucketID), zap.Int("bucketsCount", len(f.buckets)))
+	return nil
+}
+
+// RestoreSnapshot restores FSM state from snapshot data
+func (f *FSM) RestoreSnapshot(data []byte) error {
+	var snapshotData struct {
+		LastID       uint64                        `json:"lastID"`
+		Buckets      map[string]service.BucketInfo `json:"buckets"`
+		NextBucketID uint64                        `json:"nextBucketID"`
+	}
+
+	if err := json.Unmarshal(data, &snapshotData); err != nil {
+		return fmt.Errorf("unmarshaling snapshot data: %w", err)
+	}
+
+	f.lastID = snapshotData.LastID
+	f.ledgers = make(map[string]service.LedgerInfo)
+	if snapshotData.Buckets != nil {
+		f.buckets = snapshotData.Buckets
+		// Calculate nextBucketID from existing buckets if not present in snapshot
+		if snapshotData.NextBucketID == 0 {
+			maxID := uint64(0)
+			for _, bucket := range f.buckets {
+				if bucket.ID > maxID {
+					maxID = bucket.ID
+				}
+			}
+			f.nextBucketID = maxID + 1
+		} else {
+			f.nextBucketID = snapshotData.NextBucketID
+		}
+	} else {
 		f.buckets = make(map[string]service.BucketInfo)
 		f.nextBucketID = 1
 	}
 	f.logs = make([]ledger.Log, 0)
 
-	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", f.lastID), zap.Uint64("nextBucketID", f.nextBucketID), zap.Int("ledgersCount", len(f.ledgers)), zap.Int("bucketsCount", len(f.buckets)))
+	f.logger.Info("FSM restored from snapshot", zap.Uint64("lastID", f.lastID), zap.Uint64("nextBucketID", f.nextBucketID), zap.Int("bucketsCount", len(f.buckets)))
 	return nil
 }

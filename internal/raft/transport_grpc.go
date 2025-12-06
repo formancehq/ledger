@@ -97,9 +97,8 @@ func newGRPCClient(addr string) (*grpcClient, error) {
 }
 
 // startGRPCServer starts the gRPC server for the transport
-// This method is kept for backward compatibility but should not be used
-// when using a unified gRPC server. The transport should be registered
-// on the unified server instead.
+// This method should not be used when using a unified gRPC server.
+// The transport should be registered on the unified server instead.
 func (t *Transport) startGRPCServer() error {
 	// Parse address to get host:port
 	host, port, err := net.SplitHostPort(t.addr)

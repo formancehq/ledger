@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: 7adbc82e-ea64-4a2c-babd-0d70816ec99e
 management:
-  docChecksum: 8ff2cdeee7f1e5923b7b8c44f1edec00
+  docChecksum: 19f666096889cddebf88931a81a84bdd
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.10.10
-  configChecksum: 63640fb0650562d4c9194313167ce345
+  releaseVersion: 0.11.3
+  configChecksum: dd096f6673077863a32b5311a06737f6
 features:
   go:
     additionalDependencies: 0.1.0
@@ -19,6 +19,7 @@ features:
     globalSecurityCallbacks: 0.1.0
     globalServerURLs: 2.82.3
     intellisenseMarkdownSupport: 0.1.0
+    nullables: 0.1.1
     responseFormat: 0.1.2
     retries: 2.83.3
     sdkHooks: 0.2.0
@@ -72,9 +73,7 @@ generatedFiles:
   - docs/models/components/clusterstateresponsedata.md
   - docs/models/components/createbucketrequest.md
   - docs/models/components/createbucketresponse.md
-  - docs/models/components/createbucketresponsedata.md
   - docs/models/components/createledgerinbucketresponse.md
-  - docs/models/components/createledgerinbucketresponsedata.md
   - docs/models/components/createledgerrequest.md
   - docs/models/components/createledgerresponse.md
   - docs/models/components/createtransactionrequest.md

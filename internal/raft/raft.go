@@ -782,6 +782,16 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 
 // CreateLedger creates a new ledger in a bucket via the bucket's Raft group
 func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata map[string]string) error {
+	// Check if ledger already exists in any bucket (global uniqueness)
+	r.muGroups.RLock()
+	for name, group := range r.bucketGroups {
+		if _, exists := group.GetLedger(ledgerName); exists {
+			r.muGroups.RUnlock()
+			return fmt.Errorf("ledger with name %s already exists in bucket %s", ledgerName, name)
+		}
+	}
+	r.muGroups.RUnlock()
+
 	// Get the bucket Raft group
 	r.muGroups.RLock()
 	group, exists := r.bucketGroups[bucketName]
@@ -813,7 +823,21 @@ func (r *Cluster) GetLedger(bucketName, ledgerName string) (service.LedgerInfo, 
 
 	// Get ledger from bucket Raft group
 	ledgerInfo, exists := group.GetLedger(ledgerName)
-	return ledgerInfo, exists, nil
+	if !exists {
+		return service.LedgerInfo{}, false, nil
+	}
+
+	// Get last log ID from logStore
+	if r.logStore != nil {
+		lastLog, err := r.logStore.GetLastLog(r.ctx, ledgerName)
+		if err != nil {
+			r.logger.Warn("Failed to get last log for ledger", zap.String("ledger", ledgerName), zap.Error(err))
+		} else if lastLog != nil && lastLog.ID != nil {
+			ledgerInfo.LastLogID = lastLog.ID
+		}
+	}
+
+	return ledgerInfo, true, nil
 }
 
 // GetAllLedgers retrieves all ledgers from a bucket
@@ -829,6 +853,20 @@ func (r *Cluster) GetAllLedgers(bucketName string) (map[string]service.LedgerInf
 
 	// Get all ledgers from bucket Raft group
 	ledgers := group.GetAllLedgers()
+
+	// Enrich each ledger with last log ID from logStore
+	if r.logStore != nil {
+		for name, ledgerInfo := range ledgers {
+			lastLog, err := r.logStore.GetLastLog(r.ctx, name)
+			if err != nil {
+				r.logger.Warn("Failed to get last log for ledger", zap.String("ledger", name), zap.Error(err))
+			} else if lastLog != nil && lastLog.ID != nil {
+				ledgerInfo.LastLogID = lastLog.ID
+				ledgers[name] = ledgerInfo
+			}
+		}
+	}
+
 	return ledgers, nil
 }
 

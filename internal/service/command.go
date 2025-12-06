@@ -47,14 +47,14 @@ func NewInsertLogsCommand(logs []ledger.Log) (*Command, error) {
 
 // SetPublicAddrCommand represents the data for a set public address command
 type SetPublicAddrCommand struct {
-	NodeID    string `json:"nodeId"`
+	NodeID     string `json:"nodeId"`
 	PublicAddr string `json:"publicAddr"`
 }
 
 // NewSetPublicAddrCommand creates a new SetPublicAddrCommand
 func NewSetPublicAddrCommand(nodeID, publicAddr string) (*Command, error) {
 	data, err := json.Marshal(SetPublicAddrCommand{
-		NodeID:    nodeID,
+		NodeID:     nodeID,
 		PublicAddr: publicAddr,
 	})
 	if err != nil {
@@ -68,9 +68,11 @@ func NewSetPublicAddrCommand(nodeID, publicAddr string) (*Command, error) {
 
 // LedgerInfo represents information about a ledger
 type LedgerInfo struct {
+	ID        uint64            `json:"id"`        // Sequential ID for the ledger
 	Name      string            `json:"name"`      // Ledger name/ID
 	CreatedAt string            `json:"createdAt"` // Creation timestamp (ISO 8601)
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	LastLogID *uint64           `json:"lastLogId,omitempty"` // ID of the last log for this ledger
 }
 
 // CreateLedgerCommand represents the data for a create ledger command
@@ -96,11 +98,11 @@ func NewCreateLedgerCommand(name string, metadata map[string]string) (*Command, 
 
 // BucketInfo represents information about a bucket
 type BucketInfo struct {
-	ID         uint64                 `json:"id"`                   // Sequential bucket ID
-	Name       string                 `json:"name"`                 // Bucket name/ID
-	Driver     string                 `json:"driver"`               // Driver name (e.g., "postgres", "s3", etc.)
-	Config     map[string]interface{} `json:"config"`                // Driver-specific configuration
-	CreatedAt  string                 `json:"createdAt"`           // Creation timestamp (ISO 8601)
+	ID        uint64                 `json:"id"`        // Sequential bucket ID
+	Name      string                 `json:"name"`      // Bucket name/ID
+	Driver    string                 `json:"driver"`    // Driver name (e.g., "postgres", "s3", etc.)
+	Config    map[string]interface{} `json:"config"`    // Driver-specific configuration
+	CreatedAt string                 `json:"createdAt"` // Creation timestamp (ISO 8601)
 }
 
 // CreateBucketCommand represents the data for a create bucket command
@@ -144,4 +146,3 @@ func NewDeleteBucketCommand(name string) (*Command, error) {
 		Data: data,
 	}, nil
 }
-

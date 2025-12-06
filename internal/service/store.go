@@ -27,7 +27,7 @@ type LogReader interface {
 	GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error)
 }
 
-// LogStore embeds both LogWriter and LogReader for backward compatibility
+// LogStore embeds both LogWriter and LogReader
 type LogStore interface {
 	LogWriter
 	LogReader

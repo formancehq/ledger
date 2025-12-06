@@ -80,7 +80,7 @@ func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *servic
 	// Extract ledger name from request
 	ledgerName := req.Ledger
 	if ledgerName == "" {
-		ledgerName = "default" // Default ledger name for backward compatibility
+		return nil, fmt.Errorf("ledger name is required")
 	}
 
 	// Call ledger service
