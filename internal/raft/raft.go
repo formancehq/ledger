@@ -310,9 +310,9 @@ func (r *Cluster) readyLoop() {
 					continue
 				}
 
-				applyErr := r.applyEntry(entry)
+				result, applyErr := r.applyEntry(entry)
 				// Notify the wrapper that this command has been applied using its ID
-				r.node.NotifyApplied(cmd.ID, entry.Index, applyErr)
+				r.node.NotifyApplied(cmd.ID, result, entry.Index, applyErr)
 				if applyErr != nil {
 					r.logger.Error("Failed to apply entry", zap.Uint64("index", entry.Index), zap.Uint64("commandID", cmd.ID), zap.Error(applyErr))
 				}
@@ -325,11 +325,11 @@ func (r *Cluster) readyLoop() {
 }
 
 // applyEntry applies a Raft log entry to the FSM
-func (r *Cluster) applyEntry(entry raftpb.Entry) error {
+func (r *Cluster) applyEntry(entry raftpb.Entry) (any, error) {
 	// Decode the command from the Raft log data
 	var cmd service.Command
 	if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-		return fmt.Errorf("unmarshaling command: %w", err)
+		return nil, fmt.Errorf("unmarshaling command: %w", err)
 	}
 
 	// Route to the appropriate command handler in FSM
@@ -369,10 +369,10 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unknown command type: %s", cmd.Type)
+		return nil, fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
 
-	return err
+	return nil, err
 }
 
 func (r *Cluster) monitorLeader() {
@@ -960,7 +960,7 @@ func (r *Cluster) CreateBucket(name, driver string, config map[string]interface{
 	}
 
 	// Apply the command via Raft (waits for application)
-	_, err = r.node.Apply(cmd, 5*time.Second)
+	_, _, err = r.node.Apply(cmd, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("applying command via raft: %w", err)
 	}
@@ -988,7 +988,7 @@ func (r *Cluster) DeleteBucket(name string) error {
 	}
 
 	// Apply the command via Raft (waits for application)
-	_, err = r.node.Apply(cmd, 5*time.Second)
+	_, _, err = r.node.Apply(cmd, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("applying command via raft: %w", err)
 	}

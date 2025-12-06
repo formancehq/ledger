@@ -30,7 +30,6 @@ type BucketFSM struct {
 	balances           map[string]map[string]map[string]*big.Int // Map of ledger name -> account -> asset -> balance
 	accountMetadata    map[string]map[string]map[string]string   // Map of ledger name -> account -> metadata key -> metadata value
 	logs               []ledger.Log                              // Logs stored in memory until snapshot
-	createdLogs        map[uint64]*ledger.Log                    // Map of entry index -> created log (for retrieving logs after application)
 	logger             *zap.Logger
 }
 
@@ -46,23 +45,22 @@ func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
 		balances:           make(map[string]map[string]map[string]*big.Int),
 		accountMetadata:    make(map[string]map[string]map[string]string),
 		logs:               make([]ledger.Log, 0),
-		createdLogs:        make(map[uint64]*ledger.Log),
 		logger:             logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-fsm")),
 	}
 }
 
 // HandleCreateLedger handles the create ledger command for this bucket
-func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) error {
+func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*service.LedgerInfo, error) {
 	var createCmd CreateLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.Error("Failed to unmarshal create ledger command", zap.Error(err))
-		return fmt.Errorf("unmarshaling create ledger command: %w", err)
+		return nil, fmt.Errorf("unmarshaling create ledger command: %w", err)
 	}
 
 	// Check if ledger already exists in this bucket
 	if _, exists := f.ledgers[createCmd.Name]; exists {
 		f.logger.Warn("Ledger already exists in bucket", zap.String("name", createCmd.Name), zap.String("bucket", f.bucketName))
-		return fmt.Errorf("ledger already exists in bucket %s: %s", f.bucketName, createCmd.Name)
+		return nil, fmt.Errorf("ledger already exists in bucket %s: %s", f.bucketName, createCmd.Name)
 	}
 
 	// Assign sequential ID to the ledger
@@ -84,7 +82,7 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) error 
 	f.lastLogIDs[createCmd.Name] = 0
 
 	f.logger.Info("Ledger created in bucket", zap.Uint64("index", index), zap.Uint64("id", ledgerID), zap.String("name", createCmd.Name), zap.String("bucket", f.bucketName))
-	return nil
+	return &ledgerInfo, nil
 }
 
 // HandleCreateTransaction handles the create transaction command by creating a log
@@ -192,8 +190,6 @@ func (f *BucketFSM) HandleCreateTransaction(cmd service.Command, index uint64) (
 		if len(createCmd.CreateTransaction.AccountMetadata) > 0 {
 			f.storeAccountMetadata(createCmd.LedgerName, createCmd.CreateTransaction.AccountMetadata)
 		}
-		// Store created log for retrieval by entry index
-		f.createdLogs[index] = &log
 		f.logger.Info("Transaction log created and stored in memory", zap.Uint64("index", index), zap.Uint64("logID", newLogID), zap.String("ledger", createCmd.LedgerName))
 	} else {
 		f.logger.Info("Transaction log created (dry run)", zap.Uint64("index", index), zap.Uint64("logID", newLogID), zap.String("ledger", createCmd.LedgerName))
@@ -353,12 +349,6 @@ func (f *BucketFSM) storeAccountMetadata(ledgerName string, accountMetadata map[
 			f.accountMetadata[ledgerName][account][k] = v
 		}
 	}
-}
-
-// GetCreatedLog returns the log created at the given entry index
-func (f *BucketFSM) GetCreatedLog(index uint64) (*ledger.Log, bool) {
-	log, ok := f.createdLogs[index]
-	return log, ok
 }
 
 // GetLedger returns the ledger info for a given name in this bucket

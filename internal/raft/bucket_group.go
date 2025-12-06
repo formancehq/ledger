@@ -322,9 +322,9 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				}
 
 				// Apply bucket-specific entries to bucket FSM
-				applyErr := g.applyEntry(entry)
+				result,applyErr := g.applyEntry(entry)
 				// Notify the wrapper that this command has been applied using its ID
-				g.node.NotifyApplied(cmd.ID, entry.Index, applyErr)
+				g.node.NotifyApplied(cmd.ID, result, entry.Index, applyErr)
 				if applyErr != nil {
 					g.logger.Error("Failed to apply entry to bucket FSM",
 						zap.Error(applyErr),
@@ -445,11 +445,11 @@ func (g *BucketRaftGroup) Snapshot() error {
 }
 
 // applyEntry applies a Raft log entry to the bucket FSM
-func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
+func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) (any, error) {
 	// Decode the command from the Raft log data
 	var cmd service.Command
 	if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-		return fmt.Errorf("unmarshaling command: %w", err)
+		return nil, fmt.Errorf("unmarshaling command: %w", err)
 	}
 
 	// Route to the appropriate command handler
@@ -457,11 +457,10 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 	case bucketfsm.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd, entry.Index)
 	case bucketfsm.CommandTypeCreateTransaction:
-		_, err := g.fsm.HandleCreateTransaction(cmd, entry.Index)
-		return err
+		return g.fsm.HandleCreateTransaction(cmd, entry.Index)
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
-		return nil // Don't fail on unknown commands
+		return nil, nil // Don't fail on unknown commands
 	}
 }
 
@@ -474,7 +473,7 @@ func (g *BucketRaftGroup) CreateLedger(name string, metadata metadata.Metadata) 
 	}
 
 	// Apply the command via Raft (waits for application)
-	_, err = g.node.Apply(cmd, 5*time.Second)
+	_, _, err = g.node.Apply(cmd, 5*time.Second)
 	if err != nil {
 		return fmt.Errorf("applying command via raft: %w", err)
 	}
@@ -492,22 +491,13 @@ func (g *BucketRaftGroup) CreateTransaction(ledgerName string, createTx service.
 	}
 
 	// Apply the command via Raft (waits for application)
-	appliedIndex, err := g.node.Apply(cmd, 5*time.Second)
+	appliedIndex, result, err := g.node.Apply(cmd, 5*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	// Retrieve the created log from the FSM
-	g.mu.RLock()
-	log, ok := g.fsm.GetCreatedLog(appliedIndex)
-	g.mu.RUnlock()
-
-	if !ok {
-		return nil, fmt.Errorf("log not found for entry index %d", appliedIndex)
-	}
-
 	g.logger.Info("Transaction created via bucket Raft", zap.String("ledger", ledgerName), zap.Uint64("index", appliedIndex), zap.Uint64("commandID", cmd.ID))
-	return log, nil
+	return result.(*ledger.Log), nil
 }
 
 // GetLedger returns the ledger info for a given name in this bucket

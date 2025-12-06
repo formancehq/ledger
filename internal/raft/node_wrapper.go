@@ -15,6 +15,7 @@ import (
 type applyFuture struct {
 	index uint64
 	ch    chan error
+	result any
 	mu    sync.Mutex
 	done  bool
 	err   error
@@ -39,11 +40,11 @@ func NewNodeWrapper(node *raft.RawNode, logger *zap.Logger) *NodeWrapper {
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64, error) {
+func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64, any, error) {
 	// Serialize the command to binary format
 	cmdData, err := cmd.MarshalBinary()
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	// Create a future for this application using command ID as key
@@ -63,7 +64,7 @@ func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64
 		n.mu.Lock()
 		delete(n.futures, cmd.ID)
 		n.mu.Unlock()
-		return 0, err
+		return 0, nil, err
 	}
 
 	// Wait for the future to complete with timeout
@@ -76,21 +77,21 @@ func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64
 		delete(n.futures, cmd.ID)
 		n.mu.Unlock()
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
-		return future.index, nil
+		return future.index, future.result, nil
 	case <-ctx.Done():
 		// Timeout - clean up the future
 		n.mu.Lock()
 		delete(n.futures, cmd.ID)
 		n.mu.Unlock()
-		return 0, ctx.Err()
+		return 0, nil, ctx.Err()
 	}
 }
 
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
 // This should be called from the readyLoop when entries are applied
-func (n *NodeWrapper) NotifyApplied(commandID uint64, index uint64, err error) {
+func (n *NodeWrapper) NotifyApplied(commandID uint64, result any,index uint64, err error) {
 	n.mu.RLock()
 	future, exists := n.futures[commandID]
 	n.mu.RUnlock()
@@ -103,6 +104,7 @@ func (n *NodeWrapper) NotifyApplied(commandID uint64, index uint64, err error) {
 	if !future.done {
 		future.done = true
 		future.index = index
+		future.result = result
 		future.err = err
 		// Send error (or nil) to channel
 		select {
