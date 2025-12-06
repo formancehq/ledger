@@ -59,10 +59,8 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 	// Create transport
 	transport := NewTransport(nodeID, cfg.BindAddr, logger)
-	if err := transport.Start(); err != nil {
-		cancel()
-		return nil, fmt.Errorf("starting transport: %w", err)
-	}
+	// Note: transport.Start() is not called here because we use a unified gRPC server
+	// The transport will be registered on the unified server instead
 
 	// Create Raft configuration
 	raftConfig := &raft.Config{
@@ -175,6 +173,21 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	// appLogStore implements LogReader, lockedVolumesStore implements LockedVolumesStore
 	defaultLedger := service.NewDefaultLedger(raftLogWriter, lockedVolumesStore, appLogStore, logger)
 
+	// Extract port from BindAddr for the unified gRPC server
+	// The unified server listens on the same port as Raft transport (BindAddr)
+	_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
+	if err != nil {
+		cancel()
+		transport.Stop()
+		return nil, fmt.Errorf("invalid bind address format: %w", err)
+	}
+	grpcPort, err := strconv.Atoi(raftPort)
+	if err != nil {
+		cancel()
+		transport.Stop()
+		return nil, fmt.Errorf("invalid port in bind address: %w", err)
+	}
+
 	cluster := &Cluster{
 		node:          node,
 		fsm:           fsm,
@@ -182,7 +195,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		transport:     transport,
 		config:        cfg,
 		logger:        logger,
-		grpcServer:    grpc.NewServer(cfg.GRPCPort, logger, defaultLedger),
+		grpcServer:    grpc.NewServer(grpcPort, logger, defaultLedger, transport),
 		grpcClient:    grpc.NewClient(logger),
 		defaultLedger: defaultLedger,
 		logStore:      appLogStore,
@@ -219,6 +232,13 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 }
 
 func (r *Cluster) Start() error {
+	// Start the unified gRPC server (always running to receive Raft messages)
+	go func() {
+		if err := r.grpcServer.Start(r.ctx); err != nil {
+			r.logger.Error("Unified gRPC server error", zap.Error(err))
+		}
+	}()
+
 	// Start the Ready loop - it will receive all messages and route them appropriately
 	go r.readyLoop()
 
@@ -447,16 +467,10 @@ func (r *Cluster) handleLeaderChange(leaderID uint64) {
 	isLeader := leaderID == r.nodeID
 
 	if isLeader {
-		r.logger.Info("Became leader, starting gRPC server")
-		// Stop client if running
+		r.logger.Info("Became leader")
+		// Stop client if running (we are now the leader, don't need to connect to ourselves)
 		r.grpcClient.Close()
-
-		// Start gRPC server
-		go func() {
-			if err := r.grpcServer.Start(r.ctx); err != nil {
-				r.logger.Error("gRPC server error", zap.Error(err))
-			}
-		}()
+		// Note: The unified gRPC server is already running from Start()
 	} else if leaderID != 0 {
 		// Find leader address from transport or config
 		leaderAddr := r.findPeerAddress(leaderID)
@@ -465,18 +479,11 @@ func (r *Cluster) handleLeaderChange(leaderID uint64) {
 			return
 		}
 		r.logger.Info("Leader changed, connecting to new leader", zap.String("leader", leaderAddr))
-		// Stop server if running
-		r.grpcServer.Stop()
+		// Note: The unified gRPC server stays running to receive Raft messages
 
-		// Extract hostname from leader address and construct gRPC address
-		host, _, err := net.SplitHostPort(leaderAddr)
-		if err != nil {
-			r.logger.Error("Failed to parse leader address", zap.String("address", leaderAddr), zap.Error(err))
-			return
-		}
-
-		// Connect to leader's gRPC server (assume same host, different port)
-		grpcAddr := fmt.Sprintf("%s:%d", host, r.config.GRPCPort)
+		// Connect to leader's gRPC server (same address as Raft transport)
+		// The unified gRPC server listens on the same port as Raft transport
+		grpcAddr := leaderAddr
 
 		// Retry connection with exponential backoff
 		maxRetries := 5
@@ -505,8 +512,8 @@ func (r *Cluster) handleLeaderChange(leaderID uint64) {
 			zap.Int("retries", maxRetries))
 	} else {
 		r.logger.Debug("No leader available")
-		// Stop both server and client
-		r.grpcServer.Stop()
+		// Stop client (no leader to connect to)
+		// Note: The unified gRPC server stays running to receive Raft messages
 		r.grpcClient.Close()
 	}
 }

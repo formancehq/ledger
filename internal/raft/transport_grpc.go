@@ -12,14 +12,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// grpcTransportServer implements the RaftTransportService gRPC server
-type grpcTransportServer struct {
-	UnimplementedRaftTransportServiceServer
-	transport *Transport
+// RegisterRaftService registers the RaftTransportService on the given gRPC server
+func (t *Transport) RegisterRaftService(server *grpc.Server) {
+	grpcTransportServer := &grpcTransportServerWrapper{transport: t}
+	RegisterRaftTransportServiceServer(server, grpcTransportServer)
 }
 
-// SendMessage handles unary gRPC calls for sending messages
-func (s *grpcTransportServer) SendMessage(ctx context.Context, req *SendMessageRequest) (*SendMessageResponse, error) {
+// HandleSendMessage handles unary gRPC calls for sending messages
+// This method can be called from an external gRPC server
+func (t *Transport) HandleSendMessage(ctx context.Context, req *SendMessageRequest) (*SendMessageResponse, error) {
 	var msg raftpb.Message
 	if err := msg.Unmarshal(req.Message); err != nil {
 		return &SendMessageResponse{
@@ -30,8 +31,8 @@ func (s *grpcTransportServer) SendMessage(ctx context.Context, req *SendMessageR
 
 	// Send message to recvCh for processing
 	select {
-	case s.transport.recvCh <- msg:
-		s.transport.logger.Debug("Received message via gRPC",
+	case t.recvCh <- msg:
+		t.logger.Debug("Received message via gRPC",
 			zap.String("type", msg.Type.String()),
 			zap.String("from", fmt.Sprintf("%x", msg.From)),
 			zap.String("to", fmt.Sprintf("%x", msg.To)))
@@ -42,7 +43,7 @@ func (s *grpcTransportServer) SendMessage(ctx context.Context, req *SendMessageR
 			Error:   "context cancelled",
 		}, nil
 	default:
-		s.transport.logger.Warn("Recv channel full, dropping message")
+		t.logger.Warn("Recv channel full, dropping message")
 		return &SendMessageResponse{
 			Success: false,
 			Error:   "recv channel full",
@@ -96,6 +97,9 @@ func newGRPCClient(addr string) (*grpcClient, error) {
 }
 
 // startGRPCServer starts the gRPC server for the transport
+// This method is kept for backward compatibility but should not be used
+// when using a unified gRPC server. The transport should be registered
+// on the unified server instead.
 func (t *Transport) startGRPCServer() error {
 	// Parse address to get host:port
 	host, port, err := net.SplitHostPort(t.addr)
@@ -105,7 +109,7 @@ func (t *Transport) startGRPCServer() error {
 
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
-	grpcTransportServer := &grpcTransportServer{transport: t}
+	grpcTransportServer := &grpcTransportServerWrapper{transport: t}
 	RegisterRaftTransportServiceServer(grpcServer, grpcTransportServer)
 
 	// Start listening
@@ -133,4 +137,14 @@ func (t *Transport) stopGRPCServer() {
 	if t.grpcServer != nil {
 		t.grpcServer.GracefulStop()
 	}
+}
+
+// grpcTransportServerWrapper wraps the transport to implement RaftTransportServiceServer
+type grpcTransportServerWrapper struct {
+	UnimplementedRaftTransportServiceServer
+	transport *Transport
+}
+
+func (s *grpcTransportServerWrapper) SendMessage(ctx context.Context, req *SendMessageRequest) (*SendMessageResponse, error) {
+	return s.transport.HandleSendMessage(ctx, req)
 }
