@@ -10,6 +10,19 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
+func init() {
+	// Register all types that can be stored in ledger.Log.Data (LogPayload interface)
+	// This is required for gob encoding/decoding to work with interface types
+	gob.Register(&ledger.CreatedTransaction{})
+	gob.Register(&ledger.RevertedTransaction{})
+	gob.Register(&ledger.SavedMetadata{})
+	gob.Register(&ledger.DeletedMetadata{})
+	
+	// Register command types
+	gob.Register(CreateLedgerCommand{})
+	gob.Register(InsertLogCommand{})
+}
+
 const (
 	// CommandTypeCreateLedger is the command type for creating a new ledger
 	CommandTypeCreateLedger service.CommandType = "create_ledger"

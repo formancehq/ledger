@@ -26,8 +26,7 @@ type BucketRaftGroup struct {
 	bucketName    string
 	node          *NodeWrapper
 	storage       *Storage
-	bucketStorage service.BucketStorage // Storage for bucket data (SQLite or File)
-	fsm           *bucketfsm.BucketFSM  // FSM for managing ledgers in this bucket
+	fsm           *bucketfsm.BucketFSM // FSM for managing ledgers in this bucket
 	transport     *Transport
 	config        *config.Config
 	logger        *zap.Logger
@@ -76,13 +75,6 @@ func NewBucketRaftGroup(
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("creating storage for bucket %s: %w", bucketName, err)
-	}
-
-	// Create bucket storage based on driver
-	bucketStorage, err := service.NewBucketStorage(ctx, bucketInfo.Driver, bucketInfo.Config, logger.With(zap.String("bucket", bucketName)))
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("creating bucket storage for bucket %s: %w", bucketName, err)
 	}
 
 	// Create bucket FSM for managing ledgers
@@ -175,6 +167,12 @@ func NewBucketRaftGroup(
 		}
 		// Create logs directory within the bucket path
 		logsPath := filepath.Join(path, "logs.jsonl")
+
+		if err := os.MkdirAll(path, 0755); err != nil {
+			cancel()
+			return nil, fmt.Errorf("creating logs directory for bucket %s: %w", bucketName, err)
+		}
+
 		fileStore, err := service.NewFileLogStore(logsPath, bucketLogger)
 		if err != nil {
 			cancel()
@@ -186,29 +184,30 @@ func NewBucketRaftGroup(
 		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", bucketInfo.Driver)
 	}
 
-	// Create bucket group first
+	// Create bucket group first (will be used as TransactionCreator)
 	group := &BucketRaftGroup{
-		bucketName:    bucketName,
-		node:          nodeWrapper,
-		storage:       storage,
-		bucketStorage: bucketStorage,
-		fsm:           bucketFSM,
-		transport:     transport,
-		config:        cfg,
-		logger:        bucketLogger.With(zap.String("component", "bucket-raft-group")),
-		ctx:           ctx,
-		cancel:        cancel,
-		nodeID:        groupNodeID, // Use bucket-specific node ID
-		groupID:       groupID,
-		msgCh:         make(chan raftpb.Message, 100), // Channel for messages routed from main cluster
-		logStore:      appLogStore,
+		bucketName: bucketName,
+		node:       nodeWrapper,
+		storage:    storage,
+		fsm:        bucketFSM,
+		transport:  transport,
+		config:     cfg,
+		logger:     bucketLogger.With(zap.String("component", "bucket-raft-group")),
+		ctx:        ctx,
+		cancel:     cancel,
+		nodeID:     groupNodeID, // Use bucket-specific node ID
+		groupID:    groupID,
+		msgCh:      make(chan raftpb.Message, 100), // Channel for messages routed from main cluster
+		logStore:   appLogStore,
 	}
 
 	// Create reconstructed volumes store
-	reconstructedVolumesStore := service.NewReconstructedVolumesStore(appLogStore)
+	reconstructedVolumesStore := service.NewReconstructedBalancesStore(appLogStore)
+
+	consolidatedVolumesStore := service.NewConsolidatedBalancesStore(reconstructedVolumesStore, bucketFSM)
 
 	// Create locked volumes store
-	lockedVolumesStore := service.NewDefaultLockedVolumesStore(reconstructedVolumesStore)
+	lockedVolumesStore := service.NewDefaultLockedBalancesStore(consolidatedVolumesStore)
 
 	// Create ledger service for this bucket (will use stores for balance checking and log writing)
 	defaultLedger := service.NewDefaultLedger(group, lockedVolumesStore, appLogStore, bucketLogger)
@@ -347,7 +346,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 			status := g.node.RawNode().Status()
 			if status.Applied > 0 && status.Applied%1000 == 0 {
 				// Create snapshot: write logs to store and create snapshot data
-				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore, g.bucketStorage)
+				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
 				if err != nil {
 					g.logger.Error("Failed to create snapshot data", zap.Error(err))
 					continue
@@ -389,14 +388,6 @@ func (g *BucketRaftGroup) Stop() error {
 	g.cancel()
 	close(g.msgCh)
 
-	// Close bucket storage
-	if g.bucketStorage != nil {
-		if err := g.bucketStorage.Close(); err != nil {
-			g.logger.Error("Failed to close bucket storage", zap.Error(err))
-			return fmt.Errorf("closing bucket storage: %w", err)
-		}
-	}
-
 	return nil
 }
 
@@ -416,7 +407,7 @@ func (g *BucketRaftGroup) Snapshot() error {
 	// Trigger snapshot creation
 	if status.Applied > 0 {
 		// Create snapshot data via FSM
-		snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore, g.bucketStorage)
+		snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
 		if err != nil {
 			g.logger.Error("Failed to create snapshot data", zap.Error(err))
 			return fmt.Errorf("creating snapshot data: %w", err)
@@ -463,7 +454,7 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) (any, error) {
 	case bucketfsm.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd, entry.Index)
 	case bucketfsm.CommandTypeInsertLog:
-		return nil, g.fsm.HandleInsertLog(cmd, entry.Index, g.logStore)
+		return nil, g.fsm.HandleInsertLog(cmd, entry.Index)
 	default:
 		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
 		return nil, nil // Don't fail on unknown commands

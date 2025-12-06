@@ -13,13 +13,13 @@ import (
 // DefaultLedger is the default implementation of the Ledger interface
 type DefaultLedger struct {
 	logWriter          LogWriter // Writes logs via Raft
-	lockedVolumesStore LockedVolumesStore
+	lockedVolumesStore LockedBalancesStore
 	logReader          LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
 	logger             *zap.Logger
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedVolumesStore, logReader LogReader, logger *zap.Logger) *DefaultLedger {
+func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStore, logReader LogReader, logger *zap.Logger) *DefaultLedger {
 	return &DefaultLedger{
 		logWriter:          logWriter,
 		lockedVolumesStore: lockedVolumesStore,

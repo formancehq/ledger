@@ -9,20 +9,15 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
-// VolumesStore handles balance/volume queries
-type VolumesStore interface {
-	GetBalance(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error)
-}
-
-// LockedVolumesStore provides locking for concurrent access to volumes
-type LockedVolumesStore interface {
+// LockedBalancesStore provides locking for concurrent access to volumes
+type LockedBalancesStore interface {
 	LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error)
 }
 
-// DefaultLockedVolumesStore is a default implementation of LockedVolumesStore
-// that wraps a VolumesStore and provides locking for concurrent access
-type DefaultLockedVolumesStore struct {
-	volumesStore VolumesStore
+// DefaultLockedBalancesStore is a default implementation of LockedBalancesStore
+// that wraps a BalancesStore and provides locking for concurrent access
+type DefaultLockedBalancesStore struct {
+	balancesStore BalancesStore
 	// locks is a map of mutexes keyed by "account:asset" combination
 	locks map[string]*sync.Mutex
 	// locksMutex protects the locks map itself
@@ -34,16 +29,16 @@ func makeLockKey(account, asset string) string {
 	return fmt.Sprintf("%s:%s", account, asset)
 }
 
-// NewDefaultLockedVolumesStore creates a new DefaultLockedVolumesStore
-func NewDefaultLockedVolumesStore(volumesStore VolumesStore) *DefaultLockedVolumesStore {
-	return &DefaultLockedVolumesStore{
-		volumesStore: volumesStore,
-		locks:        make(map[string]*sync.Mutex),
+// NewDefaultLockedBalancesStore creates a new DefaultLockedBalancesStore
+func NewDefaultLockedBalancesStore(balancesStore BalancesStore) *DefaultLockedBalancesStore {
+	return &DefaultLockedBalancesStore{
+		balancesStore: balancesStore,
+		locks:         make(map[string]*sync.Mutex),
 	}
 }
 
 // LockBalances locks the requested account:asset combinations and returns balances with a release function
-func (s *DefaultLockedVolumesStore) LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
+func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
 	// Extract all account:asset combinations from the query
 	lockKeys := make([]string, 0)
 	for account, assets := range balanceQuery {
@@ -65,7 +60,7 @@ func (s *DefaultLockedVolumesStore) LockBalances(ctx context.Context, ledgerName
 	}
 
 	// Get balances from the underlying store
-	balances, err := s.volumesStore.GetBalance(ctx, ledgerName, balanceQuery)
+	balances, err := s.balancesStore.GetBalances(ctx, ledgerName, balanceQuery)
 	if err != nil {
 		// Release all locks on error
 		s.releaseLocks(lockedKeys)
@@ -82,7 +77,7 @@ func (s *DefaultLockedVolumesStore) LockBalances(ctx context.Context, ledgerName
 }
 
 // getOrCreateLock gets or creates a mutex for the given lock key (account:asset)
-func (s *DefaultLockedVolumesStore) getOrCreateLock(lockKey string) *sync.Mutex {
+func (s *DefaultLockedBalancesStore) getOrCreateLock(lockKey string) *sync.Mutex {
 	// First, try to read without locking
 	s.locksMutex.RLock()
 	if lock, ok := s.locks[lockKey]; ok {
@@ -107,7 +102,7 @@ func (s *DefaultLockedVolumesStore) getOrCreateLock(lockKey string) *sync.Mutex 
 }
 
 // releaseLocks releases all locks for the given lock keys (account:asset combinations)
-func (s *DefaultLockedVolumesStore) releaseLocks(lockKeys []string) {
+func (s *DefaultLockedBalancesStore) releaseLocks(lockKeys []string) {
 	// Release locks in reverse order (best practice for nested locks)
 	for i := len(lockKeys) - 1; i >= 0; i-- {
 		lockKey := lockKeys[i]
@@ -120,4 +115,3 @@ func (s *DefaultLockedVolumesStore) releaseLocks(lockKeys []string) {
 		}
 	}
 }
-

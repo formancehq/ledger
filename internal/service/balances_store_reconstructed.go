@@ -9,20 +9,20 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
-// ReconstructedVolumesStore reconstructs volumes from logs by iterating through all transaction logs
-type ReconstructedVolumesStore struct {
+// ReconstructedBalancesStore reconstructs volumes from logs by iterating through all transaction logs
+type ReconstructedBalancesStore struct {
 	logReader LogReader
 }
 
-// NewReconstructedVolumesStore creates a new ReconstructedVolumesStore
-func NewReconstructedVolumesStore(logReader LogReader) *ReconstructedVolumesStore {
-	return &ReconstructedVolumesStore{
+// NewReconstructedBalancesStore creates a new ReconstructedBalancesStore
+func NewReconstructedBalancesStore(logReader LogReader) *ReconstructedBalancesStore {
+	return &ReconstructedBalancesStore{
 		logReader: logReader,
 	}
 }
 
 // GetBalance reconstructs balances from logs for the requested accounts and assets
-func (s *ReconstructedVolumesStore) GetBalance(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
+func (s *ReconstructedBalancesStore) GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
 	// Initialize volumes map: account -> asset -> volumes
 	volumes := make(map[string]map[string]ledger.Volumes)
 

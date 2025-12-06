@@ -38,3 +38,8 @@ type Store interface {
 	LogWriter
 	LogReader
 }
+
+// BalancesStore handles balance/volume queries
+type BalancesStore interface {
+	GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error)
+}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
@@ -75,19 +74,17 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*serv
 	return &ledgerInfo, nil
 }
 
-// HandleInsertLog handles the insert log command by writing the log to the store
-func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64, logStore service.LogWriter) error {
+// HandleInsertLog handles the insert log command by storing the log in memory
+// Logs will be persisted to the store during snapshot creation
+func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64) error {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
 		f.logger.Error("Failed to unmarshal insert log command", zap.Error(err))
 		return fmt.Errorf("unmarshaling insert log command: %w", err)
 	}
 
-	// Write log to store
-	if err := logStore.InsertLogs(context.Background(), insertCmd.Log); err != nil {
-		f.logger.Error("Failed to insert log to store", zap.Error(err))
-		return fmt.Errorf("inserting log to store: %w", err)
-	}
+	// Store log in memory (will be persisted to store during snapshot)
+	f.logs = append(f.logs, insertCmd.Log)
 
 	// Update last log ID for this ledger
 	if insertCmd.Log.ID != nil {
@@ -102,7 +99,7 @@ func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64, logStore 
 	// Update balances and account metadata based on log type
 	f.updateBalancesAndMetadata(insertCmd.Log)
 
-	f.logger.Info("Log inserted via FSM", zap.Uint64("index", index), zap.String("ledger", insertCmd.Log.Ledger), zap.Uint64("commandID", cmd.ID))
+	f.logger.Info("Log stored in memory via FSM", zap.Uint64("index", index), zap.String("ledger", insertCmd.Log.Ledger), zap.Uint64("commandID", cmd.ID), zap.Int("totalLogsInMemory", len(f.logs)))
 	return nil
 }
 
@@ -219,7 +216,7 @@ func (f *BucketFSM) GetAllLedgers() map[string]service.LedgerInfo {
 
 // CreateSnapshot creates a snapshot of the bucket FSM state
 // It writes logs to the log store and returns snapshot data
-func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWriter, bucketStorage service.BucketStorage) ([]byte, error) {
+func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWriter) ([]byte, error) {
 	// Write logs to the store before creating snapshot
 	if len(f.logs) > 0 {
 		if err := logStore.InsertLogs(ctx, f.logs...); err != nil {
@@ -228,19 +225,6 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 		f.logger.Info("Logs written to store during snapshot", zap.Int("count", len(f.logs)))
 		// Clear logs from memory after writing to store
 		f.logs = make([]ledger.Log, 0)
-	}
-
-	// Save balances and account metadata to persistent storage
-	for ledgerName, balances := range f.balances {
-		if err := bucketStorage.SaveBalances(ctx, ledgerName, balances); err != nil {
-			return nil, fmt.Errorf("saving balances for ledger %s: %w", ledgerName, err)
-		}
-	}
-
-	for ledgerName, accountMetadata := range f.accountMetadata {
-		if err := bucketStorage.SaveAccountMetadata(ctx, ledgerName, accountMetadata); err != nil {
-			return nil, fmt.Errorf("saving account metadata for ledger %s: %w", ledgerName, err)
-		}
 	}
 
 	// Clear balances and account metadata from memory after saving to persistent storage
@@ -312,65 +296,19 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 	return nil
 }
 
-// GetBalance returns the balance for a specific account and asset in a ledger
-// It combines persistent balances (from snapshot) with in-memory balances
-func (f *BucketFSM) GetBalance(ctx context.Context, ledgerName string, account, asset string, bucketStorage service.BucketStorage) (*big.Int, error) {
-	// Get persistent balances from storage
-	persistentBalances, err := bucketStorage.GetBalances(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting persistent balances: %w", err)
+// GetInMemoryBalances returns the in-memory balance diff for a ledger
+// This represents the changes since the last snapshot
+func (f *BucketFSM) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
+	if f.balances[ledgerName] == nil {
+		return make(ledger.Balances)
 	}
-
-	// Start with persistent balance
-	balance := big.NewInt(0)
-	if persistentBalances != nil {
-		if accountBalances, ok := persistentBalances[account]; ok {
-			if assetBalance, ok := accountBalances[asset]; ok {
-				balance = new(big.Int).Set(assetBalance)
-			}
+	// Return a copy to avoid external modifications
+	result := make(ledger.Balances)
+	for account, assets := range f.balances[ledgerName] {
+		result[account] = make(map[string]*big.Int)
+		for asset, balance := range assets {
+			result[account][asset] = new(big.Int).Set(balance)
 		}
 	}
-
-	// Add in-memory balance diff
-	if f.balances[ledgerName] != nil {
-		if accountBalances, ok := f.balances[ledgerName][account]; ok {
-			if assetBalance, ok := accountBalances[asset]; ok {
-				balance = new(big.Int).Add(balance, assetBalance)
-			}
-		}
-	}
-
-	return balance, nil
-}
-
-// GetAccountMetadata returns the metadata for a specific account in a ledger
-// It combines persistent metadata (from snapshot) with in-memory metadata
-func (f *BucketFSM) GetAccountMetadata(ctx context.Context, ledgerName string, account string, bucketStorage service.BucketStorage) (metadata.Metadata, error) {
-	// Get persistent account metadata from storage
-	persistentAccountMetadata, err := bucketStorage.GetAccountMetadata(ctx, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("getting persistent account metadata: %w", err)
-	}
-
-	result := make(metadata.Metadata)
-
-	// Start with persistent metadata
-	if persistentAccountMetadata != nil {
-		if accountMetadata, ok := persistentAccountMetadata[account]; ok {
-			for k, v := range accountMetadata {
-				result[k] = v
-			}
-		}
-	}
-
-	// Merge in-memory metadata (overrides persistent)
-	if f.accountMetadata[ledgerName] != nil {
-		if accountMetadata, ok := f.accountMetadata[ledgerName][account]; ok {
-			for k, v := range accountMetadata {
-				result[k] = v
-			}
-		}
-	}
-
-	return result, nil
+	return result
 }
