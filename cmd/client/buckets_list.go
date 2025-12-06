@@ -1,9 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -27,39 +27,44 @@ func runListBuckets(cmd *cobra.Command, args []string) error {
 
 	bucketsResponse := res.GetListBucketsResponse()
 	if bucketsResponse == nil || bucketsResponse.Data == nil {
-		fmt.Println("No buckets found")
+		pterm.Info.Println("No buckets found")
 		return nil
 	}
 
 	buckets := bucketsResponse.Data
 	if len(buckets) == 0 {
-		fmt.Println("No buckets found")
+		pterm.Info.Println("No buckets found")
 		return nil
 	}
 
-	fmt.Println("Buckets:")
-	fmt.Println("========")
-	for i, bucket := range buckets {
-		fmt.Printf("\n%d. ", i+1)
-		if bucket.ID != nil {
-			fmt.Printf("ID: %d\n", *bucket.ID)
-		}
-		if bucket.Name != nil {
-			fmt.Printf("   Name: %s\n", *bucket.Name)
-		}
-		if bucket.Driver != nil {
-			fmt.Printf("   Driver: %s\n", *bucket.Driver)
-		}
-		if bucket.CreatedAt != nil {
-			fmt.Printf("   Created At: %s\n", *bucket.CreatedAt)
-		}
-		if bucket.Config != nil {
-			configJSON, err := json.MarshalIndent(bucket.Config, "   ", "  ")
-			if err == nil {
-				fmt.Printf("   Config: %s\n", string(configJSON))
-			}
-		}
+	// Create table data
+	tableData := pterm.TableData{
+		{"ID", "Name", "Driver", "Created At"},
 	}
+
+	for _, bucket := range buckets {
+		id := "N/A"
+		if bucket.ID != nil {
+			id = fmt.Sprintf("%d", *bucket.ID)
+		}
+		name := "N/A"
+		if bucket.Name != nil {
+			name = *bucket.Name
+		}
+		driver := "N/A"
+		if bucket.Driver != nil {
+			driver = *bucket.Driver
+		}
+		createdAt := "N/A"
+		if bucket.CreatedAt != nil {
+			createdAt = bucket.CreatedAt.Format("2006-01-02 15:04:05")
+		}
+		tableData = append(tableData, []string{id, name, driver, createdAt})
+	}
+
+	pterm.DefaultHeader.WithFullWidth().Println("Buckets")
+	pterm.Println()
+	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
 	return nil
 }

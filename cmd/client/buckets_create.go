@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -73,57 +74,55 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 		},
 	}
 
+	// Show spinner while creating
+	spinner, _ := pterm.DefaultSpinner.Start("Creating bucket...")
+
 	// Call the create bucket endpoint
 	res, err := sdk.Buckets.CreateBucket(ctx, req)
 	if err != nil {
+		spinner.Fail("Failed to create bucket")
 		return fmt.Errorf("failed to create bucket: %w", err)
 	}
 
 	// Extract response data
 	bucketResponse := res.GetCreateBucketResponse()
 	if bucketResponse == nil || bucketResponse.Data == nil {
-		fmt.Println("Bucket created successfully")
+		spinner.Success("Bucket created successfully")
 		return nil
 	}
 
 	data := bucketResponse.Data
-	fmt.Println("Bucket created successfully")
-	fmt.Println()
+	spinner.Success("Bucket created successfully")
+	pterm.Println()
 
+	// Create info panel
+	panelData := ""
+	if data.ID != nil {
+		panelData += fmt.Sprintf("ID: %d\n", *data.ID)
+	}
 	if data.Name != nil {
-		fmt.Printf("Name: %s\n", *data.Name)
+		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
 	}
 	if data.Driver != nil {
-		fmt.Printf("Driver: %s\n", *data.Driver)
+		panelData += fmt.Sprintf("Driver: %s\n", *data.Driver)
 	}
 
 	// Display storage-specific information
 	if data.Driver != nil && data.Config != nil {
 		driver := *data.Driver
-		fmt.Println()
-		fmt.Println("Storage configuration:")
-
 		switch driver {
 		case "sqlite":
 			if dsn, ok := data.Config["dsn"].(string); ok {
-				fmt.Printf("  Database: %s\n", dsn)
-			} else {
-				fmt.Printf("  Config: %v\n", data.Config)
+				panelData += fmt.Sprintf("Database: %s\n", dsn)
 			}
 		case "file":
 			if path, ok := data.Config["path"].(string); ok {
-				fmt.Printf("  Directory: %s\n", path)
-			} else {
-				fmt.Printf("  Config: %v\n", data.Config)
+				panelData += fmt.Sprintf("Directory: %s\n", path)
 			}
-		default:
-			fmt.Printf("  Config: %v\n", data.Config)
 		}
 	}
 
-	if data.ID != nil {
-		fmt.Printf("ID: %d\n", *data.ID)
-	}
+	pterm.DefaultBox.WithTitle("Bucket Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(panelData)
 
 	return nil
 }

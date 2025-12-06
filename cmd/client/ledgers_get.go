@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -61,25 +62,27 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 
 	data := ledgerResponse.Data
 
-	// Print ledger information
-	fmt.Println("Ledger Information")
-	fmt.Println("==================")
+	// Create info panel
+	panelData := ""
 	if data.Name != nil {
-		fmt.Printf("Name: %s\n", *data.Name)
+		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
 	}
 	if data.Bucket != nil {
-		fmt.Printf("Bucket: %s\n", *data.Bucket)
+		panelData += fmt.Sprintf("Bucket: %s\n", *data.Bucket)
 	}
 	if data.CreatedAt != nil {
-		fmt.Printf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
+		panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
 	}
 	if len(data.Metadata) > 0 {
-		fmt.Println()
-		fmt.Println("Metadata:")
+		panelData += "\nMetadata:\n"
 		for k, v := range data.Metadata {
-			fmt.Printf("  %s: %s\n", k, v)
+			panelData += fmt.Sprintf("  %s: %s\n", k, v)
 		}
 	}
+
+	pterm.DefaultHeader.WithFullWidth().Println("Ledger Information")
+	pterm.Println()
+	pterm.DefaultBox.WithTitle("Ledger Details").WithBoxStyle(pterm.NewStyle(pterm.FgLightGreen)).Println(panelData)
 
 	return nil
 }

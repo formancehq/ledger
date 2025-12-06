@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -31,28 +32,25 @@ func runDeleteBucket(cmd *cobra.Command, args []string) error {
 
 	sdk := newSDKClient()
 
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Deleting bucket %s...", deleteBucketName))
+
 	req := operations.DeleteBucketRequest{
 		BucketName: deleteBucketName,
 	}
 
 	res, err := sdk.Buckets.DeleteBucket(ctx, req)
 	if err != nil {
+		spinner.Fail(fmt.Sprintf("Failed to delete bucket %s", deleteBucketName))
 		return fmt.Errorf("failed to delete bucket: %w", err)
 	}
 
 	deleteResponse := res.GetDeleteBucketResponse()
-	if deleteResponse == nil || deleteResponse.Data == nil {
-		fmt.Printf("Bucket %s deleted successfully\n", deleteBucketName)
-		return nil
+	message := fmt.Sprintf("Bucket %s deleted successfully", deleteBucketName)
+	if deleteResponse != nil && deleteResponse.Data != nil && deleteResponse.Data.Message != nil {
+		message = *deleteResponse.Data.Message
 	}
 
-	data := deleteResponse.Data
-	if data.Message != nil {
-		fmt.Println(*data.Message)
-	} else {
-		fmt.Printf("Bucket %s deleted successfully\n", deleteBucketName)
-	}
-
+	spinner.Success(message)
 	return nil
 }
 

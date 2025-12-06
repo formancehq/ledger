@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -20,18 +21,22 @@ func runSnapshot(cmd *cobra.Command, args []string) error {
 	// Create SDK instance with custom server URL
 	sdk := newSDKClient()
 
+	// Show spinner while creating snapshot
+	spinner, _ := pterm.DefaultSpinner.Start("Creating snapshot...")
+
 	// Call the snapshot endpoint
 	res, err := sdk.Cluster.CreateSnapshot(ctx)
 	if err != nil {
+		spinner.Fail("Snapshot failed")
 		return fmt.Errorf("snapshot failed: %w", err)
 	}
 
+	message := "Snapshot created successfully"
 	if res.SnapshotResponse != nil && res.SnapshotResponse.Data != nil && res.SnapshotResponse.Data.Message != nil {
-		fmt.Println(*res.SnapshotResponse.Data.Message)
-	} else {
-		fmt.Println("Snapshot created successfully")
+		message = *res.SnapshotResponse.Data.Message
 	}
 
+	spinner.Success(message)
 	return nil
 }
 
@@ -58,39 +63,37 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 	// Extract cluster state data
 	clusterState := res.GetClusterStateResponse()
 	if clusterState == nil || clusterState.Data == nil {
-		fmt.Println("No cluster state data available")
+		pterm.Warning.Println("No cluster state data available")
 		return nil
 	}
 
 	data := clusterState.Data
 
-	// Print cluster state information
-	fmt.Println("Cluster State")
-	fmt.Println("=============")
-
-	// Local node state
+	// Create cluster info panel
+	clusterInfo := ""
 	if data.State != nil {
-		fmt.Printf("Local Node State: %s\n", *data.State)
+		clusterInfo += fmt.Sprintf("Local Node State: %s\n", *data.State)
 	}
-
-	// Local node ID
 	if data.LocalNode != nil {
-		fmt.Printf("Local Node ID: %s\n", *data.LocalNode)
+		clusterInfo += fmt.Sprintf("Local Node ID: %s\n", *data.LocalNode)
 	}
-
-	// Leader
 	if data.Leader != nil && *data.Leader != "" {
-		fmt.Printf("Leader: %s\n", *data.Leader)
+		clusterInfo += fmt.Sprintf("Leader: %s\n", *data.Leader)
 	} else {
-		fmt.Println("Leader: (none)")
+		clusterInfo += "Leader: (none)\n"
 	}
 
-	// Nodes list
-	fmt.Println("\nNodes:")
-	if len(data.Nodes) == 0 {
-		fmt.Println("  (no nodes)")
-	} else {
-		for i, node := range data.Nodes {
+	pterm.DefaultHeader.WithFullWidth().Println("Cluster State")
+	pterm.Println()
+	pterm.DefaultBox.WithTitle("Cluster Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightYellow)).Println(clusterInfo)
+
+	// Nodes table
+	if len(data.Nodes) > 0 {
+		pterm.Println()
+		tableData := pterm.TableData{
+			{"ID", "Address", "Suffrage", "Role"},
+		}
+		for _, node := range data.Nodes {
 			nodeID := "N/A"
 			if node.ID != nil {
 				nodeID = *node.ID
@@ -104,21 +107,25 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 				nodeSuffrage = string(*node.Suffrage)
 			}
 
-			// Mark leader
-			leaderMark := ""
+			// Determine role
+			role := "Follower"
 			if data.Leader != nil && node.ID != nil && *data.Leader == *node.ID {
-				leaderMark = " (LEADER)"
+				role = pterm.LightGreen("LEADER")
 			}
-
-			// Mark local node
-			localMark := ""
 			if data.LocalNode != nil && node.ID != nil && *data.LocalNode == *node.ID {
-				localMark = " (LOCAL)"
+				if role == "Follower" {
+					role = pterm.LightBlue("LOCAL")
+				} else {
+					role = pterm.LightCyan("LEADER (LOCAL)")
+				}
 			}
 
-			fmt.Printf("  %d. ID: %s, Address: %s, Suffrage: %s%s%s\n",
-				i+1, nodeID, nodeAddr, nodeSuffrage, leaderMark, localMark)
+			tableData = append(tableData, []string{nodeID, nodeAddr, nodeSuffrage, role})
 		}
+		pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+	} else {
+		pterm.Println()
+		pterm.Info.Println("No nodes found")
 	}
 
 	return nil

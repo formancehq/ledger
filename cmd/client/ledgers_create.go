@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -60,37 +61,43 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 		},
 	}
 
+	// Show spinner while creating
+	spinner, _ := pterm.DefaultSpinner.Start("Creating ledger...")
+
 	// Call the create ledger endpoint
 	res, err := sdk.Ledgers.CreateLedgerInBucket(ctx, req)
 	if err != nil {
+		spinner.Fail("Failed to create ledger")
 		return fmt.Errorf("failed to create ledger: %w", err)
 	}
 
 	// Extract response data
 	ledgerResponse := res.GetCreateLedgerInBucketResponse()
 	if ledgerResponse == nil || ledgerResponse.Data == nil {
-		fmt.Println("Ledger created successfully")
+		spinner.Success("Ledger created successfully")
 		return nil
 	}
 
 	data := ledgerResponse.Data
+	spinner.Success("Ledger created successfully")
+	pterm.Println()
 
-	// Display result
-	fmt.Println("Ledger created successfully")
-	fmt.Println()
+	// Create info panel
+	panelData := ""
 	if data.Name != nil {
-		fmt.Printf("Name: %s\n", *data.Name)
+		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
 	}
 	if data.Bucket != nil {
-		fmt.Printf("Bucket: %s\n", *data.Bucket)
+		panelData += fmt.Sprintf("Bucket: %s\n", *data.Bucket)
 	}
 	if len(data.Metadata) > 0 {
-		fmt.Println()
-		fmt.Println("Metadata:")
+		panelData += "Metadata:\n"
 		for k, v := range data.Metadata {
-			fmt.Printf("  %s: %s\n", k, v)
+			panelData += fmt.Sprintf("  %s: %s\n", k, v)
 		}
 	}
+
+	pterm.DefaultBox.WithTitle("Ledger Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightGreen)).Println(panelData)
 
 	return nil
 }

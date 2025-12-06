@@ -1,10 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -48,42 +48,49 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 
 	data := bucketResponse.Data
 
-	fmt.Println("Bucket Information")
-	fmt.Println("==================")
+	// Bucket information panel
+	bucketInfo := ""
 	if data.ID != nil {
-		fmt.Printf("ID: %d\n", *data.ID)
+		bucketInfo += fmt.Sprintf("ID: %d\n", *data.ID)
 	}
 	if data.Name != nil {
-		fmt.Printf("Name: %s\n", *data.Name)
+		bucketInfo += fmt.Sprintf("Name: %s\n", *data.Name)
 	}
 	if data.Driver != nil {
-		fmt.Printf("Driver: %s\n", *data.Driver)
-	}
-	if data.Config != nil {
-		configJSON, _ := json.MarshalIndent(data.Config, "", "  ")
-		fmt.Printf("Config:\n%s\n", string(configJSON))
+		bucketInfo += fmt.Sprintf("Driver: %s\n", *data.Driver)
 	}
 	if data.CreatedAt != nil {
-		fmt.Printf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
+		bucketInfo += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
 	}
 
+	pterm.DefaultHeader.WithFullWidth().Println("Bucket Information")
+	pterm.Println()
+	pterm.DefaultBox.WithTitle("Bucket Details").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(bucketInfo)
+
+	// Raft state panel
 	if data.RaftState != nil {
-		fmt.Println("\nRaft Cluster State")
-		fmt.Println("==================")
+		pterm.Println()
 		raftState := data.RaftState
+		raftInfo := ""
 		if raftState.State != nil {
-			fmt.Printf("State: %s\n", *raftState.State)
+			raftInfo += fmt.Sprintf("State: %s\n", *raftState.State)
 		}
 		if raftState.LocalNode != nil {
-			fmt.Printf("Local Node: %s\n", *raftState.LocalNode)
+			raftInfo += fmt.Sprintf("Local Node: %s\n", *raftState.LocalNode)
 		}
 		if raftState.Leader != nil && *raftState.Leader != "" {
-			fmt.Printf("Leader: %s\n", *raftState.Leader)
+			raftInfo += fmt.Sprintf("Leader: %s\n", *raftState.Leader)
 		} else {
-			fmt.Println("Leader: (none)")
+			raftInfo += "Leader: (none)\n"
 		}
+
+		pterm.DefaultBox.WithTitle("Raft Cluster State").WithBoxStyle(pterm.NewStyle(pterm.FgLightMagenta)).Println(raftInfo)
+
 		if len(raftState.Nodes) > 0 {
-			fmt.Println("\nNodes:")
+			pterm.Println()
+			tableData := pterm.TableData{
+				{"ID", "Address", "Suffrage", "Role"},
+			}
 			for _, node := range raftState.Nodes {
 				nodeID := "N/A"
 				if node.ID != nil {
@@ -97,17 +104,19 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 				if node.Suffrage != nil {
 					nodeSuffrage = string(*node.Suffrage)
 				}
-				leaderMark := ""
+				role := ""
 				if raftState.Leader != nil && node.ID != nil && *raftState.Leader == *node.ID {
-					leaderMark = " (leader)"
+					role = pterm.LightGreen("LEADER")
+				} else {
+					role = "Follower"
 				}
-				fmt.Printf("  - ID: %s, Address: %s, Suffrage: %s%s\n", nodeID, nodeAddr, nodeSuffrage, leaderMark)
+				tableData = append(tableData, []string{nodeID, nodeAddr, nodeSuffrage, role})
 			}
-		} else {
-			fmt.Println("\nNodes: (none)")
+			pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		}
 	} else {
-		fmt.Println("\nRaft Cluster State: Not available (Raft group not started)")
+		pterm.Println()
+		pterm.Warning.Println("Raft Cluster State: Not available (Raft group not started)")
 	}
 
 	return nil

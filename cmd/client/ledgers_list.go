@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -47,37 +48,40 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 	// Extract response data
 	ledgersResponse := res.GetListLedgersInBucketResponse()
 	if ledgersResponse == nil || ledgersResponse.Data == nil {
-		fmt.Println("No ledgers found")
+		pterm.Info.Println("No ledgers found")
 		return nil
 	}
 
 	ledgers := ledgersResponse.Data
 	if len(ledgers) == 0 {
-		fmt.Println("No ledgers found")
+		pterm.Info.Println("No ledgers found")
 		return nil
 	}
 
-	// Print ledgers list
-	fmt.Println("Ledgers:")
-	fmt.Println("========")
-	for i, ledger := range ledgers {
-		fmt.Printf("\n%d. ", i+1)
-		if ledger.Name != nil {
-			fmt.Printf("Name: %s\n", *ledger.Name)
-		}
-		if ledger.Bucket != nil {
-			fmt.Printf("   Bucket: %s\n", *ledger.Bucket)
-		}
-		if ledger.CreatedAt != nil {
-			fmt.Printf("   Created At: %s\n", ledger.CreatedAt.Format("2006-01-02 15:04:05"))
-		}
-		if len(ledger.Metadata) > 0 {
-			fmt.Println("   Metadata:")
-			for k, v := range ledger.Metadata {
-				fmt.Printf("     %s: %s\n", k, v)
-			}
-		}
+	// Create table data
+	tableData := pterm.TableData{
+		{"Name", "Bucket", "Created At"},
 	}
+
+	for _, ledger := range ledgers {
+		name := "N/A"
+		if ledger.Name != nil {
+			name = *ledger.Name
+		}
+		bucket := "N/A"
+		if ledger.Bucket != nil {
+			bucket = *ledger.Bucket
+		}
+		createdAt := "N/A"
+		if ledger.CreatedAt != nil {
+			createdAt = ledger.CreatedAt.Format("2006-01-02 15:04:05")
+		}
+		tableData = append(tableData, []string{name, bucket, createdAt})
+	}
+
+	pterm.DefaultHeader.WithFullWidth().Println(fmt.Sprintf("Ledgers in bucket: %s", listLedgerBucketName))
+	pterm.Println()
+	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
 	return nil
 }
