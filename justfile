@@ -55,6 +55,14 @@ generate-sdk:
 clean-sdk:
     rm -rf pkg/client
 
+# Generate gRPC code from protobuf files
+generate-proto:
+    @echo "Generating gRPC code from proto files..."
+    @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
+        proto/raft_transport.proto
+    @echo "gRPC code generated in internal/raft/"
+
 # Wait for a node to be healthy (helper function)
 wait-for-healthy NODE:
     @./scripts/wait-for-healthy.sh {{NODE}}

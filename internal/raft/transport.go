@@ -2,9 +2,7 @@ package raft
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -13,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Transport handles network communication between Raft nodes
+// Transport handles network communication between Raft nodes using gRPC
 type Transport struct {
 	id       uint64
 	addr     string
@@ -26,6 +24,15 @@ type Transport struct {
 
 	// Channels for outgoing messages per peer
 	sendChs map[uint64]chan raftpb.Message
+
+	// gRPC clients for peers
+	grpcClients map[uint64]*grpcClient
+
+	// gRPC server (defined in transport_grpc.go, type is *grpc.Server)
+	grpcServer interface {
+		GracefulStop()
+		Stop()
+	}
 
 	// Channel for reporting unreachable peers
 	unreachableCh chan uint64
@@ -44,6 +51,7 @@ func NewTransport(id uint64, addr string, logger *zap.Logger) *Transport {
 		peers:         make(map[uint64]string),
 		recvCh:        make(chan raftpb.Message, 100),
 		sendChs:       make(map[uint64]chan raftpb.Message),
+		grpcClients:   make(map[uint64]*grpcClient),
 		unreachableCh: make(chan uint64, 100),
 		logger:        logger,
 		ctx:           ctx,
@@ -51,23 +59,15 @@ func NewTransport(id uint64, addr string, logger *zap.Logger) *Transport {
 	}
 }
 
-// Start starts the transport server
+// Start starts the gRPC transport server
 func (t *Transport) Start() error {
-	listener, err := net.Listen("tcp", t.addr)
-	if err != nil {
-		return fmt.Errorf("listening on %s: %w", t.addr, err)
-	}
-	t.listener = listener
-
-	// Start accepting connections
-	go t.acceptLoop()
-
-	return nil
+	return t.startGRPCServer()
 }
 
 // Stop stops the transport
 func (t *Transport) Stop() {
 	t.cancel()
+	t.stopGRPCServer()
 	if t.listener != nil {
 		t.listener.Close()
 	}
@@ -76,6 +76,12 @@ func (t *Transport) Stop() {
 	for _, ch := range t.sendChs {
 		close(ch)
 	}
+	// Close all gRPC client connections
+	t.mu.Lock()
+	for _, client := range t.grpcClients {
+		client.close()
+	}
+	t.mu.Unlock()
 }
 
 // AddPeer adds a peer to the transport
@@ -86,6 +92,13 @@ func (t *Transport) AddPeer(id uint64, addr string) {
 	t.peers[id] = addr
 	if _, exists := t.sendChs[id]; !exists {
 		t.sendChs[id] = make(chan raftpb.Message, 100)
+		// Create gRPC client for this peer
+		client, err := newGRPCClient(addr)
+		if err != nil {
+			t.logger.Error("Failed to create gRPC client for peer", zap.String("peer", fmt.Sprintf("%x", id)), zap.String("addr", addr), zap.Error(err))
+			return
+		}
+		t.grpcClients[id] = client
 		go t.sendLoop(id, addr)
 	}
 }
@@ -99,6 +112,11 @@ func (t *Transport) RemovePeer(id uint64) {
 	if ch, exists := t.sendChs[id]; exists {
 		close(ch)
 		delete(t.sendChs, id)
+	}
+	// Close and remove gRPC client
+	if client, exists := t.grpcClients[id]; exists {
+		client.close()
+		delete(t.grpcClients, id)
 	}
 }
 
@@ -145,59 +163,7 @@ func (t *Transport) Unreachable() <-chan uint64 {
 	return t.unreachableCh
 }
 
-// acceptLoop accepts incoming connections
-func (t *Transport) acceptLoop() {
-	for {
-		conn, err := t.listener.Accept()
-		if err != nil {
-			select {
-			case <-t.ctx.Done():
-				return
-			default:
-				t.logger.Error("Failed to accept connection", zap.Error(err))
-				continue
-			}
-		}
-
-		go t.handleConnection(conn)
-	}
-}
-
-// handleConnection handles a single connection
-func (t *Transport) handleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	for {
-		select {
-		case <-t.ctx.Done():
-			return
-		default:
-			var msg raftpb.Message
-			if err := t.readMessage(conn, &msg); err != nil {
-				if err != io.EOF {
-					t.logger.Error("Failed to read message", zap.Error(err))
-				}
-				return
-			}
-
-			// Send message to recvCh for processing by the cluster
-			select {
-			case t.recvCh <- msg:
-				t.logger.Debug("Received message",
-					zap.String("type", msg.Type.String()),
-					zap.String("from", fmt.Sprintf("%x", msg.From)),
-					zap.String("to", fmt.Sprintf("%x", msg.To)),
-					zap.String("targetPeerID", fmt.Sprintf("%x", msg.To&0xFFFF)))
-			case <-t.ctx.Done():
-				return
-			default:
-				t.logger.Warn("Recv channel full, dropping message")
-			}
-		}
-	}
-}
-
-// sendLoop sends messages to a peer
+// sendLoop sends messages to a peer using gRPC
 func (t *Transport) sendLoop(peerID uint64, addr string) {
 	for {
 		select {
@@ -208,80 +174,42 @@ func (t *Transport) sendLoop(peerID uint64, addr string) {
 				return
 			}
 
-			// Connect to peer
-			conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-			if err != nil {
-				t.logger.Warn("Failed to connect to peer", zap.String("peer", fmt.Sprintf("%x", peerID)), zap.String("addr", addr), zap.Error(err))
+			// Get gRPC client for this peer
+			t.mu.RLock()
+			client, exists := t.grpcClients[peerID]
+			t.mu.RUnlock()
+
+			if !exists {
+				t.logger.Warn("No gRPC client for peer", zap.String("peer", fmt.Sprintf("%x", peerID)))
 				// Report peer as unreachable
 				select {
 				case t.unreachableCh <- peerID:
-					t.logger.Warn("Reported peer as unreachable", zap.String("peer", fmt.Sprintf("%x", peerID)))
 				case <-t.ctx.Done():
 					return
 				default:
-					t.logger.Warn("Unreachable channel full, skipping report", zap.String("peer", fmt.Sprintf("%x", peerID)))
-					// Channel full, skip
 				}
 				continue
 			}
 
-			// Send message
-			t.logger.Debug("Sending message to peer",
+			// Send message via gRPC with timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			t.logger.Debug("Sending message to peer via gRPC",
 				zap.String("type", msg.Type.String()),
 				zap.String("peer", fmt.Sprintf("%x", peerID)),
 				zap.String("addr", addr))
-			if err := t.writeMessage(conn, msg); err != nil {
-				t.logger.Warn("Failed to send message", zap.String("peer", fmt.Sprintf("%x", peerID)), zap.Error(err))
-				conn.Close()
+			if err := client.sendMessage(ctx, msg); err != nil {
+				t.logger.Warn("Failed to send message via gRPC", zap.String("peer", fmt.Sprintf("%x", peerID)), zap.Error(err))
+				cancel()
 				// Report peer as unreachable
 				select {
 				case t.unreachableCh <- peerID:
 				case <-t.ctx.Done():
 					return
 				default:
-					// Channel full, skip
 				}
 				continue
 			}
-
-			conn.Close()
+			cancel()
 		}
 	}
-}
-
-// readMessage reads a message from a connection
-func (t *Transport) readMessage(conn net.Conn, msg *raftpb.Message) error {
-	// Read message size
-	var size uint32
-	if err := binary.Read(conn, binary.BigEndian, &size); err != nil {
-		return err
-	}
-
-	// Read message data
-	data := make([]byte, size)
-	if _, err := io.ReadFull(conn, data); err != nil {
-		return err
-	}
-
-	// Unmarshal message
-	return msg.Unmarshal(data)
-}
-
-// writeMessage writes a message to a connection
-func (t *Transport) writeMessage(conn net.Conn, msg raftpb.Message) error {
-	// Marshal message
-	data, err := msg.Marshal()
-	if err != nil {
-		return err
-	}
-
-	// Write message size
-	size := uint32(len(data))
-	if err := binary.Write(conn, binary.BigEndian, size); err != nil {
-		return err
-	}
-
-	// Write message data
-	_, err = conn.Write(data)
-	return err
 }

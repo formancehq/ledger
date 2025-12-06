@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package raft_transport;
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft";
+
+// RaftTransportService handles Raft message transport between nodes
+service RaftTransportService {
+  // SendMessage sends a Raft message to a peer
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+}
+
+// SendMessageRequest contains a Raft message to send
+message SendMessageRequest {
+  // Serialized raftpb.Message
+  bytes message = 1;
+}
+
+// SendMessageResponse is the response to SendMessage
+message SendMessageResponse {
+  bool success = 1;
+  string error = 2;
+}
+
