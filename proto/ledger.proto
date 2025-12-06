@@ -5,7 +5,7 @@ package ledger;
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/formancehq/ledger-v3-poc/api";
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
 
 // LedgerService provides ledger operations
 service LedgerService {

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"github.com/formancehq/ledger-v3-poc/api"
 	"go.etcd.io/etcd/raft/v3"
 )
 
@@ -13,5 +12,5 @@ type ClusterClient interface {
 
 // GRPCClient provides access to the gRPC client
 type GRPCClient interface {
-	GetClient() api.LedgerServiceClient
+	GetClient() LedgerServiceClient
 }

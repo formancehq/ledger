@@ -7,7 +7,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/api"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"go.etcd.io/etcd/raft/v3"
 	"go.uber.org/zap"
@@ -82,13 +81,13 @@ func (r *RoutedLedger) CreateTransaction(ctx context.Context, ledgerName string,
 
 // Helper functions for conversion
 
-func (r *RoutedLedger) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*api.CreateTransactionRequest, error) {
+func (r *RoutedLedger) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*CreateTransactionRequest, error) {
 	input := params.Input
 
 	// Convert postings
-	postings := make([]*api.Posting, 0, len(input.Postings))
+	postings := make([]*Posting, 0, len(input.Postings))
 	for _, p := range input.Postings {
-		postings = append(postings, &api.Posting{
+		postings = append(postings, &Posting{
 			Source:      p.Source,
 			Destination: p.Destination,
 			Amount:      p.Amount.String(),
@@ -118,7 +117,7 @@ func (r *RoutedLedger) createTransactionRequestToProto(ledgerName string, params
 		timestamp = timestamppb.New(input.Timestamp.Time)
 	}
 
-	return &api.CreateTransactionRequest{
+	return &CreateTransactionRequest{
 		AccountMetadata: accountMetadata,
 		Timestamp:       timestamp,
 		Metadata:        metadata,
@@ -130,7 +129,7 @@ func (r *RoutedLedger) createTransactionRequestToProto(ledgerName string, params
 	}, nil
 }
 
-func (r *RoutedLedger) createTransactionResponseFromProto(resp *api.CreateTransactionResponse) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (r *RoutedLedger) createTransactionResponseFromProto(resp *CreateTransactionResponse) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	if resp.Transaction == nil {
 		return nil, nil, fmt.Errorf("empty transaction in response")
 	}

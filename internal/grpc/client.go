@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/formancehq/ledger-v3-poc/api"
+	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -13,7 +13,7 @@ import (
 
 type Client struct {
 	conn   *grpc.ClientConn
-	client api.LedgerServiceClient
+	client service.LedgerServiceClient
 	logger *zap.Logger
 	mu     sync.RWMutex
 }
@@ -42,13 +42,13 @@ func (c *Client) Connect(ctx context.Context, address string) error {
 	}
 
 	c.conn = conn
-	c.client = api.NewLedgerServiceClient(conn)
+	c.client = service.NewLedgerServiceClient(conn)
 
 	c.logger.Info("Connected to leader gRPC server", zap.String("address", address))
 	return nil
 }
 
-func (c *Client) GetClient() api.LedgerServiceClient {
+func (c *Client) GetClient() service.LedgerServiceClient {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.client

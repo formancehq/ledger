@@ -8,7 +8,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/api"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
@@ -41,7 +40,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.listener = lis
 
 	s.server = grpc.NewServer()
-	api.RegisterLedgerServiceServer(s.server, &ledgerServiceServer{
+	service.RegisterLedgerServiceServer(s.server, &ledgerServiceServer{
 		logger:        s.logger,
 		ledgerService: s.ledgerService,
 	})
@@ -69,12 +68,12 @@ func (s *Server) Stop() error {
 
 // ledgerServiceServer implements the LedgerService
 type ledgerServiceServer struct {
-	api.UnimplementedLedgerServiceServer
+	service.UnimplementedLedgerServiceServer
 	logger        *zap.Logger
 	ledgerService service.Ledger
 }
 
-func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *api.CreateTransactionRequest) (*api.CreateTransactionResponse, error) {
+func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *service.CreateTransactionRequest) (*service.CreateTransactionResponse, error) {
 	l.logger.Debug("CreateTransaction request received", zap.String("reference", req.Reference))
 
 	// Convert protobuf request to service types
@@ -135,7 +134,7 @@ func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *api.Cr
 	}
 
 	// Convert response to protobuf
-	response := &api.CreateTransactionResponse{
+	response := &service.CreateTransactionResponse{
 		Transaction:     transactionToProto(createdTx.Transaction),
 		AccountMetadata: metadataMapToProto(createdTx.AccountMetadata),
 	}
@@ -182,10 +181,10 @@ func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.St
 	return result
 }
 
-func transactionToProto(tx ledger.Transaction) *api.Transaction {
-	postings := make([]*api.Posting, 0, len(tx.Postings))
+func transactionToProto(tx ledger.Transaction) *service.Transaction {
+	postings := make([]*service.Posting, 0, len(tx.Postings))
 	for _, p := range tx.Postings {
-		postings = append(postings, &api.Posting{
+		postings = append(postings, &service.Posting{
 			Source:      p.Source,
 			Destination: p.Destination,
 			Amount:      p.Amount.String(),
@@ -210,7 +209,7 @@ func transactionToProto(tx ledger.Transaction) *api.Transaction {
 		id = *tx.ID
 	}
 
-	return &api.Transaction{
+	return &service.Transaction{
 		Postings:  postings,
 		Metadata:  metadata,
 		Timestamp: timestamp,

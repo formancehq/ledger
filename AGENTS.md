@@ -57,12 +57,16 @@ This structure enables easy maintenance and clear separation of responsibilities
 
 ## Protocol Buffers and gRPC Code Generation
 
-The Raft transport layer uses gRPC for communication between nodes. Protocol buffer definitions are stored in the `proto/` directory, while the generated Go code is placed in `internal/raft/`.
+The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in the `proto/` directory, while the generated Go code is placed in the appropriate internal packages.
 
 ### File Locations
 
-- **Protocol definitions**: `proto/raft_transport.proto`
-- **Generated code**: `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go`
+- **Protocol definitions**: 
+  - `proto/raft_transport.proto` - Raft transport messages
+  - `proto/ledger.proto` - Ledger service messages
+- **Generated code**: 
+  - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
+  - `internal/service/ledger.pb.go` and `internal/service/ledger_grpc.pb.go` - Ledger service
 
 ### Regenerating Code
 
@@ -75,7 +79,7 @@ just generate-proto
 This command:
 1. Reads the `.proto` files from the `proto/` directory
 2. Generates Go code using `protoc` with the `protoc-gen-go` and `protoc-gen-go-grpc` plugins
-3. Places the generated files in `internal/raft/` based on the `go_package` option specified in the `.proto` file
+3. Places the generated files in the appropriate directories (`internal/raft/` or `internal/service/`) based on the `go_package` option specified in each `.proto` file
 
 ### Prerequisites
 
@@ -90,8 +94,8 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 ### Modifying Protocol Definitions
 
-When modifying `proto/raft_transport.proto`:
-1. Edit the `.proto` file
-2. Run `just generate-proto` to regenerate the Go code
+When modifying any `.proto` file:
+1. Edit the `.proto` file in the `proto/` directory
+2. Run `just generate-proto` to regenerate the Go code for all proto files
 3. Update any code that uses the generated types if the API has changed
 4. Rebuild the project to ensure everything compiles
