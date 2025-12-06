@@ -394,16 +394,6 @@ func (g *BucketRaftGroup) Stop() error {
 	return nil
 }
 
-// GetBucketName returns the bucket name
-func (g *BucketRaftGroup) GetBucketName() string {
-	return g.bucketName
-}
-
-// GetGroupID returns the group ID
-func (g *BucketRaftGroup) GetGroupID() uint64 {
-	return g.groupID
-}
-
 // Snapshot forces a snapshot of the bucket Raft group
 func (g *BucketRaftGroup) Snapshot() error {
 	g.logger.Info("Snapshot request received for bucket", zap.String("bucket", g.bucketName))

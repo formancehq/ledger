@@ -25,11 +25,6 @@ func GenerateRandomID() uint64 {
 // CommandType represents the type of command
 type CommandType string
 
-const (
-	// CommandTypeSetPublicAddr is the command type for setting a node's public address
-	CommandTypeSetPublicAddr CommandType = "set_public_addr"
-)
-
 // Command represents a command to be executed in the FSM
 type Command struct {
 	ID   uint64 // Random command ID
@@ -98,30 +93,6 @@ func (c *Command) UnmarshalBinary(data []byte) error {
 	}
 
 	return nil
-}
-
-// SetPublicAddrCommand represents the data for a set public address command
-type SetPublicAddrCommand struct {
-	NodeID     string `json:"nodeId"`
-	PublicAddr string `json:"publicAddr"`
-}
-
-// NewSetPublicAddrCommand creates a new SetPublicAddrCommand
-func NewSetPublicAddrCommand(nodeID, publicAddr string) (*Command, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(SetPublicAddrCommand{
-		NodeID:     nodeID,
-		PublicAddr: publicAddr,
-	}); err != nil {
-		return nil, err
-	}
-	return &Command{
-		ID:   GenerateRandomID(),
-		Type: CommandTypeSetPublicAddr,
-		Data: buf.Bytes(),
-		Date: time.Now(),
-	}, nil
 }
 
 // LedgerInfo represents information about a ledger
