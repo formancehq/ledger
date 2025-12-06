@@ -113,7 +113,7 @@ func (r *RoutedLedger) createTransactionRequestToProto(ledgerName string, params
 
 	// Convert timestamp
 	var timestamp *timestamppb.Timestamp
-	if !input.Timestamp.IsZero() {
+	if input.Timestamp != nil && !input.Timestamp.IsZero() {
 		timestamp = timestamppb.New(input.Timestamp.Time)
 	}
 

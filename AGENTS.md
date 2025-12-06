@@ -2,6 +2,10 @@
 
 This document describes the organizational structure of the CLI client commands.
 
+## Reference Implementation
+
+The ledger service implementation is based on the reference implementation from `github.com/formancehq/ledger`. When implementing new features or fixing bugs, refer to the original implementation for guidance on patterns and best practices.
+
 ## File Structure
 
 The client commands are organized into separate files to improve maintainability and code readability.

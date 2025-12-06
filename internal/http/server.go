@@ -9,6 +9,7 @@ import (
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -28,7 +29,7 @@ type ClusterClient interface {
 	Snapshot() error
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
-	CreateLedger(bucketName, ledgerName string, metadata map[string]string) error
+	CreateLedger(bucketName, ledgerName string, metadata metadata.Metadata) error
 	GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error)
 	GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error)
 	FindBucketForLedger(ledgerName string) (string, error)
@@ -100,9 +101,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Register ledger routes at root (without /ledgers prefix)
 	// Note: Routes with parameters must come before the root route
-	r.Post("/{ledgerName}", s.handleCreateLedger) // POST /{ledgerName}
-	r.Get("/{ledgerName}", s.handleGetLedger)     // GET /{ledgerName}
-	r.Get("/", s.handleListAllLedgers)            // GET / (cross-bucket) - must be last
+	r.Post("/{ledgerName}", s.handleCreateLedger)                   // POST /{ledgerName}
+	r.Get("/{ledgerName}", s.handleGetLedger)                       // GET /{ledgerName}
+	r.Post("/{ledgerName}/transactions", s.handleCreateTransaction) // POST /{ledgerName}/transactions
+	r.Get("/", s.handleListAllLedgers)                              // GET / (cross-bucket) - must be last
 
 	handler := r
 
@@ -353,6 +355,52 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 		LedgerInfo: ledgerInfo,
 		Bucket:     bucketName,
 	})
+}
+
+// handleCreateTransaction handles POST /{ledgerName}/transactions to create a new transaction
+func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
+	ledgerName := chi.URLParam(r, "ledgerName")
+	if ledgerName == "" {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
+		return
+	}
+
+	// Decode request body directly into service.CreateTransaction
+	var input service.CreateTransaction
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+
+	// Validate postings
+	if len(input.Postings) == 0 {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("postings are required"))
+		return
+	}
+
+	// Extract dryRun from query parameter
+	dryRun := r.URL.Query().Get("dryRun") == "true"
+
+	// Extract idempotencyKey from header
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+
+	// Build service.Parameters[service.CreateTransaction]
+	params := service.Parameters[service.CreateTransaction]{
+		DryRun:         dryRun,
+		IdempotencyKey: idempotencyKey,
+		Input:          input,
+	}
+
+	// Call ledger service
+	_, createdTx, err := s.ledgerService.CreateTransaction(r.Context(), ledgerName, params)
+	if err != nil {
+		s.logger.Error("Failed to create transaction", zap.String("ledger", ledgerName), zap.Error(err))
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	// Return the service response directly - JSON encoding will handle it
+	api.Created(w, createdTx)
 }
 
 // handleListBuckets handles GET /buckets to list all buckets

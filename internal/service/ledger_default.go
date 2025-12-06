@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"go.uber.org/zap"
 )
@@ -130,10 +131,17 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		return nil, nil, err
 	}
 
+	// Determine timestamp: use provided timestamp or current time if not provided
+	timestamp := input.Timestamp
+	if timestamp == nil {
+		now := time.Now()
+		timestamp = &now
+	}
+
 	// Create transaction
 	tx := ledger.NewTransaction().
 		WithPostings(input.Postings...).
-		WithTimestamp(input.Timestamp).
+		WithTimestamp(*timestamp).
 		WithMetadata(input.Metadata)
 
 	if input.Reference != "" {
@@ -148,7 +156,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	// Create log
 	log := ledger.NewLog(createdTx).
-		WithDate(input.Timestamp).
+		WithDate(*timestamp).
 		WithLedger(ledgerName)
 
 	if parameters.IdempotencyKey != "" {

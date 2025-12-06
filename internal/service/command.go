@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
@@ -71,18 +72,18 @@ type LedgerInfo struct {
 	ID        uint64            `json:"id"`        // Sequential ID for the ledger
 	Name      string            `json:"name"`      // Ledger name/ID
 	CreatedAt string            `json:"createdAt"` // Creation timestamp (ISO 8601)
-	Metadata  map[string]string `json:"metadata,omitempty"`
+	Metadata  metadata.Metadata `json:"metadata,omitempty"`
 	LastLogID *uint64           `json:"lastLogId,omitempty"` // ID of the last log for this ledger
 }
 
 // CreateLedgerCommand represents the data for a create ledger command
 type CreateLedgerCommand struct {
 	Name     string            `json:"name"`               // Ledger name/ID (required)
-	Metadata map[string]string `json:"metadata,omitempty"` // Optional metadata
+	Metadata metadata.Metadata `json:"metadata,omitempty"` // Optional metadata
 }
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
-func NewCreateLedgerCommand(name string, metadata map[string]string) (*Command, error) {
+func NewCreateLedgerCommand(name string, metadata metadata.Metadata) (*Command, error) {
 	data, err := json.Marshal(CreateLedgerCommand{
 		Name:     name,
 		Metadata: metadata,

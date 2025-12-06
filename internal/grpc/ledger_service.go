@@ -57,12 +57,12 @@ func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *servic
 	}
 
 	// Convert timestamp
-	var timestamp time.Time
+	var timestamp *time.Time
 	if req.Timestamp != nil {
-		timestamp = time.New(req.Timestamp.AsTime())
-	} else {
-		timestamp = time.Now()
+		t := time.New(req.Timestamp.AsTime())
+		timestamp = &t
 	}
+	// If timestamp is nil, leave it as nil (leader will decide)
 
 	// Create transaction parameters
 	params := service.Parameters[service.CreateTransaction]{

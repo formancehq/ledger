@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
@@ -20,17 +23,66 @@ type Ledger interface {
 }
 
 type Parameters[INPUT any] struct {
-	DryRun         bool
-	IdempotencyKey string
-	Input          INPUT
+	DryRun         bool   `json:"dryRun,omitempty"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty"`
+	Input          INPUT  `json:"-"`
 }
 
 type CreateTransaction struct {
-	AccountMetadata map[string]metadata.Metadata
-	Timestamp       time.Time         `json:"timestamp"`
-	Metadata        metadata.Metadata `json:"metadata"`
-	Reference       string            `json:"reference"`
-	Postings        ledger.Postings
+	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
+	Timestamp       *time.Time                   `json:"timestamp,omitempty"`
+	Metadata        metadata.Metadata            `json:"metadata,omitempty"`
+	Reference       string                       `json:"reference,omitempty"`
+	Postings        ledger.Postings              `json:"postings"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler for CreateTransaction
+// It handles conversion of timestamp from string to *time.Time and metadata from map[string]interface{} to metadata.Metadata
+func (c *CreateTransaction) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		AccountMetadata map[string]map[string]interface{} `json:"accountMetadata,omitempty"`
+		Timestamp       string                            `json:"timestamp,omitempty"`
+		Metadata        map[string]interface{}            `json:"metadata,omitempty"`
+		Reference       string                            `json:"reference,omitempty"`
+		Postings        ledger.Postings                   `json:"postings"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Convert account metadata
+	c.AccountMetadata = make(map[string]metadata.Metadata)
+	for addr, md := range aux.AccountMetadata {
+		c.AccountMetadata[addr] = convertMapToMetadata(md)
+	}
+
+	// Convert timestamp
+	if aux.Timestamp != "" {
+		parsedTime, err := stdtime.Parse(stdtime.RFC3339, aux.Timestamp)
+		if err != nil {
+			return err
+		}
+		t := time.New(parsedTime)
+		c.Timestamp = &t
+	}
+
+	// Convert metadata
+	c.Metadata = convertMapToMetadata(aux.Metadata)
+	c.Reference = aux.Reference
+	c.Postings = aux.Postings
+	return nil
+}
+
+// convertMapToMetadata converts map[string]interface{} to metadata.Metadata
+func convertMapToMetadata(m map[string]interface{}) metadata.Metadata {
+	if m == nil {
+		return metadata.Metadata{}
+	}
+	md := make(metadata.Metadata)
+	for k, v := range m {
+		md[k] = fmt.Sprintf("%v", v)
+	}
+	return md
 }
 
 type RevertTransaction struct {

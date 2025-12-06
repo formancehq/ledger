@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -326,7 +327,7 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) error {
 }
 
 // CreateLedger creates a new ledger in this bucket via a FSM command
-func (g *BucketRaftGroup) CreateLedger(name string, metadata map[string]string) error {
+func (g *BucketRaftGroup) CreateLedger(name string, metadata metadata.Metadata) error {
 	// Create the command
 	cmd, err := service.NewCreateLedgerCommand(name, metadata)
 	if err != nil {

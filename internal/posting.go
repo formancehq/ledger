@@ -3,6 +3,7 @@ package ledger
 import (
 	"errors"
 	"math/big"
+
 	"github.com/formancehq/ledger/pkg/accounts"
 	"github.com/formancehq/ledger/pkg/assets"
 )
@@ -13,6 +14,7 @@ type Posting struct {
 	Amount      *big.Int `json:"amount"`
 	Asset       string   `json:"asset"`
 }
+
 
 func (p Posting) GetSource() string {
 	return p.Source

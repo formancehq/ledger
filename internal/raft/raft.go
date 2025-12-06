@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
@@ -780,7 +781,7 @@ func (r *Cluster) GetClusterState() (*http.ClusterState, error) {
 }
 
 // CreateLedger creates a new ledger in a bucket via the bucket's Raft group
-func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata map[string]string) error {
+func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata metadata.Metadata) error {
 	// Check if ledger already exists in any bucket (global uniqueness)
 	r.muGroups.RLock()
 	for name, group := range r.bucketGroups {
