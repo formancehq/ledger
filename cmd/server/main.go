@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
+	"github.com/formancehq/ledger-v3-poc/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -49,6 +51,7 @@ func init() {
 	rootCmd.Flags().String("storage-file-path", "./data/logs.jsonl", "Path to log file (required when storage-type is 'file')")
 	rootCmd.Flags().Uint64("snapshot-threshold", 0, "Number of logs before triggering a snapshot (0 = use Raft default)")
 	rootCmd.Flags().Duration("snapshot-interval", 0, "Minimum interval between snapshots (0 = use Raft default, e.g., 30s)")
+	rootCmd.Flags().String("otlp-endpoint", "", "OpenTelemetry OTLP endpoint (e.g., otel-collector:4317). If empty, OpenTelemetry is disabled")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -86,6 +89,13 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Get context from Cobra
 	ctx := cmd.Context()
+
+	// Initialize OpenTelemetry
+	shutdownTelemetry, err := initTelemetry(ctx, cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing telemetry: %w", err)
+	}
+	defer shutdownTelemetry()
 
 	// Create application
 	app := application.New(cfg, logger)
@@ -148,6 +158,7 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 		StorageFilePath:   viper.GetString("storage.file.path"),
 		SnapshotThreshold: viper.GetUint64("snapshot-threshold"),  // Can be set via flag or config file
 		SnapshotInterval:  viper.GetDuration("snapshot-interval"), // Can be set via flag or config file
+		OTLPEndpoint:      viper.GetString("otlp-endpoint"),
 	}
 
 	// Also check hierarchical config keys if flags weren't set
@@ -159,4 +170,9 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func initTelemetry(ctx context.Context, cfg *config.Config, logger *zap.Logger) (func(), error) {
+	serviceName := fmt.Sprintf("ledger-v3-poc-node-%d", cfg.NodeID)
+	return telemetry.Init(ctx, serviceName, cfg.OTLPEndpoint, logger)
 }

@@ -17,7 +17,7 @@ services:
     volumes:
       - .:/app
       - ./data/node-1:/data
-      - ./default-config.yml:/app/default-config.yml:ro
+      - ./deployments/default-config.yml:/app/default-config.yml:ro
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -41,6 +41,7 @@ services:
       - ADVERTISE_ADDR=node-2:8888
       - PEERS=1/node-1:8888 3/node-3:8888
       - LOGGING_LEVEL=${DEBUG:-false}
+      - OTLP_ENDPOINT=otel-collector:4317
     ports:
       - "8889:8888"
       - "8001:8000"
@@ -48,7 +49,7 @@ services:
     volumes:
       - .:/app
       - ./data/node-2:/data
-      - ./default-config.yml:/app/default-config.yml:ro
+      - ./deployments/default-config.yml:/app/default-config.yml:ro
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -74,6 +75,7 @@ services:
       - ADVERTISE_ADDR=node-3:8888
       - PEERS=1/node-1:8888 2/node-2:8888
       - LOGGING_LEVEL=${DEBUG:-false}
+      - OTLP_ENDPOINT=otel-collector:4317
     ports:
       - "8890:8888"
       - "8002:8000"
@@ -81,7 +83,7 @@ services:
     volumes:
       - .:/app
       - ./data/node-3:/data
-      - ./default-config.yml:/app/default-config.yml:ro
+      - ./deployments/default-config.yml:/app/default-config.yml:ro
       - go-mod-cache:/go/pkg/mod
     networks:
       - raft-network
@@ -99,10 +101,64 @@ services:
         go run ./cmd/server --config /app/default-config.yml
       "
 
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./deployments/otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    networks:
+      - raft-network
+    depends_on:
+      - signoz-otel-collector
+
+  signoz-otel-collector:
+    image: signoz/otel-collector:0.88.0
+    container_name: signoz-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./deployments/signoz-otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4319:4317"   # OTLP gRPC receiver
+    networks:
+      - raft-network
+    depends_on:
+      - clickhouse
+
+  clickhouse:
+    image: clickhouse/clickhouse:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native interface
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    networks:
+      - raft-network
+
+  signoz:
+    image: signoz/signoz:latest
+    container_name: signoz
+    ports:
+      - "3301:3301"   # Query service
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=signoz
+    volumes:
+      - signoz-data:/var/lib/signoz
+    networks:
+      - raft-network
+    depends_on:
+      - clickhouse
+
 networks:
   raft-network:
     driver: bridge
 
 volumes:
   go-mod-cache:
+  signoz-data:
+  clickhouse-data:
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -51,7 +53,23 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.listener = lis
 
-	s.server = grpc.NewServer()
+	// Create gRPC server with OpenTelemetry instrumentation
+	// Filter out RaftTransportService to avoid too many traces
+	opts := []grpc.ServerOption{
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			otelgrpc.WithInterceptorFilter(func(info *otelgrpc.InterceptorInfo) bool {
+				// Skip tracing for RaftTransportService to avoid too many traces
+				if info.UnaryServerInfo != nil {
+					return !strings.Contains(info.UnaryServerInfo.FullMethod, "RaftTransportService")
+				}
+				if info.StreamServerInfo != nil {
+					return !strings.Contains(info.StreamServerInfo.FullMethod, "RaftTransportService")
+				}
+				return true
+			}),
+		)),
+	}
+	s.server = grpc.NewServer(opts...)
 
 	// Register LedgerService
 	service.RegisterLedgerServiceServer(s.server, newLedgerServiceServer(s.logger, s.ledgerService, s.snapshotClient))

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.etcd.io/etcd/raft/v3"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +21,24 @@ type Server struct {
 	ledgerService service.Ledger
 	cluster       ClusterClient
 	port          int
+}
+
+// todo: use in place of ClusterClient
+type LeaderClient interface {
+	Snapshot() error
+	IsHealthy() bool
+	GetClusterState() (*ClusterState, error)
+	CreateLedger(bucketName, ledgerName string, metadata metadata.Metadata) error
+	GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error)
+	GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error)
+	FindBucketForLedger(ledgerName string) (string, error)
+	GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error)
+	CreateBucket(name, driver string, config map[string]interface{}) error
+	DeleteBucket(name string) error
+	CreateBucketSnapshot(bucketName string) error
+	GetAllBuckets() map[string]service.BucketInfo
+	GetBucket(name string) (service.BucketInfo, bool)
+	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
 }
 
 // ClusterClient is an interface for cluster operations
@@ -102,7 +121,10 @@ func (s *Server) Start(ctx context.Context) error {
 	r.Post("/{ledgerName}/transactions", s.handleCreateTransaction) // POST /{ledgerName}/transactions
 	r.Get("/", s.handleListAllLedgers)                              // GET / (cross-bucket) - must be last
 
-	handler := r
+	// Wrap handler with OpenTelemetry instrumentation
+	handler := otelhttp.NewHandler(r, "ledger-http-server",
+		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+	)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
