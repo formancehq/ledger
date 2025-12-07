@@ -113,13 +113,12 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger loggin
 }
 
 type Cluster struct {
-	node      *NodeWrapper
-	fsm       *fsm.FSM
-	storage   *Storage
-	transport *Transport
-	config    *config.Config
-	logger    logging.Logger
-	// grpcServer is now managed via fx hooks in application/module.go
+	node          *NodeWrapper
+	fsm           *fsm.FSM
+	storage       *Storage
+	transport     *Transport
+	config        *config.Config
+	logger        logging.Logger
 	ledgerService service.Ledger // Routed ledger service that routes to bucket Raft groups
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -128,7 +127,7 @@ type Cluster struct {
 	muGroups      sync.RWMutex                // Mutex for bucketGroups map
 }
 
-func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger logging.Logger) (*Cluster, error) {
+func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger logging.Logger, transport *Transport) (*Cluster, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -146,10 +145,6 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 		return nil, fmt.Errorf("creating storage: %w", err)
 	}
 
-	// Create transport
-	transport := NewTransport(logger)
-	// Note: transport is registered on the unified gRPC server via fx hooks in application/module.go
-
 	// Create Raft configuration
 	raftConfig := &raft.Config{
 		ID:              nodeID,
@@ -163,6 +158,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 
 	// Configure snapshot parameters
 	if cfg.SnapshotThreshold > 0 {
+		// todo
 		// etcd/raft doesn't have SnapshotThreshold, we'll handle it manually
 	}
 
@@ -241,7 +237,6 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 	// Create a routed ledger service that routes to the appropriate bucket
 	routedLedger := service.NewRoutedLedger(cluster, &bucketLedgerRouter{cluster: cluster}, logger)
 	cluster.ledgerService = routedLedger
-	// Note: gRPC server is now created and started via fx hooks in application/module.go
 
 	// Add peers to transport
 	// Peers are in format "<id>/<address>", parse them
@@ -271,8 +266,6 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 }
 
 func (r *Cluster) Start() error {
-	// Note: gRPC server is now started via fx hooks in application/module.go
-
 	// Start the Ready loop - it will receive all messages and route them appropriately
 	go r.readyLoop()
 
@@ -566,8 +559,6 @@ func (r *Cluster) Shutdown() error {
 
 	// Cancel context to stop monitoring
 	r.cancel()
-
-	// Note: gRPC server is stopped via fx hooks in application/module.go
 
 	// Stop transport
 	r.transport.Stop()

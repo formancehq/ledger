@@ -51,7 +51,6 @@ func NewTransport(logger logging.Logger) *Transport {
 // Stop stops the transport
 func (t *Transport) Stop() {
 	t.cancel()
-	// Note: gRPC server is managed via fx hooks in application/module.go
 	close(t.recvCh)
 	close(t.unreachableCh)
 	for _, ch := range t.sendChs {

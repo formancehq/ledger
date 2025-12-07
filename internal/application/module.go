@@ -30,6 +30,7 @@ func Module() fx.Option {
 	return fx.Options(
 		// Provide core dependencies
 		fx.Provide(
+			NewTransport,
 			NewRaftCluster,
 			NewLedgerService,
 			NewGRPCServer,
@@ -46,10 +47,15 @@ func Module() fx.Option {
 	)
 }
 
+// NewTransport creates a new transport
+func NewTransport(logger logging.Logger) *raft.Transport {
+	return raft.NewTransport(logger)
+}
+
 // NewRaftCluster creates a new Raft cluster
-func NewRaftCluster(lc fx.Lifecycle, cfg *config.Config, logger logging.Logger) (*raft.Cluster, error) {
+func NewRaftCluster(lc fx.Lifecycle, cfg *config.Config, logger logging.Logger, transport *raft.Transport) (*raft.Cluster, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cluster, err := raft.NewRaftCluster(ctx, cfg, logger)
+	cluster, err := raft.NewRaftCluster(ctx, cfg, logger, transport)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("creating raft cluster: %w", err)
@@ -134,7 +140,6 @@ func StartGRPCServerHook(lc fx.Lifecycle, grpcServer *grpcserver.Server, logger 
 }
 
 // StartRaftCluster is a no-op hook since cluster is started in NewRaftCluster
-// This is kept for clarity and potential future use
 func StartRaftCluster() {
 	// Raft cluster is started in NewRaftCluster lifecycle hook
 }
