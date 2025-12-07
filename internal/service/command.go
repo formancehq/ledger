@@ -1,13 +1,13 @@
 package service
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/gob"
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // GenerateRandomID generates a random uint64 ID
@@ -33,63 +33,29 @@ type Command struct {
 	Date time.Time // Creation date in UTC, rounded to microsecond
 }
 
-// MarshalBinary encodes the command to binary format
+// MarshalBinary encodes the command to binary format using protobuf
 func (c *Command) MarshalBinary() ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-
-	// Encode command header
-	if err := enc.Encode(c.ID); err != nil {
-		return nil, err
+	cmdProto := &CommandProto{
+		Id:   c.ID,
+		Type: string(c.Type),
+		Data: c.Data,
+		Date: timestamppb.New(c.Date.Time),
 	}
-	if err := enc.Encode(c.Type); err != nil {
-		return nil, err
-	}
-	if err := enc.Encode(c.Date); err != nil {
-		return nil, err
-	}
-
-	// Encode data length and data
-	if err := enc.Encode(uint32(len(c.Data))); err != nil {
-		return nil, err
-	}
-	if len(c.Data) > 0 {
-		if err := enc.Encode(c.Data); err != nil {
-			return nil, err
-		}
-	}
-
-	return buf.Bytes(), nil
+	return proto.Marshal(cmdProto)
 }
 
-// UnmarshalBinary decodes the command from binary format
+// UnmarshalBinary decodes the command from binary format using protobuf
 func (c *Command) UnmarshalBinary(data []byte) error {
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-
-	// Decode command header
-	if err := dec.Decode(&c.ID); err != nil {
-		return err
-	}
-	if err := dec.Decode(&c.Type); err != nil {
-		return err
-	}
-	if err := dec.Decode(&c.Date); err != nil {
+	var cmdProto CommandProto
+	if err := proto.Unmarshal(data, &cmdProto); err != nil {
 		return err
 	}
 
-	// Decode data length and data
-	var dataLen uint32
-	if err := dec.Decode(&dataLen); err != nil {
-		return err
-	}
-	if dataLen > 0 {
-		c.Data = make([]byte, dataLen)
-		if err := dec.Decode(&c.Data); err != nil {
-			return err
-		}
-	} else {
-		c.Data = nil
+	c.ID = cmdProto.Id
+	c.Type = CommandType(cmdProto.Type)
+	c.Data = cmdProto.Data
+	if cmdProto.Date != nil {
+		c.Date = time.New(cmdProto.Date.AsTime())
 	}
 
 	return nil
@@ -101,7 +67,7 @@ type LedgerInfo struct {
 	Name      string            `json:"name"`      // Ledger name/ID
 	CreatedAt time.Time         `json:"createdAt"` // Creation timestamp
 	Metadata  metadata.Metadata `json:"metadata,omitempty"`
-	LastLogID *uint64          `json:"lastLogId,omitempty"` // ID of the last log for this ledger
+	LastLogID *uint64           `json:"lastLogId,omitempty"` // ID of the last log for this ledger
 }
 
 // BucketInfo represents information about a bucket

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package fsm_commands;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/fsm";
+
+// CreateBucketCommand represents the data for a create bucket command
+message CreateBucketCommand {
+  string name = 1;                          // Bucket name/ID (required)
+  string driver = 2;                        // Driver name (required)
+  google.protobuf.Struct config = 3;        // Driver-specific configuration (required)
+}
+
+// DeleteBucketCommand represents the data for a delete bucket command
+message DeleteBucketCommand {
+  string name = 1;                          // Bucket name/ID (required)
+}
+

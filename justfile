@@ -60,8 +60,9 @@ generate-proto:
     @echo "Generating gRPC code from proto files..."
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
-        proto/raft_transport.proto proto/ledger.proto
-    @echo "gRPC code generated in internal/raft/ and internal/service/"
+        proto/common.proto proto/raft_transport.proto proto/ledger.proto \
+        proto/commands/commands.proto proto/commands/fsm_commands.proto proto/commands/bucket_commands.proto
+    @echo "gRPC code generated in internal/raft/, internal/service/, and internal/raft/fsm/, internal/raft/bucketfsm/"
 
 # Wait for a node to be healthy (helper function)
 wait-for-healthy NODE:

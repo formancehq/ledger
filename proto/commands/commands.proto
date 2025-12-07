@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package commands;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
+
+// CommandProto represents a command to be executed in the FSM (protobuf serialization format)
+message CommandProto {
+  uint64 id = 1;                    // Random command ID
+  string type = 2;                  // Command type (e.g., "create_bucket", "delete_bucket", "create_ledger", "insert_log")
+  bytes data = 3;                   // Protobuf-encoded command data
+  google.protobuf.Timestamp date = 4; // Creation date in UTC
+}
+

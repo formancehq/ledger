@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"sort"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.uber.org/zap"
@@ -52,12 +53,18 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*serv
 	// Assign sequential ID to the ledger (IDs start at 1, so next ID is len(ledgers) + 1)
 	ledgerID := uint64(len(f.ledgers) + 1)
 
+	// Convert protobuf Struct to metadata.Metadata
+	var md metadata.Metadata
+	if createCmd.Metadata != nil {
+		md = structToMetadata(createCmd.Metadata)
+	}
+
 	// Create ledger info using the command date
 	ledgerInfo := service.LedgerInfo{
 		ID:        ledgerID,
 		Name:      createCmd.Name,
 		CreatedAt: cmd.Date,
-		Metadata:  createCmd.Metadata,
+		Metadata:  md,
 	}
 
 	// Store the ledger
@@ -76,21 +83,28 @@ func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64) error {
 		return fmt.Errorf("unmarshaling insert log command: %w", err)
 	}
 
+	// Convert protobuf Log to ledger.Log
+	log, err := logFromProto(insertCmd.Log)
+	if err != nil {
+		f.logger.Error("Failed to convert log from proto", zap.Error(err))
+		return fmt.Errorf("converting log from proto: %w", err)
+	}
+
 	// Store log in memory (will be persisted to store during snapshot)
-	f.logs = append(f.logs, insertCmd.Log)
+	f.logs = append(f.logs, log)
 
 	// Update last log ID for this ledger
-	if insertCmd.Log.ID != nil {
-		if ledgerInfo, exists := f.ledgers[insertCmd.Log.Ledger]; exists {
-			ledgerInfo.LastLogID = insertCmd.Log.ID
-			f.ledgers[insertCmd.Log.Ledger] = ledgerInfo
+	if log.ID != nil {
+		if ledgerInfo, exists := f.ledgers[log.Ledger]; exists {
+			ledgerInfo.LastLogID = log.ID
+			f.ledgers[log.Ledger] = ledgerInfo
 		}
 	}
 
 	// Update balances and account metadata based on log type
-	f.updateBalancesAndMetadata(insertCmd.Log)
+	f.updateBalancesAndMetadata(log)
 
-	f.logger.Info("Log stored in memory via FSM", zap.Uint64("index", index), zap.String("ledger", insertCmd.Log.Ledger), zap.Uint64("commandID", cmd.ID), zap.Int("totalLogsInMemory", len(f.logs)))
+	f.logger.Info("Log stored in memory via FSM", zap.Uint64("index", index), zap.String("ledger", log.Ledger), zap.Uint64("commandID", cmd.ID), zap.Int("totalLogsInMemory", len(f.logs)))
 	return nil
 }
 

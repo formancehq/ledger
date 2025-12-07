@@ -1,27 +1,13 @@
 package bucketfsm
 
 import (
-	"bytes"
-	"encoding/gob"
-
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
-
-func init() {
-	// Register all types that can be stored in ledger.Log.Data (LogPayload interface)
-	// This is required for gob encoding/decoding to work with interface types
-	gob.Register(&ledger.CreatedTransaction{})
-	gob.Register(&ledger.RevertedTransaction{})
-	gob.Register(&ledger.SavedMetadata{})
-	gob.Register(&ledger.DeletedMetadata{})
-	
-	// Register command types
-	gob.Register(CreateLedgerCommand{})
-	gob.Register(InsertLogCommand{})
-}
 
 const (
 	// CommandTypeCreateLedger is the command type for creating a new ledger
@@ -30,55 +16,67 @@ const (
 	CommandTypeInsertLog service.CommandType = "insert_log"
 )
 
-// CreateLedgerCommand represents the data for a create ledger command
-type CreateLedgerCommand struct {
-	Name     string            `json:"name"`               // Ledger name/ID (required)
-	Metadata metadata.Metadata `json:"metadata,omitempty"` // Optional metadata
-}
-
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
-func NewCreateLedgerCommand(name string, metadata metadata.Metadata) (*service.Command, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(CreateLedgerCommand{
+func NewCreateLedgerCommand(name string, md metadata.Metadata) (*service.Command, error) {
+	var mdStruct *structpb.Struct
+	var err error
+	if len(md) > 0 {
+		mdStruct, err = metadataToStruct(md)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	cmdProto := &CreateLedgerCommand{
 		Name:     name,
-		Metadata: metadata,
-	}); err != nil {
+		Metadata: mdStruct,
+	}
+
+	data, err := proto.Marshal(cmdProto)
+	if err != nil {
 		return nil, err
 	}
+
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
 		Type: CommandTypeCreateLedger,
-		Data: buf.Bytes(),
+		Data: data,
 		Date: time.Now(),
 	}, nil
-}
-
-// InsertLogCommand represents the data for an insert log command
-type InsertLogCommand struct {
-	Log ledger.Log `json:"log"` // Log to insert
 }
 
 // NewInsertLogCommand creates a new InsertLogCommand
 func NewInsertLogCommand(log ledger.Log) (*service.Command, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(InsertLogCommand{
-		Log: log,
-	}); err != nil {
+	logProto, err := logToProto(log)
+	if err != nil {
 		return nil, err
 	}
+
+	cmdProto := &InsertLogCommand{
+		Log: logProto,
+	}
+
+	data, err := proto.Marshal(cmdProto)
+	if err != nil {
+		return nil, err
+	}
+
 	return &service.Command{
 		ID:   service.GenerateRandomID(),
 		Type: CommandTypeInsertLog,
-		Data: buf.Bytes(),
+		Data: data,
 		Date: time.Now(),
 	}, nil
 }
 
-// UnmarshalCommandData unmarshals command data from binary format
+// UnmarshalCommandData unmarshals command data from binary format using protobuf
 func UnmarshalCommandData(data []byte, v interface{}) error {
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-	return dec.Decode(v)
+	switch cmd := v.(type) {
+	case *CreateLedgerCommand:
+		return proto.Unmarshal(data, cmd)
+	case *InsertLogCommand:
+		return proto.Unmarshal(data, cmd)
+	default:
+		return proto.Unmarshal(data, v.(proto.Message))
+	}
 }

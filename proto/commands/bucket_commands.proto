@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package bucket_commands;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "proto/common.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/bucketfsm";
+
+// CreateLedgerCommand represents the data for a create ledger command
+message CreateLedgerCommand {
+  string name = 1;                          // Ledger name/ID (required)
+  google.protobuf.Struct metadata = 2;       // Optional metadata
+}
+
+// CreatedTransaction represents a created transaction log payload
+message CreatedTransaction {
+  common.Transaction transaction = 1;
+  map<string, google.protobuf.Struct> account_metadata = 2;
+}
+
+// RevertedTransaction represents a reverted transaction log payload
+message RevertedTransaction {
+  common.Transaction reverted_transaction = 1;
+  common.Transaction revert_transaction = 2;
+}
+
+// SavedMetadata represents a saved metadata log payload
+message SavedMetadata {
+  string target_type = 1;                   // "ACCOUNT" or "TRANSACTION"
+  oneof target_id {
+    string account_id = 2;                  // Account address (for ACCOUNT type)
+    uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
+  }
+  google.protobuf.Struct metadata = 4;
+}
+
+// DeletedMetadata represents a deleted metadata log payload
+message DeletedMetadata {
+  string target_type = 1;                   // "ACCOUNT" or "TRANSACTION"
+  oneof target_id {
+    string account_id = 2;                  // Account address (for ACCOUNT type)
+    uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
+  }
+  string key = 4;                           // Metadata key to delete
+}
+
+// LogPayload represents the data payload of a log
+message LogPayload {
+  oneof payload {
+    CreatedTransaction created_transaction = 1;
+    RevertedTransaction reverted_transaction = 2;
+    SavedMetadata saved_metadata = 3;
+    DeletedMetadata deleted_metadata = 4;
+  }
+}
+
+// Log represents a log entry
+message Log {
+  int32 type = 1;                           // LogType enum value
+  LogPayload data = 2;
+  google.protobuf.Timestamp date = 3;
+  string ledger = 4;
+  string idempotency_key = 5;
+  string idempotency_hash = 6;
+  uint64 id = 7;                            // Optional log ID
+}
+
+// InsertLogCommand represents the data for an insert log command
+message InsertLogCommand {
+  Log log = 1;
+}
+

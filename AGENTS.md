@@ -99,11 +99,20 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 ### File Locations
 
 - **Protocol definitions**: 
+  - `proto/common.proto` - Common types shared across services (Posting, Transaction)
   - `proto/raft_transport.proto` - Raft transport messages
-  - `proto/ledger.proto` - Ledger service messages
+  - `proto/ledger.proto` - Ledger service messages (imports common.proto)
+  - `proto/commands/` - Directory containing all FSM command definitions:
+    - `proto/commands/commands.proto` - Base command structure for FSM commands
+    - `proto/commands/fsm_commands.proto` - Commands for the main FSM (create/delete bucket)
+    - `proto/commands/bucket_commands.proto` - Commands for bucket FSM (create ledger, insert log, imports common.proto)
 - **Generated code**: 
+  - `internal/service/common.pb.go` - Common protobuf types (Posting, Transaction)
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
   - `internal/service/ledger.pb.go` and `internal/service/ledger_grpc.pb.go` - Ledger service
+  - `internal/service/commands.pb.go` - Base command protobuf types
+  - `internal/raft/fsm/fsm_commands.pb.go` - FSM command protobuf types
+  - `internal/raft/bucketfsm/bucket_commands.pb.go` - Bucket FSM command protobuf types
 
 ### Regenerating Code
 
@@ -136,6 +145,95 @@ When modifying any `.proto` file:
 2. Run `just generate-proto` to regenerate the Go code for all proto files
 3. Update any code that uses the generated types if the API has changed
 4. Rebuild the project to ensure everything compiles
+
+### Adding New Command Models
+
+To add a new command model (e.g., for a new FSM command):
+
+1. **Add the message definition to the appropriate `.proto` file**:
+   - For main FSM commands: add to `proto/commands/fsm_commands.proto`
+   - For bucket FSM commands: add to `proto/commands/bucket_commands.proto`
+   - For base command structure: modify `proto/commands/commands.proto` if needed
+
+2. **Example**: Adding a new `UpdateBucketCommand` to `proto/commands/fsm_commands.proto`:
+   ```protobuf
+   message UpdateBucketCommand {
+     string name = 1;
+     google.protobuf.Struct config = 2;
+   }
+   ```
+
+3. **Regenerate the protobuf code**:
+   ```bash
+   just generate-proto
+   ```
+
+4. **Update the Go code**:
+   - Create a `NewUpdateBucketCommand` function in `internal/raft/fsm/command.go` that:
+     - Converts Go types to protobuf types
+     - Marshals the protobuf message
+     - Returns a `*service.Command`
+   - Update `UnmarshalCommandData` in `internal/raft/fsm/command.go` to handle the new command type
+   - Add a handler method in `internal/raft/fsm/fsm.go` (e.g., `HandleUpdateBucket`)
+
+5. **Example implementation**:
+   ```go
+   // In internal/raft/fsm/command.go
+   func NewUpdateBucketCommand(name string, config map[string]interface{}) (*service.Command, error) {
+       configStruct, err := structpb.NewStruct(config)
+       if err != nil {
+           return nil, err
+       }
+       cmdProto := &UpdateBucketCommand{
+           Name: name,
+           Config: configStruct,
+       }
+       data, err := proto.Marshal(cmdProto)
+       if err != nil {
+           return nil, err
+       }
+       return &service.Command{
+           ID:   service.GenerateRandomID(),
+           Type: CommandTypeUpdateBucket,
+           Data: data,
+           Date: time.Now(),
+       }, nil
+   }
+   
+   // Update UnmarshalCommandData to handle UpdateBucketCommand
+   func UnmarshalCommandData(data []byte, v interface{}) error {
+       switch cmd := v.(type) {
+       case *CreateBucketCommand:
+           return proto.Unmarshal(data, cmd)
+       case *DeleteBucketCommand:
+           return proto.Unmarshal(data, cmd)
+       case *UpdateBucketCommand:
+           return proto.Unmarshal(data, cmd)
+       default:
+           return proto.Unmarshal(data, v.(proto.Message))
+       }
+   }
+   ```
+
+6. **Rebuild and test**:
+   ```bash
+   go build ./...
+   go test ./...
+   ```
+
+### Command Serialization Format
+
+Commands are now serialized using Protocol Buffers instead of `gob`. This provides:
+- **Better performance**: Protobuf is faster and produces smaller binary sizes
+- **Language interoperability**: Commands can be read/written from other languages
+- **Schema evolution**: Protobuf supports backward compatibility for schema changes
+- **Type safety**: Generated code provides compile-time type checking
+
+The serialization flow:
+1. Go struct → Protobuf message (using conversion functions)
+2. Protobuf message → Binary (using `proto.Marshal`)
+3. Binary → Protobuf message (using `proto.Unmarshal`)
+4. Protobuf message → Go struct (using conversion functions)
 
 ## Finite State Machine (FSM) Design Principles
 

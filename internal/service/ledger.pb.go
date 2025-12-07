@@ -23,74 +23,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type Posting struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Amount        string                 `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"` // big.Int as string
-	Asset         string                 `protobuf:"bytes,4,opt,name=asset,proto3" json:"asset,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Posting) Reset() {
-	*x = Posting{}
-	mi := &file_proto_ledger_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Posting) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Posting) ProtoMessage() {}
-
-func (x *Posting) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Posting.ProtoReflect.Descriptor instead.
-func (*Posting) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *Posting) GetSource() string {
-	if x != nil {
-		return x.Source
-	}
-	return ""
-}
-
-func (x *Posting) GetDestination() string {
-	if x != nil {
-		return x.Destination
-	}
-	return ""
-}
-
-func (x *Posting) GetAmount() string {
-	if x != nil {
-		return x.Amount
-	}
-	return ""
-}
-
-func (x *Posting) GetAsset() string {
-	if x != nil {
-		return x.Asset
-	}
-	return ""
-}
-
 type CreateTransactionRequest struct {
 	state           protoimpl.MessageState      `protogen:"open.v1"`
 	AccountMetadata map[string]*structpb.Struct `protobuf:"bytes,1,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -107,7 +39,7 @@ type CreateTransactionRequest struct {
 
 func (x *CreateTransactionRequest) Reset() {
 	*x = CreateTransactionRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[1]
+	mi := &file_proto_ledger_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -119,7 +51,7 @@ func (x *CreateTransactionRequest) String() string {
 func (*CreateTransactionRequest) ProtoMessage() {}
 
 func (x *CreateTransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[1]
+	mi := &file_proto_ledger_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -132,7 +64,7 @@ func (x *CreateTransactionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionRequest.ProtoReflect.Descriptor instead.
 func (*CreateTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{1}
+	return file_proto_ledger_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CreateTransactionRequest) GetAccountMetadata() map[string]*structpb.Struct {
@@ -201,7 +133,7 @@ type CreateTransactionResponse struct {
 
 func (x *CreateTransactionResponse) Reset() {
 	*x = CreateTransactionResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[2]
+	mi := &file_proto_ledger_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -213,7 +145,7 @@ func (x *CreateTransactionResponse) String() string {
 func (*CreateTransactionResponse) ProtoMessage() {}
 
 func (x *CreateTransactionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[2]
+	mi := &file_proto_ledger_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -226,7 +158,7 @@ func (x *CreateTransactionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionResponse.ProtoReflect.Descriptor instead.
 func (*CreateTransactionResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{2}
+	return file_proto_ledger_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CreateTransactionResponse) GetTransaction() *Transaction {
@@ -243,82 +175,6 @@ func (x *CreateTransactionResponse) GetAccountMetadata() map[string]*structpb.St
 	return nil
 }
 
-type Transaction struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Postings      []*Posting             `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference     string                 `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Id            uint64                 `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Transaction) Reset() {
-	*x = Transaction{}
-	mi := &file_proto_ledger_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Transaction) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Transaction) ProtoMessage() {}
-
-func (x *Transaction) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Transaction.ProtoReflect.Descriptor instead.
-func (*Transaction) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *Transaction) GetPostings() []*Posting {
-	if x != nil {
-		return x.Postings
-	}
-	return nil
-}
-
-func (x *Transaction) GetMetadata() *structpb.Struct {
-	if x != nil {
-		return x.Metadata
-	}
-	return nil
-}
-
-func (x *Transaction) GetTimestamp() *timestamppb.Timestamp {
-	if x != nil {
-		return x.Timestamp
-	}
-	return nil
-}
-
-func (x *Transaction) GetReference() string {
-	if x != nil {
-		return x.Reference
-	}
-	return ""
-}
-
-func (x *Transaction) GetId() uint64 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
 type CreateClusterSnapshotRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -327,7 +183,7 @@ type CreateClusterSnapshotRequest struct {
 
 func (x *CreateClusterSnapshotRequest) Reset() {
 	*x = CreateClusterSnapshotRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[4]
+	mi := &file_proto_ledger_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -339,7 +195,7 @@ func (x *CreateClusterSnapshotRequest) String() string {
 func (*CreateClusterSnapshotRequest) ProtoMessage() {}
 
 func (x *CreateClusterSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[4]
+	mi := &file_proto_ledger_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -352,7 +208,7 @@ func (x *CreateClusterSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClusterSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*CreateClusterSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{4}
+	return file_proto_ledger_proto_rawDescGZIP(), []int{2}
 }
 
 type CreateClusterSnapshotResponse struct {
@@ -364,7 +220,7 @@ type CreateClusterSnapshotResponse struct {
 
 func (x *CreateClusterSnapshotResponse) Reset() {
 	*x = CreateClusterSnapshotResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[5]
+	mi := &file_proto_ledger_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -376,7 +232,7 @@ func (x *CreateClusterSnapshotResponse) String() string {
 func (*CreateClusterSnapshotResponse) ProtoMessage() {}
 
 func (x *CreateClusterSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[5]
+	mi := &file_proto_ledger_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -389,7 +245,7 @@ func (x *CreateClusterSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateClusterSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*CreateClusterSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{5}
+	return file_proto_ledger_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateClusterSnapshotResponse) GetMessage() string {
@@ -408,7 +264,7 @@ type CreateBucketSnapshotRequest struct {
 
 func (x *CreateBucketSnapshotRequest) Reset() {
 	*x = CreateBucketSnapshotRequest{}
-	mi := &file_proto_ledger_proto_msgTypes[6]
+	mi := &file_proto_ledger_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -420,7 +276,7 @@ func (x *CreateBucketSnapshotRequest) String() string {
 func (*CreateBucketSnapshotRequest) ProtoMessage() {}
 
 func (x *CreateBucketSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[6]
+	mi := &file_proto_ledger_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -433,7 +289,7 @@ func (x *CreateBucketSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBucketSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*CreateBucketSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{6}
+	return file_proto_ledger_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateBucketSnapshotRequest) GetBucketName() string {
@@ -452,7 +308,7 @@ type CreateBucketSnapshotResponse struct {
 
 func (x *CreateBucketSnapshotResponse) Reset() {
 	*x = CreateBucketSnapshotResponse{}
-	mi := &file_proto_ledger_proto_msgTypes[7]
+	mi := &file_proto_ledger_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -464,7 +320,7 @@ func (x *CreateBucketSnapshotResponse) String() string {
 func (*CreateBucketSnapshotResponse) ProtoMessage() {}
 
 func (x *CreateBucketSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ledger_proto_msgTypes[7]
+	mi := &file_proto_ledger_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -477,7 +333,7 @@ func (x *CreateBucketSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBucketSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*CreateBucketSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_proto_ledger_proto_rawDescGZIP(), []int{7}
+	return file_proto_ledger_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateBucketSnapshotResponse) GetMessage() string {
@@ -491,18 +347,13 @@ var File_proto_ledger_proto protoreflect.FileDescriptor
 
 const file_proto_ledger_proto_rawDesc = "" +
 	"\n" +
-	"\x12proto/ledger.proto\x12\x06ledger\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"q\n" +
-	"\aPosting\x12\x16\n" +
-	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
-	"\vdestination\x18\x02 \x01(\tR\vdestination\x12\x16\n" +
-	"\x06amount\x18\x03 \x01(\tR\x06amount\x12\x14\n" +
-	"\x05asset\x18\x04 \x01(\tR\x05asset\"\xed\x03\n" +
+	"\x12proto/ledger.proto\x12\x06ledger\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x12proto/common.proto\"\xed\x03\n" +
 	"\x18CreateTransactionRequest\x12`\n" +
 	"\x10account_metadata\x18\x01 \x03(\v25.ledger.CreateTransactionRequest.AccountMetadataEntryR\x0faccountMetadata\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x123\n" +
 	"\bmetadata\x18\x03 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12\x1c\n" +
 	"\treference\x18\x04 \x01(\tR\treference\x12+\n" +
-	"\bpostings\x18\x05 \x03(\v2\x0f.ledger.PostingR\bpostings\x12\x17\n" +
+	"\bpostings\x18\x05 \x03(\v2\x0f.common.PostingR\bpostings\x12\x17\n" +
 	"\adry_run\x18\x06 \x01(\bR\x06dryRun\x12'\n" +
 	"\x0fidempotency_key\x18\a \x01(\tR\x0eidempotencyKey\x12\x16\n" +
 	"\x06ledger\x18\b \x01(\tR\x06ledger\x1a[\n" +
@@ -510,17 +361,11 @@ const file_proto_ledger_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
 	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\x92\x02\n" +
 	"\x19CreateTransactionResponse\x125\n" +
-	"\vtransaction\x18\x01 \x01(\v2\x13.ledger.TransactionR\vtransaction\x12a\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12a\n" +
 	"\x10account_metadata\x18\x02 \x03(\v26.ledger.CreateTransactionResponse.AccountMetadataEntryR\x0faccountMetadata\x1a[\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xd7\x01\n" +
-	"\vTransaction\x12+\n" +
-	"\bpostings\x18\x01 \x03(\v2\x0f.ledger.PostingR\bpostings\x123\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1c\n" +
-	"\treference\x18\x04 \x01(\tR\treference\x12\x0e\n" +
-	"\x02id\x18\x05 \x01(\x04R\x02id\"\x1e\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\x1e\n" +
 	"\x1cCreateClusterSnapshotRequest\"9\n" +
 	"\x1dCreateClusterSnapshotResponse\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\">\n" +
@@ -546,44 +391,41 @@ func file_proto_ledger_proto_rawDescGZIP() []byte {
 	return file_proto_ledger_proto_rawDescData
 }
 
-var file_proto_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_proto_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_proto_ledger_proto_goTypes = []any{
-	(*Posting)(nil),                       // 0: ledger.Posting
-	(*CreateTransactionRequest)(nil),      // 1: ledger.CreateTransactionRequest
-	(*CreateTransactionResponse)(nil),     // 2: ledger.CreateTransactionResponse
-	(*Transaction)(nil),                   // 3: ledger.Transaction
-	(*CreateClusterSnapshotRequest)(nil),  // 4: ledger.CreateClusterSnapshotRequest
-	(*CreateClusterSnapshotResponse)(nil), // 5: ledger.CreateClusterSnapshotResponse
-	(*CreateBucketSnapshotRequest)(nil),   // 6: ledger.CreateBucketSnapshotRequest
-	(*CreateBucketSnapshotResponse)(nil),  // 7: ledger.CreateBucketSnapshotResponse
-	nil,                                   // 8: ledger.CreateTransactionRequest.AccountMetadataEntry
-	nil,                                   // 9: ledger.CreateTransactionResponse.AccountMetadataEntry
-	(*timestamppb.Timestamp)(nil),         // 10: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),               // 11: google.protobuf.Struct
+	(*CreateTransactionRequest)(nil),      // 0: ledger.CreateTransactionRequest
+	(*CreateTransactionResponse)(nil),     // 1: ledger.CreateTransactionResponse
+	(*CreateClusterSnapshotRequest)(nil),  // 2: ledger.CreateClusterSnapshotRequest
+	(*CreateClusterSnapshotResponse)(nil), // 3: ledger.CreateClusterSnapshotResponse
+	(*CreateBucketSnapshotRequest)(nil),   // 4: ledger.CreateBucketSnapshotRequest
+	(*CreateBucketSnapshotResponse)(nil),  // 5: ledger.CreateBucketSnapshotResponse
+	nil,                                   // 6: ledger.CreateTransactionRequest.AccountMetadataEntry
+	nil,                                   // 7: ledger.CreateTransactionResponse.AccountMetadataEntry
+	(*timestamppb.Timestamp)(nil),         // 8: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),               // 9: google.protobuf.Struct
+	(*Posting)(nil),                       // 10: common.Posting
+	(*Transaction)(nil),                   // 11: common.Transaction
 }
 var file_proto_ledger_proto_depIdxs = []int32{
-	8,  // 0: ledger.CreateTransactionRequest.account_metadata:type_name -> ledger.CreateTransactionRequest.AccountMetadataEntry
-	10, // 1: ledger.CreateTransactionRequest.timestamp:type_name -> google.protobuf.Timestamp
-	11, // 2: ledger.CreateTransactionRequest.metadata:type_name -> google.protobuf.Struct
-	0,  // 3: ledger.CreateTransactionRequest.postings:type_name -> ledger.Posting
-	3,  // 4: ledger.CreateTransactionResponse.transaction:type_name -> ledger.Transaction
-	9,  // 5: ledger.CreateTransactionResponse.account_metadata:type_name -> ledger.CreateTransactionResponse.AccountMetadataEntry
-	0,  // 6: ledger.Transaction.postings:type_name -> ledger.Posting
-	11, // 7: ledger.Transaction.metadata:type_name -> google.protobuf.Struct
-	10, // 8: ledger.Transaction.timestamp:type_name -> google.protobuf.Timestamp
-	11, // 9: ledger.CreateTransactionRequest.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	11, // 10: ledger.CreateTransactionResponse.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	1,  // 11: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
-	4,  // 12: ledger.LedgerService.CreateClusterSnapshot:input_type -> ledger.CreateClusterSnapshotRequest
-	6,  // 13: ledger.LedgerService.CreateBucketSnapshot:input_type -> ledger.CreateBucketSnapshotRequest
-	2,  // 14: ledger.LedgerService.CreateTransaction:output_type -> ledger.CreateTransactionResponse
-	5,  // 15: ledger.LedgerService.CreateClusterSnapshot:output_type -> ledger.CreateClusterSnapshotResponse
-	7,  // 16: ledger.LedgerService.CreateBucketSnapshot:output_type -> ledger.CreateBucketSnapshotResponse
-	14, // [14:17] is the sub-list for method output_type
-	11, // [11:14] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	6,  // 0: ledger.CreateTransactionRequest.account_metadata:type_name -> ledger.CreateTransactionRequest.AccountMetadataEntry
+	8,  // 1: ledger.CreateTransactionRequest.timestamp:type_name -> google.protobuf.Timestamp
+	9,  // 2: ledger.CreateTransactionRequest.metadata:type_name -> google.protobuf.Struct
+	10, // 3: ledger.CreateTransactionRequest.postings:type_name -> common.Posting
+	11, // 4: ledger.CreateTransactionResponse.transaction:type_name -> common.Transaction
+	7,  // 5: ledger.CreateTransactionResponse.account_metadata:type_name -> ledger.CreateTransactionResponse.AccountMetadataEntry
+	9,  // 6: ledger.CreateTransactionRequest.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
+	9,  // 7: ledger.CreateTransactionResponse.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
+	0,  // 8: ledger.LedgerService.CreateTransaction:input_type -> ledger.CreateTransactionRequest
+	2,  // 9: ledger.LedgerService.CreateClusterSnapshot:input_type -> ledger.CreateClusterSnapshotRequest
+	4,  // 10: ledger.LedgerService.CreateBucketSnapshot:input_type -> ledger.CreateBucketSnapshotRequest
+	1,  // 11: ledger.LedgerService.CreateTransaction:output_type -> ledger.CreateTransactionResponse
+	3,  // 12: ledger.LedgerService.CreateClusterSnapshot:output_type -> ledger.CreateClusterSnapshotResponse
+	5,  // 13: ledger.LedgerService.CreateBucketSnapshot:output_type -> ledger.CreateBucketSnapshotResponse
+	11, // [11:14] is the sub-list for method output_type
+	8,  // [8:11] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_proto_ledger_proto_init() }
@@ -591,13 +433,14 @@ func file_proto_ledger_proto_init() {
 	if File_proto_ledger_proto != nil {
 		return
 	}
+	file_proto_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_ledger_proto_rawDesc), len(file_proto_ledger_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

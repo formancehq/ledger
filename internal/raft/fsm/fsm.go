@@ -35,8 +35,14 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 		return fmt.Errorf("unmarshaling create bucket command: %w", err)
 	}
 
+	// Convert protobuf Struct to map[string]interface{}
+	configMap := make(map[string]interface{})
+	if createCmd.Config != nil {
+		configMap = createCmd.Config.AsMap()
+	}
+
 	// Validate bucket configuration
-	if err := service.ValidateBucketConfig(createCmd.Driver, createCmd.Config); err != nil {
+	if err := service.ValidateBucketConfig(createCmd.Driver, configMap); err != nil {
 		f.logger.Error("Invalid bucket configuration", zap.String("name", createCmd.Name), zap.String("driver", createCmd.Driver), zap.Error(err))
 		return fmt.Errorf("invalid bucket configuration: %w", err)
 	}
@@ -50,7 +56,7 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 		ID:        bucketID,
 		Name:      createCmd.Name,
 		Driver:    createCmd.Driver,
-		Config:    createCmd.Config,
+		Config:    configMap,
 		CreatedAt: cmd.Date,
 	}
 

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package common;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
+
+// Posting represents a single posting in a transaction
+message Posting {
+  string source = 1;
+  string destination = 2;
+  string amount = 3;                        // big.Int as string
+  string asset = 4;
+}
+
+// Transaction represents a transaction
+message Transaction {
+  repeated Posting postings = 1;
+  google.protobuf.Struct metadata = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string reference = 4;
+  uint64 id = 5;
+  bool reverted = 6;
+}
+
