@@ -3,7 +3,6 @@ package raft
 import (
 	"context"
 	"fmt"
-	"net"
 	"sync"
 	"time"
 
@@ -14,11 +13,8 @@ import (
 
 // Transport handles network communication between Raft nodes using gRPC
 type Transport struct {
-	id       uint64
-	addr     string
-	listener net.Listener
-	peers    map[uint64]string // peer ID -> address
-	mu       sync.RWMutex
+	peers map[uint64]string // peer ID -> address
+	mu    sync.RWMutex
 
 	// Channel for incoming messages
 	recvCh chan raftpb.Message
@@ -29,12 +25,6 @@ type Transport struct {
 	// gRPC clients for peers
 	grpcClients map[uint64]*grpcClient
 
-	// gRPC server (defined in transport_grpc.go, type is *grpc.Server)
-	grpcServer interface {
-		GracefulStop()
-		Stop()
-	}
-
 	// Channel for reporting unreachable peers
 	unreachableCh chan uint64
 
@@ -44,11 +34,9 @@ type Transport struct {
 }
 
 // NewTransport creates a new transport
-func NewTransport(id uint64, addr string, logger logging.Logger) *Transport {
+func NewTransport(logger logging.Logger) *Transport {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Transport{
-		id:            id,
-		addr:          addr,
 		peers:         make(map[uint64]string),
 		recvCh:        make(chan raftpb.Message, 100),
 		sendChs:       make(map[uint64]chan raftpb.Message),
@@ -60,22 +48,10 @@ func NewTransport(id uint64, addr string, logger logging.Logger) *Transport {
 	}
 }
 
-// Start starts the gRPC transport server
-// Note: When using a unified gRPC server, this should not be called.
-// Instead, register the transport on the unified server using RegisterRaftTransportServiceServer.
-func (t *Transport) Start() error {
-	// Don't start a separate server - it will be handled by the unified gRPC server
-	t.logger.Info("Transport Start() called - using unified gRPC server, skipping separate server startup")
-	return nil
-}
-
 // Stop stops the transport
 func (t *Transport) Stop() {
 	t.cancel()
-	t.stopGRPCServer()
-	if t.listener != nil {
-		t.listener.Close()
-	}
+	// Note: gRPC server is managed via fx hooks in application/module.go
 	close(t.recvCh)
 	close(t.unreachableCh)
 	for _, ch := range t.sendChs {

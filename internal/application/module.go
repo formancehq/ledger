@@ -3,11 +3,14 @@ package application
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
+	grpcserver "github.com/formancehq/ledger-v3-poc/internal/grpc"
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -29,6 +32,7 @@ func Module() fx.Option {
 		fx.Provide(
 			NewRaftCluster,
 			NewLedgerService,
+			NewGRPCServer,
 			NewHTTPServer,
 			NewClusterAdapter,
 			httphandler.NewHandler,
@@ -36,6 +40,7 @@ func Module() fx.Option {
 		// Invoke lifecycle hooks
 		fx.Invoke(
 			StartRaftCluster,
+			StartGRPCServerHook,
 			StartHTTPServerHook,
 		),
 	)
@@ -90,6 +95,42 @@ func StartHTTPServerHook(lc fx.Lifecycle, cfg *config.Config, handler http.Handl
 // NewClusterAdapter creates an adapter that makes *raft.Cluster implement http.ClusterClient
 func NewClusterAdapter(cluster *raft.Cluster) httphandler.ClusterClient {
 	return &clusterAdapter{Cluster: cluster}
+}
+
+// NewGRPCServer creates a new gRPC server
+func NewGRPCServer(cfg *config.Config, logger logging.Logger, ledgerService service.Ledger, cluster *raft.Cluster) (*grpcserver.Server, error) {
+	// Extract port from BindAddr for the unified gRPC server
+	// The unified server listens on the same port as Raft transport (BindAddr)
+	_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid bind address format: %w", err)
+	}
+	grpcPort, err := strconv.Atoi(raftPort)
+	if err != nil {
+		return nil, fmt.Errorf("invalid port in bind address: %w", err)
+	}
+
+	// Get transport from cluster to register Raft service
+	transport := cluster.GetTransport()
+	return grpcserver.NewServer(grpcPort, logger, ledgerService, transport, cluster), nil
+}
+
+// StartGRPCServerHook starts the gRPC server using fx lifecycle
+func StartGRPCServerHook(lc fx.Lifecycle, grpcServer *grpcserver.Server, logger logging.Logger) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			// Start gRPC server in a goroutine
+			go func() {
+				if err := grpcServer.Start(ctx); err != nil {
+					logger.WithFields(map[string]any{"error": err}).Errorf("gRPC server error")
+				}
+			}()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return grpcServer.Stop()
+		},
+	})
 }
 
 // StartRaftCluster is a no-op hook since cluster is started in NewRaftCluster

@@ -3,7 +3,6 @@ package raft
 import (
 	"context"
 	"fmt"
-	"net"
 	"sync"
 
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -97,48 +96,6 @@ func newGRPCClient(addr string) (*grpcClient, error) {
 		conn:   conn,
 		client: NewRaftTransportServiceClient(conn),
 	}, nil
-}
-
-// startGRPCServer starts the gRPC server for the transport
-// This method should not be used when using a unified gRPC server.
-// The transport should be registered on the unified server instead.
-func (t *Transport) startGRPCServer() error {
-	// Parse address to get host:port
-	host, port, err := net.SplitHostPort(t.addr)
-	if err != nil {
-		return fmt.Errorf("invalid address format: %w", err)
-	}
-
-	// Create gRPC server
-	grpcServer := grpc.NewServer()
-	grpcTransportServer := &grpcTransportServerWrapper{transport: t}
-	RegisterRaftTransportServiceServer(grpcServer, grpcTransportServer)
-
-	// Start listening
-	listener, err := net.Listen("tcp", net.JoinHostPort(host, port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", t.addr, err)
-	}
-	t.listener = listener
-
-	// Start serving in a goroutine
-	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
-			t.logger.WithFields(map[string]any{"error": err}).Errorf("gRPC server error")
-		}
-	}()
-
-	// Store grpcServer for cleanup
-	t.grpcServer = grpcServer
-
-	return nil
-}
-
-// stopGRPCServer stops the gRPC server
-func (t *Transport) stopGRPCServer() {
-	if t.grpcServer != nil {
-		t.grpcServer.GracefulStop()
-	}
 }
 
 // grpcTransportServerWrapper wraps the transport to implement RaftTransportServiceServer

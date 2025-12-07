@@ -3,7 +3,6 @@ package raft
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
-	"github.com/formancehq/ledger-v3-poc/internal/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/fsm"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -115,13 +113,13 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger loggin
 }
 
 type Cluster struct {
-	node          *NodeWrapper
-	fsm           *fsm.FSM
-	storage       *Storage
-	transport     *Transport
-	config        *config.Config
-	logger        logging.Logger
-	grpcServer    *grpc.Server
+	node      *NodeWrapper
+	fsm       *fsm.FSM
+	storage   *Storage
+	transport *Transport
+	config    *config.Config
+	logger    logging.Logger
+	// grpcServer is now managed via fx hooks in application/module.go
 	ledgerService service.Ledger // Routed ledger service that routes to bucket Raft groups
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -149,9 +147,8 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 	}
 
 	// Create transport
-	transport := NewTransport(nodeID, cfg.BindAddr, logger)
-	// Note: transport.Start() is not called here because we use a unified gRPC server
-	// The transport will be registered on the unified server instead
+	transport := NewTransport(logger)
+	// Note: transport is registered on the unified gRPC server via fx hooks in application/module.go
 
 	// Create Raft configuration
 	raftConfig := &raft.Config{
@@ -228,21 +225,6 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 		return nil, fmt.Errorf("restoring FSM from storage: %w", err)
 	}
 
-	// Extract port from BindAddr for the unified gRPC server
-	// The unified server listens on the same port as Raft transport (BindAddr)
-	_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
-	if err != nil {
-		cancel()
-		transport.Stop()
-		return nil, fmt.Errorf("invalid bind address format: %w", err)
-	}
-	grpcPort, err := strconv.Atoi(raftPort)
-	if err != nil {
-		cancel()
-		transport.Stop()
-		return nil, fmt.Errorf("invalid port in bind address: %w", err)
-	}
-
 	cluster := &Cluster{
 		node:         node,
 		fsm:          mainFSM,
@@ -259,7 +241,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 	// Create a routed ledger service that routes to the appropriate bucket
 	routedLedger := service.NewRoutedLedger(cluster, &bucketLedgerRouter{cluster: cluster}, logger)
 	cluster.ledgerService = routedLedger
-	cluster.grpcServer = grpc.NewServer(grpcPort, logger, routedLedger, transport, cluster)
+	// Note: gRPC server is now created and started via fx hooks in application/module.go
 
 	// Add peers to transport
 	// Peers are in format "<id>/<address>", parse them
@@ -289,12 +271,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger loggin
 }
 
 func (r *Cluster) Start() error {
-	// Start the unified gRPC server (always running to receive Raft messages)
-	go func() {
-		if err := r.grpcServer.Start(r.ctx); err != nil {
-			r.logger.WithFields(map[string]any{"error": err}).Errorf("Unified gRPC server error")
-		}
-	}()
+	// Note: gRPC server is now started via fx hooks in application/module.go
 
 	// Start the Ready loop - it will receive all messages and route them appropriately
 	go r.readyLoop()
@@ -590,8 +567,7 @@ func (r *Cluster) Shutdown() error {
 	// Cancel context to stop monitoring
 	r.cancel()
 
-	// Stop gRPC server
-	r.grpcServer.Stop()
+	// Note: gRPC server is stopped via fx hooks in application/module.go
 
 	// Stop transport
 	r.transport.Stop()
@@ -611,6 +587,11 @@ func (r *Cluster) GetRaft() *raft.RawNode {
 // GetLedgerService returns the ledger service that routes to bucket Raft groups
 func (r *Cluster) GetLedgerService() service.Ledger {
 	return r.ledgerService
+}
+
+// GetTransport returns the transport instance
+func (r *Cluster) GetTransport() *Transport {
+	return r.transport
 }
 
 // GetLeaderGRPCClient returns the gRPC client for the current leader

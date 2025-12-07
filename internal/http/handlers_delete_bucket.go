@@ -41,4 +41,3 @@ func (s *Server) handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
 		"message": fmt.Sprintf("Bucket %s deleted successfully", bucketName),
 	})
 }
-
