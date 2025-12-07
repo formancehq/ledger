@@ -48,14 +48,9 @@ func (r *RoutedLedger) CreateTransaction(ctx context.Context, ledgerName string,
 	// We are a follower, forward via gRPC
 	r.logger.Debug("Node is follower, forwarding request to leader via gRPC")
 
-	grpcClient := r.cluster.GetGRPCClient()
-	if grpcClient == nil {
-		return nil, nil, fmt.Errorf("not connected to leader gRPC server")
-	}
-
-	client := grpcClient.GetClient()
+	client := r.cluster.GetLeaderGRPCClient()
 	if client == nil {
-		return nil, nil, fmt.Errorf("gRPC client not available")
+		return nil, nil, fmt.Errorf("not connected to leader gRPC server")
 	}
 
 	// Convert service parameters to protobuf request

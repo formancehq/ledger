@@ -623,61 +623,27 @@ func (r *Cluster) GetLedgerService() service.Ledger {
 	return r.ledgerService
 }
 
-// transportGRPCClient wraps the transport to provide a GRPCClient interface
-// It uses the transport's existing gRPC connections instead of creating new ones
-type transportGRPCClient struct {
-	cluster  *Cluster
-	logger   *zap.Logger
-	mu       sync.RWMutex
-	client   service.LedgerServiceClient
-	leaderID uint64
-}
-
-func (c *transportGRPCClient) GetClient() service.LedgerServiceClient {
-	// Update client before returning to ensure we have the latest leader connection
-	c.updateClient()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.client
-}
-
-func (c *transportGRPCClient) updateClient() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+// GetLeaderGRPCClient returns the gRPC client for the current leader
+// It uses the transport's existing connection to avoid creating duplicate connections
+func (r *Cluster) GetLeaderGRPCClient() service.LedgerServiceClient {
 	// Get current leader
-	status := c.cluster.node.RawNode().Status()
+	status := r.node.RawNode().Status()
 	leaderID := status.Lead
 
-	// If leader changed or client is nil, update it
-	if leaderID != c.leaderID || c.client == nil {
-		c.leaderID = leaderID
-
-		// If we're the leader, client is nil (we don't need to connect to ourselves)
-		if leaderID == c.cluster.nodeID || leaderID == 0 {
-			c.client = nil
-			return
-		}
-
-		// Get connection from transport
-		conn := c.cluster.transport.GetPeerConnection(leaderID)
-		if conn != nil {
-			c.client = service.NewLedgerServiceClient(conn)
-			c.logger.Debug("Updated gRPC client from transport", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
-		} else {
-			c.client = nil
-			c.logger.Warn("No gRPC connection available for leader", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
-		}
+	// If we're the leader or no leader, return nil
+	if leaderID == r.nodeID || leaderID == 0 {
+		return nil
 	}
-}
 
-func (r *Cluster) GetGRPCClient() service.GRPCClient {
-	// Create a wrapper that uses the transport
-	// The client will be updated on-demand when GetClient() is called
-	return &transportGRPCClient{
-		cluster: r,
-		logger:  r.logger,
+	// Get connection from transport
+	conn := r.transport.GetPeerConnection(leaderID)
+	if conn == nil {
+		r.logger.Warn("No gRPC connection available for leader", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
+		return nil
 	}
+
+	// Create client from existing connection
+	return service.NewLedgerServiceClient(conn)
 }
 
 // bucketLedgerRouter routes ledger requests to the appropriate bucket's DefaultLedger

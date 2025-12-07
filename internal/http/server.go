@@ -41,7 +41,7 @@ type ClusterClient interface {
 	GetAllBuckets() map[string]service.BucketInfo
 	GetBucket(name string) (service.BucketInfo, bool)
 	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
-	GetGRPCClient() service.GRPCClient
+	GetLeaderGRPCClient() service.LedgerServiceClient
 	GetRaft() *raft.RawNode
 }
 
@@ -175,15 +175,9 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// We are a follower, forward via gRPC
-	grpcClient := s.cluster.GetGRPCClient()
-	if grpcClient == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
-		return
-	}
-
-	client := grpcClient.GetClient()
+	client := s.cluster.GetLeaderGRPCClient()
 	if client == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("gRPC client not available"))
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
 		return
 	}
 
@@ -642,15 +636,9 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 
 	// We are not the leader of this bucket's Raft group, forward via gRPC
 	// The gRPC server will route to the leader of the bucket's Raft group
-	grpcClient := s.cluster.GetGRPCClient()
-	if grpcClient == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
-		return
-	}
-
-	client := grpcClient.GetClient()
+	client := s.cluster.GetLeaderGRPCClient()
 	if client == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("gRPC client not available"))
+		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
 		return
 	}
 
