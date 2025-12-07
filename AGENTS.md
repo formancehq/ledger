@@ -8,7 +8,7 @@ The ledger service implementation is based on the reference implementation from 
 
 ## File Structure
 
-The client commands are organized into separate files to improve maintainability and code readability.
+The client commands and HTTP handlers are organized into separate files to improve maintainability and code readability.
 
 ### Bucket Commands
 
@@ -35,6 +35,26 @@ Ledger management commands are separated into individual files:
 - **`common.go`** : Shared functions (SDK client creation, debug HTTP client)
 - **`cluster.go`** : Raft cluster-related commands (`snapshot`, `cluster-state`)
 
+### HTTP Handlers
+
+HTTP handlers are organized into separate files, with one handler per file:
+
+- **`server.go`** : Main file that defines the `Server` struct, routes, and middleware
+- **`handlers.go`** : Shared utility functions (e.g., `isLeader()`)
+- **`handlers_types.go`** : Shared types (e.g., `LedgerResponse`)
+- **`handlers_snapshot.go`** : `handleSnapshot` handler for POST /snapshot
+- **`handlers_health.go`** : `handleHealth` handler for GET /health
+- **`handlers_cluster_state.go`** : `handleClusterState` handler for GET /cluster/state
+- **`handlers_create_ledger.go`** : `handleCreateLedger` handler for POST /{ledgerName}
+- **`handlers_get_ledger.go`** : `handleGetLedger` handler for GET /{ledgerName}
+- **`handlers_list_all_ledgers.go`** : `handleListAllLedgers` handler for GET /
+- **`handlers_create_transaction.go`** : `handleCreateTransaction` handler for POST /{ledgerName}/transactions
+- **`handlers_list_buckets.go`** : `handleListBuckets` handler for GET /buckets
+- **`handlers_create_bucket.go`** : `handleCreateBucket` handler for POST /buckets/{bucketName}
+- **`handlers_get_bucket.go`** : `handleGetBucket` handler for GET /buckets/{bucketName}
+- **`handlers_delete_bucket.go`** : `handleDeleteBucket` handler for DELETE /buckets/{bucketName}
+- **`handlers_create_bucket_snapshot.go`** : `handleCreateBucketSnapshot` handler for POST /buckets/{bucketName}/snapshot
+
 ## Conventions
 
 1. **One file per command** : Each sub-command (create, list, get, delete) has its own file
@@ -55,6 +75,19 @@ To add a new `buckets update` command:
 2. Modify `buckets.go` to add:
    ```go
    bucketsCmd.AddCommand(bucketsUpdateCmd)
+   ```
+
+## Example: Adding a New HTTP Handler
+
+To add a new `handleUpdateBucket` handler:
+
+1. Create `handlers_update_bucket.go` with:
+   - `handleUpdateBucket` function implementation
+   - Any request/response structures specific to this handler (or add to `handlers_types.go` if shared)
+
+2. Modify `server.go` in the `Start()` method to register the route:
+   ```go
+   r.Put("/buckets/{bucketName}", s.handleUpdateBucket)
    ```
 
 This structure enables easy maintenance and clear separation of responsibilities.
