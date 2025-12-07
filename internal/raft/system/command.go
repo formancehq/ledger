@@ -1,22 +1,22 @@
-package fsm
+package system
 
 import (
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
 	// CommandTypeCreateBucket is the command type for creating a new bucket
-	CommandTypeCreateBucket commands.CommandType = "create_bucket"
+	CommandTypeCreateBucket raft.CommandType = "create_bucket"
 	// CommandTypeDeleteBucket is the command type for deleting a bucket
-	CommandTypeDeleteBucket commands.CommandType = "delete_bucket"
+	CommandTypeDeleteBucket raft.CommandType = "delete_bucket"
 )
 
 // NewCreateBucketCommand creates a new CreateBucketCommand
-func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*commands.Command, error) {
-	// Convert config map to protobuf Struct
+func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*raft.Command, error) {
+	// Convert raftConfig map to protobuf Struct
 	configStruct, err := structpb.NewStruct(config)
 	if err != nil {
 		return nil, err
@@ -33,8 +33,8 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}) 
 		return nil, err
 	}
 
-	return &commands.Command{
-		ID:   commands.GenerateRandomID(),
+	return &raft.Command{
+		ID:   raft.GenerateRandomID(),
 		Type: CommandTypeCreateBucket,
 		Data: data,
 		Date: time.Now(),
@@ -42,7 +42,7 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}) 
 }
 
 // NewDeleteBucketCommand creates a new DeleteBucketCommand
-func NewDeleteBucketCommand(name string) (*commands.Command, error) {
+func NewDeleteBucketCommand(name string) (*raft.Command, error) {
 	cmdProto := &DeleteBucketCommand{
 		Name: name,
 	}
@@ -52,8 +52,8 @@ func NewDeleteBucketCommand(name string) (*commands.Command, error) {
 		return nil, err
 	}
 
-	return &commands.Command{
-		ID:   commands.GenerateRandomID(),
+	return &raft.Command{
+		ID:   raft.GenerateRandomID(),
 		Type: CommandTypeDeleteBucket,
 		Data: data,
 		Date: time.Now(),

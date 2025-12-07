@@ -12,7 +12,7 @@ import (
 )
 
 // NewHandler creates a new HTTP handler (router) for the ledger service
-func NewHandler(logger logging.Logger, ledgerService service.Ledger, cluster ClusterClient) http.Handler {
+func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handler {
 	r := chi.NewRouter()
 
 	// Apply middlewares
@@ -23,9 +23,8 @@ func NewHandler(logger logging.Logger, ledgerService service.Ledger, cluster Clu
 
 	// Create server instance for handlers
 	server := &Server{
-		logger:        logger,
-		ledgerService: ledgerService,
-		cluster:       cluster,
+		logger:  logger,
+		cluster: cluster,
 	}
 
 	// Register known routes (specific routes first)

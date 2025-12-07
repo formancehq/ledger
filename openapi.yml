@@ -738,16 +738,10 @@ components:
     ErrorResponse:
       type: object
       properties:
-        error:
-          type: object
-          properties:
-            errorCode:
-              type: string
-              description: Error code identifier
-            errorMessage:
-              type: string
-              description: Human-readable error message
-            details:
-              type: string
-              description: Additional error details (optional)
+        errorCode:
+          type: string
+          description: Error code identifier
+        errorMessage:
+          type: string
+          description: Human-readable error message
 

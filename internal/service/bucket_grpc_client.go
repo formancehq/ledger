@@ -1,8 +1,6 @@
 package service
 
 import (
-	"github.com/formancehq/go-libs/v3/logging"
-	
 	"context"
 	"fmt"
 	"math/big"
@@ -14,29 +12,29 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-
-// grpcLedger implements Ledger by forwarding requests via gRPC to the leader
-type grpcLedger struct {
-	cluster ClusterClient
-	logger  logging.Logger
+// BucketGrpcClient implements Ledger by forwarding requests via gRPC to the leader
+type BucketGrpcClient struct {
+	client BucketServiceClient
+	name   string
 }
 
 // newGRPCLedger creates a new gRPC-based ledger implementation
-func newGRPCLedger(cluster ClusterClient, logger logging.Logger) *grpcLedger {
-	return &grpcLedger{
-		cluster: cluster,
-		logger:  logger,
+func NewBucketGrpcClient(name string, client BucketServiceClient) *BucketGrpcClient {
+	return &BucketGrpcClient{
+		client: client,
+		name:   name,
 	}
 }
 
-// CreateTransaction forwards the request via gRPC to the leader
-func (g *grpcLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
-	g.logger.Debug("Forwarding transaction creation to leader via gRPC")
+func (g *BucketGrpcClient) Snapshot(ctx context.Context) error {
+	_, err := g.client.Snapshot(ctx, &BucketSnapshotRequest{
+		Bucket: g.name,
+	})
+	return err
+}
 
-	client := g.cluster.GetLeaderLedgerGRPCClient()
-	if client == nil {
-		return nil, nil, fmt.Errorf("not connected to leader gRPC server")
-	}
+// CreateTransaction forwards the request via gRPC to the leader
+func (g *BucketGrpcClient) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 
 	// Convert service parameters to protobuf request
 	req, err := g.createTransactionRequestToProto(ledgerName, parameters)
@@ -45,7 +43,7 @@ func (g *grpcLedger) CreateTransaction(ctx context.Context, ledgerName string, p
 	}
 
 	// Call leader via gRPC
-	resp, err := client.CreateTransaction(ctx, req)
+	resp, err := g.client.CreateTransaction(ctx, req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
@@ -59,9 +57,53 @@ func (g *grpcLedger) CreateTransaction(ctx context.Context, ledgerName string, p
 	return log, createdTx, nil
 }
 
-// Helper functions for conversion
+func (g *BucketGrpcClient) CreateLedger(ctx context.Context, name string, metadata metadata.Metadata) (*ledger.LedgerInfo, error) {
+	md, err := metadataToStruct(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("converting metadata to protobuf: %w", err)
+	}
+	ret, err := g.client.CreateLedger(ctx, &CreateLedgerRequest{
+		Name:     name,
+		Metadata: md,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+	return &ledger.LedgerInfo{
+		ID:   ret.Id,
+		Name: ret.Name,
+	}, nil
+}
 
-func (g *grpcLedger) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*CreateTransactionRequest, error) {
+func (g *BucketGrpcClient) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
+	return nil, nil, ErrNotFound
+}
+
+func (g *BucketGrpcClient) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
+	return nil, ErrNotFound
+}
+
+func (g *BucketGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
+	return nil, ErrNotFound
+}
+
+func (g *BucketGrpcClient) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
+	return nil, ErrNotFound
+}
+
+func (g *BucketGrpcClient) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
+	return nil, ErrNotFound
+}
+
+func (g *BucketGrpcClient) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
+	return ErrNotFound
+}
+
+func (g *BucketGrpcClient) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
+	return ErrNotFound
+}
+
+func (g *BucketGrpcClient) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*CreateTransactionRequest, error) {
 	input := params.Input
 
 	// Convert postings
@@ -98,6 +140,7 @@ func (g *grpcLedger) createTransactionRequestToProto(ledgerName string, params P
 	}
 
 	return &CreateTransactionRequest{
+		Bucket:          g.name,
 		AccountMetadata: accountMetadata,
 		Timestamp:       timestamp,
 		Metadata:        metadata,
@@ -109,7 +152,7 @@ func (g *grpcLedger) createTransactionRequestToProto(ledgerName string, params P
 	}, nil
 }
 
-func (g *grpcLedger) createTransactionResponseFromProto(resp *CreateTransactionResponse) (*ledger.Log, *ledger.CreatedTransaction, error) {
+func (g *BucketGrpcClient) createTransactionResponseFromProto(resp *CreateTransactionResponse) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	if resp.Transaction == nil {
 		return nil, nil, fmt.Errorf("empty transaction in response")
 	}
@@ -165,59 +208,4 @@ func (g *grpcLedger) createTransactionResponseFromProto(resp *CreateTransactionR
 	}
 
 	return &log, createdTx, nil
-}
-
-func structToMetadata(s *structpb.Struct) metadata.Metadata {
-	if s == nil {
-		return metadata.Metadata{}
-	}
-	md := make(metadata.Metadata)
-	for k, v := range s.Fields {
-		md[k] = v.GetStringValue()
-	}
-	return md
-}
-
-func metadataToStruct(md metadata.Metadata) (*structpb.Struct, error) {
-	if len(md) == 0 {
-		return nil, nil
-	}
-	fields := make(map[string]*structpb.Value)
-	for k, v := range md {
-		val, err := structpb.NewValue(v)
-		if err != nil {
-			return nil, err
-		}
-		fields[k] = val
-	}
-	return &structpb.Struct{Fields: fields}, nil
-}
-
-// Stub methods for grpcLedger (other methods not yet implemented via gRPC)
-func (g *grpcLedger) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
-	return nil, nil, ErrNotFound
-}
-
-func (g *grpcLedger) SaveTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveTransactionMetadata]) (*ledger.Log, error) {
-	return nil, ErrNotFound
-}
-
-func (g *grpcLedger) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	return nil, ErrNotFound
-}
-
-func (g *grpcLedger) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
-	return nil, ErrNotFound
-}
-
-func (g *grpcLedger) DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error) {
-	return nil, ErrNotFound
-}
-
-func (g *grpcLedger) Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error {
-	return ErrNotFound
-}
-
-func (g *grpcLedger) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
-	return ErrNotFound
 }

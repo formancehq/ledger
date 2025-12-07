@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package bucket;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "proto/common.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
+
+// LedgerService provides ledger operations
+service BucketService {
+  // Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
+  rpc Snapshot(BucketSnapshotRequest) returns (BucketSnapshotResponse);
+  // CreateLedger
+  rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
+  // CreateTransaction creates a new transaction
+  rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+}
+
+message BucketSnapshotRequest {
+  string bucket = 1;
+}
+
+message BucketSnapshotResponse {
+  string message = 1;
+}
+
+message CreateTransactionRequest {
+  string bucket = 1;
+  map<string, google.protobuf.Struct> account_metadata = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  google.protobuf.Struct metadata = 4;
+  string reference = 5;
+  repeated common.Posting postings = 6;
+  bool dry_run = 7;
+  string idempotency_key = 8;
+  string ledger = 9;
+}
+
+message CreateTransactionResponse {
+  common.Transaction transaction = 1;
+  map<string, google.protobuf.Struct> account_metadata = 2;
+}
+
+message CreateLedgerRequest {
+  string bucket = 1;
+  string name = 2;
+  google.protobuf.Struct metadata = 3;
+}
+
+message CreateLedgerResponse {
+  uint64 id = 1;
+  string name = 2;
+  string bucket = 3;
+}

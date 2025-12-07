@@ -1,10 +1,10 @@
-package bucketfsm
+package bucket
 
 import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"github.com/formancehq/ledger-v3-poc/internal/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -27,13 +27,13 @@ func convertMetadataToStruct(md metadata.Metadata) (*structpb.Struct, error) {
 
 const (
 	// CommandTypeCreateLedger is the command type for creating a new ledger
-	CommandTypeCreateLedger commands.CommandType = "create_ledger"
+	CommandTypeCreateLedger raft.CommandType = "create_ledger"
 	// CommandTypeInsertLog is the command type for inserting a log
-	CommandTypeInsertLog commands.CommandType = "insert_log"
+	CommandTypeInsertLog raft.CommandType = "insert_log"
 )
 
 // NewCreateLedgerCommand creates a new CreateLedgerCommand
-func NewCreateLedgerCommand(name string, md metadata.Metadata) (*commands.Command, error) {
+func NewCreateLedgerCommand(name string, md metadata.Metadata) (*raft.Command, error) {
 	var mdStruct *structpb.Struct
 	var err error
 	if len(md) > 0 {
@@ -53,8 +53,8 @@ func NewCreateLedgerCommand(name string, md metadata.Metadata) (*commands.Comman
 		return nil, err
 	}
 
-	return &commands.Command{
-		ID:   commands.GenerateRandomID(),
+	return &raft.Command{
+		ID:   raft.GenerateRandomID(),
 		Type: CommandTypeCreateLedger,
 		Data: data,
 		Date: time.Now(),
@@ -62,7 +62,7 @@ func NewCreateLedgerCommand(name string, md metadata.Metadata) (*commands.Comman
 }
 
 // NewInsertLogCommand creates a new InsertLogCommand
-func NewInsertLogCommand(log ledger.Log) (*commands.Command, error) {
+func NewInsertLogCommand(log ledger.Log) (*raft.Command, error) {
 	logProto, err := logToProto(log)
 	if err != nil {
 		return nil, err
@@ -77,8 +77,8 @@ func NewInsertLogCommand(log ledger.Log) (*commands.Command, error) {
 		return nil, err
 	}
 
-	return &commands.Command{
-		ID:   commands.GenerateRandomID(),
+	return &raft.Command{
+		ID:   raft.GenerateRandomID(),
 		Type: CommandTypeInsertLog,
 		Data: data,
 		Date: time.Now(),

@@ -1,4 +1,4 @@
-package bucketfsm
+package bucket
 
 import (
 	"fmt"

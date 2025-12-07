@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -17,19 +16,6 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("ledger name is required"))
-		return
-	}
-
-	if s.cluster == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
-		return
-	}
-
-	// Check if ledger already exists to find its bucket
-	bucketName, err := s.cluster.FindBucketForLedger(ledgerName)
-	if err == nil {
-		// Ledger already exists
-		api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", fmt.Errorf("ledger %s already exists in bucket %s", ledgerName, bucketName))
 		return
 	}
 
@@ -48,46 +34,25 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Bucket is required in request body
 	if req.Bucket == "" {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket name is required in request body"))
-		return
+		req.Bucket = "default"
 	}
 
-	// Create ledger via cluster in the specified bucket
-	if err := s.cluster.CreateLedger(req.Bucket, ledgerName, req.Metadata); err != nil {
-		s.logger.WithFields(map[string]any{"bucket": req.Bucket, "name": ledgerName, "error": err}).Errorf("Failed to create ledger")
-
-		// Check if ledger already exists (in this bucket or globally)
-		errMsg := err.Error()
-		if errMsg == fmt.Sprintf("ledger already exists in bucket %s: %s", req.Bucket, ledgerName) ||
-			errMsg == fmt.Sprintf("ledger with name %s already exists in bucket", ledgerName) ||
-			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger already exists in bucket %s: %s", req.Bucket, req.Bucket, ledgerName) ||
-			errMsg == fmt.Sprintf("creating ledger in bucket %s: ledger with name %s already exists in bucket", req.Bucket, ledgerName) {
-			api.WriteErrorResponse(w, http.StatusConflict, "LEDGER_ALREADY_EXISTS", err)
-			return
-		}
-
+	bucket, err := s.cluster.GetBucket(r.Context(), req.Bucket)
+	if err != nil {
 		api.InternalServerError(w, r, err)
 		return
 	}
 
-	// Get the created ledger to return it
-	ledgerInfo, exists, err := s.cluster.GetLedger(req.Bucket, ledgerName)
-	if err != nil || !exists {
-		s.logger.WithFields(map[string]any{"bucket": req.Bucket, "name": ledgerName, "error": err}).Infof("WARN: Failed to retrieve created ledger")
-		// Still return success since creation succeeded
-		api.Created(w, LedgerResponse{
-			LedgerInfo: ledger.LedgerInfo{
-				Name:     ledgerName,
-				Metadata: req.Metadata,
-			},
-			Bucket: req.Bucket,
-		})
+	// Create ledger via cluster in the specified bucket
+	ledger, err := bucket.CreateLedger(r.Context(), ledgerName, req.Metadata)
+	if err != nil {
+		api.InternalServerError(w, r, err)
 		return
 	}
 
 	// Return the ledger info with bucket name
 	api.Created(w, LedgerResponse{
-		LedgerInfo: ledgerInfo,
+		LedgerInfo: *ledger,
 		Bucket:     req.Bucket,
 	})
 }

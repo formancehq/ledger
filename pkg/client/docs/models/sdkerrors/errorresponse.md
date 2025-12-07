@@ -3,6 +3,7 @@
 
 ## Fields
 
-| Field                                               | Type                                                | Required                                            | Description                                         |
-| --------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------- |
-| `Error`                                             | [*sdkerrors.Error](../../models/sdkerrors/error.md) | :heavy_minus_sign:                                  | N/A                                                 |
+| Field                        | Type                         | Required                     | Description                  |
+| ---------------------------- | ---------------------------- | ---------------------------- | ---------------------------- |
+| `ErrorCode`                  | **string*                    | :heavy_minus_sign:           | Error code identifier        |
+| `ErrorMessage`               | **string*                    | :heavy_minus_sign:           | Human-readable error message |

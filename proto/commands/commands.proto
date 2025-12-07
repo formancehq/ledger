@@ -4,7 +4,7 @@ package commands;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/commands";
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft";
 
 // CommandProto represents a command to be executed in the FSM (protobuf serialization format)
 message CommandProto {

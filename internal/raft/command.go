@@ -1,4 +1,4 @@
-package commands
+package raft
 
 import (
 	"crypto/rand"
@@ -59,4 +59,3 @@ func (c *Command) UnmarshalBinary(data []byte) error {
 
 	return nil
 }
-

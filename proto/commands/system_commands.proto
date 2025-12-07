@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package fsm_commands;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/system";
+
+// CreateBucketCommand represents the data for a create bucket command
+message CreateBucketCommand {
+  string name = 1;                          // Bucket name/ID (required)
+  string driver = 2;                        // Driver name (required)
+  google.protobuf.Struct config = 3;        // Driver-specific configuration (required)
+}
+
+// DeleteBucketCommand represents the data for a delete bucket command
+message DeleteBucketCommand {
+  string name = 1;                          // Bucket name/ID (required)
+}
+
+// BucketInfo represents information about a bucket in the snapshot
+message BucketInfo {
+  uint64 id = 1;                            // Sequential bucket ID
+  string name = 2;                          // Bucket name/ID
+  string driver = 3;                        // Driver name (e.g., "postgres", "s3", etc.)
+  google.protobuf.Struct config = 4;       // Driver-specific configuration
+  google.protobuf.Timestamp created_at = 5; // Creation timestamp
+}
+
+// SystemFSMSnapshot represents the snapshot data for the system FSM
+message SystemFSMSnapshot {
+  map<string, BucketInfo> buckets = 1;      // Map of bucket name to bucket info
+  uint64 next_bucket_id = 2;               // Next sequential bucket ID
+}
+

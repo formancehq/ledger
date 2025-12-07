@@ -3,13 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger-v3-poc/internal/application"
-	"github.com/formancehq/ledger-v3-poc/internal/config"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
@@ -48,16 +50,13 @@ func newRootCommand() *cobra.Command {
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
 	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
 	rootCmd.Flags().Int("http-port", 9000, "HTTP server port")
-	rootCmd.Flags().String("storage-type", "sqlite", "Storage type: 'sqlite' or 'file'")
-	rootCmd.Flags().String("sqlite-dsn", "file:./data/ledger.db?cache=shared&mode=rwc", "SQLite DSN connection string (required when storage-type is 'sqlite')")
-	rootCmd.Flags().String("storage-file-path", "./data/logs.jsonl", "Path to log file (required when storage-type is 'file')")
 	rootCmd.Flags().Uint64("snapshot-threshold", 0, "Number of logs before triggering a snapshot (0 = use Raft default)")
 	rootCmd.Flags().Duration("snapshot-interval", 0, "Minimum interval between snapshots (0 = use Raft default, e.g., 30s)")
 
 	return rootCmd
 }
 
-func runServer(cmd *cobra.Command, args []string) error {
+func runServer(cmd *cobra.Command, _ []string) error {
 	cfg, err := loadConfig(cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -71,7 +70,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
 	if serviceName == "" {
 		// Set default service name based on node ID
-		defaultServiceName := fmt.Sprintf("ledger-v3-poc-node-%d", cfg.NodeID)
+		defaultServiceName := fmt.Sprintf("ledger-v3-poc-node-%d", cfg.RaftConfig.NodeID)
 		if err := cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName); err != nil {
 			return fmt.Errorf("setting default service name: %w", err)
 		}
@@ -80,9 +79,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Create fx application options
 	opts := []fx.Option{
 		// Provide configuration
-		fx.Provide(func() *config.Config {
-			return cfg
-		}),
+		fx.Supply(*cfg),
 		// Add OpenTelemetry modules from go-libs (using flags)
 		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", version, commit))),
 		otlptraces.FXModuleFromFlags(cmd),
@@ -90,15 +87,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 		application.Module(),
 	}
 
-	// Create service app
-	app := service.New(os.Stdout, opts...)
-
 	// Run the application (handles startup, signal handling, and graceful shutdown)
-	return app.Run(cmd)
+	return service.New(os.Stdout, opts...).Run(cmd)
 }
 
-func loadConfig(cmd *cobra.Command) (*config.Config, error) {
-	cfg := &config.Config{}
+func loadConfig(cmd *cobra.Command) (*application.Config, error) {
+	cfg := &application.Config{}
 
 	// Helper function to get string value from flag (env vars are bound automatically by service.BindEnvToCommand)
 	getString := func(flagName, defaultValue string) string {
@@ -148,20 +142,30 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 		return defaultValue
 	}
 
-	cfg.NodeID = getUint64("node-id", 0)
-	cfg.BindAddr = getString("bind-addr", "127.0.0.1:8888")
-	cfg.AdvertiseAddr = getString("advertise-addr", "")
-	cfg.DataDir = getString("data-dir", "./data")
-	cfg.Peers = getStringSlice("peers")
 	cfg.Debug = getBool("debug", false)
-	cfg.Bootstrap = getBool("bootstrap", false)
-	cfg.GRPCPort = getInt("grpc-port", 8000)
 	cfg.HTTPPort = getInt("http-port", 9000)
-	cfg.StorageType = getString("storage-type", "sqlite")
-	cfg.SQLiteDSN = getString("sqlite-dsn", "file:./data/ledger.db?cache=shared&mode=rwc")
-	cfg.StorageFilePath = getString("storage-file-path", "./data/logs.jsonl")
-	cfg.SnapshotThreshold = getUint64("snapshot-threshold", 0)
-	cfg.SnapshotInterval = getDuration("snapshot-interval", 0)
+	cfg.RaftConfig.NodeID = getUint64("node-id", 0)
+	cfg.RaftConfig.BindAddr = getString("bind-addr", "127.0.0.1:8888")
+	cfg.RaftConfig.AdvertiseAddr = getString("advertise-addr", "")
+	cfg.RaftConfig.DataDir = getString("data-dir", "./data")
+	cfg.RaftConfig.Peers = make([]raft.Peer, 0)
+	for _, peer := range getStringSlice("peers") {
+		parts := strings.SplitN(peer, "/", 2)
+
+		id, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid peer ID: %w", err)
+		}
+
+		cfg.RaftConfig.Peers = append(cfg.RaftConfig.Peers, raft.Peer{
+			ID: id,
+			Address: parts[1],
+		})
+	}
+	cfg.RaftConfig.Bootstrap = getBool("bootstrap", false)
+	cfg.RaftConfig.GRPCPort = getInt("grpc-port", 8000)
+	cfg.RaftConfig.SnapshotThreshold = getUint64("snapshot-threshold", 0)
+	cfg.RaftConfig.SnapshotInterval = getDuration("snapshot-interval", 0)
 
 	return cfg, nil
 }

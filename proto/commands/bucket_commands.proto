@@ -6,7 +6,7 @@ import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "proto/common.proto";
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/bucketfsm";
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/bucket";
 
 // CreateLedgerCommand represents the data for a create ledger command
 message CreateLedgerCommand {

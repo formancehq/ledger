@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -48,29 +47,10 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if bucket already exists (validation en amont)
-	if _, exists := s.cluster.GetBucket(bucketName); exists {
-		api.WriteErrorResponse(w, http.StatusConflict, "BUCKET_ALREADY_EXISTS", fmt.Errorf("bucket %s already exists", bucketName))
-		return
-	}
-
 	// Create bucket via cluster
-	if err := s.cluster.CreateBucket(bucketName, req.Driver, req.Config); err != nil {
-		s.logger.WithFields(map[string]any{"name": bucketName, "error": err}).Errorf("Failed to create bucket")
+	bucket, err := s.cluster.CreateBucket(r.Context(), bucketName, req.Driver, req.Config)
+	if err != nil {
 		api.InternalServerError(w, r, err)
-		return
-	}
-
-	// Get the created bucket to return it
-	bucket, exists := s.cluster.GetBucket(bucketName)
-	if !exists {
-		s.logger.WithFields(map[string]any{"name": bucketName}).Infof("WARN: Failed to retrieve created bucket")
-		// Still return success since creation succeeded
-		api.Created(w, ledger.BucketInfo{
-			Name:   bucketName,
-			Driver: req.Driver,
-			Config: req.Config,
-		})
 		return
 	}
 

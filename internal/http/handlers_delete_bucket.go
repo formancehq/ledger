@@ -17,13 +17,8 @@ func (s *Server) handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.cluster == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
-		return
-	}
-
 	// Delete bucket via cluster
-	if err := s.cluster.DeleteBucket(bucketName); err != nil {
+	if err := s.cluster.DeleteBucket(r.Context(), bucketName); err != nil {
 		s.logger.WithFields(map[string]any{"name": bucketName, "error": err}).Errorf("Failed to delete bucket")
 
 		// Check if bucket does not exist

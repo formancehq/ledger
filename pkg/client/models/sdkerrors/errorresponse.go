@@ -6,38 +6,11 @@ import (
 	"encoding/json"
 )
 
-type Error struct {
+type ErrorResponse struct {
 	// Error code identifier
 	ErrorCode *string `json:"errorCode,omitempty"`
 	// Human-readable error message
 	ErrorMessage *string `json:"errorMessage,omitempty"`
-	// Additional error details (optional)
-	Details *string `json:"details,omitempty"`
-}
-
-func (o *Error) GetErrorCode() *string {
-	if o == nil {
-		return nil
-	}
-	return o.ErrorCode
-}
-
-func (o *Error) GetErrorMessage() *string {
-	if o == nil {
-		return nil
-	}
-	return o.ErrorMessage
-}
-
-func (o *Error) GetDetails() *string {
-	if o == nil {
-		return nil
-	}
-	return o.Details
-}
-
-type ErrorResponse struct {
-	Error_ *Error `json:"error,omitempty"`
 }
 
 var _ error = &ErrorResponse{}

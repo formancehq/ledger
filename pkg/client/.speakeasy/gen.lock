@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 96e6d577d07ba28d10067111d202ff3f
+  docChecksum: 75ff39862396a5f3077eec6b3f734259
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.10.4
-  configChecksum: ea34cd33dc67a7ec5bdd3fb8d846370a
+  releaseVersion: 0.10.5
+  configChecksum: 8516ade602f86f45b82c26f61d289d43
 features:
   go:
     additionalDependencies: 0.1.0
@@ -113,7 +113,6 @@ generatedFiles:
   - docs/models/operations/listallledgersresponse.md
   - docs/models/operations/listbucketsresponse.md
   - docs/models/operations/option.md
-  - docs/models/sdkerrors/error.md
   - docs/models/sdkerrors/errorresponse.md
   - docs/sdks/buckets/README.md
   - docs/sdks/cluster/README.md

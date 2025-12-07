@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -16,23 +17,27 @@ func (s *Server) handleGetBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.cluster == nil {
-		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("cluster not available"))
-		return
-	}
-
-	bucket, err := s.cluster.GetBucketWithRaftState(bucketName)
+	bucket, err := s.cluster.GetBucket(r.Context(), bucketName)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to get bucket")
 		api.InternalServerError(w, r, err)
 		return
 	}
 
-	if bucket == nil {
-		api.NotFound(w, errors.New("bucket not found"))
+	state, err := bucket.GetClusterState(r.Context())
+	if err != nil {
+		api.InternalServerError(w, r, err)
 		return
 	}
 
-	api.Ok(w, bucket)
-}
+	// BucketWithRaftState represents a bucket with its Raft cluster state
+	type BucketWithRaftState struct {
+		ledger.BucketInfo
+		RaftState *ledger.ClusterState `json:"raftState"`
+	}
 
+	api.Ok(w, BucketWithRaftState{
+		BucketInfo: bucket.Info(),
+		RaftState:  state,
+	})
+}

@@ -1,4 +1,4 @@
-package bucketfsm
+package bucket
 
 import (
 	"context"
@@ -10,35 +10,35 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"github.com/formancehq/ledger-v3-poc/internal/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
-// BucketFSM represents the finite state machine for a bucket Raft group
+// FSM represents the finite state machine for a bucket Raft group
 // It manages ledgers within a specific bucket
-type BucketFSM struct {
-	bucketName      string
+type FSM struct {
 	ledgers         map[string]ledger.LedgerInfo            // Map of ledger name -> ledger info
 	logs            []ledger.Log                            // Logs stored in memory until snapshot
 	balances        map[string]ledger.Balances              // Map of ledger name -> balances (account -> asset -> balance)
 	accountMetadata map[string]map[string]map[string]string // Map of ledger name -> account -> metadata key -> metadata value
 	logger          logging.Logger
+	logWriter       service.LogWriter
 }
 
-// NewBucketFSM creates a new bucket FSM
-func NewBucketFSM(bucketName string, logger logging.Logger) *BucketFSM {
-	return &BucketFSM{
-		bucketName:      bucketName,
+// newFSM creates a new bucket FSM
+func newFSM(logger logging.Logger, logStore service.LogWriter) *FSM {
+	return &FSM{
 		ledgers:         make(map[string]ledger.LedgerInfo),
 		logs:            make([]ledger.Log, 0),
 		balances:        make(map[string]ledger.Balances),
 		accountMetadata: make(map[string]map[string]map[string]string),
-		logger:          logger.WithFields(map[string]any{"bucket": bucketName, "component": "bucket-fsm"}),
+		logger:          logger,
+		logWriter:       logStore,
 	}
 }
 
-// HandleCreateLedger handles the create ledger command for this bucket
-func (f *BucketFSM) HandleCreateLedger(cmd commands.Command, index uint64) (*ledger.LedgerInfo, error) {
+// handleCreateLedger handles the create ledger command for this bucket
+func (f *FSM) handleCreateLedger(cmd raft.Command) (*ledger.LedgerInfo, error) {
 	var createCmd CreateLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create ledger command")
@@ -47,8 +47,8 @@ func (f *BucketFSM) HandleCreateLedger(cmd commands.Command, index uint64) (*led
 
 	// Check if ledger already exists in this bucket
 	if _, exists := f.ledgers[createCmd.Name]; exists {
-		f.logger.WithFields(map[string]any{"name": createCmd.Name, "bucket": f.bucketName}).Infof("WARN: Ledger already exists in bucket")
-		return nil, fmt.Errorf("ledger already exists in bucket %s: %s", f.bucketName, createCmd.Name)
+		f.logger.WithFields(map[string]any{"name": createCmd.Name}).Infof("WARN: Ledger already exists in bucket")
+		return nil, fmt.Errorf("ledger already exists in bucket: %s", createCmd.Name)
 	}
 
 	// Assign sequential ID to the ledger (IDs start at 1, so next ID is len(ledgers) + 1)
@@ -71,13 +71,13 @@ func (f *BucketFSM) HandleCreateLedger(cmd commands.Command, index uint64) (*led
 	// Store the ledger
 	f.ledgers[createCmd.Name] = ledgerInfo
 
-	f.logger.WithFields(map[string]any{"index": index, "id": ledgerID, "name": createCmd.Name, "bucket": f.bucketName}).Infof("Ledger created in bucket")
+	f.logger.Infof("Ledger created in bucket")
 	return &ledgerInfo, nil
 }
 
-// HandleInsertLog handles the insert log command by storing the log in memory
+// handleInsertLog handles the insert log command by storing the log in memory
 // Logs will be persisted to the store during snapshot creation
-func (f *BucketFSM) HandleInsertLog(cmd commands.Command, index uint64) error {
+func (f *FSM) handleInsertLog(cmd raft.Command) error {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
@@ -105,12 +105,22 @@ func (f *BucketFSM) HandleInsertLog(cmd commands.Command, index uint64) error {
 	// Update balances and account metadata based on log type
 	f.updateBalancesAndMetadata(log)
 
-	f.logger.WithFields(map[string]any{"index": index, "ledger": log.Ledger, "commandID": cmd.ID, "totalLogsInMemory": len(f.logs)}).Infof("Log stored in memory via FSM")
+	f.logger.Infof("Log stored in memory via FSM")
 	return nil
 }
 
+func (f *FSM) ApplyEntry(ctx context.Context, command raft.Command) (any, error) {
+	switch command.Type {
+	case CommandTypeCreateLedger:
+		return f.handleCreateLedger(command)
+	case CommandTypeInsertLog:
+		return nil, f.handleInsertLog(command)
+	}
+	return nil, fmt.Errorf("unknown command type: %s", command.Type)
+}
+
 // updateBalancesAndMetadata updates balances and account metadata based on the log
-func (f *BucketFSM) updateBalancesAndMetadata(log ledger.Log) {
+func (f *FSM) updateBalancesAndMetadata(log ledger.Log) {
 	ledgerName := log.Ledger
 
 	// Initialize balances map for this ledger if needed
@@ -205,27 +215,28 @@ func (f *BucketFSM) updateBalancesAndMetadata(log ledger.Log) {
 }
 
 // GetLedger returns the ledger info for a given name in this bucket
-func (f *BucketFSM) GetLedger(name string) (ledger.LedgerInfo, bool) {
+func (f *FSM) GetLedger(name string) (*ledger.LedgerInfo, error) {
 	info, ok := f.ledgers[name]
-	return info, ok
+	if !ok {
+		return nil, fmt.Errorf("ledger does not exist: %s", name)
+	}
+	return &info, nil
 }
 
 // GetAllLedgers returns all ledgers in this bucket
-func (f *BucketFSM) GetAllLedgers() map[string]ledger.LedgerInfo {
+func (f *FSM) GetAllLedgers() []ledger.LedgerInfo {
 	// Return a copy to avoid external modifications
-	result := make(map[string]ledger.LedgerInfo, len(f.ledgers))
-	for k, v := range f.ledgers {
-		result[k] = v
+	result := make([]ledger.LedgerInfo, len(f.ledgers))
+	for _, v := range f.ledgers {
+		result = append(result, v)
 	}
 	return result
 }
 
-// CreateSnapshot creates a snapshot of the bucket FSM state
-// It writes logs to the log store and returns snapshot data
-func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWriter) ([]byte, error) {
+func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	// Write logs to the store before creating snapshot
 	if len(f.logs) > 0 {
-		if err := logStore.InsertLogs(ctx, f.logs...); err != nil {
+		if err := f.logWriter.InsertLogs(ctx, f.logs...); err != nil {
 			return nil, fmt.Errorf("writing logs to store during snapshot: %w", err)
 		}
 		f.logger.WithFields(map[string]any{"count": len(f.logs)}).Infof("Logs written to store during snapshot")
@@ -251,7 +262,7 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 }
 
 // RestoreSnapshot restores the bucket FSM from a snapshot
-func (f *BucketFSM) RestoreSnapshot(data []byte) error {
+func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 	var snapshotData struct {
 		Ledgers map[string]ledger.LedgerInfo `json:"ledgers"`
 	}
@@ -269,13 +280,13 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 	f.balances = make(map[string]ledger.Balances)
 	f.accountMetadata = make(map[string]map[string]map[string]string)
 
-	f.logger.WithFields(map[string]any{"ledgerCount": len(f.ledgers)}).Infof("Bucket FSM restored from snapshot")
+	f.logger.WithFields(map[string]any{"ledgerCount": len(f.ledgers)}).Infof("BucketCluster FSM restored from snapshot")
 	return nil
 }
 
 // GetInMemoryBalances returns the in-memory balance diff for a ledger
 // This represents the changes since the last snapshot
-func (f *BucketFSM) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
+func (f *FSM) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
 	if f.balances[ledgerName] == nil {
 		return make(ledger.Balances)
 	}
@@ -293,7 +304,7 @@ func (f *BucketFSM) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
 // GetInMemoryLogs returns the in-memory logs for a ledger
 // This represents the logs since the last snapshot
 // Logs are returned in descending order by ID
-func (f *BucketFSM) GetInMemoryLogs(ledgerName string) []ledger.Log {
+func (f *FSM) GetInMemoryLogs(ledgerName string) []ledger.Log {
 	var result []ledger.Log
 	for _, log := range f.logs {
 		if log.Ledger == ledgerName {

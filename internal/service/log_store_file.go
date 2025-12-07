@@ -69,10 +69,6 @@ func (f *FileLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) error
 
 // GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
 func (f *FileLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error) {
-	if idempotencyKey == "" {
-		return nil, nil
-	}
-
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 

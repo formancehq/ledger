@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -9,12 +8,10 @@ import (
 
 var (
 	version = "dev"
-	commit  = "unknown"
 )
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -24,6 +21,7 @@ var rootCmd = &cobra.Command{
 	Short:        "Client for interacting with Ledger v3 POC Raft cluster",
 	Long:         "A CLI client for interacting with the Ledger v3 POC Raft cluster operations",
 	SilenceUsage: true,
+	Version:      version,
 }
 
 func init() {

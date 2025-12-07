@@ -15,20 +15,36 @@ import (
 )
 
 type LedgerServiceServerImpl struct {
-	UnimplementedLedgerServiceServer
-	logger        logging.Logger
-	ledgerService Ledger
+	UnimplementedBucketServiceServer
+	logger  logging.Logger
+	cluster MasterCluster
 }
 
-func NewLedgerServiceServer(logger logging.Logger, ledgerService Ledger) LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, cluster MasterCluster) BucketServiceServer {
 	return &LedgerServiceServerImpl{
-		logger:        logger,
-		ledgerService: ledgerService,
+		logger:  logger,
+		cluster: cluster,
 	}
 }
 
-func (l *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *CreateTransactionRequest) (*CreateTransactionResponse, error) {
-	l.logger.WithFields(map[string]any{"reference": req.Reference}).Debugf("CreateTransaction request received")
+func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *BucketSnapshotRequest) (*BucketSnapshotResponse, error) {
+	bucket, err := impl.cluster.GetBucket(ctx, req.Bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := bucket.Snapshot(ctx); err != nil {
+		return nil, err
+	}
+
+	return &BucketSnapshotResponse{
+		Message: "Snapshotting completed successfully",
+	}, nil
+}
+
+// todo: use bucket name from request
+func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *CreateTransactionRequest) (*CreateTransactionResponse, error) {
+	impl.logger.WithFields(map[string]any{"reference": req.Reference}).Debugf("CreateTransaction request received")
 
 	// Convert protobuf request to service types
 	postings := make(ledger.Postings, 0, len(req.Postings))
@@ -80,8 +96,13 @@ func (l *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *Cr
 		return nil, fmt.Errorf("ledger name is required")
 	}
 
+	bucket, err := impl.cluster.GetBucketOfLedger(ctx, ledgerName)
+	if err != nil {
+		return nil, err
+	}
+
 	// Call ledger service
-	_, createdTx, err := l.ledgerService.CreateTransaction(ctx, ledgerName, params)
+	_, createdTx, err := bucket.CreateTransaction(ctx, ledgerName, params)
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +163,6 @@ func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.St
 	return result
 }
 
-func RegisterLedgerService(server *grpc.Server, ledgerServiceServer LedgerServiceServer) {
-	RegisterLedgerServiceServer(server, ledgerServiceServer)
+func RegisterBucketService(server *grpc.Server, ledgerServiceServer BucketServiceServer) {
+	RegisterBucketServiceServer(server, ledgerServiceServer)
 }

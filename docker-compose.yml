@@ -9,7 +9,7 @@ services:
       - ADVERTISE_ADDR=node-1:8888
       - PEERS=2/node-2:8888 3/node-3:8888
       - BOOTSTRAP=true
-      - LOGGING_LEVEL=${DEBUG:-false}
+      - DEBUG=${DEBUG:-false}
     ports:
       - "8888:8888"
       - "8000:8000"
@@ -26,7 +26,7 @@ services:
       timeout: 2s
       retries: 2
       start_period: 10s
-    command: ["sh", "-c", "go mod download && go run ./cmd/server --bind-addr 0.0.0.0:8888 --data-dir /data --grpc-port 8000 --http-port 9000 --storage-type sqlite --sqlite-dsn 'file:/data/ledger.db?cache=shared&mode=rwc' --snapshot-threshold 100"]
+    command: ["sh", "-c", "go mod download && go run ./cmd/server --bind-addr 0.0.0.0:8888 --data-dir /data/raft --grpc-port 8000 --http-port 9000 --snapshot-threshold 100"]
 
   node-2:
     image: golang:1.25-alpine
@@ -35,7 +35,7 @@ services:
       - NODE_ID=2
       - ADVERTISE_ADDR=node-2:8888
       - PEERS=1/node-1:8888 3/node-3:8888
-      - LOGGING_LEVEL=${DEBUG:-false}
+      - DEBUG=${DEBUG:-false}
 
     ports:
       - "8889:8888"
@@ -55,7 +55,7 @@ services:
       timeout: 2s
       retries: 2
       start_period: 10s
-    command: ["sh", "-c", "go mod download && go run ./cmd/server --bind-addr 0.0.0.0:8888 --data-dir /data --grpc-port 8000 --http-port 9000 --storage-type sqlite --sqlite-dsn 'file:/data/ledger.db?cache=shared&mode=rwc' --snapshot-threshold 100"]
+    command: ["sh", "-c", "go mod download && go run ./cmd/server --bind-addr 0.0.0.0:8888 --data-dir /data/raft --grpc-port 8000 --http-port 9000 --snapshot-threshold 100"]
 
   node-3:
     image: golang:1.25-alpine
@@ -64,7 +64,7 @@ services:
       - NODE_ID=3
       - ADVERTISE_ADDR=node-3:8888
       - PEERS=1/node-1:8888 2/node-2:8888
-      - LOGGING_LEVEL=${DEBUG:-false}
+      - DEBUG=${DEBUG:-false}
 
     ports:
       - "8890:8888"
@@ -84,9 +84,7 @@ services:
       timeout: 2s
       retries: 2
       start_period: 10s
-    command: ["sh", "-c", "go mod download && go run ./cmd/server --bind-addr 0.0.0.0:8888 --data-dir /data --grpc-port 8000 --http-port 9000 --storage-type sqlite --sqlite-dsn 'file:/data/ledger.db?cache=shared&mode=rwc' --snapshot-threshold 100"]
-
-
+    command: ["sh", "-c", "go mod download && go run ./cmd/server --bind-addr 0.0.0.0:8888 --data-dir /data/raft --grpc-port 8000 --http-port 9000 --snapshot-threshold 100"]
 
 networks:
   raft-network:
