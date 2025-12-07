@@ -454,12 +454,9 @@ func (r *Cluster) findPeerAddress(peerID uint64) string {
 	}
 
 	// Try to find it in the transport (which has the actual peer addresses)
-	r.transport.mu.RLock()
-	if addr, ok := r.transport.peers[peerID]; ok {
-		r.transport.mu.RUnlock()
+	if addr, ok := r.transport.GetPeerAddress(peerID); ok {
 		return addr
 	}
-	r.transport.mu.RUnlock()
 
 	// Fallback: try to find it in the config peers
 	// Peers are in format "<id>/<address>", parse them

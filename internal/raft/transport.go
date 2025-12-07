@@ -9,12 +9,14 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
+
+	"github.com/formancehq/ledger-v3-poc/internal/transport"
 )
 
 // Transport handles network communication between Raft nodes using gRPC
+// It wraps GRPCClientPool and manages Raft-specific message routing and channels
 type Transport struct {
-	peers map[uint64]string // peer ID -> address
-	mu    sync.RWMutex
+	clientPool *GRPCClientPool
 
 	// Channel for incoming messages
 	recvCh chan raftpb.Message
@@ -22,25 +24,23 @@ type Transport struct {
 	// Channels for outgoing messages per peer
 	sendChs map[uint64]chan raftpb.Message
 
-	// gRPC clients for peers
-	grpcClients map[uint64]*grpcClient
-
 	// Channel for reporting unreachable peers
 	unreachableCh chan uint64
 
 	logger logging.Logger
 	ctx    context.Context
 	cancel context.CancelFunc
+	mu     sync.RWMutex
 }
 
-// NewTransport creates a new transport
-func NewTransport(logger logging.Logger) *Transport {
+// NewTransport creates a new transport with a gRPC connection pool and client pool
+func NewTransport(logger logging.Logger, connectionPool *transport.ConnectionPool) *Transport {
 	ctx, cancel := context.WithCancel(context.Background())
+	clientPool := NewGRPCClientPool(connectionPool)
 	return &Transport{
-		peers:         make(map[uint64]string),
+		clientPool:    clientPool,
 		recvCh:        make(chan raftpb.Message, 100),
 		sendChs:       make(map[uint64]chan raftpb.Message),
-		grpcClients:   make(map[uint64]*grpcClient),
 		unreachableCh: make(chan uint64, 100),
 		logger:        logger,
 		ctx:           ctx,
@@ -53,51 +53,39 @@ func (t *Transport) Stop() {
 	t.cancel()
 	close(t.recvCh)
 	close(t.unreachableCh)
+	t.mu.Lock()
 	for _, ch := range t.sendChs {
 		close(ch)
 	}
-	// Close all gRPC client connections
-	t.mu.Lock()
-	for _, client := range t.grpcClients {
-		client.close()
-	}
 	t.mu.Unlock()
+	t.clientPool.Close()
 }
 
 // AddPeer adds a peer to the transport
 func (t *Transport) AddPeer(id uint64, addr string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	if err := t.clientPool.AddPeer(id, addr); err != nil {
+		t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "addr": addr, "error": err}).Errorf("Failed to add peer to client pool")
+		return
+	}
 
-	t.peers[id] = addr
+	t.mu.Lock()
 	if _, exists := t.sendChs[id]; !exists {
 		t.sendChs[id] = make(chan raftpb.Message, 100)
-		// Create gRPC client for this peer
-		client, err := newGRPCClient(addr)
-		if err != nil {
-			t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "addr": addr, "error": err}).Errorf("Failed to create gRPC client for peer")
-			return
-		}
-		t.grpcClients[id] = client
 		go t.sendLoop(id, addr)
 	}
+	t.mu.Unlock()
 }
 
 // RemovePeer removes a peer from the transport
 func (t *Transport) RemovePeer(id uint64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.clientPool.RemovePeer(id)
 
-	delete(t.peers, id)
+	t.mu.Lock()
 	if ch, exists := t.sendChs[id]; exists {
 		close(ch)
 		delete(t.sendChs, id)
 	}
-	// Close and remove gRPC client
-	if client, exists := t.grpcClients[id]; exists {
-		client.close()
-		delete(t.grpcClients, id)
-	}
+	t.mu.Unlock()
 }
 
 // Send sends a message to a peer
@@ -142,12 +130,18 @@ func (t *Transport) Unreachable() <-chan uint64 {
 // GetPeerConnection returns the gRPC connection for a specific peer, if it exists
 // This allows reusing existing connections for service calls instead of creating new ones
 func (t *Transport) GetPeerConnection(peerID uint64) *grpc.ClientConn {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	if client, exists := t.grpcClients[peerID]; exists {
-		return client.getConnection()
-	}
-	return nil
+	return t.clientPool.GetPeerConnection(peerID)
+}
+
+// GetPeerAddress returns the address for a specific peer, if it exists
+func (t *Transport) GetPeerAddress(peerID uint64) (string, bool) {
+	return t.clientPool.GetPeerAddress(peerID)
+}
+
+// GetConnectionPool returns the underlying gRPC connection pool
+// This allows reusing connections for other services
+func (t *Transport) GetConnectionPool() *transport.ConnectionPool {
+	return t.clientPool.GetConnectionPool()
 }
 
 // sendLoop sends messages to a peer using gRPC
@@ -161,27 +155,10 @@ func (t *Transport) sendLoop(peerID uint64, addr string) {
 				return
 			}
 
-			// Get gRPC client for this peer
-			t.mu.RLock()
-			client, exists := t.grpcClients[peerID]
-			t.mu.RUnlock()
-
-			if !exists {
-				t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID)}).Infof("WARN: No gRPC client for peer")
-				// Report peer as unreachable
-				select {
-				case t.unreachableCh <- peerID:
-				case <-t.ctx.Done():
-					return
-				default:
-				}
-				continue
-			}
-
 			// Send message via gRPC with timeout
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			t.logger.WithFields(map[string]any{"type": msg.Type.String(), "peer": fmt.Sprintf("%x", peerID), "addr": addr}).Debugf("Sending message to peer via gRPC")
-			if err := client.sendMessage(ctx, msg); err != nil {
+			if err := t.clientPool.SendMessage(ctx, peerID, msg); err != nil {
 				t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID), "error": err}).Infof("WARN: Failed to send message via gRPC")
 				cancel()
 				// Report peer as unreachable

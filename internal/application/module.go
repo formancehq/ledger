@@ -14,6 +14,7 @@ import (
 	httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"go.uber.org/fx"
 )
 
@@ -28,6 +29,8 @@ var _ httphandler.ClusterClient = (*clusterAdapter)(nil)
 // Module provides all application dependencies
 func Module() fx.Option {
 	return fx.Options(
+		// Transport module (provides ConnectionPool)
+		transport.Module(),
 		// Provide core dependencies
 		fx.Provide(
 			NewTransport,
@@ -48,8 +51,8 @@ func Module() fx.Option {
 }
 
 // NewTransport creates a new transport
-func NewTransport(logger logging.Logger) *raft.Transport {
-	return raft.NewTransport(logger)
+func NewTransport(logger logging.Logger, connectionPool *transport.ConnectionPool) *raft.Transport {
+	return raft.NewTransport(logger, connectionPool)
 }
 
 // NewRaftCluster creates a new Raft cluster
