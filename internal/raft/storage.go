@@ -286,12 +286,14 @@ func (s *Storage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (r
 	s.mu.Lock()
 
 	if i <= s.snapshot.Metadata.Index {
+		s.mu.Unlock()
 		return raftpb.Snapshot{}, ErrSnapOutOfDate
 	}
 
 	// Get term directly without taking another lock (we already have the write lock)
 	term, err := s.termLocked(i)
 	if err != nil {
+		s.mu.Unlock()
 		return raftpb.Snapshot{}, err
 	}
 

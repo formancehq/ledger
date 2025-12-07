@@ -22,6 +22,98 @@ import (
 	"go.uber.org/zap"
 )
 
+// restoreFSMFromStorage restores the FSM state from storage by reading the last snapshot
+// and applying all entries after the snapshot
+func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger *zap.Logger) error {
+	logger.Info("Restoring FSM from storage")
+	// Read the last snapshot
+	snapshot, err := storage.Snapshot()
+	if err != nil {
+		return fmt.Errorf("reading snapshot: %w", err)
+	}
+
+	// If snapshot exists, restore FSM from it
+	if snapshot.Metadata.Index > 0 {
+		logger.Info("Restoring FSM from snapshot", zap.Uint64("index", snapshot.Metadata.Index))
+		if err := fsmInstance.RestoreSnapshot(snapshot.Data); err != nil {
+			return fmt.Errorf("restoring FSM from snapshot: %w", err)
+		}
+	} else {
+		logger.Info("No snapshot found, starting with empty FSM")
+	}
+
+	// Read all entries after the snapshot
+	firstIndex, err := storage.FirstIndex()
+	if err != nil {
+		return fmt.Errorf("getting first index: %w", err)
+	}
+
+	lastIndex, err := storage.LastIndex()
+	if err != nil {
+		return fmt.Errorf("getting last index: %w", err)
+	}
+
+	// If there are entries after the snapshot, apply them to the FSM
+	if firstIndex <= lastIndex {
+		logger.Info("Applying entries after snapshot", zap.Uint64("firstIndex", firstIndex), zap.Uint64("lastIndex", lastIndex))
+		// Read entries in batches to avoid loading everything in memory at once
+		const maxBatchSize = 1000
+		for i := firstIndex; i <= lastIndex; i += maxBatchSize {
+			endIndex := i + maxBatchSize
+			if endIndex > lastIndex+1 {
+				endIndex = lastIndex + 1
+			}
+
+			entries, err := storage.Entries(i, endIndex, 10*1024*1024) // 10MB max size per batch
+			if err != nil {
+				return fmt.Errorf("reading entries [%d, %d): %w", i, endIndex, err)
+			}
+
+			// Apply each entry to the FSM
+			for _, entry := range entries {
+				// Skip configuration change entries
+				if entry.Type == raftpb.EntryConfChange {
+					continue
+				}
+				// Skip other non-normal entries
+				if entry.Type != raftpb.EntryNormal {
+					continue
+				}
+				// Skip empty entries
+				if len(entry.Data) == 0 {
+					continue
+				}
+
+				// Decode the command
+				var cmd service.Command
+				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
+					logger.Warn("Failed to unmarshal command during FSM restoration", zap.Uint64("index", entry.Index), zap.Error(err))
+					continue
+				}
+
+				// Apply the command to the FSM
+				switch cmd.Type {
+				case fsm.CommandTypeCreateBucket:
+					if err := fsmInstance.HandleCreateBucket(cmd, entry.Index); err != nil {
+						logger.Warn("Failed to apply create bucket command during FSM restoration", zap.Uint64("index", entry.Index), zap.Error(err))
+						// Continue with other entries even if one fails
+					}
+				case fsm.CommandTypeDeleteBucket:
+					if err := fsmInstance.HandleDeleteBucket(cmd, entry.Index); err != nil {
+						logger.Warn("Failed to apply delete bucket command during FSM restoration", zap.Uint64("index", entry.Index), zap.Error(err))
+						// Continue with other entries even if one fails
+					}
+				default:
+					logger.Debug("Skipping unknown command type during FSM restoration", zap.String("type", string(cmd.Type)), zap.Uint64("index", entry.Index))
+				}
+			}
+		}
+		logger.Info("Finished applying entries after snapshot", zap.Uint64("lastIndex", lastIndex))
+	}
+
+	return nil
+}
+
 type Cluster struct {
 	node          *NodeWrapper
 	fsm           *fsm.FSM
@@ -130,6 +222,13 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	// Create FSM (Finite State Machine)
 	mainFSM := fsm.NewFSM(logger)
 
+	// Restore FSM state from storage (snapshot + entries after snapshot)
+	if err := restoreFSMFromStorage(mainFSM, storage, logger); err != nil {
+		cancel()
+		transport.Stop()
+		return nil, fmt.Errorf("restoring FSM from storage: %w", err)
+	}
+
 	// Extract port from BindAddr for the unified gRPC server
 	// The unified server listens on the same port as Raft transport (BindAddr)
 	_, raftPort, err := net.SplitHostPort(cfg.BindAddr)
@@ -183,6 +282,10 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 		transport.AddPeer(peerID, peerAddr)
 	}
+
+	// Start Raft groups for existing buckets from FSM after Cluster is created
+	// This ensures that buckets created before this node started have their Raft groups running
+	cluster.startBucketRaftGroupsFromFSM()
 
 	return cluster, nil
 }
@@ -257,6 +360,7 @@ func (r *Cluster) readyLoop() {
 			}
 
 			if !raft.IsEmptySnap(rd.Snapshot) {
+				r.logger.Info("Applying snapshot", zap.Uint64("index", rd.Snapshot.Metadata.Index))
 				// Apply snapshot to storage
 				if err := r.storage.ApplySnapshot(rd.Snapshot); err != nil {
 					r.logger.Error("Failed to apply snapshot to storage", zap.Error(err))
@@ -267,8 +371,12 @@ func (r *Cluster) readyLoop() {
 					r.logger.Error("Failed to restore FSM from snapshot", zap.Error(err))
 					continue
 				}
+
+				r.node.node.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+
 				// Start Raft groups for existing buckets from FSM after snapshot restoration
 				// This ensures that buckets created before this node started have their Raft groups running
+				// Note: This is now handled during initialization, but we still need to handle runtime snapshots
 				r.startBucketRaftGroupsFromFSM()
 			}
 
@@ -1002,6 +1110,7 @@ func (r *Cluster) startBucketRaftGroupsFromFSM() {
 	bucketRaftGroups := r.fsm.GetAllBucketRaftGroups()
 	buckets := r.fsm.GetAllBuckets()
 	for bucketName, bucketID := range bucketRaftGroups {
+		r.logger.Info("Starting Raft group for bucket", zap.String("bucket", bucketName), zap.Uint64("bucketID", bucketID))
 		bucketInfo, exists := buckets[bucketName]
 		if !exists {
 			r.logger.Warn("Bucket Raft group found but bucket info missing", zap.String("bucket", bucketName))

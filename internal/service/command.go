@@ -101,7 +101,7 @@ type LedgerInfo struct {
 	Name      string            `json:"name"`      // Ledger name/ID
 	CreatedAt time.Time         `json:"createdAt"` // Creation timestamp
 	Metadata  metadata.Metadata `json:"metadata,omitempty"`
-	LastLogID *uint64           `json:"lastLogId,omitempty"` // ID of the last log for this ledger
+	LastLogID *uint64          `json:"lastLogId,omitempty"` // ID of the last log for this ledger
 }
 
 // BucketInfo represents information about a bucket

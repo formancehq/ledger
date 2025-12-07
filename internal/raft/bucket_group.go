@@ -210,7 +210,13 @@ func NewBucketRaftGroup(
 	lockedVolumesStore := service.NewDefaultLockedBalancesStore(consolidatedVolumesStore)
 
 	// Create ledger service for this bucket (will use stores for balance checking and log writing)
-	defaultLedger := service.NewDefaultLedger(group, lockedVolumesStore, appLogStore, bucketLogger)
+	defaultLedger := service.NewDefaultLedger(group, lockedVolumesStore, struct {
+		service.LogWriter
+		service.LogReader
+	} {
+		LogWriter: appLogStore,
+		LogReader: service.NewConsolidatedLogReader(appLogStore, bucketFSM),
+	}, bucketLogger)
 	group.defaultLedger = defaultLedger
 
 	return group, nil
@@ -278,6 +284,8 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 			}
 
 			if !raft.IsEmptySnap(rd.Snapshot) {
+				g.logger.Info("Applying snapshot", zap.Uint64("index", rd.Snapshot.Metadata.Index))
+				
 				if err := g.storage.ApplySnapshot(rd.Snapshot); err != nil {
 					g.logger.Error("Failed to apply snapshot to storage", zap.Error(err))
 					continue
@@ -287,6 +295,8 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 					g.logger.Error("Failed to restore bucket FSM from snapshot", zap.Error(err))
 					continue
 				}
+
+				g.node.node.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 			}
 
 			// Send messages via transport
@@ -513,6 +523,16 @@ func (g *BucketRaftGroup) GetLedger(name string) (service.LedgerInfo, bool) {
 // GetAllLedgers returns all ledgers in this bucket
 func (g *BucketRaftGroup) GetAllLedgers() map[string]service.LedgerInfo {
 	return g.fsm.GetAllLedgers()
+}
+
+// GetInMemoryDiffBalances returns the in-memory balance diff for a ledger (implements HotDiffBalancesProvider)
+func (g *BucketRaftGroup) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
+	return g.fsm.GetInMemoryDiffBalances(ledgerName)
+}
+
+// GetInMemoryLogs returns the in-memory logs for a ledger
+func (g *BucketRaftGroup) GetInMemoryLogs(ledgerName string) []ledger.Log {
+	return g.fsm.GetInMemoryLogs(ledgerName)
 }
 
 // GetRaftState returns the current state of the bucket Raft group

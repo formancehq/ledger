@@ -602,9 +602,24 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Check if we are the leader
-	if s.isLeader() {
-		// We are the leader, call directly
+	// Get bucket Raft state to check if we are the leader of this bucket's Raft group
+	bucketWithState, err := s.cluster.GetBucketWithRaftState(bucketName)
+	if err != nil {
+		s.logger.Error("Failed to get bucket Raft state", zap.String("bucket", bucketName), zap.Error(err))
+		api.InternalServerError(w, r, err)
+		return
+	}
+
+	if bucketWithState == nil {
+		api.WriteErrorResponse(w, http.StatusNotFound, "BUCKET_NOT_FOUND", errors.New("bucket not found"))
+		return
+	}
+
+	// Check if we are the leader of this bucket's Raft group
+	isBucketLeader := bucketWithState.RaftState != nil && bucketWithState.RaftState.State == "Leader"
+
+	if isBucketLeader {
+		// We are the leader of this bucket's Raft group, call directly
 		if err := s.cluster.CreateBucketSnapshot(bucketName); err != nil {
 			s.logger.Error("Failed to create bucket snapshot", zap.String("bucket", bucketName), zap.Error(err))
 
@@ -625,7 +640,8 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// We are a follower, forward via gRPC
+	// We are not the leader of this bucket's Raft group, forward via gRPC
+	// The gRPC server will route to the leader of the bucket's Raft group
 	grpcClient := s.cluster.GetGRPCClient()
 	if grpcClient == nil {
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", errors.New("not connected to leader gRPC server"))
@@ -638,7 +654,7 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Call leader via gRPC
+	// Call leader via gRPC (will route to the leader of the bucket's Raft group)
 	resp, err := client.CreateBucketSnapshot(r.Context(), &service.CreateBucketSnapshotRequest{
 		BucketName: bucketName,
 	})

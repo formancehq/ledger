@@ -163,11 +163,6 @@ func (r *RoutedLedger) createTransactionResponseFromProto(resp *CreateTransactio
 		tx = tx.WithReference(resp.Transaction.Reference)
 	}
 
-	// Convert ID
-	if resp.Transaction.Id != 0 {
-		tx = tx.WithID(resp.Transaction.Id)
-	}
-
 	// Convert account metadata
 	accountMetadata := make(ledger.AccountMetadata)
 	for addr, md := range resp.AccountMetadata {
@@ -185,6 +180,8 @@ func (r *RoutedLedger) createTransactionResponseFromProto(resp *CreateTransactio
 	log := ledger.NewLog(createdTx)
 	if resp.Transaction.Id != 0 {
 		log = log.WithID(resp.Transaction.Id)
+		// Assign log ID to transaction
+		createdTx.Transaction = createdTx.Transaction.WithID(resp.Transaction.Id)
 	}
 
 	return &log, createdTx, nil

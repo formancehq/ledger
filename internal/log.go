@@ -114,7 +114,7 @@ func (l Log) WithIdempotencyKey(key string) Log {
 
 func (l Log) ChainLog(previous *Log) Log {
 	ret := l
-	if previous != nil {
+	if previous != nil && previous.ID != nil {
 		ret.ID = pointer.For(*previous.ID + 1)
 	} else {
 		ret.ID = pointer.For(uint64(1))
@@ -316,11 +316,16 @@ func (r RevertedTransaction) GetMemento() any {
 		Reverted  bool              `json:"reverted"`
 	}
 
+	var revertedTxID *uint64
+	if r.RevertedTransaction.ID != nil {
+		revertedTxID = pointer.For(*r.RevertedTransaction.ID)
+	}
+
 	return struct {
-		RevertedTransactionID uint64            `json:"revertedTransactionID"`
+		RevertedTransactionID *uint64           `json:"revertedTransactionID"`
 		RevertTransaction     transactionResume `json:"transaction"`
 	}{
-		RevertedTransactionID: *r.RevertedTransaction.ID,
+		RevertedTransactionID: revertedTxID,
 		RevertTransaction: transactionResume{
 			Postings:  r.RevertTransaction.Postings,
 			Metadata:  r.RevertTransaction.Metadata,

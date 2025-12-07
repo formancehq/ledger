@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
@@ -16,8 +17,6 @@ import (
 type BucketFSM struct {
 	bucketName      string
 	ledgers         map[string]service.LedgerInfo           // Map of ledger name -> ledger info
-	nextLedgerID    uint64                                  // Next sequential ledger ID
-	lastLogIDs      map[string]uint64                       // Map of ledger name -> last log ID
 	logs            []ledger.Log                            // Logs stored in memory until snapshot
 	balances        map[string]ledger.Balances              // Map of ledger name -> balances (account -> asset -> balance)
 	accountMetadata map[string]map[string]map[string]string // Map of ledger name -> account -> metadata key -> metadata value
@@ -29,8 +28,6 @@ func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
 	return &BucketFSM{
 		bucketName:      bucketName,
 		ledgers:         make(map[string]service.LedgerInfo),
-		nextLedgerID:    1, // Start at 1, first ledger will have ID 1
-		lastLogIDs:      make(map[string]uint64),
 		logs:            make([]ledger.Log, 0),
 		balances:        make(map[string]ledger.Balances),
 		accountMetadata: make(map[string]map[string]map[string]string),
@@ -52,9 +49,8 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*serv
 		return nil, fmt.Errorf("ledger already exists in bucket %s: %s", f.bucketName, createCmd.Name)
 	}
 
-	// Assign sequential ID to the ledger
-	ledgerID := f.nextLedgerID
-	f.nextLedgerID++
+	// Assign sequential ID to the ledger (IDs start at 1, so next ID is len(ledgers) + 1)
+	ledgerID := uint64(len(f.ledgers) + 1)
 
 	// Create ledger info using the command date
 	ledgerInfo := service.LedgerInfo{
@@ -66,9 +62,6 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*serv
 
 	// Store the ledger
 	f.ledgers[createCmd.Name] = ledgerInfo
-
-	// Initialize lastLogID for this ledger (starts at 0, first log will be 1)
-	f.lastLogIDs[createCmd.Name] = 0
 
 	f.logger.Info("Ledger created in bucket", zap.Uint64("index", index), zap.Uint64("id", ledgerID), zap.String("name", createCmd.Name), zap.String("bucket", f.bucketName))
 	return &ledgerInfo, nil
@@ -92,8 +85,6 @@ func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64) error {
 			ledgerInfo.LastLogID = insertCmd.Log.ID
 			f.ledgers[insertCmd.Log.Ledger] = ledgerInfo
 		}
-		// Update lastLogIDs map
-		f.lastLogIDs[insertCmd.Log.Ledger] = *insertCmd.Log.ID
 	}
 
 	// Update balances and account metadata based on log type
@@ -232,9 +223,7 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 	f.accountMetadata = make(map[string]map[string]map[string]string)
 
 	snapshotData := map[string]interface{}{
-		"ledgers":      f.ledgers,
-		"nextLedgerID": f.nextLedgerID,
-		"lastLogIDs":   f.lastLogIDs,
+		"ledgers": f.ledgers,
 	}
 
 	// Marshal to JSON
@@ -249,9 +238,7 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 // RestoreSnapshot restores the bucket FSM from a snapshot
 func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 	var snapshotData struct {
-		Ledgers      map[string]service.LedgerInfo `json:"ledgers"`
-		NextLedgerID uint64                        `json:"nextLedgerID"`
-		LastLogIDs   map[string]uint64             `json:"lastLogIDs"`
+		Ledgers map[string]service.LedgerInfo `json:"ledgers"`
 	}
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
@@ -263,36 +250,11 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 		f.ledgers = make(map[string]service.LedgerInfo)
 	}
 
-	// Restore nextLedgerID, or calculate from existing ledgers if not present
-	if snapshotData.NextLedgerID == 0 {
-		maxID := uint64(0)
-		for _, ledger := range f.ledgers {
-			if ledger.ID > maxID {
-				maxID = ledger.ID
-			}
-		}
-		f.nextLedgerID = maxID + 1
-	} else {
-		f.nextLedgerID = snapshotData.NextLedgerID
-	}
-
-	// Restore lastLogIDs
-	f.lastLogIDs = snapshotData.LastLogIDs
-	if f.lastLogIDs == nil {
-		f.lastLogIDs = make(map[string]uint64)
-		// Initialize lastLogIDs from ledger LastLogID if available
-		for name, ledgerInfo := range f.ledgers {
-			if ledgerInfo.LastLogID != nil {
-				f.lastLogIDs[name] = *ledgerInfo.LastLogID
-			}
-		}
-	}
-
 	// Initialize balances and account metadata maps
 	f.balances = make(map[string]ledger.Balances)
 	f.accountMetadata = make(map[string]map[string]map[string]string)
 
-	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)), zap.Uint64("nextLedgerID", f.nextLedgerID), zap.Int("lastLogIDsCount", len(f.lastLogIDs)))
+	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)))
 	return nil
 }
 
@@ -310,5 +272,31 @@ func (f *BucketFSM) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
 			result[account][asset] = new(big.Int).Set(balance)
 		}
 	}
+	return result
+}
+
+// GetInMemoryLogs returns the in-memory logs for a ledger
+// This represents the logs since the last snapshot
+// Logs are returned in descending order by ID
+func (f *BucketFSM) GetInMemoryLogs(ledgerName string) []ledger.Log {
+	var result []ledger.Log
+	for _, log := range f.logs {
+		if log.Ledger == ledgerName {
+			result = append(result, log)
+		}
+	}
+	// Sort by ID descending
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].ID == nil && result[j].ID == nil {
+			return false
+		}
+		if result[i].ID == nil {
+			return false // nil IDs go to the end
+		}
+		if result[j].ID == nil {
+			return true // nil IDs go to the end
+		}
+		return *result[i].ID > *result[j].ID // Descending order
+	})
 	return result
 }

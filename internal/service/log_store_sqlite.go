@@ -51,7 +51,7 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 	// Create logs table
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS logs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			id INTEGER,
 			type TEXT NOT NULL,
 			data TEXT NOT NULL,
 			date TEXT,
@@ -328,12 +328,13 @@ func (c *sqliteLogCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
+// Logs are returned in descending order by ID
 func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
 		FROM logs
 		WHERE ledger = ?
-		ORDER BY id ASC
+		ORDER BY id DESC
 	`, ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("querying logs: %w", err)

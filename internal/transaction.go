@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
 )
 
@@ -65,7 +66,7 @@ func (tx Transaction) Reverse() Transaction {
 }
 
 func (tx Transaction) WithID(id uint64) Transaction {
-	tx.ID = &id
+	tx.ID = pointer.For(id)
 	return tx
 }
 

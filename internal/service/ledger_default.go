@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
@@ -16,6 +17,8 @@ type DefaultLedger struct {
 	lockedVolumesStore LockedBalancesStore
 	logReader          LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
 	logger             *zap.Logger
+	nextLogIDs         map[string]uint64 // Counter for log IDs per ledger
+	nextLogIDMutex     sync.RWMutex      // Protects nextLogIDs access
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -25,7 +28,56 @@ func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStor
 		lockedVolumesStore: lockedVolumesStore,
 		logReader:          logReader,
 		logger:             logger,
+		nextLogIDs:         make(map[string]uint64),
 	}
+}
+
+// getNextLogID returns the next log ID for a ledger and increments the counter (thread-safe)
+// It initializes the counter from the last log if not already initialized
+func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (uint64, error) {
+	// First, check if counter is already initialized (read lock)
+	l.nextLogIDMutex.RLock()
+	_, exists := l.nextLogIDs[ledgerName]
+	l.nextLogIDMutex.RUnlock()
+
+	if !exists {
+		// Need to initialize counter, acquire write lock
+		l.nextLogIDMutex.Lock()
+		// Double-check after acquiring write lock
+		_, exists = l.nextLogIDs[ledgerName]
+		if !exists {
+			// Initialize counter from last log
+			lastLog, err := l.logReader.GetLastLog(ctx, ledgerName)
+			if err != nil {
+				l.nextLogIDMutex.Unlock()
+				return 0, fmt.Errorf("getting last log to initialize counter: %w", err)
+			}
+
+			var counter uint64
+			if lastLog != nil && lastLog.ID != nil {
+				// Initialize counter to last log ID + 1
+				counter = *lastLog.ID + 1
+				l.logger.Info("Initialized log ID counter from last log", zap.String("ledger", ledgerName), zap.Uint64("lastLogID", *lastLog.ID), zap.Uint64("nextLogID", counter))
+			} else {
+				// No logs yet, start at 1
+				counter = 1
+				l.logger.Info("Initialized log ID counter to 1 (no previous logs)", zap.String("ledger", ledgerName))
+			}
+			l.nextLogIDs[ledgerName] = counter
+		}
+		l.nextLogIDMutex.Unlock()
+	}
+
+	// Get current ID and increment (need write lock)
+	l.nextLogIDMutex.Lock()
+	defer l.nextLogIDMutex.Unlock()
+
+	// Get counter and increment
+	counter := l.nextLogIDs[ledgerName]
+	currentID := counter
+	l.nextLogIDs[ledgerName] = counter + 1
+
+	return currentID, nil
 }
 
 // CreateTransaction creates a new transaction
@@ -39,6 +91,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 
 	// Check idempotency: if idempotency key is provided, check if a log already exists
 	if parameters.IdempotencyKey != "" {
+		// todo: get from hot storage
 		existingLog, err := l.logReader.GetLogWithIdempotencyKey(ctx, ledgerName, parameters.IdempotencyKey)
 		if err != nil {
 			return nil, nil, err
@@ -54,6 +107,10 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 			createdTx, ok := existingLog.Data.(*ledger.CreatedTransaction)
 			if !ok {
 				return nil, nil, ErrIdempotencyKeyConflict
+			}
+			// Assign log ID to transaction
+			if existingLog.ID != nil {
+				createdTx.Transaction = createdTx.Transaction.WithID(*existingLog.ID)
 			}
 			return existingLog, createdTx, nil
 		}
@@ -125,16 +182,16 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		}
 	}
 
-	// Get last log to chain the new log
-	lastLog, err := l.logReader.GetLastLog(ctx, ledgerName)
+	// Get next log ID from counter
+	nextLogID, err := l.getNextLogID(ctx, ledgerName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("getting next log ID: %w", err)
 	}
 
 	// Determine timestamp: use provided timestamp or current time if not provided
 	timestamp := input.Timestamp
+	now := time.Now()
 	if timestamp == nil {
-		now := time.Now()
 		timestamp = &now
 	}
 
@@ -142,7 +199,9 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	tx := ledger.NewTransaction().
 		WithPostings(input.Postings...).
 		WithTimestamp(*timestamp).
-		WithMetadata(input.Metadata)
+		WithMetadata(input.Metadata).
+		WithInsertedAt(now).
+		WithUpdatedAt(now)
 
 	if input.Reference != "" {
 		tx = tx.WithReference(input.Reference)
@@ -154,19 +213,20 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		AccountMetadata: ledger.AccountMetadata(input.AccountMetadata),
 	}
 
-	// Create log
+	// Create log with ID from counter
 	log := ledger.NewLog(createdTx).
 		WithDate(*timestamp).
-		WithLedger(ledgerName)
+		WithLedger(ledgerName).
+		WithID(nextLogID)
+
+	// Assign log ID to transaction
+	createdTx.Transaction = createdTx.Transaction.WithID(nextLogID)
 
 	if parameters.IdempotencyKey != "" {
 		log = log.WithIdempotencyKey(parameters.IdempotencyKey)
 		idempotencyHash := ledger.ComputeIdempotencyHash(input)
 		log.IdempotencyHash = idempotencyHash
 	}
-
-	// Chain log with previous log
-	log = log.ChainLog(lastLog)
 
 	// If not dry run, write the log via LogWriter (which will use Raft)
 	if !parameters.DryRun {
