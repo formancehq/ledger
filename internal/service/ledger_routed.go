@@ -1,20 +1,21 @@
 package service
 
 import (
+	"github.com/formancehq/go-libs/v3/logging"
+	
 	"context"
 
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"go.uber.org/zap"
 )
 
 // RoutedLedger routes requests to the leader, either directly or via gRPC
 type RoutedLedger struct {
 	ledger *LeaderRouted[Ledger]
-	logger *zap.Logger
+	logger logging.Logger
 }
 
 // NewRoutedLedger creates a new routed ledger service
-func NewRoutedLedger(cluster ClusterClient, defaultLedger Ledger, logger *zap.Logger) *RoutedLedger {
+func NewRoutedLedger(cluster ClusterClient, defaultLedger Ledger, logger logging.Logger) *RoutedLedger {
 	grpcLedgerImpl := newGRPCLedger(cluster, logger)
 	var grpcLedger Ledger = grpcLedgerImpl
 	ledgerRouter := NewLeaderRouted(cluster.GetRaft(), defaultLedger, grpcLedger)

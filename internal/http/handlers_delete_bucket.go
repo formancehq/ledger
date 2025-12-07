@@ -7,7 +7,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 )
 
 // handleDeleteBucket handles DELETE /buckets/{bucketName} to delete a bucket
@@ -25,7 +24,7 @@ func (s *Server) handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
 
 	// Delete bucket via cluster
 	if err := s.cluster.DeleteBucket(bucketName); err != nil {
-		s.logger.Error("Failed to delete bucket", zap.String("name", bucketName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"name": bucketName, "error": err}).Errorf("Failed to delete bucket")
 
 		// Check if bucket does not exist
 		if err.Error() == fmt.Sprintf("bucket does not exist: %s", bucketName) {

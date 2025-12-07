@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/formancehq/go-libs/v3/logging"
+
 	"context"
 	"fmt"
 	"math/big"
@@ -8,7 +10,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"go.uber.org/zap"
 )
 
 // DefaultLedger is the default implementation of the Ledger interface
@@ -16,13 +17,13 @@ type DefaultLedger struct {
 	logWriter          LogWriter // Writes logs via Raft
 	lockedVolumesStore LockedBalancesStore
 	logReader          LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
-	logger             *zap.Logger
+	logger             logging.Logger
 	nextLogIDs         map[string]uint64 // Counter for log IDs per ledger
 	nextLogIDMutex     sync.RWMutex      // Protects nextLogIDs access
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStore, logReader LogReader, logger *zap.Logger) *DefaultLedger {
+func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStore, logReader LogReader, logger logging.Logger) *DefaultLedger {
 	return &DefaultLedger{
 		logWriter:          logWriter,
 		lockedVolumesStore: lockedVolumesStore,
@@ -57,11 +58,11 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 			if lastLog != nil && lastLog.ID != nil {
 				// Initialize counter to last log ID + 1
 				counter = *lastLog.ID + 1
-				l.logger.Info("Initialized log ID counter from last log", zap.String("ledger", ledgerName), zap.Uint64("lastLogID", *lastLog.ID), zap.Uint64("nextLogID", counter))
+				l.logger.WithFields(map[string]any{"ledger": ledgerName, "lastLogID": *lastLog.ID, "nextLogID": counter}).Infof("Initialized log ID counter from last log")
 			} else {
 				// No logs yet, start at 1
 				counter = 1
-				l.logger.Info("Initialized log ID counter to 1 (no previous logs)", zap.String("ledger", ledgerName))
+				l.logger.WithFields(map[string]any{"ledger": ledgerName}).Infof("Initialized log ID counter to 1 (no previous logs)")
 			}
 			l.nextLogIDs[ledgerName] = counter
 		}
@@ -234,7 +235,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 			return nil, nil, fmt.Errorf("inserting logs: %w", err)
 		}
 
-		l.logger.Debug("Logs written successfully", zap.Int("count", 1))
+		l.logger.WithFields(map[string]any{"count": 1}).Debugf("Logs written successfully")
 	}
 
 	return &log, createdTx, nil

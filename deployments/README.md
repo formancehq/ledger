@@ -1,38 +1,19 @@
 # Deployment Configuration Files
 
-This directory contains all configuration files used by the Docker Compose setup.
+This directory contains configuration files used for deploying the Ledger v3 POC application, primarily with Docker Compose.
 
-## Files
+## Files:
 
-### `default-config.yml`
-Configuration file for the ledger server nodes. This file is mounted into all node containers and contains:
-- Network configuration (bind address, data directory)
-- Server configuration (gRPC and HTTP ports)
-- Storage configuration (SQLite or file-based)
-- Raft snapshot configuration
+- `otel-collector-config.yml`:
+  - **Purpose**: Configuration for the primary OpenTelemetry Collector. This collector receives traces from the Ledger v3 POC application and forwards them to the SigNoz OpenTelemetry Collector.
+  - **Details**: Defines OTLP gRPC and HTTP receivers (ports 4317, 4318) and an OTLP exporter configured to send data to `signoz-otel-collector:4317`. It includes a batch processor for efficient trace handling.
 
-Node-specific values (node ID, advertise address, peers, bootstrap flag) are set via environment variables in `docker-compose.yml`.
+- `signoz-otel-collector-config.yaml`:
+  - **Purpose**: Configuration for the SigNoz-specific OpenTelemetry Collector. This collector is responsible for processing traces, metrics, and logs and exporting them to the ClickHouse database, which is then used by the SigNoz UI.
+  - **Details**: Defines an OTLP gRPC receiver (port 4317), memory limiter, and batch processors. It configures ClickHouse exporters for traces, metrics, and logs, specifying the ClickHouse endpoint, database names, and retry policies.
 
-### `otel-collector-config.yml`
-Configuration for the OpenTelemetry Collector. This collector:
-- Receives traces via OTLP (gRPC on port 4317, HTTP on port 4318)
-- Processes traces using batch processor
-- Exports traces to the SigNoz OpenTelemetry Collector
+## Usage with Docker Compose:
 
-### `signoz-otel-collector-config.yaml`
-Configuration for the SigNoz OpenTelemetry Collector. This collector:
-- Receives traces from the main OpenTelemetry Collector
-- Processes traces, metrics, and logs using batch and memory limiter processors
-- Exports data to ClickHouse databases:
-  - `signoz_traces` for traces
-  - `signoz_metrics` for metrics
-  - `signoz_logs` for logs
+The `docker-compose.yml` file in the root directory references these configuration files. When starting the Docker Compose environment, these files are mounted into their respective containers, ensuring that the services are configured correctly for operation and observability.
 
-## Usage
-
-These files are automatically mounted into their respective containers by `docker-compose.yml`. No manual configuration is required when using Docker Compose.
-
-To modify the configuration:
-1. Edit the relevant file in this directory
-2. Restart the affected service: `docker-compose restart <service-name>`
-
+**Note**: The Ledger v3 POC application nodes are configured via command-line flags and environment variables directly in `docker-compose.yml`, not via configuration files.

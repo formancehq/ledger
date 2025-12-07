@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // handleCreateBucketSnapshot handles POST /buckets/{bucketName}/snapshot to create a snapshot for a bucket
@@ -27,7 +26,7 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 	// Get bucket Raft state to check if we are the leader of this bucket's Raft group
 	bucketWithState, err := s.cluster.GetBucketWithRaftState(bucketName)
 	if err != nil {
-		s.logger.Error("Failed to get bucket Raft state", zap.String("bucket", bucketName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to get bucket Raft state")
 		api.InternalServerError(w, r, err)
 		return
 	}
@@ -43,7 +42,7 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 	if isBucketLeader {
 		// We are the leader of this bucket's Raft group, call directly
 		if err := s.cluster.CreateBucketSnapshot(bucketName); err != nil {
-			s.logger.Error("Failed to create bucket snapshot", zap.String("bucket", bucketName), zap.Error(err))
+			s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to create bucket snapshot")
 
 			// Check if bucket does not exist
 			if err.Error() == fmt.Sprintf("bucket does not exist: %s", bucketName) {
@@ -75,7 +74,7 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 		BucketName: bucketName,
 	})
 	if err != nil {
-		s.logger.Error("Failed to create bucket snapshot via gRPC", zap.String("bucket", bucketName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to create bucket snapshot via gRPC")
 		api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
 		return
 	}

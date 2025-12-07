@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -14,11 +14,11 @@ import (
 type Client struct {
 	conn   *grpc.ClientConn
 	client service.LedgerServiceClient
-	logger *zap.Logger
+	logger logging.Logger
 	mu     sync.RWMutex
 }
 
-func NewClient(logger *zap.Logger) *Client {
+func NewClient(logger logging.Logger) *Client {
 	return &Client{
 		logger: logger,
 	}
@@ -44,7 +44,7 @@ func (c *Client) Connect(ctx context.Context, address string) error {
 	c.conn = conn
 	c.client = service.NewLedgerServiceClient(conn)
 
-	c.logger.Info("Connected to leader gRPC server", zap.String("address", address))
+	c.logger.WithFields(map[string]any{"address": address}).Infof("Connected to leader gRPC server")
 	return nil
 }
 
@@ -62,7 +62,7 @@ func (c *Client) ConnectWithConnection(conn *grpc.ClientConn) error {
 	c.conn = conn
 	c.client = service.NewLedgerServiceClient(conn)
 
-	c.logger.Info("Reusing existing gRPC connection for leader")
+	c.logger.Infof("Reusing existing gRPC connection for leader")
 	return nil
 }
 
@@ -81,4 +81,3 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
-

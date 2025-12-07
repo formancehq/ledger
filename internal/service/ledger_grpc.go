@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/formancehq/go-libs/v3/logging"
+	
 	"context"
 	"fmt"
 	"math/big"
@@ -8,7 +10,6 @@ import (
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -17,11 +18,11 @@ import (
 // grpcLedger implements Ledger by forwarding requests via gRPC to the leader
 type grpcLedger struct {
 	cluster ClusterClient
-	logger  *zap.Logger
+	logger  logging.Logger
 }
 
 // newGRPCLedger creates a new gRPC-based ledger implementation
-func newGRPCLedger(cluster ClusterClient, logger *zap.Logger) *grpcLedger {
+func newGRPCLedger(cluster ClusterClient, logger logging.Logger) *grpcLedger {
 	return &grpcLedger{
 		cluster: cluster,
 		logger:  logger,

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.uber.org/zap"
 )
 
 var (
@@ -31,7 +31,7 @@ type Storage struct {
 	// Snapshot stores the most recent snapshot
 	snapshot raftpb.Snapshot
 
-	logger        *zap.Logger
+	logger        logging.Logger
 	dataDir       string
 	hardStateFile string
 	entriesFile   string
@@ -39,7 +39,7 @@ type Storage struct {
 }
 
 // NewStorage creates a new Storage instance
-func NewStorage(dataDir string, logger *zap.Logger) (*Storage, error) {
+func NewStorage(dataDir string, logger logging.Logger) (*Storage, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -56,7 +56,7 @@ func NewStorage(dataDir string, logger *zap.Logger) (*Storage, error) {
 
 	// Try to restore from disk
 	if err := s.restore(); err != nil {
-		logger.Warn("Failed to restore storage from disk, starting fresh", zap.Error(err))
+		logger.WithFields(map[string]any{"error": err}).Infof("WARN: Failed to restore storage from disk, starting fresh")
 	}
 
 	return s, nil
@@ -234,7 +234,7 @@ func (s *Storage) SetHardState(st raftpb.HardState) {
 
 	// Save to disk (outside of lock to avoid blocking)
 	if err := s.save(); err != nil {
-		s.logger.Error("Failed to save storage to disk", zap.Error(err))
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
 	}
 }
 
@@ -275,7 +275,7 @@ func (s *Storage) Append(entries []raftpb.Entry) error {
 
 	// Save to disk (outside of lock to avoid blocking)
 	if err := s.save(); err != nil {
-		s.logger.Error("Failed to save storage to disk", zap.Error(err))
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
 	}
 
 	return nil
@@ -310,7 +310,7 @@ func (s *Storage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (r
 
 	// Save to disk (outside of lock to avoid blocking)
 	if err := s.save(); err != nil {
-		s.logger.Error("Failed to save storage to disk", zap.Error(err))
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
 	}
 
 	return snap, nil
@@ -361,7 +361,7 @@ func (s *Storage) ApplySnapshot(snap raftpb.Snapshot) error {
 
 	// Save to disk (outside of lock to avoid blocking)
 	if err := s.save(); err != nil {
-		s.logger.Error("Failed to save storage to disk", zap.Error(err))
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
 	}
 
 	return nil

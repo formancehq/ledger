@@ -4,7 +4,16 @@ This document describes the organizational structure of the CLI client commands.
 
 ## Reference Implementation
 
-The ledger service implementation is based on the reference implementation from `github.com/formancehq/ledger`. When implementing new features or fixing bugs, refer to the original implementation for guidance on patterns and best practices.
+**The reference implementation for this project is `github.com/formancehq/ledger`.**
+
+The ledger service implementation follows the same patterns and best practices as `github.com/formancehq/ledger`. When implementing new features or fixing bugs, refer to the original implementation for guidance on:
+- Application structure and organization
+- Dependency injection patterns (fx)
+- Service startup and lifecycle management
+- HTTP and gRPC server configuration
+- OpenTelemetry instrumentation
+- Configuration management
+- Error handling and logging patterns
 
 ## File Structure
 
@@ -254,3 +263,262 @@ The serialization flow:
 - If you need to read persisted data, restore it from snapshots during FSM initialization
 
 **Example**: Instead of calling `logReader.GetLogWithIdempotencyKey()` in the FSM, maintain an `idempotencyKeys map[string]IdempotencyKeyInfo` in the FSM state and look up directly from this map.
+
+## Dependency Injection with fx
+
+The application uses Uber's `fx` (functional dependency injection) framework for managing dependencies and lifecycle, following the same patterns as `github.com/formancehq/ledger`.
+
+### Architecture
+
+The application is structured using fx modules:
+
+- **`internal/application/module.go`**: Main application module that provides all core dependencies (logger, Raft cluster, ledger service, HTTP server)
+- **`internal/telemetry/module.go`**: OpenTelemetry module that provides tracing infrastructure
+- **`internal/application/app.go`**: Application factory that creates the fx application with all modules
+
+### Module Pattern
+
+Each module exports a `Module()` function that returns `fx.Option`:
+
+```go
+func Module() fx.Option {
+    return fx.Options(
+        fx.Provide(
+            // Provide dependencies
+        ),
+        fx.Invoke(
+            // Invoke lifecycle hooks
+        ),
+    )
+}
+```
+
+### Lifecycle Management
+
+Components use `fx.Lifecycle` hooks for startup and shutdown:
+
+```go
+func NewComponent(lc fx.Lifecycle, dependencies...) (*Component, error) {
+    component := &Component{...}
+    
+    lc.Append(fx.Hook{
+        OnStart: func(ctx context.Context) error {
+            // Start component
+            return component.Start(ctx)
+        },
+        OnStop: func(ctx context.Context) error {
+            // Stop component
+            return component.Stop(ctx)
+        },
+    })
+    
+    return component, nil
+}
+```
+
+### Application Startup
+
+The application uses `github.com/formancehq/go-libs/v3/service` to manage startup and lifecycle, following the same pattern as `github.com/formancehq/ledger`:
+
+```go
+import (
+    "github.com/formancehq/go-libs/v3/service"
+    "github.com/formancehq/ledger-v3-poc/internal/application"
+)
+
+func runServer(cmd *cobra.Command, args []string) error {
+    cfg, err := loadConfig(cmd)
+    if err != nil {
+        return err
+    }
+
+    // Create fx application options
+    opts := []fx.Option{
+        fx.Provide(func() *config.Config { return cfg }),
+        application.Module(),
+    }
+
+    // Create service app
+    app := service.New(os.Stdout, opts...)
+
+    // Run the application (handles startup, signal handling, and graceful shutdown)
+    return app.Run(cmd)
+}
+
+func main() {
+    rootCmd := newRootCommand()
+    service.Execute(rootCmd) // Binds env vars to flags and executes
+}
+```
+
+The `service.Execute()` function:
+- Automatically binds environment variables to command flags (converting `NODE_ID` → `--node-id`, etc.)
+- Handles command execution and error reporting
+
+The `app.Run()` function:
+- Creates and starts the fx application
+- Handles interrupt signals (SIGTERM, SIGINT)
+- Manages graceful shutdown with configurable grace period
+- Provides proper error handling and exit codes
+
+### Adding a New Component
+
+To add a new component using fx:
+
+1. **Create a provider function**:
+   ```go
+   func NewMyComponent(lc fx.Lifecycle, dependencies...) (*MyComponent, error) {
+       component := &MyComponent{...}
+       lc.Append(fx.Hook{
+           OnStart: func(ctx context.Context) error {
+               return component.Start(ctx)
+           },
+           OnStop: func(ctx context.Context) error {
+               return component.Stop(ctx)
+           },
+       })
+       return component, nil
+   }
+   ```
+
+2. **Add to module**:
+   ```go
+   func Module() fx.Option {
+       return fx.Options(
+           fx.Provide(NewMyComponent),
+           // ...
+       )
+   }
+   ```
+
+3. **Use in other components**:
+   ```go
+   func NewOtherComponent(myComponent *MyComponent) *OtherComponent {
+       return &OtherComponent{component: myComponent}
+   }
+   ```
+
+### Benefits
+
+- **Automatic dependency resolution**: fx automatically resolves dependencies based on function parameters
+- **Lifecycle management**: Components are started and stopped in the correct order
+- **Testability**: Easy to provide mock dependencies in tests
+- **Modularity**: Each module can be tested independently
+- **Consistency**: Follows the same patterns as other Formance projects
+
+### Using Formance Libraries
+
+The application uses Formance's `go-libs` library for common functionality:
+
+#### OpenTelemetry (OTLP)
+
+OpenTelemetry is configured directly using `github.com/formancehq/go-libs/v3/otlp` and `github.com/formancehq/go-libs/v3/otlp/otlptraces` modules:
+
+```go
+// In cmd/server/main.go
+import (
+    "github.com/formancehq/go-libs/v3/otlp"
+    "github.com/formancehq/go-libs/v3/otlp/otlptraces"
+)
+
+func newRootCommand() *cobra.Command {
+    rootCmd := &cobra.Command{...}
+    
+    // Add OpenTelemetry flags from go-libs
+    otlp.AddFlags(rootCmd.Flags())
+    otlptraces.AddFlags(rootCmd.Flags())
+    
+    return rootCmd
+}
+
+func runServer(cmd *cobra.Command, args []string) error {
+    // Set default service name if not provided via flags
+    serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
+    if serviceName == "" {
+        defaultServiceName := fmt.Sprintf("ledger-v3-poc-node-%d", cfg.NodeID)
+        cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName)
+    }
+    
+    opts := []fx.Option{
+        // Add OpenTelemetry modules from go-libs (using flags)
+        otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(version)),
+        otlptraces.FXModuleFromFlags(cmd),
+        // ... other options
+    }
+    
+    app := service.New(os.Stdout, opts...)
+    return app.Run(cmd)
+}
+```
+
+The `otlp.FXModuleFromFlags()` and `otlptraces.FXModuleFromFlags()` functions automatically read configuration from command flags and create the appropriate fx modules. The flags are automatically bound to environment variables (e.g., `OTEL_SERVICE_NAME`, `OTEL_TRACES_EXPORTER_OTLP_ENDPOINT`, etc.).
+
+#### HTTP Server
+
+The HTTP server is configured using `github.com/formancehq/go-libs/v3/httpserver`:
+
+```go
+// In internal/application/module.go
+import (
+    "github.com/formancehq/go-libs/v3/httpserver"
+    httphandler "github.com/formancehq/ledger-v3-poc/internal/http"
+)
+
+func StartHTTPServerHook(lc fx.Lifecycle, cfg *config.Config, handler http.Handler) {
+    lc.Append(httpserver.NewHook(handler,
+        httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
+    ))
+}
+```
+
+The `httpserver.NewHook()` function returns an `fx.Hook` that manages the HTTP server lifecycle (start/stop) using `serverport` for port management. The handler is created separately using `httphandler.NewHandler()` which returns an `http.Handler`.
+
+**Benefits**:
+- **Standardized configuration**: Uses Formance's standard patterns for HTTP servers
+- **Port management**: Automatic port binding and management via `serverport`
+- **Lifecycle management**: Proper startup and shutdown hooks integrated with fx
+- **Consistency**: Same patterns as other Formance services
+
+### Using the Service Package
+
+The application uses `github.com/formancehq/go-libs/v3/service` for application lifecycle management, following the same pattern as `github.com/formancehq/ledger`:
+
+```go
+// In cmd/server/main.go
+import (
+    "github.com/formancehq/go-libs/v3/service"
+)
+
+func main() {
+    rootCmd := newRootCommand()
+    service.Execute(rootCmd) // Binds env vars to flags and executes
+}
+
+func runServer(cmd *cobra.Command, args []string) error {
+    // Load config from flags (env vars are automatically bound)
+    cfg := loadConfig(cmd)
+    
+    // Create fx options
+    opts := []fx.Option{
+        fx.Provide(func() *config.Config { return cfg }),
+        application.Module(),
+    }
+    
+    // Create and run service app
+    app := service.New(os.Stdout, opts...)
+    return app.Run(cmd)
+}
+```
+
+**Key features**:
+- **Automatic env var binding**: `service.Execute()` automatically binds environment variables to flags (e.g., `NODE_ID` → `--node-id`)
+- **Standard flags**: `service.AddFlags()` adds common flags like `--debug`, `--grace-period`, `--total-stop-timeout`
+- **Lifecycle management**: `app.Run()` handles:
+  - Application startup
+  - Signal handling (SIGTERM, SIGINT)
+  - Graceful shutdown with configurable grace period
+  - Proper error handling and exit codes
+- **Logging integration**: Automatically creates logger based on debug flag and OTLP configuration
+- **Context management**: Provides lifecycle context with ready/stopped channels
+
+**Reference**: See `github.com/formancehq/ledger` for examples of how the service package is used in production.

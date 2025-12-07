@@ -6,7 +6,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // SnapshotData represents the response for snapshot operations
@@ -29,7 +28,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	if s.isLeader() {
 		// We are the leader, call directly
 		if err := s.cluster.Snapshot(); err != nil {
-			s.logger.Error("Failed to create snapshot", zap.Error(err))
+			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot")
 			api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
 			return
 		}
@@ -51,7 +50,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	// Call leader via gRPC
 	resp, err := client.CreateClusterSnapshot(r.Context(), &service.CreateClusterSnapshotRequest{})
 	if err != nil {
-		s.logger.Error("Failed to create snapshot via gRPC", zap.Error(err))
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot via gRPC")
 		api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
 		return
 	}

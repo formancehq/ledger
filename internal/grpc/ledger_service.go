@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -17,13 +17,13 @@ import (
 // ledgerServiceServer implements the LedgerService
 type ledgerServiceServer struct {
 	service.UnimplementedLedgerServiceServer
-	logger         *zap.Logger
+	logger         logging.Logger
 	ledgerService  service.Ledger
 	snapshotClient SnapshotClient
 }
 
 // newLedgerServiceServer creates a new ledger service server
-func newLedgerServiceServer(logger *zap.Logger, ledgerService service.Ledger, snapshotClient SnapshotClient) *ledgerServiceServer {
+func newLedgerServiceServer(logger logging.Logger, ledgerService service.Ledger, snapshotClient SnapshotClient) *ledgerServiceServer {
 	return &ledgerServiceServer{
 		logger:         logger,
 		ledgerService:  ledgerService,
@@ -32,7 +32,7 @@ func newLedgerServiceServer(logger *zap.Logger, ledgerService service.Ledger, sn
 }
 
 func (l *ledgerServiceServer) CreateTransaction(ctx context.Context, req *service.CreateTransactionRequest) (*service.CreateTransactionResponse, error) {
-	l.logger.Debug("CreateTransaction request received", zap.String("reference", req.Reference))
+	l.logger.WithFields(map[string]any{"reference": req.Reference}).Debugf("CreateTransaction request received")
 
 	// Convert protobuf request to service types
 	postings := make(ledger.Postings, 0, len(req.Postings))
@@ -193,7 +193,7 @@ func (l *ledgerServiceServer) CreateClusterSnapshot(ctx context.Context, req *se
 }
 
 func (l *ledgerServiceServer) CreateBucketSnapshot(ctx context.Context, req *service.CreateBucketSnapshotRequest) (*service.CreateBucketSnapshotResponse, error) {
-	l.logger.Debug("CreateBucketSnapshot request received", zap.String("bucket", req.BucketName))
+	l.logger.WithFields(map[string]any{"bucket": req.BucketName}).Debugf("CreateBucketSnapshot request received")
 
 	if l.snapshotClient == nil {
 		return nil, fmt.Errorf("snapshot client not available")

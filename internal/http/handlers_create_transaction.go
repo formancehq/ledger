@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // handleCreateTransaction handles POST /{ledgerName}/transactions to create a new transaction
@@ -49,7 +48,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	// Call ledger service
 	_, createdTx, err := s.ledgerService.CreateTransaction(r.Context(), ledgerName, params)
 	if err != nil {
-		s.logger.Error("Failed to create transaction", zap.String("ledger", ledgerName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"ledger": ledgerName, "error": err}).Errorf("Failed to create transaction")
 		api.InternalServerError(w, r, err)
 		return
 	}

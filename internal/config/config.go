@@ -23,7 +23,6 @@ type Config struct {
 	StorageFilePath   string        // Path to log file when using "file" storage type
 	SnapshotThreshold uint64        // Number of logs before triggering a snapshot
 	SnapshotInterval  time.Duration // Minimum interval between snapshots
-	OTLPEndpoint      string        // OpenTelemetry OTLP endpoint (e.g., "otel-collector:4317")
 }
 
 // ParsePeers parses the peer list and populates PeerIDs map

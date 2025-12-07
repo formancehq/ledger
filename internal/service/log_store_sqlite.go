@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/formancehq/go-libs/v3/logging"
+
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,18 +12,17 @@ import (
 
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
 )
 
 // SQLiteLogStore is a SQLite implementation of LogStore
 type SQLiteLogStore struct {
 	db     *sql.DB
-	logger *zap.Logger
+	logger logging.Logger
 }
 
 // NewSQLiteLogStore creates a new SQLite log store
-func NewSQLiteLogStore(ctx context.Context, dsn string, logger *zap.Logger) (*SQLiteLogStore, error) {
+func NewSQLiteLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
 	// Open SQLite database
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -159,7 +160,7 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 		return fmt.Errorf("committing transaction: %w", err)
 	}
 
-	s.logger.Debug("Logs inserted into SQLite", zap.Int("count", len(logs)))
+	s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into SQLite")
 	return nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
@@ -19,13 +20,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.uber.org/zap"
 )
 
 // restoreFSMFromStorage restores the FSM state from storage by reading the last snapshot
 // and applying all entries after the snapshot
-func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger *zap.Logger) error {
-	logger.Info("Restoring FSM from storage")
+func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger logging.Logger) error {
+	logger.Infof("Restoring FSM from storage")
 	// Read the last snapshot
 	snapshot, err := storage.Snapshot()
 	if err != nil {
@@ -34,12 +34,12 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger *zap.L
 
 	// If snapshot exists, restore FSM from it
 	if snapshot.Metadata.Index > 0 {
-		logger.Info("Restoring FSM from snapshot", zap.Uint64("index", snapshot.Metadata.Index))
+		logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
 		if err := fsmInstance.RestoreSnapshot(snapshot.Data); err != nil {
 			return fmt.Errorf("restoring FSM from snapshot: %w", err)
 		}
 	} else {
-		logger.Info("No snapshot found, starting with empty FSM")
+		logger.Infof("No snapshot found, starting with empty FSM")
 	}
 
 	// Read all entries after the snapshot
@@ -55,7 +55,7 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger *zap.L
 
 	// If there are entries after the snapshot, apply them to the FSM
 	if firstIndex <= lastIndex {
-		logger.Info("Applying entries after snapshot", zap.Uint64("firstIndex", firstIndex), zap.Uint64("lastIndex", lastIndex))
+		logger.WithFields(map[string]any{"firstIndex": firstIndex, "lastIndex": lastIndex}).Infof("Applying entries after snapshot")
 		// Read entries in batches to avoid loading everything in memory at once
 		const maxBatchSize = 1000
 		for i := firstIndex; i <= lastIndex; i += maxBatchSize {
@@ -87,7 +87,7 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger *zap.L
 				// Decode the command
 				var cmd service.Command
 				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-					logger.Warn("Failed to unmarshal command during FSM restoration", zap.Uint64("index", entry.Index), zap.Error(err))
+					logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Infof("WARN: Failed to unmarshal command during FSM restoration")
 					continue
 				}
 
@@ -95,20 +95,20 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger *zap.L
 				switch cmd.Type {
 				case fsm.CommandTypeCreateBucket:
 					if err := fsmInstance.HandleCreateBucket(cmd, entry.Index); err != nil {
-						logger.Warn("Failed to apply create bucket command during FSM restoration", zap.Uint64("index", entry.Index), zap.Error(err))
+						logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Infof("WARN: Failed to apply create bucket command during FSM restoration")
 						// Continue with other entries even if one fails
 					}
 				case fsm.CommandTypeDeleteBucket:
 					if err := fsmInstance.HandleDeleteBucket(cmd, entry.Index); err != nil {
-						logger.Warn("Failed to apply delete bucket command during FSM restoration", zap.Uint64("index", entry.Index), zap.Error(err))
+						logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Infof("WARN: Failed to apply delete bucket command during FSM restoration")
 						// Continue with other entries even if one fails
 					}
 				default:
-					logger.Debug("Skipping unknown command type during FSM restoration", zap.String("type", string(cmd.Type)), zap.Uint64("index", entry.Index))
+					logger.WithFields(map[string]any{"type": string(cmd.Type), "index": entry.Index}).Debugf("Skipping unknown command type during FSM restoration")
 				}
 			}
 		}
-		logger.Info("Finished applying entries after snapshot", zap.Uint64("lastIndex", lastIndex))
+		logger.WithFields(map[string]any{"lastIndex": lastIndex}).Infof("Finished applying entries after snapshot")
 	}
 
 	return nil
@@ -120,7 +120,7 @@ type Cluster struct {
 	storage       *Storage
 	transport     *Transport
 	config        *config.Config
-	logger        *zap.Logger
+	logger        logging.Logger
 	grpcServer    *grpc.Server
 	ledgerService service.Ledger // Routed ledger service that routes to bucket Raft groups
 	ctx           context.Context
@@ -130,7 +130,7 @@ type Cluster struct {
 	muGroups      sync.RWMutex                // Mutex for bucketGroups map
 }
 
-func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.Logger) (*Cluster, error) {
+func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger logging.Logger) (*Cluster, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -184,7 +184,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	if cfg.Bootstrap {
 		// Only bootstrap if storage is empty
 		if !storage.IsEmpty() {
-			logger.Info("Storage is not empty, skipping bootstrap")
+			logger.Infof("Storage is not empty, skipping bootstrap")
 		} else {
 			peers := make([]raft.Peer, 0, len(cfg.Peers)+1)
 			peers = append(peers, raft.Peer{ID: nodeID})
@@ -194,14 +194,14 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 			for _, peerEntry := range cfg.Peers {
 				parts := strings.SplitN(peerEntry, "/", 2)
 				if len(parts) != 2 {
-					logger.Warn("Invalid peer format, skipping", zap.String("peer", peerEntry))
+					logger.WithFields(map[string]any{"peer": peerEntry}).Infof("WARN: Invalid peer format, skipping")
 					continue
 				}
 				peerIDStr := parts[0]
 
 				peerID, err := strconv.ParseUint(peerIDStr, 10, 64)
 				if err != nil {
-					logger.Warn("Invalid peer ID, skipping", zap.String("peer", peerEntry), zap.Error(err))
+					logger.WithFields(map[string]any{"peer": peerEntry, "error": err}).Infof("WARN: Invalid peer ID, skipping")
 					continue
 				}
 
@@ -214,7 +214,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 				transport.Stop()
 				return nil, fmt.Errorf("bootstrapping cluster: %w", err)
 			}
-			logger.Info("Cluster bootstrapped", zap.Int("peers", len(peers)))
+			logger.WithFields(map[string]any{"peers": len(peers)}).Infof("Cluster bootstrapped")
 		}
 	}
 
@@ -266,7 +266,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 	for _, peerEntry := range cfg.Peers {
 		parts := strings.SplitN(peerEntry, "/", 2)
 		if len(parts) != 2 {
-			logger.Warn("Invalid peer format, skipping", zap.String("peer", peerEntry))
+			logger.WithFields(map[string]any{"peer": peerEntry}).Infof("WARN: Invalid peer format, skipping")
 			continue
 		}
 		peerIDStr := parts[0]
@@ -274,7 +274,7 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 
 		peerID, err := strconv.ParseUint(peerIDStr, 10, 64)
 		if err != nil {
-			logger.Warn("Invalid peer ID, skipping", zap.String("peer", peerEntry), zap.Error(err))
+			logger.WithFields(map[string]any{"peer": peerEntry, "error": err}).Infof("WARN: Invalid peer ID, skipping")
 			continue
 		}
 
@@ -292,7 +292,7 @@ func (r *Cluster) Start() error {
 	// Start the unified gRPC server (always running to receive Raft messages)
 	go func() {
 		if err := r.grpcServer.Start(r.ctx); err != nil {
-			r.logger.Error("Unified gRPC server error", zap.Error(err))
+			r.logger.WithFields(map[string]any{"error": err}).Errorf("Unified gRPC server error")
 		}
 	}()
 
@@ -318,10 +318,10 @@ func (r *Cluster) readyLoop() {
 			// Otherwise, it's for the main cluster
 			if msg.To >= 0x10000 || msg.From >= 0x10000 {
 				// Route to appropriate bucket group
-				r.logger.Debug("Received message for bucket group", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
+				r.logger.WithFields(map[string]any{"from": fmt.Sprintf("%x", msg.From), "to": fmt.Sprintf("%x", msg.To)}).Debugf("Received message for bucket group")
 				r.routeMessageToBucketGroup(msg)
 			} else {
-				r.logger.Debug("Received message for main cluster", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
+				r.logger.WithFields(map[string]any{"from": fmt.Sprintf("%x", msg.From), "to": fmt.Sprintf("%x", msg.To)}).Debugf("Received message for main cluster")
 				// Process message for main cluster
 				r.node.RawNode().Step(msg)
 			}
@@ -329,11 +329,11 @@ func (r *Cluster) readyLoop() {
 			// Report unreachable peer to Raft
 			// If peerID >= 0x10000, it's for a bucket group, route it there
 			if peerID >= 0x10000 {
-				r.logger.Debug("Received unreachable message for bucket group", zap.String("peer", fmt.Sprintf("%x", peerID)))
+				r.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID)}).Debugf("Received unreachable message for bucket group")
 				r.routeUnreachableToBucketGroup(peerID)
 			} else {
 				// Report to main cluster
-				r.logger.Debug("Received unreachable message for main cluster", zap.String("peer", fmt.Sprintf("%x", peerID)))
+				r.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID)}).Debugf("Received unreachable message for main cluster")
 				r.node.RawNode().ReportUnreachable(peerID)
 			}
 		}
@@ -349,21 +349,21 @@ func (r *Cluster) readyLoop() {
 
 			if len(rd.Entries) > 0 {
 				if err := r.storage.Append(rd.Entries); err != nil {
-					r.logger.Error("Failed to append entries", zap.Error(err))
+					r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to append entries")
 					continue
 				}
 			}
 
 			if !raft.IsEmptySnap(rd.Snapshot) {
-				r.logger.Info("Applying snapshot", zap.Uint64("index", rd.Snapshot.Metadata.Index))
+				r.logger.WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).Infof("Applying snapshot")
 				// Apply snapshot to storage
 				if err := r.storage.ApplySnapshot(rd.Snapshot); err != nil {
-					r.logger.Error("Failed to apply snapshot to storage", zap.Error(err))
+					r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to apply snapshot to storage")
 					continue
 				}
 				// Restore FSM from snapshot
 				if err := r.fsm.RestoreSnapshot(rd.Snapshot.Data); err != nil {
-					r.logger.Error("Failed to restore FSM from snapshot", zap.Error(err))
+					r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to restore FSM from snapshot")
 					continue
 				}
 
@@ -386,30 +386,28 @@ func (r *Cluster) readyLoop() {
 				if entry.Type == raftpb.EntryConfChange {
 					var cc raftpb.ConfChange
 					if err := cc.Unmarshal(entry.Data); err != nil {
-						r.logger.Error("Failed to unmarshal ConfChange", zap.Error(err))
+						r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange")
 						continue
 					}
-					r.logger.Info("Applying configuration change",
-						zap.String("type", cc.Type.String()),
-						zap.String("nodeID", fmt.Sprintf("%x", cc.NodeID)))
+					r.logger.WithFields(map[string]any{"type": cc.Type.String(), "nodeID": fmt.Sprintf("%x", cc.NodeID)}).Infof("Applying configuration change")
 					// Apply the conf change to update the ConfState
 					r.node.RawNode().ApplyConfChange(cc)
 					continue
 				}
 				// Skip other non-normal entries
 				if entry.Type != raftpb.EntryNormal {
-					r.logger.Debug("Skipping non-normal entry", zap.Uint64("index", entry.Index), zap.Uint64("type", uint64(entry.Type)))
+					r.logger.WithFields(map[string]any{"index": entry.Index, "type": uint64(entry.Type)}).Debugf("Skipping non-normal entry")
 					continue
 				}
 				// Skip empty entries (they might be used for heartbeat or other Raft internal purposes)
 				if len(entry.Data) == 0 {
-					r.logger.Debug("Skipping empty entry", zap.Uint64("index", entry.Index))
+					r.logger.WithFields(map[string]any{"index": entry.Index}).Debugf("Skipping empty entry")
 					continue
 				}
 				// Decode the command to get its ID
 				var cmd service.Command
 				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-					r.logger.Error("Failed to unmarshal command for notification", zap.Uint64("index", entry.Index), zap.Error(err))
+					r.logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Errorf("Failed to unmarshal command for notification")
 					continue
 				}
 
@@ -417,7 +415,7 @@ func (r *Cluster) readyLoop() {
 				// Notify the wrapper that this command has been applied using its ID
 				r.node.NotifyApplied(cmd.ID, result, entry.Index, applyErr)
 				if applyErr != nil {
-					r.logger.Error("Failed to apply entry", zap.Uint64("index", entry.Index), zap.Uint64("commandID", cmd.ID), zap.Error(applyErr))
+					r.logger.WithFields(map[string]any{"index": entry.Index, "commandID": cmd.ID, "error": applyErr}).Errorf("Failed to apply entry")
 				}
 			}
 
@@ -452,7 +450,7 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) (any, error) {
 					bucketID, hasGroup := bucketRaftGroups[createCmd.Name]
 					if hasGroup {
 						if startErr := r.startBucketRaftGroupFromFSM(createCmd.Name, bucketID, bucketInfo); startErr != nil {
-							r.logger.Error("Failed to start bucket Raft group", zap.String("bucket", createCmd.Name), zap.Error(startErr))
+							r.logger.WithFields(map[string]any{"bucket": createCmd.Name, "error": startErr}).Errorf("Failed to start bucket Raft group")
 							// Don't fail the entry application, just log the error
 						}
 					}
@@ -466,7 +464,7 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) (any, error) {
 			var deleteCmd fsm.DeleteBucketCommand
 			if unmarshalErr := fsm.UnmarshalCommandData(cmd.Data, &deleteCmd); unmarshalErr == nil {
 				if stopErr := r.stopBucketRaftGroup(deleteCmd.Name); stopErr != nil {
-					r.logger.Error("Failed to stop bucket Raft group", zap.String("bucket", deleteCmd.Name), zap.Error(stopErr))
+					r.logger.WithFields(map[string]any{"bucket": deleteCmd.Name, "error": stopErr}).Errorf("Failed to stop bucket Raft group")
 					// Don't fail the entry application, just log the error
 				}
 			}
@@ -536,19 +534,13 @@ func (r *Cluster) routeMessageToBucketGroup(msg raftpb.Message) {
 			select {
 			case group.msgCh <- msg:
 			default:
-				r.logger.Warn("Bucket group message channel full, dropping message",
-					zap.String("bucket", group.bucketName),
-					zap.String("to", fmt.Sprintf("%x", msg.To)),
-					zap.String("from", fmt.Sprintf("%x", msg.From)))
+				r.logger.WithFields(map[string]any{"bucket": group.bucketName, "to": fmt.Sprintf("%x", msg.To), "from": fmt.Sprintf("%x", msg.From)}).Infof("WARN: Bucket group message channel full, dropping message")
 			}
 			return
 		}
 	}
 
-	r.logger.Debug("No bucket group found for message",
-		zap.String("to", fmt.Sprintf("%x", msg.To)),
-		zap.String("from", fmt.Sprintf("%x", msg.From)),
-		zap.String("groupID", fmt.Sprintf("%x", groupID)))
+	r.logger.WithFields(map[string]any{"to": fmt.Sprintf("%x", msg.To), "from": fmt.Sprintf("%x", msg.From), "groupID": fmt.Sprintf("%x", groupID)}).Debugf("No bucket group found for message")
 }
 
 // routeUnreachableToBucketGroup routes an unreachable peer notification to the appropriate bucket group
@@ -579,19 +571,17 @@ func (r *Cluster) routeUnreachableToBucketGroup(peerID uint64) {
 		}
 	}
 
-	r.logger.Debug("No bucket group found for unreachable peer",
-		zap.String("peerID", fmt.Sprintf("%x", peerID)),
-		zap.String("groupID", fmt.Sprintf("%x", groupID)))
+	r.logger.WithFields(map[string]any{"peerID": fmt.Sprintf("%x", peerID), "groupID": fmt.Sprintf("%x", groupID)}).Debugf("No bucket group found for unreachable peer")
 }
 
 func (r *Cluster) Shutdown() error {
-	r.logger.Info("Shutting down Raft cluster")
+	r.logger.Infof("Shutting down Raft cluster")
 
 	// Stop all bucket Raft groups
 	r.muGroups.Lock()
 	for bucketName, group := range r.bucketGroups {
 		if err := group.Stop(); err != nil {
-			r.logger.Error("Failed to stop bucket Raft group", zap.String("bucket", bucketName), zap.Error(err))
+			r.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to stop bucket Raft group")
 		}
 	}
 	r.bucketGroups = make(map[string]*BucketRaftGroup)
@@ -638,7 +628,7 @@ func (r *Cluster) GetLeaderGRPCClient() service.LedgerServiceClient {
 	// Get connection from transport
 	conn := r.transport.GetPeerConnection(leaderID)
 	if conn == nil {
-		r.logger.Warn("No gRPC connection available for leader", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
+		r.logger.WithFields(map[string]any{"leaderID": fmt.Sprintf("%x", leaderID)}).Infof("WARN: No gRPC connection available for leader")
 		return nil
 	}
 
@@ -756,44 +746,44 @@ func (r *Cluster) Snapshot() error {
 	// Check if we are the leader (only leader can create snapshots)
 	status := r.node.Status()
 	if status.RaftState != raft.StateLeader {
-		r.logger.Warn("Snapshot requested but not leader", zap.String("state", status.RaftState.String()))
+		r.logger.WithFields(map[string]any{"state": status.RaftState.String()}).Infof("WARN: Snapshot requested but not leader")
 		return fmt.Errorf("only leader can create snapshots, current state: %v", status.RaftState)
 	}
 
-	r.logger.Info("Creating snapshot", zap.Uint64("applied", status.Applied))
+	r.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("Creating snapshot")
 
 	// Trigger snapshot creation
 	// In etcd/raft, snapshots are created automatically when needed
 	// We can trigger one manually by checking the status
 	if status.Applied > 0 {
-		r.logger.Debug("Creating snapshot data via FSM", zap.Uint64("applied", status.Applied))
+		r.logger.WithFields(map[string]any{"applied": status.Applied}).Debugf("Creating snapshot data via FSM")
 		// Create snapshot data via FSM
 		snapshotData, err := r.fsm.CreateSnapshot()
 		if err != nil {
-			r.logger.Error("Failed to create snapshot data", zap.Error(err))
+			r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot data")
 			return fmt.Errorf("creating snapshot data: %w", err)
 		}
-		r.logger.Debug("Snapshot data created", zap.Int("size", len(snapshotData)))
+		r.logger.WithFields(map[string]any{"size": len(snapshotData)}).Debugf("Snapshot data created")
 
 		// Get current configuration state from storage
-		r.logger.Debug("Getting initial state from storage")
+		r.logger.Debugf("Getting initial state from storage")
 		_, confState, err := r.storage.InitialState()
 		if err != nil {
-			r.logger.Error("Failed to get initial state", zap.Error(err))
+			r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to get initial state")
 			return fmt.Errorf("getting initial state: %w", err)
 		}
 
 		// Create snapshot via storage
-		r.logger.Debug("Creating snapshot in storage", zap.Uint64("index", status.Applied))
+		r.logger.WithFields(map[string]any{"index": status.Applied}).Debugf("Creating snapshot in storage")
 		_, err = r.storage.CreateSnapshot(status.Applied, &confState, snapshotData)
 		if err != nil {
-			r.logger.Error("Failed to create snapshot in storage", zap.Error(err))
+			r.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot in storage")
 			return fmt.Errorf("creating snapshot: %w", err)
 		}
 
-		r.logger.Info("Snapshot created successfully", zap.Uint64("applied", status.Applied))
+		r.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("Snapshot created successfully")
 	} else {
-		r.logger.Warn("No applied entries to snapshot", zap.Uint64("applied", status.Applied))
+		r.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("WARN: No applied entries to snapshot")
 	}
 	return nil
 }
@@ -882,7 +872,7 @@ func (r *Cluster) CreateLedger(bucketName, ledgerName string, metadata metadata.
 		return fmt.Errorf("creating ledger in bucket %s: %w", bucketName, err)
 	}
 
-	r.logger.Info("Ledger creation proposed via bucket Raft", zap.String("bucket", bucketName), zap.String("name", ledgerName))
+	r.logger.WithFields(map[string]any{"bucket": bucketName, "name": ledgerName}).Infof("Ledger creation proposed via bucket Raft")
 	return nil
 }
 
@@ -978,7 +968,7 @@ func (r *Cluster) CreateBucket(name, driver string, config map[string]interface{
 		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	r.logger.Info("Bucket created via Raft", zap.String("name", name), zap.String("driver", driver), zap.Uint64("commandID", cmd.ID))
+	r.logger.WithFields(map[string]any{"name": name, "driver": driver, "commandID": cmd.ID}).Infof("Bucket created via Raft")
 	return nil
 }
 
@@ -1006,7 +996,7 @@ func (r *Cluster) DeleteBucket(name string) error {
 		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	r.logger.Info("Bucket deleted via Raft", zap.String("name", name), zap.Uint64("commandID", cmd.ID))
+	r.logger.WithFields(map[string]any{"name": name, "commandID": cmd.ID}).Infof("Bucket deleted via Raft")
 	return nil
 }
 
@@ -1015,14 +1005,14 @@ func (r *Cluster) startBucketRaftGroupsFromFSM() {
 	bucketRaftGroups := r.fsm.GetAllBucketRaftGroups()
 	buckets := r.fsm.GetAllBuckets()
 	for bucketName, bucketID := range bucketRaftGroups {
-		r.logger.Info("Starting Raft group for bucket", zap.String("bucket", bucketName), zap.Uint64("bucketID", bucketID))
+		r.logger.WithFields(map[string]any{"bucket": bucketName, "bucketID": bucketID}).Infof("Starting Raft group for bucket")
 		bucketInfo, exists := buckets[bucketName]
 		if !exists {
-			r.logger.Warn("Bucket Raft group found but bucket info missing", zap.String("bucket", bucketName))
+			r.logger.WithFields(map[string]any{"bucket": bucketName}).Infof("WARN: Bucket Raft group found but bucket info missing")
 			continue
 		}
 		if err := r.startBucketRaftGroupFromFSM(bucketName, bucketID, bucketInfo); err != nil {
-			r.logger.Error("Failed to start Raft group for existing bucket", zap.String("bucket", bucketName), zap.Error(err))
+			r.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to start Raft group for existing bucket")
 			// Continue with other buckets even if one fails
 		}
 	}
@@ -1035,7 +1025,7 @@ func (r *Cluster) startBucketRaftGroupFromFSM(bucketName string, bucketID uint64
 
 	// Check if group already exists
 	if _, exists := r.bucketGroups[bucketName]; exists {
-		r.logger.Warn("Bucket Raft group already exists", zap.String("bucket", bucketName))
+		r.logger.WithFields(map[string]any{"bucket": bucketName}).Infof("WARN: Bucket Raft group already exists")
 		return nil
 	}
 
@@ -1053,7 +1043,7 @@ func (r *Cluster) startBucketRaftGroupFromFSM(bucketName string, bucketID uint64
 	// Store the group
 	r.bucketGroups[bucketName] = group
 
-	r.logger.Info("Bucket Raft group started from FSM", zap.String("bucket", bucketName), zap.Uint64("bucketID", bucketID))
+	r.logger.WithFields(map[string]any{"bucket": bucketName, "bucketID": bucketID}).Infof("Bucket Raft group started from FSM")
 	return nil
 }
 
@@ -1064,7 +1054,7 @@ func (r *Cluster) stopBucketRaftGroup(bucketName string) error {
 
 	group, exists := r.bucketGroups[bucketName]
 	if !exists {
-		r.logger.Warn("Bucket Raft group does not exist", zap.String("bucket", bucketName))
+		r.logger.WithFields(map[string]any{"bucket": bucketName}).Infof("WARN: Bucket Raft group does not exist")
 		return nil
 	}
 
@@ -1076,7 +1066,7 @@ func (r *Cluster) stopBucketRaftGroup(bucketName string) error {
 	// Remove from map
 	delete(r.bucketGroups, bucketName)
 
-	r.logger.Info("Bucket Raft group stopped", zap.String("bucket", bucketName))
+	r.logger.WithFields(map[string]any{"bucket": bucketName}).Infof("Bucket Raft group stopped")
 	return nil
 }
 

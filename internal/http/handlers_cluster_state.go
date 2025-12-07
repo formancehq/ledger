@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"go.uber.org/zap"
 )
 
 func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +20,7 @@ func (s *Server) handleClusterState(w http.ResponseWriter, r *http.Request) {
 
 	clusterState, err := s.cluster.GetClusterState()
 	if err != nil {
-		s.logger.Error("Failed to get cluster state", zap.Error(err))
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to get cluster state")
 		api.WriteErrorResponse(w, http.StatusInternalServerError, "CLUSTER_STATE_ERROR", err)
 		return
 	}

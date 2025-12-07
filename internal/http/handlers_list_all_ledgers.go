@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"go.uber.org/zap"
 )
 
 // handleListAllLedgers handles GET /ledgers to list all ledgers across all buckets
@@ -23,7 +22,7 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 	for bucketName := range buckets {
 		ledgers, err := s.cluster.GetAllLedgers(bucketName)
 		if err != nil {
-			s.logger.Warn("Failed to get ledgers from bucket", zap.String("bucket", bucketName), zap.Error(err))
+			s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Infof("WARN: Failed to get ledgers from bucket")
 			continue
 		}
 		for _, ledgerInfo := range ledgers {

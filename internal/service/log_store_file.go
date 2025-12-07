@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/formancehq/go-libs/v3/logging"
+
 	"bufio"
 	"context"
 	"encoding/json"
@@ -11,7 +13,6 @@ import (
 	"sync"
 
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	"go.uber.org/zap"
 )
 
 // FileLogStore is a LogStore implementation that reads/writes logs to a JSON file (JSONL format)
@@ -20,11 +21,11 @@ type FileLogStore struct {
 	file     *os.File
 	encoder  *json.Encoder
 	mu       sync.RWMutex
-	logger   *zap.Logger
+	logger   logging.Logger
 }
 
 // NewFileLogStore creates a new FileLogStore
-func NewFileLogStore(filePath string, logger *zap.Logger) (*FileLogStore, error) {
+func NewFileLogStore(filePath string, logger logging.Logger) (*FileLogStore, error) {
 	// Open file in append mode, create if it doesn't exist
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -62,7 +63,7 @@ func (f *FileLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) error
 		return fmt.Errorf("syncing file: %w", err)
 	}
 
-	f.logger.Debug("Logs written to file", zap.Int("count", len(logs)), zap.String("file", f.filePath))
+	f.logger.WithFields(map[string]any{"count": len(logs), "file": f.filePath}).Debugf("Logs written to file")
 	return nil
 }
 
@@ -84,7 +85,7 @@ func (f *FileLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName 
 	for scanner.Scan() {
 		var log ledger.Log
 		if err := json.Unmarshal(scanner.Bytes(), &log); err != nil {
-			f.logger.Warn("Failed to unmarshal log line", zap.Error(err))
+			f.logger.WithFields(map[string]any{"error": err}).Infof("WARN: Failed to unmarshal log line")
 			continue
 		}
 
@@ -123,7 +124,7 @@ func (f *FileLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledg
 	for scanner.Scan() {
 		var log ledger.Log
 		if err := json.Unmarshal(scanner.Bytes(), &log); err != nil {
-			f.logger.Warn("Failed to unmarshal log line", zap.Error(err))
+			f.logger.WithFields(map[string]any{"error": err}).Infof("WARN: Failed to unmarshal log line")
 			continue
 		}
 		// Filter by ledger

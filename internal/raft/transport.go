@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -38,13 +38,13 @@ type Transport struct {
 	// Channel for reporting unreachable peers
 	unreachableCh chan uint64
 
-	logger *zap.Logger
+	logger logging.Logger
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // NewTransport creates a new transport
-func NewTransport(id uint64, addr string, logger *zap.Logger) *Transport {
+func NewTransport(id uint64, addr string, logger logging.Logger) *Transport {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Transport{
 		id:            id,
@@ -100,7 +100,7 @@ func (t *Transport) AddPeer(id uint64, addr string) {
 		// Create gRPC client for this peer
 		client, err := newGRPCClient(addr)
 		if err != nil {
-			t.logger.Error("Failed to create gRPC client for peer", zap.String("peer", fmt.Sprintf("%x", id)), zap.String("addr", addr), zap.Error(err))
+			t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id), "addr": addr, "error": err}).Errorf("Failed to create gRPC client for peer")
 			return
 		}
 		t.grpcClients[id] = client
@@ -147,14 +147,10 @@ func (t *Transport) Send(msg raftpb.Message) {
 		case ch <- msg:
 		case <-t.ctx.Done():
 		default:
-			t.logger.Warn("Send channel full, dropping message",
-				zap.String("to", fmt.Sprintf("%x", msg.To)),
-				zap.String("targetPeerID", fmt.Sprintf("%x", targetPeerID)))
+			t.logger.WithFields(map[string]any{"to": fmt.Sprintf("%x", msg.To), "targetPeerID": fmt.Sprintf("%x", targetPeerID)}).Infof("WARN: Send channel full, dropping message")
 		}
 	} else {
-		t.logger.Warn("No send channel for peer, dropping message",
-			zap.String("to", fmt.Sprintf("%x", msg.To)),
-			zap.String("targetPeerID", fmt.Sprintf("%x", targetPeerID)))
+		t.logger.WithFields(map[string]any{"to": fmt.Sprintf("%x", msg.To), "targetPeerID": fmt.Sprintf("%x", targetPeerID)}).Infof("WARN: No send channel for peer, dropping message")
 	}
 }
 
@@ -196,7 +192,7 @@ func (t *Transport) sendLoop(peerID uint64, addr string) {
 			t.mu.RUnlock()
 
 			if !exists {
-				t.logger.Warn("No gRPC client for peer", zap.String("peer", fmt.Sprintf("%x", peerID)))
+				t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID)}).Infof("WARN: No gRPC client for peer")
 				// Report peer as unreachable
 				select {
 				case t.unreachableCh <- peerID:
@@ -209,12 +205,9 @@ func (t *Transport) sendLoop(peerID uint64, addr string) {
 
 			// Send message via gRPC with timeout
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			t.logger.Debug("Sending message to peer via gRPC",
-				zap.String("type", msg.Type.String()),
-				zap.String("peer", fmt.Sprintf("%x", peerID)),
-				zap.String("addr", addr))
+			t.logger.WithFields(map[string]any{"type": msg.Type.String(), "peer": fmt.Sprintf("%x", peerID), "addr": addr}).Debugf("Sending message to peer via gRPC")
 			if err := client.sendMessage(ctx, msg); err != nil {
-				t.logger.Warn("Failed to send message via gRPC", zap.String("peer", fmt.Sprintf("%x", peerID)), zap.Error(err))
+				t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID), "error": err}).Infof("WARN: Failed to send message via gRPC")
 				cancel()
 				// Report peer as unreachable
 				select {

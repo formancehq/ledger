@@ -5,32 +5,32 @@ import (
 	"sync"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.uber.org/zap"
 )
 
 // applyFuture represents a future for an applied entry
 type applyFuture struct {
-	index uint64
-	ch    chan error
+	index  uint64
+	ch     chan error
 	result any
-	mu    sync.Mutex
-	done  bool
-	err   error
+	mu     sync.Mutex
+	done   bool
+	err    error
 }
 
 // NodeWrapper wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type NodeWrapper struct {
 	node    *raft.RawNode
-	logger  *zap.Logger
+	logger  logging.Logger
 	mu      sync.RWMutex
 	futures map[uint64]*applyFuture // Map of command ID -> future
 }
 
 // NewNodeWrapper creates a new wrapper around a RawNode
-func NewNodeWrapper(node *raft.RawNode, logger *zap.Logger) *NodeWrapper {
+func NewNodeWrapper(node *raft.RawNode, logger logging.Logger) *NodeWrapper {
 	return &NodeWrapper{
 		node:    node,
 		logger:  logger,
@@ -91,7 +91,7 @@ func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64
 
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
 // This should be called from the readyLoop when entries are applied
-func (n *NodeWrapper) NotifyApplied(commandID uint64, result any,index uint64, err error) {
+func (n *NodeWrapper) NotifyApplied(commandID uint64, result any, index uint64, err error) {
 	n.mu.RLock()
 	future, exists := n.futures[commandID]
 	n.mu.RUnlock()

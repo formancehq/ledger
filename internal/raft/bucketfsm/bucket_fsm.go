@@ -7,10 +7,10 @@ import (
 	"math/big"
 	"sort"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // BucketFSM represents the finite state machine for a bucket Raft group
@@ -21,18 +21,18 @@ type BucketFSM struct {
 	logs            []ledger.Log                            // Logs stored in memory until snapshot
 	balances        map[string]ledger.Balances              // Map of ledger name -> balances (account -> asset -> balance)
 	accountMetadata map[string]map[string]map[string]string // Map of ledger name -> account -> metadata key -> metadata value
-	logger          *zap.Logger
+	logger          logging.Logger
 }
 
 // NewBucketFSM creates a new bucket FSM
-func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
+func NewBucketFSM(bucketName string, logger logging.Logger) *BucketFSM {
 	return &BucketFSM{
 		bucketName:      bucketName,
 		ledgers:         make(map[string]service.LedgerInfo),
 		logs:            make([]ledger.Log, 0),
 		balances:        make(map[string]ledger.Balances),
 		accountMetadata: make(map[string]map[string]map[string]string),
-		logger:          logger.With(zap.String("bucket", bucketName), zap.String("component", "bucket-fsm")),
+		logger:          logger.WithFields(map[string]any{"bucket": bucketName, "component": "bucket-fsm"}),
 	}
 }
 
@@ -40,13 +40,13 @@ func NewBucketFSM(bucketName string, logger *zap.Logger) *BucketFSM {
 func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*service.LedgerInfo, error) {
 	var createCmd CreateLedgerCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
-		f.logger.Error("Failed to unmarshal create ledger command", zap.Error(err))
+		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create ledger command")
 		return nil, fmt.Errorf("unmarshaling create ledger command: %w", err)
 	}
 
 	// Check if ledger already exists in this bucket
 	if _, exists := f.ledgers[createCmd.Name]; exists {
-		f.logger.Warn("Ledger already exists in bucket", zap.String("name", createCmd.Name), zap.String("bucket", f.bucketName))
+		f.logger.WithFields(map[string]any{"name": createCmd.Name, "bucket": f.bucketName}).Infof("WARN: Ledger already exists in bucket")
 		return nil, fmt.Errorf("ledger already exists in bucket %s: %s", f.bucketName, createCmd.Name)
 	}
 
@@ -70,7 +70,7 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*serv
 	// Store the ledger
 	f.ledgers[createCmd.Name] = ledgerInfo
 
-	f.logger.Info("Ledger created in bucket", zap.Uint64("index", index), zap.Uint64("id", ledgerID), zap.String("name", createCmd.Name), zap.String("bucket", f.bucketName))
+	f.logger.WithFields(map[string]any{"index": index, "id": ledgerID, "name": createCmd.Name, "bucket": f.bucketName}).Infof("Ledger created in bucket")
 	return &ledgerInfo, nil
 }
 
@@ -79,14 +79,14 @@ func (f *BucketFSM) HandleCreateLedger(cmd service.Command, index uint64) (*serv
 func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64) error {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
-		f.logger.Error("Failed to unmarshal insert log command", zap.Error(err))
+		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
 		return fmt.Errorf("unmarshaling insert log command: %w", err)
 	}
 
 	// Convert protobuf Log to ledger.Log
 	log, err := logFromProto(insertCmd.Log)
 	if err != nil {
-		f.logger.Error("Failed to convert log from proto", zap.Error(err))
+		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to convert log from proto")
 		return fmt.Errorf("converting log from proto: %w", err)
 	}
 
@@ -104,7 +104,7 @@ func (f *BucketFSM) HandleInsertLog(cmd service.Command, index uint64) error {
 	// Update balances and account metadata based on log type
 	f.updateBalancesAndMetadata(log)
 
-	f.logger.Info("Log stored in memory via FSM", zap.Uint64("index", index), zap.String("ledger", log.Ledger), zap.Uint64("commandID", cmd.ID), zap.Int("totalLogsInMemory", len(f.logs)))
+	f.logger.WithFields(map[string]any{"index": index, "ledger": log.Ledger, "commandID": cmd.ID, "totalLogsInMemory": len(f.logs)}).Infof("Log stored in memory via FSM")
 	return nil
 }
 
@@ -227,7 +227,7 @@ func (f *BucketFSM) CreateSnapshot(ctx context.Context, logStore service.LogWrit
 		if err := logStore.InsertLogs(ctx, f.logs...); err != nil {
 			return nil, fmt.Errorf("writing logs to store during snapshot: %w", err)
 		}
-		f.logger.Info("Logs written to store during snapshot", zap.Int("count", len(f.logs)))
+		f.logger.WithFields(map[string]any{"count": len(f.logs)}).Infof("Logs written to store during snapshot")
 		// Clear logs from memory after writing to store
 		f.logs = make([]ledger.Log, 0)
 	}
@@ -268,7 +268,7 @@ func (f *BucketFSM) RestoreSnapshot(data []byte) error {
 	f.balances = make(map[string]ledger.Balances)
 	f.accountMetadata = make(map[string]map[string]map[string]string)
 
-	f.logger.Info("Bucket FSM restored from snapshot", zap.Int("ledgerCount", len(f.ledgers)))
+	f.logger.WithFields(map[string]any{"ledgerCount": len(f.ledgers)}).Infof("Bucket FSM restored from snapshot")
 	return nil
 }
 

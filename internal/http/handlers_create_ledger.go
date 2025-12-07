@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // handleCreateLedger handles POST /ledgers/{ledgerName} to create a new ledger
@@ -55,7 +54,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Create ledger via cluster in the specified bucket
 	if err := s.cluster.CreateLedger(req.Bucket, ledgerName, req.Metadata); err != nil {
-		s.logger.Error("Failed to create ledger", zap.String("bucket", req.Bucket), zap.String("name", ledgerName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"bucket": req.Bucket, "name": ledgerName, "error": err}).Errorf("Failed to create ledger")
 
 		// Check if ledger already exists (in this bucket or globally)
 		errMsg := err.Error()
@@ -74,7 +73,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	// Get the created ledger to return it
 	ledgerInfo, exists, err := s.cluster.GetLedger(req.Bucket, ledgerName)
 	if err != nil || !exists {
-		s.logger.Warn("Failed to retrieve created ledger", zap.String("bucket", req.Bucket), zap.String("name", ledgerName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"bucket": req.Bucket, "name": ledgerName, "error": err}).Infof("WARN: Failed to retrieve created ledger")
 		// Still return success since creation succeeded
 		api.Created(w, LedgerResponse{
 			LedgerInfo: service.LedgerInfo{

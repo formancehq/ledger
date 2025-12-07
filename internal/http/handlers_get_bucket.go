@@ -6,7 +6,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 )
 
 // handleGetBucket handles GET /buckets/{bucketName} to get a bucket with its Raft state
@@ -24,7 +23,7 @@ func (s *Server) handleGetBucket(w http.ResponseWriter, r *http.Request) {
 
 	bucket, err := s.cluster.GetBucketWithRaftState(bucketName)
 	if err != nil {
-		s.logger.Error("Failed to get bucket", zap.String("bucket", bucketName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to get bucket")
 		api.InternalServerError(w, r, err)
 		return
 	}

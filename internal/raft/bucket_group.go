@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
@@ -18,7 +19,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.uber.org/zap"
 )
 
 // BucketRaftGroup represents a Raft group for a specific bucket
@@ -29,7 +29,7 @@ type BucketRaftGroup struct {
 	fsm           *bucketfsm.BucketFSM // FSM for managing ledgers in this bucket
 	transport     *Transport
 	config        *config.Config
-	logger        *zap.Logger
+	logger        logging.Logger
 	ctx           context.Context
 	cancel        context.CancelFunc
 	nodeID        uint64
@@ -56,7 +56,7 @@ func NewBucketRaftGroup(
 	bucketInfo service.BucketInfo,
 	transport *Transport,
 	cfg *config.Config,
-	logger *zap.Logger,
+	logger logging.Logger,
 ) (*BucketRaftGroup, error) {
 	ctx, cancel := context.WithCancel(parentCtx)
 
@@ -71,7 +71,7 @@ func NewBucketRaftGroup(
 	}
 
 	// Create Raft storage for this bucket group
-	storage, err := NewStorage(bucketDataDir, logger.With(zap.String("bucket", bucketName)))
+	storage, err := NewStorage(bucketDataDir, logger.WithFields(map[string]any{"bucket": bucketName}))
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("creating storage for bucket %s: %w", bucketName, err)
@@ -100,7 +100,7 @@ func NewBucketRaftGroup(
 	}
 
 	// Wrap the RawNode with our wrapper
-	bucketLogger := logger.With(zap.String("bucket", bucketName))
+	bucketLogger := logger.WithFields(map[string]any{"bucket": bucketName})
 	nodeWrapper := NewNodeWrapper(rawNode, bucketLogger)
 
 	// Bootstrap if storage is empty
@@ -117,14 +117,14 @@ func NewBucketRaftGroup(
 		for _, peerEntry := range cfg.Peers {
 			parts := strings.SplitN(peerEntry, "/", 2)
 			if len(parts) != 2 {
-				logger.Warn("Invalid peer format, skipping", zap.String("peer", peerEntry))
+				logger.WithFields(map[string]any{"peer": peerEntry}).Infof("WARN: Invalid peer format, skipping")
 				continue
 			}
 			peerIDStr := parts[0]
 
 			peerNodeID, err := strconv.ParseUint(peerIDStr, 10, 64)
 			if err != nil {
-				logger.Warn("Invalid peer ID, skipping", zap.String("peer", peerEntry), zap.Error(err))
+				logger.WithFields(map[string]any{"peer": peerEntry, "error": err}).Infof("WARN: Invalid peer ID, skipping")
 				continue
 			}
 
@@ -137,11 +137,7 @@ func NewBucketRaftGroup(
 			cancel()
 			return nil, fmt.Errorf("bootstrapping bucket group %s: %w", bucketName, err)
 		}
-		logger.Info("Bucket Raft group bootstrapped",
-			zap.String("bucket", bucketName),
-			zap.String("groupID", fmt.Sprintf("%x", groupID)),
-			zap.String("groupNodeID", fmt.Sprintf("%x", groupNodeID)),
-			zap.Int("peers", len(peers)))
+		logger.WithFields(map[string]any{"bucket": bucketName, "groupID": fmt.Sprintf("%x", groupID), "groupNodeID": fmt.Sprintf("%x", groupNodeID), "peers": len(peers)}).Infof("Bucket Raft group bootstrapped")
 	}
 
 	// Create application log store for this bucket based on bucket driver
@@ -192,7 +188,7 @@ func NewBucketRaftGroup(
 		fsm:        bucketFSM,
 		transport:  transport,
 		config:     cfg,
-		logger:     bucketLogger.With(zap.String("component", "bucket-raft-group")),
+		logger:     bucketLogger.WithFields(map[string]any{"component": "bucket-raft-group"}),
 		ctx:        ctx,
 		cancel:     cancel,
 		nodeID:     groupNodeID, // Use bucket-specific node ID
@@ -254,13 +250,10 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 			// Only messages where To or From matches groupNodeID are received
 			// Verify that this is indeed a bucket group message (node ID >= 0x10000)
 			if msg.To >= 0x10000 || msg.From >= 0x10000 {
-				g.logger.Debug("Received message for bucket group", zap.String("from", fmt.Sprintf("%x", msg.From)), zap.String("to", fmt.Sprintf("%x", msg.To)))
+				g.logger.WithFields(map[string]any{"from": fmt.Sprintf("%x", msg.From), "to": fmt.Sprintf("%x", msg.To)}).Debugf("Received message for bucket group")
 				g.node.RawNode().Step(msg)
 			} else {
-				g.logger.Warn("Received message for main cluster in bucket group, ignoring",
-					zap.String("to", fmt.Sprintf("%x", msg.To)),
-					zap.String("from", fmt.Sprintf("%x", msg.From)),
-					zap.String("bucket", g.bucketName))
+				g.logger.WithFields(map[string]any{"to": fmt.Sprintf("%x", msg.To), "from": fmt.Sprintf("%x", msg.From), "bucket": g.bucketName}).Infof("WARN: Received message for main cluster in bucket group, ignoring")
 			}
 			// TODO: Handle messages for other bucket groups
 			// Unreachable peers are handled by the main cluster and routed here if needed
@@ -278,21 +271,21 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 
 			if len(rd.Entries) > 0 {
 				if err := g.storage.Append(rd.Entries); err != nil {
-					g.logger.Error("Failed to append entries", zap.Error(err))
+					g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to append entries")
 					continue
 				}
 			}
 
 			if !raft.IsEmptySnap(rd.Snapshot) {
-				g.logger.Info("Applying snapshot", zap.Uint64("index", rd.Snapshot.Metadata.Index))
+				g.logger.WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).Infof("Applying snapshot")
 
 				if err := g.storage.ApplySnapshot(rd.Snapshot); err != nil {
-					g.logger.Error("Failed to apply snapshot to storage", zap.Error(err))
+					g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to apply snapshot to storage")
 					continue
 				}
 				// Restore bucket FSM from snapshot
 				if err := g.fsm.RestoreSnapshot(rd.Snapshot.Data); err != nil {
-					g.logger.Error("Failed to restore bucket FSM from snapshot", zap.Error(err))
+					g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to restore bucket FSM from snapshot")
 					continue
 				}
 
@@ -309,30 +302,28 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				if entry.Type == raftpb.EntryConfChange {
 					var cc raftpb.ConfChange
 					if err := cc.Unmarshal(entry.Data); err != nil {
-						g.logger.Error("Failed to unmarshal ConfChange", zap.Error(err))
+						g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange")
 						continue
 					}
-					g.logger.Info("Applying configuration change",
-						zap.String("type", cc.Type.String()),
-						zap.String("nodeID", fmt.Sprintf("%x", cc.NodeID)))
+					g.logger.WithFields(map[string]any{"type": cc.Type.String(), "nodeID": fmt.Sprintf("%x", cc.NodeID)}).Infof("Applying configuration change")
 					g.node.RawNode().ApplyConfChange(cc)
 					continue
 				}
 
 				if entry.Type != raftpb.EntryNormal {
-					g.logger.Debug("Skipping non-normal entry", zap.Uint64("index", entry.Index), zap.Uint64("type", uint64(entry.Type)))
+					g.logger.WithFields(map[string]any{"index": entry.Index, "type": uint64(entry.Type)}).Debugf("Skipping non-normal entry")
 					continue
 				}
 				// Skip empty entries (they might be used for heartbeat or other Raft internal purposes)
 				if len(entry.Data) == 0 {
-					g.logger.Debug("Skipping empty entry", zap.Uint64("index", entry.Index))
+					g.logger.WithFields(map[string]any{"index": entry.Index}).Debugf("Skipping empty entry")
 					continue
 				}
 
 				// Decode the command to get its ID
 				var cmd service.Command
 				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-					g.logger.Error("Failed to unmarshal command for notification", zap.Uint64("index", entry.Index), zap.Error(err))
+					g.logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Errorf("Failed to unmarshal command for notification")
 					continue
 				}
 
@@ -341,11 +332,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				// Notify the wrapper that this command has been applied using its ID
 				g.node.NotifyApplied(cmd.ID, result, entry.Index, applyErr)
 				if applyErr != nil {
-					g.logger.Error("Failed to apply entry to bucket FSM",
-						zap.Error(applyErr),
-						zap.Uint64("index", entry.Index),
-						zap.Uint64("commandID", cmd.ID),
-						zap.String("entry", string(entry.Data)))
+					g.logger.WithFields(map[string]any{"error": applyErr, "index": entry.Index, "commandID": cmd.ID, "entry": string(entry.Data)}).Errorf("Failed to apply entry to bucket FSM")
 				}
 			}
 
@@ -358,14 +345,14 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				// Create snapshot: write logs to store and create snapshot data
 				snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
 				if err != nil {
-					g.logger.Error("Failed to create snapshot data", zap.Error(err))
+					g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot data")
 					continue
 				}
 
 				// Get current configuration state from storage
 				_, confState, err := g.storage.InitialState()
 				if err != nil {
-					g.logger.Error("Failed to get initial state for snapshot", zap.Error(err))
+					g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to get initial state for snapshot")
 					continue
 				}
 
@@ -374,13 +361,13 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				if err != nil {
 					// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
 					if err != ErrSnapOutOfDate {
-						g.logger.Error("Failed to create snapshot in storage", zap.Error(err))
+						g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot in storage")
 					}
 					// ErrSnapOutOfDate is expected if snapshot was already created
 					continue
 				}
 
-				g.logger.Info("Snapshot created for bucket", zap.String("bucket", g.bucketName), zap.Uint64("index", status.Applied))
+				g.logger.WithFields(map[string]any{"bucket": g.bucketName, "index": status.Applied}).Infof("Snapshot created for bucket")
 			}
 		}
 	}
@@ -403,31 +390,31 @@ func (g *BucketRaftGroup) Stop() error {
 
 // Snapshot forces a snapshot of the bucket Raft group
 func (g *BucketRaftGroup) Snapshot() error {
-	g.logger.Info("Snapshot request received for bucket", zap.String("bucket", g.bucketName))
+	g.logger.WithFields(map[string]any{"bucket": g.bucketName}).Infof("Snapshot request received for bucket")
 
 	// Check if we are the leader (only leader can create snapshots)
 	status := g.node.RawNode().Status()
 	if status.RaftState != raft.StateLeader {
-		g.logger.Warn("Snapshot requested but not leader", zap.String("state", status.RaftState.String()))
+		g.logger.WithFields(map[string]any{"state": status.RaftState.String()}).Infof("WARN: Snapshot requested but not leader")
 		return fmt.Errorf("only leader can create snapshots, current state: %v", status.RaftState)
 	}
 
-	g.logger.Info("Creating snapshot for bucket", zap.String("bucket", g.bucketName), zap.Uint64("applied", status.Applied))
+	g.logger.WithFields(map[string]any{"bucket": g.bucketName, "applied": status.Applied}).Infof("Creating snapshot for bucket")
 
 	// Trigger snapshot creation
 	if status.Applied > 0 {
 		// Create snapshot data via FSM
 		snapshotData, err := g.fsm.CreateSnapshot(g.ctx, g.logStore)
 		if err != nil {
-			g.logger.Error("Failed to create snapshot data", zap.Error(err))
+			g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot data")
 			return fmt.Errorf("creating snapshot data: %w", err)
 		}
-		g.logger.Debug("Snapshot data created", zap.Int("size", len(snapshotData)))
+		g.logger.WithFields(map[string]any{"size": len(snapshotData)}).Debugf("Snapshot data created")
 
 		// Get current configuration state from storage
 		_, confState, err := g.storage.InitialState()
 		if err != nil {
-			g.logger.Error("Failed to get initial state", zap.Error(err))
+			g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to get initial state")
 			return fmt.Errorf("getting initial state: %w", err)
 		}
 
@@ -436,17 +423,17 @@ func (g *BucketRaftGroup) Snapshot() error {
 		if err != nil {
 			// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
 			if err != ErrSnapOutOfDate {
-				g.logger.Error("Failed to create snapshot in storage", zap.Error(err))
+				g.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot in storage")
 				return fmt.Errorf("creating snapshot: %w", err)
 			}
 			// ErrSnapOutOfDate is expected if snapshot was already created
-			g.logger.Info("Snapshot already exists", zap.Uint64("index", status.Applied))
+			g.logger.WithFields(map[string]any{"index": status.Applied}).Infof("Snapshot already exists")
 			return nil
 		}
 
-		g.logger.Info("Snapshot created successfully for bucket", zap.String("bucket", g.bucketName), zap.Uint64("applied", status.Applied))
+		g.logger.WithFields(map[string]any{"bucket": g.bucketName, "applied": status.Applied}).Infof("Snapshot created successfully for bucket")
 	} else {
-		g.logger.Warn("No applied entries to snapshot", zap.Uint64("applied", status.Applied))
+		g.logger.WithFields(map[string]any{"applied": status.Applied}).Infof("WARN: No applied entries to snapshot")
 	}
 	return nil
 }
@@ -466,7 +453,7 @@ func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) (any, error) {
 	case bucketfsm.CommandTypeInsertLog:
 		return nil, g.fsm.HandleInsertLog(cmd, entry.Index)
 	default:
-		g.logger.Warn("Unknown command type in bucket FSM", zap.String("type", string(cmd.Type)))
+		g.logger.WithFields(map[string]any{"type": string(cmd.Type)}).Infof("WARN: Unknown command type in bucket FSM")
 		return nil, nil // Don't fail on unknown commands
 	}
 }
@@ -485,7 +472,7 @@ func (g *BucketRaftGroup) CreateLedger(name string, metadata metadata.Metadata) 
 		return fmt.Errorf("applying command via raft: %w", err)
 	}
 
-	g.logger.Info("Ledger created via bucket Raft", zap.String("name", name), zap.String("bucket", g.bucketName), zap.Uint64("commandID", cmd.ID))
+	g.logger.WithFields(map[string]any{"name": name, "bucket": g.bucketName, "commandID": cmd.ID}).Infof("Ledger created via bucket Raft")
 	return nil
 }
 
@@ -509,7 +496,7 @@ func (g *BucketRaftGroup) InsertLogs(ctx context.Context, logs ...ledger.Log) er
 			return fmt.Errorf("applying insert log command via raft: %w", err)
 		}
 
-		g.logger.Debug("Log inserted via bucket Raft", zap.String("ledger", log.Ledger), zap.Uint64("commandID", cmd.ID))
+		g.logger.WithFields(map[string]any{"ledger": log.Ledger, "commandID": cmd.ID}).Debugf("Log inserted via bucket Raft")
 	}
 
 	return nil

@@ -7,7 +7,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 )
 
 // handleGetLedger handles GET /ledgers/{ledgerName} to get a ledger
@@ -26,7 +25,7 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 	// Get ledger by name (finds bucket automatically)
 	ledgerInfo, bucketName, exists, err := s.cluster.GetLedgerByName(ledgerName)
 	if err != nil {
-		s.logger.Error("Failed to get ledger", zap.String("name", ledgerName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"name": ledgerName, "error": err}).Errorf("Failed to get ledger")
 		api.InternalServerError(w, r, err)
 		return
 	}

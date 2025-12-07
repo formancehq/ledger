@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // FSM implements the raft.FSM interface
 type FSM struct {
-	logger       *zap.Logger
+	logger       logging.Logger
 	buckets      map[string]service.BucketInfo // Map of bucket name -> bucket info
 	nextBucketID uint64                        // Next sequential bucket ID
 }
 
-func NewFSM(logger *zap.Logger) *FSM {
+func NewFSM(logger logging.Logger) *FSM {
 	return &FSM{
 		logger:       logger,
 		buckets:      make(map[string]service.BucketInfo),
@@ -31,7 +31,7 @@ func NewFSM(logger *zap.Logger) *FSM {
 func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 	var createCmd CreateBucketCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
-		f.logger.Error("Failed to unmarshal create bucket command", zap.Error(err))
+		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create bucket command")
 		return fmt.Errorf("unmarshaling create bucket command: %w", err)
 	}
 
@@ -43,7 +43,7 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 
 	// Validate bucket configuration
 	if err := service.ValidateBucketConfig(createCmd.Driver, configMap); err != nil {
-		f.logger.Error("Invalid bucket configuration", zap.String("name", createCmd.Name), zap.String("driver", createCmd.Driver), zap.Error(err))
+		f.logger.WithFields(map[string]any{"name": createCmd.Name, "driver": createCmd.Driver, "error": err}).Errorf("Invalid bucket configuration")
 		return fmt.Errorf("invalid bucket configuration: %w", err)
 	}
 
@@ -63,7 +63,7 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 	// Store the bucket
 	f.buckets[createCmd.Name] = bucketInfo
 
-	f.logger.Info("Bucket created", zap.Uint64("index", index), zap.Uint64("id", bucketID), zap.String("name", createCmd.Name), zap.Uint64("commandID", cmd.ID))
+	f.logger.WithFields(map[string]any{"index": index, "id": bucketID, "name": createCmd.Name, "commandID": cmd.ID}).Infof("Bucket created")
 	return nil
 }
 
@@ -71,20 +71,20 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 func (f *FSM) HandleDeleteBucket(cmd service.Command, index uint64) error {
 	var deleteCmd DeleteBucketCommand
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
-		f.logger.Error("Failed to unmarshal delete bucket command", zap.Error(err))
+		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete bucket command")
 		return fmt.Errorf("unmarshaling delete bucket command: %w", err)
 	}
 
 	// Check if bucket exists
 	if _, exists := f.buckets[deleteCmd.Name]; !exists {
-		f.logger.Warn("Bucket does not exist", zap.String("name", deleteCmd.Name))
+		f.logger.WithFields(map[string]any{"name": deleteCmd.Name}).Infof("WARN: Bucket does not exist")
 		return fmt.Errorf("bucket does not exist: %s", deleteCmd.Name)
 	}
 
 	// Delete the bucket
 	delete(f.buckets, deleteCmd.Name)
 
-	f.logger.Info("Bucket deleted", zap.Uint64("index", index), zap.String("name", deleteCmd.Name), zap.Uint64("commandID", cmd.ID))
+	f.logger.WithFields(map[string]any{"index": index, "name": deleteCmd.Name, "commandID": cmd.ID}).Infof("Bucket deleted")
 	return nil
 }
 
@@ -159,6 +159,6 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 		f.nextBucketID = snapshotData.NextBucketID
 	}
 
-	f.logger.Info("FSM restored from snapshot", zap.Int("bucketCount", len(f.buckets)), zap.Uint64("nextBucketID", f.nextBucketID))
+	f.logger.WithFields(map[string]any{"bucketCount": len(f.buckets), "nextBucketID": f.nextBucketID}).Infof("FSM restored from snapshot")
 	return nil
 }

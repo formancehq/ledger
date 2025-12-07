@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -32,10 +31,7 @@ func (t *Transport) HandleSendMessage(ctx context.Context, req *SendMessageReque
 	// Send message to recvCh for processing
 	select {
 	case t.recvCh <- msg:
-		t.logger.Debug("Received message via gRPC",
-			zap.String("type", msg.Type.String()),
-			zap.String("from", fmt.Sprintf("%x", msg.From)),
-			zap.String("to", fmt.Sprintf("%x", msg.To)))
+		t.logger.WithFields(map[string]any{"type": msg.Type.String(), "from": fmt.Sprintf("%x", msg.From), "to": fmt.Sprintf("%x", msg.To)}).Debugf("Received message via gRPC")
 		return &SendMessageResponse{Success: true}, nil
 	case <-ctx.Done():
 		return &SendMessageResponse{
@@ -43,7 +39,7 @@ func (t *Transport) HandleSendMessage(ctx context.Context, req *SendMessageReque
 			Error:   "context cancelled",
 		}, nil
 	default:
-		t.logger.Warn("Recv channel full, dropping message")
+		t.logger.Infof("WARN: Recv channel full, dropping message")
 		return &SendMessageResponse{
 			Success: false,
 			Error:   "recv channel full",
@@ -128,7 +124,7 @@ func (t *Transport) startGRPCServer() error {
 	// Start serving in a goroutine
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			t.logger.Error("gRPC server error", zap.Error(err))
+			t.logger.WithFields(map[string]any{"error": err}).Errorf("gRPC server error")
 		}
 	}()
 

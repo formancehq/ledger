@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
-	"go.uber.org/zap"
 )
 
 // handleCreateBucket handles POST /buckets/{bucketName} to create a new bucket
@@ -56,7 +55,7 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 
 	// Create bucket via cluster
 	if err := s.cluster.CreateBucket(bucketName, req.Driver, req.Config); err != nil {
-		s.logger.Error("Failed to create bucket", zap.String("name", bucketName), zap.Error(err))
+		s.logger.WithFields(map[string]any{"name": bucketName, "error": err}).Errorf("Failed to create bucket")
 		api.InternalServerError(w, r, err)
 		return
 	}
@@ -64,7 +63,7 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 	// Get the created bucket to return it
 	bucket, exists := s.cluster.GetBucket(bucketName)
 	if !exists {
-		s.logger.Warn("Failed to retrieve created bucket", zap.String("name", bucketName))
+		s.logger.WithFields(map[string]any{"name": bucketName}).Infof("WARN: Failed to retrieve created bucket")
 		// Still return success since creation succeeded
 		api.Created(w, service.BucketInfo{
 			Name:   bucketName,
