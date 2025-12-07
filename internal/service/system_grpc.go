@@ -33,7 +33,7 @@ func newGRPCLedger(cluster ClusterClient, logger logging.Logger) *grpcLedger {
 func (g *grpcLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	g.logger.Debug("Forwarding transaction creation to leader via gRPC")
 
-	client := g.cluster.GetLeaderGRPCClient()
+	client := g.cluster.GetLeaderLedgerGRPCClient()
 	if client == nil {
 		return nil, nil, fmt.Errorf("not connected to leader gRPC server")
 	}

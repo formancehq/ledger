@@ -7,5 +7,6 @@ import (
 // ClusterClient provides access to Raft and gRPC client
 type ClusterClient interface {
 	GetRaft() *raft.RawNode
-	GetLeaderGRPCClient() LedgerServiceClient
+	GetLeaderGRPCClient() SystemServiceClient
+	GetLeaderLedgerGRPCClient() LedgerServiceClient
 }

@@ -110,6 +110,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 - **Protocol definitions**: 
   - `proto/common.proto` - Common types shared across services (Posting, Transaction)
   - `proto/raft_transport.proto` - Raft transport messages
+  - `proto/system.proto` - System service messages (imports common.proto)
   - `proto/ledger.proto` - Ledger service messages (imports common.proto)
   - `proto/commands/` - Directory containing all FSM command definitions:
     - `proto/commands/commands.proto` - Base command structure for FSM commands
@@ -118,6 +119,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 - **Generated code**: 
   - `internal/service/common.pb.go` - Common protobuf types (Posting, Transaction)
   - `internal/raft/raft_transport.pb.go` and `internal/raft/raft_transport_grpc.pb.go` - Raft transport
+  - `internal/service/system.pb.go` and `internal/service/system_grpc.pb.go` - System service
   - `internal/service/ledger.pb.go` and `internal/service/ledger_grpc.pb.go` - Ledger service
   - `internal/service/commands.pb.go` - Base command protobuf types
   - `internal/raft/fsm/fsm_commands.pb.go` - FSM command protobuf types

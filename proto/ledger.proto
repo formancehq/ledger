@@ -12,10 +12,6 @@ option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
 service LedgerService {
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
-  // CreateClusterSnapshot creates a snapshot of the root Raft cluster
-  rpc CreateClusterSnapshot(CreateClusterSnapshotRequest) returns (CreateClusterSnapshotResponse);
-  // CreateBucketSnapshot creates a snapshot of a bucket's Raft cluster
-  rpc CreateBucketSnapshot(CreateBucketSnapshotRequest) returns (CreateBucketSnapshotResponse);
 }
 
 message CreateTransactionRequest {
@@ -32,21 +28,5 @@ message CreateTransactionRequest {
 message CreateTransactionResponse {
   common.Transaction transaction = 1;
   map<string, google.protobuf.Struct> account_metadata = 2;
-}
-
-message CreateClusterSnapshotRequest {
-  // Empty - no parameters needed
-}
-
-message CreateClusterSnapshotResponse {
-  string message = 1;
-}
-
-message CreateBucketSnapshotRequest {
-  string bucket_name = 1;
-}
-
-message CreateBucketSnapshotResponse {
-  string message = 1;
 }
 

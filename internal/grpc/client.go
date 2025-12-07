@@ -13,7 +13,7 @@ import (
 
 type Client struct {
 	conn   *grpc.ClientConn
-	client service.LedgerServiceClient
+	client service.SystemServiceClient
 	logger logging.Logger
 	mu     sync.RWMutex
 }
@@ -42,7 +42,7 @@ func (c *Client) Connect(ctx context.Context, address string) error {
 	}
 
 	c.conn = conn
-	c.client = service.NewLedgerServiceClient(conn)
+	c.client = service.NewSystemServiceClient(conn)
 
 	c.logger.WithFields(map[string]any{"address": address}).Infof("Connected to leader gRPC server")
 	return nil
@@ -60,13 +60,13 @@ func (c *Client) ConnectWithConnection(conn *grpc.ClientConn) error {
 	}
 
 	c.conn = conn
-	c.client = service.NewLedgerServiceClient(conn)
+	c.client = service.NewSystemServiceClient(conn)
 
 	c.logger.Infof("Reusing existing gRPC connection for leader")
 	return nil
 }
 
-func (c *Client) GetClient() service.LedgerServiceClient {
+func (c *Client) GetClient() service.SystemServiceClient {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.client

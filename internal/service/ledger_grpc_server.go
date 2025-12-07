@@ -14,26 +14,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// SnapshotClient is an interface for snapshot operations
-type SnapshotClient interface {
-	Snapshot() error
-	CreateBucketSnapshot(bucketName string) error
-}
-
-// LedgerServiceServerImpl implements the LedgerService gRPC server
 type LedgerServiceServerImpl struct {
 	UnimplementedLedgerServiceServer
-	logger         logging.Logger
-	ledgerService  Ledger
-	snapshotClient SnapshotClient
+	logger        logging.Logger
+	ledgerService Ledger
 }
 
-// NewLedgerServiceServer creates a new ledger service server
-func NewLedgerServiceServer(logger logging.Logger, ledgerService Ledger, snapshotClient SnapshotClient) LedgerServiceServer {
+func NewLedgerServiceServer(logger logging.Logger, ledgerService Ledger) LedgerServiceServer {
 	return &LedgerServiceServerImpl{
-		logger:         logger,
-		ledgerService:  ledgerService,
-		snapshotClient: snapshotClient,
+		logger:        logger,
+		ledgerService: ledgerService,
 	}
 }
 
@@ -70,7 +60,6 @@ func (l *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *Cr
 		t := time.New(req.Timestamp.AsTime())
 		timestamp = &t
 	}
-	// If timestamp is nil, leave it as nil (leader will decide)
 
 	// Create transaction parameters
 	params := Parameters[CreateTransaction]{
@@ -104,53 +93,6 @@ func (l *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *Cr
 	}
 
 	return response, nil
-}
-
-func (l *LedgerServiceServerImpl) CreateClusterSnapshot(ctx context.Context, req *CreateClusterSnapshotRequest) (*CreateClusterSnapshotResponse, error) {
-	l.logger.Debug("CreateClusterSnapshot request received")
-
-	if l.snapshotClient == nil {
-		return nil, fmt.Errorf("snapshot client not available")
-	}
-
-	if err := l.snapshotClient.Snapshot(); err != nil {
-		return nil, fmt.Errorf("creating cluster snapshot: %w", err)
-	}
-
-	return &CreateClusterSnapshotResponse{
-		Message: "Snapshot created successfully",
-	}, nil
-}
-
-func (l *LedgerServiceServerImpl) CreateBucketSnapshot(ctx context.Context, req *CreateBucketSnapshotRequest) (*CreateBucketSnapshotResponse, error) {
-	l.logger.WithFields(map[string]any{"bucket": req.BucketName}).Debugf("CreateBucketSnapshot request received")
-
-	if l.snapshotClient == nil {
-		return nil, fmt.Errorf("snapshot client not available")
-	}
-
-	if req.BucketName == "" {
-		return nil, fmt.Errorf("bucket name is required")
-	}
-
-	if err := l.snapshotClient.CreateBucketSnapshot(req.BucketName); err != nil {
-		return nil, fmt.Errorf("creating bucket snapshot: %w", err)
-	}
-
-	return &CreateBucketSnapshotResponse{
-		Message: "Snapshot created successfully",
-	}, nil
-}
-
-// Helper functions for conversion
-func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.Struct {
-	result := make(map[string]*structpb.Struct)
-	for k, v := range md {
-		if s, err := metadataToStruct(v); err == nil {
-			result[k] = s
-		}
-	}
-	return result
 }
 
 func transactionToProto(tx ledger.Transaction) *Transaction {
@@ -190,7 +132,16 @@ func transactionToProto(tx ledger.Transaction) *Transaction {
 	}
 }
 
-// RegisterLedgerService registers the LedgerServiceServer on the given gRPC server
+func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.Struct {
+	result := make(map[string]*structpb.Struct)
+	for k, v := range md {
+		if s, err := metadataToStruct(v); err == nil {
+			result[k] = s
+		}
+	}
+	return result
+}
+
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer LedgerServiceServer) {
 	RegisterLedgerServiceServer(server, ledgerServiceServer)
 }

@@ -34,6 +34,8 @@ func Module() fx.Option {
 			NewRaftCluster,
 			NewLedgerService,
 			NewGRPCServer,
+			NewSnapshotClient,
+			NewSystemServiceServer,
 			NewLedgerServiceServer,
 			NewHTTPServer,
 			NewClusterAdapter,
@@ -41,6 +43,7 @@ func Module() fx.Option {
 		),
 		fx.Invoke(
 			RegisterRaftTransportServiceHook,
+			RegisterSystemServiceHook,
 			RegisterLedgerServiceHook,
 			StartGRPCServerHook,
 			StartHTTPServerHook,
@@ -111,12 +114,25 @@ func NewGRPCServer(cfg *config.Config, logger logging.Logger) (*grpcserver.Serve
 	return grpcserver.NewServer(grpcPort, logger), nil
 }
 
-func NewLedgerServiceServer(logger logging.Logger, ledgerService service.Ledger, cluster *raft.Cluster) service.LedgerServiceServer {
-	return service.NewLedgerServiceServer(logger, ledgerService, cluster)
+func NewSnapshotClient(cluster *raft.Cluster) service.SnapshotClient {
+	return cluster
+}
+
+func NewSystemServiceServer(logger logging.Logger, snapshotClient service.SnapshotClient) service.SystemServiceServer {
+	return service.NewSystemServiceServer(logger, snapshotClient)
+}
+
+func NewLedgerServiceServer(logger logging.Logger, ledgerService service.Ledger) service.LedgerServiceServer {
+	return service.NewLedgerServiceServer(logger, ledgerService)
 }
 
 func RegisterRaftTransportServiceHook(grpcServer *grpcserver.Server, transport *raft.Transport) error {
 	raft.RegisterRaftTransportService(grpcServer.GetServer(), transport)
+	return nil
+}
+
+func RegisterSystemServiceHook(grpcServer *grpcserver.Server, systemServiceServer service.SystemServiceServer) error {
+	service.RegisterSystemService(grpcServer.GetServer(), systemServiceServer)
 	return nil
 }
 

@@ -584,7 +584,30 @@ func (r *Cluster) GetTransport() *Transport {
 
 // GetLeaderGRPCClient returns the gRPC client for the current leader
 // It uses the transport's existing connection to avoid creating duplicate connections
-func (r *Cluster) GetLeaderGRPCClient() service.LedgerServiceClient {
+func (r *Cluster) GetLeaderGRPCClient() service.SystemServiceClient {
+	// Get current leader
+	status := r.node.RawNode().Status()
+	leaderID := status.Lead
+
+	// If we're the leader or no leader, return nil
+	if leaderID == r.nodeID || leaderID == 0 {
+		return nil
+	}
+
+	// Get connection from transport
+	conn := r.transport.GetPeerConnection(leaderID)
+	if conn == nil {
+		r.logger.WithFields(map[string]any{"leaderID": fmt.Sprintf("%x", leaderID)}).Infof("WARN: No gRPC connection available for leader")
+		return nil
+	}
+
+	// Create client from existing connection
+	return service.NewSystemServiceClient(conn)
+}
+
+// GetLeaderLedgerGRPCClient returns the LedgerService gRPC client for the current leader
+// It uses the transport's existing connection to avoid creating duplicate connections
+func (r *Cluster) GetLeaderLedgerGRPCClient() service.LedgerServiceClient {
 	// Get current leader
 	status := r.node.RawNode().Status()
 	leaderID := status.Lead

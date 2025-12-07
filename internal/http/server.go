@@ -47,7 +47,8 @@ type ClusterClient interface {
 	GetAllBuckets() map[string]service.BucketInfo
 	GetBucket(name string) (service.BucketInfo, bool)
 	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
-	GetLeaderGRPCClient() service.LedgerServiceClient
+	GetLeaderGRPCClient() service.SystemServiceClient
+	GetLeaderLedgerGRPCClient() service.LedgerServiceClient
 	GetRaft() *raft.RawNode
 }
 
