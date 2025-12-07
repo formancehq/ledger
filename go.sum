@@ -97,6 +97,8 @@ github.com/formancehq/go-libs/v3 v3.6.0 h1:sRPrpPPxBP0Q/bFWSxbuOtkLt3zrVsowQ3oNV
 github.com/formancehq/go-libs/v3 v3.6.0/go.mod h1:zWgFos2lhuunwk6YqXscMEokOKvEeH6Et5VjTyaF9mM=
 github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef h1:r4bB+NC8XYnxFjH3GihN5w82IWI9gWrw99T7SY7Almg=
 github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef/go.mod h1:PA0uBeBH1cx/FwwmAoH6f51S2sol+ubnSSlPFEuJECQ=
+github.com/formancehq/ledger/pkg/client v0.0.0-20251205104205-4835b766718b h1:IfZdHyJcS+xqbJC7yotx4sk/oR2AA4DdLP7Ui5TZ18g=
+github.com/formancehq/ledger/pkg/client v0.0.0-20251205104205-4835b766718b/go.mod h1:1R9INzdlKOl1WmCGdT7aUyusE7IwOREc33ERi9c1QdE=
 github.com/go-chi/chi/v5 v5.2.3 h1:WQIt9uxdsAbgIYgid+BpYc+liqQZGMHRaUwp0JUcvdE=
 github.com/go-chi/chi/v5 v5.2.3/go.mod h1:L2yAIGWB3H+phAw1NxKwWM+7eUH/lU8pOMm5hHcoops=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

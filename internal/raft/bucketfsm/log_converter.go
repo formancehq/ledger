@@ -15,9 +15,9 @@ import (
 // logToProto converts a ledger.Log to protobuf Log
 func logToProto(l ledger.Log) (*Log, error) {
 	logProto := &Log{
-		Type:           int32(l.Type),
-		Ledger:         l.Ledger,
-		IdempotencyKey: l.IdempotencyKey,
+		Type:            int32(l.Type),
+		Ledger:          l.Ledger,
+		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
 	}
 
@@ -42,9 +42,9 @@ func logToProto(l ledger.Log) (*Log, error) {
 // logFromProto converts a protobuf Log to ledger.Log
 func logFromProto(l *Log) (ledger.Log, error) {
 	log := ledger.Log{
-		Type:           ledger.LogType(l.Type),
-		Ledger:         l.Ledger,
-		IdempotencyKey: l.IdempotencyKey,
+		Type:            ledger.LogType(l.Type),
+		Ledger:          l.Ledger,
+		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
 	}
 
@@ -332,4 +332,3 @@ func structToMetadata(s *structpb.Struct) metadata.Metadata {
 	}
 	return md
 }
-

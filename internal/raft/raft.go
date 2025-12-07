@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/fsm"
@@ -83,7 +84,7 @@ func restoreFSMFromStorage(fsmInstance *fsm.FSM, storage *Storage, logger loggin
 				}
 
 				// Decode the command
-				var cmd service.Command
+				var cmd commands.Command
 				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 					logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Infof("WARN: Failed to unmarshal command during FSM restoration")
 					continue
@@ -375,7 +376,7 @@ func (r *Cluster) readyLoop() {
 					continue
 				}
 				// Decode the command to get its ID
-				var cmd service.Command
+				var cmd commands.Command
 				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 					r.logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Errorf("Failed to unmarshal command for notification")
 					continue
@@ -398,7 +399,7 @@ func (r *Cluster) readyLoop() {
 // applyEntry applies a Raft log entry to the FSM
 func (r *Cluster) applyEntry(entry raftpb.Entry) (any, error) {
 	// Decode the command from the Raft log data
-	var cmd service.Command
+	var cmd commands.Command
 	if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 		return nil, fmt.Errorf("unmarshaling command: %w", err)
 	}
@@ -896,41 +897,41 @@ func (r *Cluster) FindBucketForLedger(ledgerName string) (string, error) {
 }
 
 // GetLedger retrieves a ledger from a bucket
-func (r *Cluster) GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error) {
+func (r *Cluster) GetLedger(bucketName, ledgerName string) (ledger.LedgerInfo, bool, error) {
 	// Get the bucket Raft group
 	r.muGroups.RLock()
 	group, exists := r.bucketGroups[bucketName]
 	r.muGroups.RUnlock()
 
 	if !exists {
-		return service.LedgerInfo{}, false, fmt.Errorf("bucket %s not found or Raft group not started", bucketName)
+		return ledger.LedgerInfo{}, false, fmt.Errorf("bucket %s not found or Raft group not started", bucketName)
 	}
 
 	// Get ledger from bucket Raft group
 	ledgerInfo, exists := group.GetLedger(ledgerName)
 	if !exists {
-		return service.LedgerInfo{}, false, nil
+		return ledger.LedgerInfo{}, false, nil
 	}
 
 	return ledgerInfo, true, nil
 }
 
 // GetLedgerByName retrieves a ledger by its name, finding the bucket automatically
-func (r *Cluster) GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error) {
+func (r *Cluster) GetLedgerByName(ledgerName string) (ledger.LedgerInfo, string, bool, error) {
 	bucketName, err := r.FindBucketForLedger(ledgerName)
 	if err != nil {
-		return service.LedgerInfo{}, "", false, nil
+		return ledger.LedgerInfo{}, "", false, nil
 	}
 
 	ledgerInfo, exists, err := r.GetLedger(bucketName, ledgerName)
 	if err != nil {
-		return service.LedgerInfo{}, "", false, err
+		return ledger.LedgerInfo{}, "", false, err
 	}
 	return ledgerInfo, bucketName, exists, nil
 }
 
 // GetAllLedgers retrieves all ledgers from a bucket
-func (r *Cluster) GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error) {
+func (r *Cluster) GetAllLedgers(bucketName string) (map[string]ledger.LedgerInfo, error) {
 	// Get the bucket Raft group
 	r.muGroups.RLock()
 	group, exists := r.bucketGroups[bucketName]
@@ -965,12 +966,12 @@ func (r *Cluster) CreateBucket(name, driver string, config map[string]interface{
 }
 
 // GetBucket returns the bucket info for a given name
-func (r *Cluster) GetBucket(name string) (service.BucketInfo, bool) {
+func (r *Cluster) GetBucket(name string) (ledger.BucketInfo, bool) {
 	return r.fsm.GetBucket(name)
 }
 
 // GetAllBuckets returns all buckets
-func (r *Cluster) GetAllBuckets() map[string]service.BucketInfo {
+func (r *Cluster) GetAllBuckets() map[string]ledger.BucketInfo {
 	return r.fsm.GetAllBuckets()
 }
 
@@ -1011,7 +1012,7 @@ func (r *Cluster) startBucketRaftGroupsFromFSM() {
 }
 
 // startBucketRaftGroupFromFSM starts a Raft group for a bucket using information from the FSM
-func (r *Cluster) startBucketRaftGroupFromFSM(bucketName string, bucketID uint64, bucketInfo service.BucketInfo) error {
+func (r *Cluster) startBucketRaftGroupFromFSM(bucketName string, bucketID uint64, bucketInfo ledger.BucketInfo) error {
 	r.muGroups.Lock()
 	defer r.muGroups.Unlock()
 

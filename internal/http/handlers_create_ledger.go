@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/go-chi/chi/v5"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
 // handleCreateLedger handles POST /ledgers/{ledgerName} to create a new ledger
@@ -76,7 +76,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		s.logger.WithFields(map[string]any{"bucket": req.Bucket, "name": ledgerName, "error": err}).Infof("WARN: Failed to retrieve created ledger")
 		// Still return success since creation succeeded
 		api.Created(w, LedgerResponse{
-			LedgerInfo: service.LedgerInfo{
+			LedgerInfo: ledger.LedgerInfo{
 				Name:     ledgerName,
 				Metadata: req.Metadata,
 			},
@@ -91,4 +91,3 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		Bucket:     req.Bucket,
 	})
 }
-

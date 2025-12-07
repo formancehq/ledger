@@ -15,6 +15,7 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/config"
 	"github.com/formancehq/ledger-v3-poc/internal/http"
+	"github.com/formancehq/ledger-v3-poc/internal/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/bucketfsm"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
@@ -53,7 +54,7 @@ func NewBucketRaftGroup(
 	parentCtx context.Context,
 	bucketName string,
 	bucketID uint64,
-	bucketInfo service.BucketInfo,
+	bucketInfo ledger.BucketInfo,
 	transport *Transport,
 	cfg *config.Config,
 	logger logging.Logger,
@@ -321,7 +322,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 				}
 
 				// Decode the command to get its ID
-				var cmd service.Command
+				var cmd commands.Command
 				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 					g.logger.WithFields(map[string]any{"index": entry.Index, "error": err}).Errorf("Failed to unmarshal command for notification")
 					continue
@@ -441,16 +442,16 @@ func (g *BucketRaftGroup) Snapshot() error {
 // applyEntry applies a Raft log entry to the bucket FSM
 func (g *BucketRaftGroup) applyEntry(entry raftpb.Entry) (any, error) {
 	// Decode the command from the Raft log data
-	var cmd service.Command
+	var cmd commands.Command
 	if err := cmd.UnmarshalBinary(entry.Data); err != nil {
 		return nil, fmt.Errorf("unmarshaling command: %w", err)
 	}
 
 	// Route to the appropriate command handler
 	switch cmd.Type {
-	case bucketfsm.CommandTypeCreateLedger:
+		case bucketfsm.CommandTypeCreateLedger:
 		return g.fsm.HandleCreateLedger(cmd, entry.Index)
-	case bucketfsm.CommandTypeInsertLog:
+		case bucketfsm.CommandTypeInsertLog:
 		return nil, g.fsm.HandleInsertLog(cmd, entry.Index)
 	default:
 		g.logger.WithFields(map[string]any{"type": string(cmd.Type)}).Infof("WARN: Unknown command type in bucket FSM")
@@ -503,12 +504,12 @@ func (g *BucketRaftGroup) InsertLogs(ctx context.Context, logs ...ledger.Log) er
 }
 
 // GetLedger returns the ledger info for a given name in this bucket
-func (g *BucketRaftGroup) GetLedger(name string) (service.LedgerInfo, bool) {
+func (g *BucketRaftGroup) GetLedger(name string) (ledger.LedgerInfo, bool) {
 	return g.fsm.GetLedger(name)
 }
 
 // GetAllLedgers returns all ledgers in this bucket
-func (g *BucketRaftGroup) GetAllLedgers() map[string]service.LedgerInfo {
+func (g *BucketRaftGroup) GetAllLedgers() map[string]ledger.LedgerInfo {
 	return g.fsm.GetAllLedgers()
 }
 

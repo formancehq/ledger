@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/commands"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
@@ -40,7 +40,7 @@ func NewNodeWrapper(node *raft.RawNode, logger logging.Logger) *NodeWrapper {
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (n *NodeWrapper) Apply(cmd *service.Command, timeout time.Duration) (uint64, any, error) {
+func (n *NodeWrapper) Apply(cmd *commands.Command, timeout time.Duration) (uint64, any, error) {
 	// Serialize the command to binary format
 	cmdData, err := cmd.MarshalBinary()
 	if err != nil {

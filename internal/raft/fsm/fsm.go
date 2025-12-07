@@ -5,20 +5,22 @@ import (
 	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
 // FSM implements the raft.FSM interface
 type FSM struct {
 	logger       logging.Logger
-	buckets      map[string]service.BucketInfo // Map of bucket name -> bucket info
-	nextBucketID uint64                        // Next sequential bucket ID
+	buckets      map[string]ledger.BucketInfo // Map of bucket name -> bucket info
+	nextBucketID uint64                       // Next sequential bucket ID
 }
 
 func NewFSM(logger logging.Logger) *FSM {
 	return &FSM{
 		logger:       logger,
-		buckets:      make(map[string]service.BucketInfo),
+		buckets:      make(map[string]ledger.BucketInfo),
 		nextBucketID: 1, // Start at 1, first bucket will have ID 1
 	}
 }
@@ -28,7 +30,7 @@ func NewFSM(logger logging.Logger) *FSM {
 // Ledgers and logs are now managed by bucket Raft groups, not the main FSM.
 
 // HandleCreateBucket handles the create bucket command
-func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
+func (f *FSM) HandleCreateBucket(cmd commands.Command, index uint64) error {
 	var createCmd CreateBucketCommand
 	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create bucket command")
@@ -52,7 +54,7 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 	f.nextBucketID++
 
 	// Create bucket info using the command date
-	bucketInfo := service.BucketInfo{
+	bucketInfo := ledger.BucketInfo{
 		ID:        bucketID,
 		Name:      createCmd.Name,
 		Driver:    createCmd.Driver,
@@ -68,7 +70,7 @@ func (f *FSM) HandleCreateBucket(cmd service.Command, index uint64) error {
 }
 
 // HandleDeleteBucket handles the delete bucket command
-func (f *FSM) HandleDeleteBucket(cmd service.Command, index uint64) error {
+func (f *FSM) HandleDeleteBucket(cmd commands.Command, index uint64) error {
 	var deleteCmd DeleteBucketCommand
 	if err := UnmarshalCommandData(cmd.Data, &deleteCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal delete bucket command")
@@ -89,15 +91,15 @@ func (f *FSM) HandleDeleteBucket(cmd service.Command, index uint64) error {
 }
 
 // GetBucket returns the bucket info for a given name
-func (f *FSM) GetBucket(name string) (service.BucketInfo, bool) {
+func (f *FSM) GetBucket(name string) (ledger.BucketInfo, bool) {
 	info, ok := f.buckets[name]
 	return info, ok
 }
 
 // GetAllBuckets returns all buckets
-func (f *FSM) GetAllBuckets() map[string]service.BucketInfo {
+func (f *FSM) GetAllBuckets() map[string]ledger.BucketInfo {
 	// Return a copy to avoid external modifications
-	result := make(map[string]service.BucketInfo, len(f.buckets))
+	result := make(map[string]ledger.BucketInfo, len(f.buckets))
 	for k, v := range f.buckets {
 		result[k] = v
 	}
@@ -133,8 +135,8 @@ func (f *FSM) CreateSnapshot() ([]byte, error) {
 // RestoreSnapshot restores the FSM from a snapshot
 func (f *FSM) RestoreSnapshot(data []byte) error {
 	var snapshotData struct {
-		Buckets      map[string]service.BucketInfo `json:"buckets"`
-		NextBucketID uint64                        `json:"nextBucketID"`
+		Buckets      map[string]ledger.BucketInfo `json:"buckets"`
+		NextBucketID uint64                       `json:"nextBucketID"`
 	}
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
@@ -143,7 +145,7 @@ func (f *FSM) RestoreSnapshot(data []byte) error {
 
 	f.buckets = snapshotData.Buckets
 	if f.buckets == nil {
-		f.buckets = make(map[string]service.BucketInfo)
+		f.buckets = make(map[string]ledger.BucketInfo)
 	}
 
 	// Restore nextBucketID, or calculate from existing buckets if not present

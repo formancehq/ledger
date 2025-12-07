@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"go.etcd.io/etcd/raft/v3"
 )
@@ -19,15 +20,15 @@ type LeaderClient interface {
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
 	CreateLedger(bucketName, ledgerName string, metadata metadata.Metadata) error
-	GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error)
-	GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error)
+	GetLedger(bucketName, ledgerName string) (ledger.LedgerInfo, bool, error)
+	GetLedgerByName(ledgerName string) (ledger.LedgerInfo, string, bool, error)
 	FindBucketForLedger(ledgerName string) (string, error)
-	GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error)
+	GetAllLedgers(bucketName string) (map[string]ledger.LedgerInfo, error)
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
 	CreateBucketSnapshot(bucketName string) error
-	GetAllBuckets() map[string]service.BucketInfo
-	GetBucket(name string) (service.BucketInfo, bool)
+	GetAllBuckets() map[string]ledger.BucketInfo
+	GetBucket(name string) (ledger.BucketInfo, bool)
 	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
 }
 
@@ -37,15 +38,15 @@ type ClusterClient interface {
 	IsHealthy() bool
 	GetClusterState() (*ClusterState, error)
 	CreateLedger(bucketName, ledgerName string, metadata metadata.Metadata) error
-	GetLedger(bucketName, ledgerName string) (service.LedgerInfo, bool, error)
-	GetLedgerByName(ledgerName string) (service.LedgerInfo, string, bool, error)
+	GetLedger(bucketName, ledgerName string) (ledger.LedgerInfo, bool, error)
+	GetLedgerByName(ledgerName string) (ledger.LedgerInfo, string, bool, error)
 	FindBucketForLedger(ledgerName string) (string, error)
-	GetAllLedgers(bucketName string) (map[string]service.LedgerInfo, error)
+	GetAllLedgers(bucketName string) (map[string]ledger.LedgerInfo, error)
 	CreateBucket(name, driver string, config map[string]interface{}) error
 	DeleteBucket(name string) error
 	CreateBucketSnapshot(bucketName string) error
-	GetAllBuckets() map[string]service.BucketInfo
-	GetBucket(name string) (service.BucketInfo, bool)
+	GetAllBuckets() map[string]ledger.BucketInfo
+	GetBucket(name string) (ledger.BucketInfo, bool)
 	GetBucketWithRaftState(name string) (*BucketWithRaftState, error)
 	GetLeaderGRPCClient() service.SystemServiceClient
 	GetLeaderLedgerGRPCClient() service.LedgerServiceClient
@@ -69,7 +70,7 @@ type NodeInfo struct {
 
 // BucketWithRaftState represents a bucket with its Raft cluster state
 type BucketWithRaftState struct {
-	service.BucketInfo
+	ledger.BucketInfo
 	RaftState *ClusterState `json:"raftState"`
 }
 

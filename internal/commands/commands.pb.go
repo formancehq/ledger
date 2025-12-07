@@ -4,7 +4,7 @@
 // 	protoc        v6.33.0
 // source: proto/commands/commands.proto
 
-package service
+package commands
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -100,7 +100,7 @@ const file_proto_commands_commands_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x12\n" +
 	"\x04data\x18\x03 \x01(\fR\x04data\x12.\n" +
-	"\x04date\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04dateB6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
+	"\x04date\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04dateB7Z5github.com/formancehq/ledger-v3-poc/internal/commandsb\x06proto3"
 
 var (
 	file_proto_commands_commands_proto_rawDescOnce sync.Once

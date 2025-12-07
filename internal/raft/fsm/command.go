@@ -2,20 +2,20 @@ package fsm
 
 import (
 	"github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal/commands"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
 	// CommandTypeCreateBucket is the command type for creating a new bucket
-	CommandTypeCreateBucket service.CommandType = "create_bucket"
+	CommandTypeCreateBucket commands.CommandType = "create_bucket"
 	// CommandTypeDeleteBucket is the command type for deleting a bucket
-	CommandTypeDeleteBucket service.CommandType = "delete_bucket"
+	CommandTypeDeleteBucket commands.CommandType = "delete_bucket"
 )
 
 // NewCreateBucketCommand creates a new CreateBucketCommand
-func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*service.Command, error) {
+func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*commands.Command, error) {
 	// Convert config map to protobuf Struct
 	configStruct, err := structpb.NewStruct(config)
 	if err != nil {
@@ -33,8 +33,8 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}) 
 		return nil, err
 	}
 
-	return &service.Command{
-		ID:   service.GenerateRandomID(),
+	return &commands.Command{
+		ID:   commands.GenerateRandomID(),
 		Type: CommandTypeCreateBucket,
 		Data: data,
 		Date: time.Now(),
@@ -42,7 +42,7 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}) 
 }
 
 // NewDeleteBucketCommand creates a new DeleteBucketCommand
-func NewDeleteBucketCommand(name string) (*service.Command, error) {
+func NewDeleteBucketCommand(name string) (*commands.Command, error) {
 	cmdProto := &DeleteBucketCommand{
 		Name: name,
 	}
@@ -52,15 +52,15 @@ func NewDeleteBucketCommand(name string) (*service.Command, error) {
 		return nil, err
 	}
 
-	return &service.Command{
-		ID:   service.GenerateRandomID(),
+	return &commands.Command{
+		ID:   commands.GenerateRandomID(),
 		Type: CommandTypeDeleteBucket,
 		Data: data,
 		Date: time.Now(),
 	}, nil
 }
 
-// UnmarshalCommandData unmarshals command data from binary format using protobuf
+// UnmarshalCommandData unmarshals FSM command data from binary format using protobuf
 func UnmarshalCommandData(data []byte, v interface{}) error {
 	switch cmd := v.(type) {
 	case *CreateBucketCommand:

@@ -1,12 +1,11 @@
 package http
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/formancehq/ledger-v3-poc/internal"
 )
 
 // LedgerResponse represents a ledger with its bucket name
 type LedgerResponse struct {
-	service.LedgerInfo
+	ledger.LedgerInfo
 	Bucket string `json:"bucket"`
 }
-

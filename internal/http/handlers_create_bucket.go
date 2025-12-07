@@ -7,8 +7,9 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/v3/api"
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 // handleCreateBucket handles POST /buckets/{bucketName} to create a new bucket
@@ -65,7 +66,7 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		s.logger.WithFields(map[string]any{"name": bucketName}).Infof("WARN: Failed to retrieve created bucket")
 		// Still return success since creation succeeded
-		api.Created(w, service.BucketInfo{
+		api.Created(w, ledger.BucketInfo{
 			Name:   bucketName,
 			Driver: req.Driver,
 			Config: req.Config,
@@ -76,4 +77,3 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 	// Return the bucket info
 	api.Created(w, bucket)
 }
-
