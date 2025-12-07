@@ -9,6 +9,7 @@ import (
 
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // Transport handles network communication between Raft nodes using gRPC
@@ -165,6 +166,17 @@ func (t *Transport) Recv() <-chan raftpb.Message {
 // Unreachable returns the channel for reporting unreachable peers
 func (t *Transport) Unreachable() <-chan uint64 {
 	return t.unreachableCh
+}
+
+// GetPeerConnection returns the gRPC connection for a specific peer, if it exists
+// This allows reusing existing connections for service calls instead of creating new ones
+func (t *Transport) GetPeerConnection(peerID uint64) *grpc.ClientConn {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if client, exists := t.grpcClients[peerID]; exists {
+		return client.getConnection()
+	}
+	return nil
 }
 
 // sendLoop sends messages to a peer using gRPC

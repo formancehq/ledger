@@ -213,7 +213,7 @@ func NewBucketRaftGroup(
 	defaultLedger := service.NewDefaultLedger(group, lockedVolumesStore, struct {
 		service.LogWriter
 		service.LogReader
-	} {
+	}{
 		LogWriter: appLogStore,
 		LogReader: service.NewConsolidatedLogReader(appLogStore, bucketFSM),
 	}, bucketLogger)
@@ -285,7 +285,7 @@ func (g *BucketRaftGroup) readyLoopWithChannel(msgCh <-chan raftpb.Message) {
 
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				g.logger.Info("Applying snapshot", zap.Uint64("index", rd.Snapshot.Metadata.Index))
-				
+
 				if err := g.storage.ApplySnapshot(rd.Snapshot); err != nil {
 					g.logger.Error("Failed to apply snapshot to storage", zap.Error(err))
 					continue

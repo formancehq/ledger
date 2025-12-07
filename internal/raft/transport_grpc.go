@@ -58,6 +58,13 @@ type grpcClient struct {
 	mu     sync.Mutex
 }
 
+// getConnection returns the underlying gRPC connection (thread-safe)
+func (c *grpcClient) getConnection() *grpc.ClientConn {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn
+}
+
 // sendMessage sends a message using unary gRPC call
 func (c *grpcClient) sendMessage(ctx context.Context, msg raftpb.Message) error {
 	c.mu.Lock()

@@ -48,6 +48,24 @@ func (c *Client) Connect(ctx context.Context, address string) error {
 	return nil
 }
 
+// ConnectWithConnection connects using an existing gRPC connection
+// This allows reusing connections from the transport layer
+func (c *Client) ConnectWithConnection(conn *grpc.ClientConn) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Close existing connection if any (but don't close the one we're reusing)
+	if c.conn != nil && c.conn != conn {
+		c.conn.Close()
+	}
+
+	c.conn = conn
+	c.client = service.NewLedgerServiceClient(conn)
+
+	c.logger.Info("Reusing existing gRPC connection for leader")
+	return nil
+}
+
 func (c *Client) GetClient() service.LedgerServiceClient {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

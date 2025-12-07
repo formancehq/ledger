@@ -122,7 +122,6 @@ type Cluster struct {
 	config        *config.Config
 	logger        *zap.Logger
 	grpcServer    *grpc.Server
-	grpcClient    *grpc.Client
 	ledgerService service.Ledger // Routed ledger service that routes to bucket Raft groups
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -251,7 +250,6 @@ func NewRaftCluster(parentCtx context.Context, cfg *config.Config, logger *zap.L
 		transport:    transport,
 		config:       cfg,
 		logger:       logger,
-		grpcClient:   grpc.NewClient(logger),
 		ctx:          ctx,
 		cancel:       cancel,
 		nodeID:       nodeID,
@@ -300,9 +298,6 @@ func (r *Cluster) Start() error {
 
 	// Start the Ready loop - it will receive all messages and route them appropriately
 	go r.readyLoop()
-
-	// Start leader monitoring
-	go r.monitorLeader()
 
 	return nil
 }
@@ -483,114 +478,6 @@ func (r *Cluster) applyEntry(entry raftpb.Entry) (any, error) {
 	return nil, err
 }
 
-func (r *Cluster) monitorLeader() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	var lastLeaderID uint64
-
-	for {
-		select {
-		case <-r.ctx.Done():
-			r.logger.Info("Context cancelled, stopping leader monitoring")
-			return
-		case <-ticker.C:
-			status := r.node.RawNode().Status()
-			leaderID := status.Lead
-
-			// Check if leader changed
-			if leaderID != lastLeaderID {
-				oldLeaderAddr := r.findPeerAddress(lastLeaderID)
-				if oldLeaderAddr == "" && lastLeaderID != 0 && lastLeaderID != raft.None {
-					oldLeaderAddr = fmt.Sprintf("%x", lastLeaderID)
-				}
-				newLeaderAddr := r.findPeerAddress(leaderID)
-				if newLeaderAddr == "" && leaderID != 0 && leaderID != raft.None {
-					newLeaderAddr = fmt.Sprintf("%x", leaderID)
-				}
-				r.logger.Info("Leader changed",
-					zap.String("oldLeaderID", fmt.Sprintf("%x", lastLeaderID)),
-					zap.String("old", oldLeaderAddr),
-					zap.String("newLeaderID", fmt.Sprintf("%x", leaderID)),
-					zap.String("new", newLeaderAddr))
-				lastLeaderID = leaderID
-				r.handleLeaderChange(leaderID)
-			}
-
-			// If we're a follower and have a leader, periodically check if leader is reachable
-			if status.RaftState == raft.StateFollower && leaderID != 0 && leaderID != raft.None {
-				leaderAddr := r.findPeerAddress(leaderID)
-				if leaderAddr != "" {
-					// Try a simple TCP connection to verify leader is reachable
-					conn, err := net.DialTimeout("tcp", leaderAddr, 500*time.Millisecond)
-					if err != nil {
-						r.logger.Info("Leader appears unreachable, reporting", zap.String("leader", leaderAddr), zap.Error(err))
-						r.node.RawNode().ReportUnreachable(leaderID)
-					} else {
-						conn.Close()
-					}
-				}
-			}
-		}
-	}
-}
-
-func (r *Cluster) handleLeaderChange(leaderID uint64) {
-	// Check if we are the leader
-	isLeader := leaderID == r.nodeID
-
-	if isLeader {
-		r.logger.Info("Became leader")
-		// Stop client if running (we are now the leader, don't need to connect to ourselves)
-		r.grpcClient.Close()
-		// Note: The unified gRPC server is already running from Start()
-	} else if leaderID != 0 {
-		// Find leader address from transport or config
-		leaderAddr := r.findPeerAddress(leaderID)
-		if leaderAddr == "" {
-			r.logger.Error("Failed to find leader address", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
-			return
-		}
-		r.logger.Info("Leader changed, connecting to new leader", zap.String("leader", leaderAddr))
-		// Note: The unified gRPC server stays running to receive Raft messages
-
-		// Connect to leader's gRPC server (same address as Raft transport)
-		// The unified gRPC server listens on the same port as Raft transport
-		grpcAddr := leaderAddr
-
-		// Retry connection with exponential backoff
-		maxRetries := 5
-		var lastErr error
-		for i := 0; i < maxRetries; i++ {
-			if err := r.grpcClient.Connect(r.ctx, grpcAddr); err != nil {
-				lastErr = err
-				if i < maxRetries-1 {
-					backoff := time.Duration(i+1) * 500 * time.Millisecond
-					r.logger.Warn("Failed to connect to leader gRPC, retrying",
-						zap.String("address", grpcAddr),
-						zap.Error(err),
-						zap.Int("attempt", i+1),
-						zap.Duration("backoff", backoff))
-					time.Sleep(backoff)
-					continue
-				}
-			} else {
-				r.logger.Info("Successfully connected to leader gRPC", zap.String("address", grpcAddr))
-				return
-			}
-		}
-		r.logger.Error("Failed to connect to leader gRPC after retries",
-			zap.String("address", grpcAddr),
-			zap.Error(lastErr),
-			zap.Int("retries", maxRetries))
-	} else {
-		r.logger.Debug("No leader available")
-		// Stop client (no leader to connect to)
-		// Note: The unified gRPC server stays running to receive Raft messages
-		r.grpcClient.Close()
-	}
-}
-
 // findPeerAddress finds the address of a peer by ID
 func (r *Cluster) findPeerAddress(peerID uint64) string {
 	// First, check if it's the local node
@@ -713,9 +600,8 @@ func (r *Cluster) Shutdown() error {
 	// Cancel context to stop monitoring
 	r.cancel()
 
-	// Stop gRPC server and client
+	// Stop gRPC server
 	r.grpcServer.Stop()
-	r.grpcClient.Close()
 
 	// Stop transport
 	r.transport.Stop()
@@ -737,8 +623,61 @@ func (r *Cluster) GetLedgerService() service.Ledger {
 	return r.ledgerService
 }
 
+// transportGRPCClient wraps the transport to provide a GRPCClient interface
+// It uses the transport's existing gRPC connections instead of creating new ones
+type transportGRPCClient struct {
+	cluster  *Cluster
+	logger   *zap.Logger
+	mu       sync.RWMutex
+	client   service.LedgerServiceClient
+	leaderID uint64
+}
+
+func (c *transportGRPCClient) GetClient() service.LedgerServiceClient {
+	// Update client before returning to ensure we have the latest leader connection
+	c.updateClient()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.client
+}
+
+func (c *transportGRPCClient) updateClient() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Get current leader
+	status := c.cluster.node.RawNode().Status()
+	leaderID := status.Lead
+
+	// If leader changed or client is nil, update it
+	if leaderID != c.leaderID || c.client == nil {
+		c.leaderID = leaderID
+
+		// If we're the leader, client is nil (we don't need to connect to ourselves)
+		if leaderID == c.cluster.nodeID || leaderID == 0 {
+			c.client = nil
+			return
+		}
+
+		// Get connection from transport
+		conn := c.cluster.transport.GetPeerConnection(leaderID)
+		if conn != nil {
+			c.client = service.NewLedgerServiceClient(conn)
+			c.logger.Debug("Updated gRPC client from transport", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
+		} else {
+			c.client = nil
+			c.logger.Warn("No gRPC connection available for leader", zap.String("leaderID", fmt.Sprintf("%x", leaderID)))
+		}
+	}
+}
+
 func (r *Cluster) GetGRPCClient() service.GRPCClient {
-	return r.grpcClient
+	// Create a wrapper that uses the transport
+	// The client will be updated on-demand when GetClient() is called
+	return &transportGRPCClient{
+		cluster: r,
+		logger:  r.logger,
+	}
 }
 
 // bucketLedgerRouter routes ledger requests to the appropriate bucket's DefaultLedger
