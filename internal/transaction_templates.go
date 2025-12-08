@@ -12,9 +12,9 @@ const (
 )
 
 type TransactionTemplate struct {
-	Description string
-	Script      string
-	Runtime     RuntimeType
+	Description string      `json:"description"`
+	Script      string      `json:"script"`
+	Runtime     RuntimeType `json:"runtime"`
 }
 
 type TransactionTemplates map[string]TransactionTemplate

@@ -1907,9 +1907,9 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 
 ```go
 type TransactionTemplate struct {
-    Description string
-    Script      string
-    Runtime     RuntimeType
+    Description string      `json:"description"`
+    Script      string      `json:"script"`
+    Runtime     RuntimeType `json:"runtime"`
 }
 ```
 

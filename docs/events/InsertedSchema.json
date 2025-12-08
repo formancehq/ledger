@@ -143,22 +143,22 @@
     },
     "TransactionTemplate": {
       "properties": {
-        "Description": {
+        "description": {
           "type": "string"
         },
-        "Script": {
+        "script": {
           "type": "string"
         },
-        "Runtime": {
+        "runtime": {
           "type": "string"
         }
       },
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "Description",
-        "Script",
-        "Runtime"
+        "description",
+        "script",
+        "runtime"
       ]
     },
     "TransactionTemplates": {
