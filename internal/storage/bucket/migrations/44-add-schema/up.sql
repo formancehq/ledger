@@ -15,6 +15,9 @@ do $$
 
 		alter table logs
 		add column schema_version text;
+
+		alter table transactions
+		add column template text;
 	end
 $$;
 
