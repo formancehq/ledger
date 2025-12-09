@@ -46,7 +46,7 @@ func TestForgeLogWithIKConflict(t *testing.T) {
 			Data: ledger.CreatedTransaction{},
 		}, nil)
 
-	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
+	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{}, SchemaEnforcementAudit)
 	_, _, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{
 		IdempotencyKey: "foo",
 	}, func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
@@ -96,7 +96,7 @@ func TestForgeLogWithDeadlock(t *testing.T) {
 		Return(nil)
 
 	firstCall := true
-	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{})
+	lp := newLogProcessor[RunScript, ledger.CreatedTransaction]("foo", noop.Int64Counter{}, SchemaEnforcementAudit)
 	_, _, _, err := lp.forgeLog(ctx, store, Parameters[RunScript]{}, func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[RunScript]) (*ledger.CreatedTransaction, error) {
 		if firstCall {
 			firstCall = false

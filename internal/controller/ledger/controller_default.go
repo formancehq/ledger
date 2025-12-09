@@ -45,6 +45,8 @@ type DefaultController struct {
 	executeMachineHistogram metric.Int64Histogram
 	deadLockCounter         metric.Int64Counter
 
+	schemaEnforcementMode SchemaEnforcementMode
+
 	createTransactionLp         *logProcessor[CreateTransaction, ledger.CreatedTransaction]
 	revertTransactionLp         *logProcessor[RevertTransaction, ledger.RevertedTransaction]
 	saveTransactionMetadataLp   *logProcessor[SaveTransactionMetadata, ledger.SavedMetadata]
@@ -133,11 +135,12 @@ func NewDefaultController(
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
-		store:             store,
-		ledger:            l,
-		parser:            numscriptParser,
-		interpreterParser: interpreterParser,
-		machineParser:     machineParser,
+		store:                 store,
+		ledger:                l,
+		parser:                numscriptParser,
+		interpreterParser:     interpreterParser,
+		machineParser:         machineParser,
+		schemaEnforcementMode: SchemaEnforcementAudit,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -154,13 +157,13 @@ func NewDefaultController(
 		panic(err)
 	}
 
-	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
-	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter)
-	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter)
-	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
-	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter)
-	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter)
-	ret.insertSchemaLp = newLogProcessor[InsertSchema, ledger.InsertedSchema]("InsertSchema", ret.deadLockCounter)
+	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.insertSchemaLp = newLogProcessor[InsertSchema, ledger.InsertedSchema]("InsertSchema", ret.deadLockCounter, ret.schemaEnforcementMode)
 
 	return ret
 }
@@ -616,5 +619,10 @@ func WithMeter(meter metric.Meter) DefaultControllerOption {
 func WithTracer(tracer trace.Tracer) DefaultControllerOption {
 	return func(controller *DefaultController) {
 		controller.tracer = tracer
+	}
+}
+func WithSchemaEnforcementMode(mode SchemaEnforcementMode) DefaultControllerOption {
+	return func(controller *DefaultController) {
+		controller.schemaEnforcementMode = mode
 	}
 }

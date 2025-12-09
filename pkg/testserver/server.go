@@ -14,7 +14,7 @@ import (
 
 func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions]) testservice.Option {
 	return testservice.WithInstruments(
-		testservice.AppendArgsInstrumentation("serve", "--"+cmd.BindFlag, ":0"),
+		testservice.AppendArgsInstrumentation("serve", "--"+cmd.BindFlag, ":0", "--schema-enforcement-mode", "strict"),
 		testservice.PostgresInstrumentation(postgresConnectionOptions),
 		testservice.HTTPServerInstrumentation(),
 	)

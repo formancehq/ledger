@@ -70,6 +70,8 @@ type DefaultController struct {
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
 	enableFeatures bool
+
+	schemaEnforcementMode ledgercontroller.SchemaEnforcementMode
 }
 
 func (ctrl *DefaultController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
@@ -157,6 +159,7 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			ctrl.defaultParser,
 			ctrl.machineParser,
 			ctrl.interpreterParser,
+			ledgercontroller.WithSchemaEnforcementMode(ctrl.schemaEnforcementMode),
 			ledgercontroller.WithMeter(meter),
 		)
 
@@ -303,6 +306,12 @@ func WithTracerProvider(t trace.TracerProvider) Option {
 func WithEnableFeatures(v bool) Option {
 	return func(ctrl *DefaultController) {
 		ctrl.enableFeatures = v
+	}
+}
+
+func WithSchemaEnforcementMode(mode ledgercontroller.SchemaEnforcementMode) Option {
+	return func(ctrl *DefaultController) {
+		ctrl.schemaEnforcementMode = mode
 	}
 }
 

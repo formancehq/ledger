@@ -18,14 +18,16 @@ import (
 )
 
 type logProcessor[INPUT any, OUTPUT ledger.LogPayload] struct {
-	deadLockCounter metric.Int64Counter
-	operation       string
+	deadLockCounter       metric.Int64Counter
+	operation             string
+	schemaEnforcementMode SchemaEnforcementMode
 }
 
-func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter) *logProcessor[INPUT, OUTPUT] {
+func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter, schemaEnforcementMode SchemaEnforcementMode) *logProcessor[INPUT, OUTPUT] {
 	return &logProcessor[INPUT, OUTPUT]{
-		operation:       operation,
-		deadLockCounter: deadlockCounter,
+		operation:             operation,
+		deadLockCounter:       deadlockCounter,
+		schemaEnforcementMode: schemaEnforcementMode,
 	}
 }
 
@@ -95,8 +97,13 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 				return nil, nil, err
 			}
 			if latestVersion != nil {
-				return nil, nil, ErrSchemaNotSpecified{
-					latestVersion: *latestVersion,
+				if lp.schemaEnforcementMode == SchemaEnforcementStrict {
+					return nil, nil, ErrSchemaNotSpecified{
+						latestVersion: *latestVersion,
+					}
+				} else {
+					trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("schema_not_specified", true))
+					logging.FromContext(ctx).Error("schema not specified")
 				}
 			}
 		}
@@ -113,7 +120,13 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 
 	if schema != nil {
 		if err := log.ValidateWithSchema(*schema); err != nil {
-			return nil, nil, newErrSchemaValidationError(parameters.SchemaVersion, err)
+			err := newErrSchemaValidationError(parameters.SchemaVersion, err)
+			if lp.schemaEnforcementMode == SchemaEnforcementStrict {
+				return nil, nil, err
+			} else {
+				trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
+				logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
+			}
 		}
 	}
 

@@ -65,10 +65,11 @@ const (
 	BulkMaxSizeFlag            = "bulk-max-size"
 	BulkParallelFlag           = "bulk-parallel"
 
-	DefaultPageSizeFlag = "default-page-size"
-	MaxPageSizeFlag     = "max-page-size"
-	WorkerEnabledFlag   = "worker"
-	SemconvMetricsNames = "semconv-metrics-names"
+	DefaultPageSizeFlag   = "default-page-size"
+	MaxPageSizeFlag       = "max-page-size"
+	WorkerEnabledFlag     = "worker"
+	SemconvMetricsNames   = "semconv-metrics-names"
+	SchemaEnforcementMode = "schema-enforcement-mode"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -112,7 +113,8 @@ func NewServeCommand() *cobra.Command {
 						MaxRetry: 10,
 						Delay:    time.Millisecond * 100,
 					},
-					EnableFeatures: cfg.ExperimentalFeaturesEnabled,
+					EnableFeatures:        cfg.ExperimentalFeaturesEnabled,
+					SchemaEnforcementMode: cfg.commonConfig.SchemaEnforcementMode,
 				}),
 				bus.NewFxModule(),
 				ballast.Module(cfg.BallastSizeInBytes),
@@ -187,6 +189,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
+	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
