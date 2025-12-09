@@ -4004,7 +4004,7 @@ This operation does not require authentication
 |postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 |preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 |postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|template|string|true|none|none|
+|template|string|false|none|none|
 
 <h2 id="tocS_V2PostTransaction">V2PostTransaction</h2>
 <!-- backwards compatibility -->
@@ -4057,7 +4057,7 @@ This operation does not require authentication
 |postings|[[V2Posting](#schemav2posting)]|false|none|none|
 |script|object|false|none|none|
 |» template|string|false|none|none|
-|» plain|string|true|none|none|
+|» plain|string|false|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
 |runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|

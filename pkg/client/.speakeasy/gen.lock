@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: ea032aaa7f9e405bacc8804fdc420d05
+  docChecksum: 7fc617ae7b7e3f9f38a7208da96d6503
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -940,7 +940,7 @@ examples:
         application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"template": "CUSTOMER_DEPOSIT", "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
       responses:
         "200":
-          application/json: {"data": {"timestamp": "2024-06-10T07:40:23.819Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 339560, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "template": "<value>"}}
+          application/json: {"data": {"timestamp": "2024-06-10T07:40:23.819Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 339560, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetTransaction:
@@ -951,7 +951,7 @@ examples:
           id: 1234
       responses:
         "200":
-          application/json: {"data": {"timestamp": "2024-10-06T11:21:14.840Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 232775, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "template": "<value>"}}
+          application/json: {"data": {"timestamp": "2024-10-06T11:21:14.840Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 232775, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2AddMetadataOnTransaction:
@@ -989,7 +989,7 @@ examples:
           schemaVersion: "v1.0.0"
       responses:
         "201":
-          application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "template": "<value>"}}
+          application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetBalancesAggregated:

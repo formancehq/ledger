@@ -4134,7 +4134,6 @@ components:
         - id
         - metadata
         - reverted
-        - template
     V2PostTransaction:
       type: object
       required:
@@ -4163,8 +4162,6 @@ components:
                 type: string
               example:
                 user: users:042
-          required:
-            - plain
         runtime:
           $ref: "#/components/schemas/Runtime"
         reference:

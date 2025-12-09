@@ -248,7 +248,7 @@ var _ = Context("Ledger schema API tests", func() {
 						ID:     res.V2CreateTransactionResponse.Data.ID,
 					})
 					Expect(err).To(BeNil())
-					Expect(getTxRes.V2GetTransactionResponse.Data.Template).To(Equal("WORLD_TO_BANK"))
+					Expect(getTxRes.V2GetTransactionResponse.Data.Template).To(Equal(pointer.For("WORLD_TO_BANK")))
 				})
 
 				It("should create transaction with v2.0.0 schema", func(specContext SpecContext) {
@@ -477,11 +477,11 @@ var _ = Context("Ledger schema API tests", func() {
 						V2PostTransaction: components.V2PostTransaction{
 							Force: pointer.For(true),
 							Script: pointer.For(components.V2PostTransactionScript{
-								Plain: `
+								Plain: pointer.For(`
 								send [EUR/2] (
 									source = $users:001
 									destination = $bank:001
-								)`,
+								)`),
 							}),
 						},
 					})

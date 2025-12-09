@@ -9,7 +9,7 @@ import (
 
 type V2PostTransactionScript struct {
 	Template *string           `json:"template,omitempty"`
-	Plain    string            `json:"plain"`
+	Plain    *string           `json:"plain,omitempty"`
 	Vars     map[string]string `json:"vars,omitempty"`
 }
 
@@ -20,9 +20,9 @@ func (o *V2PostTransactionScript) GetTemplate() *string {
 	return o.Template
 }
 
-func (o *V2PostTransactionScript) GetPlain() string {
+func (o *V2PostTransactionScript) GetPlain() *string {
 	if o == nil {
-		return ""
+		return nil
 	}
 	return o.Plain
 }
