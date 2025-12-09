@@ -1,36 +1,30 @@
 package ledger
 
 import (
-	"encoding/json"
+	"fmt"
+	"slices"
 )
 
 type RuntimeType string
 
 const (
-	RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
 	RuntimeMachine                 RuntimeType = "machine"
+	RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
 )
 
 type TransactionTemplate struct {
 	Description string      `json:"description"`
 	Script      string      `json:"script"`
-	Runtime     RuntimeType `json:"runtime"`
+	Runtime     RuntimeType `json:"runtime,omitempty"`
 }
 
 type TransactionTemplates map[string]TransactionTemplate
 
-func (t *TransactionTemplates) UnmarshalJSON(data []byte) error {
-	type Templates TransactionTemplates
-	var templates Templates
-	if err := json.Unmarshal(data, &templates); err != nil {
-		return err
-	}
-	for id, tmpl := range templates {
-		if tmpl.Runtime == "" {
-			tmpl.Runtime = RuntimeMachine
-			templates[id] = tmpl
+func (t TransactionTemplates) Validate() error {
+	for _, t := range t {
+		if !slices.Contains([]RuntimeType{"", RuntimeMachine, RuntimeExperimentalInterpreter}, t.Runtime) {
+			return fmt.Errorf("unexpected runtime `%s`: should be `%s` or `%s`", t.Runtime, RuntimeMachine, RuntimeExperimentalInterpreter)
 		}
 	}
-	*t = TransactionTemplates(templates)
 	return nil
 }

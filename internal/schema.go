@@ -27,6 +27,9 @@ func NewSchema(version string, data SchemaData) (Schema, error) {
 			err: errors.New("missing chart of accounts"),
 		}
 	}
+	if err := data.Transactions.Validate(); err != nil {
+		return Schema{}, err
+	}
 	return Schema{
 		Version:    version,
 		SchemaData: data,

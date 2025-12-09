@@ -126,8 +126,7 @@
         "postings",
         "metadata",
         "timestamp",
-        "id",
-        "template"
+        "id"
       ]
     },
     "Volumes": {
