@@ -1224,14 +1224,14 @@ func main() {
             },
             Script: &components.V2PostTransactionScript{
                 Template: client.String("CUSTOMER_DEPOSIT"),
-                Plain: "vars {\n" +
+                Plain: client.String("vars {\n" +
                 "account $user\n" +
                 "}\n" +
                 "send [COIN 10] (\n" +
                 "	source = @world\n" +
                 "	destination = $user\n" +
                 ")\n" +
-                "",
+                ""),
                 Vars: map[string]string{
                     "user": "users:042",
                 },

@@ -506,7 +506,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	var (
 		hasBeenReverted bool
 		err             error
