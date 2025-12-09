@@ -173,7 +173,7 @@ import "github.com/formancehq/ledger/internal"
   - [func \(data TransactionData\) WithPostings\(postings ...Posting\) TransactionData](<#TransactionData.WithPostings>)
 - [type TransactionTemplate](<#TransactionTemplate>)
 - [type TransactionTemplates](<#TransactionTemplates>)
-  - [func \(t \*TransactionTemplates\) UnmarshalJSON\(data \[\]byte\) error](<#TransactionTemplates.UnmarshalJSON>)
+  - [func \(t TransactionTemplates\) Validate\(\) error](<#TransactionTemplates.Validate>)
 - [type Transactions](<#Transactions>)
 - [type Volumes](<#Volumes>)
   - [func NewEmptyVolumes\(\) Volumes](<#NewEmptyVolumes>)
@@ -1562,7 +1562,7 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 
 
 <a name="RuntimeType"></a>
-## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L7>)
+## type [RuntimeType](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L8>)
 
 
 
@@ -1570,12 +1570,12 @@ func (r RevertedTransaction) ValidateWithSchema(schema Schema) error
 type RuntimeType string
 ```
 
-<a name="RuntimeExperimentalInterpreter"></a>
+<a name="RuntimeMachine"></a>
 
 ```go
 const (
-    RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
     RuntimeMachine                 RuntimeType = "machine"
+    RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
 )
 ```
 
@@ -1684,7 +1684,7 @@ type Transaction struct {
     // PostCommitEffectiveVolumes are the volumes of each account/asset after the transaction TransactionData.Timestamp.
     // Those volumes are also computed in flight, but can be updated if a transaction is inserted in the past.
     PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
-    Template                   string            `json:"template" bun:"template,type:text"`
+    Template                   string            `json:"template,omitempty" bun:"template,type:text"`
 }
 ```
 
@@ -1901,7 +1901,7 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 
 
 <a name="TransactionTemplate"></a>
-## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L14-L18>)
+## type [TransactionTemplate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L15-L19>)
 
 
 
@@ -1909,12 +1909,12 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 type TransactionTemplate struct {
     Description string      `json:"description"`
     Script      string      `json:"script"`
-    Runtime     RuntimeType `json:"runtime"`
+    Runtime     RuntimeType `json:"runtime,omitempty"`
 }
 ```
 
 <a name="TransactionTemplates"></a>
-## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L20>)
+## type [TransactionTemplates](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L21>)
 
 
 
@@ -1922,11 +1922,11 @@ type TransactionTemplate struct {
 type TransactionTemplates map[string]TransactionTemplate
 ```
 
-<a name="TransactionTemplates.UnmarshalJSON"></a>
-### func \(\*TransactionTemplates\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L22>)
+<a name="TransactionTemplates.Validate"></a>
+### func \(TransactionTemplates\) [Validate](<https://github.com/formancehq/ledger/blob/main/internal/transaction_templates.go#L23>)
 
 ```go
-func (t *TransactionTemplates) UnmarshalJSON(data []byte) error
+func (t TransactionTemplates) Validate() error
 ```
 
 

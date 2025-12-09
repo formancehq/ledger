@@ -425,7 +425,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		if template, ok := schema.SchemaData.Transactions[parameters.Input.Template]; ok {
 			parameters.Input.Plain = template.Script
 			if parameters.Input.Runtime == "" {
-				parameters.Input.Runtime = ledger.RuntimeType(template.Runtime)
+				parameters.Input.Runtime = template.Runtime
 			}
 		} else {
 			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))

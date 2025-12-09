@@ -157,8 +157,7 @@
       "type": "object",
       "required": [
         "description",
-        "script",
-        "runtime"
+        "script"
       ]
     },
     "TransactionTemplates": {

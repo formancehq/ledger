@@ -153,7 +153,6 @@ func TestTransactionRender(t *testing.T) {
 						},
 					},
 				},
-				"template": "",
 			},
 		},
 		{
@@ -244,7 +243,6 @@ func TestTransactionRender(t *testing.T) {
 						},
 					},
 				},
-				"template": "",
 			},
 		},
 	} {
@@ -487,7 +485,6 @@ func TestLogRender(t *testing.T) {
 						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         nil,
 						"reverted":   false,
-						"template":   "",
 					},
 					"accountMetadata": nil,
 				},
@@ -531,7 +528,6 @@ func TestLogRender(t *testing.T) {
 						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         nil,
 						"reverted":   false,
-						"template":   "",
 					},
 					"accountMetadata": nil,
 				},
@@ -579,7 +575,6 @@ func TestLogRender(t *testing.T) {
 						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(1),
 						"reverted":   false,
-						"template":   "",
 					},
 					"transaction": map[string]any{
 						"postings": []any{
@@ -596,7 +591,6 @@ func TestLogRender(t *testing.T) {
 						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(2),
 						"reverted":   false,
-						"template":   "",
 					},
 				},
 				"date":            now.Format(time.RFC3339Nano),
@@ -646,7 +640,6 @@ func TestLogRender(t *testing.T) {
 						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(1),
 						"reverted":   false,
-						"template":   "",
 					},
 					"transaction": map[string]any{
 						"postings": []any{
@@ -663,7 +656,6 @@ func TestLogRender(t *testing.T) {
 						"updatedAt":  now.Format(time.RFC3339Nano),
 						"id":         float64(2),
 						"reverted":   false,
-						"template":   "",
 					},
 				},
 				"date":            now.Format(time.RFC3339Nano),
