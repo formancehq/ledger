@@ -12,6 +12,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// LogToProto converts a ledger.Log to protobuf Log (exported for use in other packages)
+func LogToProto(l ledger.Log) (*Log, error) {
+	return logToProto(l)
+}
+
 // logToProto converts a ledger.Log to protobuf Log
 func logToProto(l ledger.Log) (*Log, error) {
 	logProto := &Log{
@@ -37,6 +42,11 @@ func logToProto(l ledger.Log) (*Log, error) {
 	logProto.Data = logPayloadProto
 
 	return logProto, nil
+}
+
+// LogFromProto converts a protobuf Log to ledger.Log (exported for use in other packages)
+func LogFromProto(l *Log) (ledger.Log, error) {
+	return logFromProto(l)
 }
 
 // logFromProto converts a protobuf Log to ledger.Log

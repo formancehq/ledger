@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -14,6 +15,18 @@ func ValidateBucketConfig(driver string, config map[string]interface{}) error {
 			return fmt.Errorf("sqlite driver requires 'dsn' configuration (connection address)")
 		}
 		return nil
+	case "postgres":
+		dsn, ok := config["dsn"].(string)
+		if !ok || dsn == "" {
+			return fmt.Errorf("postgres driver requires 'dsn' configuration (connection string)")
+		}
+		return nil
+	case "clickhouse":
+		dsn, ok := config["dsn"].(string)
+		if !ok || dsn == "" {
+			return fmt.Errorf("clickhouse driver requires 'dsn' configuration (connection string)")
+		}
+		return nil
 	case "file":
 		path, ok := config["path"].(string)
 		if !ok || path == "" {
@@ -21,6 +34,6 @@ func ValidateBucketConfig(driver string, config map[string]interface{}) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, file)", driver)
+		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, postgres, clickhouse, file)", driver)
 	}
 }

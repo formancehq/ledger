@@ -50,6 +50,26 @@ func NewNode(
 			return nil, fmt.Errorf("creating sqlite log store for bucket %s: %w", bucketInfo.Name, err)
 		}
 		appLogStore = sqliteStore
+	case "postgres":
+		dsn, ok := bucketInfo.Config["dsn"].(string)
+		if !ok || dsn == "" {
+			return nil, fmt.Errorf("postgres driver requires 'dsn' configuration for bucket %s", bucketInfo.Name)
+		}
+		postgresStore, err := service.NewPostgresLogStore(context.Background(), dsn, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating postgres log store for bucket %s: %w", bucketInfo.Name, err)
+		}
+		appLogStore = postgresStore
+	case "clickhouse":
+		dsn, ok := bucketInfo.Config["dsn"].(string)
+		if !ok || dsn == "" {
+			return nil, fmt.Errorf("clickhouse driver requires 'dsn' configuration for bucket %s", bucketInfo.Name)
+		}
+		clickhouseStore, err := service.NewClickHouseLogStore(context.Background(), dsn, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating clickhouse log store for bucket %s: %w", bucketInfo.Name, err)
+		}
+		appLogStore = clickhouseStore
 	case "file":
 		path, ok := bucketInfo.Config["path"].(string)
 		if !ok || path == "" {

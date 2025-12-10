@@ -10,10 +10,12 @@ import (
 )
 
 var (
-	bucketName      string
-	bucketDriver    string
-	bucketSQLiteDSN string
-	bucketFilePath  string
+	bucketName          string
+	bucketDriver        string
+	bucketSQLiteDSN     string
+	bucketPostgresDSN   string
+	bucketClickHouseDSN string
+	bucketFilePath      string
 )
 
 var bucketsCreateCmd = &cobra.Command{
@@ -26,8 +28,10 @@ var bucketsCreateCmd = &cobra.Command{
 
 func init() {
 	bucketsCreateCmd.Flags().StringVar(&bucketName, "name", "", "Bucket name (required)")
-	bucketsCreateCmd.Flags().StringVar(&bucketDriver, "driver", "", "Driver name (required: sqlite, file)")
+	bucketsCreateCmd.Flags().StringVar(&bucketDriver, "driver", "", "Driver name (required: sqlite, postgres, clickhouse, file)")
 	bucketsCreateCmd.Flags().StringVar(&bucketSQLiteDSN, "sqlite-dsn", "", "SQLite connection address (required for sqlite driver)")
+	bucketsCreateCmd.Flags().StringVar(&bucketPostgresDSN, "postgres-dsn", "", "PostgreSQL connection string (required for postgres driver)")
+	bucketsCreateCmd.Flags().StringVar(&bucketClickHouseDSN, "clickhouse-dsn", "", "ClickHouse connection string (required for clickhouse driver)")
 	bucketsCreateCmd.Flags().StringVar(&bucketFilePath, "file-path", "", "Directory path for file storage (required for file driver)")
 	if err := bucketsCreateCmd.MarkFlagRequired("name"); err != nil {
 		panic(err)
@@ -57,13 +61,23 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("--sqlite-dsn is required for sqlite driver")
 		}
 		config["dsn"] = bucketSQLiteDSN
+	case "postgres":
+		if bucketPostgresDSN == "" {
+			return fmt.Errorf("--postgres-dsn is required for postgres driver")
+		}
+		config["dsn"] = bucketPostgresDSN
+	case "clickhouse":
+		if bucketClickHouseDSN == "" {
+			return fmt.Errorf("--clickhouse-dsn is required for clickhouse driver")
+		}
+		config["dsn"] = bucketClickHouseDSN
 	case "file":
 		if bucketFilePath == "" {
 			return fmt.Errorf("--file-path is required for file driver")
 		}
 		config["path"] = bucketFilePath
 	default:
-		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, file)", bucketDriver)
+		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, postgres, clickhouse, file)", bucketDriver)
 	}
 
 	// Create SDK instance
@@ -115,9 +129,9 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	if data.Driver != nil && data.Config != nil {
 		driver := *data.Driver
 		switch driver {
-		case "sqlite":
+		case "sqlite", "postgres", "clickhouse":
 			if dsn, ok := data.Config["dsn"].(string); ok {
-				panelData += fmt.Sprintf("Database: %s\n", dsn)
+				panelData += fmt.Sprintf("DSN: %s\n", dsn)
 			}
 		case "file":
 			if path, ok := data.Config["path"].(string); ok {
