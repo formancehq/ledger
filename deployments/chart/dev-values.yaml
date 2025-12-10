@@ -5,7 +5,7 @@ imagePullSecrets:
   - name: zot
 
 config:
-  debug: true
+  debug: false
 
   monitoring:
     # Service name for monitoring
@@ -33,3 +33,11 @@ ingress:
         - path: /
           pathType: Prefix
   #tls: []
+
+extraData:
+  enabled: true
+  mountPath: /data/extra
+  storageClass: "" # Use default storage class if empty
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}

@@ -175,6 +175,17 @@ The chart uses the `core` chart's monitoring helpers. Configuration can be set a
 | `persistence.accessMode` | Access mode | `ReadWriteOnce` |
 | `persistence.size` | Volume size | `10Gi` |
 
+### Extra Data Volume Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `extraData.enabled` | Enable extra data volume | `false` |
+| `extraData.mountPath` | Mount path for extra data volume | `/data/extra` |
+| `extraData.storageClass` | Storage class name (empty = default) | `` |
+| `extraData.accessMode` | Access mode | `ReadWriteOnce` |
+| `extraData.size` | Volume size | `10Gi` |
+| `extraData.annotations` | Volume annotations | `{}` |
+
 ### Resource Configuration
 
 | Parameter | Description | Default |
