@@ -5,6 +5,7 @@ import (
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/http/bulking"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,10 +22,21 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	r.Use(middleware.Recoverer)
 	r.Use(loggingMiddleware(logger))
 
+	// Create bulker factory
+	bulkerFactory := bulking.NewDefaultBulkerFactory()
+
+	// Create bulk handler factories
+	bulkHandlerFactories := map[string]bulking.HandlerFactory{
+		// todo: set limit and add bulk streaming support
+		"application/json": bulking.NewJSONBulkHandlerFactory(0), // 0 = no limit
+	}
+
 	// Create server instance for handlers
 	server := &Server{
-		logger:  logger,
-		cluster: cluster,
+		logger:               logger,
+		cluster:              cluster,
+		bulkerFactory:        bulkerFactory,
+		bulkHandlerFactories: bulkHandlerFactories,
 	}
 
 	// Register known routes (specific routes first)
@@ -46,6 +58,8 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	r.Post("/{ledgerName}", server.handleCreateLedger)                   // POST /{ledgerName}
 	r.Get("/{ledgerName}", server.handleGetLedger)                       // GET /{ledgerName}
 	r.Post("/{ledgerName}/transactions", server.handleCreateTransaction) // POST /{ledgerName}/transactions
+	r.Post("/{ledgerName}/bulk", server.handleBulk)                      // POST /{ledgerName}/bulk
+	r.Post("/{ledgerName}/_bulk", server.handleBulk)                     // For compat
 	r.Get("/", server.handleListAllLedgers)                              // GET / (cross-bucket) - must be last
 
 	// Wrap handler with OpenTelemetry instrumentation

@@ -29,7 +29,7 @@ type Parameters[INPUT any] struct {
 }
 
 type TransactionScript struct {
-	Plain string                 `json:"plain"`
+	Plain string            `json:"plain"`
 	Vars  map[string]string `json:"vars,omitempty"`
 }
 
