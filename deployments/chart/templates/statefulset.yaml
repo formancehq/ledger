@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ledger-v3-poc.fullname" . }}
+  labels:
+    {{- include "ledger-v3-poc.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "ledger-v3-poc.headlessServiceName" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ledger-v3-poc.selectorLabels" . | nindent 6 }}
+  # todo: must be only on bootstrap
+  podManagementPolicy: "Parallel"
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "ledger-v3-poc.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ledger-v3-poc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        {{- if eq .Values.image.tag "latest" }}
+        imagePullPolicy: Always
+        {{- else }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- end }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.config.httpPort }}
+          protocol: TCP
+        - name: grpc
+          containerPort: {{ (split ":" .Values.config.bindAddr)._1 | atoi }}
+          protocol: TCP
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: BIND_ADDR
+          value: {{ .Values.config.bindAddr | quote }}
+        - name: HTTP_PORT
+          value: {{ .Values.config.httpPort | quote }}
+        - name: DATA_DIR
+          value: {{ .Values.config.dataDir | quote }}
+        - name: SNAPSHOT_THRESHOLD
+          value: {{ .Values.config.snapshotThreshold | quote }}
+        {{- if .Values.config.snapshotInterval }}
+        - name: SNAPSHOT_INTERVAL
+          value: {{ .Values.config.snapshotInterval | quote }}
+        {{- end }}
+        - name: DEBUG
+          value: {{ .Values.config.debug | quote }}
+        {{- include "core.monitoring" . | nindent 8 }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Calculate node ID from pod index (pod index 0 -> node ID 1, etc.)
+          NODE_ID=$((POD_INDEX + 1))
+          
+          # Extract port from BIND_ADDR (format: 0.0.0.0:8888)
+          BIND_PORT=$(echo $BIND_ADDR | cut -d: -f2)
+          
+          # Generate ADVERTISE_ADDR from pod name
+          ADVERTISE_ADDR="${POD_NAME}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${BIND_PORT}"
+          
+          # Generate peers list (all nodes except current)
+          PEERS_LIST=""
+          for i in $(seq 0 $(({{ .Values.replicaCount }} - 1))); do
+            if [ $i -ne $POD_INDEX ]; then
+              NODE_NUM=$((i + 1))
+              PEER_ADDR="{{ include "ledger-v3-poc.fullname" . }}-${i}.{{ include "ledger-v3-poc.headlessServiceName" . }}.${POD_NAMESPACE}.svc.cluster.local:${BIND_PORT}"
+              if [ -z "$PEERS_LIST" ]; then
+                PEERS_LIST="--peers ${NODE_NUM}/${PEER_ADDR}"
+              else
+                PEERS_LIST="${PEERS_LIST} --peers ${NODE_NUM}/${PEER_ADDR}"
+              fi
+            fi
+          done
+          
+          # Bootstrap only the first pod (index 0)
+          BOOTSTRAP_FLAG=""
+          if [ $POD_INDEX -eq 0 ]; then
+            BOOTSTRAP_FLAG="--bootstrap"
+          fi
+          
+          # Execute the application
+          exec ./ledger-v3-poc \
+            --node-id $NODE_ID \
+            --bind-addr {{ .Values.config.bindAddr }} \
+            --advertise-addr "$ADVERTISE_ADDR" \
+            --data-dir {{ .Values.config.dataDir }} \
+            --http-port {{ .Values.config.httpPort }} \
+            --snapshot-threshold {{ .Values.config.snapshotThreshold }} \
+            {{- if .Values.config.snapshotInterval }}
+            --snapshot-interval {{ .Values.config.snapshotInterval }} \
+            {{- end }}
+            {{- if .Values.config.debug }}
+            --debug \
+            {{- end }}
+            $BOOTSTRAP_FLAG \
+            $PEERS_LIST
+        volumeMounts:
+        - name: data
+          mountPath: {{ .Values.config.dataDir }}
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+  {{- if .Values.persistence.enabled }}
+  - metadata:
+      name: data
+      {{- with .Values.persistence.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      accessModes:
+        - {{ .Values.persistence.accessMode }}
+      {{- if .Values.persistence.storageClass }}
+      storageClassName: {{ .Values.persistence.storageClass }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.size }}
+  {{- end }}
+

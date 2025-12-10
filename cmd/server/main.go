@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -43,12 +44,11 @@ func newRootCommand() *cobra.Command {
 
 	// Add application-specific flags
 	rootCmd.Flags().Uint64("node-id", 0, "Numeric node ID for this instance (must be non-zero)")
-	rootCmd.Flags().String("bind-addr", "127.0.0.1:8888", "Address to bind to")
+	rootCmd.Flags().String("bind-addr", "0.0.0.0:8888", "Address to bind to (grpc)")
 	rootCmd.Flags().String("advertise-addr", "", "Address to advertise to other nodes (defaults to bind-addr)")
 	rootCmd.Flags().String("data-dir", "./data", "Data directory for Raft")
 	rootCmd.Flags().StringSlice("peers", []string{}, "Initial peer list (comma-separated, format: <id>/<address>, e.g., \"1/node-1:8888,2/node-2:8888\")")
 	rootCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster (only set on the first node)")
-	rootCmd.Flags().Int("grpc-port", 8000, "gRPC server port (for leader)")
 	rootCmd.Flags().Int("http-port", 9000, "HTTP server port")
 	rootCmd.Flags().Uint64("snapshot-threshold", 0, "Number of logs before triggering a snapshot (0 = use Raft default)")
 	rootCmd.Flags().Duration("snapshot-interval", 0, "Minimum interval between snapshots (0 = use Raft default, e.g., 30s)")
@@ -61,6 +61,12 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	fmt.Println(string(data))
 
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validating config: %w", err)
@@ -158,12 +164,11 @@ func loadConfig(cmd *cobra.Command) (*application.Config, error) {
 		}
 
 		cfg.RaftConfig.Peers = append(cfg.RaftConfig.Peers, raft.Peer{
-			ID: id,
+			ID:      id,
 			Address: parts[1],
 		})
 	}
 	cfg.RaftConfig.Bootstrap = getBool("bootstrap", false)
-	cfg.RaftConfig.GRPCPort = getInt("grpc-port", 8000)
 	cfg.RaftConfig.SnapshotThreshold = getUint64("snapshot-threshold", 0)
 	cfg.RaftConfig.SnapshotInterval = getDuration("snapshot-interval", 0)
 

@@ -1,0 +1,201 @@
+# Default values for ledger-v3-poc
+# This is a YAML-formatted file.
+
+# Image configuration
+image:
+  repository: ghcr.io/formancehq/ledger-v3-poc
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Image pull secrets (for private registries)
+imagePullSecrets: []
+# Example:
+# imagePullSecrets:
+#   - name: regcred
+
+# Replica count (number of Raft nodes)
+replicaCount: 3
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod security context
+podSecurityContext:
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Application configuration
+config:
+  # Raft/gRPC configuration (Raft transport uses gRPC, so same port)
+  bindAddr: "0.0.0.0:8888"  # Port for both Raft and gRPC
+  httpPort: 9000
+  dataDir: "/data/raft"
+  snapshotThreshold: 100
+  snapshotInterval: "30s"
+  
+  # Bootstrap the first node
+  bootstrap: true
+  
+  # Debug logging
+  debug: false
+  
+  # Monitoring configuration (uses core chart helpers)
+  # Values can be set at config.monitoring.* or global.monitoring.*
+  # Global values take precedence if config values are not set
+  monitoring:
+    # Service name for monitoring
+    serviceName: "ledger-v3-poc"
+    # Traces configuration
+    traces:
+      enabled: true
+      exporter: "otlp"
+      endpoint: ""
+      port: ""
+      insecure: "false"
+      mode: "grpc"
+      batch: "false"
+    # Metrics configuration
+    metrics:
+      enabled: false
+      exporter: "otlp"
+      endpoint: ""
+      port: ""
+      insecure: "false"
+      mode: "grpc"
+    # Logs configuration
+    logs:
+      enabled: true
+      level: "info"
+      format: "json"
+    # Additional resource attributes
+    attributes: ""
+
+# Service configuration
+service:
+  type: ClusterIP
+  httpPort: 9000
+  grpcPort: 8888  # Same port as bindAddr (Raft transport uses gRPC)
+  annotations: {}
+
+# Headless service for Raft peer discovery
+headlessService:
+  enabled: true
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""  # Ingress class name (e.g., "nginx", "traefik")
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: ledger-v3-poc.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: ledger-v3-poc-tls
+    #   hosts:
+    #     - ledger-v3-poc.local
+
+# Persistence configuration
+persistence:
+  enabled: true
+  storageClass: "" # Use default storage class if empty
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Health check configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Pod annotations
+podAnnotations: {}
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Service monitor for Prometheus (if using Prometheus Operator)
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  relabelings: []
+  metricRelabelings: []
+
+# Global monitoring configuration (optional, can override config.monitoring)
+# Uncomment to use global values:
+# global:
+#   monitoring:
+#     traces:
+#       enabled: true
+#       endpoint: "localhost"
+#       exporter: "otlp"
+#       insecure: "true"
+#       mode: "grpc"
+#       port: 4317
+#     logs:
+#       enabled: true
+#       level: "info"
+#       format: "json"
+#     metrics:
+#       enabled: true
+#       exporter: "otlp"
+#       insecure: "true"
+#       mode: "grpc"
+#       port: 4317
+
+# Additional values
+nameOverride: ""
+fullnameOverride: ""
+

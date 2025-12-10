@@ -7,6 +7,7 @@ RUN apk add --no-cache git make
 
 # Copy go mod files
 COPY go.mod go.sum ./
+COPY pkg/client/go.* pkg/client/
 RUN go mod download
 
 # Copy source code

@@ -9,7 +9,6 @@ import (
 type Config struct {
 	raft.NodeConfig
 	BindAddr      string
-	GRPCPort      int
 }
 
 func (c *Config) Validate() error {

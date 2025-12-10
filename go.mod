@@ -2,9 +2,7 @@ module github.com/formancehq/ledger-v3-poc
 
 go 1.25
 
-replace (
-	github.com/formancehq/ledger/pkg/client => github.com/formancehq/ledger/pkg/client v0.0.0-20251205104205-4835b766718b
-)
+replace github.com/formancehq/ledger/pkg/client => github.com/formancehq/ledger/pkg/client v0.0.0-20251205104205-4835b766718b
 
 require (
 	github.com/formancehq/go-libs/v3 v3.6.0
@@ -21,6 +19,7 @@ require (
 	go.uber.org/fx v1.24.0
 	google.golang.org/grpc v1.75.0
 	google.golang.org/protobuf v1.36.10
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.40.1
 )
 
@@ -39,7 +38,6 @@ require (
 	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/formancehq/ledger/pkg/client v0.0.0-20251205104205-4835b766718b // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -92,13 +90,11 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

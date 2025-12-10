@@ -1,0 +1,20 @@
+apiVersion: v2
+name: ledger-v3-poc
+description: A Helm chart for Ledger v3 POC with Raft consensus cluster
+type: application
+version: 0.1.0
+appVersion: "dev"
+keywords:
+  - ledger
+  - raft
+  - consensus
+  - distributed
+maintainers:
+  - name: Formance Team
+home: https://github.com/formancehq/ledger-v3-poc
+sources:
+  - https://github.com/formancehq/ledger-v3-poc
+dependencies:
+  - name: core
+    version: "1.X"
+    repository: "oci://ghcr.io/formancehq/helm"
