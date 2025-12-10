@@ -45,7 +45,9 @@ func (s *ReconstructedBalancesStore) GetBalances(ctx context.Context, ledgerName
 		return ledger.Balances{}, nil
 	}
 	cursor := *cursorPtr
-	defer cursor.Close()
+	defer func() {
+		_ = cursor.Close()
+	}()
 
 	// Iterate through all logs and reconstruct volumes
 	for {
@@ -141,4 +143,3 @@ func (s *ReconstructedBalancesStore) GetBalances(ctx context.Context, ledgerName
 
 	return balances, nil
 }
-

@@ -91,7 +91,9 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO logs (type, data, date, ledger, idempotency_key, idempotency_hash, id)
@@ -100,7 +102,9 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 	if err != nil {
 		return fmt.Errorf("preparing insert statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		_ = stmt.Close()
+	}()
 
 	for _, log := range logs {
 		// Marshal data to JSON
@@ -113,7 +117,7 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 		var dateStr sql.NullString
 		if !log.Date.IsZero() {
 			dateStr = sql.NullString{
-				String: log.Date.Time.Format(stdtime.RFC3339),
+				String: log.Date.Format(stdtime.RFC3339),
 				Valid:  true,
 			}
 		}

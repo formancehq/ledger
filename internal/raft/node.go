@@ -383,12 +383,8 @@ func (node *Node[F]) GetClusterState(ctx context.Context) (*ledger.ClusterState,
 
 	// Build nodes list from progress
 	nodes := make([]ledger.NodeInfo, 0)
-	for id, progress := range status.Progress {
+	for id := range status.Progress {
 		suffrage := "Voter"
-		if !progress.IsLearner {
-			// In etcd/raft, all nodes in Progress are voters unless they're learners
-			// We don't have a direct way to check, so assume voters
-		}
 
 		var address string
 		if id == node.config.NodeID {

@@ -20,7 +20,9 @@ var bucketsGetCmd = &cobra.Command{
 
 func init() {
 	bucketsGetCmd.Flags().StringVar(&getBucketName, "name", "", "Bucket name to retrieve (required)")
-	bucketsGetCmd.MarkFlagRequired("name")
+	if err := bucketsGetCmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
 }
 
 func runGetBucket(cmd *cobra.Command, args []string) error {
@@ -112,7 +114,7 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 				}
 				tableData = append(tableData, []string{nodeID, nodeAddr, nodeSuffrage, role})
 			}
-			pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		}
 	} else {
 		pterm.Println()
@@ -121,4 +123,3 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-

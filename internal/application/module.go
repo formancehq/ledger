@@ -148,7 +148,7 @@ func (adapter *systemNodeAdapter) Snapshot(ctx context.Context) error {
 }
 
 func (adapter *systemNodeAdapter) GetBucket(ctx context.Context, name string) (service.BucketCluster, error) {
-	group, err := adapter.Node.GetBucketGroup(name)
+	group, err := adapter.GetBucketGroup(name)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (adapter *systemNodeAdapter) GetBucket(ctx context.Context, name string) (s
 }
 
 func (adapter *systemNodeAdapter) GetBucketOfLedger(ctx context.Context, name string) (service.BucketCluster, error) {
-	group, err := adapter.Node.GetBucketGroupOfLedger(name)
+	group, err := adapter.GetBucketGroupOfLedger(name)
 	if err != nil {
 		return nil, err
 	}

@@ -20,7 +20,9 @@ var bucketsDeleteCmd = &cobra.Command{
 
 func init() {
 	bucketsDeleteCmd.Flags().StringVar(&deleteBucketName, "name", "", "Bucket name to delete (required)")
-	bucketsDeleteCmd.MarkFlagRequired("name")
+	if err := bucketsDeleteCmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
 }
 
 func runDeleteBucket(cmd *cobra.Command, args []string) error {
@@ -53,4 +55,3 @@ func runDeleteBucket(cmd *cobra.Command, args []string) error {
 	spinner.Success(message)
 	return nil
 }
-

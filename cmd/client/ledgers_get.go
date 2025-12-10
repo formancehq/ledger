@@ -20,7 +20,9 @@ var ledgersGetCmd = &cobra.Command{
 
 func init() {
 	ledgersGetCmd.Flags().StringVar(&getLedgerName, "name", "", "Ledger name (required)")
-	ledgersGetCmd.MarkFlagRequired("name")
+	if err := ledgersGetCmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
 }
 
 func runGetLedger(cmd *cobra.Command, args []string) error {
@@ -88,4 +90,3 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-

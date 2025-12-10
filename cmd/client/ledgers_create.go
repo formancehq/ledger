@@ -28,8 +28,12 @@ func init() {
 	ledgersCreateCmd.Flags().StringVar(&ledgerBucketName, "bucket", "", "Bucket name (required)")
 	ledgersCreateCmd.Flags().StringVar(&ledgerName, "name", "", "Ledger name (required)")
 	ledgersCreateCmd.Flags().StringVar(&ledgerMetadata, "metadata", "{}", "Metadata as JSON (default: {})")
-	ledgersCreateCmd.MarkFlagRequired("bucket")
-	ledgersCreateCmd.MarkFlagRequired("name")
+	if err := ledgersCreateCmd.MarkFlagRequired("bucket"); err != nil {
+		panic(err)
+	}
+	if err := ledgersCreateCmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
 }
 
 func runCreateLedger(cmd *cobra.Command, args []string) error {
@@ -101,4 +105,3 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-

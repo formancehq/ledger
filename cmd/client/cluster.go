@@ -122,7 +122,7 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 
 			tableData = append(tableData, []string{nodeID, nodeAddr, nodeSuffrage, role})
 		}
-		pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 	} else {
 		pterm.Println()
 		pterm.Info.Println("No nodes found")
@@ -130,4 +130,3 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-

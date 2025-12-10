@@ -20,7 +20,9 @@ var bucketsSnapshotCmd = &cobra.Command{
 
 func init() {
 	bucketsSnapshotCmd.Flags().StringVar(&snapshotBucketName, "name", "", "Bucket name to create snapshot for (required)")
-	bucketsSnapshotCmd.MarkFlagRequired("name")
+	if err := bucketsSnapshotCmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
 }
 
 func runCreateBucketSnapshot(cmd *cobra.Command, args []string) error {
@@ -53,4 +55,3 @@ func runCreateBucketSnapshot(cmd *cobra.Command, args []string) error {
 	spinner.Success(message)
 	return nil
 }
-

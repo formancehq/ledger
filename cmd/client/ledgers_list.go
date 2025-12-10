@@ -22,7 +22,7 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 	sdk := newSDKClient()
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledgers...")
-	
+
 	// Call the list all ledgers endpoint
 	res, err := sdk.Ledgers.ListAllLedgers(ctx)
 	if err != nil {
@@ -74,8 +74,5 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 	}
 
 	pterm.DefaultSection.Println("All Ledgers")
-	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-
-	return nil
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
-

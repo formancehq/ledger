@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 )
 
 type Server struct {
@@ -20,14 +21,8 @@ type Server struct {
 func NewServer(port int, logger logging.Logger) *Server {
 	opts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler(
-			otelgrpc.WithInterceptorFilter(func(info *otelgrpc.InterceptorInfo) bool {
-				if info.UnaryServerInfo != nil {
-					return !strings.Contains(info.UnaryServerInfo.FullMethod, "RaftTransportService")
-				}
-				if info.StreamServerInfo != nil {
-					return !strings.Contains(info.StreamServerInfo.FullMethod, "RaftTransportService")
-				}
-				return true
+			otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
+				return !strings.Contains(info.FullMethodName, "RaftTransportService")
 			}),
 		)),
 	}

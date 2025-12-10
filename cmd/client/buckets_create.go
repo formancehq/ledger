@@ -29,8 +29,12 @@ func init() {
 	bucketsCreateCmd.Flags().StringVar(&bucketDriver, "driver", "", "Driver name (required: sqlite, file)")
 	bucketsCreateCmd.Flags().StringVar(&bucketSQLiteDSN, "sqlite-dsn", "", "SQLite connection address (required for sqlite driver)")
 	bucketsCreateCmd.Flags().StringVar(&bucketFilePath, "file-path", "", "Directory path for file storage (required for file driver)")
-	bucketsCreateCmd.MarkFlagRequired("name")
-	bucketsCreateCmd.MarkFlagRequired("driver")
+	if err := bucketsCreateCmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
+	if err := bucketsCreateCmd.MarkFlagRequired("driver"); err != nil {
+		panic(err)
+	}
 }
 
 func runCreateBucket(cmd *cobra.Command, args []string) error {

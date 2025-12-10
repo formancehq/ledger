@@ -1,3 +1,12 @@
+pre-commit: tidy generate-proto generate-sdk lint
+pc: pre-commit
+
+lint:
+    golangci-lint run --fix --build-tags it,local --timeout 5m
+
+tidy:
+    go mod tidy
+
 # Build the application
 build:
     go build -o ledger-v3-poc ./cmd/server

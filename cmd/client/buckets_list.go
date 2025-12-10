@@ -64,8 +64,5 @@ func runListBuckets(cmd *cobra.Command, args []string) error {
 
 	pterm.DefaultHeader.WithFullWidth().Println("Buckets")
 	pterm.Println()
-	pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-
-	return nil
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
-
