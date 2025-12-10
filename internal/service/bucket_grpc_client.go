@@ -139,6 +139,15 @@ func (g *BucketGrpcClient) createTransactionRequestToProto(ledgerName string, pa
 		timestamp = timestamppb.New(input.Timestamp.Time)
 	}
 
+	// Convert script if provided
+	var scriptProto *Script
+	if input.Script != nil {
+		scriptProto = &Script{
+			Plain: input.Script.Plain,
+			Vars:  input.Script.Vars,
+		}
+	}
+
 	return &CreateTransactionRequest{
 		Bucket:          g.name,
 		AccountMetadata: accountMetadata,
@@ -149,6 +158,8 @@ func (g *BucketGrpcClient) createTransactionRequestToProto(ledgerName string, pa
 		DryRun:          params.DryRun,
 		IdempotencyKey:  params.IdempotencyKey,
 		Ledger:          ledgerName,
+		Script:          scriptProto,
+		Runtime:         input.Runtime,
 	}, nil
 }
 

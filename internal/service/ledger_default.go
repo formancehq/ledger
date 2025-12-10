@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
 
 	"context"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/numscript"
 )
 
 // DefaultLedger is the default implementation of the Ledger interface
@@ -85,9 +87,31 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
 	input := parameters.Input
 
-	// Validate postings
-	if len(input.Postings) == 0 {
-		return nil, nil, ErrInvalidVars
+	// Validate that we have either postings or script, but not both
+	hasPostings := len(input.Postings) > 0
+	hasScript := input.Script != nil && input.Script.Plain != ""
+
+	if hasPostings && hasScript {
+		return nil, nil, fmt.Errorf("cannot pass postings and numscript in the same request")
+	}
+
+	if !hasPostings && !hasScript {
+		return nil, nil, fmt.Errorf("you need to pass either a posting array or a numscript script")
+	}
+
+	var (
+		// If script is provided, compile and execute it to generate postings
+		scriptMetadata        metadata.Metadata
+		scriptAccountMetadata map[string]metadata.Metadata
+	)
+	if hasScript {
+		postings, metadata, accountMetadata, err := l.executeNumscript(ctx, ledgerName, input.Script)
+		if err != nil {
+			return nil, nil, fmt.Errorf("executing numscript: %w", err)
+		}
+		input.Postings = postings
+		scriptMetadata = metadata
+		scriptAccountMetadata = accountMetadata
 	}
 
 	// Check idempotency: if idempotency key is provided, check if a log already exists
@@ -196,11 +220,10 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		timestamp = &now
 	}
 
-	// Create transaction
+	// Create transaction (metadata will be set later after merging with script metadata)
 	tx := ledger.NewTransaction().
 		WithPostings(input.Postings...).
 		WithTimestamp(*timestamp).
-		WithMetadata(input.Metadata).
 		WithInsertedAt(now).
 		WithUpdatedAt(now)
 
@@ -208,10 +231,50 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		tx = tx.WithReference(input.Reference)
 	}
 
+	// Merge script metadata with input metadata
+	finalMetadata := input.Metadata
+	if scriptMetadata != nil {
+		if finalMetadata == nil {
+			finalMetadata = make(metadata.Metadata)
+		}
+		// Check for metadata conflicts
+		for k, v := range scriptMetadata {
+			if existing, exists := finalMetadata[k]; exists && existing != v {
+				return nil, nil, fmt.Errorf("metadata key '%s' conflicts: script sets '%s' but input provides '%s'", k, v, existing)
+			}
+			finalMetadata[k] = v
+		}
+	}
+
+	// Merge script account metadata with input account metadata
+	finalAccountMetadata := input.AccountMetadata
+	if scriptAccountMetadata != nil {
+		if finalAccountMetadata == nil {
+			finalAccountMetadata = make(map[string]metadata.Metadata)
+		}
+		for account, accountMeta := range scriptAccountMetadata {
+			if existing, exists := finalAccountMetadata[account]; exists {
+				// Merge metadata for this account
+				for k, v := range accountMeta {
+					if existingValue, exists := existing[k]; exists && existingValue != v {
+						return nil, nil, fmt.Errorf("account metadata key '%s' for account '%s' conflicts: script sets '%s' but input provides '%s'", k, account, v, existingValue)
+					}
+					existing[k] = v
+				}
+				finalAccountMetadata[account] = existing
+			} else {
+				finalAccountMetadata[account] = accountMeta
+			}
+		}
+	}
+
+	// Update transaction with final metadata
+	tx = tx.WithMetadata(finalMetadata)
+
 	// Create CreatedTransaction payload
 	createdTx := &ledger.CreatedTransaction{
 		Transaction:     tx,
-		AccountMetadata: ledger.AccountMetadata(input.AccountMetadata),
+		AccountMetadata: ledger.AccountMetadata(finalAccountMetadata),
 	}
 
 	// Create log with ID from counter
@@ -239,6 +302,63 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 
 	return &log, createdTx, nil
+}
+
+// executeNumscript compiles and executes a numscript script to generate postings, metadata, and account metadata
+func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string, script *TransactionScript) (ledger.Postings, metadata.Metadata, map[string]metadata.Metadata, error) {
+	if script == nil || script.Plain == "" {
+		return nil, nil, nil, fmt.Errorf("script is required")
+	}
+
+	// Parse the numscript
+	parseResult := numscript.Parse(script.Plain)
+
+	// Check for parsing errors
+	parsingErrors := parseResult.GetParsingErrors()
+	if len(parsingErrors) > 0 {
+		return nil, nil, nil, fmt.Errorf("failed to parse numscript: %s", numscript.ParseErrorsToString(parsingErrors, parseResult.GetSource()))
+	}
+
+	// Create a store adapter that uses our balance store
+	storeAdapter := &numscriptStoreAdapter{
+		ledgerName:         ledgerName,
+		lockedVolumesStore: l.lockedVolumesStore,
+		logReader:          l.logReader,
+		ctx:                ctx,
+	}
+
+	// Execute the script
+	result, err := parseResult.Run(ctx, script.Vars, storeAdapter)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to execute numscript: %w", err)
+	}
+
+	// Convert result postings to ledger.Postings
+	postings := make(ledger.Postings, 0, len(result.Postings))
+	for _, p := range result.Postings {
+		// numscript.Posting.Amount is already a *big.Int
+		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, p.Amount))
+	}
+
+	// Convert numscript metadata to our metadata format
+	var txMetadata metadata.Metadata
+	if result.Metadata != nil {
+		txMetadata = make(metadata.Metadata)
+		for k, v := range result.Metadata {
+			txMetadata[k] = v.String()
+		}
+	}
+
+	// Convert numscript account metadata to our format
+	var accountMetadata map[string]metadata.Metadata
+	if result.AccountsMetadata != nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+		for account, accountMeta := range result.AccountsMetadata {
+			accountMetadata[account] = accountMeta
+		}
+	}
+
+	return postings, txMetadata, accountMetadata, nil
 }
 
 // RevertTransaction is not implemented yet
@@ -274,4 +394,47 @@ func (l *DefaultLedger) Import(ctx context.Context, ledgerName string, stream ch
 // Export is not implemented yet
 func (l *DefaultLedger) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return ErrNotFound
+}
+
+// numscriptStoreAdapter implements numscript.Store to provide balances and metadata
+type numscriptStoreAdapter struct {
+	ledgerName         string
+	lockedVolumesStore LockedBalancesStore
+	logReader          LogReader
+	ctx                context.Context
+}
+
+func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.BalanceQuery) (numscript.Balances, error) {
+	// Convert numscript.BalanceQuery to our format
+	balanceQuery := make(map[string][]string)
+	for account, assets := range q {
+		balanceQuery[account] = assets
+	}
+
+	// Get balances using our locked volumes store
+	balances, _, err := s.lockedVolumesStore.LockBalances(ctx, s.ledgerName, balanceQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to numscript.Balances format
+	result := make(numscript.Balances)
+	for account, accountBalances := range balances {
+		result[account] = make(map[string]*big.Int)
+		for asset, balance := range accountBalances {
+			result[account][asset] = balance
+		}
+	}
+
+	return result, nil
+}
+
+func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
+	// For now, return empty metadata as we don't have account metadata stored separately
+	// This can be enhanced later if needed
+	result := make(numscript.AccountsMetadata)
+	for address := range q {
+		result[address] = make(map[string]string)
+	}
+	return result, nil
 }

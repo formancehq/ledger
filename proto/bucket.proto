@@ -26,6 +26,11 @@ message BucketSnapshotResponse {
   string message = 1;
 }
 
+message Script {
+  string plain = 1;
+  map<string, string> vars = 2;
+}
+
 message CreateTransactionRequest {
   string bucket = 1;
   map<string, google.protobuf.Struct> account_metadata = 2;
@@ -36,6 +41,8 @@ message CreateTransactionRequest {
   bool dry_run = 7;
   string idempotency_key = 8;
   string ledger = 9;
+  Script script = 10;
+  string runtime = 11;
 }
 
 message CreateTransactionResponse {

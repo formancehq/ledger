@@ -26,11 +26,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate postings
-	if len(input.Postings) == 0 {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("postings are required"))
-		return
-	}
+	// Validation is done in the service layer (postings or script required, but not both)
 
 	// Extract dryRun from query parameter
 	dryRun := r.URL.Query().Get("dryRun") == "true"

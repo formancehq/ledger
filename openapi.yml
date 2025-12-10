@@ -469,8 +469,6 @@ components:
 
     CreateTransactionRequest:
       type: object
-      required:
-        - postings
       properties:
         accountMetadata:
           type: object
@@ -493,7 +491,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PostingRequest'
-          description: List of postings for the transaction
+          description: List of postings for the transaction (required if script is not provided)
+        script:
+          $ref: '#/components/schemas/Script'
+          description: Numscript script to execute (required if postings is not provided). Cannot be used together with postings.
+        runtime:
+          type: string
+          description: Runtime to use for script execution (e.g., "experimental-interpreter")
         dryRun:
           type: boolean
           default: false
@@ -523,6 +527,20 @@ components:
         asset:
           type: string
           description: Asset identifier
+
+    Script:
+      type: object
+      required:
+        - plain
+      properties:
+        plain:
+          type: string
+          description: The numscript source code
+        vars:
+          type: object
+          additionalProperties:
+            type: string
+          description: Variables to pass to the script
 
     CreateTransactionResponse:
       type: object

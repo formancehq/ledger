@@ -77,6 +77,15 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 		timestamp = &t
 	}
 
+	// Convert script if provided
+	var script *TransactionScript
+	if req.Script != nil {
+		script = &TransactionScript{
+			Plain: req.Script.Plain,
+			Vars:  req.Script.Vars,
+		}
+	}
+
 	// Create transaction parameters
 	params := Parameters[CreateTransaction]{
 		DryRun:         req.DryRun,
@@ -87,6 +96,8 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 			Metadata:        txMetadata,
 			Reference:       req.Reference,
 			Postings:        postings,
+			Script:          script,
+			Runtime:         req.Runtime,
 		},
 	}
 

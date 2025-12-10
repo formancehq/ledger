@@ -28,12 +28,19 @@ type Parameters[INPUT any] struct {
 	Input          INPUT  `json:"-"`
 }
 
+type TransactionScript struct {
+	Plain string                 `json:"plain"`
+	Vars  map[string]string `json:"vars,omitempty"`
+}
+
 type CreateTransaction struct {
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata,omitempty"`
 	Timestamp       *time.Time                   `json:"timestamp,omitempty"`
 	Metadata        metadata.Metadata            `json:"metadata,omitempty"`
 	Reference       string                       `json:"reference,omitempty"`
-	Postings        ledger.Postings              `json:"postings"`
+	Postings        ledger.Postings              `json:"postings,omitempty"`
+	Script          *TransactionScript           `json:"script,omitempty"`
+	Runtime         string                       `json:"runtime,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler for CreateTransaction
@@ -44,7 +51,9 @@ func (c *CreateTransaction) UnmarshalJSON(data []byte) error {
 		Timestamp       string                            `json:"timestamp,omitempty"`
 		Metadata        map[string]interface{}            `json:"metadata,omitempty"`
 		Reference       string                            `json:"reference,omitempty"`
-		Postings        ledger.Postings                   `json:"postings"`
+		Postings        ledger.Postings                   `json:"postings,omitempty"`
+		Script          *TransactionScript                `json:"script,omitempty"`
+		Runtime         string                            `json:"runtime,omitempty"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -70,6 +79,8 @@ func (c *CreateTransaction) UnmarshalJSON(data []byte) error {
 	c.Metadata = convertMapToMetadata(aux.Metadata)
 	c.Reference = aux.Reference
 	c.Postings = aux.Postings
+	c.Script = aux.Script
+	c.Runtime = aux.Runtime
 	return nil
 }
 
