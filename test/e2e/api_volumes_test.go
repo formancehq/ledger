@@ -296,4 +296,42 @@ var _ = Context("Ledger accounts list API tests", func() {
 			}
 		})
 	})
+
+	// Test case to reproduce bug: column "account_array" does not exist (SQLSTATE 42703)
+	// This happens when using $or with both exact addresses AND partial addresses with PIT
+	When("Get volumes with PIT and $or filter mixing exact and partial addresses", func() {
+		It("should not fail with account_array column error", func(specContext SpecContext) {
+			// This test reproduces the bug where using $or with:
+			// - exact addresses (e.g., "account:user1")
+			// - partial addresses (e.g., "account:")
+			// combined with PIT causes "column account_array does not exist" error
+			//
+			// The bug occurs because validateFilters only stores ONE value per field name,
+			// so if the last address in the $or is exact, needAddressSegments becomes false,
+			// but ResolveFilter still generates filters on account_array for partial addresses.
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetVolumesWithBalances(
+				ctx,
+				operations.V2GetVolumesWithBalancesRequest{
+					EndTime: pointer.For(now),
+					RequestBody: map[string]interface{}{
+						"$or": []any{
+							map[string]any{
+								"$match": map[string]any{
+									"account": "account:", // partial address - requires account_array
+								},
+							},
+							map[string]any{
+								"$match": map[string]any{
+									"account": "bank", // exact address - does NOT require account_array
+								},
+							},
+						},
+					},
+					Ledger: "default",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.V2VolumesWithBalanceCursorResponse.Cursor.Data).To(HaveLen(3)) // account:user1, account:user2, bank
+		})
+	})
 })
