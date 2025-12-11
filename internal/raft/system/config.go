@@ -8,7 +8,8 @@ import (
 
 type Config struct {
 	raft.NodeConfig
-	BindAddr      string
+	BindAddr     string
+	ExtraDataDir string // Root directory for all system data (outside of Raft logs)
 }
 
 func (c *Config) Validate() error {

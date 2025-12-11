@@ -331,6 +331,7 @@ func startBucketRaftGroupFromFSM(config Config, transport *multiplexedTransport,
 			}),
 		},
 		logger,
+		config.ExtraDataDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating bucket Raft group: %w", err)

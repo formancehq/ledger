@@ -1,0 +1,3 @@
+1.
+Some storage are already replicated.
+So the snapshot can be done only on the master, and not replicated.

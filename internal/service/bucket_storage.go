@@ -14,6 +14,14 @@ func ValidateBucketConfig(driver string, config map[string]interface{}) error {
 		if !ok || dsn == "" {
 			return fmt.Errorf("sqlite driver requires 'dsn' configuration (connection address)")
 		}
+		// SQLite must be file-based (not :memory: or other in-memory databases)
+		if dsn == ":memory:" || dsn == "file::memory:" {
+			return fmt.Errorf("sqlite driver requires a file-based database, in-memory databases are not supported")
+		}
+		// DSN must start with "file:" prefix
+		if len(dsn) < 5 || dsn[:5] != "file:" {
+			return fmt.Errorf("sqlite driver requires DSN to start with 'file:' prefix (e.g., 'file:./data/bucket.db')")
+		}
 		return nil
 	case "postgres":
 		dsn, ok := config["dsn"].(string)

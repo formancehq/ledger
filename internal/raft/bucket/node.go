@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -16,19 +18,59 @@ import (
 )
 
 // logStoreFactory is a function that creates a LogStore from a JSON config
-type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error)
+type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, extraDataDir string) (service.LogStore, error)
 
-// driverConfigTypes maps driver names to their config types
-var driverConfigTypes = map[string]interface{}{
-	"sqlite":     service.SQLiteConfig{},
-	"postgres":   service.PostgresConfig{},
-	"clickhouse": service.ClickHouseConfig{},
-	"file":       service.FileConfig{},
+// resolvePath resolves a path against extraDataDir, treating absolute paths as relative to extraDataDir
+func resolvePath(path string, extraDataDir string) string {
+	// Remove leading slash from absolute paths to treat them as relative to extraDataDir
+	if filepath.IsAbs(path) {
+		// On Windows, remove the drive letter prefix (e.g., "C:/" -> "")
+		// On Unix, remove the leading "/"
+		path = strings.TrimPrefix(path, filepath.VolumeName(path))
+		path = strings.TrimPrefix(path, "/")
+	}
+	return filepath.Join(extraDataDir, path)
+}
+
+// resolveSQLiteDSN resolves relative paths in SQLite DSN against extraDataDir
+// It ensures the DSN is file-based and creates the directory if needed
+func resolveSQLiteDSN(dsn string, extraDataDir string) (string, error) {
+	// SQLite DSN format: "file:path?params" or "file:./path?params"
+	// Parse the URL to extract path and query
+	parsedURL, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("invalid sqlite DSN format: %w", err)
+	}
+
+	// Ensure it's a file: scheme
+	if parsedURL.Scheme != "file" {
+		return "", fmt.Errorf("sqlite DSN must use 'file:' scheme")
+	}
+
+	// Reject empty paths
+	if parsedURL.Path == "" {
+		return "", fmt.Errorf("sqlite DSN must specify a file path")
+	}
+
+	// Resolve relative paths
+	resolvedPath := resolvePath(parsedURL.Path, extraDataDir)
+
+	// Ensure the parent directory exists (resolvedPath is a file, not a directory)
+	dir := filepath.Dir(resolvedPath)
+	if dir != "." && dir != "/" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", fmt.Errorf("creating directory for sqlite database file: %w", err)
+		}
+	}
+
+	// Reconstruct the DSN with resolved path
+	parsedURL.Path = resolvedPath
+	return parsedURL.String(), nil
 }
 
 // logStoreFactories maps driver names to their factory functions
 var logStoreFactories = map[string]logStoreFactory{
-	"sqlite": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+	"sqlite": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, extraDataDir string) (service.LogStore, error) {
 		var config service.SQLiteConfig
 		if len(configJSON) > 0 {
 			if err := json.Unmarshal(configJSON, &config); err != nil {
@@ -38,9 +80,14 @@ var logStoreFactories = map[string]logStoreFactory{
 		if config.DSN == "" {
 			return nil, fmt.Errorf("sqlite driver requires 'dsn' configuration for bucket %s", bucketName)
 		}
-		return service.NewSQLiteLogStore(ctx, config.DSN, logger)
+		// Resolve relative paths in DSN and ensure it's file-based
+		resolvedDSN, err := resolveSQLiteDSN(config.DSN, extraDataDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolving sqlite DSN for bucket %s: %w", bucketName, err)
+		}
+		return service.NewSQLiteLogStore(ctx, resolvedDSN, logger)
 	},
-	"postgres": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+	"postgres": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, extraDataDir string) (service.LogStore, error) {
 		var config service.PostgresConfig
 		if len(configJSON) > 0 {
 			if err := json.Unmarshal(configJSON, &config); err != nil {
@@ -50,9 +97,10 @@ var logStoreFactories = map[string]logStoreFactory{
 		if config.DSN == "" {
 			return nil, fmt.Errorf("postgres driver requires 'dsn' configuration for bucket %s", bucketName)
 		}
+		// Postgres DSNs are typically connection strings, not file paths, so we don't resolve them
 		return service.NewPostgresLogStore(ctx, config.DSN, logger)
 	},
-	"clickhouse": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+	"clickhouse": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, extraDataDir string) (service.LogStore, error) {
 		var config service.ClickHouseConfig
 		if len(configJSON) > 0 {
 			if err := json.Unmarshal(configJSON, &config); err != nil {
@@ -62,9 +110,10 @@ var logStoreFactories = map[string]logStoreFactory{
 		if config.DSN == "" {
 			return nil, fmt.Errorf("clickhouse driver requires 'dsn' configuration for bucket %s", bucketName)
 		}
+		// ClickHouse DSNs are typically connection strings, not file paths, so we don't resolve them
 		return service.NewClickHouseLogStore(ctx, config.DSN, logger)
 	},
-	"file": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+	"file": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, extraDataDir string) (service.LogStore, error) {
 		var config service.FileConfig
 		if len(configJSON) > 0 {
 			if err := json.Unmarshal(configJSON, &config); err != nil {
@@ -74,10 +123,12 @@ var logStoreFactories = map[string]logStoreFactory{
 		if config.Path == "" {
 			return nil, fmt.Errorf("file driver requires 'path' configuration for bucket %s", bucketName)
 		}
+		// Resolve relative paths
+		resolvedPath := resolvePath(config.Path, extraDataDir)
 		// Create logs directory within the bucket path
-		logsPath := filepath.Join(config.Path, "logs.jsonl")
+		logsPath := filepath.Join(resolvedPath, "logs.jsonl")
 
-		if err := os.MkdirAll(config.Path, 0755); err != nil {
+		if err := os.MkdirAll(resolvedPath, 0755); err != nil {
 			return nil, fmt.Errorf("creating logs directory for bucket %s: %w", bucketName, err)
 		}
 
@@ -86,13 +137,13 @@ var logStoreFactories = map[string]logStoreFactory{
 }
 
 // createLogStore creates a LogStore based on the bucket driver and config
-func createLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+func createLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, bucketName string, extraDataDir string) (service.LogStore, error) {
 	factory, exists := logStoreFactories[driver]
 	if !exists {
 		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", driver)
 	}
 
-	store, err := factory(ctx, configJSON, logger, bucketName)
+	store, err := factory(ctx, configJSON, logger, bucketName, extraDataDir)
 	if err != nil {
 		return nil, fmt.Errorf("creating %s log store for bucket %s: %w", driver, bucketName, err)
 	}
@@ -115,6 +166,7 @@ func NewNode(
 	transport raft.NodeTransport,
 	cfg raft.NodeConfig,
 	logger logging.Logger,
+	extraDataDir string,
 ) (*Node, error) {
 
 	// Create Raft storage for this bucket ret
@@ -124,7 +176,7 @@ func NewNode(
 	}
 
 	// Create application log store for this bucket based on bucket driver
-	appLogStore, err := createLogStore(context.Background(), bucketInfo.Driver, bucketInfo.Config, logger, bucketInfo.Name)
+	appLogStore, err := createLogStore(context.Background(), bucketInfo.Driver, bucketInfo.Config, logger, bucketInfo.Name, extraDataDir)
 	if err != nil {
 		return nil, err
 	}
