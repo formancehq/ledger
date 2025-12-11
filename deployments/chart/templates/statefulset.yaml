@@ -114,6 +114,9 @@ spec:
             --bind-addr {{ .Values.config.bindAddr }} \
             --advertise-addr "$ADVERTISE_ADDR" \
             --data-dir {{ .Values.config.dataDir }} \
+            {{- if .Values.extraData.enabled }}
+            --extra-data-dir {{ .Values.extraData.mountPath }} \
+            {{- end }}
             --http-port {{ .Values.config.httpPort }} \
             --snapshot-threshold {{ .Values.config.snapshotThreshold }} \
             {{- if .Values.config.snapshotInterval }}

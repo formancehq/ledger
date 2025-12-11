@@ -36,9 +36,14 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Config is optional for SQLite and File (paths are auto-generated), but required for other drivers
 	if req.Config == nil {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("config is required"))
-		return
+		if req.Driver != "sqlite" && req.Driver != "file" {
+			api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("config is required"))
+			return
+		}
+		// For SQLite and File, use empty config
+		req.Config = make(map[string]interface{})
 	}
 
 	// Validate bucket configuration

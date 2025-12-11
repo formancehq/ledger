@@ -870,7 +870,6 @@ components:
       type: object
       required:
         - driver
-        - config
       properties:
         driver:
           type: string
@@ -882,7 +881,7 @@ components:
             - $ref: '#/components/schemas/PostgresConfig'
             - $ref: '#/components/schemas/ClickHouseConfig'
             - $ref: '#/components/schemas/FileConfig'
-          description: Driver-specific configuration
+          description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
 
     CreateBucketResponse:
       type: object
@@ -999,14 +998,9 @@ components:
 
     SQLiteConfig:
       type: object
-      required:
-        - dsn
-      properties:
-        dsn:
-          type: string
-          description: Data Source Name (connection string) for SQLite database
-      example:
-        dsn: "file:./data/bucket.db?cache=shared&mode=rwc"
+      description: SQLite driver configuration (empty object - DSN is automatically generated)
+      properties: {}
+      example: {}
 
     PostgresConfig:
       type: object
@@ -1032,14 +1026,9 @@ components:
 
     FileConfig:
       type: object
-      required:
-        - path
-      properties:
-        path:
-          type: string
-          description: Directory path where logs will be stored
-      example:
-        path: "/var/lib/ledger/bucket-data"
+      description: File driver configuration (empty object - storage path is automatically generated)
+      properties: {}
+      example: {}
 
     ErrorResponse:
       type: object

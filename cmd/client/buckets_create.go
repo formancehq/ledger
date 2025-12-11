@@ -30,11 +30,10 @@ var bucketsCreateCmd = &cobra.Command{
 func init() {
 	bucketsCreateCmd.Flags().String("name", "", "Bucket name")
 	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres, clickhouse, file)")
-	bucketsCreateCmd.Flags().String("sqlite-dsn", "", "SQLite connection address (required for sqlite driver)")
 	bucketsCreateCmd.Flags().String("postgres-dsn", "", "PostgreSQL connection string (required for postgres driver)")
 	bucketsCreateCmd.Flags().String("clickhouse-dsn", "", "ClickHouse connection string (required for clickhouse driver)")
-	bucketsCreateCmd.Flags().String("file-path", "", "Directory path for file storage (required for file driver)")
 	// Name, driver and config are no longer required - wizard will prompt if not provided
+	// Note: SQLite and File drivers don't require config - paths are automatically generated
 
 	// Register completions
 	bucketsCreateCmd.RegisterFlagCompletionFunc("driver", completeDriverNames())
@@ -49,17 +48,17 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	opts.driver, _ = cmd.Flags().GetString("driver")
 
 	// Extract driver-specific config flags
-	sqliteDSN, _ := cmd.Flags().GetString("sqlite-dsn")
 	postgresDSN, _ := cmd.Flags().GetString("postgres-dsn")
 	clickHouseDSN, _ := cmd.Flags().GetString("clickhouse-dsn")
-	filePath, _ := cmd.Flags().GetString("file-path")
 
 	// Build config struct from flags
 	switch opts.driver {
 	case "sqlite":
-		if sqliteDSN != "" {
-			opts.config = service.SQLiteConfig{DSN: sqliteDSN}
-		}
+		// SQLite doesn't require config - DSN is automatically generated
+		opts.config = service.SQLiteConfig{}
+	case "file":
+		// File doesn't require config - storage path is automatically generated
+		opts.config = service.FileConfig{}
 	case "postgres":
 		if postgresDSN != "" {
 			opts.config = service.PostgresConfig{DSN: postgresDSN}
@@ -68,17 +67,23 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 		if clickHouseDSN != "" {
 			opts.config = service.ClickHouseConfig{DSN: clickHouseDSN}
 		}
-	case "file":
-		if filePath != "" {
-			opts.config = service.FileConfig{Path: filePath}
-		}
 	}
 
 	// Run wizard if name, driver or config not provided
-	if opts.name == "" || opts.driver == "" || opts.config == nil {
+	// For SQLite and File, config can be nil (will be set to empty config)
+	needsWizard := opts.name == "" || opts.driver == "" || (opts.config == nil && opts.driver != "sqlite" && opts.driver != "file")
+	if needsWizard {
 		if err := runCreateBucketWizard(opts); err != nil {
 			return err
 		}
+	}
+
+	// Ensure SQLite and File have empty config if not set
+	if opts.driver == "sqlite" && opts.config == nil {
+		opts.config = service.SQLiteConfig{}
+	}
+	if opts.driver == "file" && opts.config == nil {
+		opts.config = service.FileConfig{}
 	}
 
 	// Validate required fields after wizard
@@ -147,13 +152,15 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	if data.Driver != nil && data.Config != nil {
 		driver := *data.Driver
 		switch driver {
-		case "sqlite", "postgres", "clickhouse":
+		case "sqlite":
+			// SQLite DSN is auto-generated, show a note
+			panelData += "Storage: SQLite (auto-generated database file)\n"
+		case "file":
+			// File storage path is auto-generated, show a note
+			panelData += "Storage: File (auto-generated storage directory)\n"
+		case "postgres", "clickhouse":
 			if dsn, ok := data.Config["dsn"].(string); ok {
 				panelData += fmt.Sprintf("DSN: %s\n", dsn)
-			}
-		case "file":
-			if path, ok := data.Config["path"].(string); ok {
-				panelData += fmt.Sprintf("Directory: %s\n", path)
 			}
 		}
 	}
@@ -227,19 +234,13 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 	// Step 3: Collect driver-specific configuration
 	switch opts.driver {
 	case "sqlite":
+		// SQLite doesn't require config - DSN is automatically generated based on bucket ID
 		if opts.config == nil {
 			pterm.Info.Println("SQLite Configuration")
-			pterm.Println("Enter the SQLite database file path or connection string.")
-			pterm.Println("Example: file:./data/bucket.db?cache=shared&mode=rwc")
+			pterm.Println("SQLite database will be automatically created in the extra-data-dir.")
+			pterm.Println("The database file will be named: bucket-{id}.db")
 			pterm.Println()
-
-			dsn, err := pterm.DefaultInteractiveTextInput.
-				WithDefaultText("file:./data/bucket.db?cache=shared&mode=rwc").
-				Show("SQLite DSN")
-			if err != nil {
-				return fmt.Errorf("failed to get SQLite DSN: %w", err)
-			}
-			opts.config = service.SQLiteConfig{DSN: dsn}
+			opts.config = service.SQLiteConfig{}
 		}
 
 	case "postgres":
@@ -275,19 +276,13 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 		}
 
 	case "file":
+		// File doesn't require config - storage path is automatically generated based on bucket ID
 		if opts.config == nil {
 			pterm.Info.Println("File Storage Configuration")
-			pterm.Println("Enter the directory path where logs will be stored.")
-			pterm.Println("Example: /var/lib/ledger/bucket-data")
+			pterm.Println("File storage will be automatically created in the extra-data-dir.")
+			pterm.Println("The storage directory will be named: bucket-{id}")
 			pterm.Println()
-
-			path, err := pterm.DefaultInteractiveTextInput.
-				WithDefaultText("./bucket-data").
-				Show("Directory path")
-			if err != nil {
-				return fmt.Errorf("failed to get file path: %w", err)
-			}
-			opts.config = service.FileConfig{Path: path}
+			opts.config = service.FileConfig{}
 		}
 	}
 
