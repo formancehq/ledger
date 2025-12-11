@@ -57,8 +57,10 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 			data TEXT NOT NULL,
 			date TEXT,
 			ledger TEXT NOT NULL,
-			idempotency_key TEXT UNIQUE,
-			idempotency_hash TEXT UNIQUE
+			idempotency_key TEXT,
+			idempotency_hash TEXT,
+			UNIQUE(ledger, idempotency_key),
+			UNIQUE(ledger, idempotency_hash)
 		);
 		
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
@@ -247,6 +249,9 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledger.Log, error) {
 		log.Date = libtime.New(date)
 	}
 
+	// Set ledger
+	log.Ledger = ledgerName
+
 	// Set idempotency fields
 	if idempotencyKey.Valid {
 		log.IdempotencyKey = idempotencyKey.String
@@ -333,13 +338,13 @@ func (c *sqliteLogCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
-// Logs are returned in descending order by ID
+// Logs are returned in ascending order by ID
 func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
 		FROM logs
 		WHERE ledger = ?
-		ORDER BY id DESC
+		ORDER BY id ASC
 	`, ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("querying logs: %w", err)

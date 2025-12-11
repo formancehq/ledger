@@ -186,7 +186,7 @@ func (c *fileLogCursorSorted) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
-// Logs are returned in descending order by ID
+// Logs are returned in ascending order by ID
 // For FileLogStore, we use a two-pass approach: first collect IDs and offsets, then read in order
 func (f *FileLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
 	f.mu.RLock()
@@ -251,9 +251,9 @@ func (f *FileLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Curs
 		currentOffset += int64(len(line))
 	}
 
-	// Sort entries by ID descending
+	// Sort entries by ID ascending
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].id > entries[j].id
+		return entries[i].id < entries[j].id
 	})
 
 	// Create cursor that will read logs in sorted order

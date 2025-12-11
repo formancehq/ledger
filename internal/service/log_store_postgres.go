@@ -49,20 +49,8 @@ func NewPostgresLogStore(ctx context.Context, dsn string, logger logging.Logger)
 
 // createTables creates the necessary tables for logs
 func (s *PostgresLogStore) createTables(ctx context.Context) error {
-	// Create log_type enum if it doesn't exist
 	_, err := s.db.ExecContext(ctx, `
-		DO $$ BEGIN
-			CREATE TYPE log_type AS ENUM ('SET_METADATA', 'NEW_TRANSACTION', 'REVERTED_TRANSACTION', 'DELETE_METADATA');
-		EXCEPTION
-			WHEN duplicate_object THEN null;
-		END $$;
-	`)
-	if err != nil {
-		return fmt.Errorf("creating log_type enum: %w", err)
-	}
-
-	// Create logs table
-	_, err = s.db.ExecContext(ctx, `
+		CREATE TYPE log_type AS ENUM ('SET_METADATA', 'NEW_TRANSACTION', 'REVERTED_TRANSACTION', 'DELETE_METADATA');
 		CREATE TABLE IF NOT EXISTS logs (
 			id BIGINT,
 			type log_type NOT NULL,
@@ -72,13 +60,12 @@ func (s *PostgresLogStore) createTables(ctx context.Context) error {
 			idempotency_key VARCHAR(256),
 			idempotency_hash VARCHAR(256),
 			CONSTRAINT logs_idempotency_key_unique UNIQUE (idempotency_key),
-			CONSTRAINT logs_idempotency_hash_unique UNIQUE (idempotency_hash)
+			PRIMARY KEY (ledger, id)
 		);
 		
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key) WHERE idempotency_key IS NOT NULL;
 		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs(id) WHERE id IS NOT NULL;
-		CREATE INDEX IF NOT EXISTS idx_logs_ledger ON logs(ledger);
-		CREATE INDEX IF NOT EXISTS idx_logs_ledger_id ON logs(ledger, id DESC);
+		CREATE INDEX IF NOT EXISTS idx_logs_ledger_id ON logs(ledger, id);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
@@ -337,13 +324,13 @@ func (c *postgresLogCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
-// Logs are returned in descending order by ID
+// Logs are returned in ascending order by ID
 func (s *PostgresLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
 		FROM logs
 		WHERE ledger = $1
-		ORDER BY id DESC NULLS LAST
+		ORDER BY id ASC NULLS FIRST
 	`, ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("querying logs: %w", err)
@@ -357,4 +344,3 @@ func (s *PostgresLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*
 	var cursorInterface Cursor[ledger.Log] = cursor
 	return &cursorInterface, nil
 }
-

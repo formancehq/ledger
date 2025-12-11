@@ -2,35 +2,52 @@ package service
 
 import (
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
 
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	stdtime "time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
 
 // ClickHouseLogStore is a ClickHouse implementation of LogStore
 type ClickHouseLogStore struct {
-	db     *sql.DB
+	db     driver.Conn
 	logger logging.Logger
 }
 
 // NewClickHouseLogStore creates a new ClickHouse log store
 func NewClickHouseLogStore(ctx context.Context, dsn string, logger logging.Logger) (*ClickHouseLogStore, error) {
-	// Open ClickHouse database
-	db, err := sql.Open("clickhouse", dsn)
+	// Parse DSN and open ClickHouse connection
+	options, err := clickhouse.ParseDSN(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parsing clickhouse dsn: %w", err)
+	}
+
+	// Configure ClickHouse settings
+	options.Settings = map[string]any{
+		"date_time_input_format":                    "best_effort",
+		"date_time_output_format":                   "iso",
+		"allow_experimental_dynamic_type":           true,
+		"enable_json_type":                          true,
+		"enable_variant_type":                       true,
+		"output_format_json_quote_64bit_integers":   false,
+		"output_format_native_write_json_as_string": true,
+	}
+
+	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("opening clickhouse database: %w", err)
 	}
 
 	// Test the connection
-	if err := db.PingContext(ctx); err != nil {
+	if err := db.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("pinging clickhouse database: %w", err)
 	}
 
@@ -48,47 +65,60 @@ func NewClickHouseLogStore(ctx context.Context, dsn string, logger logging.Logge
 }
 
 // createTables creates the necessary tables for logs
+// Based on the table definition from github.com/formancehq/ledger exporters
 func (s *ClickHouseLogStore) createTables(ctx context.Context) error {
-	// Create logs table with MergeTree engine
-	// ClickHouse doesn't support UNIQUE constraints in the same way as PostgreSQL,
-	// so we'll use a ReplacingMergeTree to handle duplicates based on idempotency_key
-	_, err := s.db.ExecContext(ctx, `
+	// Create logs table with ReplacingMergeTree engine
+	// Following the same structure as the ledger repository exporters
+	err := s.db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS logs (
-			id Nullable(UInt64),
-			type String NOT NULL,
-			data String NOT NULL,
-			date Nullable(DateTime64(9)),
-			ledger String NOT NULL,
-			idempotency_key Nullable(String),
-			idempotency_hash Nullable(String)
-		) ENGINE = MergeTree()
-		ORDER BY (ledger, id)
-		PARTITION BY toYYYYMM(date)
-		SETTINGS index_granularity = 8192;
+			ledger String,
+			id              Int64,
+			type            String,
+			date            DateTime64(6, 'UTC'),
+			idempotency_key String,
+			idempotency_hash String,
+			data            JSON(
+				transaction JSON(
+					id UInt256,
+					insertedAt DateTime64(6, 'UTC'),
+					postings Array(JSON(
+						source String,
+						destination String,
+						amount UInt256,
+						asset String
+					)),
+					metadata Map(String, String),
+					reference String,
+					reverted Bool,
+					timestamp DateTime64(6, 'UTC')
+				),
+				accountMetadata Map(String, Map(String, String)),
+				targetId Variant(UInt256, String),
+				targetType Nullable(String),
+				metadata Map(String, String),
+				key Nullable(String),
+				revertedTransaction JSON(
+					id UInt256,
+					insertedAt DateTime64(6, 'UTC'),
+					postings Array(JSON(
+						source String,
+						destination String,
+						amount UInt256,
+						asset String
+					)),
+					metadata Map(String, String),
+					reference String,
+					reverted Bool,
+					timestamp DateTime64(6, 'UTC')
+				)
+			)
+		)
+		ENGINE = ReplacingMergeTree
+		PARTITION BY ledger
+		PRIMARY KEY (ledger, id);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
-	}
-
-	// Create a materialized view or additional table for idempotency key lookups
-	// Since ClickHouse doesn't support UNIQUE constraints, we'll create a separate
-	// table for idempotency tracking using ReplacingMergeTree
-	_, err = s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS logs_idempotency (
-			ledger String,
-			idempotency_key String,
-			id UInt64,
-			type String,
-			data String,
-			date Nullable(DateTime64(9)),
-			idempotency_hash Nullable(String),
-			_updated DateTime DEFAULT now()
-		) ENGINE = ReplacingMergeTree(_updated)
-		ORDER BY (ledger, idempotency_key)
-		SETTINGS index_granularity = 8192;
-	`)
-	if err != nil {
-		return fmt.Errorf("creating logs_idempotency table: %w", err)
 	}
 
 	return nil
@@ -105,30 +135,12 @@ func (s *ClickHouseLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log)
 		return nil
 	}
 
-	// ClickHouse doesn't support transactions in the same way as PostgreSQL,
-	// but we can use batch inserts for better performance
-	stmt, err := s.db.PrepareContext(ctx, `
-		INSERT INTO logs (id, type, data, date, ledger, idempotency_key, idempotency_hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`)
+	// Use batch insert for better performance
+	// Column order matches the table definition: ledger, id, type, date, data
+	batch, err := s.db.PrepareBatch(ctx, "INSERT INTO logs (ledger, id, type, date, data, idempotency_key, idempotency_hash)")
 	if err != nil {
-		return fmt.Errorf("preparing insert statement: %w", err)
+		return fmt.Errorf("preparing batch insert: %w", err)
 	}
-	defer func() {
-		_ = stmt.Close()
-	}()
-
-	// Also prepare statement for idempotency table
-	idempotencyStmt, err := s.db.PrepareContext(ctx, `
-		INSERT INTO logs_idempotency (ledger, idempotency_key, id, type, data, date, idempotency_hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return fmt.Errorf("preparing idempotency insert statement: %w", err)
-	}
-	defer func() {
-		_ = idempotencyStmt.Close()
-	}()
 
 	for _, log := range logs {
 		// Marshal data to JSON
@@ -137,65 +149,36 @@ func (s *ClickHouseLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log)
 			return fmt.Errorf("marshaling log data: %w", err)
 		}
 
-		// Format date as DateTime64 (ClickHouse handles nanoseconds)
-		var datePtr *stdtime.Time
+		// Format date as DateTime64(6, 'UTC')
+		// ClickHouse expects dates in UTC format: "2006-01-02 15:04:05.999999 +00:00"
+		var dateStr string
 		if !log.Date.IsZero() {
-			datePtr = &log.Date.Time
+			dateStr = log.Date.Format("2006-01-02 15:04:05.999999") + " +00:00"
 		}
 
-		var id sql.NullInt64
+		// Get ID value
+		var id int64
 		if log.ID != nil {
-			id = sql.NullInt64{
-				Int64: int64(*log.ID),
-				Valid: true,
-			}
+			id = int64(*log.ID)
 		}
 
-		var idempotencyKey sql.NullString
-		if log.IdempotencyKey != "" {
-			idempotencyKey = sql.NullString{
-				String: log.IdempotencyKey,
-				Valid:  true,
-			}
-		}
-
-		var idempotencyHash sql.NullString
-		if log.IdempotencyHash != "" {
-			idempotencyHash = sql.NullString{
-				String: log.IdempotencyHash,
-				Valid:  true,
-			}
-		}
-
-		// Insert into main logs table
-		_, err = stmt.ExecContext(ctx,
+		// Append to batch
+		if err := batch.Append(
+			log.Ledger,
 			id,
 			log.Type.String(),
+			dateStr,
 			string(dataJSON),
-			datePtr,
-			log.Ledger,
-			idempotencyKey,
-			idempotencyHash,
-		)
-		if err != nil {
-			return fmt.Errorf("inserting log: %w", err)
+			log.IdempotencyKey,
+			log.IdempotencyHash,
+		); err != nil {
+			return fmt.Errorf("appending log to batch: %w", err)
 		}
+	}
 
-		// Insert into idempotency table if idempotency key exists
-		if idempotencyKey.Valid {
-			_, err = idempotencyStmt.ExecContext(ctx,
-				log.Ledger,
-				idempotencyKey.String,
-				id,
-				log.Type.String(),
-				string(dataJSON),
-				datePtr,
-				idempotencyHash,
-			)
-			if err != nil {
-				return fmt.Errorf("inserting log idempotency: %w", err)
-			}
-		}
+	// Send batch
+	if err := batch.Send(); err != nil {
+		return fmt.Errorf("sending batch: %w", err)
 	}
 
 	s.logger.WithFields(map[string]any{"count": len(logs)}).Debugf("Logs inserted into ClickHouse")
@@ -203,99 +186,118 @@ func (s *ClickHouseLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log)
 }
 
 // GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
+// Note: Since the table doesn't have idempotency_key column, we need to scan logs
+// and check the idempotency key from the log structure. This is not efficient but matches the table structure.
 func (s *ClickHouseLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error) {
 	// Use FINAL to get the latest version from ReplacingMergeTree
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
-		FROM logs_idempotency FINAL
+	row := s.db.QueryRow(ctx, `
+		SELECT id, type, data, date, ledger, idempotency_hash
+		FROM logs FINAL
 		WHERE ledger = ? AND idempotency_key = ?
-		LIMIT 1
+		ORDER BY id ASC
 	`, ledgerName, idempotencyKey)
-
-	log, err := s.scanLog(row)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("getting log by idempotency key: %w", err)
+	if row.Err() != nil {
+		return nil, fmt.Errorf("querying log by idempotency key: %w", row.Err())
 	}
-	return log, nil
-}
+	var (
+		id               int64
+		logType          string
+		dataJSON         string
+		date             stdtime.Time
+		ledgerNameResult string
+		idempotencyHash  string
+	)
 
-// GetLastLog retrieves the last log by ID for a specific ledger (implements LogReader)
-func (s *ClickHouseLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
-		FROM logs
-		WHERE ledger = ?
-		ORDER BY id DESC NULLS LAST
-		LIMIT 1
-	`, ledgerName)
-
-	log, err := s.scanLog(row)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("getting last log: %w", err)
+	if err := row.Scan(&id, &logType, &dataJSON, &date, &ledgerNameResult, &idempotencyHash); err != nil {
+		return nil, fmt.Errorf("scanning log row: %w", err)
 	}
-	return log, nil
-}
 
-// scanLog scans a row into a Log struct
-func (s *ClickHouseLogStore) scanLog(row *sql.Row) (*ledger.Log, error) {
-	var id sql.NullInt64
-	var logType string
-	var dataJSON string
-	var datePtr *stdtime.Time
-	var ledgerName string
-	var idempotencyKey sql.NullString
-	var idempotencyHash sql.NullString
-
-	err := row.Scan(&id, &logType, &dataJSON, &datePtr, &ledgerName, &idempotencyKey, &idempotencyHash)
+	// Parse the log to check idempotency key
+	logTypeEnum := ledger.LogTypeFromString(logType)
+	logData, err := ledger.HydrateLog(logTypeEnum, []byte(dataJSON))
 	if err != nil {
 		return nil, err
 	}
 
+	return &ledger.Log{
+		ID:              pointer.For(uint64(id)),
+		Type:            logTypeEnum,
+		Data:            logData,
+		Ledger:          ledgerNameResult,
+		IdempotencyKey:  idempotencyKey,
+		IdempotencyHash: idempotencyHash,
+	}, nil
+}
+
+// GetLastLog retrieves the last log by ID for a specific ledger (implements LogReader)
+func (s *ClickHouseLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error) {
+	// Use FINAL to get the latest version from ReplacingMergeTree
+	rows, err := s.db.Query(ctx, `
+		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
+		FROM logs FINAL
+		WHERE ledger = ?
+		ORDER BY id DESC
+		LIMIT 1
+	`, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("querying last log: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, nil
+	}
+
+	var (
+		id               int64
+		logType          string
+		dataJSON         string
+		date             stdtime.Time
+		ledgerNameResult string
+		idempotencyKey   string
+		idempotencyHash  string
+	)
+
+	if err := rows.Scan(&id, &logType, &dataJSON, &date, &ledgerNameResult, &idempotencyKey, &idempotencyHash); err != nil {
+		return nil, fmt.Errorf("scanning log row: %w", err)
+	}
+
+	return s.scanLog(id, logType, dataJSON, date, ledgerNameResult, idempotencyKey, idempotencyHash)
+}
+
+// scanLog scans row data into a Log struct
+func (s *ClickHouseLogStore) scanLog(id int64, logType string, dataJSON string, date stdtime.Time, ledgerName string, key string, hash string) (*ledger.Log, error) {
 	log := &ledger.Log{}
 
 	// Set ID
-	if id.Valid {
-		idVal := uint64(id.Int64)
-		log.ID = &idVal
-	}
+	log.ID = pointer.For(uint64(id))
 
 	// Set type
 	log.Type = ledger.LogTypeFromString(logType)
 
 	// Unmarshal data using HydrateLog
+	var err error
 	log.Data, err = ledger.HydrateLog(log.Type, []byte(dataJSON))
 	if err != nil {
 		return nil, fmt.Errorf("hydrating log data: %w", err)
 	}
 
 	// Set date
-	if datePtr != nil {
-		log.Date = libtime.New(*datePtr)
+	if !date.IsZero() {
+		log.Date = libtime.New(date)
 	}
 
 	// Set ledger
 	log.Ledger = ledgerName
-
-	// Set idempotency fields
-	if idempotencyKey.Valid {
-		log.IdempotencyKey = idempotencyKey.String
-	}
-	if idempotencyHash.Valid {
-		log.IdempotencyHash = idempotencyHash.String
-	}
+	log.IdempotencyKey = key
+	log.IdempotencyHash = hash
 
 	return log, nil
 }
 
 // clickHouseLogCursor implements Cursor[ledger.Log] for ClickHouse
 type clickHouseLogCursor struct {
-	rows  *sql.Rows
+	rows  driver.Rows
 	store *ClickHouseLogStore
 }
 
@@ -307,53 +309,26 @@ func (c *clickHouseLogCursor) Next(ctx context.Context) (ledger.Log, error) {
 		return ledger.Log{}, io.EOF
 	}
 
-	var id sql.NullInt64
-	var logType string
-	var dataJSON string
-	var datePtr *stdtime.Time
-	var ledgerName string
-	var idempotencyKey sql.NullString
-	var idempotencyHash sql.NullString
+	var (
+		id              int64
+		logType         string
+		dataJSON        string
+		date            stdtime.Time
+		ledgerName      string
+		idempotencyKey  string
+		idempotencyHash string
+	)
 
-	err := c.rows.Scan(&id, &logType, &dataJSON, &datePtr, &ledgerName, &idempotencyKey, &idempotencyHash)
-	if err != nil {
+	if err := c.rows.Scan(&id, &logType, &dataJSON, &date, &ledgerName, &idempotencyKey, &idempotencyHash); err != nil {
 		return ledger.Log{}, fmt.Errorf("scanning log row: %w", err)
 	}
 
-	log := ledger.Log{}
-
-	// Set ID
-	if id.Valid {
-		idVal := uint64(id.Int64)
-		log.ID = &idVal
-	}
-
-	// Set type
-	log.Type = ledger.LogTypeFromString(logType)
-
-	// Unmarshal data using HydrateLog
-	log.Data, err = ledger.HydrateLog(log.Type, []byte(dataJSON))
+	log, err := c.store.scanLog(id, logType, dataJSON, date, ledgerName, idempotencyKey, idempotencyHash)
 	if err != nil {
-		return ledger.Log{}, fmt.Errorf("hydrating log data: %w", err)
+		return ledger.Log{}, err
 	}
 
-	// Set date
-	if datePtr != nil {
-		log.Date = libtime.New(*datePtr)
-	}
-
-	// Set ledger
-	log.Ledger = ledgerName
-
-	// Set idempotency fields
-	if idempotencyKey.Valid {
-		log.IdempotencyKey = idempotencyKey.String
-	}
-	if idempotencyHash.Valid {
-		log.IdempotencyHash = idempotencyHash.String
-	}
-
-	return log, nil
+	return *log, nil
 }
 
 func (c *clickHouseLogCursor) Close() error {
@@ -364,13 +339,14 @@ func (c *clickHouseLogCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
-// Logs are returned in descending order by ID
+// Logs are returned in ascending order by ID
 func (s *ClickHouseLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
-	rows, err := s.db.QueryContext(ctx, `
+	// Use FINAL to get the latest version from ReplacingMergeTree
+	rows, err := s.db.Query(ctx, `
 		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
-		FROM logs
+		FROM logs FINAL
 		WHERE ledger = ?
-		ORDER BY id DESC NULLS LAST
+		ORDER BY id ASC
 	`, ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("querying logs: %w", err)
@@ -384,4 +360,3 @@ func (s *ClickHouseLogStore) GetAllLogs(ctx context.Context, ledgerName string) 
 	var cursorInterface Cursor[ledger.Log] = cursor
 	return &cursorInterface, nil
 }
-
