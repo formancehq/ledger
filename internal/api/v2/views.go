@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"strings"
@@ -236,10 +237,31 @@ func (ts transactionSummary) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func renderTransactionSum(r *http.Request, ts ledgerstore.TransactionsSummary) any {
-	if !needBigIntAsString(r) {
-		return ts
+func renderTransactionSummary(r *http.Request, account string, ts ledgerstore.TransactionsSummary) (any, error) {
+	if needBigIntAsString(r) {
+		return struct {
+			Account string `json:"account"`
+			transactionSummary
+		}{
+			Account:            account,
+			transactionSummary: transactionSummary(ts),
+		}, nil
 	}
 
-	return transactionSummary(ts)
+	sum := new(big.Int)
+	if _, ok := sum.SetString(ts.Sum, 10); !ok {
+		return nil, fmt.Errorf("invalid sum format: %s", ts.Sum)
+	}
+
+	return struct {
+		Account string   `json:"account"`
+		Asset   string   `json:"asset"`
+		Count   int64    `json:"count"`
+		Sum     *big.Int `json:"sum"`
+	}{
+		Account: account,
+		Asset:   ts.Asset,
+		Count:   ts.Count,
+		Sum:     sum,
+	}, nil
 }

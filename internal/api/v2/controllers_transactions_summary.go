@@ -11,14 +11,14 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
-type sumResponse struct {
+type summaryResponse struct {
 	Account string   `json:"account"`
 	Asset   string   `json:"asset"`
 	Count   int64    `json:"count"`
 	Sum     *big.Int `json:"sum"`
 }
 
-func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
+func getTransactionsSummary(w http.ResponseWriter, r *http.Request) {
 	account := r.URL.Query().Get("account")
 	if account == "" {
 		api.BadRequest(w, common.ErrValidation, errors.New("account parameter is required"))
@@ -58,26 +58,20 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert to response format
-	response := make([]sumResponse, 0, len(transactionsSum))
+	response := make([]any, 0, len(transactionsSum))
 	for _, ts := range transactionsSum {
 		// Apply asset filter if provided
 		if assetFilter != "" && assetFilter != ts.Asset {
 			continue
 		}
 
-		// Parse the sum from string to big.Int exactly
-		sum := new(big.Int)
-		if _, ok := sum.SetString(ts.Sum, 10); !ok {
-			api.InternalServerError(w, r, fmt.Errorf("invalid sum format: %s", ts.Sum))
+		rendered, err := renderTransactionSummary(r, account, ts)
+		if err != nil {
+			api.InternalServerError(w, r, err)
 			return
 		}
 
-		response = append(response, sumResponse{
-			Account: account,
-			Asset:   ts.Asset,
-			Count:   ts.Count,
-			Sum:     sum,
-		})
+		response = append(response, rendered)
 	}
 
 	api.Ok(w, response)

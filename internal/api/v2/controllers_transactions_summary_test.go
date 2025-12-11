@@ -14,7 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestGetTransactionsSum(t *testing.T) {
+func TestGetTransactionsSummary(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success with single asset", func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestGetTransactionsSum(t *testing.T) {
 
 		// Define a struct to match the actual response format
 		var responseWrapper struct {
-			Data []sumResponse `json:"data"`
+			Data []summaryResponse `json:"data"`
 		}
 		err = json.Unmarshal([]byte(body), &responseWrapper)
 		require.NoError(t, err, "Failed to unmarshal response: %s", body)
@@ -100,7 +100,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 
 		var responseWrapper struct {
-			Data []sumResponse `json:"data"`
+			Data []summaryResponse `json:"data"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &responseWrapper)
 		require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestGetTransactionsSum(t *testing.T) {
 
 		// Parse response
 		var responseWrapper struct {
-			Data []sumResponse `json:"data"`
+			Data []summaryResponse `json:"data"`
 		}
 		err = json.Unmarshal(rr.Body.Bytes(), &responseWrapper)
 		require.NoError(t, err, "Failed to unmarshal response")
@@ -183,7 +183,7 @@ func newTestServer(t *testing.T, mockController *LedgerController) http.Handler 
 
 	// Create a new router with the test dependencies
 	router := chi.NewRouter()
-	router.Get("/transactions/summary", getTransactionsSum)
+	router.Get("/transactions/summary", getTransactionsSummary)
 
 	// Add middleware to inject the mock controller into the request context
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
