@@ -564,11 +564,11 @@ func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parame
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSum, error) {
+func (ctrl *DefaultController) GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSummary, error) {
 	return ctrl.store.TransactionsSum(ctx, ctrl.ledger.Name, account)
 }
 
-func (ctrl *DefaultController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSum, error) {
+func (ctrl *DefaultController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSummary, error) {
 	return ctrl.store.TransactionsSumWithTimeRange(ctx, ctrl.ledger.Name, account, startTime, endTime)
 }
 

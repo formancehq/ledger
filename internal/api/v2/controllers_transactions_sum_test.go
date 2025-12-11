@@ -27,9 +27,10 @@ func TestGetTransactionsSum(t *testing.T) {
 		// Mock the GetTransactionsSum call
 		mockLedgerController.EXPECT().
 			GetTransactionsSum(gomock.Any(), "expenses:salary").
-			Return([]ledgerstore.TransactionsSum{
+			Return([]ledgerstore.TransactionsSummary{
 				{
 					Asset: "USD",
+					Count: 2,
 					Sum:   "500", // 1000 (from world) - 500 (to bank) = 500
 				},
 			}, nil)
@@ -38,7 +39,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		server := newTestServer(t, mockLedgerController)
 
 		// Create request with proper pagination parameters
-		req, err := http.NewRequest(http.MethodGet, "/transactions/sum?account=expenses:salary", nil)
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary", nil)
 		req.Header.Set("Content-Type", "application/json")
 		require.NoError(t, err)
 
@@ -63,6 +64,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		require.Len(t, responseWrapper.Data, 1)
 		require.Equal(t, "expenses:salary", responseWrapper.Data[0].Account)
 		require.Equal(t, "USD", responseWrapper.Data[0].Asset)
+		require.Equal(t, int64(2), responseWrapper.Data[0].Count)
 		require.Equal(t, int64(500), responseWrapper.Data[0].Sum.Int64()) // 1000 - 500 = 500
 	})
 
@@ -78,16 +80,17 @@ func TestGetTransactionsSum(t *testing.T) {
 		// Mock the GetTransactionsSum call
 		mockLedgerController.EXPECT().
 			GetTransactionsSum(gomock.Any(), "test:account").
-			Return([]ledgerstore.TransactionsSum{
+			Return([]ledgerstore.TransactionsSummary{
 				{
 					Asset: "USD",
+					Count: 1000,
 					Sum:   expectedSum.String(),
 				},
 			}, nil)
 
 		server := newTestServer(t, mockLedgerController)
 
-		req, err := http.NewRequest(http.MethodGet, "/transactions/sum?account=test:account&asset=USD", nil)
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=test:account&asset=USD", nil)
 		req.Header.Set("Content-Type", "application/json")
 		require.NoError(t, err)
 
@@ -105,6 +108,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		require.Len(t, responseWrapper.Data, 1)
 		require.Equal(t, "test:account", responseWrapper.Data[0].Account)
 		require.Equal(t, "USD", responseWrapper.Data[0].Asset)
+		require.Equal(t, int64(1000), responseWrapper.Data[0].Count)
 
 		require.Equal(t, 0, responseWrapper.Data[0].Sum.Cmp(expectedSum),
 			"expected sum %s, got %s", expectedSum, responseWrapper.Data[0].Sum)
@@ -116,7 +120,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		// Create test server with nil controller since we expect to fail before any controller call
 		server := newTestServer(t, nil)
 
-		req, err := http.NewRequest(http.MethodGet, "/transactions/sum", nil)
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary", nil)
 		require.NoError(t, err)
 
 		rr := httptest.NewRecorder()
@@ -135,9 +139,10 @@ func TestGetTransactionsSum(t *testing.T) {
 		// Mock the GetTransactionsSum call
 		mockLedgerController.EXPECT().
 			GetTransactionsSum(gomock.Any(), "expenses:salary").
-			Return([]ledgerstore.TransactionsSum{
+			Return([]ledgerstore.TransactionsSummary{
 				{
 					Asset: "USD",
+					Count: 3,
 					Sum:   "700", // 1000 (from world) - 500 (to bank) + 200 (from client) = 700
 				},
 			}, nil)
@@ -145,7 +150,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		// Create test server with mock controller
 		server := newTestServer(t, mockLedgerController)
 
-		req, err := http.NewRequest(http.MethodGet, "/transactions/sum?account=expenses:salary", nil)
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary", nil)
 		req.Header.Set("Content-Type", "application/json")
 		require.NoError(t, err)
 
@@ -166,6 +171,7 @@ func TestGetTransactionsSum(t *testing.T) {
 		require.Len(t, responseWrapper.Data, 1)
 		require.Equal(t, "expenses:salary", responseWrapper.Data[0].Account)
 		require.Equal(t, "USD", responseWrapper.Data[0].Asset)
+		require.Equal(t, int64(3), responseWrapper.Data[0].Count)
 		// 1000 (from world) - 500 (to bank) + 200 (from client) = 700
 		require.Equal(t, int64(700), responseWrapper.Data[0].Sum.Int64())
 	})
@@ -177,7 +183,7 @@ func newTestServer(t *testing.T, mockController *LedgerController) http.Handler 
 
 	// Create a new router with the test dependencies
 	router := chi.NewRouter()
-	router.Get("/transactions/sum", getTransactionsSum)
+	router.Get("/transactions/summary", getTransactionsSum)
 
 	// Add middleware to inject the mock controller into the request context
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

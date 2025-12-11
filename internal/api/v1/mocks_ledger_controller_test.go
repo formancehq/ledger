@@ -558,10 +558,10 @@ func (c *LedgerControllerGetTransactionCall) DoAndReturn(f func(context.Context,
 }
 
 // GetTransactionsSum mocks base method.
-func (m *LedgerController) GetTransactionsSum(ctx context.Context, account string) ([]ledger1.TransactionsSum, error) {
+func (m *LedgerController) GetTransactionsSum(ctx context.Context, account string) ([]ledger1.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionsSum", ctx, account)
-	ret0, _ := ret[0].([]ledger1.TransactionsSum)
+	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -579,28 +579,28 @@ type LedgerControllerGetTransactionsSumCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerGetTransactionsSumCall) Return(arg0 []ledger1.TransactionsSum, arg1 error) *LedgerControllerGetTransactionsSumCall {
+func (c *LedgerControllerGetTransactionsSumCall) Return(arg0 []ledger1.TransactionsSummary, arg1 error) *LedgerControllerGetTransactionsSumCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerGetTransactionsSumCall) Do(f func(context.Context, string) ([]ledger1.TransactionsSum, error)) *LedgerControllerGetTransactionsSumCall {
+func (c *LedgerControllerGetTransactionsSumCall) Do(f func(context.Context, string) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerGetTransactionsSumCall) DoAndReturn(f func(context.Context, string) ([]ledger1.TransactionsSum, error)) *LedgerControllerGetTransactionsSumCall {
+func (c *LedgerControllerGetTransactionsSumCall) DoAndReturn(f func(context.Context, string) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetTransactionsSumWithTimeRange mocks base method.
-func (m *LedgerController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSum, error) {
+func (m *LedgerController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionsSumWithTimeRange", ctx, account, startTime, endTime)
-	ret0, _ := ret[0].([]ledger1.TransactionsSum)
+	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -618,19 +618,19 @@ type LedgerControllerGetTransactionsSumWithTimeRangeCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) Return(arg0 []ledger1.TransactionsSum, arg1 error) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
+func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) Return(arg0 []ledger1.TransactionsSummary, arg1 error) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) Do(f func(context.Context, string, *time.Time, *time.Time) ([]ledger1.TransactionsSum, error)) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
+func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) Do(f func(context.Context, string, *time.Time, *time.Time) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) DoAndReturn(f func(context.Context, string, *time.Time, *time.Time) ([]ledger1.TransactionsSum, error)) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
+func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) DoAndReturn(f func(context.Context, string, *time.Time, *time.Time) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

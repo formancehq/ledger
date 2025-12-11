@@ -246,10 +246,10 @@ func (mr *LedgerControllerMockRecorder) GetTransaction(ctx, query any) *gomock.C
 }
 
 // GetTransactionsSum mocks base method.
-func (m *LedgerController) GetTransactionsSum(ctx context.Context, account string) ([]ledger1.TransactionsSum, error) {
+func (m *LedgerController) GetTransactionsSum(ctx context.Context, account string) ([]ledger1.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionsSum", ctx, account)
-	ret0, _ := ret[0].([]ledger1.TransactionsSum)
+	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -261,10 +261,10 @@ func (mr *LedgerControllerMockRecorder) GetTransactionsSum(ctx, account any) *go
 }
 
 // GetTransactionsSumWithTimeRange mocks base method.
-func (m *LedgerController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSum, error) {
+func (m *LedgerController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionsSumWithTimeRange", ctx, account, startTime, endTime)
-	ret0, _ := ret[0].([]ledger1.TransactionsSum)
+	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -223,10 +223,10 @@ func needBigIntAsString(r *http.Request) bool {
 	return v == "true" || v == "yes" || v == "y" || v == "1"
 }
 
-type transactionSum ledgerstore.TransactionsSum
+type transactionSummary ledgerstore.TransactionsSummary
 
-func (ts transactionSum) MarshalJSON() ([]byte, error) {
-	type Aux transactionSum
+func (ts transactionSummary) MarshalJSON() ([]byte, error) {
+	type Aux transactionSummary
 	return json.Marshal(struct {
 		Aux
 		Sum string `json:"sum"`
@@ -236,10 +236,10 @@ func (ts transactionSum) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func renderTransactionSum(r *http.Request, ts ledgerstore.TransactionsSum) any {
+func renderTransactionSum(r *http.Request, ts ledgerstore.TransactionsSummary) any {
 	if !needBigIntAsString(r) {
 		return ts
 	}
 
-	return transactionSum(ts)
+	return transactionSummary(ts)
 }

@@ -557,10 +557,10 @@ func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, c
 }
 
 // GetTransactionsSum mocks base method.
-func (m *MockController) GetTransactionsSum(ctx context.Context, account string) ([]ledger0.TransactionsSum, error) {
+func (m *MockController) GetTransactionsSum(ctx context.Context, account string) ([]ledger0.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionsSum", ctx, account)
-	ret0, _ := ret[0].([]ledger0.TransactionsSum)
+	ret0, _ := ret[0].([]ledger0.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -578,28 +578,28 @@ type MockControllerGetTransactionsSumCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetTransactionsSumCall) Return(arg0 []ledger0.TransactionsSum, arg1 error) *MockControllerGetTransactionsSumCall {
+func (c *MockControllerGetTransactionsSumCall) Return(arg0 []ledger0.TransactionsSummary, arg1 error) *MockControllerGetTransactionsSumCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetTransactionsSumCall) Do(f func(context.Context, string) ([]ledger0.TransactionsSum, error)) *MockControllerGetTransactionsSumCall {
+func (c *MockControllerGetTransactionsSumCall) Do(f func(context.Context, string) ([]ledger0.TransactionsSummary, error)) *MockControllerGetTransactionsSumCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetTransactionsSumCall) DoAndReturn(f func(context.Context, string) ([]ledger0.TransactionsSum, error)) *MockControllerGetTransactionsSumCall {
+func (c *MockControllerGetTransactionsSumCall) DoAndReturn(f func(context.Context, string) ([]ledger0.TransactionsSummary, error)) *MockControllerGetTransactionsSumCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetTransactionsSumWithTimeRange mocks base method.
-func (m *MockController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger0.TransactionsSum, error) {
+func (m *MockController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger0.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactionsSumWithTimeRange", ctx, account, startTime, endTime)
-	ret0, _ := ret[0].([]ledger0.TransactionsSum)
+	ret0, _ := ret[0].([]ledger0.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -617,19 +617,19 @@ type MockControllerGetTransactionsSumWithTimeRangeCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetTransactionsSumWithTimeRangeCall) Return(arg0 []ledger0.TransactionsSum, arg1 error) *MockControllerGetTransactionsSumWithTimeRangeCall {
+func (c *MockControllerGetTransactionsSumWithTimeRangeCall) Return(arg0 []ledger0.TransactionsSummary, arg1 error) *MockControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetTransactionsSumWithTimeRangeCall) Do(f func(context.Context, string, *time.Time, *time.Time) ([]ledger0.TransactionsSum, error)) *MockControllerGetTransactionsSumWithTimeRangeCall {
+func (c *MockControllerGetTransactionsSumWithTimeRangeCall) Do(f func(context.Context, string, *time.Time, *time.Time) ([]ledger0.TransactionsSummary, error)) *MockControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetTransactionsSumWithTimeRangeCall) DoAndReturn(f func(context.Context, string, *time.Time, *time.Time) ([]ledger0.TransactionsSum, error)) *MockControllerGetTransactionsSumWithTimeRangeCall {
+func (c *MockControllerGetTransactionsSumWithTimeRangeCall) DoAndReturn(f func(context.Context, string, *time.Time, *time.Time) ([]ledger0.TransactionsSummary, error)) *MockControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

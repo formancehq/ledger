@@ -7,16 +7,17 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 )
 
-type TransactionsSum struct {
+type TransactionsSummary struct {
 	Asset string `json:"asset"`
+	Count int64  `json:"count"`
 	Sum   string `json:"sum"`
 }
 
-func (s *Store) TransactionsSum(ctx context.Context, ledger string, account string) ([]TransactionsSum, error) {
+func (s *Store) TransactionsSum(ctx context.Context, ledger string, account string) ([]TransactionsSummary, error) {
 	return s.TransactionsSumWithTimeRange(ctx, ledger, account, nil, nil)
 }
 
-func (s *Store) TransactionsSumWithTimeRange(ctx context.Context, ledger string, account string, startTime, endTime *time.Time) ([]TransactionsSum, error) {
+func (s *Store) TransactionsSumWithTimeRange(ctx context.Context, ledger string, account string, startTime, endTime *time.Time) ([]TransactionsSummary, error) {
 	whereClause := "ledger = ? AND accounts_address = ?"
 	args := []any{ledger, account}
 
@@ -30,7 +31,14 @@ func (s *Store) TransactionsSumWithTimeRange(ctx context.Context, ledger string,
 		args = append(args, endTime)
 	}
 
-	query := fmt.Sprintf("SELECT asset, SUM(CASE WHEN is_source THEN -amount::numeric ELSE amount::numeric END)::text as sum FROM %s WHERE %s GROUP BY asset", s.GetPrefixedRelationName("moves"), whereClause)
+	query := fmt.Sprintf(`
+		SELECT
+			asset,
+			COUNT(DISTINCT transactions_id) AS count,
+			SUM(CASE WHEN is_source THEN -amount::numeric ELSE amount::numeric END)::text AS sum
+		FROM %s
+		WHERE %s
+		GROUP BY asset`, s.GetPrefixedRelationName("moves"), whereClause)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -38,15 +46,17 @@ func (s *Store) TransactionsSumWithTimeRange(ctx context.Context, ledger string,
 	}
 	defer rows.Close()
 
-	var results []TransactionsSum
+	var results []TransactionsSummary
 	for rows.Next() {
 		var asset string
 		var sum string
-		if err := rows.Scan(&asset, &sum); err != nil {
+		var count int64
+		if err := rows.Scan(&asset, &count, &sum); err != nil {
 			return nil, err
 		}
-		results = append(results, TransactionsSum{
+		results = append(results, TransactionsSummary{
 			Asset: asset,
+			Count: count,
 			Sum:   sum,
 		})
 	}

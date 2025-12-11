@@ -14,6 +14,7 @@ import (
 type sumResponse struct {
 	Account string   `json:"account"`
 	Asset   string   `json:"asset"`
+	Count   int64    `json:"count"`
 	Sum     *big.Int `json:"sum"`
 }
 
@@ -45,7 +46,7 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var transactionsSum []ledgerstore.TransactionsSum
+	var transactionsSum []ledgerstore.TransactionsSummary
 	if startTime == nil && endTime == nil {
 		transactionsSum, err = ledgerInstance.GetTransactionsSum(r.Context(), account)
 	} else {
@@ -74,6 +75,7 @@ func getTransactionsSum(w http.ResponseWriter, r *http.Request) {
 		response = append(response, sumResponse{
 			Account: account,
 			Asset:   ts.Asset,
+			Count:   ts.Count,
 			Sum:     sum,
 		})
 	}
