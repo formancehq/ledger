@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -45,17 +46,23 @@ func (impl *SystemServiceServerImpl) CreateBucket(ctx context.Context, req *Crea
 		return nil, fmt.Errorf("creating bucket: %w", err)
 	}
 
-	cfg, err := structpb.NewStruct(bucket.Config)
+	// Convert json.RawMessage to map[string]interface{} for protobuf conversion
+	var configMap map[string]interface{}
+	if err := json.Unmarshal(bucket.Config, &configMap); err != nil {
+		return nil, fmt.Errorf("unmarshaling bucket config: %w", err)
+	}
+
+	cfg, err := structpb.NewStruct(configMap)
 	if err != nil {
 		return nil, fmt.Errorf("converting bucket config to protobuf Struct: %w", err)
 	}
 
 	return &CreateBucketResponse{
-		Id:            bucket.ID,
-		Name:          bucket.Name,
-		Config:        cfg,
-		Driver:        bucket.Driver,
-		CreatedAt:     timestamppb.New(bucket.CreatedAt.Time),
+		Id:        bucket.ID,
+		Name:      bucket.Name,
+		Config:    cfg,
+		Driver:    bucket.Driver,
+		CreatedAt: timestamppb.New(bucket.CreatedAt.Time),
 	}, nil
 }
 

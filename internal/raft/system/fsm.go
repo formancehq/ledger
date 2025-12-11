@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
@@ -53,7 +54,7 @@ func (fsm *FSM) handleCreateBucket(cmd raft.Command) (*ledger.BucketInfo, error)
 		return nil, fmt.Errorf("unmarshaling create bucket command: %w", err)
 	}
 
-	// Convert protobuf Struct to map[string]interface{}
+	// Convert protobuf Struct to map[string]interface{} for validation
 	configMap := make(map[string]interface{})
 	if createCmd.Config != nil {
 		configMap = createCmd.Config.AsMap()
@@ -73,12 +74,18 @@ func (fsm *FSM) handleCreateBucket(cmd raft.Command) (*ledger.BucketInfo, error)
 	bucketID := fsm.nextBucketID
 	fsm.nextBucketID++
 
+	// Convert config to json.RawMessage
+	configJSON, err := json.Marshal(configMap)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling config to JSON: %w", err)
+	}
+
 	// Create bucket info using the command date
 	bucketInfo := ledger.BucketInfo{
 		ID:        bucketID,
 		Name:      createCmd.Name,
 		Driver:    createCmd.Driver,
-		Config:    configMap,
+		Config:    configJSON,
 		CreatedAt: cmd.Date,
 	}
 
@@ -160,23 +167,27 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 	bucketsProto := make(map[string]*BucketInfo, len(fsm.buckets))
 	for name, node := range fsm.buckets {
 		bucketInfo := node.Info()
-		
-		// Convert config map to protobuf Struct
+
+		// Convert json.RawMessage to map[string]interface{} then to protobuf Struct
 		var configStruct *structpb.Struct
-		if bucketInfo.Config != nil {
+		if len(bucketInfo.Config) > 0 {
+			var configMap map[string]interface{}
+			if err := json.Unmarshal(bucketInfo.Config, &configMap); err != nil {
+				return nil, fmt.Errorf("unmarshaling bucket config: %w", err)
+			}
 			var err error
-			configStruct, err = structpb.NewStruct(bucketInfo.Config)
+			configStruct, err = structpb.NewStruct(configMap)
 			if err != nil {
 				return nil, fmt.Errorf("converting bucket config to protobuf struct: %w", err)
 			}
 		}
-		
+
 		// Convert timestamp
 		var createdAt *timestamppb.Timestamp
 		if !bucketInfo.CreatedAt.IsZero() {
 			createdAt = timestamppb.New(bucketInfo.CreatedAt.Time)
 		}
-		
+
 		bucketsProto[name] = &BucketInfo{
 			Id:        bucketInfo.ID,
 			Name:      bucketInfo.Name,
@@ -218,23 +229,28 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 	// Convert protobuf buckets to ledger.BucketInfo
 	buckets := make(map[string]ledger.BucketInfo, len(snapshotProto.Buckets))
 	for name, bucketProto := range snapshotProto.Buckets {
-		// Convert config Struct to map[string]interface{}
-		configMap := make(map[string]interface{})
+		// Convert config Struct to json.RawMessage
+		var configJSON json.RawMessage
 		if bucketProto.Config != nil {
-			configMap = bucketProto.Config.AsMap()
+			configMap := bucketProto.Config.AsMap()
+			var err error
+			configJSON, err = json.Marshal(configMap)
+			if err != nil {
+				return fmt.Errorf("marshaling bucket config: %w", err)
+			}
 		}
-		
+
 		// Convert timestamp
 		var createdAt time.Time
 		if bucketProto.CreatedAt != nil {
 			createdAt = time.New(bucketProto.CreatedAt.AsTime())
 		}
-		
+
 		buckets[name] = ledger.BucketInfo{
 			ID:        bucketProto.Id,
 			Name:      bucketProto.Name,
 			Driver:    bucketProto.Driver,
-			Config:    configMap,
+			Config:    configJSON,
 			CreatedAt: createdAt,
 		}
 	}

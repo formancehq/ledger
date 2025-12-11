@@ -15,6 +15,11 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
+// FileConfig represents the configuration for a file bucket driver
+type FileConfig struct {
+	Path string `json:"path"` // Directory path where logs will be stored
+}
+
 // FileLogStore is a LogStore implementation that reads/writes logs to a JSON file (JSONL format)
 type FileLogStore struct {
 	filePath string

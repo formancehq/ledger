@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
@@ -31,11 +32,17 @@ func (g *grpcSystemClient) CreateBucket(ctx context.Context, name, driver string
 		return nil, err
 	}
 
+	// Convert protobuf Struct to json.RawMessage
+	configJSON, err := json.Marshal(bucket.Config.AsMap())
+	if err != nil {
+		return nil, err
+	}
+
 	return &ledger.BucketInfo{
 		ID:        bucket.Id,
 		Name:      bucket.Name,
 		Driver:    bucket.Driver,
-		Config:    bucket.Config.AsMap(),
+		Config:    configJSON,
 		CreatedAt: time.New(bucket.CreatedAt.AsTime()),
 	}, nil
 }

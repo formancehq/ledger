@@ -15,6 +15,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// PostgresConfig represents the configuration for a PostgreSQL bucket driver
+type PostgresConfig struct {
+	DSN string `json:"dsn"` // Data Source Name (connection string)
+}
+
 // PostgresLogStore is a PostgreSQL implementation of LogStore
 type PostgresLogStore struct {
 	db     *sql.DB

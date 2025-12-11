@@ -15,6 +15,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// SQLiteConfig represents the configuration for a SQLite bucket driver
+type SQLiteConfig struct {
+	DSN string `json:"dsn"` // Data Source Name (connection string)
+}
+
 // SQLiteLogStore is a SQLite implementation of LogStore
 type SQLiteLogStore struct {
 	db     *sql.DB

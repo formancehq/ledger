@@ -16,6 +16,11 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
+// ClickHouseConfig represents the configuration for a ClickHouse bucket driver
+type ClickHouseConfig struct {
+	DSN string `json:"dsn"` // Data Source Name (connection string)
+}
+
 // ClickHouseLogStore is a ClickHouse implementation of LogStore
 type ClickHouseLogStore struct {
 	db     driver.Conn
