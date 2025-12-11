@@ -73,21 +73,32 @@ func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
 
 type RepositoryHandlerBuildContext[Opts any] struct {
 	ResourceQuery[Opts]
-	filters map[string]any
+	filters map[string][]any
 }
 
 func (ctx RepositoryHandlerBuildContext[Opts]) UseFilter(v string, matchers ...func(value any) bool) bool {
-	value, ok := ctx.filters[v]
+	values, ok := ctx.filters[v]
 	if !ok {
 		return false
 	}
-	for _, matcher := range matchers {
-		if !matcher(value) {
-			return false
+	if len(matchers) == 0 {
+		return true
+	}
+	// Return true if at least one value matches all matchers
+	for _, value := range values {
+		allMatch := true
+		for _, matcher := range matchers {
+			if !matcher(value) {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch {
+			return true
 		}
 	}
 
-	return true
+	return false
 }
 
 type RepositoryHandler[Opts any] interface {
@@ -102,12 +113,12 @@ type ResourceRepository[ResourceType, OptionsType any] struct {
 	resourceHandler RepositoryHandler[OptionsType]
 }
 
-func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) (map[string]any, error) {
+func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder query.Builder) (map[string][]any, error) {
 	if builder == nil {
 		return nil, nil
 	}
 
-	ret := make(map[string]any)
+	ret := make(map[string][]any)
 	properties := r.resourceHandler.Schema().Fields
 	if err := builder.Walk(func(operator string, key string, value any) (err error) {
 
@@ -128,7 +139,7 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", value, name, err)
 			}
 
-			ret[name] = value
+			ret[name] = append(ret[name], value)
 
 			return nil
 		}

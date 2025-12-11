@@ -213,5 +213,36 @@ var _ = Context("Ledger engine tests", func() {
 
 			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(0))
 		})
+		// Test case to reproduce bug: column "accounts_address_array" does not exist
+		// This happens when using $or with both exact addresses AND partial addresses with PIT
+		It("should be ok when aggregating with PIT and $or filter mixing exact and partial addresses", func(specContext SpecContext) {
+			// This test reproduces the same bug as in volumes:
+			// Using $or with exact addresses and partial addresses combined with PIT
+			// could cause "column accounts_address_array does not exist" error
+			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
+				ctx,
+				operations.V2GetBalancesAggregatedRequest{
+					Ledger: "default",
+					Pit:    pointer.For(now),
+					RequestBody: map[string]interface{}{
+						"$or": []any{
+							map[string]any{
+								"$match": map[string]any{
+									"address": "bank:", // partial address - requires accounts_address_array
+								},
+							},
+							map[string]any{
+								"$match": map[string]any{
+									"address": "world", // exact address - does NOT require accounts_address_array
+								},
+							},
+						},
+					},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			// bank1 + bank2 + world all have USD/2, total should be aggregated
+			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
+		})
 	})
 })
