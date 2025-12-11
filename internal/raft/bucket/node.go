@@ -15,6 +15,91 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
+// logStoreFactory is a function that creates a LogStore from a JSON config
+type logStoreFactory func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error)
+
+// driverConfigTypes maps driver names to their config types
+var driverConfigTypes = map[string]interface{}{
+	"sqlite":     service.SQLiteConfig{},
+	"postgres":   service.PostgresConfig{},
+	"clickhouse": service.ClickHouseConfig{},
+	"file":       service.FileConfig{},
+}
+
+// logStoreFactories maps driver names to their factory functions
+var logStoreFactories = map[string]logStoreFactory{
+	"sqlite": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+		var config service.SQLiteConfig
+		if len(configJSON) > 0 {
+			if err := json.Unmarshal(configJSON, &config); err != nil {
+				return nil, fmt.Errorf("unmarshaling sqlite config: %w", err)
+			}
+		}
+		if config.DSN == "" {
+			return nil, fmt.Errorf("sqlite driver requires 'dsn' configuration for bucket %s", bucketName)
+		}
+		return service.NewSQLiteLogStore(ctx, config.DSN, logger)
+	},
+	"postgres": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+		var config service.PostgresConfig
+		if len(configJSON) > 0 {
+			if err := json.Unmarshal(configJSON, &config); err != nil {
+				return nil, fmt.Errorf("unmarshaling postgres config: %w", err)
+			}
+		}
+		if config.DSN == "" {
+			return nil, fmt.Errorf("postgres driver requires 'dsn' configuration for bucket %s", bucketName)
+		}
+		return service.NewPostgresLogStore(ctx, config.DSN, logger)
+	},
+	"clickhouse": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+		var config service.ClickHouseConfig
+		if len(configJSON) > 0 {
+			if err := json.Unmarshal(configJSON, &config); err != nil {
+				return nil, fmt.Errorf("unmarshaling clickhouse config: %w", err)
+			}
+		}
+		if config.DSN == "" {
+			return nil, fmt.Errorf("clickhouse driver requires 'dsn' configuration for bucket %s", bucketName)
+		}
+		return service.NewClickHouseLogStore(ctx, config.DSN, logger)
+	},
+	"file": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+		var config service.FileConfig
+		if len(configJSON) > 0 {
+			if err := json.Unmarshal(configJSON, &config); err != nil {
+				return nil, fmt.Errorf("unmarshaling file config: %w", err)
+			}
+		}
+		if config.Path == "" {
+			return nil, fmt.Errorf("file driver requires 'path' configuration for bucket %s", bucketName)
+		}
+		// Create logs directory within the bucket path
+		logsPath := filepath.Join(config.Path, "logs.jsonl")
+
+		if err := os.MkdirAll(config.Path, 0755); err != nil {
+			return nil, fmt.Errorf("creating logs directory for bucket %s: %w", bucketName, err)
+		}
+
+		return service.NewFileLogStore(logsPath, logger)
+	},
+}
+
+// createLogStore creates a LogStore based on the bucket driver and config
+func createLogStore(ctx context.Context, driver string, configJSON json.RawMessage, logger logging.Logger, bucketName string) (service.LogStore, error) {
+	factory, exists := logStoreFactories[driver]
+	if !exists {
+		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", driver)
+	}
+
+	store, err := factory(ctx, configJSON, logger, bucketName)
+	if err != nil {
+		return nil, fmt.Errorf("creating %s log store for bucket %s: %w", driver, bucketName, err)
+	}
+
+	return store, nil
+}
+
 // Node represents a Raft group for a specific bucket
 type Node struct {
 	*raft.Node[*FSM]
@@ -39,77 +124,9 @@ func NewNode(
 	}
 
 	// Create application log store for this bucket based on bucket driver
-	var appLogStore service.LogStore
-	switch bucketInfo.Driver {
-	case "sqlite":
-		var config service.SQLiteConfig
-		if len(bucketInfo.Config) > 0 {
-			if err := json.Unmarshal(bucketInfo.Config, &config); err != nil {
-				return nil, fmt.Errorf("unmarshaling sqlite config: %w", err)
-			}
-		}
-		if config.DSN == "" {
-			return nil, fmt.Errorf("sqlite driver requires 'dsn' configuration for bucket %s", bucketInfo.Name)
-		}
-		sqliteStore, err := service.NewSQLiteLogStore(context.Background(), config.DSN, logger)
-		if err != nil {
-			return nil, fmt.Errorf("creating sqlite log store for bucket %s: %w", bucketInfo.Name, err)
-		}
-		appLogStore = sqliteStore
-	case "postgres":
-		var config service.PostgresConfig
-		if len(bucketInfo.Config) > 0 {
-			if err := json.Unmarshal(bucketInfo.Config, &config); err != nil {
-				return nil, fmt.Errorf("unmarshaling postgres config: %w", err)
-			}
-		}
-		if config.DSN == "" {
-			return nil, fmt.Errorf("postgres driver requires 'dsn' configuration for bucket %s", bucketInfo.Name)
-		}
-		postgresStore, err := service.NewPostgresLogStore(context.Background(), config.DSN, logger)
-		if err != nil {
-			return nil, fmt.Errorf("creating postgres log store for bucket %s: %w", bucketInfo.Name, err)
-		}
-		appLogStore = postgresStore
-	case "clickhouse":
-		var config service.ClickHouseConfig
-		if len(bucketInfo.Config) > 0 {
-			if err := json.Unmarshal(bucketInfo.Config, &config); err != nil {
-				return nil, fmt.Errorf("unmarshaling clickhouse config: %w", err)
-			}
-		}
-		if config.DSN == "" {
-			return nil, fmt.Errorf("clickhouse driver requires 'dsn' configuration for bucket %s", bucketInfo.Name)
-		}
-		clickhouseStore, err := service.NewClickHouseLogStore(context.Background(), config.DSN, logger)
-		if err != nil {
-			return nil, fmt.Errorf("creating clickhouse log store for bucket %s: %w", bucketInfo.Name, err)
-		}
-		appLogStore = clickhouseStore
-	case "file":
-		var config service.FileConfig
-		if len(bucketInfo.Config) > 0 {
-			if err := json.Unmarshal(bucketInfo.Config, &config); err != nil {
-				return nil, fmt.Errorf("unmarshaling file config: %w", err)
-			}
-		}
-		if config.Path == "" {
-			return nil, fmt.Errorf("file driver requires 'path' configuration for bucket %s", bucketInfo.Name)
-		}
-		// Create logs directory within the bucket path
-		logsPath := filepath.Join(config.Path, "logs.jsonl")
-
-		if err := os.MkdirAll(config.Path, 0755); err != nil {
-			return nil, fmt.Errorf("creating logs directory for bucket %s: %w", bucketInfo.Name, err)
-		}
-
-		fileStore, err := service.NewFileLogStore(logsPath, logger)
-		if err != nil {
-			return nil, fmt.Errorf("creating file log store for bucket %s: %w", bucketInfo.Name, err)
-		}
-		appLogStore = fileStore
-	default:
-		return nil, fmt.Errorf("unsupported bucket driver for log store: %s", bucketInfo.Driver)
+	appLogStore, err := createLogStore(context.Background(), bucketInfo.Driver, bucketInfo.Config, logger, bucketInfo.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create bucket FSM for managing ledgers

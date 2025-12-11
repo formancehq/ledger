@@ -830,10 +830,14 @@ components:
       properties:
         driver:
           type: string
-          description: Driver name (e.g., "postgres", "s3", etc.)
+          enum: [sqlite, postgres, clickhouse, file]
+          description: Driver name (e.g., "postgres", "sqlite", "clickhouse", "file")
         config:
-          type: object
-          additionalProperties: true
+          oneOf:
+            - $ref: '#/components/schemas/SQLiteConfig'
+            - $ref: '#/components/schemas/PostgresConfig'
+            - $ref: '#/components/schemas/ClickHouseConfig'
+            - $ref: '#/components/schemas/FileConfig'
           description: Driver-specific configuration
 
     CreateBucketResponse:
@@ -897,10 +901,14 @@ components:
           description: Bucket name
         driver:
           type: string
+          enum: [sqlite, postgres, clickhouse, file]
           description: Driver name
         config:
-          type: object
-          additionalProperties: true
+          oneOf:
+            - $ref: '#/components/schemas/SQLiteConfig'
+            - $ref: '#/components/schemas/PostgresConfig'
+            - $ref: '#/components/schemas/ClickHouseConfig'
+            - $ref: '#/components/schemas/FileConfig'
           description: Driver-specific configuration
         createdAt:
           type: string
@@ -923,6 +931,50 @@ components:
             message:
               type: string
               description: Success message
+
+    SQLiteConfig:
+      type: object
+      required:
+        - dsn
+      properties:
+        dsn:
+          type: string
+          description: Data Source Name (connection string) for SQLite database
+      example:
+        dsn: "file:./data/bucket.db?cache=shared&mode=rwc"
+
+    PostgresConfig:
+      type: object
+      required:
+        - dsn
+      properties:
+        dsn:
+          type: string
+          description: Data Source Name (connection string) for PostgreSQL database
+      example:
+        dsn: "postgres://user:password@localhost:5432/ledger?sslmode=disable"
+
+    ClickHouseConfig:
+      type: object
+      required:
+        - dsn
+      properties:
+        dsn:
+          type: string
+          description: Data Source Name (connection string) for ClickHouse database
+      example:
+        dsn: "clickhouse://localhost:9000?database=ledger&username=default&password="
+
+    FileConfig:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: Directory path where logs will be stored
+      example:
+        path: "/var/lib/ledger/bucket-data"
 
     ErrorResponse:
       type: object

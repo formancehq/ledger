@@ -68,7 +68,7 @@ HTTP handlers are organized into separate files, with one handler per file:
 
 1. **One file per command** : Each sub-command (create, list, get, delete) has its own file
 2. **Parent file** : Each command group (buckets, ledgers) has a main file that defines the parent command and calls `init()` for each sub-command
-3. **Global variables** : Flag variables are defined in the corresponding command file
+3. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function. This improves testability and avoids state pollution.
 4. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
 
 ## Example: Adding a New Command
@@ -76,10 +76,36 @@ HTTP handlers are organized into separate files, with one handler per file:
 To add a new `buckets update` command:
 
 1. Create `buckets_update.go` with:
-   - Global variables for flags
+   - A struct to hold command options (e.g., `updateBucketOptions`)
    - Definition of `bucketsUpdateCmd`
-   - `init()` function to configure flags
-   - `runUpdateBucket()` function for the implementation
+   - `init()` function to configure flags (bind flags to a local variable in `init()`, not a global)
+   - `runUpdateBucket()` function that extracts flag values and uses the options struct
+
+   Example structure:
+   ```go
+   type updateBucketOptions struct {
+       name   string
+       driver string
+   }
+
+   var bucketsUpdateCmd = &cobra.Command{
+       Use:   "update",
+       RunE:  runUpdateBucket,
+   }
+
+   func init() {
+       opts := &updateBucketOptions{}
+       bucketsUpdateCmd.Flags().StringVar(&opts.name, "name", "", "Bucket name")
+       bucketsUpdateCmd.Flags().StringVar(&opts.driver, "driver", "", "Driver name")
+   }
+
+   func runUpdateBucket(cmd *cobra.Command, args []string) error {
+       opts := &updateBucketOptions{}
+       opts.name, _ = cmd.Flags().GetString("name")
+       opts.driver, _ = cmd.Flags().GetString("driver")
+       // Use opts...
+   }
+   ```
 
 2. Modify `buckets.go` to add:
    ```go
