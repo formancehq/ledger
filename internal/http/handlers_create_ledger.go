@@ -11,7 +11,7 @@ import (
 )
 
 // handleCreateLedger handles POST /ledgers/{ledgerName} to create a new ledger
-// The bucket is determined by checking if the ledger already exists, or by trying to create it in the first available bucket
+// The bucket must be specified in the request body
 func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
@@ -19,22 +19,26 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body (bucket and optional metadata)
+	// Parse request body (bucket is required, metadata is optional)
 	var req struct {
 		Bucket   string            `json:"bucket"`
 		Metadata map[string]string `json:"metadata,omitempty"`
 	}
 
-	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
-			api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-			return
-		}
+	if r.Body == nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("request body is required"))
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+		return
 	}
 
 	// Bucket is required in request body
 	if req.Bucket == "" {
-		req.Bucket = "default"
+		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New("bucket is required"))
+		return
 	}
 
 	bucket, err := s.cluster.GetBucket(r.Context(), req.Bucket)

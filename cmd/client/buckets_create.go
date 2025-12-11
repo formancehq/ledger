@@ -35,6 +35,9 @@ func init() {
 	bucketsCreateCmd.Flags().String("clickhouse-dsn", "", "ClickHouse connection string (required for clickhouse driver)")
 	bucketsCreateCmd.Flags().String("file-path", "", "Directory path for file storage (required for file driver)")
 	// Name, driver and config are no longer required - wizard will prompt if not provided
+
+	// Register completions
+	bucketsCreateCmd.RegisterFlagCompletionFunc("driver", completeDriverNames())
 }
 
 func runCreateBucket(cmd *cobra.Command, args []string) error {

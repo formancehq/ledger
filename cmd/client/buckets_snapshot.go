@@ -23,6 +23,7 @@ func init() {
 	if err := bucketsSnapshotCmd.MarkFlagRequired("name"); err != nil {
 		panic(err)
 	}
+	bucketsSnapshotCmd.RegisterFlagCompletionFunc("name", completeBucketNames())
 }
 
 func runCreateBucketSnapshot(cmd *cobra.Command, args []string) error {

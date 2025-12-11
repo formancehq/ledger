@@ -480,18 +480,24 @@ components:
 
     CreateLedgerResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
 
     GetLedgerResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
 
     ListAllLedgersResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: array
@@ -501,12 +507,19 @@ components:
 
     GetLedgerFromBucketResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
 
     LedgerInfo:
       type: object
+      required:
+        - id
+        - name
+        - bucket
+        - createdAt
       properties:
         id:
           type: integer
@@ -700,6 +713,8 @@ components:
 
     BulkResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: array
@@ -712,6 +727,9 @@ components:
 
     BulkResult:
       type: object
+      required:
+        - responseType
+        - logID
       properties:
         errorCode:
           type: string
@@ -730,9 +748,13 @@ components:
 
     CreateTransactionResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: object
+          required:
+            - transaction
           properties:
             transaction:
               $ref: '#/components/schemas/TransactionResponse'
@@ -743,6 +765,10 @@ components:
 
     TransactionResponse:
       type: object
+      required:
+        - id
+        - postings
+        - timestamp
       properties:
         postings:
           type: array
@@ -764,6 +790,11 @@ components:
 
     PostingResponse:
       type: object
+      required:
+        - source
+        - destination
+        - amount
+        - asset
       properties:
         source:
           type: string
@@ -778,9 +809,13 @@ components:
 
     SnapshotResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: object
+          required:
+            - message
           properties:
             message:
               type: string
@@ -788,9 +823,14 @@ components:
 
     ClusterStateResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: object
+          required:
+            - state
+            - localNode
           properties:
             state:
               type: string
@@ -810,6 +850,10 @@ components:
 
     NodeInfo:
       type: object
+      required:
+        - id
+        - address
+        - suffrage
       properties:
         id:
           type: string
@@ -842,12 +886,16 @@ components:
 
     CreateBucketResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           $ref: '#/components/schemas/BucketInfo'
 
     ListBucketsResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: array
@@ -857,6 +905,8 @@ components:
 
     GetBucketResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           $ref: '#/components/schemas/BucketWithRaftState'
@@ -873,6 +923,9 @@ components:
 
     ClusterState:
       type: object
+      required:
+        - state
+        - localNode
       properties:
         state:
           type: string
@@ -891,6 +944,12 @@ components:
 
     BucketInfo:
       type: object
+      required:
+        - id
+        - name
+        - driver
+        - config
+        - createdAt
       properties:
         id:
           type: integer
@@ -917,6 +976,8 @@ components:
 
     CreateBucketSnapshotResponse:
       type: object
+      required:
+        - message
       properties:
         message:
           type: string
@@ -924,9 +985,13 @@ components:
 
     DeleteBucketResponse:
       type: object
+      required:
+        - data
       properties:
         data:
           type: object
+          required:
+            - message
           properties:
             message:
               type: string
@@ -978,6 +1043,9 @@ components:
 
     ErrorResponse:
       type: object
+      required:
+        - errorCode
+        - errorMessage
       properties:
         errorCode:
           type: string
