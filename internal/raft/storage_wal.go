@@ -10,6 +10,9 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/etcd/server/v3/wal"
+	"go.etcd.io/etcd/server/v3/wal/walpb"
+	"go.uber.org/zap"
 )
 
 var (
@@ -18,52 +21,176 @@ var (
 	ErrUnavailable   = errors.New("requested entry at index is unavailable")
 )
 
-// Storage implements raft.Storage interface for etcd/raft
-type Storage struct {
+// WALStorage implements raft.Storage interface for etcd/raft using etcd/wal
+type WALStorage struct {
 	mu sync.RWMutex
 
 	// HardState contains the current term and commit index
 	hardState raftpb.HardState
 
-	// Entries stores the Raft log entries
-	entries []raftpb.Entry
-
 	// Snapshot stores the most recent snapshot
 	snapshot raftpb.Snapshot
 
+	// WAL for storing log entries
+	wal *wal.WAL
+
+	// In-memory cache of entries (for fast access)
+	// This is rebuilt from WAL on startup
+	entries []raftpb.Entry
+
 	logger        logging.Logger
 	dataDir       string
-	hardStateFile string
-	entriesFile   string
 	snapshotFile  string
+	hardStateFile string
+	walDir        string
 }
 
-// NewStorage creates a new Storage instance
-func NewStorage(dataDir string, logger logging.Logger) (*Storage, error) {
+// NewWALStorage creates a new WALStorage instance
+func NewWALStorage(dataDir string, logger logging.Logger) (*WALStorage, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
-	s := &Storage{
+	s := &WALStorage{
 		entries:       make([]raftpb.Entry, 0),
 		logger:        logger,
 		dataDir:       dataDir,
-		hardStateFile: filepath.Join(dataDir, "raft-hardstate.json"),
-		entriesFile:   filepath.Join(dataDir, "raft-entries.json"),
 		snapshotFile:  filepath.Join(dataDir, "raft-snapshot.json"),
+		hardStateFile: filepath.Join(dataDir, "raft-hardstate.json"),
+		walDir:        filepath.Join(dataDir, "wal"),
 	}
 
-	// Try to restore from disk
-	if err := s.restore(); err != nil {
-		logger.WithFields(map[string]any{"error": err}).Infof("WARN: Failed to restore storage from disk, starting fresh")
+	// Restore snapshot and hard state from disk
+	if err := s.restoreSnapshotAndHardState(); err != nil {
+		logger.WithFields(map[string]any{"error": err}).Infof("WARN: Failed to restore snapshot/hardstate from disk, starting fresh")
+	}
+
+	// Open or create WAL
+	var err error
+	s.wal, err = s.openOrCreateWAL()
+	if err != nil {
+		return nil, fmt.Errorf("opening/creating WAL: %w", err)
+	}
+
+	// Replay WAL to rebuild entries cache
+	if err := s.replayWAL(); err != nil {
+		return nil, fmt.Errorf("replaying WAL: %w", err)
 	}
 
 	return s, nil
 }
 
+// openOrCreateWAL opens an existing WAL or creates a new one
+func (s *WALStorage) openOrCreateWAL() (*wal.WAL, error) {
+	// Convert logger to zap.Logger for etcd/wal
+	zapLogger, err := zap.NewDevelopment()
+	if err != nil {
+		return nil, fmt.Errorf("creating zap logger: %w", err)
+	}
+
+	// Check if WAL already exists
+	if _, err := os.Stat(s.walDir); err == nil {
+		// WAL exists, open it
+		// Read snapshot metadata if available
+		var snap walpb.Snapshot
+		if s.snapshot.Metadata.Index > 0 {
+			snap = walpb.Snapshot{
+				Index: s.snapshot.Metadata.Index,
+				Term:  s.snapshot.Metadata.Term,
+			}
+		}
+
+		w, err := wal.Open(zapLogger, s.walDir, snap)
+		if err != nil {
+			return nil, fmt.Errorf("opening existing WAL: %w", err)
+		}
+		return w, nil
+	}
+
+	// Create new WAL directory
+	if err := os.MkdirAll(s.walDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating WAL directory: %w", err)
+	}
+
+	// Create new WAL
+	w, err := wal.Create(zapLogger, s.walDir, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating new WAL: %w", err)
+	}
+	return w, nil
+}
+
+// replayWAL replays all entries from the WAL to rebuild the entries cache
+func (s *WALStorage) replayWAL() error {
+	// Read all entries from WAL
+	_, state, entries, err := s.wal.ReadAll()
+	if err != nil {
+		return fmt.Errorf("reading WAL entries: %w", err)
+	}
+
+	// Update hard state from WAL if available (state is a struct, check if it's not zero)
+	if state.Term != 0 || state.Commit != 0 {
+		s.hardState = state
+	}
+
+	// Rebuild entries cache
+	s.mu.Lock()
+	s.entries = entries
+	s.mu.Unlock()
+
+	s.logger.WithFields(map[string]any{"entries": len(entries)}).Infof("WAL replay completed")
+	return nil
+}
+
+// restoreSnapshotAndHardState restores snapshot and hard state from disk
+func (s *WALStorage) restoreSnapshotAndHardState() error {
+	// Restore HardState
+	if data, err := os.ReadFile(s.hardStateFile); err == nil {
+		if err := json.Unmarshal(data, &s.hardState); err != nil {
+			return fmt.Errorf("unmarshaling hardstate: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("reading hardstate file: %w", err)
+	}
+
+	// Restore Snapshot
+	if data, err := os.ReadFile(s.snapshotFile); err == nil {
+		if err := json.Unmarshal(data, &s.snapshot); err != nil {
+			return fmt.Errorf("unmarshaling snapshot: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("reading snapshot file: %w", err)
+	}
+
+	return nil
+}
+
+// saveSnapshotAndHardState saves snapshot and hard state to disk
+func (s *WALStorage) saveSnapshotAndHardState() error {
+	// Save HardState
+	hardStateData, err := json.Marshal(s.hardState)
+	if err != nil {
+		return fmt.Errorf("marshaling hardstate: %w", err)
+	}
+	if err := os.WriteFile(s.hardStateFile, hardStateData, 0644); err != nil {
+		return fmt.Errorf("writing hardstate file: %w", err)
+	}
+
+	// Save Snapshot
+	snapshotData, err := json.Marshal(s.snapshot)
+	if err != nil {
+		return fmt.Errorf("marshaling snapshot: %w", err)
+	}
+	if err := os.WriteFile(s.snapshotFile, snapshotData, 0644); err != nil {
+		return fmt.Errorf("writing snapshot file: %w", err)
+	}
+
+	return nil
+}
+
 // InitialState returns the saved HardState and ConfState information
-func (s *Storage) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
+func (s *WALStorage) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -71,7 +198,7 @@ func (s *Storage) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
 }
 
 // IsEmpty checks if the storage is empty (no HardState, no Entries, no Snapshot)
-func (s *Storage) IsEmpty() bool {
+func (s *WALStorage) IsEmpty() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -94,9 +221,7 @@ func (s *Storage) IsEmpty() bool {
 }
 
 // Entries returns a slice of log entries in the range [lo, hi)
-// MaxSize limits the total size of the log entries returned, but
-// Entries returns at least one entry if any.
-func (s *Storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
+func (s *WALStorage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -149,11 +274,8 @@ func (s *Storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	return ents, nil
 }
 
-// Term returns the term of entry i, which must be in the range
-// [FirstIndex()-1, LastIndex()]. The term of the entry before
-// FirstIndex is retained for matching purposes even though the
-// rest of that entry may not be available.
-func (s *Storage) Term(i uint64) (uint64, error) {
+// Term returns the term of entry i
+func (s *WALStorage) Term(i uint64) (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -192,8 +314,8 @@ func (s *Storage) Term(i uint64) (uint64, error) {
 	return s.entries[i-offset].Term, nil
 }
 
-// LastIndex returns the index of the last entry in the log.
-func (s *Storage) LastIndex() (uint64, error) {
+// LastIndex returns the index of the last entry in the log
+func (s *WALStorage) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -204,22 +326,16 @@ func (s *Storage) LastIndex() (uint64, error) {
 	return s.entries[len(s.entries)-1].Index, nil
 }
 
-// FirstIndex returns the index of the first log entry that is
-// possibly available via Entries (older entries have been incorporated
-// into the latest Snapshot; if storage only contains the dummy entry the
-// first log entry is not available).
-func (s *Storage) FirstIndex() (uint64, error) {
+// FirstIndex returns the index of the first log entry
+func (s *WALStorage) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	return s.snapshot.Metadata.Index + 1, nil
 }
 
-// Snapshot returns the most recent snapshot.
-// If snapshot is temporarily unavailable, it should return ErrSnapshotTemporarilyUnavailable,
-// so raft state machine could know that Storage needs some time to prepare
-// snapshot and call Snapshot later.
-func (s *Storage) Snapshot() (raftpb.Snapshot, error) {
+// Snapshot returns the most recent snapshot
+func (s *WALStorage) Snapshot() (raftpb.Snapshot, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -227,19 +343,26 @@ func (s *Storage) Snapshot() (raftpb.Snapshot, error) {
 }
 
 // SetHardState sets the hard state
-func (s *Storage) SetHardState(st raftpb.HardState) {
+func (s *WALStorage) SetHardState(st raftpb.HardState) {
 	s.mu.Lock()
 	s.hardState = st
 	s.mu.Unlock()
 
+	// Save hard state to WAL (with empty entries since we're only updating hard state)
+	if s.wal != nil {
+		if err := s.wal.Save(st, []raftpb.Entry{}); err != nil {
+			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save hard state to WAL")
+		}
+	}
+
 	// Save to disk (outside of lock to avoid blocking)
-	if err := s.save(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
+	if err := s.saveSnapshotAndHardState(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save hard state to disk")
 	}
 }
 
 // Append appends entries to the log
-func (s *Storage) Append(entries []raftpb.Entry) error {
+func (s *WALStorage) Append(entries []raftpb.Entry) error {
 	s.mu.Lock()
 
 	if len(entries) == 0 {
@@ -273,16 +396,18 @@ func (s *Storage) Append(entries []raftpb.Entry) error {
 	}
 	s.mu.Unlock()
 
-	// Save to disk (outside of lock to avoid blocking)
-	if err := s.save(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
+	// Save entries to WAL
+	if s.wal != nil {
+		if err := s.wal.Save(s.hardState, entries); err != nil {
+			return fmt.Errorf("saving entries to WAL: %w", err)
+		}
 	}
 
 	return nil
 }
 
 // CreateSnapshot creates a snapshot at the given index
-func (s *Storage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftpb.Snapshot, error) {
+func (s *WALStorage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftpb.Snapshot, error) {
 	s.mu.Lock()
 
 	if i <= s.snapshot.Metadata.Index {
@@ -290,7 +415,7 @@ func (s *Storage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (r
 		return raftpb.Snapshot{}, ErrSnapOutOfDate
 	}
 
-	// Get term directly without taking another lock (we already have the write lock)
+	// Get term directly without taking another lock
 	term, err := s.termLocked(i)
 	if err != nil {
 		s.mu.Unlock()
@@ -309,15 +434,15 @@ func (s *Storage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (r
 	s.mu.Unlock()
 
 	// Save to disk (outside of lock to avoid blocking)
-	if err := s.save(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
+	if err := s.saveSnapshotAndHardState(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
 	}
 
 	return snap, nil
 }
 
 // termLocked returns the term of entry i without taking a lock (assumes lock is already held)
-func (s *Storage) termLocked(i uint64) (uint64, error) {
+func (s *WALStorage) termLocked(i uint64) (uint64, error) {
 	firstIndex := s.snapshot.Metadata.Index + 1
 	var lastIndex uint64
 	if len(s.entries) == 0 {
@@ -353,22 +478,22 @@ func (s *Storage) termLocked(i uint64) (uint64, error) {
 }
 
 // ApplySnapshot applies a snapshot to the storage
-func (s *Storage) ApplySnapshot(snap raftpb.Snapshot) error {
+func (s *WALStorage) ApplySnapshot(snap raftpb.Snapshot) error {
 	s.mu.Lock()
 	s.snapshot = snap
 	s.entries = nil // Clear entries after applying snapshot
 	s.mu.Unlock()
 
 	// Save to disk (outside of lock to avoid blocking)
-	if err := s.save(); err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save storage to disk")
+	if err := s.saveSnapshotAndHardState(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
 	}
 
 	return nil
 }
 
 // Compact compacts the log up to the given index
-func (s *Storage) Compact(compactIndex uint64) error {
+func (s *WALStorage) Compact(compactIndex uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -398,72 +523,22 @@ func (s *Storage) Compact(compactIndex uint64) error {
 		s.entries = s.entries[:0]
 	}
 
-	return nil
-}
-
-// save persists the storage state to disk
-func (s *Storage) save() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Save HardState
-	hardStateData, err := json.Marshal(s.hardState)
-	if err != nil {
-		return fmt.Errorf("marshaling hardstate: %w", err)
-	}
-	if err := os.WriteFile(s.hardStateFile, hardStateData, 0644); err != nil {
-		return fmt.Errorf("writing hardstate file: %w", err)
-	}
-
-	// Save Entries
-	entriesData, err := json.Marshal(s.entries)
-	if err != nil {
-		return fmt.Errorf("marshaling entries: %w", err)
-	}
-	if err := os.WriteFile(s.entriesFile, entriesData, 0644); err != nil {
-		return fmt.Errorf("writing entries file: %w", err)
-	}
-
-	// Save Snapshot
-	snapshotData, err := json.Marshal(s.snapshot)
-	if err != nil {
-		return fmt.Errorf("marshaling snapshot: %w", err)
-	}
-	if err := os.WriteFile(s.snapshotFile, snapshotData, 0644); err != nil {
-		return fmt.Errorf("writing snapshot file: %w", err)
-	}
+	// Note: WAL compaction is handled by etcd/wal itself when we create snapshots
+	// We just update our in-memory cache here
 
 	return nil
 }
 
-// restore restores the storage state from disk
-func (s *Storage) restore() error {
-	// Restore HardState
-	if data, err := os.ReadFile(s.hardStateFile); err == nil {
-		if err := json.Unmarshal(data, &s.hardState); err != nil {
-			return fmt.Errorf("unmarshaling hardstate: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading hardstate file: %w", err)
-	}
+// Close closes the WAL
+func (s *WALStorage) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Restore Entries
-	if data, err := os.ReadFile(s.entriesFile); err == nil {
-		if err := json.Unmarshal(data, &s.entries); err != nil {
-			return fmt.Errorf("unmarshaling entries: %w", err)
+	if s.wal != nil {
+		if err := s.wal.Close(); err != nil {
+			return fmt.Errorf("closing WAL: %w", err)
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading entries file: %w", err)
+		s.wal = nil
 	}
-
-	// Restore Snapshot
-	if data, err := os.ReadFile(s.snapshotFile); err == nil {
-		if err := json.Unmarshal(data, &s.snapshot); err != nil {
-			return fmt.Errorf("unmarshaling snapshot: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading snapshot file: %w", err)
-	}
-
 	return nil
 }

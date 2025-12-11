@@ -26,7 +26,7 @@ type Node[F FSM] struct {
 	mu          sync.RWMutex
 	futures     map[uint64]*applyFuture // Map of command ID -> future
 	fsm         F
-	storage     *Storage
+	storage     *WALStorage
 	transport   NodeTransport
 	config      NodeConfig
 	stopChannel chan chan struct{}
@@ -35,7 +35,7 @@ type Node[F FSM] struct {
 // NewNode creates a new wrapper around a RawNode
 func NewNode[F FSM](
 	cfg NodeConfig,
-	storage *Storage,
+	storage *WALStorage,
 	transport NodeTransport,
 	fsm F,
 	logger logging.Logger,
@@ -495,7 +495,7 @@ type applyFuture struct {
 
 // RestoreFromStorage restores the FSM state from storage by reading the last snapshot
 // and applying all entries after the snapshot
-func restoreFromStorage(fsm FSM, storage *Storage, logger logging.Logger) error {
+func restoreFromStorage(fsm FSM, storage *WALStorage, logger logging.Logger) error {
 	logger.Infof("Restoring FSM from storage")
 	// Read the last snapshot
 	snapshot, err := storage.Snapshot()

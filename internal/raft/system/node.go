@@ -28,7 +28,7 @@ func NewNode(config Config, logger logging.Logger, transport *raft.GRPCTransport
 	}
 
 	// Create storage for etcd/etcdraft
-	storage, err := raft.NewStorage(config.DataDir, logger)
+	storage, err := raft.NewWALStorage(config.DataDir, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating storage: %w", err)
 	}

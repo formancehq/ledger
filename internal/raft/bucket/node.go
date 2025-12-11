@@ -32,7 +32,7 @@ func NewNode(
 ) (*Node, error) {
 
 	// Create Raft storage for this bucket ret
-	storage, err := raft.NewStorage(cfg.DataDir, logger.WithFields(map[string]any{"bucket": bucketInfo.Name}))
+	storage, err := raft.NewWALStorage(cfg.DataDir, logger.WithFields(map[string]any{"bucket": bucketInfo.Name}))
 	if err != nil {
 		return nil, fmt.Errorf("creating storage for bucket %s: %w", bucketInfo.Name, err)
 	}
