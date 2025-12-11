@@ -25,6 +25,11 @@ run:
 run-client:
     go run ./cmd/client
 
+install-client:
+    go build -o $GOPATH/bin/ledger-poc-client ./cmd/client
+    #todo: make optional or configurable or whatever
+    ledger-poc-client completion zsh > ~/.oh-my-zsh/custom/completions/_ledger-poc-client
+
 # Run tests
 test:
     go test ./...
