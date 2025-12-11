@@ -40,6 +40,11 @@ func getTransactionsSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if startTime != nil && endTime != nil && startTime.After(*endTime) {
+		api.BadRequest(w, common.ErrValidation, errors.New("start_time must be before end_time"))
+		return
+	}
+
 	ledgerInstance := common.LedgerFromContext(r.Context())
 	if ledgerInstance == nil {
 		api.InternalServerError(w, r, errors.New("ledger not found in request context"))

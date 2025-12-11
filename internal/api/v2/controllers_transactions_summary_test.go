@@ -1,12 +1,16 @@
 package v2
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	stdtime "time"
 
+	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/go-chi/chi/v5"
@@ -129,14 +133,12 @@ func TestGetTransactionsSummary(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 
-	t.Run("pagination with multiple pages", func(t *testing.T) {
+	t.Run("success with multiple transactions", func(t *testing.T) {
 		t.Parallel()
 
-		// Setup test data
 		ctrl := gomock.NewController(t)
 		mockLedgerController := NewLedgerController(ctrl)
 
-		// Mock the GetTransactionsSum call
 		mockLedgerController.EXPECT().
 			GetTransactionsSum(gomock.Any(), "expenses:salary").
 			Return([]ledgerstore.TransactionsSummary{
@@ -174,6 +176,133 @@ func TestGetTransactionsSummary(t *testing.T) {
 		require.Equal(t, int64(3), responseWrapper.Data[0].Count)
 		// 1000 (from world) - 500 (to bank) + 200 (from client) = 700
 		require.Equal(t, int64(700), responseWrapper.Data[0].Sum.Int64())
+	})
+
+	t.Run("success with time range", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		mockLedgerController := NewLedgerController(ctrl)
+
+		start := libtime.Now().Add(-libtime.Hour)
+		end := libtime.Now()
+
+		mockLedgerController.EXPECT().
+			GetTransactionsSumWithTimeRange(gomock.Any(), "expenses:salary", gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, account string, startTime, endTime *libtime.Time) ([]ledgerstore.TransactionsSummary, error) {
+				require.Equal(t, "expenses:salary", account)
+				require.WithinDuration(t, start.Time, startTime.Time, stdtime.Second)
+				require.WithinDuration(t, end.Time, endTime.Time, stdtime.Second)
+				return []ledgerstore.TransactionsSummary{
+					{
+						Asset: "USD",
+						Count: 1,
+						Sum:   "100",
+					},
+				}, nil
+			})
+
+		server := newTestServer(t, mockLedgerController)
+
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary&start_time="+start.Format(libtime.RFC3339Nano)+"&end_time="+end.Format(libtime.RFC3339Nano), nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var responseWrapper struct {
+			Data []summaryResponse `json:"data"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &responseWrapper)
+		require.NoError(t, err)
+		require.Len(t, responseWrapper.Data, 1)
+		require.Equal(t, int64(1), responseWrapper.Data[0].Count)
+		require.Equal(t, int64(100), responseWrapper.Data[0].Sum.Int64())
+	})
+
+	t.Run("asset filter selects only requested asset", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		mockLedgerController := NewLedgerController(ctrl)
+
+		mockLedgerController.EXPECT().
+			GetTransactionsSum(gomock.Any(), "expenses:salary").
+			Return([]ledgerstore.TransactionsSummary{
+				{Asset: "USD", Count: 1, Sum: "50"},
+				{Asset: "EUR", Count: 2, Sum: "75"},
+			}, nil)
+
+		server := newTestServer(t, mockLedgerController)
+
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary&asset=EUR", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var responseWrapper struct {
+			Data []summaryResponse `json:"data"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &responseWrapper)
+		require.NoError(t, err)
+		require.Len(t, responseWrapper.Data, 1)
+		require.Equal(t, "EUR", responseWrapper.Data[0].Asset)
+		require.Equal(t, int64(2), responseWrapper.Data[0].Count)
+		require.Equal(t, int64(75), responseWrapper.Data[0].Sum.Int64())
+	})
+
+	t.Run("invalid time format returns bad request", func(t *testing.T) {
+		t.Parallel()
+
+		server := newTestServer(t, nil)
+
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary&start_time=not-a-time", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("controller error returns internal server error", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		mockLedgerController := NewLedgerController(ctrl)
+
+		mockLedgerController.EXPECT().
+			GetTransactionsSum(gomock.Any(), "expenses:salary").
+			Return(nil, fmt.Errorf("backend error"))
+
+		server := newTestServer(t, mockLedgerController)
+
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+
+	t.Run("start time after end time returns bad request", func(t *testing.T) {
+		t.Parallel()
+
+		server := newTestServer(t, nil)
+
+		req, err := http.NewRequest(http.MethodGet, "/transactions/summary?account=expenses:salary&start_time=2024-01-02T00:00:00Z&end_time=2024-01-01T00:00:00Z", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 }
 
