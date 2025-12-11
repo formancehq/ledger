@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
@@ -40,6 +41,8 @@ type Controller interface {
 	GetTransaction(ctx context.Context, query common.ResourceQuery[any]) (*ledger.Transaction, error)
 	GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 	GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)
+	GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSum, error)
+	GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSum, error)
 
 	// CreateTransaction accept a numscript script and returns a transaction
 	// It can return following errors:

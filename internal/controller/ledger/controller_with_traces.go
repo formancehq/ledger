@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -44,6 +45,7 @@ type ControllerWithTraces struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	deleteAccountMetadataHistogram     metric.Int64Histogram
 	lockLedgerHistogram                metric.Int64Histogram
+	getTransactionsSumHistogram        metric.Int64Histogram
 }
 
 func (c *ControllerWithTraces) Info() ledger.Ledger {
@@ -146,6 +148,10 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 		panic(err)
 	}
 	ret.lockLedgerHistogram, err = meter.Int64Histogram("controller.lock_ledger", metric.WithUnit("ms"))
+	if err != nil {
+		panic(err)
+	}
+	ret.getTransactionsSumHistogram, err = meter.Int64Histogram("controller.get_transactions_sum")
 	if err != nil {
 		panic(err)
 	}
@@ -509,6 +515,30 @@ func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 		c.getStatsHistogram,
 		func(ctx context.Context) (Stats, error) {
 			return c.underlying.GetStats(ctx)
+		},
+	)
+}
+
+func (c *ControllerWithTraces) GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSum, error) {
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetTransactionsSum",
+		c.tracer,
+		c.getTransactionsSumHistogram,
+		func(ctx context.Context) ([]ledgerstore.TransactionsSum, error) {
+			return c.underlying.GetTransactionsSum(ctx, account)
+		},
+	)
+}
+
+func (c *ControllerWithTraces) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSum, error) {
+	return tracing.TraceWithMetric(
+		ctx,
+		"GetTransactionsSumWithTimeRange",
+		c.tracer,
+		c.getTransactionsSumHistogram,
+		func(ctx context.Context) ([]ledgerstore.TransactionsSum, error) {
+			return c.underlying.GetTransactionsSumWithTimeRange(ctx, account, startTime, endTime)
 		},
 	)
 }

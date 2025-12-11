@@ -9,6 +9,7 @@ import (
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 
 	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 const HeaderBigIntAsString = "Formance-Bigint-As-String"
@@ -220,4 +221,25 @@ func renderLog(r *http.Request, v ledger.Log) any {
 func needBigIntAsString(r *http.Request) bool {
 	v := strings.ToLower(r.Header.Get(HeaderBigIntAsString))
 	return v == "true" || v == "yes" || v == "y" || v == "1"
+}
+
+type transactionSum ledgerstore.TransactionsSum
+
+func (ts transactionSum) MarshalJSON() ([]byte, error) {
+	type Aux transactionSum
+	return json.Marshal(struct {
+		Aux
+		Sum string `json:"sum"`
+	}{
+		Aux: Aux(ts),
+		Sum: ts.Sum,
+	})
+}
+
+func renderTransactionSum(r *http.Request, ts ledgerstore.TransactionsSum) any {
+	if !needBigIntAsString(r) {
+		return ts
+	}
+
+	return transactionSum(ts)
 }

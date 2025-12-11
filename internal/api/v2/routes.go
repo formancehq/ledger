@@ -116,6 +116,7 @@ func NewRouter(
 					router.Get("/", listTransactions(routerOptions.paginationConfig))
 					router.Head("/", countTransactions)
 					router.Post("/", createTransaction)
+					router.Get("/sum", getTransactionsSum)
 					router.Get("/{id}", readTransaction)
 					router.Post("/{id}/revert", revertTransaction)
 					router.Post("/{id}/metadata", addTransactionMetadata)

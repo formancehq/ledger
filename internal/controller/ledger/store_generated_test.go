@@ -297,6 +297,36 @@ func (mr *MockStoreMockRecorder) Transactions() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transactions", reflect.TypeOf((*MockStore)(nil).Transactions))
 }
 
+// TransactionsSum mocks base method.
+func (m *MockStore) TransactionsSum(ctx context.Context, arg1, account string) ([]ledger0.TransactionsSum, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransactionsSum", ctx, arg1, account)
+	ret0, _ := ret[0].([]ledger0.TransactionsSum)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TransactionsSum indicates an expected call of TransactionsSum.
+func (mr *MockStoreMockRecorder) TransactionsSum(ctx, arg1, account any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransactionsSum", reflect.TypeOf((*MockStore)(nil).TransactionsSum), ctx, arg1, account)
+}
+
+// TransactionsSumWithTimeRange mocks base method.
+func (m *MockStore) TransactionsSumWithTimeRange(ctx context.Context, arg1, account string, startTime, endTime *time.Time) ([]ledger0.TransactionsSum, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransactionsSumWithTimeRange", ctx, arg1, account, startTime, endTime)
+	ret0, _ := ret[0].([]ledger0.TransactionsSum)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TransactionsSumWithTimeRange indicates an expected call of TransactionsSumWithTimeRange.
+func (mr *MockStoreMockRecorder) TransactionsSumWithTimeRange(ctx, arg1, account, startTime, endTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransactionsSumWithTimeRange", reflect.TypeOf((*MockStore)(nil).TransactionsSumWithTimeRange), ctx, arg1, account, startTime, endTime)
+}
+
 // UpdateAccountsMetadata mocks base method.
 func (m_2 *MockStore) UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error {
 	m_2.ctrl.T.Helper()

@@ -30,6 +30,9 @@ type Store interface {
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
 
+	TransactionsSum(ctx context.Context, ledger, account string) ([]ledgerstore.TransactionsSum, error)
+	TransactionsSumWithTimeRange(ctx context.Context, ledger, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSum, error)
+
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query ledgerstore.BalanceQuery) (ledger.Balances, error)
 	CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error
