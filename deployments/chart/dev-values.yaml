@@ -41,3 +41,7 @@ extraData:
   accessMode: ReadWriteOnce
   size: 10Gi
   annotations: {}
+
+persistence:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete

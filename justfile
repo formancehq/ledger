@@ -1,3 +1,5 @@
+set dotenv-load
+
 pre-commit: tidy generate-proto generate-sdk lint
 pc: pre-commit
 
@@ -82,6 +84,10 @@ generate-proto:
 # Wait for a node to be healthy (helper function)
 wait-for-healthy NODE:
     @./scripts/wait-for-healthy.sh {{NODE}}
+
+docker-build:
+    docker build --platform linux/amd64 -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest .
+    docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
 
 # Rolling upgrade: upgrade nodes one by one to ensure cluster availability
 rolling-upgrade:

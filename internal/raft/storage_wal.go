@@ -118,14 +118,37 @@ func (s *WALStorage) openOrCreateWAL() (*wal.WAL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating new WAL: %w", err)
 	}
+
+	// Close the WAL created by wal.Create() and reopen it with wal.Open()
+	// This is necessary because wal.Create() returns a WAL in write mode,
+	// and ReadAll() requires a WAL opened with wal.Open()
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("closing newly created WAL: %w", err)
+	}
+
+	// Reopen the WAL with wal.Open() so it can be read
+	w, err = wal.Open(zapLogger, s.walDir, walpb.Snapshot{})
+	if err != nil {
+		return nil, fmt.Errorf("reopening newly created WAL: %w", err)
+	}
+
 	return w, nil
 }
 
 // replayWAL replays all entries from the WAL to rebuild the entries cache
 func (s *WALStorage) replayWAL() error {
 	// Read all entries from WAL
+	// Note: ReadAll() can return an error if the WAL is empty or corrupted
+	// We handle the case where the WAL is empty (newly created) gracefully
 	_, state, entries, err := s.wal.ReadAll()
 	if err != nil {
+		// If the error is "decoder not found", it might mean the WAL is empty
+		// This can happen with a newly created WAL that hasn't been written to yet
+		if err.Error() == "wal: decoder not found" {
+			// Empty WAL, nothing to replay
+			s.logger.Infof("WAL is empty (newly created), nothing to replay")
+			return nil
+		}
 		return fmt.Errorf("reading WAL entries: %w", err)
 	}
 

@@ -7,6 +7,8 @@ metadata:
 spec:
   serviceName: {{ include "ledger-v3-poc.headlessServiceName" . }}
   replicas: {{ .Values.replicaCount }}
+  persistentVolumeClaimRetentionPolicy:
+    {{ toYaml .Values.persistence.persistentVolumeClaimRetentionPolicy | nindent 4}}
   selector:
     matchLabels:
       {{- include "ledger-v3-poc.selectorLabels" . | nindent 6 }}
