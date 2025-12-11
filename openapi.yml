@@ -538,9 +538,7 @@ components:
       properties:
         accountMetadata:
           type: object
-          additionalProperties:
-            type: object
-            additionalProperties: true
+          additionalProperties: true
           description: Metadata for accounts involved in the transaction
         timestamp:
           type: string
@@ -607,72 +605,6 @@ components:
           additionalProperties:
             type: string
           description: Variables to pass to the script
-
-  /{ledgerName}/_bulk:
-    post:
-      summary: Bulk operations
-      description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request
-      operationId: bulkOperations
-      tags:
-        - Transactions
-      parameters:
-        - name: ledgerName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the ledger
-        - name: continueOnFailure
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Continue processing remaining operations even if one fails
-        - name: atomic
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Execute all operations atomically (not yet supported)
-        - name: parallel
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Execute operations in parallel
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/BulkElement'
-      responses:
-        '200':
-          description: Bulk operations completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkResponse'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '413':
-          description: Request entity too large
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
     BulkElement:
       type: object
@@ -806,9 +738,7 @@ components:
               $ref: '#/components/schemas/TransactionResponse'
             accountMetadata:
               type: object
-              additionalProperties:
-                type: object
-                additionalProperties: true
+              additionalProperties: true
               description: Metadata for accounts involved in the transaction
 
     TransactionResponse:
@@ -889,8 +819,8 @@ components:
           description: Node address
         suffrage:
           type: string
-          enum: [Voter, Nonvoter]
-          description: Node suffrage (Voter or Nonvoter)
+          enum: [Voter, Nonvoter, Learner]
+          description: Node suffrage (Voter, Nonvoter, or Learner)
 
     CreateBucketRequest:
       type: object
@@ -954,19 +884,6 @@ components:
         localNode:
           type: string
           description: ID of the local node
-
-    NodeInfo:
-      type: object
-      properties:
-        id:
-          type: string
-          description: Node ID in the bucket Raft group
-        address:
-          type: string
-          description: Node address (global node ID)
-        suffrage:
-          type: string
-          description: Node suffrage (Voter or Learner)
 
     BucketInfo:
       type: object

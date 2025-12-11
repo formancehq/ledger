@@ -5,7 +5,7 @@ package components
 type Data struct {
 	Transaction *TransactionResponse `json:"transaction,omitempty"`
 	// Metadata for accounts involved in the transaction
-	AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+	AccountMetadata map[string]any `json:"accountMetadata,omitempty"`
 }
 
 func (o *Data) GetTransaction() *TransactionResponse {
@@ -15,7 +15,7 @@ func (o *Data) GetTransaction() *TransactionResponse {
 	return o.Transaction
 }
 
-func (o *Data) GetAccountMetadata() map[string]map[string]any {
+func (o *Data) GetAccountMetadata() map[string]any {
 	if o == nil {
 		return nil
 	}

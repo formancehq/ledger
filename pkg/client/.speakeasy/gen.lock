@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 75ff39862396a5f3077eec6b3f734259
+  docChecksum: 64bf60d98cba0be7ec53bb79beee29c7
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.10.9
-  configChecksum: aee114ca745e2377d9d289603fb608ef
+  releaseVersion: 0.11.0
+  configChecksum: a3b5362cff3b7d87ae29bbe607bb8571
 features:
   go:
     additionalDependencies: 0.1.0
@@ -23,13 +23,18 @@ features:
     responseFormat: 0.1.2
     retries: 2.83.3
     sdkHooks: 0.2.0
+    unions: 2.85.11
 generatedFiles:
   - .devcontainer/README.md
   - .devcontainer/devcontainer.json
   - .devcontainer/setup.sh
   - .gitattributes
+  - /models/components/addmetadatarequest.go
   - /models/components/bucketinfo.go
   - /models/components/bucketwithraftstate.go
+  - /models/components/bulkelement.go
+  - /models/components/bulkresponse.go
+  - /models/components/bulkresult.go
   - /models/components/clusterstate.go
   - /models/components/clusterstateresponse.go
   - /models/components/createbucketrequest.go
@@ -40,6 +45,7 @@ generatedFiles:
   - /models/components/createtransactionrequest.go
   - /models/components/createtransactionresponse.go
   - /models/components/deletebucketresponse.go
+  - /models/components/deletemetadatarequest.go
   - /models/components/getbucketresponse.go
   - /models/components/getledgerresponse.go
   - /models/components/httpmetadata.go
@@ -49,8 +55,11 @@ generatedFiles:
   - /models/components/nodeinfo.go
   - /models/components/postingrequest.go
   - /models/components/postingresponse.go
+  - /models/components/reverttransactionrequest.go
+  - /models/components/script.go
   - /models/components/snapshotresponse.go
   - /models/components/transactionresponse.go
+  - /models/operations/bulkoperations.go
   - /models/operations/createbucket.go
   - /models/operations/createbucketsnapshot.go
   - /models/operations/createledger.go
@@ -66,8 +75,15 @@ generatedFiles:
   - USAGE.md
   - buckets.go
   - cluster.go
+  - docs/models/components/action.md
+  - docs/models/components/addmetadatarequest.md
   - docs/models/components/bucketinfo.md
   - docs/models/components/bucketwithraftstate.md
+  - docs/models/components/bulkelement.md
+  - docs/models/components/bulkelementdata.md
+  - docs/models/components/bulkresponse.md
+  - docs/models/components/bulkresult.md
+  - docs/models/components/bulkresultdata.md
   - docs/models/components/clusterstate.md
   - docs/models/components/clusterstateresponse.md
   - docs/models/components/clusterstateresponsedata.md
@@ -81,6 +97,9 @@ generatedFiles:
   - docs/models/components/data.md
   - docs/models/components/deletebucketresponse.md
   - docs/models/components/deletebucketresponsedata.md
+  - docs/models/components/deletemetadatarequest.md
+  - docs/models/components/deletemetadatarequesttargetid.md
+  - docs/models/components/deletemetadatarequesttargettype.md
   - docs/models/components/getbucketresponse.md
   - docs/models/components/getledgerresponse.md
   - docs/models/components/httpmetadata.md
@@ -90,10 +109,17 @@ generatedFiles:
   - docs/models/components/nodeinfo.md
   - docs/models/components/postingrequest.md
   - docs/models/components/postingresponse.md
+  - docs/models/components/reverttransactionrequest.md
+  - docs/models/components/script.md
   - docs/models/components/snapshotresponse.md
   - docs/models/components/snapshotresponsedata.md
   - docs/models/components/state.md
+  - docs/models/components/suffrage.md
+  - docs/models/components/targetid.md
+  - docs/models/components/targettype.md
   - docs/models/components/transactionresponse.md
+  - docs/models/operations/bulkoperationsrequest.md
+  - docs/models/operations/bulkoperationsresponse.md
   - docs/models/operations/createbucketrequest.md
   - docs/models/operations/createbucketresponse.md
   - docs/models/operations/createbucketsnapshotrequest.md
@@ -184,7 +210,7 @@ examples:
         path:
           ledgerName: "<value>"
       requestBody:
-        application/json: {"postings": [{"source": "<value>", "destination": "<value>", "amount": "361192", "asset": "<value>"}], "dryRun": false}
+        application/json: {"dryRun": false}
       responses:
         "201":
           application/json: {}
@@ -262,6 +288,24 @@ examples:
         application/json: {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>"}}
       responses:
         "201":
+          application/json: {}
+        "400":
+          application/json: {}
+        "500":
+          application/json: {}
+  bulkOperations:
+    speakeasy-default-bulk-operations:
+      parameters:
+        path:
+          ledgerName: "<value>"
+        query:
+          continueOnFailure: false
+          atomic: false
+          parallel: false
+      requestBody:
+        application/json: [{"action": "DELETE_METADATA", "data": {"dryRun": false}}]
+      responses:
+        "200":
           application/json: {}
         "400":
           application/json: {}

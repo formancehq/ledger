@@ -9,15 +9,18 @@ import (
 
 type CreateTransactionRequest struct {
 	// Metadata for accounts involved in the transaction
-	AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+	AccountMetadata map[string]any `json:"accountMetadata,omitempty"`
 	// Transaction timestamp (ISO 8601 format). If not provided, current time is used.
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 	// Transaction metadata
 	Metadata map[string]any `json:"metadata,omitempty"`
 	// Transaction reference
 	Reference *string `json:"reference,omitempty"`
-	// List of postings for the transaction
-	Postings []PostingRequest `json:"postings"`
+	// List of postings for the transaction (required if script is not provided)
+	Postings []PostingRequest `json:"postings,omitempty"`
+	Script   *Script          `json:"script,omitempty"`
+	// Runtime to use for script execution (e.g., "experimental-interpreter")
+	Runtime *string `json:"runtime,omitempty"`
 	// If true, validate the transaction without applying it
 	DryRun *bool `default:"false" json:"dryRun"`
 	// Idempotency key to prevent duplicate transactions
@@ -29,13 +32,13 @@ func (c CreateTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (c *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &c, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &c, "", false, true); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *CreateTransactionRequest) GetAccountMetadata() map[string]map[string]any {
+func (o *CreateTransactionRequest) GetAccountMetadata() map[string]any {
 	if o == nil {
 		return nil
 	}
@@ -65,9 +68,23 @@ func (o *CreateTransactionRequest) GetReference() *string {
 
 func (o *CreateTransactionRequest) GetPostings() []PostingRequest {
 	if o == nil {
-		return []PostingRequest{}
+		return nil
 	}
 	return o.Postings
+}
+
+func (o *CreateTransactionRequest) GetScript() *Script {
+	if o == nil {
+		return nil
+	}
+	return o.Script
+}
+
+func (o *CreateTransactionRequest) GetRuntime() *string {
+	if o == nil {
+		return nil
+	}
+	return o.Runtime
 }
 
 func (o *CreateTransactionRequest) GetDryRun() *bool {
