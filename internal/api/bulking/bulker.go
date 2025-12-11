@@ -90,12 +90,12 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, sche
 	return hasError.Load()
 }
 
-func (b *Bulker) Run(ctx context.Context, schemaVersion string, bulk Bulk, result chan BulkElementResult, bulkOptions BulkingOptions) error {
-
+func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResult, bulkOptions BulkingOptions) error {
 	ctx, span := b.tracer.Start(ctx, "Bulk:Run", trace.WithAttributes(
 		attribute.Bool("atomic", bulkOptions.Atomic),
 		attribute.Bool("parallel", bulkOptions.Parallel),
 		attribute.Bool("continueOnFailure", bulkOptions.ContinueOnFailure),
+		attribute.String("schemaVersion", bulkOptions.SchemaVersion),
 		attribute.Int("parallelism", b.parallelism),
 	))
 	defer span.End()
@@ -113,7 +113,7 @@ func (b *Bulker) Run(ctx context.Context, schemaVersion string, bulk Bulk, resul
 		}
 	}
 
-	hasError := b.run(ctx, ctrl, schemaVersion, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
+	hasError := b.run(ctx, ctrl, bulkOptions.SchemaVersion, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
 	if hasError && bulkOptions.Atomic {
 		if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
@@ -297,6 +297,7 @@ type BulkingOptions struct {
 	ContinueOnFailure bool
 	Atomic            bool
 	Parallel          bool
+	SchemaVersion     string
 }
 
 func (opts BulkingOptions) Validate() error {

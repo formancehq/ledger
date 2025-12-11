@@ -40,9 +40,9 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
-		api.BadRequest(w, ErrSchemaNotSpecified, errors.Unwrap(err))
+		api.BadRequest(w, ErrSchemaNotSpecified, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
-		api.NotFound(w, errors.Unwrap(err))
+		api.NotFound(w, err)
 	default:
 		InternalServerError(w, r, err)
 	}
@@ -57,11 +57,11 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 	case errors.Is(err, ledgercontroller.ErrNotFound):
 		api.NotFound(w, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
-		api.BadRequest(w, ErrValidation, errors.Unwrap(err))
+		api.BadRequest(w, ErrValidation, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
-		api.BadRequest(w, ErrSchemaNotSpecified, errors.Unwrap(err))
+		api.BadRequest(w, ErrSchemaNotSpecified, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
-		api.NotFound(w, errors.Unwrap(err))
+		api.NotFound(w, err)
 	default:
 		HandleCommonErrors(w, r, err)
 	}

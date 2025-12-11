@@ -284,7 +284,15 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				}
 			case ledger.CreatedTransaction:
 				logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-				if err := store.CommitTransaction(ctx, nil, &payload.Transaction, payload.AccountMetadata); err != nil {
+				var schema *ledger.Schema
+				var err error
+				if log.SchemaVersion != "" {
+					schema, err = store.FindSchema(ctx, log.SchemaVersion)
+					if err != nil {
+						return nil, fmt.Errorf("failed to find schema: %w", err)
+					}
+				}
+				if err := store.CommitTransaction(ctx, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)

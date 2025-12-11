@@ -23,9 +23,8 @@ func (h schemasResourceHandler) Schema() common.EntitySchema {
 }
 
 func (h schemasResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
-	q := h.store.db.NewSelect().
-		ModelTableExpr(h.store.GetPrefixedRelationName("schemas")).
-		Where("ledger = ?", h.store.ledger.Name)
+	q := h.store.newScopedSelect().
+		ModelTableExpr(h.store.GetPrefixedRelationName("schemas"))
 
 	if opts.PIT != nil && !opts.PIT.IsZero() {
 		q = q.Where("created_at <= ?", opts.PIT)

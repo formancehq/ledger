@@ -264,6 +264,10 @@ func (e ErrSchemaNotFound) Is(err error) bool {
 	return ok
 }
 
+func newErrSchemaNotFound(requestedVersion string, latestVersion *string) ErrSchemaNotFound {
+	return ErrSchemaNotFound{requestedVersion, latestVersion}
+}
+
 type ErrSchemaValidationError struct {
 	requestedSchema string
 	err             error
@@ -296,6 +300,10 @@ func (e ErrSchemaNotSpecified) Error() string {
 func (e ErrSchemaNotSpecified) Is(err error) bool {
 	_, ok := err.(ErrSchemaNotSpecified)
 	return ok
+}
+
+func newErrSchemaNotSpecified(latestVersion string) ErrSchemaNotSpecified {
+	return ErrSchemaNotSpecified{latestVersion}
 }
 
 type ErrSchemaAlreadyExists struct {

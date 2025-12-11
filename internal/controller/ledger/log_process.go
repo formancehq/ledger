@@ -81,10 +81,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 				if err != nil {
 					return nil, nil, err
 				}
-				return nil, nil, ErrSchemaNotFound{
-					requestedVersion: parameters.SchemaVersion,
-					latestVersion:    latestVersion,
-				}
+				return nil, nil, newErrSchemaNotFound(parameters.SchemaVersion, latestVersion)
 			}
 			return nil, nil, err
 		}
@@ -98,9 +95,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 			}
 			if latestVersion != nil {
 				if lp.schemaEnforcementMode == SchemaEnforcementStrict {
-					return nil, nil, ErrSchemaNotSpecified{
-						latestVersion: *latestVersion,
-					}
+					return nil, nil, newErrSchemaNotSpecified(*latestVersion)
 				} else {
 					trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("schema_not_specified", true))
 					logging.FromContext(ctx).Error("schema not specified")
