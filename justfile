@@ -86,34 +86,6 @@ generate-proto:
         proto/commands/bucket_commands.proto
     @echo "gRPC code generated in internal/raft/, internal/service/, and internal/raft/fsm/, internal/raft/bucketfsm/"
 
-# Wait for a node to be healthy (helper function)
-wait-for-healthy NODE:
-    @./scripts/wait-for-healthy.sh {{NODE}}
-
 docker-build:
     docker build --platform linux/amd64 -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest .
     docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
-
-# Rolling upgrade: upgrade nodes one by one to ensure cluster availability
-rolling-upgrade:
-    @echo "Starting rolling upgrade of Raft cluster..."
-    @echo "Upgrading node-1..."
-    @docker-compose stop node-1
-    @docker-compose up -d node-1
-    @just wait-for-healthy node-1
-    @echo "node-1 upgraded and healthy"
-    @echo ""
-    @echo "Upgrading node-2..."
-    @docker-compose stop node-2
-    @docker-compose up -d node-2
-    @just wait-for-healthy node-2
-    @echo "node-2 upgraded and healthy"
-    @echo ""
-    @echo "Upgrading node-3..."
-    @docker-compose stop node-3
-    @docker-compose up -d node-3
-    @just wait-for-healthy node-3
-    @echo "node-3 upgraded and healthy"
-    @echo ""
-    @echo "Rolling upgrade completed successfully!"
-
