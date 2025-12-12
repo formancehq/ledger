@@ -2,6 +2,8 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v3/otlp"
@@ -10,7 +12,6 @@ import (
 	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"net/http"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -43,6 +44,7 @@ func NewRouter(
 				return true
 			},
 			AllowCredentials: true,
+			AllowedHeaders:   []string{"*"},
 			ExposedHeaders:   []string{"Count"},
 		}).Handler,
 		common.LogID(),
