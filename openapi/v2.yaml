@@ -2845,6 +2845,7 @@ components:
           $ref: "#/components/schemas/V2TransactionTemplates"
       required:
         - chart
+        - transactions
     V2Schema:
       type: object
       description: Complete schema structure with metadata

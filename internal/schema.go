@@ -23,12 +23,13 @@ type Schema struct {
 
 func NewSchema(version string, data SchemaData) (Schema, error) {
 	if data.Chart == nil {
-		return Schema{}, ErrInvalidSchema{
-			err: errors.New("missing chart of accounts"),
-		}
+		return Schema{}, NewErrInvalidSchema(errors.New("missing chart of accounts"))
+	}
+	if data.Transactions == nil {
+		return Schema{}, NewErrInvalidSchema(errors.New("missing transaction templates"))
 	}
 	if err := data.Transactions.Validate(); err != nil {
-		return Schema{}, err
+		return Schema{}, NewErrInvalidSchema(err)
 	}
 	return Schema{
 		Version:    version,

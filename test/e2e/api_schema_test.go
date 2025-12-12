@@ -179,7 +179,8 @@ var _ = Context("Ledger schema API tests", func() {
 					Ledger:  "default",
 					Version: "v3.0.0",
 					V2SchemaData: components.V2SchemaData{
-						Chart: map[string]components.V2ChartSegment{},
+						Chart:        map[string]components.V2ChartSegment{},
+						Transactions: map[string]components.V2TransactionTemplate{},
 					},
 				})
 				Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumSchemaAlreadyExists)))

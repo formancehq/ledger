@@ -278,6 +278,11 @@ func main() {
                     },
                 },
             },
+            Transactions: map[string]components.V2TransactionTemplate{
+                "key": components.V2TransactionTemplate{
+                    Script: "<value>",
+                },
+            },
         },
     })
     if err != nil {
