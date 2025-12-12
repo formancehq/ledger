@@ -187,12 +187,12 @@ var _ = Context("Ledger engine tests", func() {
 					Ledger: createLedgerRequest.Ledger,
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
-							Plain: `send [COIN 100] (
+							Plain: pointer.For(`send [COIN 100] (
 								source = @world
 								destination = @bob
 							)
 							set_account_meta(@world, "foo", "bar")
-							`,
+							`),
 						},
 					},
 				})
@@ -204,12 +204,12 @@ var _ = Context("Ledger engine tests", func() {
 					DryRun: pointer.For(true),
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
-							Plain: `send [COIN 100] (
+							Plain: pointer.For(`send [COIN 100] (
 								source = @world
 								destination = @bob
 							)
 							set_account_meta(@world, "foo", "bar")
-							`,
+							`),
 						},
 					},
 				})
@@ -219,12 +219,12 @@ var _ = Context("Ledger engine tests", func() {
 					Ledger: createLedgerRequest.Ledger,
 					V2PostTransaction: components.V2PostTransaction{
 						Script: &components.V2PostTransactionScript{
-							Plain: `send [COIN 100] (
+							Plain: pointer.For(`send [COIN 100] (
 								source = @world
 								destination = @bob
 							)
 							set_account_meta(@world, "foo", "bar")
-							`,
+							`),
 						},
 					},
 				})

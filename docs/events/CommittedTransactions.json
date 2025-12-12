@@ -113,6 +113,9 @@
         "postCommitEffectiveVolumes": {
           "$ref": "#/$defs/PostCommitVolumes"
         },
+        "template": {
+          "type": "string"
+        },
         "reverted": {
           "type": "boolean"
         },

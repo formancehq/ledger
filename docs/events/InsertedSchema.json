@@ -117,6 +117,9 @@
         "chart": {
           "$ref": "#/$defs/ChartOfAccounts"
         },
+        "transactions": {
+          "$ref": "#/$defs/TransactionTemplates"
+        },
         "version": {
           "type": "string"
         },
@@ -128,6 +131,7 @@
       "type": "object",
       "required": [
         "chart",
+        "transactions",
         "version",
         "createdAt"
       ]
@@ -136,6 +140,31 @@
       "type": "string",
       "format": "date-time",
       "title": "Normalized date"
+    },
+    "TransactionTemplate": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "script": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "description",
+        "script"
+      ]
+    },
+    "TransactionTemplates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/TransactionTemplate"
+      },
+      "type": "object"
     }
   }
 }

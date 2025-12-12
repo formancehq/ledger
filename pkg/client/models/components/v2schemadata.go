@@ -6,6 +6,8 @@ package components
 type V2SchemaData struct {
 	// Chart of account
 	Chart map[string]V2ChartSegment `json:"chart"`
+	// Transaction templates
+	Transactions map[string]V2TransactionTemplate `json:"transactions"`
 }
 
 func (o *V2SchemaData) GetChart() map[string]V2ChartSegment {
@@ -13,4 +15,11 @@ func (o *V2SchemaData) GetChart() map[string]V2ChartSegment {
 		return map[string]V2ChartSegment{}
 	}
 	return o.Chart
+}
+
+func (o *V2SchemaData) GetTransactions() map[string]V2TransactionTemplate {
+	if o == nil {
+		return map[string]V2TransactionTemplate{}
+	}
+	return o.Transactions
 }
