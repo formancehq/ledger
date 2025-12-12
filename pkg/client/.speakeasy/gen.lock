@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 4c213f26e0c722a7dcfeb28f2120eb81
+  docChecksum: ac202ae13d35aeafe6349dd1302aa143
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -10,6 +10,7 @@ management:
 features:
   go:
     additionalDependencies: 0.1.0
+    additionalProperties: 0.1.2
     bigint: 0.0.2
     constsAndDefaults: 0.1.12
     core: 3.8.1
@@ -83,6 +84,9 @@ generatedFiles:
   - /models/components/v2bulkelementresult.go
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
+  - /models/components/v2chartaccountmetadata.go
+  - /models/components/v2chartaccountrules.go
+  - /models/components/v2chartsegment.go
   - /models/components/v2configinforesponse.go
   - /models/components/v2createexporterresponse.go
   - /models/components/v2createledgerrequest.go
@@ -110,6 +114,11 @@ generatedFiles:
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
   - /models/components/v2reverttransactionrequest.go
+  - /models/components/v2schema.go
+  - /models/components/v2schemadata.go
+  - /models/components/v2schemaresponse.go
+  - /models/components/v2schemascursor.go
+  - /models/components/v2schemascursorresponse.go
   - /models/components/v2stats.go
   - /models/components/v2statsresponse.go
   - /models/components/v2targetid.go
@@ -164,14 +173,17 @@ generatedFiles:
   - /models/operations/v2getledger.go
   - /models/operations/v2getledgerinfo.go
   - /models/operations/v2getpipelinestate.go
+  - /models/operations/v2getschema.go
   - /models/operations/v2gettransaction.go
   - /models/operations/v2getvolumeswithbalances.go
   - /models/operations/v2importlogs.go
+  - /models/operations/v2insertschema.go
   - /models/operations/v2listaccounts.go
   - /models/operations/v2listexporters.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2listlogs.go
   - /models/operations/v2listpipelines.go
+  - /models/operations/v2listschemas.go
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
   - /models/operations/v2resetpipeline.go
@@ -197,6 +209,7 @@ generatedFiles:
   - docs/models/components/contract.md
   - docs/models/components/cursor.md
   - docs/models/components/data.md
+  - docs/models/components/dotself.md
   - docs/models/components/errorresponse.md
   - docs/models/components/errorsenum.md
   - docs/models/components/expr.md
@@ -248,6 +261,9 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransaction.md
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
+  - docs/models/components/v2chartaccountmetadata.md
+  - docs/models/components/v2chartaccountrules.md
+  - docs/models/components/v2chartsegment.md
   - docs/models/components/v2configinforesponse.md
   - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
@@ -285,6 +301,11 @@ generatedFiles:
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
   - docs/models/components/v2reverttransactionrequest.md
+  - docs/models/components/v2schema.md
+  - docs/models/components/v2schemadata.md
+  - docs/models/components/v2schemaresponse.md
+  - docs/models/components/v2schemascursor.md
+  - docs/models/components/v2schemascursorresponse.md
   - docs/models/components/v2stats.md
   - docs/models/components/v2statsresponse.md
   - docs/models/components/v2targetid.md
@@ -332,12 +353,14 @@ generatedFiles:
   - docs/models/operations/metadata.md
   - docs/models/operations/option.md
   - docs/models/operations/order.md
+  - docs/models/operations/queryparamorder.md
   - docs/models/operations/readstatsrequest.md
   - docs/models/operations/readstatsresponse.md
   - docs/models/operations/reverttransactionrequest.md
   - docs/models/operations/reverttransactionresponse.md
   - docs/models/operations/runscriptrequest.md
   - docs/models/operations/runscriptresponse.md
+  - docs/models/operations/sort.md
   - docs/models/operations/updatemappingrequest.md
   - docs/models/operations/updatemappingresponse.md
   - docs/models/operations/v2addmetadataontransactionrequest.md
@@ -384,12 +407,16 @@ generatedFiles:
   - docs/models/operations/v2getledgerresponse.md
   - docs/models/operations/v2getpipelinestaterequest.md
   - docs/models/operations/v2getpipelinestateresponse.md
+  - docs/models/operations/v2getschemarequest.md
+  - docs/models/operations/v2getschemaresponse.md
   - docs/models/operations/v2gettransactionrequest.md
   - docs/models/operations/v2gettransactionresponse.md
   - docs/models/operations/v2getvolumeswithbalancesrequest.md
   - docs/models/operations/v2getvolumeswithbalancesresponse.md
   - docs/models/operations/v2importlogsrequest.md
   - docs/models/operations/v2importlogsresponse.md
+  - docs/models/operations/v2insertschemarequest.md
+  - docs/models/operations/v2insertschemaresponse.md
   - docs/models/operations/v2listaccountsrequest.md
   - docs/models/operations/v2listaccountsresponse.md
   - docs/models/operations/v2listexportersresponse.md
@@ -399,6 +426,8 @@ generatedFiles:
   - docs/models/operations/v2listlogsresponse.md
   - docs/models/operations/v2listpipelinesrequest.md
   - docs/models/operations/v2listpipelinesresponse.md
+  - docs/models/operations/v2listschemasrequest.md
+  - docs/models/operations/v2listschemasresponse.md
   - docs/models/operations/v2listtransactionsrequest.md
   - docs/models/operations/v2listtransactionsresponse.md
   - docs/models/operations/v2readstatsrequest.md
@@ -725,7 +754,7 @@ examples:
         application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetLedger:
@@ -788,6 +817,7 @@ examples:
           continueOnFailure: true
           atomic: true
           parallel: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: [{"action": "DELETE_METADATA"}]
       responses:
@@ -820,7 +850,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"address": "users:001", "metadata": {"admin": "true"}, "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"address": "users:001", "metadata": {"admin": "true"}, "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetAccount:
@@ -842,6 +872,7 @@ examples:
           address: "users:001"
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -890,7 +921,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateTransaction:
@@ -900,6 +931,7 @@ examples:
           ledger: "ledger001"
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
           force: true
       requestBody:
         application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
@@ -927,6 +959,7 @@ examples:
           id: 1234
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -950,6 +983,7 @@ examples:
           id: 1234
         query:
           dryRun: true
+          schemaVersion: "v1.0.0"
       responses:
         "201":
           application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -981,7 +1015,7 @@ examples:
         application/json: {"key": "<value>"}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListLogs:
@@ -997,7 +1031,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ImportLogs:
@@ -1056,7 +1090,7 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreatePipeline:
@@ -1120,7 +1154,7 @@ examples:
     speakeasy-default-v2-list-exporters:
       responses:
         "200":
-          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}}
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateExporter:
@@ -1180,6 +1214,42 @@ examples:
       responses:
         "404":
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2InsertSchema:
+    speakeasy-default-v2-insert-schema:
+      parameters:
+        path:
+          ledger: "ledger001"
+          version: "v1.0.0"
+      requestBody:
+        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}}
+      responses:
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2GetSchema:
+    speakeasy-default-v2-get-schema:
+      parameters:
+        path:
+          ledger: "ledger001"
+          version: "v1.0.0"
+      responses:
+        "200":
+          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}}}
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
+  v2ListSchemas:
+    speakeasy-default-v2-list-schemas:
+      parameters:
+        path:
+          ledger: "ledger001"
+        query:
+          pageSize: 15
+          sort: "created_at"
+          order: "desc"
+      responses:
+        "200":
+          application/json: {"cursor": {"data": [], "hasMore": true, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "pageSize": 47856}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.2

@@ -18,7 +18,7 @@ import (
 )
 
 // stateless version (+1 regarding directory name, as migrations start from 1 in the lib)
-const MinimalSchemaVersion = 26
+const MinimalSchemaVersion = 45
 
 type DefaultBucket struct {
 	name string

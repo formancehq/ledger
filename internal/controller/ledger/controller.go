@@ -80,6 +80,12 @@ type Controller interface {
 	Import(ctx context.Context, stream chan ledger.Log) error
 	// Export allow to export the logs of a ledger
 	Export(ctx context.Context, w ExportWriter) error
+	// InsertSchema Insert a new schema
+	InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error)
+	// GetSchema Get the schema by version
+	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
+	// ListSchemas List all schemas for the ledger
+	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
 }
 
 type RunScript = vm.RunScript
@@ -124,4 +130,9 @@ type DeleteTransactionMetadata struct {
 type DeleteAccountMetadata struct {
 	Address string
 	Key     string
+}
+
+type InsertSchema struct {
+	Version string
+	Data    ledger.SchemaData
 }

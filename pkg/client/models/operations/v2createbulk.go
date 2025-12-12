@@ -14,8 +14,10 @@ type V2CreateBulkRequest struct {
 	// Make bulk atomic
 	Atomic *bool `queryParam:"style=form,explode=true,name=atomic"`
 	// Process bulk elements in parallel
-	Parallel    *bool                      `queryParam:"style=form,explode=true,name=parallel"`
-	RequestBody []components.V2BulkElement `request:"mediaType=application/json"`
+	Parallel *bool `queryParam:"style=form,explode=true,name=parallel"`
+	// Default schema version to use for validation (can be overridden per element)
+	SchemaVersion *string                    `queryParam:"style=form,explode=true,name=schemaVersion"`
+	RequestBody   []components.V2BulkElement `request:"mediaType=application/json"`
 }
 
 func (o *V2CreateBulkRequest) GetLedger() string {
@@ -44,6 +46,13 @@ func (o *V2CreateBulkRequest) GetParallel() *bool {
 		return nil
 	}
 	return o.Parallel
+}
+
+func (o *V2CreateBulkRequest) GetSchemaVersion() *string {
+	if o == nil {
+		return nil
+	}
+	return o.SchemaVersion
 }
 
 func (o *V2CreateBulkRequest) GetRequestBody() []components.V2BulkElement {

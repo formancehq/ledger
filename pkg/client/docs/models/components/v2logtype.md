@@ -9,3 +9,4 @@
 | `V2LogTypeSetMetadata`         | SET_METADATA                   |
 | `V2LogTypeRevertedTransaction` | REVERTED_TRANSACTION           |
 | `V2LogTypeDeleteMetadata`      | DELETE_METADATA                |
+| `V2LogTypeInsertedSchema`      | INSERTED_SCHEMA                |

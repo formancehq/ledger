@@ -45,12 +45,44 @@ type DefaultController struct {
 	executeMachineHistogram metric.Int64Histogram
 	deadLockCounter         metric.Int64Counter
 
+	schemaEnforcementMode SchemaEnforcementMode
+
 	createTransactionLp         *logProcessor[CreateTransaction, ledger.CreatedTransaction]
 	revertTransactionLp         *logProcessor[RevertTransaction, ledger.RevertedTransaction]
 	saveTransactionMetadataLp   *logProcessor[SaveTransactionMetadata, ledger.SavedMetadata]
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
 	deleteTransactionMetadataLp *logProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
+	insertSchemaLp              *logProcessor[InsertSchema, ledger.InsertedSchema]
+}
+
+func (ctrl *DefaultController) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
+	return ctrl.insertSchemaLp.forgeLog(ctx, ctrl.store, parameters, ctrl.insertSchema)
+}
+
+func (ctrl *DefaultController) insertSchema(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[InsertSchema]) (*ledger.InsertedSchema, error) {
+	schema, err := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
+	if err != nil {
+		return nil, fmt.Errorf("creating schema: %w", err)
+	}
+	if err := store.InsertSchema(ctx, &schema); err != nil {
+		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
+			return nil, newErrSchemaAlreadyExists(parameters.Input.Version)
+		}
+		return nil, err
+	}
+
+	return &ledger.InsertedSchema{
+		Schema: schema,
+	}, nil
+}
+
+func (ctrl *DefaultController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	return ctrl.store.FindSchema(ctx, version)
+}
+
+func (ctrl *DefaultController) ListSchemas(ctx context.Context, query storagecommon.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	return ctrl.store.FindSchemas(ctx, query)
 }
 
 func (ctrl *DefaultController) Info() ledger.Ledger {
@@ -103,11 +135,12 @@ func NewDefaultController(
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
-		store:             store,
-		ledger:            l,
-		parser:            numscriptParser,
-		interpreterParser: interpreterParser,
-		machineParser:     machineParser,
+		store:                 store,
+		ledger:                l,
+		parser:                numscriptParser,
+		interpreterParser:     interpreterParser,
+		machineParser:         machineParser,
+		schemaEnforcementMode: SchemaEnforcementAudit,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -124,12 +157,13 @@ func NewDefaultController(
 		panic(err)
 	}
 
-	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
-	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter)
-	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter)
-	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
-	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter)
-	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter)
+	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.insertSchemaLp = newLogProcessor[InsertSchema, ledger.InsertedSchema]("InsertSchema", ret.deadLockCounter, ret.schemaEnforcementMode)
 
 	return ret
 }
@@ -244,9 +278,21 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 		"ImportLog",
 		func(ctx context.Context) (any, error) {
 			switch payload := log.Data.(type) {
+			case ledger.InsertedSchema:
+				if err := store.InsertSchema(ctx, &payload.Schema); err != nil {
+					return nil, fmt.Errorf("failed to insert schema: %w", err)
+				}
 			case ledger.CreatedTransaction:
 				logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-				if err := store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
+				var schema *ledger.Schema
+				var err error
+				if log.SchemaVersion != "" {
+					schema, err = store.FindSchema(ctx, log.SchemaVersion)
+					if err != nil {
+						return nil, fmt.Errorf("failed to find schema: %w", err)
+					}
+				}
+				if err := store.CommitTransaction(ctx, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
@@ -260,7 +306,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err != nil {
 					return nil, fmt.Errorf("failed to revert transaction: %w", err)
 				}
-				if err := store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
+				if err := store.CommitTransaction(ctx, nil, &payload.RevertTransaction, nil); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
 			case ledger.SavedMetadata:
@@ -343,7 +389,7 @@ func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
 	}
 }
 
-func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
 
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
@@ -401,7 +447,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
 		WithReference(parameters.Input.Reference)
-	err = store.CommitTransaction(ctx, &transaction, accountMetadata)
+	err = store.CommitTransaction(ctx, schema, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +462,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	var (
 		hasBeenReverted bool
 		err             error
@@ -471,7 +517,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 		}
 	}
 
-	err = store.CommitTransaction(ctx, &reversedTx, nil)
+	err = store.CommitTransaction(ctx, nil, &reversedTx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert transaction: %w", err)
 	}
@@ -486,7 +532,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 	return ctrl.revertTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.revertTransaction)
 }
 
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
 	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
 		return nil, err
 	}
@@ -503,8 +549,8 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
-	if err := store.UpsertAccounts(ctx, &ledger.Account{
+func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
+	if err := store.UpsertAccounts(ctx, schema, &ledger.Account{
 		Address:  parameters.Input.Address,
 		Metadata: parameters.Input.Metadata,
 	}); err != nil {
@@ -524,7 +570,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
 	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
@@ -546,7 +592,7 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
 	err := store.DeleteAccountMetadata(ctx, parameters.Input.Address, parameters.Input.Key)
 	if err != nil {
 		return nil, err
@@ -581,5 +627,10 @@ func WithMeter(meter metric.Meter) DefaultControllerOption {
 func WithTracer(tracer trace.Tracer) DefaultControllerOption {
 	return func(controller *DefaultController) {
 		controller.tracer = tracer
+	}
+}
+func WithSchemaEnforcementMode(mode SchemaEnforcementMode) DefaultControllerOption {
+	return func(controller *DefaultController) {
+		controller.schemaEnforcementMode = mode
 	}
 }

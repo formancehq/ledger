@@ -8,14 +8,17 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 type commonConfig struct {
-	NumscriptInterpreter        bool     `mapstructure:"experimental-numscript-interpreter"`
-	NumscriptInterpreterFlags   []string `mapstructure:"experimental-numscript-interpreter-flags"`
-	ExperimentalFeaturesEnabled bool     `mapstructure:"experimental-features"`
-	ExperimentalExporters       bool     `mapstructure:"experimental-exporters"`
-	SemconvMetricsNames         bool     `mapstructure:"semconv-metrics-names"`
+	NumscriptInterpreter        bool                         `mapstructure:"experimental-numscript-interpreter"`
+	NumscriptInterpreterFlags   []string                     `mapstructure:"experimental-numscript-interpreter-flags"`
+	ExperimentalFeaturesEnabled bool                         `mapstructure:"experimental-features"`
+	ExperimentalExporters       bool                         `mapstructure:"experimental-exporters"`
+	SemconvMetricsNames         bool                         `mapstructure:"semconv-metrics-names"`
+	SchemaEnforcementMode       ledger.SchemaEnforcementMode `mapstructure:"schema-enforcement-mode"`
 }
 
 func decodeCronSchedule(sourceType, destType reflect.Type, value any) (any, error) {

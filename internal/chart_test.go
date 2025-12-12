@@ -1,0 +1,456 @@
+package ledger
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/pointer"
+)
+
+func TestChartValidation(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name          string
+		source        string
+		expectedError string
+		expectedChart ChartOfAccounts
+	}
+
+	for _, tc := range []testCase{
+		{
+			name: "valid chart",
+			source: `{
+    "banks": {
+        "$iban": {
+            ".pattern": "^[0-9]{10}$",
+            "main": {},
+            "out": {
+                ".metadata": {
+                    "foo": {},
+                    "bar": {
+                        "default": "BAR"
+                    }
+                }
+            },
+            "pending_out": {}
+        }
+    },
+    "users": {
+        "$userID": {
+            ".self": {},
+            "main": {}
+        }
+    }
+}`,
+			expectedChart: ChartOfAccounts{
+				"banks": {
+					VariableSegment: &ChartVariableSegment{
+						Label:   "iban",
+						Pattern: pointer.For("^[0-9]{10}$"),
+						ChartSegment: ChartSegment{
+							FixedSegments: map[string]ChartSegment{
+								"main": {
+									Account: &ChartAccount{
+										Rules: ChartAccountRules{},
+									},
+								},
+								"out": {
+									Account: &ChartAccount{
+										Metadata: map[string]ChartAccountMetadata{
+											"foo": {},
+											"bar": {
+												Default: pointer.For("BAR"),
+											},
+										},
+									},
+								},
+								"pending_out": {
+									Account: &ChartAccount{},
+								},
+							},
+						},
+					},
+				},
+				"users": {
+					VariableSegment: &ChartVariableSegment{
+						Label:   "userID",
+						Pattern: nil,
+						ChartSegment: ChartSegment{
+							Account: &ChartAccount{},
+							FixedSegments: map[string]ChartSegment{
+								"main": {
+									Account: &ChartAccount{},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid fixed segment",
+			source: `{
+				"banks": {
+					"main:40": {}
+				}
+			}`,
+			expectedError: "invalid address segment: main:40",
+		},
+		{
+			name: "invalid subsegment type",
+			source: `{
+				"banks": {
+					"main": 42
+				}
+			}`,
+			expectedError: "invalid segment",
+		},
+		{
+			name: "pattern on fixed segment",
+			source: `{
+				"banks": {
+					"main": {
+						".pattern": "^[0-9]{3}$"
+					}
+				}
+			}`,
+			expectedError: "cannot have a pattern on a fixed segment",
+		},
+		{
+			name: "pattern on fixed root segment",
+			source: `{
+				"banks": {
+					".pattern": "^[0-9]{3}$"
+				}
+			}`,
+			expectedError: "cannot have a pattern on a fixed segment",
+		},
+		{
+			name: "metadata on non-account segment",
+			source: `{
+				"banks": {
+					".metadata": {},
+					"main": {}
+				}
+			}`,
+			expectedError: "cannot have .metadata on a non-account segment",
+		},
+		{
+			name: "rules on non-account segment",
+			source: `{
+				"banks": {
+					".rules": {},
+					"main": {}
+				}
+			}`,
+			expectedError: "cannot have .rules on a non-account segment",
+		},
+		{
+			name: "two variable segments with same prefix",
+			source: `{
+				"users": {
+					"$userID": {
+						".pattern": "^[0-9]{3}$"
+					},
+					"$otherID": {
+						".pattern": "^[0-9]{4}$"
+					}
+				}
+			}`,
+			expectedError: "cannot have two variable segments with the same prefix",
+		},
+		{
+			name: "invalid metadata",
+			source: `{
+				"banks": {
+					"main": {
+						".metadata": 42
+					}
+				}
+			}`,
+			expectedError: "invalid default metadata",
+		},
+		{
+			name: "invalid rules",
+			source: `{
+				"banks": {
+					"main": {
+						".rules": 42
+					}
+				}
+			}`,
+			expectedError: "invalid account rules",
+		},
+		{
+			name: "invalid account schema",
+			source: `{
+				"banks": {
+					"main": {
+						".self": {
+							".rules": {}
+						}
+					}
+				}
+			}`,
+			expectedError: "invalid segment",
+		},
+		{
+			name:          "root account",
+			source:        `{ ".self": { } }`,
+			expectedError: "root cannot be an account",
+		},
+		{
+			name:          "variable segment at root",
+			source:        `{ "$banks": { ".pattern": "^[0-9]+$", ".self": {} } }`,
+			expectedError: "root cannot have a variable segment",
+		},
+		{
+			name:          "invalid root subsegment name",
+			source:        `{ "abc:abc": { ".self": {} } }`,
+			expectedError: "invalid segment name",
+		},
+		{
+			name:          "non-string pattern",
+			source:        `{ "banks": { "$bankID": { ".pattern": 42 } } }`,
+			expectedError: "pattern must be a string",
+		},
+		{
+			name:          "invalid pattern regex",
+			source:        `{ "banks": { "$bankID": { ".pattern": "[[" } } }`,
+			expectedError: "invalid pattern regex",
+		},
+		{
+			name: "non-object self",
+			source: `{ "foo": {
+					".self": 42,
+					"bar": { "baz": {} }
+			} }`,
+			expectedError: ".self must be an empty object",
+		},
+		{
+			name: "self with extra fields",
+			source: `{ "foo": {
+				".self": {
+					"key": "value"
+				},
+				"bar": { "baz": {} }
+			} }`,
+			expectedError: ".self must be an empty object",
+		},
+	} {
+		var chart ChartOfAccounts
+		err := json.Unmarshal([]byte(tc.source), &chart)
+
+		if tc.expectedError == "" {
+			require.NoError(t, err, tc.name)
+
+			require.Equal(t, tc.expectedChart, chart, "data structure: %s", tc.name)
+
+			value, err := json.MarshalIndent(&chart, "", "    ")
+			require.NoError(t, err, tc.name)
+			require.JSONEq(t, tc.source, string(value), "roundtrip: %s", tc.name)
+		} else {
+			require.ErrorContains(t, err, tc.expectedError, tc.name)
+		}
+	}
+}
+
+func testChart() ChartOfAccounts {
+	return ChartOfAccounts{
+		"world": {
+			Account: &ChartAccount{},
+		},
+		"bank": {
+			VariableSegment: &ChartVariableSegment{
+				Label:   "bankID",
+				Pattern: pointer.For("^[0-9]{3}$"),
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{
+						Rules: ChartAccountRules{},
+						Metadata: map[string]ChartAccountMetadata{
+							"bank_subaccount": {
+								Default: pointer.For("test"),
+							},
+						},
+					},
+				},
+			},
+			Account: &ChartAccount{
+				Metadata: map[string]ChartAccountMetadata{
+					"root_bank_account": {},
+				},
+			},
+		},
+		"users": {
+			VariableSegment: &ChartVariableSegment{
+				Label:   "userID",
+				Pattern: pointer.For("^[0-9]{3}$"),
+				ChartSegment: ChartSegment{
+					FixedSegments: map[string]ChartSegment{
+						"main": {
+							Account: &ChartAccount{
+								Metadata: map[string]ChartAccountMetadata{},
+							},
+						},
+					},
+				},
+			},
+		},
+		"shops": {
+			VariableSegment: &ChartVariableSegment{
+				Label: "shopID",
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{
+						Metadata: map[string]ChartAccountMetadata{
+							"shop_account": {
+								Default: pointer.For("foo"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestAccountValidation(t *testing.T) {
+	t.Parallel()
+
+	chart := testChart()
+
+	type testCase struct {
+		name            string
+		address         string
+		expectedAccount *ChartAccount
+		expectedError   string
+	}
+
+	for _, tc := range []testCase{
+		{
+			name:            "always find world",
+			address:         "world",
+			expectedAccount: &ChartAccount{},
+		},
+		{
+			name:    "non-leaf account",
+			address: "bank",
+			expectedAccount: &ChartAccount{
+				Metadata: map[string]ChartAccountMetadata{
+					"root_bank_account": {},
+				},
+			},
+		},
+		{
+			name:    "leaf account",
+			address: "bank:012",
+			expectedAccount: &ChartAccount{
+				Metadata: map[string]ChartAccountMetadata{
+					"bank_subaccount": {
+						Default: pointer.For("test"),
+					},
+				},
+			},
+		},
+		{
+			name:    "address with inner variable segment",
+			address: "users:001:main",
+			expectedAccount: &ChartAccount{
+				Metadata: map[string]ChartAccountMetadata{},
+			},
+		},
+		{
+			name:    "patternless variable segment",
+			address: "shops:whatever_should-WORK0123",
+			expectedAccount: &ChartAccount{
+				Metadata: map[string]ChartAccountMetadata{
+					"shop_account": {
+						Default: pointer.For("foo"),
+					},
+				},
+			},
+		},
+		{
+			name:          "invalid root segment",
+			address:       "bonk:012",
+			expectedError: "account starting with `bonk` is not defined in the chart of accounts",
+		},
+		{
+			name:          "invalid variable segment",
+			address:       "bank:invalid",
+			expectedError: "segment `invalid` defined by the chart of accounts at `bank` does not match the pattern",
+		},
+		{
+			name:          "invalid non-root non-variable segment",
+			address:       "users:001:nope",
+			expectedError: "segment `nope` is not allowed by the chart of accounts at `users:001`",
+		},
+		{
+			name:          "non-account variable branch",
+			address:       "users:001",
+			expectedError: "segment `001` is not allowed by the chart of accounts at `users`",
+		},
+		{
+			name:          "non-account fixed branch",
+			address:       "users",
+			expectedError: "account `users` is not defined in the chart of accounts",
+		},
+	} {
+		if tc.expectedAccount != nil {
+			acc, err := chart.FindAccountSchema(tc.address)
+			require.NoError(t, err, tc.name)
+			require.Equal(t, tc.expectedAccount, acc, tc.name)
+		} else {
+			_, err := chart.FindAccountSchema(tc.address)
+			require.EqualError(t, err, tc.expectedError, tc.name)
+		}
+	}
+}
+
+func TestPostingValidation(t *testing.T) {
+	t.Parallel()
+
+	chart := testChart()
+
+	type testCase struct {
+		name        string
+		posting     Posting
+		expectError bool
+	}
+
+	for _, tc := range []testCase{
+		{
+			name: "valid posting",
+			posting: Posting{
+				Source:      "bank:012",
+				Destination: "users:012:main",
+			},
+		},
+		{
+			name: "invalid source",
+			posting: Posting{
+				Source:      "bank:invalid",
+				Destination: "users:001:main",
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid destination",
+			posting: Posting{
+				Source:      "bank:012",
+				Destination: "users:invalid:main",
+			},
+			expectError: true,
+		},
+	} {
+		if tc.expectError {
+			err := chart.ValidatePosting(tc.posting)
+			require.ErrorIs(t, err, ErrInvalidAccount{}, tc.name)
+		} else {
+			err := chart.ValidatePosting(tc.posting)
+			require.NoError(t, err, tc.name)
+		}
+	}
+}

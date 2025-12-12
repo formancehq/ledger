@@ -214,6 +214,21 @@ func (mr *LedgerControllerMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*LedgerController)(nil).GetMigrationsInfo), ctx)
 }
 
+// GetSchema mocks base method.
+func (m *LedgerController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSchema", ctx, version)
+	ret0, _ := ret[0].(*ledger.Schema)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSchema indicates an expected call of GetSchema.
+func (mr *LedgerControllerMockRecorder) GetSchema(ctx, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchema", reflect.TypeOf((*LedgerController)(nil).GetSchema), ctx, version)
+}
+
 // GetStats mocks base method.
 func (m *LedgerController) GetStats(ctx context.Context) (ledger0.Stats, error) {
 	m.ctrl.T.Helper()
@@ -287,6 +302,23 @@ func (mr *LedgerControllerMockRecorder) Info() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Info", reflect.TypeOf((*LedgerController)(nil).Info))
 }
 
+// InsertSchema mocks base method.
+func (m *LedgerController) InsertSchema(ctx context.Context, parameters ledger0.Parameters[ledger0.InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertSchema", ctx, parameters)
+	ret0, _ := ret[0].(*ledger.Log)
+	ret1, _ := ret[1].(*ledger.InsertedSchema)
+	ret2, _ := ret[2].(bool)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// InsertSchema indicates an expected call of InsertSchema.
+func (mr *LedgerControllerMockRecorder) InsertSchema(ctx, parameters any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertSchema", reflect.TypeOf((*LedgerController)(nil).InsertSchema), ctx, parameters)
+}
+
 // IsDatabaseUpToDate mocks base method.
 func (m *LedgerController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()
@@ -330,6 +362,21 @@ func (m *LedgerController) ListLogs(ctx context.Context, query common.PaginatedQ
 func (mr *LedgerControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*LedgerController)(nil).ListLogs), ctx, query)
+}
+
+// ListSchemas mocks base method.
+func (m *LedgerController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSchemas indicates an expected call of ListSchemas.
+func (mr *LedgerControllerMockRecorder) ListSchemas(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSchemas", reflect.TypeOf((*LedgerController)(nil).ListSchemas), ctx, query)
 }
 
 // ListTransactions mocks base method.

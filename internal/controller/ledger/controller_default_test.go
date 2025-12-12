@@ -22,8 +22,7 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
-func TestCreateTransaction(t *testing.T) {
-	t.Parallel()
+func testCreateTransaction(t *testing.T, withSchema bool) {
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -33,6 +32,60 @@ func TestCreateTransaction(t *testing.T) {
 	interpreterParser := NewMockNumscriptParser(ctrl)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
+
+	var schema ledger.Schema
+	var schemaVersion string
+	if withSchema {
+		schemaVersion = "v1.0"
+		schema = ledger.Schema{
+			SchemaData: ledger.SchemaData{
+				Chart: ledger.ChartOfAccounts{
+					"world": {
+						Account: &ledger.ChartAccount{
+							Metadata: map[string]ledger.ChartAccountMetadata{
+								"foo": {
+									Default: pointer.For("bar"),
+								},
+							},
+						},
+					},
+					"bank": {
+						Account: &ledger.ChartAccount{},
+					},
+				},
+			},
+			Version: schemaVersion,
+		}
+
+		store.EXPECT().
+			BeginTX(gomock.Any(), nil).
+			Return(store, &bun.Tx{}, nil)
+
+		store.EXPECT().
+			InsertSchema(gomock.Any(), &schema).
+			Return(nil)
+
+		store.EXPECT().
+			Commit(gomock.Any()).
+			Return(nil)
+
+		store.EXPECT().
+			InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
+				return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
+			})).
+			DoAndReturn(func(_ context.Context, log *ledger.Log) any {
+				log.ID = pointer.For(uint64(0))
+				return log
+			})
+
+		_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
+			Input: InsertSchema{
+				Version: schema.Version,
+				Data:    schema.SchemaData,
+			},
+		})
+		require.NoError(t, err)
+	}
 
 	runScript := RunScript{}
 
@@ -55,9 +108,25 @@ func TestCreateTransaction(t *testing.T) {
 			Postings: ledger.Postings{posting},
 		}, nil)
 
-	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any(), map[string]metadata.Metadata{}).
-		Return(nil)
+	if withSchema {
+		store.EXPECT().
+			FindSchema(gomock.Any(), "v1.0").
+			Return(&schema, nil)
+	} else {
+		store.EXPECT().
+			FindLatestSchemaVersion(gomock.Any()).
+			Return(nil, nil)
+	}
+
+	if withSchema {
+		store.EXPECT().
+			CommitTransaction(gomock.Any(), &schema, gomock.Any(), map[string]metadata.Metadata{}).
+			Return(nil)
+	} else {
+		store.EXPECT().
+			CommitTransaction(gomock.Any(), nil, gomock.Any(), map[string]metadata.Metadata{}).
+			Return(nil)
+	}
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
@@ -69,11 +138,18 @@ func TestCreateTransaction(t *testing.T) {
 		})
 
 	_, _, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
+		SchemaVersion: schemaVersion,
 		Input: CreateTransaction{
 			RunScript: runScript,
 		},
 	})
 	require.NoError(t, err)
+}
+
+func TestCreateTransaction(t *testing.T) {
+	t.Parallel()
+	testCreateTransaction(t, false)
+	testCreateTransaction(t, true)
 }
 
 func TestRevertTransaction(t *testing.T) {
@@ -91,6 +167,10 @@ func TestRevertTransaction(t *testing.T) {
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
 		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Commit(gomock.Any()).
@@ -111,7 +191,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(map[string]map[string]*big.Int{}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any(), nil).
+		CommitTransaction(gomock.Any(), nil, gomock.Any(), nil).
 		Return(nil)
 
 	store.EXPECT().
@@ -147,6 +227,10 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
 		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Commit(gomock.Any()).
@@ -193,6 +277,10 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 	store.EXPECT().
 		BeginTX(gomock.Any(), nil).
 		Return(store, &bun.Tx{}, nil)
+
+	store.EXPECT().
+		FindLatestSchemaVersion(gomock.Any()).
+		Return(nil, nil)
 
 	store.EXPECT().
 		Commit(gomock.Any()).
