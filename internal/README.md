@@ -133,6 +133,9 @@ import "github.com/formancehq/ledger/internal"
 - [type Postings](<#Postings>)
   - [func \(p Postings\) Reverse\(\) Postings](<#Postings.Reverse>)
   - [func \(p Postings\) Validate\(\) \(int, error\)](<#Postings.Validate>)
+- [type QueryMode](<#QueryMode>)
+- [type QueryTemplate](<#QueryTemplate>)
+- [type QueryTemplates](<#QueryTemplates>)
 - [type RevertedTransaction](<#RevertedTransaction>)
   - [func \(r RevertedTransaction\) GetMemento\(\) any](<#RevertedTransaction.GetMemento>)
   - [func \(p RevertedTransaction\) NeedsSchema\(\) bool](<#RevertedTransaction.NeedsSchema>)
@@ -1513,6 +1516,47 @@ func (p Postings) Validate() (int, error)
 
 
 
+<a name="QueryMode"></a>
+## type [QueryMode](<https://github.com/formancehq/ledger/blob/main/internal/query_templates.go#L7>)
+
+
+
+```go
+type QueryMode string
+```
+
+<a name="Sync"></a>
+
+```go
+const (
+    Sync QueryMode = "sync"
+)
+```
+
+<a name="QueryTemplate"></a>
+## type [QueryTemplate](<https://github.com/formancehq/ledger/blob/main/internal/query_templates.go#L15-L21>)
+
+
+
+```go
+type QueryTemplate struct {
+    Name        string            `json:"name"`
+    OperationId string            `json:"operation_id"`
+    Mode        QueryMode         `json:"mode"`
+    Params      map[string]string `json:"params"`
+    Body        json.RawMessage   `json:"body"`
+}
+```
+
+<a name="QueryTemplates"></a>
+## type [QueryTemplates](<https://github.com/formancehq/ledger/blob/main/internal/query_templates.go#L13>)
+
+
+
+```go
+type QueryTemplates map[string]QueryTemplate
+```
+
 <a name="RevertedTransaction"></a>
 ## type [RevertedTransaction](<https://github.com/formancehq/ledger/blob/main/internal/log.go#L370-L373>)
 
@@ -1629,7 +1673,7 @@ func (s SavedMetadata) ValidateWithSchema(schema Schema) error
 
 
 <a name="Schema"></a>
-## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L16-L22>)
+## type [Schema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L17-L23>)
 
 
 
@@ -1644,7 +1688,7 @@ type Schema struct {
 ```
 
 <a name="NewSchema"></a>
-### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L24>)
+### func [NewSchema](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L25>)
 
 ```go
 func NewSchema(version string, data SchemaData) (Schema, error)
@@ -1653,7 +1697,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 
 
 <a name="SchemaData"></a>
-## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L14>)
+## type [SchemaData](<https://github.com/formancehq/ledger/blob/main/internal/schema.go#L11-L15>)
 
 
 
@@ -1661,6 +1705,7 @@ func NewSchema(version string, data SchemaData) (Schema, error)
 type SchemaData struct {
     Chart        ChartOfAccounts      `json:"chart" bun:"chart"`
     Transactions TransactionTemplates `json:"transactions" bun:"transactions"`
+    Queries      QueryTemplates       `json:"queries" bun:"queries"`
 }
 ```
 

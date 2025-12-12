@@ -171,6 +171,19 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 	return schemas, err
 }
 
+func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, parameters map[string]string) (*bunpaginate.Cursor[any], error) {
+	var (
+		cursor *bunpaginate.Cursor[any]
+		err     error
+	)
+	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
+		cursor, err = c.Controller.RunQuery(ctx, schemaVersion, id, parameters)
+		return err
+	})
+
+	return cursor, err
+}
+
 func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {
 	ctrl, tx, err := c.Controller.BeginTX(ctx, options)
 	if err != nil {

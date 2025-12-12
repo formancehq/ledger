@@ -442,6 +442,21 @@ func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*LedgerController)(nil).Rollback), ctx)
 }
 
+// RunQuery mocks base method.
+func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, parameters map[string]string) (*bunpaginate.Cursor[any], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, parameters)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[any])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunQuery indicates an expected call of RunQuery.
+func (mr *LedgerControllerMockRecorder) RunQuery(ctx, schemaVersion, queryId, parameters any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunQuery", reflect.TypeOf((*LedgerController)(nil).RunQuery), ctx, schemaVersion, queryId, parameters)
+}
+
 // SaveAccountMetadata mocks base method.
 func (m *LedgerController) SaveAccountMetadata(ctx context.Context, parameters ledger0.Parameters[ledger0.SaveAccountMetadata]) (*ledger.Log, bool, error) {
 	m.ctrl.T.Helper()

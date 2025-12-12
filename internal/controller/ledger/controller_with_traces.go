@@ -584,6 +584,28 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 	return schemas, nil
 }
 
+func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, parameters map[string]string) (*bunpaginate.Cursor[any], error) {
+	var (
+		cursor *bunpaginate.Cursor[any]
+		err     error
+	)
+	_, err = tracing.TraceWithMetric(
+		ctx,
+		"ListSchemas",
+		c.tracer,
+		c.listSchemasHistogram,
+		func(ctx context.Context) (any, error) {
+			cursor, err = c.underlying.RunQuery(ctx, schemaVersion, id, parameters)
+			return nil, err
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return cursor, nil
+}
+
 func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 	return tracing.TraceWithMetric(
 		ctx,

@@ -75,7 +75,7 @@ func (store *Store) Logs() common.PaginatedResource[
 	any] {
 	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any](&logsResourceHandler{
 		store: store,
-	}, "id", bunpaginate.OrderDesc)
+	}, "id", bunpaginate.OrderDesc, map[string]string{})
 }
 
 func (store *Store) Accounts() common.PaginatedResource[

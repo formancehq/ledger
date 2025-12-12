@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/go-libs/v3/migrations"
 	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/go-libs/v3/time"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -675,6 +676,38 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	log, _, idempotencyHit, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteAccountMetadata)
 	return log, idempotencyHit, err
+}
+
+func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion string, id string, parameters map[string]string) (*bunpaginate.Cursor[any], error) {
+	schema, err := ctrl.GetSchema(ctx, schemaVersion)
+	if err != nil {
+		return nil, err
+	}
+	if q, ok := schema.Queries[id]; ok {
+		builder, err := query.ParseJSON(string(q.Body))
+		if err != nil {
+			return nil, err
+		}
+		resourceQuery := storagecommon.InitialPaginatedQuery[any]{
+			// Column:   "",
+			// Order:    &0,
+			// PageSize: 0,
+			Options: storagecommon.ResourceQuery[any]{
+				// PIT:     &time.Time{},
+				// OOT:     &time.Time{},
+				Builder: builder,
+				// Expand:  []string{},
+				// Opts: query.Body,
+			},
+		}
+		switch q.OperationId {
+		case "accounts":
+			ctrl.store.Accounts().Paginate(ctx, resourceQuery)
+		}
+		// template := parameters.Input.TemplateID
+	}
+	// return ctrl.store.Accounts().Paginate(ctx, q)
+	return nil, nil
 }
 
 var _ Controller = (*DefaultController)(nil)
