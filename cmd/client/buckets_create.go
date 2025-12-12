@@ -16,7 +16,7 @@ import (
 type createBucketOptions struct {
 	name   string
 	driver string
-	config interface{} // Will be one of: SQLiteConfig, PostgresConfig, ClickHouseConfig, FileConfig
+	config interface{} // Will be one of: SQLiteConfig, PostgresConfig
 }
 
 var bucketsCreateCmd = &cobra.Command{
@@ -29,9 +29,8 @@ var bucketsCreateCmd = &cobra.Command{
 
 func init() {
 	bucketsCreateCmd.Flags().String("name", "", "Bucket name")
-	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres, clickhouse)")
+	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres)")
 	bucketsCreateCmd.Flags().String("postgres-dsn", "", "PostgreSQL connection string (required for postgres driver)")
-	bucketsCreateCmd.Flags().String("clickhouse-dsn", "", "ClickHouse connection string (required for clickhouse driver)")
 	// Name, driver and config are no longer required - wizard will prompt if not provided
 	// Note: SQLite and File drivers don't require config - paths are automatically generated
 
@@ -49,7 +48,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 
 	// Extract driver-specific config flags
 	postgresDSN, _ := cmd.Flags().GetString("postgres-dsn")
-	clickHouseDSN, _ := cmd.Flags().GetString("clickhouse-dsn")
 
 	// Build config struct from flags
 	switch opts.driver {
@@ -59,10 +57,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	case "postgres":
 		if postgresDSN != "" {
 			opts.config = service.PostgresConfig{DSN: postgresDSN}
-		}
-	case "clickhouse":
-		if clickHouseDSN != "" {
-			opts.config = service.ClickHouseConfig{DSN: clickHouseDSN}
 		}
 	}
 
@@ -149,7 +143,7 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 		case "sqlite":
 			// SQLite DSN is auto-generated, show a note
 			panelData += "Storage: SQLite (auto-generated database file)\n"
-		case "postgres", "clickhouse":
+		case "postgres":
 			if dsn, ok := data.Config["dsn"].(string); ok {
 				panelData += fmt.Sprintf("DSN: %s\n", dsn)
 			}
@@ -190,7 +184,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 		options := []string{
 			"sqlite    - SQLite database (file-based, good for development)",
 			"postgres  - PostgreSQL database (production-ready)",
-			"clickhouse - ClickHouse database (analytics-focused)",
 		}
 
 		selectedOption, err := pterm.DefaultInteractiveSelect.
@@ -204,7 +197,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 		driverMap := map[string]string{
 			"sqlite    - SQLite database (file-based, good for development)": "sqlite",
 			"postgres  - PostgreSQL database (production-ready)":             "postgres",
-			"clickhouse - ClickHouse database (analytics-focused)":           "clickhouse",
 		}
 		opts.driver = driverMap[selectedOption]
 		if opts.driver == "" {
@@ -246,22 +238,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 				return fmt.Errorf("failed to get PostgreSQL DSN: %w", err)
 			}
 			opts.config = service.PostgresConfig{DSN: dsn}
-		}
-
-	case "clickhouse":
-		if opts.config == nil {
-			pterm.Info.Println("ClickHouse Configuration")
-			pterm.Println("Enter the ClickHouse connection string.")
-			pterm.Println("Example: clickhouse://localhost:9000?database=ledger&username=default&password=")
-			pterm.Println()
-
-			dsn, err := pterm.DefaultInteractiveTextInput.
-				WithDefaultText("clickhouse://localhost:9000?database=ledger&username=default&password=").
-				Show("ClickHouse DSN")
-			if err != nil {
-				return fmt.Errorf("failed to get ClickHouse DSN: %w", err)
-			}
-			opts.config = service.ClickHouseConfig{DSN: dsn}
 		}
 	}
 

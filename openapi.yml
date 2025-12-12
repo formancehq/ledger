@@ -873,13 +873,12 @@ components:
       properties:
         driver:
           type: string
-          enum: [sqlite, postgres, clickhouse]
-          description: Driver name (e.g., "postgres", "sqlite", "clickhouse")
+          enum: [sqlite, postgres]
+          description: Driver name (e.g., "postgres", "sqlite")
         config:
           oneOf:
             - $ref: '#/components/schemas/SQLiteConfig'
             - $ref: '#/components/schemas/PostgresConfig'
-            - $ref: '#/components/schemas/ClickHouseConfig'
           description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
 
     CreateBucketResponse:
@@ -958,13 +957,12 @@ components:
           description: Bucket name
         driver:
           type: string
-          enum: [sqlite, postgres, clickhouse]
+          enum: [sqlite, postgres]
           description: Driver name
         config:
           oneOf:
             - $ref: '#/components/schemas/SQLiteConfig'
             - $ref: '#/components/schemas/PostgresConfig'
-            - $ref: '#/components/schemas/ClickHouseConfig'
           description: Driver-specific configuration
         createdAt:
           type: string

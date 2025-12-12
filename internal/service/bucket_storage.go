@@ -19,13 +19,7 @@ func ValidateBucketConfig(driver string, config map[string]interface{}) error {
 			return fmt.Errorf("postgres driver requires 'dsn' configuration (connection string)")
 		}
 		return nil
-	case "clickhouse":
-		dsn, ok := config["dsn"].(string)
-		if !ok || dsn == "" {
-			return fmt.Errorf("clickhouse driver requires 'dsn' configuration (connection string)")
-		}
-		return nil
 	default:
-		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, postgres, clickhouse)", driver)
+		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, postgres)", driver)
 	}
 }

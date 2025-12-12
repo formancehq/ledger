@@ -49,19 +49,6 @@ var logStoreFactories = map[string]logStoreFactory{
 		// Postgres DSNs are typically connection strings, not file paths, so we don't resolve them
 		return service.NewPostgresLogStore(ctx, config.DSN, logger)
 	},
-	"clickhouse": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, bucketID uint64, extraDataDir string) (service.LogStore, error) {
-		var config service.ClickHouseConfig
-		if len(configJSON) > 0 {
-			if err := json.Unmarshal(configJSON, &config); err != nil {
-				return nil, fmt.Errorf("unmarshaling clickhouse config: %w", err)
-			}
-		}
-		if config.DSN == "" {
-			return nil, fmt.Errorf("clickhouse driver requires 'dsn' configuration for bucket %s", bucketName)
-		}
-		// ClickHouse DSNs are typically connection strings, not file paths, so we don't resolve them
-		return service.NewClickHouseLogStore(ctx, config.DSN, logger)
-	},
 }
 
 // createLogStore creates a LogStore based on the bucket driver and config
@@ -118,16 +105,14 @@ func NewNode(
 		bucketInfo: bucketInfo,
 	}
 
-	consolidatedVolumesStore := service.NewConsolidatedBalancesStore(appLogStore, bucketFSM)
-
 	// Create locked volumes store
-	lockedVolumesStore := service.NewDefaultLockedBalancesStore(consolidatedVolumesStore)
+	lockedVolumesStore := service.NewDefaultLockedBalancesStore(appLogStore)
 
 	// Create ledger service for this bucket (will use stores for balance checking and log writing)
 	ret.defaultLedger = service.NewDefaultLedger(ret, lockedVolumesStore, struct {
 		service.LogReader
 	}{
-		LogReader: service.NewConsolidatedLogReader(appLogStore, ret),
+		LogReader: appLogStore,
 	}, logger)
 
 	ret.Node, err = raft.NewNode(cfg, storage, transport, bucketFSM, logger)
@@ -190,16 +175,6 @@ func (node *Node) GetLedger(ctx context.Context, name string) (*ledger.LedgerInf
 // GetLedgers returns all ledgers in this bucket
 func (node *Node) GetLedgers(ctx context.Context) ([]ledger.LedgerInfo, error) {
 	return node.Inner().GetAllLedgers(), nil
-}
-
-// GetInMemoryDiffBalances returns the in-memory balance diff for a ledger (implements HotDiffBalancesProvider)
-func (node *Node) GetInMemoryDiffBalances(ledgerName string) ledger.Balances {
-	return node.Inner().GetInMemoryDiffBalances(ledgerName)
-}
-
-// GetInMemoryLogs returns the in-memory logs for a ledger
-func (node *Node) GetInMemoryLogs(ledgerName string) []ledger.Log {
-	return node.Inner().GetInMemoryLogs(ledgerName)
 }
 
 func (node *Node) CreateTransaction(ctx context.Context, ledgerName string, parameters service.Parameters[service.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, error) {
