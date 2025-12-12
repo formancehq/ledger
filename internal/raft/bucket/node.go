@@ -62,22 +62,6 @@ var logStoreFactories = map[string]logStoreFactory{
 		// ClickHouse DSNs are typically connection strings, not file paths, so we don't resolve them
 		return service.NewClickHouseLogStore(ctx, config.DSN, logger)
 	},
-	"file": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, bucketID uint64, extraDataDir string) (service.LogStore, error) {
-		// File storage path is automatically generated based on bucket ID
-		// Config is ignored for file driver
-		// Create storage directory path: extraDataDir/bucket-{id}
-		storageDir := filepath.Join(extraDataDir, fmt.Sprintf("bucket-%d", bucketID))
-
-		// Ensure the directory exists
-		if err := os.MkdirAll(storageDir, 0755); err != nil {
-			return nil, fmt.Errorf("creating storage directory for bucket %s: %w", bucketName, err)
-		}
-
-		// Create logs file path within the bucket storage directory
-		logsPath := filepath.Join(storageDir, "logs.jsonl")
-
-		return service.NewFileLogStore(logsPath, logger)
-	},
 }
 
 // createLogStore creates a LogStore based on the bucket driver and config
@@ -134,10 +118,7 @@ func NewNode(
 		bucketInfo: bucketInfo,
 	}
 
-	// Create reconstructed volumes store
-	reconstructedVolumesStore := service.NewReconstructedBalancesStore(appLogStore)
-
-	consolidatedVolumesStore := service.NewConsolidatedBalancesStore(reconstructedVolumesStore, bucketFSM)
+	consolidatedVolumesStore := service.NewConsolidatedBalancesStore(appLogStore, bucketFSM)
 
 	// Create locked volumes store
 	lockedVolumesStore := service.NewDefaultLockedBalancesStore(consolidatedVolumesStore)

@@ -25,11 +25,7 @@ func ValidateBucketConfig(driver string, config map[string]interface{}) error {
 			return fmt.Errorf("clickhouse driver requires 'dsn' configuration (connection string)")
 		}
 		return nil
-	case "file":
-		// File driver doesn't require config - storage path is automatically generated
-		// Config can be empty or omitted
-		return nil
 	default:
-		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, postgres, clickhouse, file)", driver)
+		return fmt.Errorf("unsupported driver: %s (supported drivers: sqlite, postgres, clickhouse)", driver)
 	}
 }

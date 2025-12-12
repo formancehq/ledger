@@ -29,7 +29,7 @@ var bucketsCreateCmd = &cobra.Command{
 
 func init() {
 	bucketsCreateCmd.Flags().String("name", "", "Bucket name")
-	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres, clickhouse, file)")
+	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres, clickhouse)")
 	bucketsCreateCmd.Flags().String("postgres-dsn", "", "PostgreSQL connection string (required for postgres driver)")
 	bucketsCreateCmd.Flags().String("clickhouse-dsn", "", "ClickHouse connection string (required for clickhouse driver)")
 	// Name, driver and config are no longer required - wizard will prompt if not provided
@@ -56,9 +56,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	case "sqlite":
 		// SQLite doesn't require config - DSN is automatically generated
 		opts.config = service.SQLiteConfig{}
-	case "file":
-		// File doesn't require config - storage path is automatically generated
-		opts.config = service.FileConfig{}
 	case "postgres":
 		if postgresDSN != "" {
 			opts.config = service.PostgresConfig{DSN: postgresDSN}
@@ -81,9 +78,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	// Ensure SQLite and File have empty config if not set
 	if opts.driver == "sqlite" && opts.config == nil {
 		opts.config = service.SQLiteConfig{}
-	}
-	if opts.driver == "file" && opts.config == nil {
-		opts.config = service.FileConfig{}
 	}
 
 	// Validate required fields after wizard
@@ -155,9 +149,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 		case "sqlite":
 			// SQLite DSN is auto-generated, show a note
 			panelData += "Storage: SQLite (auto-generated database file)\n"
-		case "file":
-			// File storage path is auto-generated, show a note
-			panelData += "Storage: File (auto-generated storage directory)\n"
 		case "postgres", "clickhouse":
 			if dsn, ok := data.Config["dsn"].(string); ok {
 				panelData += fmt.Sprintf("DSN: %s\n", dsn)
@@ -200,7 +191,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 			"sqlite    - SQLite database (file-based, good for development)",
 			"postgres  - PostgreSQL database (production-ready)",
 			"clickhouse - ClickHouse database (analytics-focused)",
-			"file      - File system storage (simple, local storage)",
 		}
 
 		selectedOption, err := pterm.DefaultInteractiveSelect.
@@ -215,7 +205,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 			"sqlite    - SQLite database (file-based, good for development)": "sqlite",
 			"postgres  - PostgreSQL database (production-ready)":             "postgres",
 			"clickhouse - ClickHouse database (analytics-focused)":           "clickhouse",
-			"file      - File system storage (simple, local storage)":        "file",
 		}
 		opts.driver = driverMap[selectedOption]
 		if opts.driver == "" {
@@ -273,16 +262,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 				return fmt.Errorf("failed to get ClickHouse DSN: %w", err)
 			}
 			opts.config = service.ClickHouseConfig{DSN: dsn}
-		}
-
-	case "file":
-		// File doesn't require config - storage path is automatically generated based on bucket ID
-		if opts.config == nil {
-			pterm.Info.Println("File Storage Configuration")
-			pterm.Println("File storage will be automatically created in the extra-data-dir.")
-			pterm.Println("The storage directory will be named: bucket-{id}")
-			pterm.Println()
-			opts.config = service.FileConfig{}
 		}
 	}
 

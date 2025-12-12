@@ -31,7 +31,7 @@ func NewConsolidatedBalancesStore(underlying BalancesStore, fsmProvider HotDiffB
 
 // GetBalance combines balances from the underlying store with in-memory balances from the FSM
 func (s *ConsolidatedBalancesStore) GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
-	// Get balances from underlying store (persistent balances from snapshot + logs)
+	// Get balances from the underlying store (persistent balances from snapshot + logs)
 	underlyingBalances, err := s.underlying.GetBalances(ctx, ledgerName, balanceQuery)
 	if err != nil {
 		return nil, fmt.Errorf("getting balances from underlying store: %w", err)

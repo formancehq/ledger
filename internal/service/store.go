@@ -29,6 +29,8 @@ type LogReader interface {
 
 // LogStore embeds both LogWriter and LogReader
 type LogStore interface {
+	// todo: relax ?
+	BalancesStore
 	LogWriter
 	LogReader
 }

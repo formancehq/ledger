@@ -94,14 +94,6 @@ func (f *FSM) handleInsertLog(cmd raft.Command) error {
 	// Store log in memory (will be persisted to store during snapshot)
 	f.logs = append(f.logs, log)
 
-	// Update last log ID for this ledger
-	if log.ID != nil {
-		if ledgerInfo, exists := f.ledgers[log.Ledger]; exists {
-			ledgerInfo.LastLogID = log.ID
-			f.ledgers[log.Ledger] = ledgerInfo
-		}
-	}
-
 	// Update balances and account metadata based on log type
 	f.updateBalancesAndMetadata(log)
 

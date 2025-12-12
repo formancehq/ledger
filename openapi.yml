@@ -873,14 +873,13 @@ components:
       properties:
         driver:
           type: string
-          enum: [sqlite, postgres, clickhouse, file]
-          description: Driver name (e.g., "postgres", "sqlite", "clickhouse", "file")
+          enum: [sqlite, postgres, clickhouse]
+          description: Driver name (e.g., "postgres", "sqlite", "clickhouse")
         config:
           oneOf:
             - $ref: '#/components/schemas/SQLiteConfig'
             - $ref: '#/components/schemas/PostgresConfig'
             - $ref: '#/components/schemas/ClickHouseConfig'
-            - $ref: '#/components/schemas/FileConfig'
           description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
 
     CreateBucketResponse:
@@ -959,14 +958,13 @@ components:
           description: Bucket name
         driver:
           type: string
-          enum: [sqlite, postgres, clickhouse, file]
+          enum: [sqlite, postgres, clickhouse]
           description: Driver name
         config:
           oneOf:
             - $ref: '#/components/schemas/SQLiteConfig'
             - $ref: '#/components/schemas/PostgresConfig'
             - $ref: '#/components/schemas/ClickHouseConfig'
-            - $ref: '#/components/schemas/FileConfig'
           description: Driver-specific configuration
         createdAt:
           type: string
@@ -1023,12 +1021,6 @@ components:
           description: Data Source Name (connection string) for ClickHouse database
       example:
         dsn: "clickhouse://localhost:9000?database=ledger&username=default&password="
-
-    FileConfig:
-      type: object
-      description: File driver configuration (empty object - storage path is automatically generated)
-      properties: {}
-      example: {}
 
     ErrorResponse:
       type: object

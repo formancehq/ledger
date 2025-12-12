@@ -11,7 +11,6 @@ import (
 	"io"
 	"math/big"
 	"strings"
-	"sync"
 	stdtime "time"
 
 	libtime "github.com/formancehq/go-libs/v3/time"
@@ -32,11 +31,6 @@ type SQLiteLogStore struct {
 
 // NewSQLiteLogStore creates a new SQLite log store
 func NewSQLiteLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
-	// Register custom SQLite functions BEFORE opening the connection
-	// sqlite.RegisterFunction is global and affects all new connections
-	if err := registerBigIntFunctionsOnce(); err != nil {
-		return nil, fmt.Errorf("registering bigint functions: %w", err)
-	}
 
 	// Open SQLite database
 	db, err := sql.Open("sqlite", dsn)
@@ -158,68 +152,58 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 	return nil
 }
 
-var (
-	bigIntFunctionsOnce sync.Once
-)
-
-// registerBigIntFunctionsOnce registers custom SQLite functions for big.Int arithmetic
-// Note: sqlite.RegisterFunction is global and must be called BEFORE opening connections
-func registerBigIntFunctionsOnce() error {
-	var err error
-	bigIntFunctionsOnce.Do(func() {
-		// Register bigint_add function
-		err = sqlite.RegisterFunction("bigint_add", &sqlite.FunctionImpl{
-			NArgs:         2,
-			Deterministic: true,
-			Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-				if len(args) != 2 {
-					return "0", nil
-				}
-				aStr, okA := args[0].(string)
-				bStr, okB := args[1].(string)
-				if !okA || !okB {
-					return "0", nil
-				}
-				bigA, okA := new(big.Int).SetString(aStr, 10)
-				bigB, okB := new(big.Int).SetString(bStr, 10)
-				if !okA || !okB {
-					return "0", nil
-				}
-				result := new(big.Int).Add(bigA, bigB)
-				return result.String(), nil
-			},
-		})
-		if err != nil {
-			return
-		}
-
-		// Register bigint_sub function
-		err = sqlite.RegisterFunction("bigint_sub", &sqlite.FunctionImpl{
-			NArgs:         2,
-			Deterministic: true,
-			Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
-				if len(args) != 2 {
-					return "0", nil
-				}
-				aStr, okA := args[0].(string)
-				bStr, okB := args[1].(string)
-				if !okA || !okB {
-					return "0", nil
-				}
-				bigA, okA := new(big.Int).SetString(aStr, 10)
-				bigB, okB := new(big.Int).SetString(bStr, 10)
-				if !okA || !okB {
-					return "0", nil
-				}
-				result := new(big.Int).Sub(bigA, bigB)
-				return result.String(), nil
-			},
-		})
-		if err != nil {
-			return
-		}
+func init() {
+	// Register bigint_add function
+	err := sqlite.RegisterFunction("bigint_add", &sqlite.FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) != 2 {
+				return "0", nil
+			}
+			aStr, okA := args[0].(string)
+			bStr, okB := args[1].(string)
+			if !okA || !okB {
+				return "0", nil
+			}
+			bigA, okA := new(big.Int).SetString(aStr, 10)
+			bigB, okB := new(big.Int).SetString(bStr, 10)
+			if !okA || !okB {
+				return "0", nil
+			}
+			result := new(big.Int).Add(bigA, bigB)
+			return result.String(), nil
+		},
 	})
-	return err
+	if err != nil {
+		panic(err)
+	}
+
+	// Register bigint_sub function
+	err = sqlite.RegisterFunction("bigint_sub", &sqlite.FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) != 2 {
+				return "0", nil
+			}
+			aStr, okA := args[0].(string)
+			bStr, okB := args[1].(string)
+			if !okA || !okB {
+				return "0", nil
+			}
+			bigA, okA := new(big.Int).SetString(aStr, 10)
+			bigB, okB := new(big.Int).SetString(bStr, 10)
+			if !okA || !okB {
+				return "0", nil
+			}
+			result := new(big.Int).Sub(bigA, bigB)
+			return result.String(), nil
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Close closes the database connection
