@@ -5,14 +5,18 @@ import (
 
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	"strings"
+	"sync"
 	stdtime "time"
 
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 // SQLiteConfig represents the configuration for a SQLite bucket driver
@@ -28,6 +32,12 @@ type SQLiteLogStore struct {
 
 // NewSQLiteLogStore creates a new SQLite log store
 func NewSQLiteLogStore(ctx context.Context, dsn string, logger logging.Logger) (*SQLiteLogStore, error) {
+	// Register custom SQLite functions BEFORE opening the connection
+	// sqlite.RegisterFunction is global and affects all new connections
+	if err := registerBigIntFunctionsOnce(); err != nil {
+		return nil, fmt.Errorf("registering bigint functions: %w", err)
+	}
+
 	// Open SQLite database
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -52,7 +62,7 @@ func NewSQLiteLogStore(ctx context.Context, dsn string, logger logging.Logger) (
 	return store, nil
 }
 
-// createTables creates the necessary tables for logs
+// createTables creates the necessary tables for logs and balances
 func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 	// Create logs table
 	_, err := s.db.ExecContext(ctx, `
@@ -79,7 +89,137 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 		return fmt.Errorf("creating logs table: %w", err)
 	}
 
+	// Create balances table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS balances (
+			ledger TEXT NOT NULL,
+			account TEXT NOT NULL,
+			asset TEXT NOT NULL,
+			balance TEXT NOT NULL DEFAULT '0',
+			PRIMARY KEY (ledger, account, asset)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_balances_ledger ON balances(ledger);
+		CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(ledger, account);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating balances table: %w", err)
+	}
+
+	// Custom SQLite functions are registered globally before opening connections
+	// No need to register them here
+
+	// Create trigger to update balances on NEW_TRANSACTION log insert
+	// For each posting: subtract from source, add to destination
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TRIGGER IF NOT EXISTS update_balances
+		AFTER INSERT ON logs
+		WHEN NEW.type = 'NEW_TRANSACTION' OR NEW.type = 'REVERTED_TRANSACTION'
+		BEGIN
+			-- Update balances for source accounts (subtract amount)
+			INSERT OR REPLACE INTO balances (ledger, account, asset, balance)
+			SELECT 
+				NEW.ledger,
+				json_extract(posting.value, '$.source') AS account,
+				json_extract(posting.value, '$.asset') AS asset,
+				bigint_sub(
+					COALESCE(
+						(SELECT balance FROM balances WHERE ledger = NEW.ledger AND account = json_extract(posting.value, '$.source') AND asset = json_extract(posting.value, '$.asset')),
+						'0'
+					),
+					CAST(json_extract(posting.value, '$.amount') AS TEXT)
+				) AS balance
+			FROM json_each(json_extract(NEW.data, '$.transaction.postings')) AS posting
+			WHERE json_extract(posting.value, '$.source') IS NOT NULL
+			  AND json_extract(posting.value, '$.source') != '';
+			
+			-- Update balances for destination accounts (add amount)
+			INSERT OR REPLACE INTO balances (ledger, account, asset, balance)
+			SELECT 
+				NEW.ledger,
+				json_extract(posting.value, '$.destination') AS account,
+				json_extract(posting.value, '$.asset') AS asset,
+				bigint_add(
+					COALESCE(
+						(SELECT balance FROM balances WHERE ledger = NEW.ledger AND account = json_extract(posting.value, '$.destination') AND asset = json_extract(posting.value, '$.asset')),
+						'0'
+					),
+					CAST(json_extract(posting.value, '$.amount') AS TEXT)
+				) AS balance
+			FROM json_each(json_extract(NEW.data, '$.transaction.postings')) AS posting
+			WHERE json_extract(posting.value, '$.destination') IS NOT NULL
+			  AND json_extract(posting.value, '$.destination') != '';
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating new transaction balances trigger: %w", err)
+	}
+
 	return nil
+}
+
+var (
+	bigIntFunctionsOnce sync.Once
+)
+
+// registerBigIntFunctionsOnce registers custom SQLite functions for big.Int arithmetic
+// Note: sqlite.RegisterFunction is global and must be called BEFORE opening connections
+func registerBigIntFunctionsOnce() error {
+	var err error
+	bigIntFunctionsOnce.Do(func() {
+		// Register bigint_add function
+		err = sqlite.RegisterFunction("bigint_add", &sqlite.FunctionImpl{
+			NArgs:         2,
+			Deterministic: true,
+			Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+				if len(args) != 2 {
+					return "0", nil
+				}
+				aStr, okA := args[0].(string)
+				bStr, okB := args[1].(string)
+				if !okA || !okB {
+					return "0", nil
+				}
+				bigA, okA := new(big.Int).SetString(aStr, 10)
+				bigB, okB := new(big.Int).SetString(bStr, 10)
+				if !okA || !okB {
+					return "0", nil
+				}
+				result := new(big.Int).Add(bigA, bigB)
+				return result.String(), nil
+			},
+		})
+		if err != nil {
+			return
+		}
+
+		// Register bigint_sub function
+		err = sqlite.RegisterFunction("bigint_sub", &sqlite.FunctionImpl{
+			NArgs:         2,
+			Deterministic: true,
+			Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+				if len(args) != 2 {
+					return "0", nil
+				}
+				aStr, okA := args[0].(string)
+				bStr, okB := args[1].(string)
+				if !okA || !okB {
+					return "0", nil
+				}
+				bigA, okA := new(big.Int).SetString(aStr, 10)
+				bigB, okB := new(big.Int).SetString(bStr, 10)
+				if !okA || !okB {
+					return "0", nil
+				}
+				result := new(big.Int).Sub(bigA, bigB)
+				return result.String(), nil
+			},
+		})
+		if err != nil {
+			return
+		}
+	})
+	return err
 }
 
 // Close closes the database connection
@@ -362,4 +502,73 @@ func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cu
 
 	var cursorInterface Cursor[ledger.Log] = cursor
 	return &cursorInterface, nil
+}
+
+// GetBalances retrieves balances from the balances table (implements BalancesStore)
+func (s *SQLiteLogStore) GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
+	result := make(ledger.Balances)
+
+	// If no query provided, return empty balances
+	if len(balanceQuery) == 0 {
+		return result, nil
+	}
+
+	// Build query for each account/asset combination
+	for account, assets := range balanceQuery {
+		if len(assets) == 0 {
+			continue
+		}
+
+		// Initialize account map
+		result[account] = make(map[string]*big.Int)
+
+		// Build placeholders for IN clause
+		placeholders := make([]string, len(assets))
+		args := make([]interface{}, len(assets)+2)
+		args[0] = ledgerName
+		args[1] = account
+
+		for i, asset := range assets {
+			placeholders[i] = "?"
+			args[i+2] = asset
+		}
+
+		query := fmt.Sprintf(`
+			SELECT asset, balance FROM balances
+			WHERE ledger = ? AND account = ? AND asset IN (%s)
+		`, strings.Join(placeholders, ", "))
+
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("querying balances: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var asset string
+			var balanceStr string
+			if err := rows.Scan(&asset, &balanceStr); err != nil {
+				return nil, fmt.Errorf("scanning balance row: %w", err)
+			}
+
+			balance, ok := new(big.Int).SetString(balanceStr, 10)
+			if !ok {
+				return nil, fmt.Errorf("invalid balance string: %s", balanceStr)
+			}
+			result[account][asset] = balance
+		}
+
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterating balance rows: %w", err)
+		}
+
+		// Set zero balance for assets that don't exist in the database
+		for _, asset := range assets {
+			if _, exists := result[account][asset]; !exists {
+				result[account][asset] = big.NewInt(0)
+			}
+		}
+	}
+
+	return result, nil
 }

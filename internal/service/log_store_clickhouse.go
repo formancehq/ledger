@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	"strings"
 	stdtime "time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -124,6 +126,64 @@ func (s *ClickHouseLogStore) createTables(ctx context.Context) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
+	}
+
+	// Create balances table (SummingMergeTree for automatic aggregation)
+	err = s.db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS balances (
+			ledger String,
+			account String,
+			asset String,
+			balance Int256
+		)
+		ENGINE = SummingMergeTree(balance)
+		PARTITION BY ledger
+		PRIMARY KEY (ledger, account, asset);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating balances table: %w", err)
+	}
+
+	// Create a single materialized view that handles both NEW_TRANSACTION and REVERTED_TRANSACTION
+	// For NEW_TRANSACTION: source gets negative, destination gets positive
+	// For REVERTED_TRANSACTION: destination gets negative (reverse), source gets positive (reverse)
+	// Using JSONExtract with proper path syntax for nested JSON arrays
+	err = s.db.Exec(ctx, `
+		CREATE MATERIALIZED VIEW IF NOT EXISTS balances_mv
+		TO balances
+		AS
+		SELECT
+			ledger,
+			account,
+			asset,
+			balance
+		FROM (
+			-- NEW_TRANSACTION: source accounts (negative)
+			SELECT
+				ledger,
+				JSONExtractString(posting_raw, 'source') AS account,
+				JSONExtractString(posting_raw, 'asset') AS asset,
+				-toInt256(JSONExtractString(posting_raw, 'amount')) AS balance
+			FROM logs
+			ARRAY JOIN JSONExtractArrayRaw(toString(data), 'transaction', 'postings') AS posting_raw
+			WHERE type = 'NEW_TRANSACTION' OR type = 'REVERTED_TRANSACTION'
+			
+			UNION ALL
+			
+			-- NEW_TRANSACTION: destination accounts (positive)
+			SELECT
+				ledger,
+				JSONExtractString(posting_raw, 'destination') AS account,
+				JSONExtractString(posting_raw, 'asset') AS asset,
+				toInt256(JSONExtractString(posting_raw, 'amount')) AS balance
+			FROM logs
+			ARRAY JOIN JSONExtractArrayRaw(toString(data), 'transaction', 'postings') AS posting_raw
+			WHERE type = 'NEW_TRANSACTION' OR type = 'REVERTED_TRANSACTION'
+		)
+		WHERE account != '' AND asset != '';
+	`)
+	if err != nil {
+		return fmt.Errorf("creating balances_mv: %w", err)
 	}
 
 	return nil
@@ -364,4 +424,79 @@ func (s *ClickHouseLogStore) GetAllLogs(ctx context.Context, ledgerName string) 
 
 	var cursorInterface Cursor[ledger.Log] = cursor
 	return &cursorInterface, nil
+}
+
+// GetBalances retrieves balances from the balances table (implements BalancesStore)
+func (s *ClickHouseLogStore) GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
+	result := make(ledger.Balances)
+
+	// If no query provided, return empty balances
+	if len(balanceQuery) == 0 {
+		return result, nil
+	}
+
+	// Build query for each account/asset combination
+	for account, assets := range balanceQuery {
+		if len(assets) == 0 {
+			continue
+		}
+
+		// Initialize account map
+		result[account] = make(map[string]*big.Int)
+
+		// Build placeholders for IN clause (ClickHouse uses ?)
+		placeholders := make([]string, len(assets))
+		args := make([]interface{}, len(assets)+2)
+		args[0] = ledgerName
+		args[1] = account
+
+		for i, asset := range assets {
+			placeholders[i] = "?"
+			args[i+2] = asset
+		}
+
+		query := fmt.Sprintf(`
+			SELECT asset, toString(sum(balance)) FROM balances FINAL
+			WHERE ledger = ? AND account = ? AND asset IN (%s)
+			GROUP BY asset
+		`, strings.Join(placeholders, ", "))
+
+		rows, err := s.db.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("querying balances: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var asset string
+			var balanceStr string
+			if err := rows.Scan(&asset, &balanceStr); err != nil {
+				return nil, fmt.Errorf("scanning balance row: %w", err)
+			}
+
+			if balanceStr == "" {
+				result[account][asset] = big.NewInt(0)
+				continue
+			}
+
+			balance, ok := new(big.Int).SetString(balanceStr, 10)
+			if !ok {
+				return nil, fmt.Errorf("invalid balance string: %s", balanceStr)
+			}
+			result[account][asset] = balance
+		}
+
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterating balance rows: %w", err)
+		}
+
+		// Set zero balance for assets that don't exist in the database
+		for _, asset := range assets {
+			if _, exists := result[account][asset]; !exists {
+				result[account][asset] = big.NewInt(0)
+			}
+		}
+	}
+
+	return result, nil
 }

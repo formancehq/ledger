@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	"strings"
 	stdtime "time"
 
 	libtime "github.com/formancehq/go-libs/v3/time"
@@ -52,7 +54,7 @@ func NewPostgresLogStore(ctx context.Context, dsn string, logger logging.Logger)
 	return store, nil
 }
 
-// createTables creates the necessary tables for logs
+// createTables creates the necessary tables for logs and balances
 func (s *PostgresLogStore) createTables(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TYPE log_type AS ENUM ('SET_METADATA', 'NEW_TRANSACTION', 'REVERTED_TRANSACTION', 'DELETE_METADATA');
@@ -74,6 +76,76 @@ func (s *PostgresLogStore) createTables(ctx context.Context) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
+	}
+
+	// Create balances table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS balances (
+			ledger VARCHAR(256) NOT NULL,
+			account VARCHAR(256) NOT NULL,
+			asset VARCHAR(256) NOT NULL,
+			balance NUMERIC NOT NULL DEFAULT 0,
+			PRIMARY KEY (ledger, account, asset)
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_balances_ledger ON balances(ledger);
+		CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(ledger, account);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating balances table: %w", err)
+	}
+
+	// Create function to update balances for NEW_TRANSACTION
+	_, err = s.db.ExecContext(ctx, `
+		CREATE OR REPLACE FUNCTION update_balances()
+		RETURNS TRIGGER AS $$
+		DECLARE
+			posting JSONB;
+		BEGIN
+			-- Process each posting in the transaction
+			FOR posting IN SELECT * FROM jsonb_array_elements(NEW.data->'transaction'->'postings')
+			LOOP
+				-- Update source account (subtract amount)
+				INSERT INTO balances (ledger, account, asset, balance)
+				VALUES (
+					NEW.ledger,
+					posting->>'source',
+					posting->>'asset',
+					-(posting->>'amount')::NUMERIC
+				)
+				ON CONFLICT (ledger, account, asset) DO UPDATE SET
+					balance = balances.balance - (posting->>'amount')::NUMERIC;
+				
+				-- Update destination account (add amount)
+				INSERT INTO balances (ledger, account, asset, balance)
+				VALUES (
+					NEW.ledger,
+					posting->>'destination',
+					posting->>'asset',
+					(posting->>'amount')::NUMERIC
+				)
+				ON CONFLICT (ledger, account, asset) DO UPDATE SET
+					balance = balances.balance + (posting->>'amount')::NUMERIC;
+			END LOOP;
+			RETURN NEW;
+		END;
+		$$ LANGUAGE plpgsql;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating update_balances_new_transaction function: %w", err)
+	}
+
+	// Create trigger for NEW_TRANSACTION
+	_, err = s.db.ExecContext(ctx, `
+		DROP TRIGGER IF EXISTS update_balances_on_transaction ON logs;
+		CREATE TRIGGER update_balances_on_transaction
+		AFTER INSERT ON logs
+		FOR EACH ROW
+		WHEN (NEW.type = 'NEW_TRANSACTION' OR NEW.type = 'REVERTED_TRANSACTION')
+		EXECUTE FUNCTION update_balances();
+	`)
+	if err != nil {
+		return fmt.Errorf("creating new transaction balances trigger: %w", err)
 	}
 
 	return nil
@@ -348,4 +420,73 @@ func (s *PostgresLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*
 
 	var cursorInterface Cursor[ledger.Log] = cursor
 	return &cursorInterface, nil
+}
+
+// GetBalances retrieves balances from the balances table (implements BalancesStore)
+func (s *PostgresLogStore) GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
+	result := make(ledger.Balances)
+
+	// If no query provided, return empty balances
+	if len(balanceQuery) == 0 {
+		return result, nil
+	}
+
+	// Build query for each account/asset combination
+	for account, assets := range balanceQuery {
+		if len(assets) == 0 {
+			continue
+		}
+
+		// Initialize account map
+		result[account] = make(map[string]*big.Int)
+
+		// Build placeholders for IN clause (PostgreSQL uses $1, $2, etc.)
+		placeholders := make([]string, len(assets))
+		args := make([]interface{}, len(assets)+2)
+		args[0] = ledgerName
+		args[1] = account
+
+		for i, asset := range assets {
+			placeholders[i] = fmt.Sprintf("$%d", i+3)
+			args[i+2] = asset
+		}
+
+		query := fmt.Sprintf(`
+			SELECT asset, balance::text FROM balances
+			WHERE ledger = $1 AND account = $2 AND asset IN (%s)
+		`, strings.Join(placeholders, ", "))
+
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("querying balances: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var asset string
+			var balanceStr string
+			if err := rows.Scan(&asset, &balanceStr); err != nil {
+				return nil, fmt.Errorf("scanning balance row: %w", err)
+			}
+
+			balance, ok := new(big.Int).SetString(balanceStr, 10)
+			if !ok {
+				return nil, fmt.Errorf("invalid balance string: %s", balanceStr)
+			}
+			result[account][asset] = balance
+		}
+
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterating balance rows: %w", err)
+		}
+
+		// Set zero balance for assets that don't exist in the database
+		for _, asset := range assets {
+			if _, exists := result[account][asset]; !exists {
+				result[account][asset] = big.NewInt(0)
+			}
+		}
+	}
+
+	return result, nil
 }
