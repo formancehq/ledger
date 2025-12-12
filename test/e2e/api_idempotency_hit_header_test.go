@@ -483,6 +483,7 @@ var _ = Context("Idempotency-Hit header tests", func() {
 					Chart: map[string]components.V2ChartSegment{
 						"bank": {},
 					},
+					Transactions: map[string]components.V2TransactionTemplate{},
 				},
 				Version:        "v1.0.0",
 				Ledger:         "default",

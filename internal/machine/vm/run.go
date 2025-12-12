@@ -19,8 +19,8 @@ type RunScript struct {
 }
 
 type Script struct {
-	Plain    string            `json:"plain"`
-	Template string            `json:"template"`
+	Plain    string            `json:"plain,omitempty"`
+	Template string            `json:"template,omitempty"`
 	Vars     map[string]string `json:"vars" swaggertype:"object"`
 }
 
