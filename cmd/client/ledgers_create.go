@@ -93,7 +93,7 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 
 	// Extract response data
 	ledgerResponse := res.GetCreateLedgerResponse()
-	if ledgerResponse == nil || ledgerResponse.Data == nil {
+	if ledgerResponse == nil {
 		spinner.Success("Ledger created successfully")
 		return nil
 	}
@@ -104,12 +104,8 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 
 	// Create info panel
 	panelData := ""
-	if data.Name != nil {
-		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
-	}
-	if data.Bucket != nil {
-		panelData += fmt.Sprintf("Bucket: %s\n", *data.Bucket)
-	}
+	panelData += fmt.Sprintf("Name: %s\n", data.Name)
+	panelData += fmt.Sprintf("Bucket: %s\n", data.Bucket)
 	if len(data.Metadata) > 0 {
 		panelData += "Metadata:\n"
 		for k, v := range data.Metadata {
@@ -147,14 +143,8 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 		bucketMap := make(map[string]string) // Maps display string to bucket name
 
 		for _, bucket := range buckets {
-			bucketName := "N/A"
-			if bucket.Name != nil {
-				bucketName = *bucket.Name
-			}
-			driver := "N/A"
-			if bucket.Driver != nil {
-				driver = *bucket.Driver
-			}
+			bucketName := bucket.Name
+			driver := string(bucket.Driver)
 			displayName := fmt.Sprintf("%s (%s)", bucketName, driver)
 			options = append(options, displayName)
 			bucketMap[displayName] = bucketName

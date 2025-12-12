@@ -39,30 +39,30 @@ func (e *Suffrage) UnmarshalJSON(data []byte) error {
 
 type NodeInfo struct {
 	// Node ID
-	ID *string `json:"id,omitempty"`
+	ID int64 `json:"id"`
 	// Node address
-	Address *string `json:"address,omitempty"`
+	Address string `json:"address"`
 	// Node suffrage (Voter, Nonvoter, or Learner)
-	Suffrage *Suffrage `json:"suffrage,omitempty"`
+	Suffrage Suffrage `json:"suffrage"`
 }
 
-func (o *NodeInfo) GetID() *string {
+func (o *NodeInfo) GetID() int64 {
 	if o == nil {
-		return nil
+		return 0
 	}
 	return o.ID
 }
 
-func (o *NodeInfo) GetAddress() *string {
+func (o *NodeInfo) GetAddress() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Address
 }
 
-func (o *NodeInfo) GetSuffrage() *Suffrage {
+func (o *NodeInfo) GetSuffrage() Suffrage {
 	if o == nil {
-		return nil
+		return Suffrage("")
 	}
 	return o.Suffrage
 }

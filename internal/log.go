@@ -93,6 +93,7 @@ type Log struct {
 	// It allows to check if the usage of IdempotencyKey match inputs given on the first idempotency key usage.
 	IdempotencyHash string  `json:"idempotencyHash" bun:"idempotency_hash,unique,nullzero"`
 	ID              *uint64 `json:"id" bun:"id,unique,type:numeric"`
+	Sequence        uint64  `json:"sequence" bun:"sequence,type:bigint,autoincrement"` // Global sequence number, auto-incremented by database
 }
 
 func (l Log) WithDate(date time.Time) Log {

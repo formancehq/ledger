@@ -102,13 +102,13 @@ func TestClickHouseLogStoreIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get all logs
-		cursorPtr, err := store.GetAllLogs(ctx, ledgerName)
+		cursorPtr, err := store.GetAllLogs(ctx, 0)
 		require.NoError(t, err)
 		require.NotNil(t, cursorPtr)
 		cursor := *cursorPtr
 		t.Cleanup(func() { _ = cursor.Close() })
 
-		// Read all logs
+		// Read all logs and filter by ledger
 		var logs []ledger.Log
 		for {
 			log, err := cursor.Next(ctx)
@@ -116,29 +116,19 @@ func TestClickHouseLogStoreIntegration(t *testing.T) {
 				break
 			}
 			require.NoError(t, err)
-			logs = append(logs, log)
-		}
-
-		// Verify we got all logs
-		require.Equal(t, len(testLogs), len(logs))
-
-		// Verify logs are in ascending order by ID
-		for i := 0; i < len(logs)-1; i++ {
-			if logs[i].ID != nil && logs[i+1].ID != nil {
-				require.LessOrEqual(t, *logs[i].ID, *logs[i+1].ID)
+			// Filter by ledger name
+			if log.Ledger == ledgerName {
+				logs = append(logs, log)
 			}
 		}
 
-		// Test with non-existing ledger
-		cursorPtr, err = store.GetAllLogs(ctx, "non-existing-ledger")
-		require.NoError(t, err)
-		require.NotNil(t, cursorPtr)
-		cursor = *cursorPtr
-		t.Cleanup(func() { _ = cursor.Close() })
+		// Verify we got all logs for this ledger
+		require.Equal(t, len(testLogs), len(logs))
 
-		log, err := cursor.Next(ctx)
-		require.Equal(t, io.EOF, err)
-		require.Equal(t, ledger.Log{}, log)
+		// Verify logs are in ascending order by sequence
+		for i := 0; i < len(logs)-1; i++ {
+			require.LessOrEqual(t, logs[i].Sequence, logs[i+1].Sequence)
+		}
 	})
 
 	t.Run("InsertLogsEmpty", func(t *testing.T) {

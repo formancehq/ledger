@@ -8,13 +8,13 @@ import (
 )
 
 type TransactionResponse struct {
-	Postings []PostingResponse `json:"postings,omitempty"`
+	Postings []PostingResponse `json:"postings"`
 	Metadata map[string]any    `json:"metadata,omitempty"`
 	// Transaction timestamp (ISO 8601 format)
-	Timestamp *time.Time `json:"timestamp,omitempty"`
-	Reference *string    `json:"reference,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Reference *string   `json:"reference,omitempty"`
 	// Transaction ID (assigned by the system)
-	ID *int64 `json:"id,omitempty"`
+	ID int64 `json:"id"`
 }
 
 func (t TransactionResponse) MarshalJSON() ([]byte, error) {
@@ -30,7 +30,7 @@ func (t *TransactionResponse) UnmarshalJSON(data []byte) error {
 
 func (o *TransactionResponse) GetPostings() []PostingResponse {
 	if o == nil {
-		return nil
+		return []PostingResponse{}
 	}
 	return o.Postings
 }
@@ -42,9 +42,9 @@ func (o *TransactionResponse) GetMetadata() map[string]any {
 	return o.Metadata
 }
 
-func (o *TransactionResponse) GetTimestamp() *time.Time {
+func (o *TransactionResponse) GetTimestamp() time.Time {
 	if o == nil {
-		return nil
+		return time.Time{}
 	}
 	return o.Timestamp
 }
@@ -56,9 +56,9 @@ func (o *TransactionResponse) GetReference() *string {
 	return o.Reference
 }
 
-func (o *TransactionResponse) GetID() *int64 {
+func (o *TransactionResponse) GetID() int64 {
 	if o == nil {
-		return nil
+		return 0
 	}
 	return o.ID
 }

@@ -4,23 +4,23 @@ package components
 
 type DeleteBucketResponseData struct {
 	// Success message
-	Message *string `json:"message,omitempty"`
+	Message string `json:"message"`
 }
 
-func (o *DeleteBucketResponseData) GetMessage() *string {
+func (o *DeleteBucketResponseData) GetMessage() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Message
 }
 
 type DeleteBucketResponse struct {
-	Data *DeleteBucketResponseData `json:"data,omitempty"`
+	Data DeleteBucketResponseData `json:"data"`
 }
 
-func (o *DeleteBucketResponse) GetData() *DeleteBucketResponseData {
+func (o *DeleteBucketResponse) GetData() DeleteBucketResponseData {
 	if o == nil {
-		return nil
+		return DeleteBucketResponseData{}
 	}
 	return o.Data
 }

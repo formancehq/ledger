@@ -3,14 +3,14 @@
 package components
 
 type Data struct {
-	Transaction *TransactionResponse `json:"transaction,omitempty"`
+	Transaction TransactionResponse `json:"transaction"`
 	// Metadata for accounts involved in the transaction
 	AccountMetadata map[string]any `json:"accountMetadata,omitempty"`
 }
 
-func (o *Data) GetTransaction() *TransactionResponse {
+func (o *Data) GetTransaction() TransactionResponse {
 	if o == nil {
-		return nil
+		return TransactionResponse{}
 	}
 	return o.Transaction
 }
@@ -23,12 +23,12 @@ func (o *Data) GetAccountMetadata() map[string]any {
 }
 
 type CreateTransactionResponse struct {
-	Data *Data `json:"data,omitempty"`
+	Data Data `json:"data"`
 }
 
-func (o *CreateTransactionResponse) GetData() *Data {
+func (o *CreateTransactionResponse) GetData() Data {
 	if o == nil {
-		return nil
+		return Data{}
 	}
 	return o.Data
 }

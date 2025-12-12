@@ -12,6 +12,7 @@ message CreateBucketCommand {
   string name = 1;                          // Bucket name/ID (required)
   string driver = 2;                        // Driver name (required)
   google.protobuf.Struct config = 3;        // Driver-specific configuration (required)
+  uint64 snapshot_threshold = 4;            // Number of logs before triggering a snapshot (optional, uses global config if not set)
 }
 
 // DeleteBucketCommand represents the data for a delete bucket command
@@ -26,6 +27,7 @@ message BucketInfo {
   string driver = 3;                        // Driver name (e.g., "postgres", "s3", etc.)
   google.protobuf.Struct config = 4;       // Driver-specific configuration
   google.protobuf.Timestamp created_at = 5; // Creation timestamp
+  uint64 snapshot_threshold = 6;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 
 // SystemFSMSnapshot represents the snapshot data for the system FSM

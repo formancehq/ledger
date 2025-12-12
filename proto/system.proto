@@ -29,6 +29,7 @@ message CreateBucketRequest {
   string name = 1;
   string driver = 2;
   google.protobuf.Struct config = 3;
+  uint64 snapshot_threshold = 4;  // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 
 message CreateBucketResponse {
@@ -37,6 +38,7 @@ message CreateBucketResponse {
   google.protobuf.Struct config = 3;
   string driver = 4;
   google.protobuf.Timestamp created_at = 5;
+  uint64 snapshot_threshold = 6;  // Number of logs before triggering a snapshot (0 means use global config)
 }
 
 message DeleteBucketRequest {

@@ -3,12 +3,12 @@
 package components
 
 type CreateBucketResponse struct {
-	Data *BucketInfo `json:"data,omitempty"`
+	Data BucketInfo `json:"data"`
 }
 
-func (o *CreateBucketResponse) GetData() *BucketInfo {
+func (o *CreateBucketResponse) GetData() BucketInfo {
 	if o == nil {
-		return nil
+		return BucketInfo{}
 	}
 	return o.Data
 }

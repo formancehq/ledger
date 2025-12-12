@@ -56,7 +56,8 @@ func main() {
 
 | Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
-| sdkerrors.ErrorResponse | 500, 503                | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetBucket
@@ -137,11 +138,10 @@ func main() {
     res, err := s.Buckets.CreateBucket(ctx, operations.CreateBucketRequest{
         BucketName: "<value>",
         CreateBucketRequest: components.CreateBucketRequest{
-            Driver: "<value>",
-            Config: map[string]any{
-                "key": "<value>",
-                "key1": "<value>",
-            },
+            Driver: components.CreateBucketRequestDriverPostgres,
+            Config: client.Pointer(components.CreateCreateBucketRequestConfigSQLiteConfig(
+                components.SQLiteConfig{},
+            )),
         },
     })
     if err != nil {
@@ -171,6 +171,7 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400, 409                | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## DeleteBucket
@@ -224,6 +225,7 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 404                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CreateBucketSnapshot
@@ -277,4 +279,5 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400, 404                | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

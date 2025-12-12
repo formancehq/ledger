@@ -43,7 +43,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 
 	bucket, err := s.cluster.GetBucketOfLedger(r.Context(), ledgerName)
 	if err != nil {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_BUCKET", fmt.Errorf("bucket %s does not exist", ledgerName))
+		handleError(w, r, err)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	_, createdTx, err := bucket.CreateTransaction(r.Context(), ledgerName, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "error": err}).Errorf("Failed to create transaction")
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

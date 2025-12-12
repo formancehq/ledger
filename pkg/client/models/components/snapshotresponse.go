@@ -4,23 +4,23 @@ package components
 
 type SnapshotResponseData struct {
 	// Success message
-	Message *string `json:"message,omitempty"`
+	Message string `json:"message"`
 }
 
-func (o *SnapshotResponseData) GetMessage() *string {
+func (o *SnapshotResponseData) GetMessage() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Message
 }
 
 type SnapshotResponse struct {
-	Data *SnapshotResponseData `json:"data,omitempty"`
+	Data SnapshotResponseData `json:"data"`
 }
 
-func (o *SnapshotResponse) GetData() *SnapshotResponseData {
+func (o *SnapshotResponse) GetData() SnapshotResponseData {
 	if o == nil {
-		return nil
+		return SnapshotResponseData{}
 	}
 	return o.Data
 }

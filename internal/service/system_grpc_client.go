@@ -18,16 +18,20 @@ func (g *grpcSystemClient) Snapshot(ctx context.Context) error {
 	return err
 }
 
-func (g *grpcSystemClient) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}) (*ledger.BucketInfo, error) {
+func (g *grpcSystemClient) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error) {
 	cfg, err := structpb.NewStruct(config)
 	if err != nil {
 		return nil, err
 	}
-	bucket, err := g.client.CreateBucket(ctx, &CreateBucketRequest{
+	req := &CreateBucketRequest{
 		Name:   name,
 		Driver: driver,
 		Config: cfg,
-	})
+	}
+	if snapshotThreshold != nil && *snapshotThreshold > 0 {
+		req.SnapshotThreshold = *snapshotThreshold
+	}
+	bucket, err := g.client.CreateBucket(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -38,13 +42,17 @@ func (g *grpcSystemClient) CreateBucket(ctx context.Context, name, driver string
 		return nil, err
 	}
 
-	return &ledger.BucketInfo{
+	result := &ledger.BucketInfo{
 		ID:        bucket.Id,
 		Name:      bucket.Name,
 		Driver:    bucket.Driver,
 		Config:    configJSON,
 		CreatedAt: time.New(bucket.CreatedAt.AsTime()),
-	}, nil
+	}
+	if bucket.SnapshotThreshold > 0 {
+		result.SnapshotThreshold = bucket.SnapshotThreshold
+	}
+	return result, nil
 }
 
 func (g *grpcSystemClient) DeleteBucket(ctx context.Context, name string) error {

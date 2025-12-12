@@ -8,11 +8,11 @@ import (
 )
 
 type PostingResponse struct {
-	Source      *string `json:"source,omitempty"`
-	Destination *string `json:"destination,omitempty"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
 	// Amount as a big integer
-	Amount *big.Int `bigint:"string" json:"amount,omitempty"`
-	Asset  *string  `json:"asset,omitempty"`
+	Amount *big.Int `json:"amount"`
+	Asset  string   `json:"asset"`
 }
 
 func (p PostingResponse) MarshalJSON() ([]byte, error) {
@@ -26,30 +26,30 @@ func (p *PostingResponse) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *PostingResponse) GetSource() *string {
+func (o *PostingResponse) GetSource() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Source
 }
 
-func (o *PostingResponse) GetDestination() *string {
+func (o *PostingResponse) GetDestination() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Destination
 }
 
 func (o *PostingResponse) GetAmount() *big.Int {
 	if o == nil {
-		return nil
+		return big.NewInt(0)
 	}
 	return o.Amount
 }
 
-func (o *PostingResponse) GetAsset() *string {
+func (o *PostingResponse) GetAsset() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Asset
 }

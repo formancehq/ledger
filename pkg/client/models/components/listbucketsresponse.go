@@ -4,12 +4,12 @@ package components
 
 type ListBucketsResponse struct {
 	// List of buckets
-	Data []BucketInfo `json:"data,omitempty"`
+	Data []BucketInfo `json:"data"`
 }
 
 func (o *ListBucketsResponse) GetData() []BucketInfo {
 	if o == nil {
-		return nil
+		return []BucketInfo{}
 	}
 	return o.Data
 }

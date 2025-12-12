@@ -61,6 +61,7 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## BulkOperations
@@ -123,4 +124,5 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400, 413                | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

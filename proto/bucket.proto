@@ -16,6 +16,8 @@ service BucketService {
   rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+  // StreamLogs streams logs from a bucket, optionally filtered by ledger and starting from a sequence number
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
 
 message BucketSnapshotRequest {
@@ -60,4 +62,56 @@ message CreateLedgerResponse {
   uint64 id = 1;
   string name = 2;
   string bucket = 3;
+}
+
+message StreamLogsRequest {
+  string bucket = 1;
+  uint64 from_sequence = 2; // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
+}
+
+message StreamLogsResponse {
+  Log log = 1;
+}
+
+message Log {
+  int32 type = 1;                           // LogType enum value
+  LogPayload data = 2;
+  google.protobuf.Timestamp date = 3;
+  string ledger = 4;
+  string idempotency_key = 5;
+  string idempotency_hash = 6;
+  uint64 id = 7;                            // Optional log ID
+  uint64 sequence = 8;                      // Global sequence number
+}
+
+message LogPayload {
+  oneof payload {
+    common.Transaction created_transaction = 1;
+    RevertedTransaction reverted_transaction = 2;
+    SavedMetadata saved_metadata = 3;
+    DeletedMetadata deleted_metadata = 4;
+  }
+}
+
+message RevertedTransaction {
+  common.Transaction reverted_transaction = 1;
+  common.Transaction revert_transaction = 2;
+}
+
+message SavedMetadata {
+  string target_type = 1;                   // "ACCOUNT" or "TRANSACTION"
+  oneof target_id {
+    string account_id = 2;                  // Account address (for ACCOUNT type)
+    uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
+  }
+  google.protobuf.Struct metadata = 4;
+}
+
+message DeletedMetadata {
+  string target_type = 1;                   // "ACCOUNT" or "TRANSACTION"
+  oneof target_id {
+    string account_id = 2;                  // Account address (for ACCOUNT type)
+    uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
+  }
+  string key = 4;                           // Metadata key to delete
 }

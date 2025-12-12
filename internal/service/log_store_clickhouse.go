@@ -84,6 +84,7 @@ func (s *ClickHouseLogStore) createTables(ctx context.Context) error {
 			date            DateTime64(6, 'UTC'),
 			idempotency_key String,
 			idempotency_hash String,
+			sequence        UInt64 NOT NULL DEFAULT 0,
 			data            JSON(
 				transaction JSON(
 					id UInt256,
@@ -195,14 +196,16 @@ func (s *ClickHouseLogStore) Close() error {
 }
 
 // InsertLogs inserts logs into the ClickHouse database (implements LogWriter)
+// The sequence number must be provided by the application (already set in log.Sequence)
 func (s *ClickHouseLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) error {
 	if len(logs) == 0 {
 		return nil
 	}
 
 	// Use batch insert for better performance
-	// Column order matches the table definition: ledger, id, type, date, data
-	batch, err := s.db.PrepareBatch(ctx, "INSERT INTO logs (ledger, id, type, date, data, idempotency_key, idempotency_hash)")
+	// Column order matches the table definition: ledger, id, type, date, data, sequence
+	// Note: sequence is provided by the application, not calculated here
+	batch, err := s.db.PrepareBatch(ctx, "INSERT INTO logs (ledger, id, type, date, data, idempotency_key, idempotency_hash, sequence)")
 	if err != nil {
 		return fmt.Errorf("preparing batch insert: %w", err)
 	}
@@ -236,6 +239,7 @@ func (s *ClickHouseLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log)
 			string(dataJSON),
 			log.IdempotencyKey,
 			log.IdempotencyHash,
+			int64(log.Sequence),
 		); err != nil {
 			return fmt.Errorf("appending log to batch: %w", err)
 		}
@@ -256,7 +260,7 @@ func (s *ClickHouseLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log)
 func (s *ClickHouseLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error) {
 	// Use FINAL to get the latest version from ReplacingMergeTree
 	row := s.db.QueryRow(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_hash
+		SELECT id, type, data, date, ledger, idempotency_hash, sequence
 		FROM logs FINAL
 		WHERE ledger = ? AND idempotency_key = ?
 		ORDER BY id ASC
@@ -271,9 +275,10 @@ func (s *ClickHouseLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledge
 		date             stdtime.Time
 		ledgerNameResult string
 		idempotencyHash  string
+		sequence         uint64
 	)
 
-	if err := row.Scan(&id, &logType, &dataJSON, &date, &ledgerNameResult, &idempotencyHash); err != nil {
+	if err := row.Scan(&id, &logType, &dataJSON, &date, &ledgerNameResult, &idempotencyHash, &sequence); err != nil {
 		return nil, fmt.Errorf("scanning log row: %w", err)
 	}
 
@@ -291,6 +296,7 @@ func (s *ClickHouseLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledge
 		Ledger:          ledgerNameResult,
 		IdempotencyKey:  idempotencyKey,
 		IdempotencyHash: idempotencyHash,
+		Sequence:        sequence,
 	}, nil
 }
 
@@ -298,7 +304,7 @@ func (s *ClickHouseLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledge
 func (s *ClickHouseLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error) {
 	// Use FINAL to get the latest version from ReplacingMergeTree
 	rows, err := s.db.Query(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
+		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
 		FROM logs FINAL
 		WHERE ledger = ?
 		ORDER BY id DESC
@@ -321,17 +327,18 @@ func (s *ClickHouseLogStore) GetLastLog(ctx context.Context, ledgerName string) 
 		ledgerNameResult string
 		idempotencyKey   string
 		idempotencyHash  string
+		sequence         uint64
 	)
 
-	if err := rows.Scan(&id, &logType, &dataJSON, &date, &ledgerNameResult, &idempotencyKey, &idempotencyHash); err != nil {
+	if err := rows.Scan(&id, &logType, &dataJSON, &date, &ledgerNameResult, &idempotencyKey, &idempotencyHash, &sequence); err != nil {
 		return nil, fmt.Errorf("scanning log row: %w", err)
 	}
 
-	return s.scanLog(id, logType, dataJSON, date, ledgerNameResult, idempotencyKey, idempotencyHash)
+	return s.scanLog(id, logType, dataJSON, date, ledgerNameResult, idempotencyKey, idempotencyHash, sequence)
 }
 
 // scanLog scans row data into a Log struct
-func (s *ClickHouseLogStore) scanLog(id int64, logType string, dataJSON string, date stdtime.Time, ledgerName string, key string, hash string) (*ledger.Log, error) {
+func (s *ClickHouseLogStore) scanLog(id int64, logType string, dataJSON string, date stdtime.Time, ledgerName string, key string, hash string, sequence uint64) (*ledger.Log, error) {
 	log := &ledger.Log{}
 
 	// Set ID
@@ -356,6 +363,7 @@ func (s *ClickHouseLogStore) scanLog(id int64, logType string, dataJSON string, 
 	log.Ledger = ledgerName
 	log.IdempotencyKey = key
 	log.IdempotencyHash = hash
+	log.Sequence = sequence
 
 	return log, nil
 }
@@ -382,13 +390,14 @@ func (c *clickHouseLogCursor) Next(ctx context.Context) (ledger.Log, error) {
 		ledgerName      string
 		idempotencyKey  string
 		idempotencyHash string
+		sequence        uint64
 	)
 
-	if err := c.rows.Scan(&id, &logType, &dataJSON, &date, &ledgerName, &idempotencyKey, &idempotencyHash); err != nil {
+	if err := c.rows.Scan(&id, &logType, &dataJSON, &date, &ledgerName, &idempotencyKey, &idempotencyHash, &sequence); err != nil {
 		return ledger.Log{}, fmt.Errorf("scanning log row: %w", err)
 	}
 
-	log, err := c.store.scanLog(id, logType, dataJSON, date, ledgerName, idempotencyKey, idempotencyHash)
+	log, err := c.store.scanLog(id, logType, dataJSON, date, ledgerName, idempotencyKey, idempotencyHash, sequence)
 	if err != nil {
 		return ledger.Log{}, err
 	}
@@ -403,16 +412,23 @@ func (c *clickHouseLogCursor) Close() error {
 	return nil
 }
 
-// GetAllLogs returns a cursor to iterate over all logs for a specific ledger (implements LogReader)
-// Logs are returned in ascending order by ID
-func (s *ClickHouseLogStore) GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error) {
+// GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
+// Logs are returned in ascending order by sequence
+// from: optional sequence number to start from (0 = from beginning)
+func (s *ClickHouseLogStore) GetAllLogs(ctx context.Context, from uint64) (*Cursor[ledger.Log], error) {
 	// Use FINAL to get the latest version from ReplacingMergeTree
-	rows, err := s.db.Query(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash
+	query := `
+		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
 		FROM logs FINAL
-		WHERE ledger = ?
-		ORDER BY id ASC
-	`, ledgerName)
+	`
+	args := []interface{}{}
+	if from > 0 {
+		query += ` WHERE sequence >= ?`
+		args = append(args, int64(from))
+	}
+	query += ` ORDER BY sequence ASC`
+
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying logs: %w", err)
 	}
@@ -424,6 +440,16 @@ func (s *ClickHouseLogStore) GetAllLogs(ctx context.Context, ledgerName string) 
 
 	var cursorInterface Cursor[ledger.Log] = cursor
 	return &cursorInterface, nil
+}
+
+// GetLastSequenceID returns the highest sequence number in the logs table (implements LogWriter)
+func (s *ClickHouseLogStore) GetLastSequenceID(ctx context.Context) (uint64, error) {
+	var maxSeq uint64
+	err := s.db.QueryRow(ctx, `SELECT MAX(sequence) FROM logs FINAL`).Scan(&maxSeq)
+	if err != nil {
+		return 0, fmt.Errorf("querying max sequence: %w", err)
+	}
+	return maxSeq, nil
 }
 
 // GetBalances retrieves balances from the balances table (implements BalancesStore)

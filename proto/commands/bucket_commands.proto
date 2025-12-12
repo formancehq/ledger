@@ -65,6 +65,7 @@ message Log {
   string idempotency_key = 5;
   string idempotency_hash = 6;
   uint64 id = 7;                            // Optional log ID
+  uint64 sequence = 8;                      // Global sequence number, auto-incremented by database
 }
 
 // InsertLogCommand represents the data for an insert log command

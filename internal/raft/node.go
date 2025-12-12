@@ -40,13 +40,31 @@ func NewNode[F FSM](
 	fsm F,
 	logger logging.Logger,
 ) (*Node[F], error) {
+	// Set defaults if not configured
+	electionTick := cfg.ElectionTick
+	if electionTick == 0 {
+		electionTick = 10
+	}
+	heartbeatTick := cfg.HeartbeatTick
+	if heartbeatTick == 0 {
+		heartbeatTick = 1
+	}
+	maxSizePerMsg := cfg.MaxSizePerMsg
+	if maxSizePerMsg == 0 {
+		maxSizePerMsg = 1024 * 1024 // 1MB
+	}
+	maxInflightMsgs := cfg.MaxInflightMsgs
+	if maxInflightMsgs == 0 {
+		maxInflightMsgs = 256
+	}
+
 	raftConfig := &raft.Config{
 		ID:              cfg.NodeID,
-		ElectionTick:    10,
-		HeartbeatTick:   1,
+		ElectionTick:    electionTick,
+		HeartbeatTick:   heartbeatTick,
 		Storage:         storage,
-		MaxSizePerMsg:   1024 * 1024,
-		MaxInflightMsgs: 256,
+		MaxSizePerMsg:   maxSizePerMsg,
+		MaxInflightMsgs: maxInflightMsgs,
 	}
 
 	// Configure snapshot parameters
@@ -85,13 +103,14 @@ func NewNode[F FSM](
 	}
 
 	return &Node[F]{
-		node:      node,
-		logger:    logger,
-		futures:   make(map[uint64]*applyFuture),
-		fsm:       fsm,
-		storage:   storage,
-		transport: transport,
-		config:    cfg,
+		node:        node,
+		logger:      logger,
+		futures:     make(map[uint64]*applyFuture),
+		fsm:         fsm,
+		storage:     storage,
+		transport:   transport,
+		config:      cfg,
+		stopChannel: make(chan chan struct{}),
 	}, nil
 }
 
@@ -179,10 +198,15 @@ func (node *Node[F]) NotifyApplied(commandID uint64, result any, index uint64, e
 
 // readyLoop processes Ready structures from etcd/raft for this bucket group with a specific message channel
 func (node *Node[F]) readyLoop() {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	tickInterval := node.config.TickInterval
+	if tickInterval == 0 {
+		tickInterval = 100 * time.Millisecond
+	}
+	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
 	for {
+
 		select {
 		case <-ticker.C:
 			node.node.Tick()
@@ -231,6 +255,7 @@ func (node *Node[F]) readyLoop() {
 					node.logger.
 						WithFields(map[string]any{"error": err}).
 						Errorf("Failed to restore bucket FSM from snapshot")
+					node.node.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFailure)
 					continue
 				}
 
@@ -243,6 +268,12 @@ func (node *Node[F]) readyLoop() {
 			}
 
 			// Apply committed entries
+			// todo: batch insertions
+			var (
+				results        []ApplyResult
+				commands       = make([]Command, 0, len(rd.CommittedEntries))
+				commandIndexes = make([]uint64, 0, len(rd.CommittedEntries))
+			)
 			for _, entry := range rd.CommittedEntries {
 				if entry.Type == raftpb.EntryConfChange {
 					var cc raftpb.ConfChange
@@ -282,13 +313,22 @@ func (node *Node[F]) readyLoop() {
 					continue
 				}
 
-				// Apply bucket-specific entries to bucket FSM
-				result, applyErr := node.fsm.ApplyEntry(context.Background(), cmd)
-				// Notify the wrapper that this command has been applied using its ID
-				node.NotifyApplied(cmd.ID, result, entry.Index, applyErr)
-				if applyErr != nil {
+				commands = append(commands, cmd)
+				commandIndexes = append(commandIndexes, entry.Index)
+			}
+
+			// Apply bucket-specific entries to bucket FSM
+			results = node.fsm.ApplyEntries(context.Background(), commands...)
+
+			for i, result := range results {
+				node.NotifyApplied(commands[i].ID, result.Result, commandIndexes[i], result.Error)
+				if result.Error != nil {
 					node.logger.
-						WithFields(map[string]any{"error": applyErr, "index": entry.Index, "commandID": cmd.ID, "entry": string(entry.Data)}).
+						WithFields(map[string]any{
+							"error":     result.Error,
+							"index":     commandIndexes[i],
+							"commandID": commands[i].ID,
+						}).
 						Errorf("Failed to apply entry to bucket FSM")
 				}
 			}
@@ -363,10 +403,6 @@ func (node *Node[F]) GetClusterState(ctx context.Context) (*ledger.ClusterState,
 
 	// Get leader
 	leaderID := status.Lead
-	leader := ""
-	if leaderID != 0 {
-		leader = fmt.Sprintf("%x", leaderID)
-	}
 
 	// Convert state to string
 	stateStr := "Unknown"
@@ -387,14 +423,15 @@ func (node *Node[F]) GetClusterState(ctx context.Context) (*ledger.ClusterState,
 		suffrage := "Voter"
 
 		var address string
-		if id == node.config.NodeID {
-			address = node.config.AdvertiseAddr
-		} else {
-			address = node.transport.GetPeerAddress(id)
-		}
+		// todo: set address
+		//if id == node.config.NodeID {
+		//	address = node.config.AdvertiseAddr
+		//} else {
+		//	address = node.transport.GetPeerAddress(id)
+		//}
 
 		nodes = append(nodes, ledger.NodeInfo{
-			ID:       fmt.Sprintf("%x", id),
+			ID:       uint(id),
 			Address:  address,
 			Suffrage: suffrage,
 		})
@@ -402,9 +439,9 @@ func (node *Node[F]) GetClusterState(ctx context.Context) (*ledger.ClusterState,
 
 	return &ledger.ClusterState{
 		State:     stateStr,
-		Leader:    leader,
+		Leader:    uint(leaderID),
 		Nodes:     nodes,
-		LocalNode: fmt.Sprintf("%x", node.config.NodeID),
+		LocalNode: uint(node.config.NodeID),
 	}, nil
 }
 
@@ -562,9 +599,13 @@ func restoreFromStorage(fsm FSM, storage *WALStorage, logger logging.Logger) err
 					continue
 				}
 
-				if _, err := fsm.ApplyEntry(context.Background(), cmd); err != nil {
+				if ret := fsm.ApplyEntries(context.Background(), cmd); ret[0].Error != nil {
 					logger.
-						WithFields(map[string]any{"index": entry.Index, "error": err}).
+						WithFields(map[string]any{
+							"index":     entry.Index,
+							"error":     ret[0].Error,
+							"commandID": cmd.ID,
+						}).
 						Infof("WARN: Failed to apply entry during FSM restoration")
 				}
 			}

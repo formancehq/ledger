@@ -3,12 +3,12 @@
 package components
 
 type CreateLedgerResponse struct {
-	Data *LedgerInfo `json:"data,omitempty"`
+	Data LedgerInfo `json:"data"`
 }
 
-func (o *CreateLedgerResponse) GetData() *LedgerInfo {
+func (o *CreateLedgerResponse) GetData() LedgerInfo {
 	if o == nil {
-		return nil
+		return LedgerInfo{}
 	}
 	return o.Data
 }

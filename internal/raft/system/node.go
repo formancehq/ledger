@@ -68,9 +68,9 @@ func (node *Node) Start() error {
 }
 
 // CreateBucket creates a new bucket via a FSM command
-func (node *Node) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}) (*ledger.BucketInfo, error) {
+func (node *Node) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error) {
 	// Create the command
-	cmd, err := NewCreateBucketCommand(name, driver, config)
+	cmd, err := NewCreateBucketCommand(name, driver, config, snapshotThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("creating create bucket command: %w", err)
 	}
@@ -143,10 +143,17 @@ func (node *Node) GetBucketGroupOfLedger(name string) (*bucket.Node, error) {
 }
 
 func (node *Node) Stop(ctx context.Context) error {
+	node.logger.Info("Stopping multiplexed transport")
 	node.multiplexedTransport.Stop()
+
+	node.logger.Info("Stopping FSM")
 	if err := node.Inner().Stop(ctx); err != nil {
 		return nil
 	}
 
+	node.logger.Info("Stopping raft node")
+	defer func() {
+		node.logger.Info("Raft node stopped")
+	}()
 	return node.Node.Stop(ctx)
 }

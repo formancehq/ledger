@@ -18,13 +18,13 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 
 	bucket, err := s.cluster.GetBucketOfLedger(r.Context(), ledgerName)
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 
 	ledgerInfo, err := bucket.GetLedger(r.Context(), ledgerName)
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

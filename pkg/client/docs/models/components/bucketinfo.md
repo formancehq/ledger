@@ -3,10 +3,11 @@
 
 ## Fields
 
-| Field                                      | Type                                       | Required                                   | Description                                |
-| ------------------------------------------ | ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
-| `ID`                                       | **int64*                                   | :heavy_minus_sign:                         | Sequential bucket ID                       |
-| `Name`                                     | **string*                                  | :heavy_minus_sign:                         | Bucket name                                |
-| `Driver`                                   | **string*                                  | :heavy_minus_sign:                         | Driver name                                |
-| `Config`                                   | map[string]*any*                           | :heavy_minus_sign:                         | Driver-specific configuration              |
-| `CreatedAt`                                | [*time.Time](https://pkg.go.dev/time#Time) | :heavy_minus_sign:                         | Creation timestamp (ISO 8601 format)       |
+| Field                                                                   | Type                                                                    | Required                                                                | Description                                                             |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `ID`                                                                    | *int64*                                                                 | :heavy_check_mark:                                                      | Sequential bucket ID                                                    |
+| `Name`                                                                  | *string*                                                                | :heavy_check_mark:                                                      | Bucket name                                                             |
+| `Driver`                                                                | [components.Driver](../../models/components/driver.md)                  | :heavy_check_mark:                                                      | Driver name                                                             |
+| `Config`                                                                | [components.Config](../../models/components/config.md)                  | :heavy_check_mark:                                                      | Driver-specific configuration                                           |
+| `CreatedAt`                                                             | [time.Time](https://pkg.go.dev/time#Time)                               | :heavy_check_mark:                                                      | Creation timestamp (ISO 8601 format)                                    |
+| `SnapshotThreshold`                                                     | **int64*                                                                | :heavy_minus_sign:                                                      | Number of logs before triggering a snapshot (0 means use global config) |

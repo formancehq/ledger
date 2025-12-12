@@ -41,8 +41,16 @@ config:
   bindAddr: "0.0.0.0:8888"  # Port for both Raft and gRPC
   httpPort: 9000
   dataDir: "/data/raft"
-  snapshotThreshold: 100
-  snapshotInterval: "30s"
+  
+  # Raft configuration
+  raft:
+    snapshotThreshold: 100   # Number of logs before triggering a snapshot
+    snapshotInterval: "30s"   # Minimum interval between snapshots
+    electionTick: 10          # Election timeout in ticks (default: 10)
+    heartbeatTick: 1          # Heartbeat interval in ticks (default: 1)
+    maxSizePerMsg: 1048576    # Maximum size per message in bytes (default: 1MB)
+    maxInflightMsgs: 256      # Maximum number of in-flight messages (default: 256)
+    tickInterval: 100ms       # Interval between Raft ticks (default: 100ms)
   
   # Bootstrap the first node
   bootstrap: true

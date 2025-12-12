@@ -18,12 +18,12 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 
 	bucket, err := s.cluster.GetBucket(r.Context(), bucketName)
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 
 	if err := bucket.Snapshot(r.Context()); err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

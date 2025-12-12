@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -14,9 +13,10 @@ import (
 
 // createBucketOptions holds all the flags for the create bucket command
 type createBucketOptions struct {
-	name   string
-	driver string
-	config interface{} // Will be one of: SQLiteConfig, PostgresConfig
+	name              string
+	driver            string
+	config            interface{} // Will be one of: SQLiteConfig, PostgresConfig
+	snapshotThreshold *uint64     // Optional snapshot threshold
 }
 
 var bucketsCreateCmd = &cobra.Command{
@@ -31,6 +31,7 @@ func init() {
 	bucketsCreateCmd.Flags().String("name", "", "Bucket name")
 	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres)")
 	bucketsCreateCmd.Flags().String("postgres-dsn", "", "PostgreSQL connection string (required for postgres driver)")
+	bucketsCreateCmd.Flags().Uint64("snapshot-threshold", 0, "Number of logs before triggering a snapshot (optional, uses global config if not set)")
 	// Name, driver and config are no longer required - wizard will prompt if not provided
 	// Note: SQLite and File drivers don't require config - paths are automatically generated
 
@@ -48,6 +49,11 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 
 	// Extract driver-specific config flags
 	postgresDSN, _ := cmd.Flags().GetString("postgres-dsn")
+
+	// Extract snapshot threshold flag
+	if snapshotThreshold, _ := cmd.Flags().GetUint64("snapshot-threshold"); snapshotThreshold > 0 {
+		opts.snapshotThreshold = &snapshotThreshold
+	}
 
 	// Build config struct from flags
 	switch opts.driver {
@@ -79,28 +85,53 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("bucket name is required")
 	}
 
-	// Convert config struct to JSON for API request
-	configJSON, err := json.Marshal(opts.config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	// Unmarshal into map for API compatibility
-	var configMap map[string]interface{}
-	if err := json.Unmarshal(configJSON, &configMap); err != nil {
-		return fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
 	// Create SDK instance
 	sdk := newSDKClient()
 
+	// Convert driver string to SDK type
+	var driver components.CreateBucketRequestDriver
+	switch opts.driver {
+	case "sqlite":
+		driver = components.CreateBucketRequestDriverSqlite
+	case "postgres":
+		driver = components.CreateBucketRequestDriverPostgres
+	default:
+		return fmt.Errorf("unsupported driver: %s", opts.driver)
+	}
+
+	// Convert config struct to SDK type
+	var config *components.CreateBucketRequestConfig
+	switch cfg := opts.config.(type) {
+	case service.SQLiteConfig:
+		cfgSDK := components.CreateCreateBucketRequestConfigSQLiteConfig(components.SQLiteConfig{})
+		config = &cfgSDK
+	case service.PostgresConfig:
+		cfgSDK := components.CreateCreateBucketRequestConfigPostgresConfig(components.PostgresConfig{
+			Dsn: cfg.DSN,
+		})
+		config = &cfgSDK
+	case nil:
+		// For SQLite, use empty config
+		if opts.driver == "sqlite" {
+			cfgSDK := components.CreateCreateBucketRequestConfigSQLiteConfig(components.SQLiteConfig{})
+			config = &cfgSDK
+		}
+	}
+
 	// Create bucket request
+	createReq := components.CreateBucketRequest{
+		Driver: driver,
+		Config: config,
+	}
+	// Add snapshot threshold if provided
+	if opts.snapshotThreshold != nil && *opts.snapshotThreshold > 0 {
+		threshold := int64(*opts.snapshotThreshold)
+		createReq.SnapshotThreshold = &threshold
+	}
+
 	req := operations.CreateBucketRequest{
-		BucketName: opts.name,
-		CreateBucketRequest: components.CreateBucketRequest{
-			Driver: opts.driver,
-			Config: configMap,
-		},
+		BucketName:          opts.name,
+		CreateBucketRequest: createReq,
 	}
 
 	// Show spinner while creating
@@ -115,7 +146,7 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 
 	// Extract response data
 	bucketResponse := res.GetCreateBucketResponse()
-	if bucketResponse == nil || bucketResponse.Data == nil {
+	if bucketResponse == nil {
 		spinner.Success("Bucket created successfully")
 		return nil
 	}
@@ -126,28 +157,24 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 
 	// Create info panel
 	panelData := ""
-	if data.ID != nil {
-		panelData += fmt.Sprintf("ID: %d\n", *data.ID)
-	}
-	if data.Name != nil {
-		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
-	}
-	if data.Driver != nil {
-		panelData += fmt.Sprintf("Driver: %s\n", *data.Driver)
-	}
+	panelData += fmt.Sprintf("ID: %d\n", data.ID)
+	panelData += fmt.Sprintf("Name: %s\n", data.Name)
+	panelData += fmt.Sprintf("Driver: %s\n", string(data.Driver))
 
 	// Display storage-specific information
-	if data.Driver != nil && data.Config != nil {
-		driver := *data.Driver
-		switch driver {
-		case "sqlite":
-			// SQLite DSN is auto-generated, show a note
-			panelData += "Storage: SQLite (auto-generated database file)\n"
-		case "postgres":
-			if dsn, ok := data.Config["dsn"].(string); ok {
-				panelData += fmt.Sprintf("DSN: %s\n", dsn)
-			}
+	switch data.Driver {
+	case components.DriverSqlite:
+		// SQLite DSN is auto-generated, show a note
+		panelData += "Storage: SQLite (auto-generated database file)\n"
+	case components.DriverPostgres:
+		if data.Config.Type == components.ConfigTypePostgresConfig && data.Config.PostgresConfig != nil {
+			panelData += fmt.Sprintf("DSN: %s\n", data.Config.PostgresConfig.Dsn)
 		}
+	}
+
+	// Display snapshot threshold if set
+	if data.SnapshotThreshold != nil && *data.SnapshotThreshold > 0 {
+		panelData += fmt.Sprintf("Snapshot Threshold: %d\n", *data.SnapshotThreshold)
 	}
 
 	pterm.DefaultBox.WithTitle("Bucket Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(panelData)
@@ -239,6 +266,34 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 			}
 			opts.config = service.PostgresConfig{DSN: dsn}
 		}
+	}
+
+	// Step 4: Ask for snapshot threshold (optional)
+	if opts.snapshotThreshold == nil {
+		pterm.Info.Println("Snapshot Threshold (Optional)")
+		pterm.Println("Enter the number of logs before triggering a snapshot.")
+		pterm.Println("Leave empty to use the global configuration.")
+		pterm.Println()
+
+		thresholdStr, err := pterm.DefaultInteractiveTextInput.
+			WithDefaultText("").
+			Show("Snapshot threshold (press Enter to skip)")
+		if err != nil {
+			return fmt.Errorf("failed to get snapshot threshold: %w", err)
+		}
+		if thresholdStr != "" {
+			var threshold uint64
+			if _, err := fmt.Sscanf(thresholdStr, "%d", &threshold); err != nil {
+				return fmt.Errorf("invalid snapshot threshold: %w", err)
+			}
+			if threshold > 0 {
+				opts.snapshotThreshold = &threshold
+				pterm.Success.Printf("Snapshot threshold: %d\n", threshold)
+			}
+		} else {
+			pterm.Info.Println("Using global snapshot threshold configuration")
+		}
+		pterm.Println()
 	}
 
 	pterm.Println()

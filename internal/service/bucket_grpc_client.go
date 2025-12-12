@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/metadata"
@@ -101,6 +102,123 @@ func (g *BucketGrpcClient) Import(ctx context.Context, ledgerName string, stream
 
 func (g *BucketGrpcClient) Export(ctx context.Context, ledgerName string, w ExportWriter) error {
 	return ErrNotFound
+}
+
+// channelLogCursor implements Cursor[ledger.Log] for gRPC stream
+type channelLogCursor struct {
+	logChan <-chan ledger.Log
+	closed  bool
+}
+
+func (c *channelLogCursor) Next(ctx context.Context) (ledger.Log, error) {
+	if c.closed {
+		return ledger.Log{}, io.EOF
+	}
+
+	// Read next log from channel
+	select {
+	case log, ok := <-c.logChan:
+		if !ok {
+			c.closed = true
+			return ledger.Log{}, io.EOF
+		}
+		return log, nil
+	case <-ctx.Done():
+		c.closed = true
+		return ledger.Log{}, ctx.Err()
+	}
+}
+
+func (c *channelLogCursor) Close() error {
+	c.closed = true
+	return nil
+}
+
+// GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
+func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64) (*Cursor[ledger.Log], error) {
+	req := &StreamLogsRequest{
+		Bucket:       g.name,
+		FromSequence: from,
+	}
+
+	stream, err := g.client.StreamLogs(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	logChan := make(chan ledger.Log)
+
+	go func() {
+		defer close(logChan)
+
+		for {
+			resp, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				// Error receiving log - channel will be closed
+				return
+			}
+
+			if resp.Log == nil {
+				continue
+			}
+
+			// Convert protobuf Log to ledger.Log
+			log, err := logFromBucketProto(resp.Log)
+			if err != nil {
+				// Conversion error - channel will be closed
+				return
+			}
+
+			// Send log to channel
+			select {
+			case logChan <- log:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	cursor := &channelLogCursor{
+		logChan: logChan,
+	}
+	var cursorInterface Cursor[ledger.Log] = cursor
+	return &cursorInterface, nil
+}
+
+// GetLastSequenceID returns the highest sequence number by iterating through all logs (implements LogWriter)
+// Note: This is inefficient as it streams all logs. Consider adding a dedicated gRPC method for better performance.
+// BucketGrpcClient implements LogWriter for this method to support catching up logs from leader
+func (g *BucketGrpcClient) GetLastSequenceID(ctx context.Context) (uint64, error) {
+	cursorPtr, err := g.GetAllLogs(ctx, 0)
+	if err != nil {
+		return 0, fmt.Errorf("getting all logs: %w", err)
+	}
+	if cursorPtr == nil {
+		return 0, nil
+	}
+	cursor := *cursorPtr
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	var lastSequence uint64
+	for {
+		log, err := cursor.Next(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, fmt.Errorf("iterating logs: %w", err)
+		}
+		if log.Sequence > lastSequence {
+			lastSequence = log.Sequence
+		}
+	}
+
+	return lastSequence, nil
 }
 
 func (g *BucketGrpcClient) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*CreateTransactionRequest, error) {
@@ -219,4 +337,129 @@ func (g *BucketGrpcClient) createTransactionResponseFromProto(resp *CreateTransa
 	}
 
 	return &log, createdTx, nil
+}
+
+// logFromBucketProto converts a bucket.proto Log to ledger.Log
+func logFromBucketProto(l *Log) (ledger.Log, error) {
+	log := ledger.Log{
+		Type:            ledger.LogType(l.Type),
+		Ledger:          l.Ledger,
+		IdempotencyKey:  l.IdempotencyKey,
+		IdempotencyHash: l.IdempotencyHash,
+		Sequence:        l.Sequence,
+	}
+
+	if l.Id != 0 {
+		id := l.Id
+		log.ID = &id
+	}
+
+	if l.Date != nil {
+		log.Date = time.New(l.Date.AsTime())
+	}
+
+	// Convert protobuf LogPayload to ledger.LogPayload
+	logPayload, err := logPayloadFromBucketProto(l.Data)
+	if err != nil {
+		return log, fmt.Errorf("converting log payload from proto: %w", err)
+	}
+	log.Data = logPayload
+
+	return log, nil
+}
+
+// logPayloadFromBucketProto converts a bucket.proto LogPayload to ledger.LogPayload
+func logPayloadFromBucketProto(payload *LogPayload) (ledger.LogPayload, error) {
+	if payload == nil {
+		return nil, fmt.Errorf("log payload is nil")
+	}
+
+	switch p := payload.Payload.(type) {
+	case *LogPayload_CreatedTransaction:
+		tx, err := transactionFromProto(p.CreatedTransaction)
+		if err != nil {
+			return nil, err
+		}
+		return &ledger.CreatedTransaction{
+			Transaction: tx,
+		}, nil
+	case *LogPayload_RevertedTransaction:
+		revertedTx, err := transactionFromProto(p.RevertedTransaction.RevertedTransaction)
+		if err != nil {
+			return nil, err
+		}
+		revertTx, err := transactionFromProto(p.RevertedTransaction.RevertTransaction)
+		if err != nil {
+			return nil, err
+		}
+		return &ledger.RevertedTransaction{
+			RevertedTransaction: revertedTx,
+			RevertTransaction:   revertTx,
+		}, nil
+	case *LogPayload_SavedMetadata:
+		var targetID interface{}
+		switch id := p.SavedMetadata.TargetId.(type) {
+		case *SavedMetadata_AccountId:
+			targetID = id.AccountId
+		case *SavedMetadata_TransactionId:
+			targetID = id.TransactionId
+		default:
+			return nil, fmt.Errorf("unknown target ID type")
+		}
+		return &ledger.SavedMetadata{
+			TargetType: p.SavedMetadata.TargetType,
+			TargetID:   targetID,
+			Metadata:   structToMetadata(p.SavedMetadata.Metadata),
+		}, nil
+	case *LogPayload_DeletedMetadata:
+		var targetID interface{}
+		switch id := p.DeletedMetadata.TargetId.(type) {
+		case *DeletedMetadata_AccountId:
+			targetID = id.AccountId
+		case *DeletedMetadata_TransactionId:
+			targetID = id.TransactionId
+		default:
+			return nil, fmt.Errorf("unknown target ID type")
+		}
+		return &ledger.DeletedMetadata{
+			TargetType: p.DeletedMetadata.TargetType,
+			TargetID:   targetID,
+			Key:        p.DeletedMetadata.Key,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown log payload type: %T", payload.Payload)
+	}
+}
+
+// transactionFromProto converts a protobuf Transaction to ledger.Transaction
+func transactionFromProto(tx *Transaction) (ledger.Transaction, error) {
+	postings := make(ledger.Postings, 0, len(tx.Postings))
+	for _, p := range tx.Postings {
+		amount, ok := new(big.Int).SetString(p.Amount, 10)
+		if !ok {
+			return ledger.Transaction{}, fmt.Errorf("invalid amount: %s", p.Amount)
+		}
+		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, amount))
+	}
+
+	txResult := ledger.NewTransaction()
+	txResult = txResult.WithPostings(postings...)
+
+	if tx.Metadata != nil {
+		txResult = txResult.WithMetadata(structToMetadata(tx.Metadata))
+	}
+
+	if tx.Timestamp != nil {
+		txResult = txResult.WithTimestamp(time.New(tx.Timestamp.AsTime()))
+	}
+
+	if tx.Reference != "" {
+		txResult = txResult.WithReference(tx.Reference)
+	}
+
+	if tx.Id != 0 {
+		txResult = txResult.WithID(tx.Id)
+	}
+
+	return txResult, nil
 }

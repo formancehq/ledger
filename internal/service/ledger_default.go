@@ -18,18 +18,18 @@ import (
 type DefaultLedger struct {
 	logWriter          LogWriter // Writes logs via Raft
 	lockedVolumesStore LockedBalancesStore
-	logReader          LogReader // Needed for GetLastLog and GetLogWithIdempotencyKey
+	logStore           LogStore // Needed for GetLastLog, GetLogWithIdempotencyKey, and GetAllLogs
 	logger             logging.Logger
 	nextLogIDs         map[string]uint64 // Counter for log IDs per ledger
 	nextLogIDMutex     sync.RWMutex      // Protects nextLogIDs access
 }
 
 // NewDefaultLedger creates a new default ledger service
-func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStore, logReader LogReader, logger logging.Logger) *DefaultLedger {
+func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStore, logStore LogStore, logger logging.Logger) *DefaultLedger {
 	return &DefaultLedger{
 		logWriter:          logWriter,
 		lockedVolumesStore: lockedVolumesStore,
-		logReader:          logReader,
+		logStore:           logStore,
 		logger:             logger,
 		nextLogIDs:         make(map[string]uint64),
 	}
@@ -50,7 +50,7 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 		_, exists = l.nextLogIDs[ledgerName]
 		if !exists {
 			// Initialize counter from last log
-			lastLog, err := l.logReader.GetLastLog(ctx, ledgerName)
+			lastLog, err := l.logStore.GetLastLog(ctx, ledgerName)
 			if err != nil {
 				l.nextLogIDMutex.Unlock()
 				return 0, fmt.Errorf("getting last log to initialize counter: %w", err)
@@ -117,7 +117,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	// Check idempotency: if idempotency key is provided, check if a log already exists
 	if parameters.IdempotencyKey != "" {
 		// todo: get from hot storage
-		existingLog, err := l.logReader.GetLogWithIdempotencyKey(ctx, ledgerName, parameters.IdempotencyKey)
+		existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, ledgerName, parameters.IdempotencyKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -323,7 +323,7 @@ func (l *DefaultLedger) executeNumscript(ctx context.Context, ledgerName string,
 	storeAdapter := &numscriptStoreAdapter{
 		ledgerName:         ledgerName,
 		lockedVolumesStore: l.lockedVolumesStore,
-		logReader:          l.logReader,
+		logStore:           l.logStore,
 		ctx:                ctx,
 	}
 
@@ -397,10 +397,15 @@ func (l *DefaultLedger) Export(ctx context.Context, ledgerName string, w ExportW
 }
 
 // numscriptStoreAdapter implements numscript.Store to provide balances and metadata
+// GetLogReader returns the LogReader for this ledger
+func (l *DefaultLedger) GetLogReader() LogReader {
+	return l.logStore
+}
+
 type numscriptStoreAdapter struct {
 	ledgerName         string
 	lockedVolumesStore LockedBalancesStore
-	logReader          LogReader
+	logStore           LogStore
 	ctx                context.Context
 }
 

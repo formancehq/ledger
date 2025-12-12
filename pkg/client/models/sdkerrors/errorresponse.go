@@ -8,9 +8,9 @@ import (
 
 type ErrorResponse struct {
 	// Error code identifier
-	ErrorCode *string `json:"errorCode,omitempty"`
+	ErrorCode string `json:"errorCode"`
 	// Human-readable error message
-	ErrorMessage *string `json:"errorMessage,omitempty"`
+	ErrorMessage string `json:"errorMessage"`
 }
 
 var _ error = &ErrorResponse{}

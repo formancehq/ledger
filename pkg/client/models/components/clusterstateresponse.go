@@ -45,32 +45,32 @@ func (e *State) UnmarshalJSON(data []byte) error {
 
 type ClusterStateResponseData struct {
 	// Current state of the local node
-	State *State `json:"state,omitempty"`
-	// ID of the current leader (empty if no leader)
-	Leader *string `json:"leader,omitempty"`
+	State State `json:"state"`
+	// ID of the current leader (0 if no leader)
+	Leader *int64 `json:"leader,omitempty"`
 	// ID of the local node
-	LocalNode *string `json:"localNode,omitempty"`
+	LocalNode int64 `json:"localNode"`
 	// List of all nodes in the cluster
 	Nodes []NodeInfo `json:"nodes,omitempty"`
 }
 
-func (o *ClusterStateResponseData) GetState() *State {
+func (o *ClusterStateResponseData) GetState() State {
 	if o == nil {
-		return nil
+		return State("")
 	}
 	return o.State
 }
 
-func (o *ClusterStateResponseData) GetLeader() *string {
+func (o *ClusterStateResponseData) GetLeader() *int64 {
 	if o == nil {
 		return nil
 	}
 	return o.Leader
 }
 
-func (o *ClusterStateResponseData) GetLocalNode() *string {
+func (o *ClusterStateResponseData) GetLocalNode() int64 {
 	if o == nil {
-		return nil
+		return 0
 	}
 	return o.LocalNode
 }
@@ -83,12 +83,12 @@ func (o *ClusterStateResponseData) GetNodes() []NodeInfo {
 }
 
 type ClusterStateResponse struct {
-	Data *ClusterStateResponseData `json:"data,omitempty"`
+	Data ClusterStateResponseData `json:"data"`
 }
 
-func (o *ClusterStateResponse) GetData() *ClusterStateResponseData {
+func (o *ClusterStateResponse) GetData() ClusterStateResponseData {
 	if o == nil {
-		return nil
+		return ClusterStateResponseData{}
 	}
 	return o.Data
 }

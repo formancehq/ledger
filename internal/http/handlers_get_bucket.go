@@ -20,13 +20,13 @@ func (s *Server) handleGetBucket(w http.ResponseWriter, r *http.Request) {
 	bucket, err := s.cluster.GetBucket(r.Context(), bucketName)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to get bucket")
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 
 	state, err := bucket.GetClusterState(r.Context())
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

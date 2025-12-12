@@ -4,23 +4,23 @@ package components
 
 type ClusterState struct {
 	// Current state of the Raft node (Leader, Follower, Candidate, PreCandidate, Unknown)
-	State *string `json:"state,omitempty"`
-	// ID of the current leader (empty if no leader)
-	Leader *string `json:"leader,omitempty"`
+	State string `json:"state"`
+	// ID of the current leader (0 if no leader)
+	Leader *int64 `json:"leader,omitempty"`
 	// List of all nodes in the cluster
 	Nodes []NodeInfo `json:"nodes,omitempty"`
 	// ID of the local node
-	LocalNode *string `json:"localNode,omitempty"`
+	LocalNode int64 `json:"localNode"`
 }
 
-func (o *ClusterState) GetState() *string {
+func (o *ClusterState) GetState() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.State
 }
 
-func (o *ClusterState) GetLeader() *string {
+func (o *ClusterState) GetLeader() *int64 {
 	if o == nil {
 		return nil
 	}
@@ -34,9 +34,9 @@ func (o *ClusterState) GetNodes() []NodeInfo {
 	return o.Nodes
 }
 
-func (o *ClusterState) GetLocalNode() *string {
+func (o *ClusterState) GetLocalNode() int64 {
 	if o == nil {
-		return nil
+		return 0
 	}
 	return o.LocalNode
 }

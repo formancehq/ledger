@@ -22,6 +22,7 @@ type DeleteBucketResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Bucket deleted successfully
 	DeleteBucketResponse *components.DeleteBucketResponse
+	Headers              map[string][]string
 }
 
 func (o *DeleteBucketResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -36,4 +37,11 @@ func (o *DeleteBucketResponse) GetDeleteBucketResponse() *components.DeleteBucke
 		return nil
 	}
 	return o.DeleteBucketResponse
+}
+
+func (o *DeleteBucketResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

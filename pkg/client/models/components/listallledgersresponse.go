@@ -4,12 +4,12 @@ package components
 
 type ListAllLedgersResponse struct {
 	// List of all ledgers across all buckets
-	Data []LedgerInfo `json:"data,omitempty"`
+	Data []LedgerInfo `json:"data"`
 }
 
 func (o *ListAllLedgersResponse) GetData() []LedgerInfo {
 	if o == nil {
-		return nil
+		return []LedgerInfo{}
 	}
 	return o.Data
 }

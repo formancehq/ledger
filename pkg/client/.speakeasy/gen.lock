@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 64bf60d98cba0be7ec53bb79beee29c7
+  docChecksum: 7cffeb5b1116204c6304bd36eca368fd
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.0
-  configChecksum: a3b5362cff3b7d87ae29bbe607bb8571
+  releaseVersion: 0.11.8
+  configChecksum: 899f6c82a73104a4e2242f9e85a429a5
 features:
   go:
     additionalDependencies: 0.1.0
@@ -53,11 +53,13 @@ generatedFiles:
   - /models/components/listallledgersresponse.go
   - /models/components/listbucketsresponse.go
   - /models/components/nodeinfo.go
+  - /models/components/postgresconfig.go
   - /models/components/postingrequest.go
   - /models/components/postingresponse.go
   - /models/components/reverttransactionrequest.go
   - /models/components/script.go
   - /models/components/snapshotresponse.go
+  - /models/components/sqliteconfig.go
   - /models/components/transactionresponse.go
   - /models/operations/bulkoperations.go
   - /models/operations/createbucket.go
@@ -79,6 +81,8 @@ generatedFiles:
   - docs/models/components/addmetadatarequest.md
   - docs/models/components/bucketinfo.md
   - docs/models/components/bucketwithraftstate.md
+  - docs/models/components/bucketwithraftstateconfig.md
+  - docs/models/components/bucketwithraftstatedriver.md
   - docs/models/components/bulkelement.md
   - docs/models/components/bulkelementdata.md
   - docs/models/components/bulkresponse.md
@@ -87,7 +91,10 @@ generatedFiles:
   - docs/models/components/clusterstate.md
   - docs/models/components/clusterstateresponse.md
   - docs/models/components/clusterstateresponsedata.md
+  - docs/models/components/config.md
   - docs/models/components/createbucketrequest.md
+  - docs/models/components/createbucketrequestconfig.md
+  - docs/models/components/createbucketrequestdriver.md
   - docs/models/components/createbucketresponse.md
   - docs/models/components/createbucketsnapshotresponse.md
   - docs/models/components/createledgerrequest.md
@@ -100,6 +107,7 @@ generatedFiles:
   - docs/models/components/deletemetadatarequest.md
   - docs/models/components/deletemetadatarequesttargetid.md
   - docs/models/components/deletemetadatarequesttargettype.md
+  - docs/models/components/driver.md
   - docs/models/components/getbucketresponse.md
   - docs/models/components/getledgerresponse.md
   - docs/models/components/httpmetadata.md
@@ -107,12 +115,14 @@ generatedFiles:
   - docs/models/components/listallledgersresponse.md
   - docs/models/components/listbucketsresponse.md
   - docs/models/components/nodeinfo.md
+  - docs/models/components/postgresconfig.md
   - docs/models/components/postingrequest.md
   - docs/models/components/postingresponse.md
   - docs/models/components/reverttransactionrequest.md
   - docs/models/components/script.md
   - docs/models/components/snapshotresponse.md
   - docs/models/components/snapshotresponsedata.md
+  - docs/models/components/sqliteconfig.md
   - docs/models/components/state.md
   - docs/models/components/suffrage.md
   - docs/models/components/targetid.md
@@ -175,9 +185,9 @@ examples:
     speakeasy-default-list-all-ledgers:
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": []}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   getLedger:
     speakeasy-default-get-ledger:
       parameters:
@@ -185,11 +195,13 @@ examples:
           ledgerName: "<value>"
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": {"id": 427403, "name": "<value>", "bucket": "<value>", "createdAt": "2025-04-04T05:10:16.528Z"}}
         "404":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   createLedger:
     speakeasy-default-create-ledger:
       parameters:
@@ -199,11 +211,13 @@ examples:
         application/json: {"bucket": "<value>"}
       responses:
         "201":
-          application/json: {}
+          application/json: {"data": {"id": 726425, "name": "<value>", "bucket": "<value>", "createdAt": "2024-05-25T17:25:53.217Z"}}
         "400":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   createTransaction:
     speakeasy-default-create-transaction:
       parameters:
@@ -213,36 +227,44 @@ examples:
         application/json: {"dryRun": false}
       responses:
         "201":
-          application/json: {}
+          application/json: {"data": {"transaction": {"postings": [{"source": "<value>", "destination": "<value>", "amount": 361192, "asset": "<value>"}], "timestamp": "2023-02-01T17:54:50.972Z", "id": 156492}}}
         "400":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   createSnapshot:
     speakeasy-default-create-snapshot:
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": {"message": "<value>"}}
         "405":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   getClusterState:
     speakeasy-default-get-cluster-state:
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": {"state": "Candidate", "localNode": 443395}}
         "405":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   listBuckets:
     speakeasy-default-list-buckets:
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": [{"id": 696192, "name": "<value>", "driver": "sqlite", "config": {}, "createdAt": "2023-11-21T17:50:25.335Z"}]}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   getBucket:
     speakeasy-default-get-bucket:
       parameters:
@@ -250,11 +272,11 @@ examples:
           bucketName: "<value>"
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": {"id": 88288, "name": "<value>", "driver": "sqlite", "config": {}, "createdAt": "2023-11-23T16:37:39.362Z"}}
         "404":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   deleteBucket:
     speakeasy-default-delete-bucket:
       parameters:
@@ -262,11 +284,13 @@ examples:
           bucketName: "<value>"
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": {"message": "<value>"}}
         "404":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   createBucketSnapshot:
     speakeasy-default-create-bucket-snapshot:
       parameters:
@@ -274,25 +298,29 @@ examples:
           bucketName: "<value>"
       responses:
         "200":
-          application/json: {}
+          application/json: {"message": "<value>"}
         "400":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   createBucket:
     speakeasy-default-create-bucket:
       parameters:
         path:
           bucketName: "<value>"
       requestBody:
-        application/json: {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>"}}
+        application/json: {"driver": "postgres", "config": {}}
       responses:
         "201":
-          application/json: {}
+          application/json: {"data": {"id": 452145, "name": "<value>", "driver": "postgres", "config": {}, "createdAt": "2023-11-29T11:59:22.657Z"}}
         "400":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
   bulkOperations:
     speakeasy-default-bulk-operations:
       parameters:
@@ -306,10 +334,12 @@ examples:
         application/json: [{"action": "DELETE_METADATA", "data": {"dryRun": false}}]
       responses:
         "200":
-          application/json: {}
+          application/json: {"data": [{"responseType": "<value>", "logID": 858709}]}
         "400":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
-          application/json: {}
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
 examplesVersion: 1.0.2
 generatedTests: {}

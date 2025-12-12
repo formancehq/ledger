@@ -45,7 +45,7 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 	}
 
 	bucketResponse := res.GetGetBucketResponse()
-	if bucketResponse == nil || bucketResponse.Data == nil {
+	if bucketResponse == nil {
 		return fmt.Errorf("no bucket data in response")
 	}
 
@@ -53,17 +53,14 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 
 	// Bucket information panel
 	bucketInfo := ""
-	if data.ID != nil {
-		bucketInfo += fmt.Sprintf("ID: %d\n", *data.ID)
-	}
-	if data.Name != nil {
-		bucketInfo += fmt.Sprintf("Name: %s\n", *data.Name)
-	}
-	if data.Driver != nil {
-		bucketInfo += fmt.Sprintf("Driver: %s\n", *data.Driver)
-	}
-	if data.CreatedAt != nil {
-		bucketInfo += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
+	bucketInfo += fmt.Sprintf("ID: %d\n", data.ID)
+	bucketInfo += fmt.Sprintf("Name: %s\n", data.Name)
+	bucketInfo += fmt.Sprintf("Driver: %s\n", string(data.Driver))
+	bucketInfo += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
+	if data.SnapshotThreshold != nil && *data.SnapshotThreshold > 0 {
+		bucketInfo += fmt.Sprintf("Snapshot Threshold: %d\n", *data.SnapshotThreshold)
+	} else {
+		bucketInfo += "Snapshot Threshold: (using global config)\n"
 	}
 
 	pterm.DefaultHeader.WithFullWidth().Println("Bucket Information")
@@ -75,14 +72,10 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 		pterm.Println()
 		raftState := data.RaftState
 		raftInfo := ""
-		if raftState.State != nil {
-			raftInfo += fmt.Sprintf("State: %s\n", *raftState.State)
-		}
-		if raftState.LocalNode != nil {
-			raftInfo += fmt.Sprintf("Local Node: %s\n", *raftState.LocalNode)
-		}
-		if raftState.Leader != nil && *raftState.Leader != "" {
-			raftInfo += fmt.Sprintf("Leader: %s\n", *raftState.Leader)
+		raftInfo += fmt.Sprintf("State: %s\n", raftState.State)
+		raftInfo += fmt.Sprintf("Local Node: %d\n", raftState.LocalNode)
+		if raftState.Leader != nil && *raftState.Leader != 0 {
+			raftInfo += fmt.Sprintf("Leader: %d\n", *raftState.Leader)
 		} else {
 			raftInfo += "Leader: (none)\n"
 		}
@@ -95,20 +88,11 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 				{"ID", "Address", "Suffrage", "Role"},
 			}
 			for _, node := range raftState.Nodes {
-				nodeID := "N/A"
-				if node.ID != nil {
-					nodeID = *node.ID
-				}
-				nodeAddr := "N/A"
-				if node.Address != nil {
-					nodeAddr = *node.Address
-				}
-				nodeSuffrage := "N/A"
-				if node.Suffrage != nil {
-					nodeSuffrage = string(*node.Suffrage)
-				}
+				nodeID := fmt.Sprintf("%d", node.ID)
+				nodeAddr := node.Address
+				nodeSuffrage := string(node.Suffrage)
 				role := ""
-				if raftState.Leader != nil && node.ID != nil && *raftState.Leader == *node.ID {
+				if raftState.Leader != nil && node.ID == *raftState.Leader {
 					role = pterm.LightGreen("LEADER")
 				} else {
 					role = "Follower"

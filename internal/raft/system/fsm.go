@@ -88,8 +88,11 @@ func (fsm *FSM) handleCreateBucket(cmd raft.Command) (*ledger.BucketInfo, error)
 		Config:    configJSON,
 		CreatedAt: cmd.Date,
 	}
+	if createCmd.SnapshotThreshold > 0 {
+		bucketInfo.SnapshotThreshold = createCmd.SnapshotThreshold
+	}
 
-	node, err := startBucketRaftGroupFromFSM(fsm.raftConfig, fsm.multiplexedTransport, fsm.logger, bucketInfo)
+	node, err := fsm.startBucketRaftGroupFromFSM(bucketInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -126,20 +129,33 @@ func (fsm *FSM) handleDeleteBucket(ctx context.Context, cmd raft.Command) error 
 	return nil
 }
 
-func (fsm *FSM) ApplyEntry(ctx context.Context, cmd raft.Command) (any, error) {
-
-	// Route to the appropriate command handler in FSM
-	var err error
-	switch cmd.Type {
-	case CommandTypeCreateBucket:
-		return fsm.handleCreateBucket(cmd)
-	case CommandTypeDeleteBucket:
-		err = fsm.handleDeleteBucket(ctx, cmd)
-	default:
-		return nil, fmt.Errorf("unknown command type: %s", cmd.Type)
+func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft.ApplyResult {
+	ret := make([]raft.ApplyResult, 0, len(commands))
+	for _, cmd := range commands {
+		switch cmd.Type {
+		case CommandTypeCreateBucket:
+			info, err := fsm.handleCreateBucket(cmd)
+			if err != nil {
+				ret = append(ret, raft.ApplyResult{
+					Error: err,
+				})
+				continue
+			}
+			ret = append(ret, raft.ApplyResult{
+				Result: info,
+			})
+		case CommandTypeDeleteBucket:
+			ret = append(ret, raft.ApplyResult{
+				Error: fsm.handleDeleteBucket(ctx, cmd),
+			})
+		default:
+			ret = append(ret, raft.ApplyResult{
+				Error: fmt.Errorf("unknown command type: %s", cmd.Type),
+			})
+		}
 	}
 
-	return nil, err
+	return ret
 }
 
 // GetBucket returns the bucket info for a given name
@@ -189,11 +205,12 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 		}
 
 		bucketsProto[name] = &BucketInfo{
-			Id:        bucketInfo.ID,
-			Name:      bucketInfo.Name,
-			Driver:    bucketInfo.Driver,
-			Config:    configStruct,
-			CreatedAt: createdAt,
+			Id:                bucketInfo.ID,
+			Name:              bucketInfo.Name,
+			Driver:            bucketInfo.Driver,
+			Config:            configStruct,
+			CreatedAt:         createdAt,
+			SnapshotThreshold: bucketInfo.SnapshotThreshold,
 		}
 	}
 
@@ -247,22 +264,18 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 		}
 
 		buckets[name] = ledger.BucketInfo{
-			ID:        bucketProto.Id,
-			Name:      bucketProto.Name,
-			Driver:    bucketProto.Driver,
-			Config:    configJSON,
-			CreatedAt: createdAt,
+			ID:                bucketProto.Id,
+			Name:              bucketProto.Name,
+			Driver:            bucketProto.Driver,
+			Config:            configJSON,
+			CreatedAt:         createdAt,
+			SnapshotThreshold: bucketProto.SnapshotThreshold,
 		}
 	}
 
 	fsm.buckets = make(map[string]*bucket.Node, len(buckets))
 	for _, bucketInfo := range buckets {
-		group, err := startBucketRaftGroupFromFSM(
-			fsm.raftConfig,
-			fsm.multiplexedTransport,
-			fsm.logger,
-			bucketInfo,
-		)
+		group, err := fsm.startBucketRaftGroupFromFSM(bucketInfo)
 		if err != nil {
 			return err
 		}
@@ -307,31 +320,52 @@ func (fsm *FSM) Stop(ctx context.Context) error {
 }
 
 // startBucketRaftGroupFromFSM starts a Raft group for a bucket using information from the FSM
-func startBucketRaftGroupFromFSM(config Config, transport *multiplexedTransport, logger logging.Logger, bucketInfo ledger.BucketInfo) (*bucket.Node, error) {
+func (fsm *FSM) startBucketRaftGroupFromFSM(bucketInfo ledger.BucketInfo) (*bucket.Node, error) {
 
-	logger = logger.WithFields(map[string]any{
+	logger := fsm.logger.WithFields(map[string]any{
 		"bucket": bucketInfo.Name,
 	})
 
 	logger.Infof("Starting bucket Raft group...")
+
+	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64) (*service.Cursor[ledger.Log], error) {
+		return service.
+			NewBucketGrpcClient(bucketInfo.Name, service.NewBucketServiceClient(
+				fsm.multiplexedTransport.GetPeerConnection(fsm.buckets[bucketInfo.Name].GetLeader()),
+			)).
+			GetAllLogs(ctx, from)
+	})
+
+	// Use bucket-specific snapshot threshold if set, otherwise use global config
+	snapshotThreshold := fsm.raftConfig.SnapshotThreshold
+	if bucketInfo.SnapshotThreshold > 0 {
+		snapshotThreshold = bucketInfo.SnapshotThreshold
+	}
+
 	group, err := bucket.NewNode(
 		bucketInfo,
-		transport.NewBucketTransport(bucketInfo.ID),
+		fsm.multiplexedTransport.NewBucketTransport(bucketInfo.ID),
 		raft.NodeConfig{
-			NodeID:            nodeIDFromBucketAndRootNodeID(config.NodeID, bucketInfo),
-			DataDir:           filepath.Join(config.DataDir, "buckets", bucketInfo.Name),
-			SnapshotThreshold: config.SnapshotThreshold,
-			SnapshotInterval:  config.SnapshotInterval,
-			Bootstrap:         config.Bootstrap,
-			Peers: collectionutils.Map(config.Peers, func(from raft.Peer) raft.Peer {
+			NodeID:    nodeIDFromBucketAndRootNodeID(fsm.raftConfig.NodeID, bucketInfo),
+			Bootstrap: fsm.raftConfig.Bootstrap,
+			Peers: collectionutils.Map(fsm.raftConfig.Peers, func(from raft.Peer) raft.Peer {
 				return raft.Peer{
 					ID:      nodeIDFromBucketAndRootNodeID(from.ID, bucketInfo),
 					Address: from.Address,
 				}
 			}),
+			DataDir:           filepath.Join(fsm.raftConfig.DataDir, "buckets", bucketInfo.Name),
+			SnapshotThreshold: snapshotThreshold,
+			SnapshotInterval:  fsm.raftConfig.SnapshotInterval,
+			ElectionTick:      fsm.raftConfig.ElectionTick,
+			HeartbeatTick:     fsm.raftConfig.HeartbeatTick,
+			MaxSizePerMsg:     fsm.raftConfig.MaxSizePerMsg,
+			MaxInflightMsgs:   fsm.raftConfig.MaxInflightMsgs,
+			TickInterval:      fsm.raftConfig.TickInterval,
 		},
 		logger,
-		config.ExtraDataDir,
+		fsm.raftConfig.ExtraDataDir,
+		logReader,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating bucket Raft group: %w", err)

@@ -41,7 +41,12 @@ func (impl *SystemServiceServerImpl) CreateBucket(ctx context.Context, req *Crea
 		config = req.Config.AsMap()
 	}
 
-	bucket, err := impl.cluster.CreateBucket(ctx, req.Name, req.Driver, config)
+	var snapshotThreshold *uint64
+	if req.SnapshotThreshold > 0 {
+		snapshotThreshold = &req.SnapshotThreshold
+	}
+
+	bucket, err := impl.cluster.CreateBucket(ctx, req.Name, req.Driver, config, snapshotThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("creating bucket: %w", err)
 	}
@@ -57,13 +62,17 @@ func (impl *SystemServiceServerImpl) CreateBucket(ctx context.Context, req *Crea
 		return nil, fmt.Errorf("converting bucket config to protobuf Struct: %w", err)
 	}
 
-	return &CreateBucketResponse{
+	resp := &CreateBucketResponse{
 		Id:        bucket.ID,
 		Name:      bucket.Name,
 		Config:    cfg,
 		Driver:    bucket.Driver,
 		CreatedAt: timestamppb.New(bucket.CreatedAt.Time),
-	}, nil
+	}
+	if bucket.SnapshotThreshold > 0 {
+		resp.SnapshotThreshold = bucket.SnapshotThreshold
+	}
+	return resp, nil
 }
 
 func (impl *SystemServiceServerImpl) DeleteBucket(ctx context.Context, req *DeleteBucketRequest) (*DeleteBucketResponse, error) {

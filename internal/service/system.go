@@ -8,6 +8,6 @@ import (
 
 type SystemWriter interface {
 	LeaderOnly
-	CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}) (*ledger.BucketInfo, error)
+	CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error)
 	DeleteBucket(ctx context.Context, name string) error
 }

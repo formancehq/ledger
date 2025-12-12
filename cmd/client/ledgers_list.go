@@ -50,22 +50,10 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, ledger := range ledgers {
-		id := "N/A"
-		if ledger.ID != nil {
-			id = fmt.Sprintf("%d", *ledger.ID)
-		}
-		name := "N/A"
-		if ledger.Name != nil {
-			name = *ledger.Name
-		}
-		bucket := "N/A"
-		if ledger.Bucket != nil {
-			bucket = *ledger.Bucket
-		}
-		createdAt := "N/A"
-		if ledger.CreatedAt != nil {
-			createdAt = ledger.CreatedAt.Format("2006-01-02 15:04:05")
-		}
+		id := fmt.Sprintf("%d", ledger.ID)
+		name := ledger.Name
+		bucket := ledger.Bucket
+		createdAt := ledger.CreatedAt.Format("2006-01-02 15:04:05")
 		lastLogID := "N/A"
 		if ledger.LastLogID != nil {
 			lastLogID = fmt.Sprintf("%d", *ledger.LastLogID)

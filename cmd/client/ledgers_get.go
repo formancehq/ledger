@@ -55,7 +55,7 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 
 	// Extract response data
 	ledgerResponse := res.GetGetLedgerResponse()
-	if ledgerResponse == nil || ledgerResponse.Data == nil {
+	if ledgerResponse == nil {
 		return fmt.Errorf("no ledger data in response")
 	}
 
@@ -63,18 +63,10 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 
 	// Create info panel
 	panelData := ""
-	if data.ID != nil {
-		panelData += fmt.Sprintf("ID: %d\n", *data.ID)
-	}
-	if data.Name != nil {
-		panelData += fmt.Sprintf("Name: %s\n", *data.Name)
-	}
-	if data.Bucket != nil {
-		panelData += fmt.Sprintf("Bucket: %s\n", *data.Bucket)
-	}
-	if data.CreatedAt != nil {
-		panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
-	}
+	panelData += fmt.Sprintf("ID: %d\n", data.ID)
+	panelData += fmt.Sprintf("Name: %s\n", data.Name)
+	panelData += fmt.Sprintf("Bucket: %s\n", data.Bucket)
+	panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
 	if data.LastLogID != nil {
 		panelData += fmt.Sprintf("Last Log ID: %d\n", *data.LastLogID)
 	}

@@ -27,7 +27,7 @@ func (s *Server) handleDeleteBucket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

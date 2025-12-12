@@ -15,7 +15,8 @@ const (
 )
 
 // NewCreateBucketCommand creates a new CreateBucketCommand
-func NewCreateBucketCommand(name, driver string, config map[string]interface{}) (*raft.Command, error) {
+// snapshotThreshold is optional: if nil or 0, uses global config
+func NewCreateBucketCommand(name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*raft.Command, error) {
 	// Convert raftConfig map to protobuf Struct
 	configStruct, err := structpb.NewStruct(config)
 	if err != nil {
@@ -26,6 +27,9 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}) 
 		Name:   name,
 		Driver: driver,
 		Config: configStruct,
+	}
+	if snapshotThreshold != nil && *snapshotThreshold > 0 {
+		cmdProto.SnapshotThreshold = *snapshotThreshold
 	}
 
 	data, err := proto.Marshal(cmdProto)

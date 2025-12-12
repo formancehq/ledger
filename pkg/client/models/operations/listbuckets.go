@@ -10,6 +10,7 @@ type ListBucketsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// List of buckets retrieved successfully
 	ListBucketsResponse *components.ListBucketsResponse
+	Headers             map[string][]string
 }
 
 func (o *ListBucketsResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -24,4 +25,11 @@ func (o *ListBucketsResponse) GetListBucketsResponse() *components.ListBucketsRe
 		return nil
 	}
 	return o.ListBucketsResponse
+}
+
+func (o *ListBucketsResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

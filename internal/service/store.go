@@ -18,21 +18,32 @@ type Cursor[T any] interface {
 // LogWriter handles log writing operations
 type LogWriter interface {
 	InsertLogs(ctx context.Context, logs ...ledger.Log) error
+	GetLastSequenceID(ctx context.Context) (uint64, error)
 }
 
 // LogReader handles log reading operations
 type LogReader interface {
-	GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error)
-	GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error)
-	GetAllLogs(ctx context.Context, ledgerName string) (*Cursor[ledger.Log], error)
+	GetAllLogs(ctx context.Context, from uint64) (*Cursor[ledger.Log], error) // from: optional sequence number to start from (0 = from beginning)
 }
 
-// LogStore embeds both LogWriter and LogReader
+type LogReaderFn func(ctx context.Context, from uint64) (*Cursor[ledger.Log], error)
+
+func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64) (*Cursor[ledger.Log], error) {
+	return fn(ctx, from)
+}
+
+func NewLogReaderFn(fn LogReaderFn) LogReader {
+	return fn
+}
+
+// LogStore embeds both LogWriter and LogReader, plus additional methods
 type LogStore interface {
 	// todo: relax ?
 	BalancesStore
 	LogWriter
 	LogReader
+	GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error)
+	GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error)
 }
 
 // Store embeds LogWriter and LogReader

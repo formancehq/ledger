@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"google.golang.org/grpc"
 )
 
 type receptionsChannels struct {
@@ -100,6 +101,10 @@ func (r *multiplexedTransport) NewBucketTransport(bucketID uint64) raft.NodeTran
 		}),
 		grpcTransport: r.grpcTransport,
 	}
+}
+
+func (r *multiplexedTransport) GetPeerConnection(nodeID uint64) grpc.ClientConnInterface {
+	return r.grpcTransport.GetPeerConnection(NodeIDFromBucketNodeID(nodeID))
 }
 
 func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTransport) *multiplexedTransport {

@@ -63,9 +63,11 @@ func Module() fx.Option {
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
+						logger.Infof("Shutting down raft cluster")
 						if err := systemNode.Stop(ctx); err != nil {
 							return fmt.Errorf("shutting down raft cluster: %w", err)
 						}
+						logger.Infof("Raft cluster stopped successfully")
 						return nil
 					},
 				})
@@ -114,12 +116,15 @@ type systemNodeAdapter struct {
 	connectionPool *transport.ConnectionPool
 }
 
-func (adapter *systemNodeAdapter) getMainCluster() interface {
+func (adapter *systemNodeAdapter) getMainCluster() (interface {
 	service.Cluster
 	service.SystemWriter
-} {
+}, error) {
 	if adapter.IsLeader() {
-		return adapter.Node
+		return adapter.Node, nil
+	}
+	if adapter.GetLeader() == 0 {
+		return nil, ledger.ErrNoLeader
 	}
 
 	grpcConn := adapter.connectionPool.GetConnection(adapter.GetLeader())
@@ -132,19 +137,31 @@ func (adapter *systemNodeAdapter) getMainCluster() interface {
 		Cluster:      adapter,
 		SystemReader: adapter,
 		SystemWriter: service.NewGrpcSystemClient(service.NewSystemServiceClient(grpcConn)),
-	}
+	}, nil
 }
 
-func (adapter *systemNodeAdapter) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}) (*ledger.BucketInfo, error) {
-	return adapter.getMainCluster().CreateBucket(ctx, name, driver, config)
+func (adapter *systemNodeAdapter) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error) {
+	cluster, err := adapter.getMainCluster()
+	if err != nil {
+		return nil, err
+	}
+	return cluster.CreateBucket(ctx, name, driver, config, snapshotThreshold)
 }
 
 func (adapter *systemNodeAdapter) DeleteBucket(ctx context.Context, name string) error {
-	return adapter.getMainCluster().DeleteBucket(ctx, name)
+	cluster, err := adapter.getMainCluster()
+	if err != nil {
+		return err
+	}
+	return cluster.DeleteBucket(ctx, name)
 }
 
 func (adapter *systemNodeAdapter) Snapshot(ctx context.Context) error {
-	return adapter.getMainCluster().Snapshot(ctx)
+	cluster, err := adapter.getMainCluster()
+	if err != nil {
+		return err
+	}
+	return cluster.Snapshot(ctx)
 }
 
 func (adapter *systemNodeAdapter) GetBucket(ctx context.Context, name string) (service.BucketCluster, error) {
@@ -154,6 +171,9 @@ func (adapter *systemNodeAdapter) GetBucket(ctx context.Context, name string) (s
 	}
 	if group.IsLeader() {
 		return group, nil
+	}
+	if group.GetLeader() == 0 {
+		return nil, ledger.ErrNoLeader
 	}
 	target := system.NodeIDFromBucketNodeID(group.GetLeader())
 
@@ -178,6 +198,9 @@ func (adapter *systemNodeAdapter) GetBucketOfLedger(ctx context.Context, name st
 	if group.IsLeader() {
 		adapter.logger.Infof("Local adapter is leader, forwaring request to local adapter")
 		return group, nil
+	}
+	if group.GetLeader() == 0 {
+		return nil, ledger.ErrNoLeader
 	}
 
 	target := system.NodeIDFromBucketNodeID(group.GetLeader())

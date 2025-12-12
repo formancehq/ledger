@@ -43,22 +43,10 @@ func runListBuckets(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, bucket := range buckets {
-		id := "N/A"
-		if bucket.ID != nil {
-			id = fmt.Sprintf("%d", *bucket.ID)
-		}
-		name := "N/A"
-		if bucket.Name != nil {
-			name = *bucket.Name
-		}
-		driver := "N/A"
-		if bucket.Driver != nil {
-			driver = *bucket.Driver
-		}
-		createdAt := "N/A"
-		if bucket.CreatedAt != nil {
-			createdAt = bucket.CreatedAt.Format("2006-01-02 15:04:05")
-		}
+		id := fmt.Sprintf("%d", bucket.ID)
+		name := bucket.Name
+		driver := string(bucket.Driver)
+		createdAt := bucket.CreatedAt.Format("2006-01-02 15:04:05")
 		tableData = append(tableData, []string{id, name, driver, createdAt})
 	}
 

@@ -4,12 +4,12 @@ package components
 
 type CreateBucketSnapshotResponse struct {
 	// Success message
-	Message *string `json:"message,omitempty"`
+	Message string `json:"message"`
 }
 
-func (o *CreateBucketSnapshotResponse) GetMessage() *string {
+func (o *CreateBucketSnapshotResponse) GetMessage() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Message
 }

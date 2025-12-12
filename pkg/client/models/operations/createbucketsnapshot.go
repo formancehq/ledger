@@ -22,6 +22,7 @@ type CreateBucketSnapshotResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Snapshot created successfully
 	CreateBucketSnapshotResponse *components.CreateBucketSnapshotResponse
+	Headers                      map[string][]string
 }
 
 func (o *CreateBucketSnapshotResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -36,4 +37,11 @@ func (o *CreateBucketSnapshotResponse) GetCreateBucketSnapshotResponse() *compon
 		return nil
 	}
 	return o.CreateBucketSnapshotResponse
+}
+
+func (o *CreateBucketSnapshotResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

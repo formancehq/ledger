@@ -108,6 +108,7 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 404                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CreateLedger
@@ -165,4 +166,5 @@ func main() {
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 400, 409                | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

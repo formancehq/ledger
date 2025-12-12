@@ -21,7 +21,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	// Get bucket for this ledger
 	bucket, err := s.cluster.GetBucketOfLedger(r.Context(), ledgerName)
 	if err != nil {
-		api.WriteErrorResponse(w, http.StatusBadRequest, "INVALID_BUCKET", err)
+		handleError(w, r, err)
 		return
 	}
 
@@ -60,7 +60,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, bulking.ErrAtomicParallelConflict):
 			api.WriteErrorResponse(w, http.StatusPreconditionFailed, "VALIDATION", err)
 		default:
-			api.InternalServerError(w, r, err)
+			handleError(w, r, err)
 		}
 		return
 	}

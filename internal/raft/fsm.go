@@ -7,5 +7,10 @@ import (
 type FSM interface {
 	CreateSnapshot(ctx context.Context) ([]byte, error)
 	RestoreSnapshot(ctx context.Context, data []byte) error
-	ApplyEntry(ctx context.Context, command Command) (any, error)
+	ApplyEntries(ctx context.Context, commands ...Command) []ApplyResult
+}
+
+type ApplyResult struct {
+	Result any
+	Error error
 }

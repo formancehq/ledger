@@ -32,8 +32,8 @@ func runSnapshot(cmd *cobra.Command, args []string) error {
 	}
 
 	message := "Snapshot created successfully"
-	if res.SnapshotResponse != nil && res.SnapshotResponse.Data != nil && res.SnapshotResponse.Data.Message != nil {
-		message = *res.SnapshotResponse.Data.Message
+	if res.SnapshotResponse != nil && res.SnapshotResponse.Data.Message != "" {
+		message = res.SnapshotResponse.Data.Message
 	}
 
 	spinner.Success(message)
@@ -62,7 +62,7 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 
 	// Extract cluster state data
 	clusterState := res.GetClusterStateResponse()
-	if clusterState == nil || clusterState.Data == nil {
+	if clusterState == nil {
 		pterm.Warning.Println("No cluster state data available")
 		return nil
 	}
@@ -71,14 +71,10 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 
 	// Create cluster info panel
 	clusterInfo := ""
-	if data.State != nil {
-		clusterInfo += fmt.Sprintf("Local Node State: %s\n", *data.State)
-	}
-	if data.LocalNode != nil {
-		clusterInfo += fmt.Sprintf("Local Node ID: %s\n", *data.LocalNode)
-	}
-	if data.Leader != nil && *data.Leader != "" {
-		clusterInfo += fmt.Sprintf("Leader: %s\n", *data.Leader)
+	clusterInfo += fmt.Sprintf("Local Node State: %s\n", string(data.State))
+	clusterInfo += fmt.Sprintf("Local Node ID: %d\n", data.LocalNode)
+	if data.Leader != nil && *data.Leader != 0 {
+		clusterInfo += fmt.Sprintf("Leader: %d\n", *data.Leader)
 	} else {
 		clusterInfo += "Leader: (none)\n"
 	}
@@ -94,25 +90,16 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 			{"ID", "Address", "Suffrage", "Role"},
 		}
 		for _, node := range data.Nodes {
-			nodeID := "N/A"
-			if node.ID != nil {
-				nodeID = *node.ID
-			}
-			nodeAddr := "N/A"
-			if node.Address != nil {
-				nodeAddr = *node.Address
-			}
-			nodeSuffrage := "N/A"
-			if node.Suffrage != nil {
-				nodeSuffrage = string(*node.Suffrage)
-			}
+			nodeID := fmt.Sprintf("%d", node.ID)
+			nodeAddr := node.Address
+			nodeSuffrage := string(node.Suffrage)
 
 			// Determine role
 			role := "Follower"
-			if data.Leader != nil && node.ID != nil && *data.Leader == *node.ID {
+			if data.Leader != nil && node.ID == *data.Leader {
 				role = pterm.LightGreen("LEADER")
 			}
-			if data.LocalNode != nil && node.ID != nil && *data.LocalNode == *node.ID {
+			if node.ID == data.LocalNode {
 				if role == "Follower" {
 					role = pterm.LightBlue("LOCAL")
 				} else {

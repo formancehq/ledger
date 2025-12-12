@@ -5,4 +5,4 @@
 
 | Field                                                            | Type                                                             | Required                                                         | Description                                                      |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `Data`                                                           | [][components.LedgerInfo](../../models/components/ledgerinfo.md) | :heavy_minus_sign:                                               | List of all ledgers across all buckets                           |
+| `Data`                                                           | [][components.LedgerInfo](../../models/components/ledgerinfo.md) | :heavy_check_mark:                                               | List of all ledgers across all buckets                           |

@@ -24,6 +24,7 @@ func logToProto(l ledger.Log) (*Log, error) {
 		Ledger:          l.Ledger,
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
+		Sequence:        l.Sequence,
 	}
 
 	if l.ID != nil {
@@ -56,6 +57,7 @@ func logFromProto(l *Log) (ledger.Log, error) {
 		Ledger:          l.Ledger,
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
+		Sequence:        l.Sequence,
 	}
 
 	if l.Id != 0 {

@@ -9,15 +9,15 @@ import (
 
 type LedgerInfo struct {
 	// Sequential ID for the ledger
-	ID *int64 `json:"id,omitempty"`
+	ID int64 `json:"id"`
 	// Name of the ledger
-	Name *string `json:"name,omitempty"`
+	Name string `json:"name"`
 	// Name of the bucket containing the ledger
-	Bucket *string `json:"bucket,omitempty"`
+	Bucket string `json:"bucket"`
 	// Metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Creation timestamp (ISO 8601 format)
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 	// ID of the last log for this ledger
 	LastLogID *int64 `json:"lastLogId,omitempty"`
 }
@@ -33,23 +33,23 @@ func (l *LedgerInfo) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *LedgerInfo) GetID() *int64 {
+func (o *LedgerInfo) GetID() int64 {
 	if o == nil {
-		return nil
+		return 0
 	}
 	return o.ID
 }
 
-func (o *LedgerInfo) GetName() *string {
+func (o *LedgerInfo) GetName() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Name
 }
 
-func (o *LedgerInfo) GetBucket() *string {
+func (o *LedgerInfo) GetBucket() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Bucket
 }
@@ -61,9 +61,9 @@ func (o *LedgerInfo) GetMetadata() map[string]string {
 	return o.Metadata
 }
 
-func (o *LedgerInfo) GetCreatedAt() *time.Time {
+func (o *LedgerInfo) GetCreatedAt() time.Time {
 	if o == nil {
-		return nil
+		return time.Time{}
 	}
 	return o.CreatedAt
 }

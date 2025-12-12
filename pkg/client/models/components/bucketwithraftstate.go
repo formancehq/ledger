@@ -3,22 +3,118 @@
 package components
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 	"time"
 )
 
+// BucketWithRaftStateDriver - Driver name
+type BucketWithRaftStateDriver string
+
+const (
+	BucketWithRaftStateDriverSqlite   BucketWithRaftStateDriver = "sqlite"
+	BucketWithRaftStateDriverPostgres BucketWithRaftStateDriver = "postgres"
+)
+
+func (e BucketWithRaftStateDriver) ToPointer() *BucketWithRaftStateDriver {
+	return &e
+}
+func (e *BucketWithRaftStateDriver) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "sqlite":
+		fallthrough
+	case "postgres":
+		*e = BucketWithRaftStateDriver(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for BucketWithRaftStateDriver: %v", v)
+	}
+}
+
+type BucketWithRaftStateConfigType string
+
+const (
+	BucketWithRaftStateConfigTypeSQLiteConfig   BucketWithRaftStateConfigType = "SQLiteConfig"
+	BucketWithRaftStateConfigTypePostgresConfig BucketWithRaftStateConfigType = "PostgresConfig"
+)
+
+// BucketWithRaftStateConfig - Driver-specific configuration
+type BucketWithRaftStateConfig struct {
+	SQLiteConfig   *SQLiteConfig   `queryParam:"inline"`
+	PostgresConfig *PostgresConfig `queryParam:"inline"`
+
+	Type BucketWithRaftStateConfigType
+}
+
+func CreateBucketWithRaftStateConfigSQLiteConfig(sqLiteConfig SQLiteConfig) BucketWithRaftStateConfig {
+	typ := BucketWithRaftStateConfigTypeSQLiteConfig
+
+	return BucketWithRaftStateConfig{
+		SQLiteConfig: &sqLiteConfig,
+		Type:         typ,
+	}
+}
+
+func CreateBucketWithRaftStateConfigPostgresConfig(postgresConfig PostgresConfig) BucketWithRaftStateConfig {
+	typ := BucketWithRaftStateConfigTypePostgresConfig
+
+	return BucketWithRaftStateConfig{
+		PostgresConfig: &postgresConfig,
+		Type:           typ,
+	}
+}
+
+func (u *BucketWithRaftStateConfig) UnmarshalJSON(data []byte) error {
+
+	var sqLiteConfig SQLiteConfig = SQLiteConfig{}
+	if err := utils.UnmarshalJSON(data, &sqLiteConfig, "", true, true); err == nil {
+		u.SQLiteConfig = &sqLiteConfig
+		u.Type = BucketWithRaftStateConfigTypeSQLiteConfig
+		return nil
+	}
+
+	var postgresConfig PostgresConfig = PostgresConfig{}
+	if err := utils.UnmarshalJSON(data, &postgresConfig, "", true, true); err == nil {
+		u.PostgresConfig = &postgresConfig
+		u.Type = BucketWithRaftStateConfigTypePostgresConfig
+		return nil
+	}
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for BucketWithRaftStateConfig", string(data))
+}
+
+func (u BucketWithRaftStateConfig) MarshalJSON() ([]byte, error) {
+	if u.SQLiteConfig != nil {
+		return utils.MarshalJSON(u.SQLiteConfig, "", true)
+	}
+
+	if u.PostgresConfig != nil {
+		return utils.MarshalJSON(u.PostgresConfig, "", true)
+	}
+
+	return nil, errors.New("could not marshal union type BucketWithRaftStateConfig: all fields are null")
+}
+
 type BucketWithRaftState struct {
 	// Sequential bucket ID
-	ID *int64 `json:"id,omitempty"`
+	ID int64 `json:"id"`
 	// Bucket name
-	Name *string `json:"name,omitempty"`
+	Name string `json:"name"`
 	// Driver name
-	Driver *string `json:"driver,omitempty"`
+	Driver BucketWithRaftStateDriver `json:"driver"`
 	// Driver-specific configuration
-	Config map[string]any `json:"config,omitempty"`
+	Config BucketWithRaftStateConfig `json:"config"`
 	// Creation timestamp (ISO 8601 format)
-	CreatedAt *time.Time    `json:"createdAt,omitempty"`
-	RaftState *ClusterState `json:"raftState,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	// Number of logs before triggering a snapshot (0 means use global config)
+	SnapshotThreshold *int64        `json:"snapshotThreshold,omitempty"`
+	RaftState         *ClusterState `json:"raftState,omitempty"`
 }
 
 func (b BucketWithRaftState) MarshalJSON() ([]byte, error) {
@@ -32,39 +128,46 @@ func (b *BucketWithRaftState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *BucketWithRaftState) GetID() *int64 {
+func (o *BucketWithRaftState) GetID() int64 {
 	if o == nil {
-		return nil
+		return 0
 	}
 	return o.ID
 }
 
-func (o *BucketWithRaftState) GetName() *string {
+func (o *BucketWithRaftState) GetName() string {
 	if o == nil {
-		return nil
+		return ""
 	}
 	return o.Name
 }
 
-func (o *BucketWithRaftState) GetDriver() *string {
+func (o *BucketWithRaftState) GetDriver() BucketWithRaftStateDriver {
 	if o == nil {
-		return nil
+		return BucketWithRaftStateDriver("")
 	}
 	return o.Driver
 }
 
-func (o *BucketWithRaftState) GetConfig() map[string]any {
+func (o *BucketWithRaftState) GetConfig() BucketWithRaftStateConfig {
 	if o == nil {
-		return nil
+		return BucketWithRaftStateConfig{}
 	}
 	return o.Config
 }
 
-func (o *BucketWithRaftState) GetCreatedAt() *time.Time {
+func (o *BucketWithRaftState) GetCreatedAt() time.Time {
+	if o == nil {
+		return time.Time{}
+	}
+	return o.CreatedAt
+}
+
+func (o *BucketWithRaftState) GetSnapshotThreshold() *int64 {
 	if o == nil {
 		return nil
 	}
-	return o.CreatedAt
+	return o.SnapshotThreshold
 }
 
 func (o *BucketWithRaftState) GetRaftState() *ClusterState {

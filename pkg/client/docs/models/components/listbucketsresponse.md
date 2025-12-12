@@ -5,4 +5,4 @@
 
 | Field                                                            | Type                                                             | Required                                                         | Description                                                      |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `Data`                                                           | [][components.BucketInfo](../../models/components/bucketinfo.md) | :heavy_minus_sign:                                               | List of buckets                                                  |
+| `Data`                                                           | [][components.BucketInfo](../../models/components/bucketinfo.md) | :heavy_check_mark:                                               | List of buckets                                                  |

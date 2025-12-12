@@ -2,23 +2,130 @@
 
 package components
 
-type CreateBucketRequest struct {
-	// Driver name (e.g., "postgres", "s3", etc.)
-	Driver string `json:"driver"`
-	// Driver-specific configuration
-	Config map[string]any `json:"config"`
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
+)
+
+// CreateBucketRequestDriver - Driver name (e.g., "postgres", "sqlite")
+type CreateBucketRequestDriver string
+
+const (
+	CreateBucketRequestDriverSqlite   CreateBucketRequestDriver = "sqlite"
+	CreateBucketRequestDriverPostgres CreateBucketRequestDriver = "postgres"
+)
+
+func (e CreateBucketRequestDriver) ToPointer() *CreateBucketRequestDriver {
+	return &e
+}
+func (e *CreateBucketRequestDriver) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "sqlite":
+		fallthrough
+	case "postgres":
+		*e = CreateBucketRequestDriver(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for CreateBucketRequestDriver: %v", v)
+	}
 }
 
-func (o *CreateBucketRequest) GetDriver() string {
+type CreateBucketRequestConfigType string
+
+const (
+	CreateBucketRequestConfigTypeSQLiteConfig   CreateBucketRequestConfigType = "SQLiteConfig"
+	CreateBucketRequestConfigTypePostgresConfig CreateBucketRequestConfigType = "PostgresConfig"
+)
+
+// CreateBucketRequestConfig - Driver-specific configuration (optional for SQLite - DSN is auto-generated)
+type CreateBucketRequestConfig struct {
+	SQLiteConfig   *SQLiteConfig   `queryParam:"inline"`
+	PostgresConfig *PostgresConfig `queryParam:"inline"`
+
+	Type CreateBucketRequestConfigType
+}
+
+func CreateCreateBucketRequestConfigSQLiteConfig(sqLiteConfig SQLiteConfig) CreateBucketRequestConfig {
+	typ := CreateBucketRequestConfigTypeSQLiteConfig
+
+	return CreateBucketRequestConfig{
+		SQLiteConfig: &sqLiteConfig,
+		Type:         typ,
+	}
+}
+
+func CreateCreateBucketRequestConfigPostgresConfig(postgresConfig PostgresConfig) CreateBucketRequestConfig {
+	typ := CreateBucketRequestConfigTypePostgresConfig
+
+	return CreateBucketRequestConfig{
+		PostgresConfig: &postgresConfig,
+		Type:           typ,
+	}
+}
+
+func (u *CreateBucketRequestConfig) UnmarshalJSON(data []byte) error {
+
+	var sqLiteConfig SQLiteConfig = SQLiteConfig{}
+	if err := utils.UnmarshalJSON(data, &sqLiteConfig, "", true, true); err == nil {
+		u.SQLiteConfig = &sqLiteConfig
+		u.Type = CreateBucketRequestConfigTypeSQLiteConfig
+		return nil
+	}
+
+	var postgresConfig PostgresConfig = PostgresConfig{}
+	if err := utils.UnmarshalJSON(data, &postgresConfig, "", true, true); err == nil {
+		u.PostgresConfig = &postgresConfig
+		u.Type = CreateBucketRequestConfigTypePostgresConfig
+		return nil
+	}
+
+	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateBucketRequestConfig", string(data))
+}
+
+func (u CreateBucketRequestConfig) MarshalJSON() ([]byte, error) {
+	if u.SQLiteConfig != nil {
+		return utils.MarshalJSON(u.SQLiteConfig, "", true)
+	}
+
+	if u.PostgresConfig != nil {
+		return utils.MarshalJSON(u.PostgresConfig, "", true)
+	}
+
+	return nil, errors.New("could not marshal union type CreateBucketRequestConfig: all fields are null")
+}
+
+type CreateBucketRequest struct {
+	// Driver name (e.g., "postgres", "sqlite")
+	Driver CreateBucketRequestDriver `json:"driver"`
+	// Driver-specific configuration (optional for SQLite - DSN is auto-generated)
+	Config *CreateBucketRequestConfig `json:"config,omitempty"`
+	// Number of logs before triggering a snapshot (optional, uses global config if not set)
+	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
+}
+
+func (o *CreateBucketRequest) GetDriver() CreateBucketRequestDriver {
 	if o == nil {
-		return ""
+		return CreateBucketRequestDriver("")
 	}
 	return o.Driver
 }
 
-func (o *CreateBucketRequest) GetConfig() map[string]any {
+func (o *CreateBucketRequest) GetConfig() *CreateBucketRequestConfig {
 	if o == nil {
-		return map[string]any{}
+		return nil
 	}
 	return o.Config
+}
+
+func (o *CreateBucketRequest) GetSnapshotThreshold() *int64 {
+	if o == nil {
+		return nil
+	}
+	return o.SnapshotThreshold
 }

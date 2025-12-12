@@ -49,8 +49,8 @@ func runCreateBucketSnapshot(cmd *cobra.Command, args []string) error {
 
 	snapshotResponse := res.GetCreateBucketSnapshotResponse()
 	message := fmt.Sprintf("Snapshot created successfully for bucket %s", snapshotBucketName)
-	if snapshotResponse != nil && snapshotResponse.Message != nil {
-		message = *snapshotResponse.Message
+	if snapshotResponse != nil && snapshotResponse.Message != "" {
+		message = snapshotResponse.Message
 	}
 
 	spinner.Success(message)

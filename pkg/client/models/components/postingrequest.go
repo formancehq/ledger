@@ -13,7 +13,7 @@ type PostingRequest struct {
 	// Destination account address
 	Destination string `json:"destination"`
 	// Amount as a big integer
-	Amount *big.Int `bigint:"string" json:"amount"`
+	Amount *big.Int `json:"amount"`
 	// Asset identifier
 	Asset string `json:"asset"`
 }

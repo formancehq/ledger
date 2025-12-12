@@ -54,7 +54,8 @@ func main() {
 | Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 405                     | application/json        |
-| sdkerrors.ErrorResponse | 500, 503                | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## GetClusterState
@@ -103,5 +104,6 @@ func main() {
 | Error Type              | Status Code             | Content Type            |
 | ----------------------- | ----------------------- | ----------------------- |
 | sdkerrors.ErrorResponse | 405                     | application/json        |
-| sdkerrors.ErrorResponse | 500, 503                | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
+| sdkerrors.ErrorResponse | 503                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |

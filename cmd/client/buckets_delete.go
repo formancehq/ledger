@@ -65,8 +65,8 @@ func runDeleteBucket(cmd *cobra.Command, args []string) error {
 
 	deleteResponse := res.GetDeleteBucketResponse()
 	message := fmt.Sprintf("Bucket %s deleted successfully", opts.name)
-	if deleteResponse != nil && deleteResponse.Data != nil && deleteResponse.Data.Message != nil {
-		message = *deleteResponse.Data.Message
+	if deleteResponse != nil && deleteResponse.Data.Message != "" {
+		message = deleteResponse.Data.Message
 	}
 
 	spinner.Success(message)
@@ -96,14 +96,8 @@ func runDeleteBucketWizard(ctx context.Context, sdk *client.Formance, opts *dele
 	bucketMap := make(map[string]string) // Maps display string to bucket name
 
 	for _, bucket := range buckets {
-		bucketName := "N/A"
-		if bucket.Name != nil {
-			bucketName = *bucket.Name
-		}
-		driver := "N/A"
-		if bucket.Driver != nil {
-			driver = *bucket.Driver
-		}
+		bucketName := bucket.Name
+		driver := string(bucket.Driver)
 		displayName := fmt.Sprintf("%s (%s)", bucketName, driver)
 		options = append(options, displayName)
 		bucketMap[displayName] = bucketName

@@ -21,8 +21,9 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 
 	// Parse request body (driver and config are required)
 	var req struct {
-		Driver string                 `json:"driver"`
-		Config map[string]interface{} `json:"config"`
+		Driver            string                 `json:"driver"`
+		Config            map[string]interface{} `json:"config"`
+		SnapshotThreshold *uint64                `json:"snapshotThreshold,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -53,9 +54,9 @@ func (s *Server) handleCreateBucket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create bucket via cluster
-	bucket, err := s.cluster.CreateBucket(r.Context(), bucketName, req.Driver, req.Config)
+	bucket, err := s.cluster.CreateBucket(r.Context(), bucketName, req.Driver, req.Config, req.SnapshotThreshold)
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

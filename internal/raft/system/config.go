@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	raft.NodeConfig
+	AdvertiseAddr     string
 	BindAddr     string
 	ExtraDataDir string // Root directory for all system data (outside of Raft logs)
 }

@@ -13,6 +13,17 @@ servers:
   - url: http://node-1:9000
     description: Docker Compose node-1
 
+x-speakeasy-retries:
+  strategy: backoff
+  backoff:
+    initialInterval: 500 # 500 milliseconds
+    maxInterval: 60000 # 60 seconds
+    maxElapsedTime: 3600000 # 1 hour
+    exponent: 1.5
+  statusCodes:
+    - 503 # Service Unavailable (no leader)
+  retryConnectionErrors: true
+
 paths:
   /:
     get:
@@ -62,6 +73,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -106,6 +119,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -146,6 +161,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -212,6 +229,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -240,11 +259,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: Service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -273,11 +288,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
-          description: Service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -300,11 +311,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListBucketsResponse'
         '503':
-          description: Service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -383,6 +390,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -415,6 +424,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -455,6 +466,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           description: Internal server error
           content:
@@ -463,6 +476,22 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
 components:
+  responses:
+    ServiceUnavailable:
+      description: Service unavailable (no leader available)
+      headers:
+        Retry-After:
+          description: Number of seconds to wait before retrying the request
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            example: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
     CreateLedgerRequest:
       type: object
@@ -598,7 +627,7 @@ components:
           type: string
           description: Destination account address
         amount:
-          type: string
+          type: integer
           format: bigint
           description: Amount as a big integer
         asset:
@@ -801,7 +830,7 @@ components:
         destination:
           type: string
         amount:
-          type: string
+          type: integer
           format: bigint
           description: Amount as a big integer
         asset:
@@ -837,10 +866,14 @@ components:
               enum: [Leader, Follower, Candidate, Shutdown, Unknown]
               description: Current state of the local node
             leader:
-              type: string
-              description: ID of the current leader (empty if no leader)
+              type: integer
+              format: int64
+              minimum: 0
+              description: ID of the current leader (0 if no leader)
             localNode:
-              type: string
+              type: integer
+              format: int64
+              minimum: 0
               description: ID of the local node
             nodes:
               type: array
@@ -856,7 +889,9 @@ components:
         - suffrage
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
+          minimum: 0
           description: Node ID
         address:
           type: string
@@ -880,6 +915,10 @@ components:
             - $ref: '#/components/schemas/SQLiteConfig'
             - $ref: '#/components/schemas/PostgresConfig'
           description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
+        snapshotThreshold:
+          type: integer
+          format: int64
+          description: Number of logs before triggering a snapshot (optional, uses global config if not set)
 
     CreateBucketResponse:
       type: object
@@ -928,15 +967,19 @@ components:
           type: string
           description: Current state of the Raft node (Leader, Follower, Candidate, PreCandidate, Unknown)
         leader:
-          type: string
-          description: ID of the current leader (empty if no leader)
+          type: integer
+          format: int64
+          minimum: 0
+          description: ID of the current leader (0 if no leader)
         nodes:
           type: array
           items:
             $ref: '#/components/schemas/NodeInfo'
           description: List of all nodes in the cluster
         localNode:
-          type: string
+          type: integer
+          format: int64
+          minimum: 0
           description: ID of the local node
 
     BucketInfo:
@@ -968,6 +1011,10 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
+        snapshotThreshold:
+          type: integer
+          format: int64
+          description: Number of logs before triggering a snapshot (0 means use global config)
 
     CreateBucketSnapshotResponse:
       type: object

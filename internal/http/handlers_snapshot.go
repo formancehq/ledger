@@ -14,7 +14,7 @@ type SnapshotData struct {
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.cluster.Snapshot(r.Context()); err != nil {
-		api.WriteErrorResponse(w, http.StatusInternalServerError, "SNAPSHOT_FAILED", err)
+		handleError(w, r, err)
 		return
 	}
 

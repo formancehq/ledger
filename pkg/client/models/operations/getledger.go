@@ -22,6 +22,7 @@ type GetLedgerResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Ledger retrieved successfully
 	GetLedgerResponse *components.GetLedgerResponse
+	Headers           map[string][]string
 }
 
 func (o *GetLedgerResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -36,4 +37,11 @@ func (o *GetLedgerResponse) GetGetLedgerResponse() *components.GetLedgerResponse
 		return nil
 	}
 	return o.GetLedgerResponse
+}
+
+func (o *GetLedgerResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }

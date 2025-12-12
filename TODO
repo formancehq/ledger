@@ -1,3 +1,5 @@
 1.
-Some storage are already replicated.
-So the snapshot can be done only on the master, and not replicated.
+On leadership lost, in memory data MUST be cleared.
+
+2.
+Implements a store based on pebble

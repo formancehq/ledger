@@ -43,14 +43,14 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	bucket, err := s.cluster.GetBucket(r.Context(), req.Bucket)
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 
 	// Create ledger via cluster in the specified bucket
 	ledger, err := bucket.CreateLedger(r.Context(), ledgerName, req.Metadata)
 	if err != nil {
-		api.InternalServerError(w, r, err)
+		handleError(w, r, err)
 		return
 	}
 

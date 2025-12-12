@@ -5,4 +5,4 @@
 
 | Field              | Type               | Required           | Description        |
 | ------------------ | ------------------ | ------------------ | ------------------ |
-| `Message`          | **string*          | :heavy_minus_sign: | Success message    |
+| `Message`          | *string*           | :heavy_check_mark: | Success message    |

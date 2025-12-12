@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
@@ -15,19 +16,21 @@ import (
 // FSM represents the finite state machine for a bucket Raft group
 // It manages ledgers within a specific bucket
 type FSM struct {
-	ledgers    map[string]ledger.LedgerInfo // Map of ledger name -> ledger info
-	lastLogIDs map[string]uint64            // Map of ledger name -> last log ID
-	logger     logging.Logger
-	logWriter  service.LogWriter
+	ledgers      map[string]ledger.LedgerInfo // Map of ledger name -> ledger info
+	lastSequence uint64                       // Last global sequence number
+	logger       logging.Logger
+	logWriter    service.LogWriter
+	logReader    service.LogReader // LogReader to catch up logs from leader via gRPC
 }
 
 // newFSM creates a new bucket FSM
-func newFSM(logger logging.Logger, logStore service.LogWriter) *FSM {
+func newFSM(logger logging.Logger, logStore service.LogWriter, logReader service.LogReader) *FSM {
 	return &FSM{
-		ledgers:    make(map[string]ledger.LedgerInfo),
-		lastLogIDs: make(map[string]uint64),
-		logger:     logger,
-		logWriter:  logStore,
+		ledgers:      make(map[string]ledger.LedgerInfo),
+		lastSequence: 0,
+		logger:       logger,
+		logWriter:    logStore,
+		logReader:    logReader,
 	}
 }
 
@@ -69,47 +72,70 @@ func (f *FSM) handleCreateLedger(cmd raft.Command) (*ledger.LedgerInfo, error) {
 	return &ledgerInfo, nil
 }
 
-// handleInsertLog handles the insert log command by storing the log in memory and persisting it to the store
-func (f *FSM) handleInsertLog(ctx context.Context, cmd raft.Command) error {
+// processInsertLog handles the insert log command by storing the log in memory and persisting it to the store
+func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
 	var insertCmd InsertLogCommand
 	if err := UnmarshalCommandData(cmd.Data, &insertCmd); err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal insert log command")
-		return fmt.Errorf("unmarshaling insert log command: %w", err)
+		return nil, err
 	}
 
 	// Convert protobuf Log to ledger.Log
 	log, err := logFromProto(insertCmd.Log)
 	if err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to convert log from proto")
-		return fmt.Errorf("converting log from proto: %w", err)
+		return nil, err
 	}
 
-	// Write log to store immediately
-	if err := f.logWriter.InsertLogs(ctx, log); err != nil {
-		f.logger.WithFields(map[string]any{"error": err, "ledger": log.Ledger}).Errorf("Failed to write log to store")
-		return fmt.Errorf("writing log to store: %w", err)
-	}
+	// Generate sequence number in FSM
+	f.lastSequence++
+	log.Sequence = f.lastSequence
 
-	// Update lastLogID for this ledger if log has an ID
-	if log.ID != nil {
-		currentLastID := f.lastLogIDs[log.Ledger]
-		if *log.ID > currentLastID {
-			f.lastLogIDs[log.Ledger] = *log.ID
+	f.logger.WithFields(map[string]any{"ledger": log.Ledger, "sequence": log.Sequence}).Infof("Log stored in memory and persisted to store via FSM")
+	return &log, nil
+}
+
+func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft.ApplyResult {
+	// Assume the majority of commands are logs insertion while allocating
+	ret := make([]raft.ApplyResult, 0, len(commands))
+	logs := make([]ledger.Log, 0, len(commands))
+	for _, command := range commands {
+		switch command.Type {
+		case CommandTypeCreateLedger:
+			info, err := f.handleCreateLedger(command)
+			if err != nil {
+				ret = append(ret, raft.ApplyResult{
+					Error: err,
+				})
+				continue
+			}
+			ret = append(ret, raft.ApplyResult{
+				Result: info,
+			})
+		case CommandTypeInsertLog:
+			log, err := f.processInsertLog(command)
+			if err != nil {
+				ret = append(ret, raft.ApplyResult{
+					Error: err,
+				})
+				continue
+			}
+			ret = append(ret, raft.ApplyResult{
+				Result: log,
+			})
+			logs = append(logs, *log)
+		}
+	}
+	if len(logs) > 0 {
+		if err := f.logWriter.InsertLogs(ctx, logs...); err != nil {
+			// Well, the panic is a bit brutal.
+			// But fundamentally, this is what we want.
+			// A raft node should be considered corrupted if it cannot persists its state.
+			panic(err)
 		}
 	}
 
-	f.logger.WithFields(map[string]any{"ledger": log.Ledger}).Infof("Log stored in memory and persisted to store via FSM")
-	return nil
-}
-
-func (f *FSM) ApplyEntry(ctx context.Context, command raft.Command) (any, error) {
-	switch command.Type {
-	case CommandTypeCreateLedger:
-		return f.handleCreateLedger(command)
-	case CommandTypeInsertLog:
-		return nil, f.handleInsertLog(ctx, command)
-	}
-	return nil, fmt.Errorf("unknown command type: %s", command.Type)
+	return ret
 }
 
 // GetLedger returns the ledger info for a given name in this bucket
@@ -134,8 +160,8 @@ func (f *FSM) GetAllLedgers() []ledger.LedgerInfo {
 func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 
 	snapshotData := map[string]interface{}{
-		"ledgers":    f.ledgers,
-		"lastLogIDs": f.lastLogIDs,
+		"ledgers":      f.ledgers,
+		"lastSequence": f.lastSequence,
 	}
 
 	// Marshal to JSON
@@ -150,8 +176,8 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 // RestoreSnapshot restores the bucket FSM from a snapshot
 func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 	var snapshotData struct {
-		Ledgers    map[string]ledger.LedgerInfo `json:"ledgers"`
-		LastLogIDs map[string]uint64            `json:"lastLogIDs"`
+		Ledgers      map[string]ledger.LedgerInfo `json:"ledgers"`
+		LastSequence uint64                       `json:"lastSequence"`
 	}
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
@@ -163,11 +189,89 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 		f.ledgers = make(map[string]ledger.LedgerInfo)
 	}
 
-	f.lastLogIDs = snapshotData.LastLogIDs
-	if f.lastLogIDs == nil {
-		f.lastLogIDs = make(map[string]uint64)
+	f.lastSequence = snapshotData.LastSequence
+
+	// Compare snapshot's lastSequence with the log store's lastSequenceID
+	storeLastSequence, err := f.logWriter.GetLastSequenceID(ctx)
+	if err != nil {
+		return fmt.Errorf("getting last sequence ID from log store: %w", err)
 	}
 
-	f.logger.WithFields(map[string]any{"ledgerCount": len(f.ledgers)}).Infof("BucketCluster FSM restored from snapshot")
+	// If the log store is ahead of the snapshot, catch up by reading missing logs from the reader
+	if storeLastSequence > snapshotData.LastSequence {
+		f.logger.WithFields(map[string]any{
+			"snapshotSequence": snapshotData.LastSequence,
+			"storeSequence":    storeLastSequence,
+		}).Infof("Log store is ahead of snapshot, catching up logs")
+
+		// Read all logs from the reader starting from the sequence after the snapshot
+		fromSequence := snapshotData.LastSequence + 1
+		cursorPtr, err := f.logReader.GetAllLogs(ctx, fromSequence)
+		if err != nil {
+			return fmt.Errorf("getting logs from reader for catch-up: %w", err)
+		}
+		if cursorPtr == nil {
+			f.logger.WithFields(map[string]any{
+				"snapshotSequence": snapshotData.LastSequence,
+				"storeSequence":    storeLastSequence,
+			}).Infof("No cursor returned from GetAllLogs, but store sequence is ahead")
+			f.lastSequence = storeLastSequence
+			f.logger.WithFields(map[string]any{"ledgerCount": len(f.ledgers)}).Infof("BucketCluster FSM restored from snapshot")
+			return nil
+		}
+
+		cursor := *cursorPtr
+		defer func() {
+			_ = cursor.Close()
+		}()
+
+		var logsToWrite []ledger.Log
+		var maxSequence uint64 = snapshotData.LastSequence
+
+		// Collect all logs that need to be written
+		for {
+			log, err := cursor.Next(ctx)
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("reading log during catch-up: %w", err)
+			}
+
+			// Only include logs up to and including the store's last sequence
+			if log.Sequence > storeLastSequence {
+				break
+			}
+
+			logsToWrite = append(logsToWrite, log)
+			if log.Sequence > maxSequence {
+				maxSequence = log.Sequence
+			}
+		}
+
+		// Write all collected logs to the writer
+		if len(logsToWrite) > 0 {
+			if err := f.logWriter.InsertLogs(ctx, logsToWrite...); err != nil {
+				return fmt.Errorf("writing catch-up logs to store: %w", err)
+			}
+			f.logger.WithFields(map[string]any{
+				"logsWritten":  len(logsToWrite),
+				"fromSequence": fromSequence,
+				"toSequence":   maxSequence,
+			}).Infof("Caught up logs from reader to writer")
+		}
+
+		// Update lastSequence to match the store's last sequence
+		f.lastSequence = storeLastSequence
+	} else {
+		// Snapshot is up to date or ahead, use snapshot's sequence
+		f.lastSequence = snapshotData.LastSequence
+	}
+
+	f.logger.WithFields(map[string]any{
+		"ledgerCount":   len(f.ledgers),
+		"lastSequence":  f.lastSequence,
+		"storeSequence": storeLastSequence,
+	}).Infof("BucketCluster FSM restored from snapshot")
 	return nil
 }

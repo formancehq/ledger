@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -172,6 +173,148 @@ func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.St
 		}
 	}
 	return result
+}
+
+func (impl *LedgerServiceServerImpl) StreamLogs(req *StreamLogsRequest, stream BucketService_StreamLogsServer) error {
+	ctx := stream.Context()
+
+	// Get bucket
+	bucket, err := impl.cluster.GetBucket(ctx, req.Bucket)
+	if err != nil {
+		return fmt.Errorf("getting bucket: %w", err)
+	}
+
+	// Get LogReader from bucket
+	// Try to get it from the bucket node (if it's a local node)
+	var logReader LogReader
+	if bucketNode, ok := bucket.(interface{ GetLogReader() LogReader }); ok {
+		logReader = bucketNode.GetLogReader()
+	} else {
+		// If bucket is a gRPC client, we need to use the client's StreamLogs method
+		// For now, return error as we need direct access to LogReader
+		return fmt.Errorf("bucket does not support direct log reading, use gRPC client")
+	}
+
+	// Get all logs from the bucket (all ledgers), starting from fromSequence if specified
+	cursorPtr, err := logReader.GetAllLogs(ctx, req.FromSequence)
+	if err != nil {
+		return fmt.Errorf("getting logs: %w", err)
+	}
+	if cursorPtr == nil {
+		return nil
+	}
+	cursor := *cursorPtr
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	// Stream logs (already filtered by sequence in GetAllLogs)
+	for {
+		log, err := cursor.Next(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading log: %w", err)
+		}
+
+		logProto, err := logToBucketProto(log)
+		if err != nil {
+			return fmt.Errorf("converting log to proto: %w", err)
+		}
+
+		if err := stream.Send(&StreamLogsResponse{
+			Log: logProto,
+		}); err != nil {
+			return fmt.Errorf("sending log: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// logToBucketProto converts a ledger.Log to bucket.proto Log
+func logToBucketProto(l ledger.Log) (*Log, error) {
+	logProto := &Log{
+		Type:            int32(l.Type),
+		Ledger:          l.Ledger,
+		IdempotencyKey:  l.IdempotencyKey,
+		IdempotencyHash: l.IdempotencyHash,
+		Sequence:        l.Sequence,
+	}
+
+	if l.ID != nil {
+		logProto.Id = *l.ID
+	}
+
+	if !l.Date.IsZero() {
+		logProto.Date = timestamppb.New(l.Date.Time)
+	}
+
+	// Convert LogPayload to protobuf
+	logPayloadProto, err := logPayloadToBucketProto(l.Data)
+	if err != nil {
+		return nil, fmt.Errorf("converting log payload to proto: %w", err)
+	}
+	logProto.Data = logPayloadProto
+
+	return logProto, nil
+}
+
+// logPayloadToBucketProto converts a ledger.LogPayload to bucket.proto LogPayload
+func logPayloadToBucketProto(payload ledger.LogPayload) (*LogPayload, error) {
+	switch p := payload.(type) {
+	case *ledger.CreatedTransaction:
+		return &LogPayload{
+			Payload: &LogPayload_CreatedTransaction{
+				CreatedTransaction: transactionToProto(p.Transaction),
+			},
+		}, nil
+	case *ledger.RevertedTransaction:
+		return &LogPayload{
+			Payload: &LogPayload_RevertedTransaction{
+				RevertedTransaction: &RevertedTransaction{
+					RevertedTransaction: transactionToProto(p.RevertedTransaction),
+					RevertTransaction:   transactionToProto(p.RevertTransaction),
+				},
+			},
+		}, nil
+	case *ledger.SavedMetadata:
+		mdStruct, _ := metadataToStruct(p.Metadata)
+		proto := &SavedMetadata{
+			TargetType: p.TargetType,
+			Metadata:   mdStruct,
+		}
+		switch id := p.TargetID.(type) {
+		case string:
+			proto.TargetId = &SavedMetadata_AccountId{AccountId: id}
+		case uint64:
+			proto.TargetId = &SavedMetadata_TransactionId{TransactionId: id}
+		}
+		return &LogPayload{
+			Payload: &LogPayload_SavedMetadata{
+				SavedMetadata: proto,
+			},
+		}, nil
+	case *ledger.DeletedMetadata:
+		proto := &DeletedMetadata{
+			TargetType: p.TargetType,
+			Key:        p.Key,
+		}
+		switch id := p.TargetID.(type) {
+		case string:
+			proto.TargetId = &DeletedMetadata_AccountId{AccountId: id}
+		case uint64:
+			proto.TargetId = &DeletedMetadata_TransactionId{TransactionId: id}
+		}
+		return &LogPayload{
+			Payload: &LogPayload_DeletedMetadata{
+				DeletedMetadata: proto,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown log payload type: %T", payload)
+	}
 }
 
 func RegisterBucketService(server *grpc.Server, ledgerServiceServer BucketServiceServer) {

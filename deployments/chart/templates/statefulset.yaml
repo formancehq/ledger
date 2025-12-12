@@ -66,11 +66,33 @@ spec:
           value: {{ .Values.config.httpPort | quote }}
         - name: DATA_DIR
           value: {{ .Values.config.dataDir | quote }}
+        {{- if .Values.config.raft.snapshotThreshold }}
         - name: SNAPSHOT_THRESHOLD
-          value: {{ .Values.config.snapshotThreshold | quote }}
-        {{- if .Values.config.snapshotInterval }}
+          value: {{ .Values.config.raft.snapshotThreshold | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.snapshotInterval }}
         - name: SNAPSHOT_INTERVAL
-          value: {{ .Values.config.snapshotInterval | quote }}
+          value: {{ .Values.config.raft.snapshotInterval | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.electionTick }}
+        - name: RAFT_ELECTION_TICK
+          value: {{ .Values.config.raft.electionTick | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.heartbeatTick }}
+        - name: RAFT_HEARTBEAT_TICK
+          value: {{ .Values.config.raft.heartbeatTick | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.maxSizePerMsg }}
+        - name: RAFT_MAX_SIZE_PER_MSG
+          value: {{ .Values.config.raft.maxSizePerMsg | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.maxInflightMsgs }}
+        - name: RAFT_MAX_INFLIGHT_MSGS
+          value: {{ .Values.config.raft.maxInflightMsgs | quote }}
+        {{- end }}
+        {{- if .Values.config.raft.tickInterval }}
+        - name: RAFT_TICK_INTERVAL
+          value: {{ .Values.config.raft.tickInterval | quote }}
         {{- end }}
         - name: DEBUG
           value: {{ .Values.config.debug | quote }}
@@ -118,9 +140,26 @@ spec:
             --extra-data-dir {{ .Values.extraData.mountPath }} \
             {{- end }}
             --http-port {{ .Values.config.httpPort }} \
-            --snapshot-threshold {{ .Values.config.snapshotThreshold }} \
-            {{- if .Values.config.snapshotInterval }}
-            --snapshot-interval {{ .Values.config.snapshotInterval }} \
+            {{- if .Values.config.raft.snapshotThreshold }}
+            --snapshot-threshold {{ .Values.config.raft.snapshotThreshold }} \
+            {{- end }}
+            {{- if .Values.config.raft.snapshotInterval }}
+            --snapshot-interval {{ .Values.config.raft.snapshotInterval }} \
+            {{- end }}
+            {{- if .Values.config.raft.electionTick }}
+            --raft-election-tick {{ .Values.config.raft.electionTick }} \
+            {{- end }}
+            {{- if .Values.config.raft.heartbeatTick }}
+            --raft-heartbeat-tick {{ .Values.config.raft.heartbeatTick }} \
+            {{- end }}
+            {{- if .Values.config.raft.maxSizePerMsg }}
+            --raft-max-size-per-msg {{ .Values.config.raft.maxSizePerMsg }} \
+            {{- end }}
+            {{- if .Values.config.raft.maxInflightMsgs }}
+            --raft-max-inflight-msgs {{ .Values.config.raft.maxInflightMsgs }} \
+            {{- end }}
+            {{- if .Values.config.raft.tickInterval }}
+            --raft-tick-interval {{ .Values.config.raft.tickInterval }} \
             {{- end }}
             {{- if .Values.config.debug }}
             --debug \

@@ -124,8 +124,13 @@ The following table lists the configurable parameters and their default values:
 | `config.bindAddr` | Raft/gRPC bind address (same port for both) | `0.0.0.0:8888` |
 | `config.httpPort` | HTTP server port | `9000` |
 | `config.dataDir` | Data directory for Raft | `/data/raft` |
-| `config.snapshotThreshold` | Number of logs before triggering a snapshot | `100` |
-| `config.snapshotInterval` | Minimum interval between snapshots | `30s` |
+| `config.raft.snapshotThreshold` | Number of logs before triggering a snapshot | `100` |
+| `config.raft.snapshotInterval` | Minimum interval between snapshots | `30s` |
+| `config.raft.electionTick` | Election timeout in ticks | `10` |
+| `config.raft.heartbeatTick` | Heartbeat interval in ticks | `1` |
+| `config.raft.tickInterval` | Interval between Raft ticks (e.g., "100ms") | `100ms` |
+| `config.raft.maxSizePerMsg` | Maximum size per message in bytes | `1048576` (1MB) |
+| `config.raft.maxInflightMsgs` | Maximum number of in-flight messages | `256` |
 | `config.bootstrap` | Bootstrap the cluster (first node only) | `true` |
 | `config.debug` | Enable debug logging | `false` |
 

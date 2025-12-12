@@ -10,6 +10,7 @@ type GetClusterStateResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Cluster state retrieved successfully
 	ClusterStateResponse *components.ClusterStateResponse
+	Headers              map[string][]string
 }
 
 func (o *GetClusterStateResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -24,4 +25,11 @@ func (o *GetClusterStateResponse) GetClusterStateResponse() *components.ClusterS
 		return nil
 	}
 	return o.ClusterStateResponse
+}
+
+func (o *GetClusterStateResponse) GetHeaders() map[string][]string {
+	if o == nil {
+		return map[string][]string{}
+	}
+	return o.Headers
 }
