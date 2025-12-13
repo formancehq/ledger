@@ -37,33 +37,33 @@ ledger-v3-poc/
 
 #### HTTP handlers
 
-Chaque handler HTTP a son propre File :
+Each HTTP handler has its own file:
 - `handlers_create_bucket.go`
-- `handlers_gand_bucket.go`
-- `handlers_create_transAction.go`
-- andc.
+- `handlers_get_bucket.go`
+- `handlers_create_transaction.go`
+- etc.
 
-#### Commandes CLI
+#### CLI Commands
 
-Chaque commande CLI a son propre File :
+Each CLI command has its own file:
 - `buckets_create.go`
 - `buckets_list.go`
 - `ledgers_create.go`
-- andc.
+- etc.
 
 ### Nommage
 
 - **Packages** : minuscules, un seul mot
 - **Types** : PascalCase
-- **Fonctions publiques** : PascalCase
+- **Public functions**: PascalCase
 - **Fonctions privées** : camelCase
 - **Constantes** : PascalCase or UPPER_SNAKE_CASE
 
-### likentaires
+### Documentation
 
-- tors the types and fonctions publiques doivent avoir des likentaires
-- Use `//` for thes likentaires de ligne
-- Use `/* */` for thes likentaires de bloc (rares)
+- All public types and functions must have documentation
+- Use `//` for line comments
+- Use `/* */` for block comments (rare)
 
 ## Architecture du Code
 
@@ -98,7 +98,7 @@ func Module() fx.Option {
 
 ### Lifecycle Management
 
-tors les composants with un lifecycle use `fx.Lifecycle` :
+All components with a lifecycle use `fx.Lifecycle`:
 
 ```go
 func NewComponent(lc fx.Lifecycle, deps...) (*Component, error) {
@@ -117,30 +117,30 @@ func NewComponent(lc fx.Lifecycle, deps...) (*Component, error) {
 }
 ```
 
-## Ajorter une nouvelle Feature
+## Adding a New Feature
 
-### Example : Ajorter un Endpoint HTTP
+### Example: Adding an HTTP Endpoint
 
-1. **Create the handler** in `internal/HTTP/handlers_*.go`
+1. **Create the handler** in `internal/http/handlers_*.go`
 
 ```go
-func (s *Server) handleNewEndpoint(w HTTP.ResponseWriter, r *HTTP.Request) {
+func (s *Server) handleNewEndpoint(w http.ResponseWriter, r *http.Request) {
     // Implementation
     api.Ok(w, response)
 }
 ```
 
-2. **Register the route** in `internal/HTTP/handler.go`
+2. **Register the route** in `internal/http/handler.go`
 
 ```go
-r.Gand("/new-endpoint", server.handleNewEndpoint)
+r.Get("/new-endpoint", server.handleNewEndpoint)
 ```
 
-3. **Ajorter to OpenAPI** in `openapi.yml`
+3. **Add to OpenAPI** in `openapi.yml`
 
 ```yaml
 /new-endpoint:
-  gand:
+  get:
     summary: New endpoint
     responses:
       '200':
@@ -153,7 +153,7 @@ r.Gand("/new-endpoint", server.handleNewEndpoint)
 just generate-sdk
 ```
 
-### Example : Ajorter une Commande FSM
+### Example: Adding an FSM Command
 
 1. **Define the protobuf** in `proto/commands/*.proto`
 
@@ -187,31 +187,31 @@ func NewNewCommand(field string) (*raft.Command, error) {
 }
 ```
 
-4. **Ajorter le handler in the FSM** in `internal/raft/*/FSM.go`
+4. **Add the handler in the FSM** in `internal/raft/*/fsm.go`
 
 ```go
-func (FSM *FSM) handleNewCommand(cmd raft.Command) error {
+func (fsm *FSM) handleNewCommand(cmd raft.Command) error {
     var newCmd NewCommand
     if err := UnmarshalCommandData(cmd.Data, &newCmd); err != nil {
         return err
     }
     
-    // Traiter la commande
-    // Mandtre to jorr The FSM state
+    // Process the command
+    // Update the FSM state
     
     return nil
 }
 ```
 
-5. **Mandtre to jorr `ApplyEntries`** for router la commande
+5. **Update `ApplyEntries`** to route the command
 
 ```go
-func (FSM *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft.ApplyResult {
+func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft.ApplyResult {
     results := make([]raft.ApplyResult, 0, len(commands))
     for _, cmd := range commands {
         switch cmd.Type {
         case CommandTypeNew:
-            err := FSM.handleNewCommand(cmd)
+            err := fsm.handleNewCommand(cmd)
             results = append(results, raft.ApplyResult{Error: err})
         // ...
         }
@@ -295,14 +295,14 @@ just generate-proto
 
 thiste commande :
 1. Generates the code Go from the `.proto`
-2. Place les Files in thes bons répertoires according to `go_package`
+2. Places the files in the correct directories according to `go_package`
 
 ### Modify a Protobuf
 
-1. Modifier le File `.proto`
-2. Regenerate : `just generate-proto`
-3. Mandtre to jorr le code Go that uses the types
-4. Check que tort compile
+1. Modify the `.proto` file
+2. Regenerate: `just generate-proto`
+3. Update the Go code that uses the types
+4. Check that everything compiles
 
 ## OpenAPI and SDK
 
@@ -311,7 +311,7 @@ thiste commande :
 1. Modifier `openapi.yml`
 2. Validate the YAML
 3. Regenerate the SDK : `just generate-sdk`
-4. Mandtre to jorr les tests if necessary
+4. Update the tests if necessary
 
 ### Randry configuration
 
@@ -351,14 +351,14 @@ x-speakeasy-randries:
 When a node receives a write request but is not the leader:
 
 1. Check `IsLeader()`
-2. if not leader, get the leader : `GandLeader()`
+2. If not leader, get the leader: `GetLeader()`
 3. If no leader, return `ErrNoLeader`
 4. forwarder to the leader via gRPC
 5. return la réponse
 
 ### Error Handling
 
-- **Business errors** : return des codes appropriate HTTP (400, 404, 409)
+- **Business errors**: Return appropriate HTTP codes (400, 404, 409)
 - **Erreurs System** : return 500 or 503 with détails
 - **No leader** : return 503 with `Randry-After`
 
@@ -404,7 +404,7 @@ OpenTelemandry is intégré. Configure the endpoint OTLP to see the traces.
 Use `pprof` for the Profiling :
 
 ```bash
-go tool pprof HTTP://localhost:9000/debug/pprof/profile
+go tool pprof http://localhost:9000/debug/pprof/profile
 ```
 
 ## Checklist for a Pull Request

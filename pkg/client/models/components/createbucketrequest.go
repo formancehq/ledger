@@ -4,17 +4,14 @@ package components
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 )
 
-// CreateBucketRequestDriver - Driver name (e.g., "postgres", "sqlite")
+// CreateBucketRequestDriver - Driver name (e.g., "sqlite")
 type CreateBucketRequestDriver string
 
 const (
-	CreateBucketRequestDriverSqlite   CreateBucketRequestDriver = "sqlite"
-	CreateBucketRequestDriverPostgres CreateBucketRequestDriver = "postgres"
+	CreateBucketRequestDriverSqlite CreateBucketRequestDriver = "sqlite"
 )
 
 func (e CreateBucketRequestDriver) ToPointer() *CreateBucketRequestDriver {
@@ -27,8 +24,6 @@ func (e *CreateBucketRequestDriver) UnmarshalJSON(data []byte) error {
 	}
 	switch v {
 	case "sqlite":
-		fallthrough
-	case "postgres":
 		*e = CreateBucketRequestDriver(v)
 		return nil
 	default:
@@ -36,75 +31,11 @@ func (e *CreateBucketRequestDriver) UnmarshalJSON(data []byte) error {
 	}
 }
 
-type CreateBucketRequestConfigType string
-
-const (
-	CreateBucketRequestConfigTypeSQLiteConfig   CreateBucketRequestConfigType = "SQLiteConfig"
-	CreateBucketRequestConfigTypePostgresConfig CreateBucketRequestConfigType = "PostgresConfig"
-)
-
-// CreateBucketRequestConfig - Driver-specific configuration (optional for SQLite - DSN is auto-generated)
-type CreateBucketRequestConfig struct {
-	SQLiteConfig   *SQLiteConfig   `queryParam:"inline"`
-	PostgresConfig *PostgresConfig `queryParam:"inline"`
-
-	Type CreateBucketRequestConfigType
-}
-
-func CreateCreateBucketRequestConfigSQLiteConfig(sqLiteConfig SQLiteConfig) CreateBucketRequestConfig {
-	typ := CreateBucketRequestConfigTypeSQLiteConfig
-
-	return CreateBucketRequestConfig{
-		SQLiteConfig: &sqLiteConfig,
-		Type:         typ,
-	}
-}
-
-func CreateCreateBucketRequestConfigPostgresConfig(postgresConfig PostgresConfig) CreateBucketRequestConfig {
-	typ := CreateBucketRequestConfigTypePostgresConfig
-
-	return CreateBucketRequestConfig{
-		PostgresConfig: &postgresConfig,
-		Type:           typ,
-	}
-}
-
-func (u *CreateBucketRequestConfig) UnmarshalJSON(data []byte) error {
-
-	var sqLiteConfig SQLiteConfig = SQLiteConfig{}
-	if err := utils.UnmarshalJSON(data, &sqLiteConfig, "", true, true); err == nil {
-		u.SQLiteConfig = &sqLiteConfig
-		u.Type = CreateBucketRequestConfigTypeSQLiteConfig
-		return nil
-	}
-
-	var postgresConfig PostgresConfig = PostgresConfig{}
-	if err := utils.UnmarshalJSON(data, &postgresConfig, "", true, true); err == nil {
-		u.PostgresConfig = &postgresConfig
-		u.Type = CreateBucketRequestConfigTypePostgresConfig
-		return nil
-	}
-
-	return fmt.Errorf("could not unmarshal `%s` into any supported union types for CreateBucketRequestConfig", string(data))
-}
-
-func (u CreateBucketRequestConfig) MarshalJSON() ([]byte, error) {
-	if u.SQLiteConfig != nil {
-		return utils.MarshalJSON(u.SQLiteConfig, "", true)
-	}
-
-	if u.PostgresConfig != nil {
-		return utils.MarshalJSON(u.PostgresConfig, "", true)
-	}
-
-	return nil, errors.New("could not marshal union type CreateBucketRequestConfig: all fields are null")
-}
-
 type CreateBucketRequest struct {
-	// Driver name (e.g., "postgres", "sqlite")
+	// Driver name (e.g., "sqlite")
 	Driver CreateBucketRequestDriver `json:"driver"`
-	// Driver-specific configuration (optional for SQLite - DSN is auto-generated)
-	Config *CreateBucketRequestConfig `json:"config,omitempty"`
+	// SQLite driver configuration (empty object - DSN is automatically generated)
+	Config *SQLiteConfig `json:"config,omitempty"`
 	// Number of logs before triggering a snapshot (optional, uses global config if not set)
 	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
 }
@@ -116,7 +47,7 @@ func (o *CreateBucketRequest) GetDriver() CreateBucketRequestDriver {
 	return o.Driver
 }
 
-func (o *CreateBucketRequest) GetConfig() *CreateBucketRequestConfig {
+func (o *CreateBucketRequest) GetConfig() *SQLiteConfig {
 	if o == nil {
 		return nil
 	}

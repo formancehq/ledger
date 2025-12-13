@@ -35,19 +35,6 @@ var logStoreFactories = map[string]logStoreFactory{
 		dsn := fmt.Sprintf("file:%s?mode=rwc", dbPath)
 		return service.NewSQLiteLogStore(ctx, dsn, logger)
 	},
-	"postgres": func(ctx context.Context, configJSON json.RawMessage, logger logging.Logger, bucketName string, bucketID uint64, extraDataDir string) (service.LogStore, error) {
-		var config service.PostgresConfig
-		if len(configJSON) > 0 {
-			if err := json.Unmarshal(configJSON, &config); err != nil {
-				return nil, fmt.Errorf("unmarshaling postgres config: %w", err)
-			}
-		}
-		if config.DSN == "" {
-			return nil, fmt.Errorf("postgres driver requires 'dsn' configuration for bucket %s", bucketName)
-		}
-		// Postgres DSNs are typically connection strings, not file paths, so we don't resolve them
-		return service.NewPostgresLogStore(ctx, config.DSN, logger)
-	},
 }
 
 // CreateLogStore creates a LogStore based on the bucket driver and config

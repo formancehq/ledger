@@ -4,7 +4,6 @@ package components
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 	"time"
@@ -14,8 +13,7 @@ import (
 type Driver string
 
 const (
-	DriverSqlite   Driver = "sqlite"
-	DriverPostgres Driver = "postgres"
+	DriverSqlite Driver = "sqlite"
 )
 
 func (e Driver) ToPointer() *Driver {
@@ -28,77 +26,11 @@ func (e *Driver) UnmarshalJSON(data []byte) error {
 	}
 	switch v {
 	case "sqlite":
-		fallthrough
-	case "postgres":
 		*e = Driver(v)
 		return nil
 	default:
 		return fmt.Errorf("invalid value for Driver: %v", v)
 	}
-}
-
-type ConfigType string
-
-const (
-	ConfigTypeSQLiteConfig   ConfigType = "SQLiteConfig"
-	ConfigTypePostgresConfig ConfigType = "PostgresConfig"
-)
-
-// Config - Driver-specific configuration
-type Config struct {
-	SQLiteConfig   *SQLiteConfig   `queryParam:"inline"`
-	PostgresConfig *PostgresConfig `queryParam:"inline"`
-
-	Type ConfigType
-}
-
-func CreateConfigSQLiteConfig(sqLiteConfig SQLiteConfig) Config {
-	typ := ConfigTypeSQLiteConfig
-
-	return Config{
-		SQLiteConfig: &sqLiteConfig,
-		Type:         typ,
-	}
-}
-
-func CreateConfigPostgresConfig(postgresConfig PostgresConfig) Config {
-	typ := ConfigTypePostgresConfig
-
-	return Config{
-		PostgresConfig: &postgresConfig,
-		Type:           typ,
-	}
-}
-
-func (u *Config) UnmarshalJSON(data []byte) error {
-
-	var sqLiteConfig SQLiteConfig = SQLiteConfig{}
-	if err := utils.UnmarshalJSON(data, &sqLiteConfig, "", true, true); err == nil {
-		u.SQLiteConfig = &sqLiteConfig
-		u.Type = ConfigTypeSQLiteConfig
-		return nil
-	}
-
-	var postgresConfig PostgresConfig = PostgresConfig{}
-	if err := utils.UnmarshalJSON(data, &postgresConfig, "", true, true); err == nil {
-		u.PostgresConfig = &postgresConfig
-		u.Type = ConfigTypePostgresConfig
-		return nil
-	}
-
-	return fmt.Errorf("could not unmarshal `%s` into any supported union types for Config", string(data))
-}
-
-func (u Config) MarshalJSON() ([]byte, error) {
-	if u.SQLiteConfig != nil {
-		return utils.MarshalJSON(u.SQLiteConfig, "", true)
-	}
-
-	if u.PostgresConfig != nil {
-		return utils.MarshalJSON(u.PostgresConfig, "", true)
-	}
-
-	return nil, errors.New("could not marshal union type Config: all fields are null")
 }
 
 type BucketInfo struct {
@@ -108,8 +40,8 @@ type BucketInfo struct {
 	Name string `json:"name"`
 	// Driver name
 	Driver Driver `json:"driver"`
-	// Driver-specific configuration
-	Config Config `json:"config"`
+	// SQLite driver configuration (empty object - DSN is automatically generated)
+	Config SQLiteConfig `json:"config"`
 	// Creation timestamp (ISO 8601 format)
 	CreatedAt time.Time `json:"createdAt"`
 	// Number of logs before triggering a snapshot (0 means use global config)
@@ -148,9 +80,9 @@ func (o *BucketInfo) GetDriver() Driver {
 	return o.Driver
 }
 
-func (o *BucketInfo) GetConfig() Config {
+func (o *BucketInfo) GetConfig() SQLiteConfig {
 	if o == nil {
-		return Config{}
+		return SQLiteConfig{}
 	}
 	return o.Config
 }

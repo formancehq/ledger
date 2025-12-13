@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 7cffeb5b1116204c6304bd36eca368fd
+  docChecksum: 4de79be810e02f81a5be539daf3923bf
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.8
-  configChecksum: 899f6c82a73104a4e2242f9e85a429a5
+  releaseVersion: 0.11.9
+  configChecksum: c34d6afc96e3c24ce325164b9f01b2fe
 features:
   go:
     additionalDependencies: 0.1.0
@@ -53,7 +53,6 @@ generatedFiles:
   - /models/components/listallledgersresponse.go
   - /models/components/listbucketsresponse.go
   - /models/components/nodeinfo.go
-  - /models/components/postgresconfig.go
   - /models/components/postingrequest.go
   - /models/components/postingresponse.go
   - /models/components/reverttransactionrequest.go
@@ -81,7 +80,6 @@ generatedFiles:
   - docs/models/components/addmetadatarequest.md
   - docs/models/components/bucketinfo.md
   - docs/models/components/bucketwithraftstate.md
-  - docs/models/components/bucketwithraftstateconfig.md
   - docs/models/components/bucketwithraftstatedriver.md
   - docs/models/components/bulkelement.md
   - docs/models/components/bulkelementdata.md
@@ -91,9 +89,7 @@ generatedFiles:
   - docs/models/components/clusterstate.md
   - docs/models/components/clusterstateresponse.md
   - docs/models/components/clusterstateresponsedata.md
-  - docs/models/components/config.md
   - docs/models/components/createbucketrequest.md
-  - docs/models/components/createbucketrequestconfig.md
   - docs/models/components/createbucketrequestdriver.md
   - docs/models/components/createbucketresponse.md
   - docs/models/components/createbucketsnapshotresponse.md
@@ -115,7 +111,6 @@ generatedFiles:
   - docs/models/components/listallledgersresponse.md
   - docs/models/components/listbucketsresponse.md
   - docs/models/components/nodeinfo.md
-  - docs/models/components/postgresconfig.md
   - docs/models/components/postingrequest.md
   - docs/models/components/postingresponse.md
   - docs/models/components/reverttransactionrequest.md
@@ -311,10 +306,10 @@ examples:
         path:
           bucketName: "<value>"
       requestBody:
-        application/json: {"driver": "postgres", "config": {}}
+        application/json: {"driver": "sqlite", "config": {}}
       responses:
         "201":
-          application/json: {"data": {"id": 452145, "name": "<value>", "driver": "postgres", "config": {}, "createdAt": "2023-11-29T11:59:22.657Z"}}
+          application/json: {"data": {"id": 452145, "name": "<value>", "driver": "sqlite", "config": {}, "createdAt": "2023-11-29T11:59:22.657Z"}}
         "400":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":

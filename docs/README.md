@@ -38,7 +38,7 @@ Testing strategy, unit tests, integration, and end-to-end tests.
 ## Key Concepts
 
 ### Buckets
-A **bucket** is an isolated container that has its own Raft group. Each bucket can contain multiple ledgers and has its own storage configuration (SQLite, PostgreSQL, etc.).
+A **bucket** is an isolated container that has its own Raft group. Each bucket can contain multiple ledgers and has its own storage configuration (SQLite).
 
 ### Ledgers
 A **ledger** is an accounting book containing transactions. Each ledger belongs to a bucket and has a unique identifier within that bucket.
@@ -58,7 +58,7 @@ The system uses **two levels of Raft groups**:
 - **gRPC** : Inter-node communication
 - **HTTP/REST** : Public API
 - **Protocol Buffers** : Data serialization
-- **SQLite/PostgreSQL** : Transaction log storage
+- **SQLite**: Transaction log storage
 - **fx (Uber)** : Dependency injection
 - **OpenTelemetry** : Observability and tracing
 

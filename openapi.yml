@@ -908,12 +908,10 @@ components:
       properties:
         driver:
           type: string
-          enum: [sqlite, postgres]
-          description: Driver name (e.g., "postgres", "sqlite")
+          enum: [sqlite]
+          description: Driver name (e.g., "sqlite")
         config:
-          oneOf:
-            - $ref: '#/components/schemas/SQLiteConfig'
-            - $ref: '#/components/schemas/PostgresConfig'
+          $ref: '#/components/schemas/SQLiteConfig'
           description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
         snapshotThreshold:
           type: integer
@@ -1000,12 +998,10 @@ components:
           description: Bucket name
         driver:
           type: string
-          enum: [sqlite, postgres]
+          enum: [sqlite]
           description: Driver name
         config:
-          oneOf:
-            - $ref: '#/components/schemas/SQLiteConfig'
-            - $ref: '#/components/schemas/PostgresConfig'
+          $ref: '#/components/schemas/SQLiteConfig'
           description: Driver-specific configuration
         createdAt:
           type: string
@@ -1044,17 +1040,6 @@ components:
       description: SQLite driver configuration (empty object - DSN is automatically generated)
       properties: {}
       example: {}
-
-    PostgresConfig:
-      type: object
-      required:
-        - dsn
-      properties:
-        dsn:
-          type: string
-          description: Data Source Name (connection string) for PostgreSQL database
-      example:
-        dsn: "postgres://user:password@localhost:5432/ledger?sslmode=disable"
 
     ClickHouseConfig:
       type: object

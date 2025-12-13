@@ -434,6 +434,7 @@ func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.Bal
 	return result, nil
 }
 
+// todo: implements GetAccountsMetadata
 func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
 	// For now, return empty metadata as we don't have account metadata stored separately
 	// This can be enhanced later if needed

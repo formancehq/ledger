@@ -138,10 +138,8 @@ func main() {
     res, err := s.Buckets.CreateBucket(ctx, operations.CreateBucketRequest{
         BucketName: "<value>",
         CreateBucketRequest: components.CreateBucketRequest{
-            Driver: components.CreateBucketRequestDriverPostgres,
-            Config: client.Pointer(components.CreateCreateBucketRequestConfigSQLiteConfig(
-                components.SQLiteConfig{},
-            )),
+            Driver: components.CreateBucketRequestDriverSqlite,
+            Config: &components.SQLiteConfig{},
         },
     })
     if err != nil {

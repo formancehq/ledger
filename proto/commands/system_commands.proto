@@ -24,7 +24,7 @@ message DeleteBucketCommand {
 message BucketInfo {
   uint64 id = 1;                            // Sequential bucket ID
   string name = 2;                          // Bucket name/ID
-  string driver = 3;                        // Driver name (e.g., "postgres", "s3", etc.)
+  string driver = 3;                        // Driver name (e.g., "sqlite", "s3", etc.)
   google.protobuf.Struct config = 4;       // Driver-specific configuration
   google.protobuf.Timestamp created_at = 5; // Creation timestamp
   uint64 snapshot_threshold = 6;            // Number of logs before triggering a snapshot (optional, uses global config if 0)

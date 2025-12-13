@@ -19,7 +19,7 @@ type LedgerInfo struct {
 type BucketInfo struct {
 	ID                uint64          `json:"id"`                // Sequential bucket ID
 	Name              string          `json:"name"`              // Bucket name/ID
-	Driver            string          `json:"driver"`            // Driver name (e.g., "postgres", "s3", etc.)
+	Driver            string          `json:"driver"`            // Driver name (e.g., "sqlite", "s3", etc.)
 	Config            json.RawMessage `json:"config"`            // Driver-specific configuration
 	CreatedAt         time.Time       `json:"createdAt"`        // Creation timestamp
 	SnapshotThreshold uint64          `json:"snapshotThreshold"` // Number of logs before triggering a snapshot (0 means use global config)

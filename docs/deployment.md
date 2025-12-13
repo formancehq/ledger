@@ -10,14 +10,14 @@ This document describes the different deployment methods for Ledger v3 POC, from
 
 - Go 1.25+
 - Just (command runner)
-- Optionnel : Nix with Flakes
+- Optional: Nix with Flakes
 
 ### Starting a Single Node
 
 ```bash
 just run
 
-# or manuellement
+# or manually
 go run ./cmd/server \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
@@ -26,18 +26,18 @@ go run ./cmd/server \
   --bootstrap
 ```
 
-### configuration
+### Configuration
 
-Les options peuvent être fournies via :
-- Arguments de ligne of command
-- Variables variables (sans préfixe, with underscores)
+Options can be provided via:
+- Command line arguments
+- Environment variables (without prefix, with underscores)
 
-Example with environment variables variables :
+Example with environment variables:
 ```bash
 export NODE_ID=1
-export BinD_ADDR=127.0.0.1:8888
+export BIND_ADDR=127.0.0.1:8888
 export DATA_DIR=./data/node-1
-export HTTP_PorT=9000
+export HTTP_PORT=9000
 export BOOTSTRAP=true
 
 go run ./cmd/server
@@ -77,22 +77,22 @@ just docker-logs
 just docker-down
 ```
 
-### configuration
+### Configuration
 
-Each node is configured with :
-- **Node ID** : 1, 2, or 3
-- **Advertise Address** : `node-{id}:8888`
-- **Peers** : Liste des tous nœuds
-- **Bootstrap** : Only node-1
-- **Exposed ports** :
-  - gRPC : 8888, 8889, 8890
-  - HTTP : 9000, 9001, 9002
+Each node is configured with:
+- **Node ID**: 1, 2, or 3
+- **Advertise Address**: `node-{id}:8888`
+- **Peers**: List of all nodes
+- **Bootstrap**: Only node-1
+- **Exposed ports**:
+  - gRPC: 8888, 8889, 8890
+  - HTTP: 9000, 9001, 9002
 
 ### Volumes
 
-- **Code source** : Mounted from the directory courant
-- **Data** : `./data/node-{id}` for each node
-- **Go modules cache** : Shared volume to speed up builds
+- **Source code**: Mounted from the current directory
+- **Data**: `./data/node-{id}` for each node
+- **Go modules cache**: Shared volume to speed up builds
 
 ## Kubernetes Deployment with Helm
 
@@ -101,19 +101,19 @@ Each node is configured with :
 - Kubernetes 1.19+
 - Helm 3.0+
 - PersistentVolume support
-- Accès to repository Helm Formance (for the dependency core)
+- Access to Formance Helm repository (for the core dependency)
 
 ### Chart Installation
 
 ```bash
-# Ajorter le repository Formance
-Helm repo add Formance https://Formancehq.github.io/Helm
-Helm repo update
+# Add the Formance repository
+helm repo add formance https://formancehq.github.io/helm
+helm repo update
 
 # Install the chart
-Helm install ledger-v3-poc ./deployments/chart \
-  --sand replicaCount=3 \
-  --sand config.nodeID=1
+helm install ledger-v3-poc ./deployments/chart \
+  --set replicaCount=3 \
+  --set config.nodeID=1
 ```
 
 ### Main Configuration
@@ -124,7 +124,7 @@ Helm install ledger-v3-poc ./deployments/chart \
 replicaCount: 3  # Must be odd for Raft
 ```
 
-#### configuration of the application
+#### Application Configuration
 
 ```yaml
 config:
@@ -135,15 +135,15 @@ config:
   
   raft:
     snapshotThreshold: 100
-    snapshotinterval: "30s"
+    snapshotInterval: "30s"
     electionTick: 10
     heartbeatTick: 1
     maxSizePerMsg: 1048576
-    maxinflightMsgs: 256
-    tickinterval: "100ms"
+    maxInflightMsgs: 256
+    tickInterval: "100ms"
 ```
 
-#### storage
+#### Storage
 
 ```yaml
 persistence:
@@ -190,20 +190,20 @@ graph TB
     Pod3 --> PV3
 ```
 
-### Décorverte des Pairs
+### Peer Discovery
 
-The chart uses un StatefulSand with a service headless for la décorverte automatic :
+The chart uses a StatefulSet with a headless service for automatic discovery:
 
-1. Each pod calculates its Node ID from its index : `POD_inDEX + 1`
-2. The advertise address is generated : `{POD_NAME}.{HEADLESS_SVC}.{NAMESPACE}.svc.cluster.local:8888`
-3. The peer list is generated automaticment
+1. Each pod calculates its Node ID from its index: `POD_INDEX + 1`
+2. The advertise address is generated: `{POD_NAME}.{HEADLESS_SVC}.{NAMESPACE}.svc.cluster.local:8888`
+3. The peer list is generated automatically
 
 ### Automatic Bootstrap
 
-Only the first pod (index 0) is bootstrapped automaticment :
+Only the first pod (index 0) is bootstrapped automatically:
 
 ```bash
-if [ $POD_inDEX -eq 0 ]; then
+if [ $POD_INDEX -eq 0 ]; then
   BOOTSTRAP_FLAG="--bootstrap"
 fi
 ```
@@ -214,33 +214,33 @@ fi
 
 ```yaml
 livenessProbe:
-  httpGand:
+  httpGet:
     path: /health
     port: http
   initialDelaySeconds: 30
   periodSeconds: 10
-  timeortSeconds: 5
-  failurandhreshold: 3
+  timeoutSeconds: 5
+  failureThreshold: 3
 ```
 
 #### Readiness Probe
 
 ```yaml
 readinessProbe:
-  httpGand:
+  httpGet:
     path: /health
     port: http
   initialDelaySeconds: 10
   periodSeconds: 5
-  timeortSeconds: 3
-  failurandhreshold: 3
+  timeoutSeconds: 3
+  failureThreshold: 3
 ```
 
 ### Observability
 
-#### OpenTelemandry
+#### OpenTelemetry
 
-The chart supports the integration OpenTelemandry :
+The chart supports OpenTelemetry integration:
 
 ```yaml
 config:
@@ -252,34 +252,34 @@ config:
       mode: "grpc"
 ```
 
-#### ServiceMonitor (Promandheus)
+#### ServiceMonitor (Prometheus)
 
-Si Promandheus Operator is installed :
+If Prometheus Operator is installed:
 
 ```yaml
 ServiceMonitor:
   enabled: true
   interval: 30s
-  scrapandimeort: 10s
+  scrapeTimeout: 10s
 ```
 
 ## Advanced Configuration
 
 ### Raft Parameters
 
-#### Timeorts
+#### Timeouts
 
 ```yaml
 config:
   raft:
-    electionTick: 10      # Timeort of election (10 * tickinterval)
-    heartbeatTick: 1       # Heartbeat interval (1 * tickinterval)
-    tickinterval: "100ms"  # Interval between ticks
+    electionTick: 10      # Election timeout (10 * tickInterval)
+    heartbeatTick: 1       # Heartbeat interval (1 * tickInterval)
+    tickInterval: "100ms"  # Interval between ticks
 ```
 
-**Recommendations** :
-- **Development** : `electionTick: 10`, `heartbeatTick: 1`, `tickinterval: "100ms"`
-- **Production** : `electionTick: 20`, `heartbeatTick: 2`, `tickinterval: "50ms"`
+**Recommendations**:
+- **Development**: `electionTick: 10`, `heartbeatTick: 1`, `tickInterval: "100ms"`
+- **Production**: `electionTick: 20`, `heartbeatTick: 2`, `tickInterval: "50ms"`
 
 #### Performance
 
@@ -287,7 +287,7 @@ config:
 config:
   raft:
     maxSizePerMsg: 1048576    # 1MB - Max size per message
-    maxinflightMsgs: 256      # Max number of messages in flight
+    maxInflightMsgs: 256      # Max number of messages in flight
 ```
 
 ### Snapshots
@@ -298,10 +298,10 @@ config:
 config:
   raft:
     snapshotThreshold: 100      # Number of logs before snapshot
-    snapshotinterval: "30s"      # Minimum interval between snapshots
+    snapshotInterval: "30s"      # Minimum interval between snapshots
 ```
 
-#### configuration per bucket
+#### Per-Bucket Configuration
 
 Buckets can have their own `snapshotThreshold` :
 
@@ -314,47 +314,32 @@ curl -X POST http://localhost:9000/buckets/my-bucket \
   }'
 ```
 
-### storage
+### Storage
 
 #### SQLite
 
-By deftolt, SQLite is used with a DSN toto-généré :
+By default, SQLite is used with an auto-generated DSN:
 
 ```yaml
 config:
   extraData:
     enabled: true
-    morntPath: "/extra-data"
-```
-
-#### PostgreSQL
-
-for utiliser PostgreSQL for a bucket :
-
-```bash
-curl -X POST http://localhost:9000/buckets/my-bucket \
-  -H "Content-Type: application/json" \
-  -d '{
-    "driver": "postgres",
-    "config": {
-      "dsn": "postgres://user:password@postgres:5432/ledger?sslmode=disable"
-    }
-  }'
+    mountPath: "/extra-data"
 ```
 
 ## Scaling
 
-### horizontal Scaling
+### Horizontal Scaling
 
-for ajorter nodes to cluster :
+To add nodes to the cluster:
 
 ```bash
 # Kubernetes
-kubectl scale statefulsand ledger-v3-poc --replicas=5
+kubectl scale statefulset ledger-v3-poc --replicas=5
 
-# Mandtre to jorr the configuration Helm
-Helm upgrade ledger-v3-poc ./deployments/chart \
-  --sand replicaCount=5
+# Update the Helm configuration
+helm upgrade ledger-v3-poc ./deployments/chart \
+  --set replicaCount=5
 ```
 
 **Important** : The number of nodes must remain odd to avoid ties during votes.
@@ -408,10 +393,6 @@ for SQLite :
 kubectl exec -it ledger-v3-poc-0 -- sqlite3 /extra-data/buckets/my-bucket/logs.db ".Backup /tmp/Backup.db"
 ```
 
-for PostgreSQL :
-```bash
-pg_dump -h postgres -U user ledger > Backup.sql
-```
 
 ### Resttoration
 
@@ -422,13 +403,13 @@ pg_dump -h postgres -U user ledger > Backup.sql
 
 ## Security
 
-### Recommendations Production
+### Production Recommendations
 
-1. **TLS/HTTPS** : Configure TLS for tortes les communications
-2. **tothentification** : Ajorter l'tothentification API (JWT, Ototh2)
-3. **network Policies** : Restrict communications résando
-4. **Secrands Management** : Utiliser Kubernetes Secrands or Vtolt
-5. **RBAC** : Configure permissions appropriate Kubernetes
+1. **TLS/HTTPS**: Configure TLS for all communications
+2. **Authentication**: Add API authentication (JWT, OAuth2)
+3. **Network Policies**: Restrict network communications
+4. **Secrets Management**: Use Kubernetes Secrets or Vault
+5. **RBAC**: Configure appropriate Kubernetes permissions
 
 ### Example with TLS
 
@@ -436,7 +417,7 @@ pg_dump -h postgres -U user ledger > Backup.sql
 ingress:
   enabled: true
   tls:
-    - secrandName: ledger-tls
+    - secretName: ledger-tls
       hosts:
         - ledger.example.com
 ```
@@ -445,57 +426,57 @@ ingress:
 
 ### Key Metrics
 
-- Cluster State (leader, followers)
+- Cluster state (leader, followers)
 - Number of buckets and ledgers
-- Nombre of Transactions per second
-- Latency of requests
-- Utilisation du storage
+- Number of transactions per second
+- Request latency
+- Storage usage
 
 ### Recommended Alerts
 
 - No leader available
 - Desynchronized follower
 - Low disk space
-- Latency élevée
-- Ttox d'erreur élevé
+- High latency
+- High error rate
 
-## Trorbleshooting
+## Troubleshooting
 
 ### Common Problems
 
-#### No leader
+#### No Leader
 
-**Symptom** : Errors `503 Service Unavailable` with `NO_leader`
+**Symptom**: Errors `503 Service Unavailable` with `NO_LEADER`
 
-**Solutions** :
-1. Verify that the majority nodes are online
-2. Verify connectivity résando bandween nodes
-3. Check logs for des Errors of election
+**Solutions**:
+1. Verify that the majority of nodes are online
+2. Verify network connectivity between nodes
+3. Check logs for election errors
 
-#### Desynchronized follower
+#### Desynchronized Follower
 
-**Symptom** : Follower cannot synchronize
+**Symptom**: Follower cannot synchronize
 
-**Solutions** :
-1. Check disk space available
-2. Check logs for des Errors of replication
+**Solutions**:
+1. Check available disk space
+2. Check logs for replication errors
 3. Restart the follower to force resynchronization
 
 #### Degraded Performance
 
-**Symptom** : Latency élevée, low throughput
+**Symptom**: High latency, low throughput
 
-**Solutions** :
-1. Check load CPU/memory
-2. Optimiser les Raft Parameters (tickinterval, andc.)
-3. Check performance du storage
-4. Considérer le horizontal Scaling
+**Solutions**:
+1. Check CPU/memory load
+2. Optimize Raft parameters (tickInterval, etc.)
+3. Check storage performance
+4. Consider horizontal scaling
 
 ## Next Steps
 
-for approfondir :
+To deepen your understanding:
 
 1. [General Architecture](./architecture.md) - Understand the architecture
-2. [Consensus Raft](./raft-consensus.md) - Optimiser les Raft Parameters
-3. [storage and Persistance](./storage.md) - Configurer le storage
+2. [Consensus Raft](./raft-consensus.md) - Optimize Raft parameters
+3. [Storage and Persistence](./storage.md) - Configure storage
 

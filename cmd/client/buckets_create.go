@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/models/components"
@@ -15,7 +14,7 @@ import (
 type createBucketOptions struct {
 	name              string
 	driver            string
-	config            interface{} // Will be one of: SQLiteConfig, PostgresConfig
+	config            interface{} // Will be one of: SQLiteConfig
 	snapshotThreshold *uint64     // Optional snapshot threshold
 }
 
@@ -29,11 +28,10 @@ var bucketsCreateCmd = &cobra.Command{
 
 func init() {
 	bucketsCreateCmd.Flags().String("name", "", "Bucket name")
-	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite, postgres)")
-	bucketsCreateCmd.Flags().String("postgres-dsn", "", "PostgreSQL connection string (required for postgres driver)")
+	bucketsCreateCmd.Flags().String("driver", "", "Driver name (sqlite)")
 	bucketsCreateCmd.Flags().Uint64("snapshot-threshold", 0, "Number of logs before triggering a snapshot (optional, uses global config if not set)")
 	// Name, driver and config are no longer required - wizard will prompt if not provided
-	// Note: SQLite and File drivers don't require config - paths are automatically generated
+	// Note: SQLite driver doesn't require config - DSN is automatically generated
 
 	// Register completions
 	bucketsCreateCmd.RegisterFlagCompletionFunc("driver", completeDriverNames())
@@ -47,9 +45,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	opts.name, _ = cmd.Flags().GetString("name")
 	opts.driver, _ = cmd.Flags().GetString("driver")
 
-	// Extract driver-specific config flags
-	postgresDSN, _ := cmd.Flags().GetString("postgres-dsn")
-
 	// Extract snapshot threshold flag
 	if snapshotThreshold, _ := cmd.Flags().GetUint64("snapshot-threshold"); snapshotThreshold > 0 {
 		opts.snapshotThreshold = &snapshotThreshold
@@ -60,15 +55,11 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	case "sqlite":
 		// SQLite doesn't require config - DSN is automatically generated
 		opts.config = service.SQLiteConfig{}
-	case "postgres":
-		if postgresDSN != "" {
-			opts.config = service.PostgresConfig{DSN: postgresDSN}
-		}
 	}
 
-	// Run wizard if name, driver or config not provided
-	// For SQLite and File, config can be nil (will be set to empty config)
-	needsWizard := opts.name == "" || opts.driver == "" || (opts.config == nil && opts.driver != "sqlite" && opts.driver != "file")
+	// Run wizard if name or driver not provided
+	// For SQLite, config can be nil (will be set to empty config)
+	needsWizard := opts.name == "" || opts.driver == "" || (opts.config == nil && opts.driver != "sqlite")
 	if needsWizard {
 		if err := runCreateBucketWizard(opts); err != nil {
 			return err
@@ -93,27 +84,20 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	switch opts.driver {
 	case "sqlite":
 		driver = components.CreateBucketRequestDriverSqlite
-	case "postgres":
-		driver = components.CreateBucketRequestDriverPostgres
 	default:
 		return fmt.Errorf("unsupported driver: %s", opts.driver)
 	}
 
 	// Convert config struct to SDK type
-	var config *components.CreateBucketRequestConfig
-	switch cfg := opts.config.(type) {
+	var config *components.SQLiteConfig
+	switch opts.config.(type) {
 	case service.SQLiteConfig:
-		cfgSDK := components.CreateCreateBucketRequestConfigSQLiteConfig(components.SQLiteConfig{})
-		config = &cfgSDK
-	case service.PostgresConfig:
-		cfgSDK := components.CreateCreateBucketRequestConfigPostgresConfig(components.PostgresConfig{
-			Dsn: cfg.DSN,
-		})
+		cfgSDK := components.SQLiteConfig{}
 		config = &cfgSDK
 	case nil:
 		// For SQLite, use empty config
 		if opts.driver == "sqlite" {
-			cfgSDK := components.CreateCreateBucketRequestConfigSQLiteConfig(components.SQLiteConfig{})
+			cfgSDK := components.SQLiteConfig{}
 			config = &cfgSDK
 		}
 	}
@@ -166,10 +150,6 @@ func runCreateBucket(cmd *cobra.Command, args []string) error {
 	case components.DriverSqlite:
 		// SQLite DSN is auto-generated, show a note
 		panelData += "Storage: SQLite (auto-generated database file)\n"
-	case components.DriverPostgres:
-		if data.Config.Type == components.ConfigTypePostgresConfig && data.Config.PostgresConfig != nil {
-			panelData += fmt.Sprintf("DSN: %s\n", data.Config.PostgresConfig.Dsn)
-		}
 	}
 
 	// Display snapshot threshold if set
@@ -208,33 +188,8 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 
 	// Step 2: Select driver if not provided
 	if opts.driver == "" {
-		options := []string{
-			"sqlite    - SQLite database (file-based, good for development)",
-			"postgres  - PostgreSQL database (production-ready)",
-		}
-
-		selectedOption, err := pterm.DefaultInteractiveSelect.
-			WithOptions(options).
-			Show("Select a storage driver")
-		if err != nil {
-			return fmt.Errorf("failed to select driver: %w", err)
-		}
-
-		// Extract driver name from selected option (format: "driver    - description")
-		driverMap := map[string]string{
-			"sqlite    - SQLite database (file-based, good for development)": "sqlite",
-			"postgres  - PostgreSQL database (production-ready)":             "postgres",
-		}
-		opts.driver = driverMap[selectedOption]
-		if opts.driver == "" {
-			// Fallback: extract from first word
-			parts := strings.Fields(selectedOption)
-			if len(parts) > 0 {
-				opts.driver = parts[0]
-			} else {
-				return fmt.Errorf("failed to parse driver from selection")
-			}
-		}
+		// Only SQLite is supported
+		opts.driver = "sqlite"
 		pterm.Success.Printf("Selected driver: %s\n", opts.driver)
 		pterm.Println()
 	}
@@ -249,22 +204,6 @@ func runCreateBucketWizard(opts *createBucketOptions) error {
 			pterm.Println("The database file will be named: bucket-{id}.db")
 			pterm.Println()
 			opts.config = service.SQLiteConfig{}
-		}
-
-	case "postgres":
-		if opts.config == nil {
-			pterm.Info.Println("PostgreSQL Configuration")
-			pterm.Println("Enter the PostgreSQL connection string.")
-			pterm.Println("Example: postgres://user:password@localhost:5432/ledger?sslmode=disable")
-			pterm.Println()
-
-			dsn, err := pterm.DefaultInteractiveTextInput.
-				WithDefaultText("postgres://user:password@localhost:5432/ledger?sslmode=disable").
-				Show("PostgreSQL DSN")
-			if err != nil {
-				return fmt.Errorf("failed to get PostgreSQL DSN: %w", err)
-			}
-			opts.config = service.PostgresConfig{DSN: dsn}
 		}
 	}
 

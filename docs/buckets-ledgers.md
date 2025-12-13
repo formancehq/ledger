@@ -36,7 +36,7 @@ graph TB
 
 A **bucket** is an isolated container that:
 - Has its own independent Raft group
-- Can use a different storage driver (SQLite, PostgreSQL)
+- Can use a different storage driver (SQLite)
 - Contains one or more ledgers
 - Has its own snapshot configuration
 
@@ -46,7 +46,7 @@ A **bucket** is an isolated container that:
 type BucketInfo struct {
     ID                uint64          // Sequential unique ID
     Name              string          // Bucket name
-    Driver            string          // Storage driver (sqlite, postgres)
+    Driver            string          // Storage driver (sqlite)
     Config            json.RawMessage // Driver configuration
     CreatedAt         time.Time       // Creation date
     SnapshotThreshold uint64          // Snapshot threshold (optional)
@@ -98,13 +98,6 @@ The system supports multiple storage drivers:
 - **Configuration**: Empty (auto-generated DSN)
 - **Advantages**: Simple, no external dependencies
 - **Limitations**: No high concurrency, single writer
-
-#### PostgreSQL
-
-- **Usage**: Production, high availability
-- **Configuration**: Connection DSN
-- **Advantages**: Scalable, ACID transactions, native replication
-- **Limitations**: Requires external PostgreSQL server
 
 ### Per-Bucket Snapshot Configuration
 

@@ -6,8 +6,8 @@ The Ledger v3 POC system uses multiple storage layers to ensure data durability 
 
 1. **WAL (Write-Ahead Log)**: Raft log for consensus
 2. **Snapshots**: Periodic restoration points
-3. **Log Store** : transaction storage (SQLite/PostgreSQL)
-4. **Balances Store** : Balance cache of accounts
+3. **Log Store**: Transaction storage (SQLite)
+4. **Balances Store**: Balance cache of accounts
 
 ## Storage Architecture
 
@@ -20,7 +20,7 @@ graph TB
     end
     
     subgraph "Application Storage"
-        logstore[Log Store<br/>SQLite/PostgreSQL]
+        logstore[Log Store<br/>SQLite]
         BalancesStore[Balances Store<br/>in-Memory Cache]
     end
     
@@ -45,11 +45,11 @@ graph TB
 
 The WAL is the main log used by Raft to guarantee entry durability. It uses the `etcd/wal` library which provides:
 
-- **Durability** : All writes are synchronized on disk
-- **Performance** : Sequential writes optimized
-- **Récupération** : Replay automatic at startup
+- **Durability**: All writes are synchronized on disk
+- **Performance**: Sequential writes optimized
+- **Recovery**: Automatic replay at startup
 
-### Structure du WAL
+### WAL Structure
 
 ```
 data/
@@ -65,7 +65,7 @@ data/
 
 #### Write
 
-When a new entry is proposed :
+When a new entry is proposed:
 
 1. The entry is added to memory cache (`entries`)
 2. The entry is written in the WAL
@@ -74,7 +74,7 @@ When a new entry is proposed :
 
 #### Read
 
-at startup, the WAL is replayed to rebuild The memory cache :
+At startup, the WAL is replayed to rebuild the memory cache:
 
 1. The last snapshot is loaded
 2. WAL entries after the snapshot are replayed
@@ -83,7 +83,7 @@ at startup, the WAL is replayed to rebuild The memory cache :
 
 ### WAL Management
 
-The WAL grows indefinitely until a snapshot is created. After a snapshot :
+The WAL grows indefinitely until a snapshot is created. After a snapshot:
 
 - Entries before the snapshot index can be compacted
 - The WAL is segmented to facilitate management
@@ -93,15 +93,15 @@ The WAL grows indefinitely until a snapshot is created. After a snapshot :
 
 ### Concept
 
-The HardState contains the critical state of the Raft cluster :
+The HardState contains the critical state of the Raft cluster:
 
-- **Term** : Current term of the Cluster
-- **Vote** : Node ID for which this node voted
-- **Commit** : Index of the last committed entry
+- **Term**: Current term of the cluster
+- **Vote**: Node ID for which this node voted
+- **Commit**: Index of the last committed entry
 
-### Persistance
+### Persistence
 
-The HardState is persisted in `raft-hardstate.json` :
+The HardState is persisted in `raft-hardstate.json`:
 
 ```json
 {
@@ -113,7 +113,7 @@ The HardState is persisted in `raft-hardstate.json` :
 
 ### Update
 
-The HardState is updated when :
+The HardState is updated when:
 - A new election occurs (term and vote change)
 - An entry is committed (commit changes)
 
@@ -121,80 +121,80 @@ The HardState is updated when :
 
 ### Concept
 
-Snapshots are des Restoration points that contain :
-- L'état complet de la FSM at a given index
-- Necessary metadata to restore l'état
+Snapshots are restoration points that contain:
+- The complete FSM state at a given index
+- Necessary metadata to restore the state
 
-### Création of Snapshots
+### Snapshot Creation
 
-Snapshots are créés automaticment quand :
+Snapshots are created automatically when:
 
-1. **Log threshold reached** : `SnapshotThreshold` entrées from The last snapshot
-2. **Minimum interval** : `Snapshotinterval` has elapsed from The last snapshot
+1. **Log threshold reached**: `SnapshotThreshold` entries from the last snapshot
+2. **Minimum interval**: `SnapshotInterval` has elapsed from the last snapshot
 
 ### Snapshot Contents
 
 #### System Snapshot
 
-Contient The FSM state System :
-- Liste des buckets with their metadata
-- Next ID de bucket to assign
+Contains the system FSM state:
+- List of buckets with their metadata
+- Next bucket ID to assign
 - Cluster configuration
 
-#### Snapshot bucket
+#### Bucket Snapshot
 
-Contient The FSM state du bucket :
-- Liste des ledgers with their metadata
-- Last number of sequence
-- Index of keys of idempotency
+Contains the bucket FSM state:
+- List of ledgers with their metadata
+- Last sequence number
+- Index of idempotency keys
 
 ### Snapshot Format
 
-Snapshots are sérialisés en JSON :
+Snapshots are serialized in JSON:
 
 ```json
 {
-  "mandadata": {
+  "metadata": {
     "index": 1234,
     "term": 5
   },
   "data": {
     "buckets": [...],
-    "nextbucketID": 10
+    "nextBucketID": 10
   }
 }
 ```
 
-### Resttoration from Snapshot
+### Restoration from Snapshot
 
-When a node starts or recovers :
+When a node starts or recovers:
 
 1. The most recent snapshot is loaded
-2. The FSM state is restored from le snapshot
-3. WAL entries après the snapshot index are replayed
+2. The FSM state is restored from the snapshot
+3. WAL entries after the snapshot index are replayed
 4. The final state is reached
 
 ## Log Store
 
 ### Concept
 
-The Log Store is responsable du storage persistent of transactions (logs) for each bucket. It implements the interface `LogWriter` and `LogReader`.
+The Log Store is responsible for persistent storage of transactions (logs) for each bucket. It implements the interfaces `LogWriter` and `LogReader`.
 
 ### Implementations
 
 #### SQLite
 
-**File** : `internal/service/log_store_sqlite.go`
+**File**: `internal/service/log_store_sqlite.go`
 
-**Characteristics** :
-- storage in un File SQLite per bucket
-- No dependencies external
-- Ideal for development and pandits déploiements
+**Characteristics**:
+- Storage in a SQLite file per bucket
+- No external dependencies
+- Ideal for development and small deployments
 
-**Schema** :
+**Schema**:
 ```sql
 CREATE TABLE logs (
-    sequence inTEGER PRIMARY KEY,
+    sequence INTEGER PRIMARY KEY,
     ledger TEXT NOT NULL,
     type TEXT NOT NULL,
     data TEXT NOT NULL,
@@ -202,21 +202,9 @@ CREATE TABLE logs (
     created_at TIMESTAMP NOT NULL
 );
 
-CREATE inDEX idx_ledger ON logs(ledger);
-CREATE inDEX idx_idempotency ON logs(idempotency_key);
+CREATE INDEX idx_ledger ON logs(ledger);
+CREATE INDEX idx_idempotency ON logs(idempotency_key);
 ```
-
-#### PostgreSQL
-
-**File** : `internal/service/log_store_postgres.go`
-
-**Characteristics** :
-- storage in une base PostgreSQL
-- Scalable and performant
-- Support on replication native
-- Ideal for la production
-
-**Schema** : Similar to SQLite but optimized for PostgreSQL
 
 ### Log Store Operations
 
@@ -227,64 +215,64 @@ func (s *logstore) WriteLog(ctx context.Context, log *ledger.Log) error
 ```
 
 - Inserts the log in the database
-- Generates the number of sequence if necessary
-- Checks the key of idempotency si forrnie
+- Generates the sequence number if necessary
+- Checks the idempotency key if provided
 
 #### Read
 
 ```go
-func (s *logstore) Readlogs(ctx context.Context, ledger string, from uint64) (*Cursor[ledger.Log], error)
+func (s *logstore) ReadLogs(ctx context.Context, ledger string, from uint64) (*Cursor[ledger.Log], error)
 ```
 
-- Reads the logs of a ledger to partir d'un index
+- Reads the logs of a ledger starting from an index
 - Returns a cursor for iteration
 - Supports pagination
 
-### Key Management of idempotency
+### Idempotency Key Management
 
-The Log Store maintains un Index of keys of idempotency :
+The Log Store maintains an index of idempotency keys:
 
-- Stored in the table `logs` with an index
-- Quick verification lors de l'Write
-- Permand de détecter transactions duplicated
+- Stored in the `logs` table with an index
+- Quick verification during writes
+- Allows detecting duplicated transactions
 
 ## Balances Store
 
 ### Concept
 
-The Balances Store maintains a Cache in memory of balances of accounts for each ledger. Il permand :
+The Balances Store maintains a cache in memory of account balances for each ledger. It allows:
 
 - Quick calculation of balances
-- Verification of sufficiency of funds
-- Update incremental during transactions
+- Verification of fund sufficiency
+- Incremental update during transactions
 
 ### Structure
 
 ```go
 type BalancesStore interface {
-    GandBalance(ctx context.Context, ledger, accornt, assand string) (*big.int, error)
-    UpdateBalance(ctx context.Context, ledger, accornt, assand string, delta *big.int) error
-    LockAccornt(ctx context.Context, ledger, accornt string) error
-    UnlockAccornt(ctx context.Context, ledger, accornt string) error
+    GetBalance(ctx context.Context, ledger, account, asset string) (*big.Int, error)
+    UpdateBalance(ctx context.Context, ledger, account, asset string, delta *big.Int) error
+    LockAccount(ctx context.Context, ledger, account string) error
+    UnlockAccount(ctx context.Context, ledger, account string) error
 }
 ```
 
 ### Implementation
 
-**File** : `internal/service/balances_store_locked.go`
+**File**: `internal/service/balances_store_locked.go`
 
-- Cache in memory with verrors per account
-- Update lors of the application des transactions
+- Cache in memory with locks per account
+- Update during the application of transactions
 - Reconstruction from the logs at startup
 
-### Reconstruction of balances
+### Balance Reconstruction
 
-at startup d'un bucket :
+At startup of a bucket:
 
-1. Logs are read from le logstore
-2. transactions are replayed
+1. Logs are read from the logstore
+2. Transactions are replayed
 3. Balances are recalculated
-4. Le cache is rebuilt
+4. The cache is rebuilt
 
 ## Data Organization
 
@@ -296,70 +284,69 @@ data/
 │   ├── wal/                       # System WAL
 │   ├── raft-hardstate.json        # System HardState
 │   └── raft-snapshot.json         # System Snapshot
-└── buckets/                       # Data des buckets
-    ├── bucket1/                    # bucket 1
-    │   ├── raft/                   # Data Raft du bucket
+└── buckets/                       # Bucket data
+    ├── bucket1/                   # bucket 1
+    │   ├── raft/                  # Bucket Raft data
     │   │   ├── wal/
     │   │   ├── raft-hardstate.json
     │   │   └── raft-snapshot.json
-    │   └── logs.db                 # SQLite LogStore (if SQLite)
-    └── bucket2/                    # bucket 2
+    │   └── logs.db                # SQLite LogStore (if SQLite)
+    └── bucket2/                   # bucket 2
         └── ...
 ```
 
 ### Data Isolation
 
-- **System** : System Raft data in `data/raft/`
-- **buckets** : Chaque bucket in `data/buckets/{name}/`
-- **Ledgers** : Stored logs in the LogStore du bucket
+- **System**: System Raft data in `data/raft/`
+- **Buckets**: Each bucket in `data/buckets/{name}/`
+- **Ledgers**: Stored logs in the bucket's LogStore
 
 ## Durability and Guarantees
 
-### Durability des Writes
+### Write Durability
 
-1. **WAL** : Synchronisé on disk before commit
-2. **logstore** : ACID transactions for SQLite/PostgreSQL
-3. **Snapshots** : Created periodically for recovery
+1. **WAL**: Synchronized on disk before commit
+2. **LogStore**: ACID transactions for SQLite
+3. **Snapshots**: Created periodically for recovery
 
 ### Recovery after Failure
 
-The system can récupérer complètement from :
+The system can recover completely from:
 
-1. **Snapshot + WAL** : Resttoration rAPIde from The last snapshot
-2. **WAL complet** : If no snapshot, replay complet du WAL
-3. **logstore** : Reconstruction of balances from the logs
+1. **Snapshot + WAL**: Rapid restoration from the last snapshot
+2. **Complete WAL**: If no snapshot, complete replay of the WAL
+3. **LogStore**: Reconstruction of balances from the logs
 
 ### ACID Guarantees
 
-- **Atomicity** : Transactions complètes or nothing
-- **Consistency** : Consistent state guaranteed by Raft
-- **Isolation** : Verrors per account for thes balances
-- **Durability** : Writes synchronisées on disk
+- **Atomicity**: Complete transactions or nothing
+- **Consistency**: Consistent state guaranteed by Raft
+- **Isolation**: Locks per account for balances
+- **Durability**: Writes synchronized on disk
 
 ## Performance and Optimizations
 
-### Cache memory
+### Memory Cache
 
-- **Raft Entries** : Cache in memory for fast access
-- **Balances** : Cache in memory for quick calculations
-- **MétaData** : Stored in memory in thes FSM
+- **Raft Entries**: Cache in memory for fast access
+- **Balances**: Cache in memory for quick calculations
+- **Metadata**: Stored in memory in the FSM
 
 ### Compaction
 
-- **WAL** : Compacted after Snapshots
-- **logstore** : No compaction automatic (can be added)
+- **WAL**: Compacted after snapshots
+- **LogStore**: No automatic compaction (can be added)
 
 ### Indexing
 
-- **Logs per ledger** : index for thectures fast
-- **Clés of idempotency** : index for vérifications fast
-- **Séquences** : Primary index for order
+- **Logs per ledger**: Index for fast reads
+- **Idempotency keys**: Index for fast verifications
+- **Sequences**: Primary index for ordering
 
 ## Next Steps
 
-for approfondir :
+To deepen your understanding:
 
-1. [Consensus Raft](./raft-consensus.md) - likent Raft utilise le storage
-2. [buckets and ledgers](./buckets-ledgers.md) - Data Organization
-3. [Déploiement](./deployment.md) - configuration du storage in production
-
+1. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
+2. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
+3. [Deployment](./deployment.md) - Storage configuration in production

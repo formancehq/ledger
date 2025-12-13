@@ -56,12 +56,12 @@ graph TB
 
 Each node in the cluster runs the following components:
 
-- **HTTP Server** : API REST publique (port 9000)
-- **gRPC Server** : Communication inter-nœuds et API gRPC (port 8888)
-- **System Raft Group** : Groupe Raft principal gérant les buckets
-- **Bucket Raft Groups** : Un groupe Raft par bucket pour gérer les ledgers
-- **Finite State Machine (FSM)** : Machine à états pour appliquer les commandes
-- **Storage** : Stockage persistant (WAL, snapshots, logs)
+- **HTTP Server**: Public REST API (port 9000)
+- **gRPC Server**: Inter-node communication and gRPC API (port 8888)
+- **System Raft Group**: Main Raft group managing buckets
+- **Bucket Raft Groups**: One Raft group per bucket to manage ledgers
+- **Finite State Machine (FSM)**: State machine for applying commands
+- **Storage**: Persistent storage (WAL, snapshots, logs)
 
 ### 2. Abstraction Layers
 
@@ -237,7 +237,7 @@ If no leader is available (e.g., during an election), the system returns a `503 
 
 - Each bucket has its own Raft group
 - Bucket data is stored separately
-- A bucket can use a different storage driver (SQLite, PostgreSQL)
+- A bucket can use a different storage driver (SQLite)
 - Problems in one bucket do not affect others
 
 ### Data Isolation
