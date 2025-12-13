@@ -15,6 +15,19 @@ The ledger service implementation follows the same patterns and best practices a
 - Configuration management
 - Error handling and logging patterns
 
+## Documentation Maintenance
+
+**CRITICAL**: Always maintain the documentation when making any changes to the codebase.
+
+When implementing new features, fixing bugs, or refactoring code:
+- **Update relevant documentation files** in the `docs/` directory
+- **Update API documentation** in `openapi.yml` if endpoints change
+- **Update code comments** if interfaces or behavior change
+- **Update examples** if usage patterns change
+- **Keep documentation in English** - all technical documentation must be in English
+
+The documentation should always reflect the current state of the codebase. Outdated documentation is worse than no documentation.
+
 ## File Structure
 
 The client commands and HTTP handlers are organized into separate files to improve maintainability and code readability.
