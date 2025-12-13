@@ -18,6 +18,10 @@ service BucketService {
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
   // StreamLogs streams logs from a bucket, optionally filtered by ledger and starting from a sequence number
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+  // GetLedger returns information about a specific ledger by name
+  rpc GetLedger(GetLedgerRequest) returns (GetLedgerResponse);
+  // GetLedgers returns a list of all ledgers in the bucket with their information
+  rpc GetLedgers(GetLedgersRequest) returns (GetLedgersResponse);
 }
 
 message BucketSnapshotRequest {
@@ -114,4 +118,24 @@ message DeletedMetadata {
     uint64 transaction_id = 3;               // Transaction ID (for TRANSACTION type)
   }
   string key = 4;                           // Metadata key to delete
+}
+
+message GetLedgerRequest {
+  string bucket = 1;
+  string name = 2;
+}
+
+message GetLedgerResponse {
+  uint64 id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Struct metadata = 4;
+}
+
+message GetLedgersRequest {
+  string bucket = 1;
+}
+
+message GetLedgersResponse {
+  repeated GetLedgerResponse ledgers = 1;
 }

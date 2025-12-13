@@ -343,6 +343,310 @@ func (x *DeleteBucketResponse) GetMessage() string {
 	return ""
 }
 
+type ResolveLedgerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LedgerName    string                 `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveLedgerRequest) Reset() {
+	*x = ResolveLedgerRequest{}
+	mi := &file_proto_system_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveLedgerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveLedgerRequest) ProtoMessage() {}
+
+func (x *ResolveLedgerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveLedgerRequest.ProtoReflect.Descriptor instead.
+func (*ResolveLedgerRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ResolveLedgerRequest) GetLedgerName() string {
+	if x != nil {
+		return x.LedgerName
+	}
+	return ""
+}
+
+type ResolveLedgerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BucketName    string                 `protobuf:"bytes,1,opt,name=bucket_name,json=bucketName,proto3" json:"bucket_name,omitempty"`
+	BucketId      uint64                 `protobuf:"varint,2,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveLedgerResponse) Reset() {
+	*x = ResolveLedgerResponse{}
+	mi := &file_proto_system_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveLedgerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveLedgerResponse) ProtoMessage() {}
+
+func (x *ResolveLedgerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveLedgerResponse.ProtoReflect.Descriptor instead.
+func (*ResolveLedgerResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ResolveLedgerResponse) GetBucketName() string {
+	if x != nil {
+		return x.BucketName
+	}
+	return ""
+}
+
+func (x *ResolveLedgerResponse) GetBucketId() uint64 {
+	if x != nil {
+		return x.BucketId
+	}
+	return 0
+}
+
+type GetAllBucketsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAllBucketsRequest) Reset() {
+	*x = GetAllBucketsRequest{}
+	mi := &file_proto_system_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAllBucketsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAllBucketsRequest) ProtoMessage() {}
+
+func (x *GetAllBucketsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAllBucketsRequest.ProtoReflect.Descriptor instead.
+func (*GetAllBucketsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{8}
+}
+
+type GetAllBucketsResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Buckets       []*CreateBucketResponse `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAllBucketsResponse) Reset() {
+	*x = GetAllBucketsResponse{}
+	mi := &file_proto_system_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAllBucketsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAllBucketsResponse) ProtoMessage() {}
+
+func (x *GetAllBucketsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAllBucketsResponse.ProtoReflect.Descriptor instead.
+func (*GetAllBucketsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetAllBucketsResponse) GetBuckets() []*CreateBucketResponse {
+	if x != nil {
+		return x.Buckets
+	}
+	return nil
+}
+
+type GetBucketByNameRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBucketByNameRequest) Reset() {
+	*x = GetBucketByNameRequest{}
+	mi := &file_proto_system_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBucketByNameRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBucketByNameRequest) ProtoMessage() {}
+
+func (x *GetBucketByNameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBucketByNameRequest.ProtoReflect.Descriptor instead.
+func (*GetBucketByNameRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetBucketByNameRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetBucketByNameResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
+	Driver            string                 `protobuf:"bytes,4,opt,name=driver,proto3" json:"driver,omitempty"`
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	SnapshotThreshold uint64                 `protobuf:"varint,6,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetBucketByNameResponse) Reset() {
+	*x = GetBucketByNameResponse{}
+	mi := &file_proto_system_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBucketByNameResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBucketByNameResponse) ProtoMessage() {}
+
+func (x *GetBucketByNameResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBucketByNameResponse.ProtoReflect.Descriptor instead.
+func (*GetBucketByNameResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetBucketByNameResponse) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *GetBucketByNameResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *GetBucketByNameResponse) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *GetBucketByNameResponse) GetDriver() string {
+	if x != nil {
+		return x.Driver
+	}
+	return ""
+}
+
+func (x *GetBucketByNameResponse) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *GetBucketByNameResponse) GetSnapshotThreshold() uint64 {
+	if x != nil {
+		return x.SnapshotThreshold
+	}
+	return 0
+}
+
 var File_proto_system_proto protoreflect.FileDescriptor
 
 const file_proto_system_proto_rawDesc = "" +
@@ -367,11 +671,34 @@ const file_proto_system_proto_rawDesc = "" +
 	"\x13DeleteBucketRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"0\n" +
 	"\x14DeleteBucketResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\xe4\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"7\n" +
+	"\x14ResolveLedgerRequest\x12\x1f\n" +
+	"\vledger_name\x18\x01 \x01(\tR\n" +
+	"ledgerName\"U\n" +
+	"\x15ResolveLedgerResponse\x12\x1f\n" +
+	"\vbucket_name\x18\x01 \x01(\tR\n" +
+	"bucketName\x12\x1b\n" +
+	"\tbucket_id\x18\x02 \x01(\x04R\bbucketId\"\x16\n" +
+	"\x14GetAllBucketsRequest\"O\n" +
+	"\x15GetAllBucketsResponse\x126\n" +
+	"\abuckets\x18\x01 \x03(\v2\x1c.ledger.CreateBucketResponseR\abuckets\",\n" +
+	"\x16GetBucketByNameRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xf0\x01\n" +
+	"\x17GetBucketByNameResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
+	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x16\n" +
+	"\x06driver\x18\x04 \x01(\tR\x06driver\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\x06 \x01(\x04R\x11snapshotThreshold2\xd6\x03\n" +
 	"\rSystemService\x12=\n" +
 	"\bSnapshot\x12\x17.ledger.SnapshotRequest\x1a\x18.ledger.SnapshotResponse\x12I\n" +
 	"\fCreateBucket\x12\x1b.ledger.CreateBucketRequest\x1a\x1c.ledger.CreateBucketResponse\x12I\n" +
-	"\fDeleteBucket\x12\x1b.ledger.DeleteBucketRequest\x1a\x1c.ledger.DeleteBucketResponseB6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
+	"\fDeleteBucket\x12\x1b.ledger.DeleteBucketRequest\x1a\x1c.ledger.DeleteBucketResponse\x12L\n" +
+	"\rResolveLedger\x12\x1c.ledger.ResolveLedgerRequest\x1a\x1d.ledger.ResolveLedgerResponse\x12P\n" +
+	"\x11GetAllBucketsInfo\x12\x1c.ledger.GetAllBucketsRequest\x1a\x1d.ledger.GetAllBucketsResponse\x12P\n" +
+	"\rGetBucketInfo\x12\x1e.ledger.GetBucketByNameRequest\x1a\x1f.ledger.GetBucketByNameResponseB6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
 
 var (
 	file_proto_system_proto_rawDescOnce sync.Once
@@ -385,32 +712,47 @@ func file_proto_system_proto_rawDescGZIP() []byte {
 	return file_proto_system_proto_rawDescData
 }
 
-var file_proto_system_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proto_system_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_proto_system_proto_goTypes = []any{
-	(*SnapshotRequest)(nil),       // 0: ledger.SnapshotRequest
-	(*SnapshotResponse)(nil),      // 1: ledger.SnapshotResponse
-	(*CreateBucketRequest)(nil),   // 2: ledger.CreateBucketRequest
-	(*CreateBucketResponse)(nil),  // 3: ledger.CreateBucketResponse
-	(*DeleteBucketRequest)(nil),   // 4: ledger.DeleteBucketRequest
-	(*DeleteBucketResponse)(nil),  // 5: ledger.DeleteBucketResponse
-	(*structpb.Struct)(nil),       // 6: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*SnapshotRequest)(nil),         // 0: ledger.SnapshotRequest
+	(*SnapshotResponse)(nil),        // 1: ledger.SnapshotResponse
+	(*CreateBucketRequest)(nil),     // 2: ledger.CreateBucketRequest
+	(*CreateBucketResponse)(nil),    // 3: ledger.CreateBucketResponse
+	(*DeleteBucketRequest)(nil),     // 4: ledger.DeleteBucketRequest
+	(*DeleteBucketResponse)(nil),    // 5: ledger.DeleteBucketResponse
+	(*ResolveLedgerRequest)(nil),    // 6: ledger.ResolveLedgerRequest
+	(*ResolveLedgerResponse)(nil),   // 7: ledger.ResolveLedgerResponse
+	(*GetAllBucketsRequest)(nil),    // 8: ledger.GetAllBucketsRequest
+	(*GetAllBucketsResponse)(nil),   // 9: ledger.GetAllBucketsResponse
+	(*GetBucketByNameRequest)(nil),  // 10: ledger.GetBucketByNameRequest
+	(*GetBucketByNameResponse)(nil), // 11: ledger.GetBucketByNameResponse
+	(*structpb.Struct)(nil),         // 12: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),   // 13: google.protobuf.Timestamp
 }
 var file_proto_system_proto_depIdxs = []int32{
-	6, // 0: ledger.CreateBucketRequest.config:type_name -> google.protobuf.Struct
-	6, // 1: ledger.CreateBucketResponse.config:type_name -> google.protobuf.Struct
-	7, // 2: ledger.CreateBucketResponse.created_at:type_name -> google.protobuf.Timestamp
-	0, // 3: ledger.SystemService.Snapshot:input_type -> ledger.SnapshotRequest
-	2, // 4: ledger.SystemService.CreateBucket:input_type -> ledger.CreateBucketRequest
-	4, // 5: ledger.SystemService.DeleteBucket:input_type -> ledger.DeleteBucketRequest
-	1, // 6: ledger.SystemService.Snapshot:output_type -> ledger.SnapshotResponse
-	3, // 7: ledger.SystemService.CreateBucket:output_type -> ledger.CreateBucketResponse
-	5, // 8: ledger.SystemService.DeleteBucket:output_type -> ledger.DeleteBucketResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	12, // 0: ledger.CreateBucketRequest.config:type_name -> google.protobuf.Struct
+	12, // 1: ledger.CreateBucketResponse.config:type_name -> google.protobuf.Struct
+	13, // 2: ledger.CreateBucketResponse.created_at:type_name -> google.protobuf.Timestamp
+	3,  // 3: ledger.GetAllBucketsResponse.buckets:type_name -> ledger.CreateBucketResponse
+	12, // 4: ledger.GetBucketByNameResponse.config:type_name -> google.protobuf.Struct
+	13, // 5: ledger.GetBucketByNameResponse.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: ledger.SystemService.Snapshot:input_type -> ledger.SnapshotRequest
+	2,  // 7: ledger.SystemService.CreateBucket:input_type -> ledger.CreateBucketRequest
+	4,  // 8: ledger.SystemService.DeleteBucket:input_type -> ledger.DeleteBucketRequest
+	6,  // 9: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
+	8,  // 10: ledger.SystemService.GetAllBucketsInfo:input_type -> ledger.GetAllBucketsRequest
+	10, // 11: ledger.SystemService.GetBucketInfo:input_type -> ledger.GetBucketByNameRequest
+	1,  // 12: ledger.SystemService.Snapshot:output_type -> ledger.SnapshotResponse
+	3,  // 13: ledger.SystemService.CreateBucket:output_type -> ledger.CreateBucketResponse
+	5,  // 14: ledger.SystemService.DeleteBucket:output_type -> ledger.DeleteBucketResponse
+	7,  // 15: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
+	9,  // 16: ledger.SystemService.GetAllBucketsInfo:output_type -> ledger.GetAllBucketsResponse
+	11, // 17: ledger.SystemService.GetBucketInfo:output_type -> ledger.GetBucketByNameResponse
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_proto_system_proto_init() }
@@ -424,7 +766,7 @@ func file_proto_system_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_system_proto_rawDesc), len(file_proto_system_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

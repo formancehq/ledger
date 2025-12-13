@@ -19,9 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SystemService_Snapshot_FullMethodName     = "/ledger.SystemService/Snapshot"
-	SystemService_CreateBucket_FullMethodName = "/ledger.SystemService/CreateBucket"
-	SystemService_DeleteBucket_FullMethodName = "/ledger.SystemService/DeleteBucket"
+	SystemService_Snapshot_FullMethodName          = "/ledger.SystemService/Snapshot"
+	SystemService_CreateBucket_FullMethodName      = "/ledger.SystemService/CreateBucket"
+	SystemService_DeleteBucket_FullMethodName      = "/ledger.SystemService/DeleteBucket"
+	SystemService_ResolveLedger_FullMethodName     = "/ledger.SystemService/ResolveLedger"
+	SystemService_GetAllBucketsInfo_FullMethodName = "/ledger.SystemService/GetAllBucketsInfo"
+	SystemService_GetBucketInfo_FullMethodName     = "/ledger.SystemService/GetBucketInfo"
 )
 
 // SystemServiceClient is the client API for SystemService service.
@@ -36,6 +39,12 @@ type SystemServiceClient interface {
 	CreateBucket(ctx context.Context, in *CreateBucketRequest, opts ...grpc.CallOption) (*CreateBucketResponse, error)
 	// DeleteBucket deletes a bucket
 	DeleteBucket(ctx context.Context, in *DeleteBucketRequest, opts ...grpc.CallOption) (*DeleteBucketResponse, error)
+	// ResolveLedger resolves a ledger name to its bucket
+	ResolveLedger(ctx context.Context, in *ResolveLedgerRequest, opts ...grpc.CallOption) (*ResolveLedgerResponse, error)
+	// GetAllBucketsInfo returns all buckets info in the cluster
+	GetAllBucketsInfo(ctx context.Context, in *GetAllBucketsRequest, opts ...grpc.CallOption) (*GetAllBucketsResponse, error)
+	// GetBucketInfo returns a bucket info by its name
+	GetBucketInfo(ctx context.Context, in *GetBucketByNameRequest, opts ...grpc.CallOption) (*GetBucketByNameResponse, error)
 }
 
 type systemServiceClient struct {
@@ -76,6 +85,36 @@ func (c *systemServiceClient) DeleteBucket(ctx context.Context, in *DeleteBucket
 	return out, nil
 }
 
+func (c *systemServiceClient) ResolveLedger(ctx context.Context, in *ResolveLedgerRequest, opts ...grpc.CallOption) (*ResolveLedgerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveLedgerResponse)
+	err := c.cc.Invoke(ctx, SystemService_ResolveLedger_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *systemServiceClient) GetAllBucketsInfo(ctx context.Context, in *GetAllBucketsRequest, opts ...grpc.CallOption) (*GetAllBucketsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAllBucketsResponse)
+	err := c.cc.Invoke(ctx, SystemService_GetAllBucketsInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *systemServiceClient) GetBucketInfo(ctx context.Context, in *GetBucketByNameRequest, opts ...grpc.CallOption) (*GetBucketByNameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBucketByNameResponse)
+	err := c.cc.Invoke(ctx, SystemService_GetBucketInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SystemServiceServer is the server API for SystemService service.
 // All implementations must embed UnimplementedSystemServiceServer
 // for forward compatibility.
@@ -88,6 +127,12 @@ type SystemServiceServer interface {
 	CreateBucket(context.Context, *CreateBucketRequest) (*CreateBucketResponse, error)
 	// DeleteBucket deletes a bucket
 	DeleteBucket(context.Context, *DeleteBucketRequest) (*DeleteBucketResponse, error)
+	// ResolveLedger resolves a ledger name to its bucket
+	ResolveLedger(context.Context, *ResolveLedgerRequest) (*ResolveLedgerResponse, error)
+	// GetAllBucketsInfo returns all buckets info in the cluster
+	GetAllBucketsInfo(context.Context, *GetAllBucketsRequest) (*GetAllBucketsResponse, error)
+	// GetBucketInfo returns a bucket info by its name
+	GetBucketInfo(context.Context, *GetBucketByNameRequest) (*GetBucketByNameResponse, error)
 	mustEmbedUnimplementedSystemServiceServer()
 }
 
@@ -106,6 +151,15 @@ func (UnimplementedSystemServiceServer) CreateBucket(context.Context, *CreateBuc
 }
 func (UnimplementedSystemServiceServer) DeleteBucket(context.Context, *DeleteBucketRequest) (*DeleteBucketResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteBucket not implemented")
+}
+func (UnimplementedSystemServiceServer) ResolveLedger(context.Context, *ResolveLedgerRequest) (*ResolveLedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveLedger not implemented")
+}
+func (UnimplementedSystemServiceServer) GetAllBucketsInfo(context.Context, *GetAllBucketsRequest) (*GetAllBucketsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAllBucketsInfo not implemented")
+}
+func (UnimplementedSystemServiceServer) GetBucketInfo(context.Context, *GetBucketByNameRequest) (*GetBucketByNameResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBucketInfo not implemented")
 }
 func (UnimplementedSystemServiceServer) mustEmbedUnimplementedSystemServiceServer() {}
 func (UnimplementedSystemServiceServer) testEmbeddedByValue()                       {}
@@ -182,6 +236,60 @@ func _SystemService_DeleteBucket_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SystemService_ResolveLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveLedgerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SystemServiceServer).ResolveLedger(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SystemService_ResolveLedger_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SystemServiceServer).ResolveLedger(ctx, req.(*ResolveLedgerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SystemService_GetAllBucketsInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAllBucketsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SystemServiceServer).GetAllBucketsInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SystemService_GetAllBucketsInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SystemServiceServer).GetAllBucketsInfo(ctx, req.(*GetAllBucketsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SystemService_GetBucketInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBucketByNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SystemServiceServer).GetBucketInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SystemService_GetBucketInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SystemServiceServer).GetBucketInfo(ctx, req.(*GetBucketByNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SystemService_ServiceDesc is the grpc.ServiceDesc for SystemService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -200,6 +308,18 @@ var SystemService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteBucket",
 			Handler:    _SystemService_DeleteBucket_Handler,
+		},
+		{
+			MethodName: "ResolveLedger",
+			Handler:    _SystemService_ResolveLedger_Handler,
+		},
+		{
+			MethodName: "GetAllBucketsInfo",
+			Handler:    _SystemService_GetAllBucketsInfo_Handler,
+		},
+		{
+			MethodName: "GetBucketInfo",
+			Handler:    _SystemService_GetBucketInfo_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

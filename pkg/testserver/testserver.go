@@ -32,15 +32,6 @@ func WithDataDir(dir string) testservice.InstrumentationFunc {
 	}
 }
 
-func WithBootstrap(bootstrap bool) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		if bootstrap {
-			cfg.AppendArgs("--bootstrap")
-		}
-		return nil
-	}
-}
-
 func WithNodeID(nodeID int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--node-id", fmt.Sprintf("%d", nodeID))

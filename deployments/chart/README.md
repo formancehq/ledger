@@ -131,7 +131,6 @@ The following table lists the configurable parameters and their default values:
 | `config.raft.tickInterval` | Interval between Raft ticks (e.g., "100ms") | `100ms` |
 | `config.raft.maxSizePerMsg` | Maximum size per message in bytes | `1048576` (1MB) |
 | `config.raft.maxInflightMsgs` | Maximum number of in-flight messages | `256` |
-| `config.bootstrap` | Bootstrap the cluster (first node only) | `true` |
 | `config.debug` | Enable debug logging | `false` |
 
 ### Monitoring Configuration
@@ -233,7 +232,7 @@ Each pod automatically:
 - Extracts its node ID from the pod index (pod-0 → node ID 1, pod-1 → node ID 2, etc.)
 - Generates its advertise address using the headless service DNS name
 - Builds the peers list dynamically from all other pods
-- Bootstraps only the first pod (pod-0)
+- Initializes its storage with the cluster configuration when starting with empty storage
 
 ## Examples
 

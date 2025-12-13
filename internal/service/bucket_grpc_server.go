@@ -15,21 +15,21 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type LedgerServiceServerImpl struct {
+type BucketServiceServerImpl struct {
 	UnimplementedBucketServiceServer
 	logger  logging.Logger
 	cluster MasterCluster
 }
 
-func NewLedgerServiceServer(logger logging.Logger, cluster MasterCluster) BucketServiceServer {
-	return &LedgerServiceServerImpl{
+func NewBucketServiceServer(logger logging.Logger, cluster MasterCluster) BucketServiceServer {
+	return &BucketServiceServerImpl{
 		logger:  logger,
 		cluster: cluster,
 	}
 }
 
-func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *BucketSnapshotRequest) (*BucketSnapshotResponse, error) {
-	bucket, err := impl.cluster.GetBucket(ctx, req.Bucket)
+func (impl *BucketServiceServerImpl) Snapshot(ctx context.Context, req *BucketSnapshotRequest) (*BucketSnapshotResponse, error) {
+	bucket, err := impl.cluster.GetBucketCluster(ctx, req.Bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +43,26 @@ func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *BucketSn
 	}, nil
 }
 
+func (impl *BucketServiceServerImpl) CreateLedger(ctx context.Context, req *CreateLedgerRequest) (*CreateLedgerResponse, error) {
+	bucket, err := impl.cluster.GetBucketCluster(ctx, req.Bucket)
+	if err != nil {
+		return nil, fmt.Errorf("getting bucket '%s': %w", req.Bucket, err)
+	}
+
+	ledgerInfo, err := bucket.CreateLedger(ctx, req.Name, structToMetadata(req.Metadata))
+	if err != nil {
+		return nil, fmt.Errorf("creating ledger: %w", err)
+	}
+
+	return &CreateLedgerResponse{
+		Id:     ledgerInfo.ID,
+		Name:   ledgerInfo.Name,
+		Bucket: req.Bucket,
+	}, nil
+}
+
 // todo: use bucket name from request
-func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *CreateTransactionRequest) (*CreateTransactionResponse, error) {
+func (impl *BucketServiceServerImpl) CreateTransaction(ctx context.Context, req *CreateTransactionRequest) (*CreateTransactionResponse, error) {
 	impl.logger.WithFields(map[string]any{"reference": req.Reference}).Debugf("CreateTransaction request received")
 
 	// Convert protobuf request to service types
@@ -108,15 +126,20 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 		return nil, fmt.Errorf("ledger name is required")
 	}
 
-	bucket, err := impl.cluster.GetBucketOfLedger(ctx, ledgerName)
+	bucketName, _, err := impl.cluster.ResolveLedger(ctx, ledgerName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolving ledger '%s': %w", ledgerName, err)
+	}
+
+	bucket, err := impl.cluster.GetBucketCluster(ctx, bucketName)
+	if err != nil {
+		return nil, fmt.Errorf("getting bucket of ledger '%s': %w", ledgerName, err)
 	}
 
 	// Call ledger service
 	_, createdTx, err := bucket.CreateTransaction(ctx, ledgerName, params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating transaction: %w", err)
 	}
 
 	// Convert response to protobuf
@@ -126,6 +149,224 @@ func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req 
 	}
 
 	return response, nil
+}
+
+func (impl *BucketServiceServerImpl) StreamLogs(req *StreamLogsRequest, stream BucketService_StreamLogsServer) error {
+	ctx := stream.Context()
+
+	cluster, err := impl.cluster.GetBucketCluster(ctx, req.Bucket)
+	if err != nil {
+		return err
+	}
+
+	cursor, err := cluster.GetAllLogs(ctx, req.FromSequence)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		log, err := cursor.Next(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading log: %w", err)
+		}
+
+		logProto, err := logToBucketProto(log)
+		if err != nil {
+			return fmt.Errorf("converting log to proto: %w", err)
+		}
+
+		if err := stream.Send(&StreamLogsResponse{
+			Log: logProto,
+		}); err != nil {
+			return fmt.Errorf("sending log: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *GetLedgerRequest) (*GetLedgerResponse, error) {
+	impl.logger.WithFields(map[string]any{"bucket": req.Bucket, "ledger": req.Name}).Debugf("GetLedger request received")
+
+	if req.Bucket == "" {
+		return nil, fmt.Errorf("bucket name is required")
+	}
+
+	if req.Name == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	bucket, err := impl.cluster.GetBucketCluster(ctx, req.Bucket)
+	if err != nil {
+		return nil, fmt.Errorf("getting bucket '%s': %w", req.Bucket, err)
+	}
+
+	ledgerInfo, err := bucket.GetLedger(ctx, req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", req.Name, err)
+	}
+
+	// Convert metadata.Metadata to protobuf Struct
+	var metadataStruct *structpb.Struct
+	if len(ledgerInfo.Metadata) > 0 {
+		metadataMap := make(map[string]interface{})
+		for k, v := range ledgerInfo.Metadata {
+			metadataMap[k] = v
+		}
+		var err error
+		metadataStruct, err = structpb.NewStruct(metadataMap)
+		if err != nil {
+			return nil, fmt.Errorf("converting metadata to protobuf Struct: %w", err)
+		}
+	}
+
+	return &GetLedgerResponse{
+		Id:        ledgerInfo.ID,
+		Name:      ledgerInfo.Name,
+		CreatedAt: timestamppb.New(ledgerInfo.CreatedAt.Time),
+		Metadata:  metadataStruct,
+	}, nil
+}
+
+func (impl *BucketServiceServerImpl) GetLedgers(ctx context.Context, req *GetLedgersRequest) (*GetLedgersResponse, error) {
+	impl.logger.WithFields(map[string]any{"bucket": req.Bucket}).Debugf("GetLedgers request received")
+
+	if req.Bucket == "" {
+		return nil, fmt.Errorf("bucket name is required")
+	}
+
+	bucket, err := impl.cluster.GetBucketCluster(ctx, req.Bucket)
+	if err != nil {
+		return nil, fmt.Errorf("getting bucket '%s': %w", req.Bucket, err)
+	}
+
+	ledgers, err := bucket.GetLedgers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledgers: %w", err)
+	}
+
+	// Convert []ledger.LedgerInfo to []GetLedgerResponse
+	ledgersList := make([]*GetLedgerResponse, 0, len(ledgers))
+	for _, ledgerInfo := range ledgers {
+		// Convert metadata.Metadata to protobuf Struct
+		var metadataStruct *structpb.Struct
+		if len(ledgerInfo.Metadata) > 0 {
+			metadataMap := make(map[string]interface{})
+			for k, v := range ledgerInfo.Metadata {
+				metadataMap[k] = v
+			}
+			var err error
+			metadataStruct, err = structpb.NewStruct(metadataMap)
+			if err != nil {
+				return nil, fmt.Errorf("converting metadata for ledger '%s' to protobuf Struct: %w", ledgerInfo.Name, err)
+			}
+		}
+
+		ledgersList = append(ledgersList, &GetLedgerResponse{
+			Id:        ledgerInfo.ID,
+			Name:      ledgerInfo.Name,
+			CreatedAt: timestamppb.New(ledgerInfo.CreatedAt.Time),
+			Metadata:  metadataStruct,
+		})
+	}
+
+	return &GetLedgersResponse{
+		Ledgers: ledgersList,
+	}, nil
+}
+
+func RegisterBucketService(server *grpc.Server, ledgerServiceServer BucketServiceServer) {
+	RegisterBucketServiceServer(server, ledgerServiceServer)
+}
+
+// logToBucketProto converts a ledger.Log to bucket.proto Log
+func logToBucketProto(l ledger.Log) (*Log, error) {
+	logProto := &Log{
+		Type:            int32(l.Type),
+		Ledger:          l.Ledger,
+		IdempotencyKey:  l.IdempotencyKey,
+		IdempotencyHash: l.IdempotencyHash,
+		Sequence:        l.Sequence,
+	}
+
+	if l.ID != nil {
+		logProto.Id = *l.ID
+	}
+
+	if !l.Date.IsZero() {
+		logProto.Date = timestamppb.New(l.Date.Time)
+	}
+
+	// Convert LogPayload to protobuf
+	logPayloadProto, err := logPayloadToBucketProto(l.Data)
+	if err != nil {
+		return nil, fmt.Errorf("converting log payload to proto: %w", err)
+	}
+	logProto.Data = logPayloadProto
+
+	return logProto, nil
+}
+
+// logPayloadToBucketProto converts a ledger.LogPayload to bucket.proto LogPayload
+func logPayloadToBucketProto(payload ledger.LogPayload) (*LogPayload, error) {
+	switch p := payload.(type) {
+	case ledger.CreatedTransaction:
+		return &LogPayload{
+			Payload: &LogPayload_CreatedTransaction{
+				CreatedTransaction: transactionToProto(p.Transaction),
+			},
+		}, nil
+	case ledger.RevertedTransaction:
+		return &LogPayload{
+			Payload: &LogPayload_RevertedTransaction{
+				RevertedTransaction: &RevertedTransaction{
+					RevertedTransaction: transactionToProto(p.RevertedTransaction),
+					RevertTransaction:   transactionToProto(p.RevertTransaction),
+				},
+			},
+		}, nil
+	case ledger.SavedMetadata:
+		mdStruct, _ := metadataToStruct(p.Metadata)
+		proto := &SavedMetadata{
+			TargetType: p.TargetType,
+			Metadata:   mdStruct,
+		}
+		switch id := p.TargetID.(type) {
+		case string:
+			proto.TargetId = &SavedMetadata_AccountId{AccountId: id}
+		case uint64:
+			proto.TargetId = &SavedMetadata_TransactionId{TransactionId: id}
+		}
+		return &LogPayload{
+			Payload: &LogPayload_SavedMetadata{
+				SavedMetadata: proto,
+			},
+		}, nil
+	case ledger.DeletedMetadata:
+		proto := &DeletedMetadata{
+			TargetType: p.TargetType,
+			Key:        p.Key,
+		}
+		switch id := p.TargetID.(type) {
+		case string:
+			proto.TargetId = &DeletedMetadata_AccountId{AccountId: id}
+		case uint64:
+			proto.TargetId = &DeletedMetadata_TransactionId{TransactionId: id}
+		}
+		return &LogPayload{
+			Payload: &LogPayload_DeletedMetadata{
+				DeletedMetadata: proto,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown log payload type: %T", payload)
+	}
 }
 
 func transactionToProto(tx ledger.Transaction) *Transaction {
@@ -173,150 +414,4 @@ func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.St
 		}
 	}
 	return result
-}
-
-func (impl *LedgerServiceServerImpl) StreamLogs(req *StreamLogsRequest, stream BucketService_StreamLogsServer) error {
-	ctx := stream.Context()
-
-	// Get bucket
-	bucket, err := impl.cluster.GetBucket(ctx, req.Bucket)
-	if err != nil {
-		return fmt.Errorf("getting bucket: %w", err)
-	}
-
-	// Get LogReader from bucket
-	// Try to get it from the bucket node (if it's a local node)
-	var logReader LogReader
-	if bucketNode, ok := bucket.(interface{ GetLogReader() LogReader }); ok {
-		logReader = bucketNode.GetLogReader()
-	} else {
-		// If bucket is a gRPC client, we need to use the client's StreamLogs method
-		// For now, return error as we need direct access to LogReader
-		return fmt.Errorf("bucket does not support direct log reading, use gRPC client")
-	}
-
-	// Get all logs from the bucket (all ledgers), starting from fromSequence if specified
-	cursorPtr, err := logReader.GetAllLogs(ctx, req.FromSequence)
-	if err != nil {
-		return fmt.Errorf("getting logs: %w", err)
-	}
-	if cursorPtr == nil {
-		return nil
-	}
-	cursor := *cursorPtr
-	defer func() {
-		_ = cursor.Close()
-	}()
-
-	// Stream logs (already filtered by sequence in GetAllLogs)
-	for {
-		log, err := cursor.Next(ctx)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("reading log: %w", err)
-		}
-
-		logProto, err := logToBucketProto(log)
-		if err != nil {
-			return fmt.Errorf("converting log to proto: %w", err)
-		}
-
-		if err := stream.Send(&StreamLogsResponse{
-			Log: logProto,
-		}); err != nil {
-			return fmt.Errorf("sending log: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// logToBucketProto converts a ledger.Log to bucket.proto Log
-func logToBucketProto(l ledger.Log) (*Log, error) {
-	logProto := &Log{
-		Type:            int32(l.Type),
-		Ledger:          l.Ledger,
-		IdempotencyKey:  l.IdempotencyKey,
-		IdempotencyHash: l.IdempotencyHash,
-		Sequence:        l.Sequence,
-	}
-
-	if l.ID != nil {
-		logProto.Id = *l.ID
-	}
-
-	if !l.Date.IsZero() {
-		logProto.Date = timestamppb.New(l.Date.Time)
-	}
-
-	// Convert LogPayload to protobuf
-	logPayloadProto, err := logPayloadToBucketProto(l.Data)
-	if err != nil {
-		return nil, fmt.Errorf("converting log payload to proto: %w", err)
-	}
-	logProto.Data = logPayloadProto
-
-	return logProto, nil
-}
-
-// logPayloadToBucketProto converts a ledger.LogPayload to bucket.proto LogPayload
-func logPayloadToBucketProto(payload ledger.LogPayload) (*LogPayload, error) {
-	switch p := payload.(type) {
-	case *ledger.CreatedTransaction:
-		return &LogPayload{
-			Payload: &LogPayload_CreatedTransaction{
-				CreatedTransaction: transactionToProto(p.Transaction),
-			},
-		}, nil
-	case *ledger.RevertedTransaction:
-		return &LogPayload{
-			Payload: &LogPayload_RevertedTransaction{
-				RevertedTransaction: &RevertedTransaction{
-					RevertedTransaction: transactionToProto(p.RevertedTransaction),
-					RevertTransaction:   transactionToProto(p.RevertTransaction),
-				},
-			},
-		}, nil
-	case *ledger.SavedMetadata:
-		mdStruct, _ := metadataToStruct(p.Metadata)
-		proto := &SavedMetadata{
-			TargetType: p.TargetType,
-			Metadata:   mdStruct,
-		}
-		switch id := p.TargetID.(type) {
-		case string:
-			proto.TargetId = &SavedMetadata_AccountId{AccountId: id}
-		case uint64:
-			proto.TargetId = &SavedMetadata_TransactionId{TransactionId: id}
-		}
-		return &LogPayload{
-			Payload: &LogPayload_SavedMetadata{
-				SavedMetadata: proto,
-			},
-		}, nil
-	case *ledger.DeletedMetadata:
-		proto := &DeletedMetadata{
-			TargetType: p.TargetType,
-			Key:        p.Key,
-		}
-		switch id := p.TargetID.(type) {
-		case string:
-			proto.TargetId = &DeletedMetadata_AccountId{AccountId: id}
-		case uint64:
-			proto.TargetId = &DeletedMetadata_TransactionId{TransactionId: id}
-		}
-		return &LogPayload{
-			Payload: &LogPayload_DeletedMetadata{
-				DeletedMetadata: proto,
-			},
-		}, nil
-	default:
-		return nil, fmt.Errorf("unknown log payload type: %T", payload)
-	}
-}
-
-func RegisterBucketService(server *grpc.Server, ledgerServiceServer BucketServiceServer) {
-	RegisterBucketServiceServer(server, ledgerServiceServer)
 }

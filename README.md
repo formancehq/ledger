@@ -95,7 +95,6 @@ Available options:
 - `--data-dir` / `DATA_DIR`: Data storage directory (default: `./data`)
 - `--peers` / `PEERS`: List of peer addresses (comma-separated)
 - `--debug` / `DEBUG`: Enable debug logging (default: `false`)
-- `--bootstrap` / `BOOTSTRAP`: Bootstrap the cluster (only set on the first node, default: `false`)
 
 ## Architecture
 
@@ -150,6 +149,6 @@ nix develop
 
 ## Notes
 
-- The first node must use the `--bootstrap` flag to bootstrap the cluster
-- Subsequent nodes must specify addresses of existing peers
+- All nodes automatically initialize their storage with the cluster configuration when starting with empty storage
+- Nodes must specify addresses of existing peers to join the cluster
 - The cluster requires a majority of nodes to function (3 nodes = tolerance to 1 failure)

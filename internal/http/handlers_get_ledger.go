@@ -16,7 +16,19 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bucket, err := s.cluster.GetBucketOfLedger(r.Context(), ledgerName)
+	bucketName, _, err := s.cluster.ResolveLedger(r.Context(), ledgerName)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	bucketInfo, err := s.cluster.GetBucketInfo(r.Context(), bucketName)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	bucket, err := s.cluster.GetBucketCluster(r.Context(), bucketName)
 	if err != nil {
 		handleError(w, r, err)
 		return
@@ -31,7 +43,6 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 	// Return ledger info with bucket name
 	api.Ok(w, LedgerResponse{
 		LedgerInfo: *ledgerInfo,
-		Bucket:     bucket.Info().Name,
+		Bucket:     bucketInfo.Name,
 	})
 }
-

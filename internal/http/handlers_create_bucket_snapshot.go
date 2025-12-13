@@ -16,7 +16,7 @@ func (s *Server) handleCreateBucketSnapshot(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	bucket, err := s.cluster.GetBucket(r.Context(), bucketName)
+	bucket, err := s.cluster.GetBucketCluster(r.Context(), bucketName)
 	if err != nil {
 		handleError(w, r, err)
 		return

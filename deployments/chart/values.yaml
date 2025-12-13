@@ -52,9 +52,6 @@ config:
     maxInflightMsgs: 256      # Maximum number of in-flight messages (default: 256)
     tickInterval: 100ms       # Interval between Raft ticks (default: 100ms)
   
-  # Bootstrap the first node
-  bootstrap: true
-  
   # Debug logging
   debug: false
   

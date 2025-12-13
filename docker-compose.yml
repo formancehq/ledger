@@ -8,7 +8,6 @@ services:
       - NODE_ID=1
       - ADVERTISE_ADDR=node-1:8888
       - PEERS=2/node-2:8888 3/node-3:8888
-      - BOOTSTRAP=true
       - DEBUG=${DEBUG:-false}
     ports:
       - "8888:8888"

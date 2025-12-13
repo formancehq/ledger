@@ -64,16 +64,72 @@ func (g *BucketGrpcClient) CreateLedger(ctx context.Context, name string, metada
 		return nil, fmt.Errorf("converting metadata to protobuf: %w", err)
 	}
 	ret, err := g.client.CreateLedger(ctx, &CreateLedgerRequest{
+		Bucket:   g.name,
 		Name:     name,
 		Metadata: md,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
+
 	return &ledger.LedgerInfo{
 		ID:   ret.Id,
 		Name: ret.Name,
 	}, nil
+}
+
+func (g *BucketGrpcClient) GetLedger(ctx context.Context, name string) (*ledger.LedgerInfo, error) {
+	resp, err := g.client.GetLedger(ctx, &GetLedgerRequest{
+		Bucket: g.name,
+		Name:   name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	ledgerInfo := &ledger.LedgerInfo{
+		ID:   resp.Id,
+		Name: resp.Name,
+	}
+
+	if resp.CreatedAt != nil {
+		ledgerInfo.CreatedAt = time.New(resp.CreatedAt.AsTime())
+	}
+
+	if resp.Metadata != nil {
+		ledgerInfo.Metadata = structToMetadata(resp.Metadata)
+	}
+
+	return ledgerInfo, nil
+}
+
+func (g *BucketGrpcClient) GetLedgers(ctx context.Context) ([]ledger.LedgerInfo, error) {
+	resp, err := g.client.GetLedgers(ctx, &GetLedgersRequest{
+		Bucket: g.name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	ledgers := make([]ledger.LedgerInfo, 0, len(resp.Ledgers))
+	for _, ledgerResp := range resp.Ledgers {
+		ledgerInfo := ledger.LedgerInfo{
+			ID:   ledgerResp.Id,
+			Name: ledgerResp.Name,
+		}
+
+		if ledgerResp.CreatedAt != nil {
+			ledgerInfo.CreatedAt = time.New(ledgerResp.CreatedAt.AsTime())
+		}
+
+		if ledgerResp.Metadata != nil {
+			ledgerInfo.Metadata = structToMetadata(ledgerResp.Metadata)
+		}
+
+		ledgers = append(ledgers, ledgerInfo)
+	}
+
+	return ledgers, nil
 }
 
 func (g *BucketGrpcClient) RevertTransaction(ctx context.Context, ledgerName string, parameters Parameters[RevertTransaction]) (*ledger.Log, *ledger.RevertedTransaction, error) {
@@ -135,7 +191,7 @@ func (c *channelLogCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
-func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64) (*Cursor[ledger.Log], error) {
+func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error) {
 	req := &StreamLogsRequest{
 		Bucket:       g.name,
 		FromSequence: from,
@@ -161,15 +217,11 @@ func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64) (*Cursor
 				return
 			}
 
-			if resp.Log == nil {
-				continue
-			}
-
 			// Convert protobuf Log to ledger.Log
 			log, err := logFromBucketProto(resp.Log)
 			if err != nil {
 				// Conversion error - channel will be closed
-				return
+				panic(err)
 			}
 
 			// Send log to channel
@@ -181,44 +233,9 @@ func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64) (*Cursor
 		}
 	}()
 
-	cursor := &channelLogCursor{
+	return &channelLogCursor{
 		logChan: logChan,
-	}
-	var cursorInterface Cursor[ledger.Log] = cursor
-	return &cursorInterface, nil
-}
-
-// GetLastSequenceID returns the highest sequence number by iterating through all logs (implements LogWriter)
-// Note: This is inefficient as it streams all logs. Consider adding a dedicated gRPC method for better performance.
-// BucketGrpcClient implements LogWriter for this method to support catching up logs from leader
-func (g *BucketGrpcClient) GetLastSequenceID(ctx context.Context) (uint64, error) {
-	cursorPtr, err := g.GetAllLogs(ctx, 0)
-	if err != nil {
-		return 0, fmt.Errorf("getting all logs: %w", err)
-	}
-	if cursorPtr == nil {
-		return 0, nil
-	}
-	cursor := *cursorPtr
-	defer func() {
-		_ = cursor.Close()
-	}()
-
-	var lastSequence uint64
-	for {
-		log, err := cursor.Next(ctx)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return 0, fmt.Errorf("iterating logs: %w", err)
-		}
-		if log.Sequence > lastSequence {
-			lastSequence = log.Sequence
-		}
-	}
-
-	return lastSequence, nil
+	}, nil
 }
 
 func (g *BucketGrpcClient) createTransactionRequestToProto(ledgerName string, params Parameters[CreateTransaction]) (*CreateTransactionRequest, error) {

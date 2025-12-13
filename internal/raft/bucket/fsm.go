@@ -198,35 +198,27 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 	}
 
 	// If the log store is ahead of the snapshot, catch up by reading missing logs from the reader
-	if storeLastSequence > snapshotData.LastSequence {
+	if storeLastSequence < snapshotData.LastSequence {
 		f.logger.WithFields(map[string]any{
 			"snapshotSequence": snapshotData.LastSequence,
 			"storeSequence":    storeLastSequence,
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
 		// Read all logs from the reader starting from the sequence after the snapshot
-		fromSequence := snapshotData.LastSequence + 1
-		cursorPtr, err := f.logReader.GetAllLogs(ctx, fromSequence)
+		fromSequence := storeLastSequence
+		cursor, err := f.logReader.GetAllLogs(ctx, fromSequence)
 		if err != nil {
 			return fmt.Errorf("getting logs from reader for catch-up: %w", err)
 		}
-		if cursorPtr == nil {
-			f.logger.WithFields(map[string]any{
-				"snapshotSequence": snapshotData.LastSequence,
-				"storeSequence":    storeLastSequence,
-			}).Infof("No cursor returned from GetAllLogs, but store sequence is ahead")
-			f.lastSequence = storeLastSequence
-			f.logger.WithFields(map[string]any{"ledgerCount": len(f.ledgers)}).Infof("BucketCluster FSM restored from snapshot")
-			return nil
-		}
-
-		cursor := *cursorPtr
 		defer func() {
 			_ = cursor.Close()
 		}()
 
-		var logsToWrite []ledger.Log
-		var maxSequence uint64 = snapshotData.LastSequence
+		var (
+			// todo: flush regularly
+			logsToWrite []ledger.Log
+			maxSequence = snapshotData.LastSequence
+		)
 
 		// Collect all logs that need to be written
 		for {
@@ -238,15 +230,8 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 				return fmt.Errorf("reading log during catch-up: %w", err)
 			}
 
-			// Only include logs up to and including the store's last sequence
-			if log.Sequence > storeLastSequence {
-				break
-			}
-
 			logsToWrite = append(logsToWrite, log)
-			if log.Sequence > maxSequence {
-				maxSequence = log.Sequence
-			}
+			maxSequence = log.Sequence
 		}
 
 		// Write all collected logs to the writer

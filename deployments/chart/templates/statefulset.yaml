@@ -12,7 +12,6 @@ spec:
   selector:
     matchLabels:
       {{- include "ledger-v3-poc.selectorLabels" . | nindent 6 }}
-  # todo: must be only on bootstrap
   podManagementPolicy: "Parallel"
   template:
     metadata:
@@ -124,12 +123,6 @@ spec:
             fi
           done
           
-          # Bootstrap only the first pod (index 0)
-          BOOTSTRAP_FLAG=""
-          if [ $POD_INDEX -eq 0 ]; then
-            BOOTSTRAP_FLAG="--bootstrap"
-          fi
-          
           # Execute the application
           exec ./ledger-v3-poc \
             --node-id $NODE_ID \
@@ -164,7 +157,6 @@ spec:
             {{- if .Values.config.debug }}
             --debug \
             {{- end }}
-            $BOOTSTRAP_FLAG \
             $PEERS_LIST
         volumeMounts:
         - name: data

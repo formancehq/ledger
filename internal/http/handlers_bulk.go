@@ -18,8 +18,13 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get bucket for this ledger
-	bucket, err := s.cluster.GetBucketOfLedger(r.Context(), ledgerName)
+	bucketName, _, err := s.cluster.ResolveLedger(r.Context(), ledgerName)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	bucket, err := s.cluster.GetBucketCluster(r.Context(), bucketName)
 	if err != nil {
 		handleError(w, r, err)
 		return

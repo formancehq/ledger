@@ -17,14 +17,20 @@ func (s *Server) handleGetBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bucket, err := s.cluster.GetBucket(r.Context(), bucketName)
+	bucket, err := s.cluster.GetBucketInfo(r.Context(), bucketName)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"bucket": bucketName, "error": err}).Errorf("Failed to get bucket")
 		handleError(w, r, err)
 		return
 	}
 
-	state, err := bucket.GetClusterState(r.Context())
+	bucketCluster, err := s.cluster.GetBucketCluster(r.Context(), bucketName)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	state, err := bucketCluster.GetClusterState(r.Context())
 	if err != nil {
 		handleError(w, r, err)
 		return
@@ -37,7 +43,7 @@ func (s *Server) handleGetBucket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Ok(w, BucketWithRaftState{
-		BucketInfo: bucket.Info(),
+		BucketInfo: *bucket,
 		RaftState:  state,
 	})
 }

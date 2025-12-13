@@ -9,6 +9,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // GRPCTransport handles network communication between Raft nodes using gRPC
@@ -137,9 +139,18 @@ func (t *GRPCTransport) sendLoop(peerID uint64, addr string) {
 
 			conn := NewRaftTransportServiceClient(t.connectionPool.GetConnection(peerID))
 			if _, err := conn.SendMessage(ctx, &SendMessageRequest{
-				Message:       data,
+				Message: data,
 			}); err != nil {
-				t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID), "error": err}).Infof("WARN: Failed to send message via gRPC")
+				status, ok := status.FromError(err)
+				if ok && status.Code() == codes.Unavailable {
+					t.logger.
+						WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID)}).
+						Infof("WARN: Peer offline")
+				} else {
+					t.logger.
+						WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID), "error": err}).
+						Infof("WARN: Failed to send message via gRPC")
+				}
 				cancel()
 				// Report peer as unreachable
 				select {
@@ -173,7 +184,7 @@ func (t *GRPCTransport) HandleSendMessage(ctx context.Context, req *SendMessageR
 			WithFields(map[string]any{
 				"type": msg.Type.String(),
 				"from": fmt.Sprintf("%x", msg.From),
-				"to": fmt.Sprintf("%x", msg.To),
+				"to":   fmt.Sprintf("%x", msg.To),
 			}).
 			Debugf("Received message via gRPC")
 		return &SendMessageResponse{Success: true}, nil
@@ -183,7 +194,13 @@ func (t *GRPCTransport) HandleSendMessage(ctx context.Context, req *SendMessageR
 			Error:   "context cancelled",
 		}, nil
 	default:
-		t.logger.Infof("WARN: Recv channel full, dropping message")
+		t.logger.
+			WithFields(map[string]any{
+				"type": msg.Type.String(),
+				"from": fmt.Sprintf("%x", msg.From),
+				"to":   fmt.Sprintf("%x", msg.To),
+			}).
+			Infof("WARN: Recv channel full, dropping message")
 		return &SendMessageResponse{
 			Success: false,
 			Error:   "recv channel full",

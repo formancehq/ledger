@@ -101,7 +101,6 @@ BeforeEach(func() {
         server := testservice.New(
             cmdserver.NewRootCommand,
             testservice.withinstruments(
-                testserver.withBootstrap(i == 0),
                 testserver.withNodeID(i+1),
                 testserver.withHTTPPort(9000+i),
                 // ...
@@ -121,7 +120,6 @@ The package `pkg/testserver` forrnit des helpers :
 
 - `withNodeID()` : Configure the Node ID
 - `withHTTPPort()` : Configure the port HTTP
-- `withBootstrap()`: Enable bootstrap
 - `withRaftElectionTick()` : Configure parameters Raft
 - `withRaftTickinterval()` : Configure the interval de tick
 

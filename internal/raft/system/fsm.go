@@ -8,7 +8,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
@@ -92,13 +91,10 @@ func (fsm *FSM) handleCreateBucket(cmd raft.Command) (*ledger.BucketInfo, error)
 		bucketInfo.SnapshotThreshold = createCmd.SnapshotThreshold
 	}
 
-	node, err := fsm.startBucketRaftGroupFromFSM(bucketInfo)
+	err = fsm.startBucketRaftGroupFromFSM(context.Background(), bucketInfo)
 	if err != nil {
 		return nil, err
 	}
-
-	// Store the bucket
-	fsm.buckets[createCmd.Name] = node
 
 	fsm.logger.Infof("Bucket created")
 	return &bucketInfo, nil
@@ -159,12 +155,12 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []ra
 }
 
 // GetBucket returns the bucket info for a given name
-func (fsm *FSM) GetBucket(name string) (*ledger.BucketInfo, error) {
+func (fsm *FSM) GetBucket(name string) (service.BucketCluster, error) {
 	bucket, ok := fsm.buckets[name]
 	if !ok {
 		return nil, fmt.Errorf("bucket does not exist: %s", name)
 	}
-	return pointer.For(bucket.Info()), nil
+	return bucket, nil
 }
 
 // GetAllBuckets returns all buckets
@@ -275,11 +271,10 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 
 	fsm.buckets = make(map[string]*bucket.Node, len(buckets))
 	for _, bucketInfo := range buckets {
-		group, err := fsm.startBucketRaftGroupFromFSM(bucketInfo)
+		err := fsm.startBucketRaftGroupFromFSM(ctx, bucketInfo)
 		if err != nil {
 			return err
 		}
-		fsm.buckets[bucketInfo.Name] = group
 	}
 
 	fsm.nextBucketID = snapshotProto.NextBucketId
@@ -320,7 +315,7 @@ func (fsm *FSM) Stop(ctx context.Context) error {
 }
 
 // startBucketRaftGroupFromFSM starts a Raft group for a bucket using information from the FSM
-func (fsm *FSM) startBucketRaftGroupFromFSM(bucketInfo ledger.BucketInfo) (*bucket.Node, error) {
+func (fsm *FSM) startBucketRaftGroupFromFSM(ctx context.Context, bucketInfo ledger.BucketInfo) error {
 
 	logger := fsm.logger.WithFields(map[string]any{
 		"bucket": bucketInfo.Name,
@@ -328,7 +323,7 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(bucketInfo ledger.BucketInfo) (*buck
 
 	logger.Infof("Starting bucket Raft group...")
 
-	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64) (*service.Cursor[ledger.Log], error) {
+	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64) (service.Cursor[ledger.Log], error) {
 		return service.
 			NewBucketGrpcClient(bucketInfo.Name, service.NewBucketServiceClient(
 				fsm.multiplexedTransport.GetPeerConnection(fsm.buckets[bucketInfo.Name].GetLeader()),
@@ -346,8 +341,7 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(bucketInfo ledger.BucketInfo) (*buck
 		bucketInfo,
 		fsm.multiplexedTransport.NewBucketTransport(bucketInfo.ID),
 		raft.NodeConfig{
-			NodeID:    nodeIDFromBucketAndRootNodeID(fsm.raftConfig.NodeID, bucketInfo),
-			Bootstrap: fsm.raftConfig.Bootstrap,
+			NodeID: nodeIDFromBucketAndRootNodeID(fsm.raftConfig.NodeID, bucketInfo),
 			Peers: collectionutils.Map(fsm.raftConfig.Peers, func(from raft.Peer) raft.Peer {
 				return raft.Peer{
 					ID:      nodeIDFromBucketAndRootNodeID(from.ID, bucketInfo),
@@ -368,15 +362,26 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(bucketInfo ledger.BucketInfo) (*buck
 		logReader,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating bucket Raft group: %w", err)
+		return fmt.Errorf("creating bucket Raft group: %w", err)
 	}
+
+	fsm.buckets[bucketInfo.Name] = group
 
 	if err := group.Start(); err != nil {
-		return nil, fmt.Errorf("starting bucket Raft group: %w", err)
+		return fmt.Errorf("starting bucket Raft group: %w", err)
 	}
 
-	logger.Infof("Bucket Raft group started from FSM")
-	return group, nil
+	// Wait for leader to be elected
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			if group.GetLeader() != 0 {
+				return nil
+			}
+		}
+	}
 }
 
 func bucketIDFromBucketNodeID(v uint64) uint64 {

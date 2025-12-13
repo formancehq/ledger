@@ -1017,6 +1017,214 @@ func (*DeletedMetadata_AccountId) isDeletedMetadata_TargetId() {}
 
 func (*DeletedMetadata_TransactionId) isDeletedMetadata_TargetId() {}
 
+type GetLedgerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLedgerRequest) Reset() {
+	*x = GetLedgerRequest{}
+	mi := &file_proto_bucket_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLedgerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLedgerRequest) ProtoMessage() {}
+
+func (x *GetLedgerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bucket_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLedgerRequest.ProtoReflect.Descriptor instead.
+func (*GetLedgerRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bucket_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetLedgerRequest) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+func (x *GetLedgerRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetLedgerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Metadata      *structpb.Struct       `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLedgerResponse) Reset() {
+	*x = GetLedgerResponse{}
+	mi := &file_proto_bucket_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLedgerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLedgerResponse) ProtoMessage() {}
+
+func (x *GetLedgerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bucket_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLedgerResponse.ProtoReflect.Descriptor instead.
+func (*GetLedgerResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bucket_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetLedgerResponse) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *GetLedgerResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *GetLedgerResponse) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *GetLedgerResponse) GetMetadata() *structpb.Struct {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+type GetLedgersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLedgersRequest) Reset() {
+	*x = GetLedgersRequest{}
+	mi := &file_proto_bucket_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLedgersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLedgersRequest) ProtoMessage() {}
+
+func (x *GetLedgersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bucket_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLedgersRequest.ProtoReflect.Descriptor instead.
+func (*GetLedgersRequest) Descriptor() ([]byte, []int) {
+	return file_proto_bucket_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetLedgersRequest) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+type GetLedgersResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledgers       []*GetLedgerResponse   `protobuf:"bytes,1,rep,name=ledgers,proto3" json:"ledgers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLedgersResponse) Reset() {
+	*x = GetLedgersResponse{}
+	mi := &file_proto_bucket_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLedgersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLedgersResponse) ProtoMessage() {}
+
+func (x *GetLedgersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bucket_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLedgersResponse.ProtoReflect.Descriptor instead.
+func (*GetLedgersResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bucket_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetLedgersResponse) GetLedgers() []*GetLedgerResponse {
+	if x != nil {
+		return x.Ledgers
+	}
+	return nil
+}
+
 var File_proto_bucket_proto protoreflect.FileDescriptor
 
 const file_proto_bucket_proto_rawDesc = "" +
@@ -1101,13 +1309,29 @@ const file_proto_bucket_proto_rawDesc = "" +
 	"account_id\x18\x02 \x01(\tH\x00R\taccountId\x12'\n" +
 	"\x0etransaction_id\x18\x03 \x01(\x04H\x00R\rtransactionId\x12\x10\n" +
 	"\x03key\x18\x04 \x01(\tR\x03keyB\v\n" +
-	"\ttarget_id2\xc6\x02\n" +
+	"\ttarget_id\">\n" +
+	"\x10GetLedgerRequest\x12\x16\n" +
+	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xa7\x01\n" +
+	"\x11GetLedgerResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x123\n" +
+	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\"+\n" +
+	"\x11GetLedgersRequest\x12\x16\n" +
+	"\x06bucket\x18\x01 \x01(\tR\x06bucket\"I\n" +
+	"\x12GetLedgersResponse\x123\n" +
+	"\aledgers\x18\x01 \x03(\v2\x19.bucket.GetLedgerResponseR\aledgers2\xcd\x03\n" +
 	"\rBucketService\x12I\n" +
 	"\bSnapshot\x12\x1d.bucket.BucketSnapshotRequest\x1a\x1e.bucket.BucketSnapshotResponse\x12I\n" +
 	"\fCreateLedger\x12\x1b.bucket.CreateLedgerRequest\x1a\x1c.bucket.CreateLedgerResponse\x12X\n" +
 	"\x11CreateTransaction\x12 .bucket.CreateTransactionRequest\x1a!.bucket.CreateTransactionResponse\x12E\n" +
 	"\n" +
-	"StreamLogs\x12\x19.bucket.StreamLogsRequest\x1a\x1a.bucket.StreamLogsResponse0\x01B6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
+	"StreamLogs\x12\x19.bucket.StreamLogsRequest\x1a\x1a.bucket.StreamLogsResponse0\x01\x12@\n" +
+	"\tGetLedger\x12\x18.bucket.GetLedgerRequest\x1a\x19.bucket.GetLedgerResponse\x12C\n" +
+	"\n" +
+	"GetLedgers\x12\x19.bucket.GetLedgersRequest\x1a\x1a.bucket.GetLedgersResponseB6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
 
 var (
 	file_proto_bucket_proto_rawDescOnce sync.Once
@@ -1121,7 +1345,7 @@ func file_proto_bucket_proto_rawDescGZIP() []byte {
 	return file_proto_bucket_proto_rawDescData
 }
 
-var file_proto_bucket_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_proto_bucket_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_proto_bucket_proto_goTypes = []any{
 	(*BucketSnapshotRequest)(nil),     // 0: bucket.BucketSnapshotRequest
 	(*BucketSnapshotResponse)(nil),    // 1: bucket.BucketSnapshotResponse
@@ -1137,49 +1361,60 @@ var file_proto_bucket_proto_goTypes = []any{
 	(*RevertedTransaction)(nil),       // 11: bucket.RevertedTransaction
 	(*SavedMetadata)(nil),             // 12: bucket.SavedMetadata
 	(*DeletedMetadata)(nil),           // 13: bucket.DeletedMetadata
-	nil,                               // 14: bucket.Script.VarsEntry
-	nil,                               // 15: bucket.CreateTransactionRequest.AccountMetadataEntry
-	nil,                               // 16: bucket.CreateTransactionResponse.AccountMetadataEntry
-	(*timestamppb.Timestamp)(nil),     // 17: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),           // 18: google.protobuf.Struct
-	(*Posting)(nil),                   // 19: common.Posting
-	(*Transaction)(nil),               // 20: common.Transaction
+	(*GetLedgerRequest)(nil),          // 14: bucket.GetLedgerRequest
+	(*GetLedgerResponse)(nil),         // 15: bucket.GetLedgerResponse
+	(*GetLedgersRequest)(nil),         // 16: bucket.GetLedgersRequest
+	(*GetLedgersResponse)(nil),        // 17: bucket.GetLedgersResponse
+	nil,                               // 18: bucket.Script.VarsEntry
+	nil,                               // 19: bucket.CreateTransactionRequest.AccountMetadataEntry
+	nil,                               // 20: bucket.CreateTransactionResponse.AccountMetadataEntry
+	(*timestamppb.Timestamp)(nil),     // 21: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),           // 22: google.protobuf.Struct
+	(*Posting)(nil),                   // 23: common.Posting
+	(*Transaction)(nil),               // 24: common.Transaction
 }
 var file_proto_bucket_proto_depIdxs = []int32{
-	14, // 0: bucket.Script.vars:type_name -> bucket.Script.VarsEntry
-	15, // 1: bucket.CreateTransactionRequest.account_metadata:type_name -> bucket.CreateTransactionRequest.AccountMetadataEntry
-	17, // 2: bucket.CreateTransactionRequest.timestamp:type_name -> google.protobuf.Timestamp
-	18, // 3: bucket.CreateTransactionRequest.metadata:type_name -> google.protobuf.Struct
-	19, // 4: bucket.CreateTransactionRequest.postings:type_name -> common.Posting
+	18, // 0: bucket.Script.vars:type_name -> bucket.Script.VarsEntry
+	19, // 1: bucket.CreateTransactionRequest.account_metadata:type_name -> bucket.CreateTransactionRequest.AccountMetadataEntry
+	21, // 2: bucket.CreateTransactionRequest.timestamp:type_name -> google.protobuf.Timestamp
+	22, // 3: bucket.CreateTransactionRequest.metadata:type_name -> google.protobuf.Struct
+	23, // 4: bucket.CreateTransactionRequest.postings:type_name -> common.Posting
 	2,  // 5: bucket.CreateTransactionRequest.script:type_name -> bucket.Script
-	20, // 6: bucket.CreateTransactionResponse.transaction:type_name -> common.Transaction
-	16, // 7: bucket.CreateTransactionResponse.account_metadata:type_name -> bucket.CreateTransactionResponse.AccountMetadataEntry
-	18, // 8: bucket.CreateLedgerRequest.metadata:type_name -> google.protobuf.Struct
+	24, // 6: bucket.CreateTransactionResponse.transaction:type_name -> common.Transaction
+	20, // 7: bucket.CreateTransactionResponse.account_metadata:type_name -> bucket.CreateTransactionResponse.AccountMetadataEntry
+	22, // 8: bucket.CreateLedgerRequest.metadata:type_name -> google.protobuf.Struct
 	9,  // 9: bucket.StreamLogsResponse.log:type_name -> bucket.Log
 	10, // 10: bucket.Log.data:type_name -> bucket.LogPayload
-	17, // 11: bucket.Log.date:type_name -> google.protobuf.Timestamp
-	20, // 12: bucket.LogPayload.created_transaction:type_name -> common.Transaction
+	21, // 11: bucket.Log.date:type_name -> google.protobuf.Timestamp
+	24, // 12: bucket.LogPayload.created_transaction:type_name -> common.Transaction
 	11, // 13: bucket.LogPayload.reverted_transaction:type_name -> bucket.RevertedTransaction
 	12, // 14: bucket.LogPayload.saved_metadata:type_name -> bucket.SavedMetadata
 	13, // 15: bucket.LogPayload.deleted_metadata:type_name -> bucket.DeletedMetadata
-	20, // 16: bucket.RevertedTransaction.reverted_transaction:type_name -> common.Transaction
-	20, // 17: bucket.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	18, // 18: bucket.SavedMetadata.metadata:type_name -> google.protobuf.Struct
-	18, // 19: bucket.CreateTransactionRequest.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	18, // 20: bucket.CreateTransactionResponse.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
-	0,  // 21: bucket.BucketService.Snapshot:input_type -> bucket.BucketSnapshotRequest
-	5,  // 22: bucket.BucketService.CreateLedger:input_type -> bucket.CreateLedgerRequest
-	3,  // 23: bucket.BucketService.CreateTransaction:input_type -> bucket.CreateTransactionRequest
-	7,  // 24: bucket.BucketService.StreamLogs:input_type -> bucket.StreamLogsRequest
-	1,  // 25: bucket.BucketService.Snapshot:output_type -> bucket.BucketSnapshotResponse
-	6,  // 26: bucket.BucketService.CreateLedger:output_type -> bucket.CreateLedgerResponse
-	4,  // 27: bucket.BucketService.CreateTransaction:output_type -> bucket.CreateTransactionResponse
-	8,  // 28: bucket.BucketService.StreamLogs:output_type -> bucket.StreamLogsResponse
-	25, // [25:29] is the sub-list for method output_type
-	21, // [21:25] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	24, // 16: bucket.RevertedTransaction.reverted_transaction:type_name -> common.Transaction
+	24, // 17: bucket.RevertedTransaction.revert_transaction:type_name -> common.Transaction
+	22, // 18: bucket.SavedMetadata.metadata:type_name -> google.protobuf.Struct
+	21, // 19: bucket.GetLedgerResponse.created_at:type_name -> google.protobuf.Timestamp
+	22, // 20: bucket.GetLedgerResponse.metadata:type_name -> google.protobuf.Struct
+	15, // 21: bucket.GetLedgersResponse.ledgers:type_name -> bucket.GetLedgerResponse
+	22, // 22: bucket.CreateTransactionRequest.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
+	22, // 23: bucket.CreateTransactionResponse.AccountMetadataEntry.value:type_name -> google.protobuf.Struct
+	0,  // 24: bucket.BucketService.Snapshot:input_type -> bucket.BucketSnapshotRequest
+	5,  // 25: bucket.BucketService.CreateLedger:input_type -> bucket.CreateLedgerRequest
+	3,  // 26: bucket.BucketService.CreateTransaction:input_type -> bucket.CreateTransactionRequest
+	7,  // 27: bucket.BucketService.StreamLogs:input_type -> bucket.StreamLogsRequest
+	14, // 28: bucket.BucketService.GetLedger:input_type -> bucket.GetLedgerRequest
+	16, // 29: bucket.BucketService.GetLedgers:input_type -> bucket.GetLedgersRequest
+	1,  // 30: bucket.BucketService.Snapshot:output_type -> bucket.BucketSnapshotResponse
+	6,  // 31: bucket.BucketService.CreateLedger:output_type -> bucket.CreateLedgerResponse
+	4,  // 32: bucket.BucketService.CreateTransaction:output_type -> bucket.CreateTransactionResponse
+	8,  // 33: bucket.BucketService.StreamLogs:output_type -> bucket.StreamLogsResponse
+	15, // 34: bucket.BucketService.GetLedger:output_type -> bucket.GetLedgerResponse
+	17, // 35: bucket.BucketService.GetLedgers:output_type -> bucket.GetLedgersResponse
+	30, // [30:36] is the sub-list for method output_type
+	24, // [24:30] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_proto_bucket_proto_init() }
@@ -1208,7 +1443,7 @@ func file_proto_bucket_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bucket_proto_rawDesc), len(file_proto_bucket_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

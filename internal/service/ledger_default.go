@@ -396,12 +396,6 @@ func (l *DefaultLedger) Export(ctx context.Context, ledgerName string, w ExportW
 	return ErrNotFound
 }
 
-// numscriptStoreAdapter implements numscript.Store to provide balances and metadata
-// GetLogReader returns the LogReader for this ledger
-func (l *DefaultLedger) GetLogReader() LogReader {
-	return l.logStore
-}
-
 type numscriptStoreAdapter struct {
 	ledgerName         string
 	lockedVolumesStore LockedBalancesStore

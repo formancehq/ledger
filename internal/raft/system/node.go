@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/raft/bucket"
@@ -88,14 +89,22 @@ func (node *Node) CreateBucket(ctx context.Context, name, driver string, config 
 }
 
 // GetBucket returns the bucket info for a given name
-func (node *Node) GetBucket(ctx context.Context, name string) (*ledger.BucketInfo, error) {
+func (node *Node) GetBucketCluster(ctx context.Context, name string) (service.BucketCluster, error) {
 	return node.Inner().GetBucket(name)
 }
 
-// GetAllBuckets returns all buckets
-func (node *Node) GetAllBuckets() map[string]service.BucketCluster {
-	return collectionutils.ConvertMap(node.Inner().buckets, func(v *bucket.Node) service.BucketCluster {
-		return v
+func (node *Node) GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error) {
+	info, ok := node.Inner().buckets[name]
+	if !ok {
+		return nil, ledger.ErrNotFound
+	}
+	return pointer.For(info.Info()), nil
+}
+
+// GetAllBucketsInfo returns all buckets
+func (node *Node) GetAllBucketsInfo(ctx context.Context) map[string]ledger.BucketInfo {
+	return collectionutils.ConvertMap(node.Inner().buckets, func(v *bucket.Node) ledger.BucketInfo {
+		return v.Info()
 	})
 }
 
@@ -125,7 +134,7 @@ func (node *Node) GetBucketGroup(name string) (*bucket.Node, error) {
 	return bucket, nil
 }
 
-func (node *Node) GetBucketGroupOfLedger(name string) (*bucket.Node, error) {
+func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint64, error) {
 	for _, bucketNode := range node.Inner().buckets {
 		ledgers, err := bucketNode.GetLedgers(context.Background())
 		if err != nil {
@@ -134,12 +143,12 @@ func (node *Node) GetBucketGroupOfLedger(name string) (*bucket.Node, error) {
 		}
 		for _, info := range ledgers {
 			if info.Name == name {
-				return bucketNode, nil
+				return bucketNode.Info().Name, bucketNode.Info().ID, nil
 			}
 		}
 	}
 
-	return nil, ledger.ErrNotFound
+	return "", 0, ledger.ErrNotFound
 }
 
 func (node *Node) Stop(ctx context.Context) error {

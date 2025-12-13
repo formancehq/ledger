@@ -473,7 +473,7 @@ func (c *sqliteLogCursor) Close() error {
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
 // Logs are returned in ascending order by sequence
 // from: optional sequence number to start from (0 = from beginning)
-func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64) (*Cursor[ledger.Log], error) {
+func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error) {
 	query := `
 		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
 		FROM logs
@@ -490,13 +490,10 @@ func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64) (*Cursor[l
 		return nil, fmt.Errorf("querying logs: %w", err)
 	}
 
-	cursor := &sqliteLogCursor{
+	return &sqliteLogCursor{
 		rows:  rows,
 		store: s,
-	}
-
-	var cursorInterface Cursor[ledger.Log] = cursor
-	return &cursorInterface, nil
+	}, nil
 }
 
 // GetLastSequenceID returns the highest sequence number in the logs table (implements LogWriter)

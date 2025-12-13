@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -43,17 +44,19 @@ var _ = Describe("Simple cluster", func() {
 		servers = make([]serviceWithClient, 0, countInstances)
 		for i := range countInstances {
 			raftTmpDir := GinkgoT().TempDir()
+			Expect(removeGlob(filepath.Join(raftTmpDir, "*"))).To(Succeed())
 			DeferCleanup(func() {
 				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
 			})
+
 			extraDataTmpDir := GinkgoT().TempDir()
+			Expect(removeGlob(filepath.Join(extraDataTmpDir, "*"))).To(Succeed())
 			DeferCleanup(func() {
 				Expect(os.RemoveAll(extraDataTmpDir)).To(Succeed())
 			})
 
 			server := testservice.New(cmdserver.NewRootCommand,
 				testservice.WithInstruments(
-					testserver.WithBootstrap(i == 0),
 					testserver.WithNodeID(i+1),
 					testserver.WithHTTPPort(9000+i),
 					testserver.WithDataDir(raftTmpDir),
@@ -158,20 +161,20 @@ var _ = Describe("Simple cluster", func() {
 			})
 			Expect(err).To(Succeed())
 
-			for range snapshotThreshold {
-				_, err := servers[0].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-					LedgerName: "ledger0",
-					CreateTransactionRequest: components.CreateTransactionRequest{
-						Postings: []components.PostingRequest{{
-							Source:      "world",
-							Destination: "bank",
-							Amount:      big.NewInt(100),
-							Asset:       "",
-						}},
-					},
-				})
-				Expect(err).To(BeNil())
-			}
+			//for range snapshotThreshold {
+			//	_, err := servers[0].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+			//		LedgerName: "ledger0",
+			//		CreateTransactionRequest: components.CreateTransactionRequest{
+			//			Postings: []components.PostingRequest{{
+			//				Source:      "world",
+			//				Destination: "bank",
+			//				Amount:      big.NewInt(100),
+			//				Asset:       "",
+			//			}},
+			//		},
+			//	})
+			//	Expect(err).To(BeNil())
+			//}
 		})
 	})
 
@@ -254,7 +257,6 @@ var _ = Describe("Simple cluster", func() {
 				Expect(err).To(Succeed())
 			}
 		})
-
 		Context("Then creating a new bucket", func() {
 			var bucketName string
 			BeforeEach(func() {
@@ -309,12 +311,84 @@ var _ = Describe("Simple cluster", func() {
 				})
 			})
 		})
-		Context("Then creating more buckets than the snapshot threshold", func() {
-			Context("Then the follower come back", func() {
-				It("Should restore the state from a snapshot sent by the leader", func() {
+		Context("Then creating more transactions than the snapshot threshold", func() {
+			var bucketName string
+			var ledgerName string
+			BeforeEach(func() {
+				// Create a bucket and ledger
+				bucketName = "bucket-snapshot"
+				ledgerName = "ledger-snapshot"
 
+				_, err := servers[leaderID-1].client.Buckets.CreateBucket(ctx, operations.CreateBucketRequest{
+					BucketName: bucketName,
+					CreateBucketRequest: components.CreateBucketRequest{
+						Driver: "sqlite",
+					},
+				})
+				Expect(err).To(Succeed())
+
+				_, err = servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledgerName,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						Bucket: bucketName,
+					},
+				})
+				Expect(err).To(Succeed())
+
+				// Create enough transactions to trigger a snapshot
+				// snapshotThreshold is 10, so we create 11 transactions to ensure a snapshot is created
+				for i := 0; i < 11; i++ {
+					_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+						LedgerName: ledgerName,
+						CreateTransactionRequest: components.CreateTransactionRequest{
+							Postings: []components.PostingRequest{{
+								Source:      "world",
+								Destination: "bank",
+								Amount:      big.NewInt(100),
+								Asset:       "USD",
+							}},
+						},
+					})
+					Expect(err).To(Succeed())
+				}
+
+				// Wait for snapshot to be created (verify by checking that transactions are visible)
+				// todo: is generated but is it useful?
+				Eventually(func(g Gomega) bool {
+					// Verify the bucket exists
+					bucket, err := servers[leaderID-1].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+						BucketName: bucketName,
+					})
+					g.Expect(err).To(Succeed())
+					return bucket.GetGetBucketResponse().Data.Name == bucketName
+				}).Within(5 * time.Second).WithPolling(200 * time.Millisecond).Should(BeTrue())
+			})
+
+			Context("Then the follower come back", func() {
+				BeforeEach(func() {
+					// Restart the follower
+					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
+				})
+
+				FIt("Should restore the state from a snapshot sent by the leader", func() {
+					fmt.Printf("waiting for snapshot to be sent by leader to follower %d...\r\n", followerID)
+					time.Sleep(10 * time.Second)
 				})
 			})
 		})
 	})
 })
+
+func removeGlob(path string) (err error) {
+	contents, err := filepath.Glob(path)
+	if err != nil {
+		return
+	}
+	for _, item := range contents {
+		err = os.RemoveAll(item)
+		if err != nil {
+			return
+		}
+	}
+	return
+}

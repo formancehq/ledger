@@ -22,8 +22,7 @@ go run ./cmd/server \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
   --data-dir ./data/node-1 \
-  --http-port 9000 \
-  --bootstrap
+  --http-port 9000
 ```
 
 ### Configuration
@@ -38,7 +37,6 @@ export NODE_ID=1
 export BIND_ADDR=127.0.0.1:8888
 export DATA_DIR=./data/node-1
 export HTTP_PORT=9000
-export BOOTSTRAP=true
 
 go run ./cmd/server
 ```
@@ -83,7 +81,6 @@ Each node is configured with:
 - **Node ID**: 1, 2, or 3
 - **Advertise Address**: `node-{id}:8888`
 - **Peers**: List of all nodes
-- **Bootstrap**: Only node-1
 - **Exposed ports**:
   - gRPC: 8888, 8889, 8890
   - HTTP: 9000, 9001, 9002
@@ -160,7 +157,7 @@ persistence:
 graph TB
     subgraph "Kubernetes Cluster"
         subgraph "StatefulSand"
-            Pod1[Pod 0<br/>Node ID: 1<br/>Bootstrap: true]
+            Pod1[Pod 0<br/>Node ID: 1]
             Pod2[Pod 1<br/>Node ID: 2]
             Pod3[Pod 2<br/>Node ID: 3]
         end
@@ -198,15 +195,9 @@ The chart uses a StatefulSet with a headless service for automatic discovery:
 2. The advertise address is generated: `{POD_NAME}.{HEADLESS_SVC}.{NAMESPACE}.svc.cluster.local:8888`
 3. The peer list is generated automatically
 
-### Automatic Bootstrap
+### Automatic Cluster Initialization
 
-Only the first pod (index 0) is bootstrapped automatically:
-
-```bash
-if [ $POD_INDEX -eq 0 ]; then
-  BOOTSTRAP_FLAG="--bootstrap"
-fi
-```
+All pods automatically initialize their storage with the cluster configuration when starting with empty storage. No special bootstrap flag is needed.
 
 ### Health Checks
 

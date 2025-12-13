@@ -62,6 +62,10 @@ type Node struct {
 	logStore      service.LogStore // Underlying log store for direct access
 }
 
+func (node *Node) GetAllLogs(ctx context.Context, from uint64) (service.Cursor[ledger.Log], error) {
+	return node.logStore.GetAllLogs(ctx, from)
+}
+
 // NewNode creates a new Raft group for a bucket
 func NewNode(
 	bucketInfo ledger.BucketInfo,
@@ -202,11 +206,6 @@ func (node *Node) Export(ctx context.Context, ledgerName string, w service.Expor
 
 func (node *Node) Info() ledger.BucketInfo {
 	return node.bucketInfo
-}
-
-// GetLogReader returns the LogReader for this bucket
-func (node *Node) GetLogReader() service.LogReader {
-	return node.defaultLedger.GetLogReader()
 }
 
 var _ service.Ledger = (*Node)(nil)

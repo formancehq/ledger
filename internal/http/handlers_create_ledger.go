@@ -41,7 +41,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bucket, err := s.cluster.GetBucket(r.Context(), req.Bucket)
+	bucket, err := s.cluster.GetBucketCluster(r.Context(), req.Bucket)
 	if err != nil {
 		handleError(w, r, err)
 		return

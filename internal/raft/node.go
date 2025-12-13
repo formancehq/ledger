@@ -40,6 +40,7 @@ func NewNode[F FSM](
 	fsm F,
 	logger logging.Logger,
 ) (*Node[F], error) {
+
 	// Set defaults if not configured
 	electionTick := cfg.ElectionTick
 	if electionTick == 0 {
@@ -65,6 +66,7 @@ func NewNode[F FSM](
 		Storage:         storage,
 		MaxSizePerMsg:   maxSizePerMsg,
 		MaxInflightMsgs: maxInflightMsgs,
+		Logger:          NewLoggerAdapter(logger),
 	}
 
 	// Configure snapshot parameters
@@ -77,29 +79,48 @@ func NewNode[F FSM](
 		return nil, fmt.Errorf("restoring FSM from storage: %w", err)
 	}
 
+	// Initialize storage with ConfState if storage is empty
+	// This replaces the deprecated Bootstrap() method
+	// All nodes need ConfState to participate in elections
+	logger.Infof("Storage empty: %v", storage.IsEmpty())
+	if storage.IsEmpty() {
+		logger.Infof("Storage is empty - initializing with ConfState")
+
+		// Build voters list (all peers including current node)
+		voters := make([]uint64, 0, len(cfg.Peers)+1)
+		voters = append(voters, cfg.NodeID)
+
+		// Add peers if provided
+		for _, peerEntry := range cfg.Peers {
+			voters = append(voters, peerEntry.ID)
+		}
+
+		// Create ConfState with all voters
+		confState := raftpb.ConfState{
+			Voters: voters,
+		}
+
+		// Create initial snapshot with ConfState at index 0
+		// This ensures FirstIndex() returns 1, which is the correct starting point
+		// The ConfState in the snapshot defines the initial cluster configuration
+		snapshotData, err := fsm.CreateSnapshot(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("creating initial snapshot data: %w", err)
+		}
+
+		// Create snapshot at index 0 with the ConfState
+		// Index 0 means no entries yet, so FirstIndex() will return 1
+		_, err = storage.CreateSnapshot(0, &confState, snapshotData)
+		if err != nil {
+			return nil, fmt.Errorf("creating initial snapshot: %w", err)
+		}
+
+		logger.WithFields(map[string]any{"voters": len(voters)}).Infof("Storage initialized with ConfState")
+	}
+
 	node, err := raft.NewRawNode(raftConfig)
 	if err != nil {
 		return nil, fmt.Errorf("creating raw node: %w", err)
-	}
-
-	// Build peers list if bootstrap and storage is empty
-	logger.Infof("Bootstrap: %v, Storage empty: %v", cfg.Bootstrap, storage.IsEmpty())
-	if cfg.Bootstrap && storage.IsEmpty() {
-		logger.Infof("Bootstrap started")
-		peers := make([]raft.Peer, 0, len(cfg.Peers)+1)
-		peers = append(peers, raft.Peer{ID: cfg.NodeID})
-
-		// Add peers if provided
-		// Peers are in format "<id>/<address>", parse them
-		for _, peerEntry := range cfg.Peers {
-			peers = append(peers, raft.Peer{ID: peerEntry.ID})
-		}
-
-		// Bootstrap the cluster
-		if err := node.Bootstrap(peers); err != nil {
-			return nil, fmt.Errorf("bootstrapping cluster: %w", err)
-		}
-		logger.WithFields(map[string]any{"peers": len(peers)}).Infof("Node bootstrapped")
 	}
 
 	return &Node[F]{
@@ -204,9 +225,16 @@ func (node *Node[F]) readyLoop() {
 	}
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
+	defer func() {
+		_ = node.storage.Close()
+	}()
 
+	var (
+		confState *raftpb.ConfState
+	)
 	for {
-
+		// Process ticks and messages first, then Ready structures
+		// Always check for ticks first (non-blocking) to ensure election timeouts work
 		select {
 		case <-ticker.C:
 			node.node.Tick()
@@ -221,14 +249,8 @@ func (node *Node[F]) readyLoop() {
 			}
 		}
 
-		// Process Ready structures
 		for node.node.HasReady() {
 			rd := node.node.Ready()
-
-			// Save HardState, Entries and Snapshot to storage
-			if !raft.IsEmptyHardState(rd.HardState) {
-				node.storage.SetHardState(rd.HardState)
-			}
 
 			if len(rd.Entries) > 0 {
 				if err := node.storage.Append(rd.Entries); err != nil {
@@ -239,10 +261,15 @@ func (node *Node[F]) readyLoop() {
 				}
 			}
 
+			// Save HardState, Entries and Snapshot to storage
+			if !raft.IsEmptyHardState(rd.HardState) {
+				node.storage.SetHardState(rd.HardState)
+			}
+
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				node.logger.
 					WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).
-					Infof("Applying snapshot")
+					Infof("Applying snapshot sent from leader")
 
 				if err := node.storage.ApplySnapshot(rd.Snapshot); err != nil {
 					node.logger.
@@ -268,7 +295,6 @@ func (node *Node[F]) readyLoop() {
 			}
 
 			// Apply committed entries
-			// todo: batch insertions
 			var (
 				results        []ApplyResult
 				commands       = make([]Command, 0, len(rd.CommittedEntries))
@@ -286,7 +312,23 @@ func (node *Node[F]) readyLoop() {
 					node.logger.
 						WithFields(map[string]any{"type": cc.Type.String(), "nodeID": fmt.Sprintf("%x", cc.NodeID)}).
 						Infof("Applying configuration change")
-					node.node.ApplyConfChange(cc)
+					confState = node.node.ApplyConfChange(cc)
+					continue
+				}
+
+				if entry.Type == raftpb.EntryConfChangeV2 {
+					var cc raftpb.ConfChangeV2
+					if err := cc.Unmarshal(entry.Data); err != nil {
+						node.logger.
+							WithFields(map[string]any{"error": err}).
+							Errorf("Failed to unmarshal ConfChangeV2")
+						continue
+					}
+					node.logger.
+						WithFields(map[string]any{"transition": cc.Transition.String()}).
+						Infof("Applying configuration change V2")
+					// ApplyConfChange accepts ConfChangeI interface, which is implemented by both ConfChange and ConfChangeV2
+					confState = node.node.ApplyConfChange(cc)
 					continue
 				}
 
@@ -339,6 +381,7 @@ func (node *Node[F]) readyLoop() {
 			// Check if we need to create a snapshot (every 1000 entries or when log is getting large)
 			status := node.node.Status()
 			if status.Applied > 0 && status.Applied%node.config.SnapshotThreshold == 0 {
+
 				// Create snapshot: write logs to store and create snapshot data
 				snapshotData, err := node.fsm.CreateSnapshot(context.Background())
 				if err != nil {
@@ -348,17 +391,23 @@ func (node *Node[F]) readyLoop() {
 					continue
 				}
 
-				// Get current configuration state from storage
-				_, confState, err := node.storage.InitialState()
-				if err != nil {
-					node.logger.
-						WithFields(map[string]any{"error": err}).
-						Errorf("Failed to get initial state for snapshot")
-					continue
+				// Get current ConfState from storage (use confState if available, otherwise get from storage)
+				var currentConfState *raftpb.ConfState
+				if confState != nil {
+					currentConfState = confState
+				} else {
+					_, cs, err := node.storage.InitialState()
+					if err != nil {
+						node.logger.
+							WithFields(map[string]any{"error": err}).
+							Errorf("Failed to get ConfState from storage")
+						continue
+					}
+					currentConfState = &cs
 				}
 
 				// Create snapshot in storage
-				_, err = node.storage.CreateSnapshot(status.Applied, &confState, snapshotData)
+				_, err = node.storage.CreateSnapshot(status.Applied, currentConfState, snapshotData)
 				if err != nil {
 					// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
 					if err != ErrSnapOutOfDate {
@@ -372,6 +421,7 @@ func (node *Node[F]) readyLoop() {
 
 				node.logger.Infof("Snapshot created for bucket")
 			}
+
 		}
 	}
 }
@@ -516,10 +566,6 @@ func (node *Node[F]) Stop(ctx context.Context) error {
 	}
 }
 
-func (node *Node[F]) Bootstrap(peers []raft.Peer) error {
-	return node.node.Bootstrap(peers)
-}
-
 // applyFuture represents a future for an applied entry
 type applyFuture struct {
 	index  uint64
@@ -580,7 +626,7 @@ func restoreFromStorage(fsm FSM, storage *WALStorage, logger logging.Logger) err
 			// Apply each entry to the FSM
 			for _, entry := range entries {
 				// Skip configuration change entries
-				if entry.Type == raftpb.EntryConfChange {
+				if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {
 					continue
 				}
 				// Skip other non-normal entries

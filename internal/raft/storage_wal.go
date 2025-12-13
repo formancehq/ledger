@@ -214,6 +214,8 @@ func (s *WALStorage) saveSnapshotAndHardState() error {
 
 // InitialState returns the saved HardState and ConfState information
 func (s *WALStorage) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
+	// todo: is the store accessed sequentially?
+	// if yes, we can avoid locking
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -433,16 +435,27 @@ func (s *WALStorage) Append(entries []raftpb.Entry) error {
 func (s *WALStorage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftpb.Snapshot, error) {
 	s.mu.Lock()
 
-	if i <= s.snapshot.Metadata.Index {
+	// Allow creating snapshot at index 0 if storage is empty (for initial cluster setup)
+	// Otherwise, prevent creating snapshot at same or lower index
+	isEmptyInitial := i == 0 && s.snapshot.Metadata.Index == 0 && len(s.snapshot.Metadata.ConfState.Voters) == 0 && len(s.entries) == 0
+	if !isEmptyInitial && i <= s.snapshot.Metadata.Index {
 		s.mu.Unlock()
 		return raftpb.Snapshot{}, ErrSnapOutOfDate
 	}
 
 	// Get term directly without taking another lock
-	term, err := s.termLocked(i)
-	if err != nil {
-		s.mu.Unlock()
-		return raftpb.Snapshot{}, err
+	// For initial snapshot (index 0 on empty storage), use term 0
+	var term uint64
+	var err error
+	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 && i == 0 {
+		// Initial snapshot at index 0 - use term 0
+		term = 0
+	} else {
+		term, err = s.termLocked(i)
+		if err != nil {
+			s.mu.Unlock()
+			return raftpb.Snapshot{}, err
+		}
 	}
 
 	s.snapshot = raftpb.Snapshot{

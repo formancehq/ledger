@@ -270,7 +270,6 @@ server := testservice.New(
     testservice.withinstruments(
         testserver.withNodeID(1),
         testserver.withHTTPPort(9000),
-        testserver.withBootstrap(true),
     ),
 )
 ```

@@ -23,6 +23,8 @@ const (
 	BucketService_CreateLedger_FullMethodName      = "/bucket.BucketService/CreateLedger"
 	BucketService_CreateTransaction_FullMethodName = "/bucket.BucketService/CreateTransaction"
 	BucketService_StreamLogs_FullMethodName        = "/bucket.BucketService/StreamLogs"
+	BucketService_GetLedger_FullMethodName         = "/bucket.BucketService/GetLedger"
+	BucketService_GetLedgers_FullMethodName        = "/bucket.BucketService/GetLedgers"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -39,6 +41,10 @@ type BucketServiceClient interface {
 	CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*CreateTransactionResponse, error)
 	// StreamLogs streams logs from a bucket, optionally filtered by ledger and starting from a sequence number
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
+	// GetLedger returns information about a specific ledger by name
+	GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*GetLedgerResponse, error)
+	// GetLedgers returns a list of all ledgers in the bucket with their information
+	GetLedgers(ctx context.Context, in *GetLedgersRequest, opts ...grpc.CallOption) (*GetLedgersResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -98,6 +104,26 @@ func (c *bucketServiceClient) StreamLogs(ctx context.Context, in *StreamLogsRequ
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_StreamLogsClient = grpc.ServerStreamingClient[StreamLogsResponse]
 
+func (c *bucketServiceClient) GetLedger(ctx context.Context, in *GetLedgerRequest, opts ...grpc.CallOption) (*GetLedgerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLedgerResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetLedger_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bucketServiceClient) GetLedgers(ctx context.Context, in *GetLedgersRequest, opts ...grpc.CallOption) (*GetLedgersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLedgersResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetLedgers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -112,6 +138,10 @@ type BucketServiceServer interface {
 	CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error)
 	// StreamLogs streams logs from a bucket, optionally filtered by ledger and starting from a sequence number
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
+	// GetLedger returns information about a specific ledger by name
+	GetLedger(context.Context, *GetLedgerRequest) (*GetLedgerResponse, error)
+	// GetLedgers returns a list of all ledgers in the bucket with their information
+	GetLedgers(context.Context, *GetLedgersRequest) (*GetLedgersResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -133,6 +163,12 @@ func (UnimplementedBucketServiceServer) CreateTransaction(context.Context, *Crea
 }
 func (UnimplementedBucketServiceServer) StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
+}
+func (UnimplementedBucketServiceServer) GetLedger(context.Context, *GetLedgerRequest) (*GetLedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLedger not implemented")
+}
+func (UnimplementedBucketServiceServer) GetLedgers(context.Context, *GetLedgersRequest) (*GetLedgersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLedgers not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -220,6 +256,42 @@ func _BucketService_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_StreamLogsServer = grpc.ServerStreamingServer[StreamLogsResponse]
 
+func _BucketService_GetLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLedgerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetLedger(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetLedger_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetLedger(ctx, req.(*GetLedgerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BucketService_GetLedgers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLedgersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetLedgers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetLedgers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetLedgers(ctx, req.(*GetLedgersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -238,6 +310,14 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateTransaction",
 			Handler:    _BucketService_CreateTransaction_Handler,
+		},
+		{
+			MethodName: "GetLedger",
+			Handler:    _BucketService_GetLedger_Handler,
+		},
+		{
+			MethodName: "GetLedgers",
+			Handler:    _BucketService_GetLedgers_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

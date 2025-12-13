@@ -15,6 +15,12 @@ service SystemService {
   rpc CreateBucket(CreateBucketRequest) returns (CreateBucketResponse);
   // DeleteBucket deletes a bucket
   rpc DeleteBucket(DeleteBucketRequest) returns (DeleteBucketResponse);
+  // ResolveLedger resolves a ledger name to its bucket
+  rpc ResolveLedger(ResolveLedgerRequest) returns (ResolveLedgerResponse);
+  // GetAllBucketsInfo returns all buckets info in the cluster
+  rpc GetAllBucketsInfo(GetAllBucketsRequest) returns (GetAllBucketsResponse);
+  // GetBucketInfo returns a bucket info by its name
+  rpc GetBucketInfo(GetBucketByNameRequest) returns (GetBucketByNameResponse);
 }
 
 message SnapshotRequest {
@@ -47,4 +53,34 @@ message DeleteBucketRequest {
 
 message DeleteBucketResponse {
   string message = 1;
+}
+
+message ResolveLedgerRequest {
+  string ledger_name = 1;
+}
+
+message ResolveLedgerResponse {
+  string bucket_name = 1;
+  uint64 bucket_id = 2;
+}
+
+message GetAllBucketsRequest {
+  // Empty - no parameters needed
+}
+
+message GetAllBucketsResponse {
+  repeated CreateBucketResponse buckets = 1;
+}
+
+message GetBucketByNameRequest {
+  string name = 1;
+}
+
+message GetBucketByNameResponse {
+  uint64 id = 1;
+  string name = 2;
+  google.protobuf.Struct config = 3;
+  string driver = 4;
+  google.protobuf.Timestamp created_at = 5;
+  uint64 snapshot_threshold = 6;  // Number of logs before triggering a snapshot (0 means use global config)
 }

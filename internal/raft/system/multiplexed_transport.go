@@ -44,7 +44,7 @@ func (r *multiplexedTransport) Start() {
 				r.logger.Debugf("Received message from bucket transport: %s", msg.String())
 				bucket.recv <- msg
 			} else {
-				r.logger.Infof("Received message from unknown bucket: %d", msg.To)
+				r.logger.Infof("Received message from unknown bucket: %d (%s)", msg.To, msg.Type)
 			}
 		case nodeID := <-r.grpcTransport.Unreachable():
 			bucketID := bucketIDFromBucketNodeID(nodeID)

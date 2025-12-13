@@ -41,7 +41,13 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		Input:          input,
 	}
 
-	bucket, err := s.cluster.GetBucketOfLedger(r.Context(), ledgerName)
+	bucketName, _, err := s.cluster.ResolveLedger(r.Context(), ledgerName)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	bucket, err := s.cluster.GetBucketCluster(r.Context(), bucketName)
 	if err != nil {
 		handleError(w, r, err)
 		return
