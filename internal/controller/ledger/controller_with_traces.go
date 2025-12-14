@@ -154,7 +154,10 @@ func NewControllerWithTraces(underlying Controller, tracer trace.Tracer, meter m
 	if err != nil {
 		panic(err)
 	}
-	ret.getTransactionsSumHistogram, err = meter.Int64Histogram("controller.get_transactions_sum")
+	ret.getTransactionsSumHistogram, err = meter.Int64Histogram("controller.get_transactions_sum", metric.WithUnit("ms"))
+	if err != nil {
+		panic(err)
+	}
 	ret.insertSchemaHistogram, err = meter.Int64Histogram("controller.insert_schema", metric.WithUnit("ms"))
 	if err != nil {
 		panic(err)

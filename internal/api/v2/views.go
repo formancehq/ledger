@@ -228,33 +228,24 @@ func needBigIntAsString(r *http.Request) bool {
 	return v == "true" || v == "yes" || v == "y" || v == "1"
 }
 
-type transactionSummary ledgerstore.TransactionsSummary
-
-func (ts transactionSummary) MarshalJSON() ([]byte, error) {
-	type Aux transactionSummary
-	return json.Marshal(struct {
-		Aux
-		Sum string `json:"sum"`
-	}{
-		Aux: Aux(ts),
-		Sum: ts.Sum,
-	})
-}
-
 func renderTransactionSummary(r *http.Request, account string, ts ledgerstore.TransactionsSummary) (any, error) {
 	if needBigIntAsString(r) {
 		return struct {
 			Account string `json:"account"`
-			transactionSummary
+			Asset   string `json:"asset"`
+			Count   int64  `json:"count"`
+			Sum     string `json:"sum"`
 		}{
-			Account:            account,
-			transactionSummary: transactionSummary(ts),
+			Account: account,
+			Asset:   ts.Asset,
+			Count:   ts.Count,
+			Sum:     ts.Sum,
 		}, nil
 	}
 
 	sum := new(big.Int)
 	if _, ok := sum.SetString(ts.Sum, 10); !ok {
-		return nil, fmt.Errorf("invalid sum format: %s", ts.Sum)
+		return nil, fmt.Errorf("invalid sum format: %q", ts.Sum)
 	}
 
 	return struct {
