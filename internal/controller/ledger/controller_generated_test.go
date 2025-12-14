@@ -478,6 +478,45 @@ func (c *MockControllerGetMigrationsInfoCall) DoAndReturn(f func(context.Context
 	return c
 }
 
+// GetSchema mocks base method.
+func (m *MockController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSchema", ctx, version)
+	ret0, _ := ret[0].(*ledger.Schema)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSchema indicates an expected call of GetSchema.
+func (mr *MockControllerMockRecorder) GetSchema(ctx, version any) *MockControllerGetSchemaCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchema", reflect.TypeOf((*MockController)(nil).GetSchema), ctx, version)
+	return &MockControllerGetSchemaCall{Call: call}
+}
+
+// MockControllerGetSchemaCall wrap *gomock.Call
+type MockControllerGetSchemaCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerGetSchemaCall) Return(arg0 *ledger.Schema, arg1 error) *MockControllerGetSchemaCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerGetSchemaCall) Do(f func(context.Context, string) (*ledger.Schema, error)) *MockControllerGetSchemaCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerGetSchemaCall) DoAndReturn(f func(context.Context, string) (*ledger.Schema, error)) *MockControllerGetSchemaCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetStats mocks base method.
 func (m *MockController) GetStats(ctx context.Context) (Stats, error) {
 	m.ctrl.T.Helper()
@@ -749,6 +788,47 @@ func (c *MockControllerInfoCall) DoAndReturn(f func() ledger.Ledger) *MockContro
 	return c
 }
 
+// InsertSchema mocks base method.
+func (m *MockController) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertSchema", ctx, parameters)
+	ret0, _ := ret[0].(*ledger.Log)
+	ret1, _ := ret[1].(*ledger.InsertedSchema)
+	ret2, _ := ret[2].(bool)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// InsertSchema indicates an expected call of InsertSchema.
+func (mr *MockControllerMockRecorder) InsertSchema(ctx, parameters any) *MockControllerInsertSchemaCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertSchema", reflect.TypeOf((*MockController)(nil).InsertSchema), ctx, parameters)
+	return &MockControllerInsertSchemaCall{Call: call}
+}
+
+// MockControllerInsertSchemaCall wrap *gomock.Call
+type MockControllerInsertSchemaCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerInsertSchemaCall) Return(arg0 *ledger.Log, arg1 *ledger.InsertedSchema, arg2 bool, arg3 error) *MockControllerInsertSchemaCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2, arg3)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerInsertSchemaCall) Do(f func(context.Context, Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error)) *MockControllerInsertSchemaCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerInsertSchemaCall) DoAndReturn(f func(context.Context, Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error)) *MockControllerInsertSchemaCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // IsDatabaseUpToDate mocks base method.
 func (m *MockController) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()
@@ -862,6 +942,45 @@ func (c *MockControllerListLogsCall) Do(f func(context.Context, common.Paginated
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)) *MockControllerListLogsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// ListSchemas mocks base method.
+func (m *MockController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSchemas indicates an expected call of ListSchemas.
+func (mr *MockControllerMockRecorder) ListSchemas(ctx, query any) *MockControllerListSchemasCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSchemas", reflect.TypeOf((*MockController)(nil).ListSchemas), ctx, query)
+	return &MockControllerListSchemasCall{Call: call}
+}
+
+// MockControllerListSchemasCall wrap *gomock.Call
+type MockControllerListSchemasCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerListSchemasCall) Return(arg0 *bunpaginate.Cursor[ledger.Schema], arg1 error) *MockControllerListSchemasCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerListSchemasCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)) *MockControllerListSchemasCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerListSchemasCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)) *MockControllerListSchemasCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -86,6 +86,14 @@ func (store *Store) Accounts() common.PaginatedResource[
 	}, "address", bunpaginate.OrderAsc)
 }
 
+func (store *Store) Schemas() common.PaginatedResource[
+	ledger.Schema,
+	any] {
+	return common.NewPaginatedResourceRepository[ledger.Schema, any](&schemasResourceHandler{
+		store: store,
+	}, "created_at", bunpaginate.OrderDesc)
+}
+
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {
 
 	tx, err := tracing.TraceWithMetric(ctx, "BeginTX", store.tracer, store.beginTXHistogram, func(ctx context.Context) (bun.Tx, error) {

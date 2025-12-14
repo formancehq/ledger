@@ -18,14 +18,16 @@ import (
 )
 
 type logProcessor[INPUT any, OUTPUT ledger.LogPayload] struct {
-	deadLockCounter metric.Int64Counter
-	operation       string
+	deadLockCounter       metric.Int64Counter
+	operation             string
+	schemaEnforcementMode SchemaEnforcementMode
 }
 
-func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter) *logProcessor[INPUT, OUTPUT] {
+func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter, schemaEnforcementMode SchemaEnforcementMode) *logProcessor[INPUT, OUTPUT] {
 	return &logProcessor[INPUT, OUTPUT]{
-		operation:       operation,
-		deadLockCounter: deadlockCounter,
+		operation:             operation,
+		deadLockCounter:       deadlockCounter,
+		schemaEnforcementMode: schemaEnforcementMode,
 	}
 }
 
@@ -33,7 +35,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	store, _, err := store.BeginTX(ctx, nil)
 	if err != nil {
@@ -66,16 +68,62 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 
-	output, err := fn(ctx, store, parameters)
+	var schema *ledger.Schema
+	if parameters.SchemaVersion != "" {
+		var err error
+		schema, err = store.FindSchema(ctx, parameters.SchemaVersion)
+		if err != nil {
+			if errors.Is(err, postgres.ErrNotFound) {
+				latestVersion, err := store.FindLatestSchemaVersion(ctx)
+				if err != nil {
+					return nil, nil, err
+				}
+				return nil, nil, newErrSchemaNotFound(parameters.SchemaVersion, latestVersion)
+			}
+			return nil, nil, err
+		}
+	} else {
+		var payload OUTPUT
+		if payload.NeedsSchema() {
+			// Only allow a missing schema validation if the ledger doesn't have one
+			latestVersion, err := store.FindLatestSchemaVersion(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			if latestVersion != nil {
+				if lp.schemaEnforcementMode == SchemaEnforcementStrict {
+					return nil, nil, newErrSchemaNotSpecified(*latestVersion)
+				} else {
+					trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("schema_not_specified", true))
+					logging.FromContext(ctx).Error("schema not specified")
+				}
+			}
+		}
+	}
+
+	output, err := fn(ctx, store, schema, parameters)
 	if err != nil {
 		return nil, nil, err
 	}
 	log := ledger.NewLog(*output)
 	log.IdempotencyKey = parameters.IdempotencyKey
 	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
+	log.SchemaVersion = parameters.SchemaVersion
+
+	if schema != nil {
+		if err := log.ValidateWithSchema(*schema); err != nil {
+			err := newErrSchemaValidationError(parameters.SchemaVersion, err)
+			if lp.schemaEnforcementMode == SchemaEnforcementStrict {
+				return nil, nil, err
+			} else {
+				trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
+				logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
+			}
+		}
+	}
 
 	err = store.InsertLog(ctx, &log)
 	if err != nil {
@@ -90,7 +138,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, bool, error) {
 	if parameters.IdempotencyKey != "" {
 		log, output, err := lp.fetchLogWithIK(ctx, store, parameters)

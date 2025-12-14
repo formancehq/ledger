@@ -34,6 +34,8 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 			return
 		}
 
+		schemaVersion := r.URL.Query().Get("schemaVersion")
+
 		l := common.LedgerFromContext(r.Context())
 
 		err := bulkerFactory.CreateBulker(l).Run(r.Context(), send, receive,
@@ -41,6 +43,7 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 				ContinueOnFailure: api.QueryParamBool(r, "continueOnFailure"),
 				Atomic:            api.QueryParamBool(r, "atomic"),
 				Parallel:          api.QueryParamBool(r, "parallel"),
+				SchemaVersion:     schemaVersion,
 			},
 		)
 		if err != nil {

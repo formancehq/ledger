@@ -196,6 +196,20 @@ func (c *controllerFacade) DeleteAccountMetadata(ctx context.Context, parameters
 	return log, idempotencyHit, err
 }
 
+func (c *controllerFacade) InsertSchema(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
+	var (
+		log            *ledger.Log
+		ret            *ledger.InsertedSchema
+		idempotencyHit bool
+		err            error
+	)
+	err = c.handleState(ctx, parameters.DryRun, func(ctrl ledgercontroller.Controller) error {
+		log, ret, idempotencyHit, err = ctrl.InsertSchema(ctx, parameters)
+		return err
+	})
+	return log, ret, idempotencyHit, err
+}
+
 func (c *controllerFacade) Import(ctx context.Context, stream chan ledger.Log) error {
 	return withLock(ctx, c.Controller, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
 		// todo: remove that in a later version

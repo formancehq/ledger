@@ -52,6 +52,7 @@ func NewRouter(
 				return true
 			},
 			AllowCredentials: true,
+			AllowedHeaders:   []string{"*"},
 			ExposedHeaders:   []string{"Count"},
 		}).Handler,
 		common.LogID(),

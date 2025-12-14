@@ -245,3 +245,82 @@ func newErrInvalidIdempotencyInputs(idempotencyKey, expectedIdempotencyHash, got
 		computedIdempotencyHash: gotIdempotencyHash,
 	}
 }
+
+type ErrSchemaNotFound struct {
+	requestedVersion string
+	latestVersion    *string
+}
+
+func (e ErrSchemaNotFound) Error() string {
+	if e.latestVersion != nil {
+		return fmt.Sprintf("schema version `%s` not found, latest available version is `%s`", e.requestedVersion, *e.latestVersion)
+	} else {
+		return fmt.Sprintf("schema version `%s` not found, this ledger doesn't have a schema", e.requestedVersion)
+	}
+}
+
+func (e ErrSchemaNotFound) Is(err error) bool {
+	_, ok := err.(ErrSchemaNotFound)
+	return ok
+}
+
+func newErrSchemaNotFound(requestedVersion string, latestVersion *string) ErrSchemaNotFound {
+	return ErrSchemaNotFound{requestedVersion, latestVersion}
+}
+
+type ErrSchemaValidationError struct {
+	requestedSchema string
+	err             error
+}
+
+func (e ErrSchemaValidationError) Error() string {
+	return fmt.Sprintf("schema version [%s]: %s", e.requestedSchema, e.err)
+}
+
+func (e ErrSchemaValidationError) Is(err error) bool {
+	_, ok := err.(ErrSchemaValidationError)
+	return ok
+}
+
+func newErrSchemaValidationError(requestedSchema string, err error) ErrSchemaValidationError {
+	return ErrSchemaValidationError{
+		requestedSchema: requestedSchema,
+		err:             err,
+	}
+}
+
+type ErrSchemaNotSpecified struct {
+	latestVersion string
+}
+
+func (e ErrSchemaNotSpecified) Error() string {
+	return fmt.Sprintf("a schema version must be specified for this ledger, latest available version is %v", e.latestVersion)
+}
+
+func (e ErrSchemaNotSpecified) Is(err error) bool {
+	_, ok := err.(ErrSchemaNotSpecified)
+	return ok
+}
+
+func newErrSchemaNotSpecified(latestVersion string) ErrSchemaNotSpecified {
+	return ErrSchemaNotSpecified{latestVersion}
+}
+
+type ErrSchemaAlreadyExists struct {
+	version string
+}
+
+func (e ErrSchemaAlreadyExists) Error() string {
+	return fmt.Sprintf("schema version `%s` already exists", e.version)
+}
+
+func (e ErrSchemaAlreadyExists) Is(err error) bool {
+	_, ok := err.(ErrSchemaAlreadyExists)
+	return ok
+}
+
+func newErrSchemaAlreadyExists(version string) ErrSchemaAlreadyExists {
+	return ErrSchemaAlreadyExists{
+		version,
+	}
+}
