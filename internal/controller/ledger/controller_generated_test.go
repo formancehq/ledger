@@ -595,19 +595,19 @@ func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, c
 	return c
 }
 
-// GetTransactionsSum mocks base method.
-func (m *MockController) GetTransactionsSum(ctx context.Context, account string) ([]ledger0.TransactionsSummary, error) {
+// GetTransactionsSummary mocks base method.
+func (m *MockController) GetTransactionsSummary(ctx context.Context, account string) ([]ledger0.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransactionsSum", ctx, account)
+	ret := m.ctrl.Call(m, "GetTransactionsSummary", ctx, account)
 	ret0, _ := ret[0].([]ledger0.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetTransactionsSum indicates an expected call of GetTransactionsSum.
-func (mr *MockControllerMockRecorder) GetTransactionsSum(ctx, account any) *MockControllerGetTransactionsSumCall {
+// GetTransactionsSummary indicates an expected call of GetTransactionsSummary.
+func (mr *MockControllerMockRecorder) GetTransactionsSummary(ctx, account any) *MockControllerGetTransactionsSumCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSum", reflect.TypeOf((*MockController)(nil).GetTransactionsSum), ctx, account)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSummary", reflect.TypeOf((*MockController)(nil).GetTransactionsSummary), ctx, account)
 	return &MockControllerGetTransactionsSumCall{Call: call}
 }
 
@@ -634,19 +634,19 @@ func (c *MockControllerGetTransactionsSumCall) DoAndReturn(f func(context.Contex
 	return c
 }
 
-// GetTransactionsSumWithTimeRange mocks base method.
-func (m *MockController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger0.TransactionsSummary, error) {
+// GetTransactionsSummaryWithTimeRange mocks base method.
+func (m *MockController) GetTransactionsSummaryWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger0.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransactionsSumWithTimeRange", ctx, account, startTime, endTime)
+	ret := m.ctrl.Call(m, "GetTransactionsSummaryWithTimeRange", ctx, account, startTime, endTime)
 	ret0, _ := ret[0].([]ledger0.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetTransactionsSumWithTimeRange indicates an expected call of GetTransactionsSumWithTimeRange.
-func (mr *MockControllerMockRecorder) GetTransactionsSumWithTimeRange(ctx, account, startTime, endTime any) *MockControllerGetTransactionsSumWithTimeRangeCall {
+// GetTransactionsSummaryWithTimeRange indicates an expected call of GetTransactionsSummaryWithTimeRange.
+func (mr *MockControllerMockRecorder) GetTransactionsSummaryWithTimeRange(ctx, account, startTime, endTime any) *MockControllerGetTransactionsSumWithTimeRangeCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSumWithTimeRange", reflect.TypeOf((*MockController)(nil).GetTransactionsSumWithTimeRange), ctx, account, startTime, endTime)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSummaryWithTimeRange", reflect.TypeOf((*MockController)(nil).GetTransactionsSummaryWithTimeRange), ctx, account, startTime, endTime)
 	return &MockControllerGetTransactionsSumWithTimeRangeCall{Call: call}
 }
 

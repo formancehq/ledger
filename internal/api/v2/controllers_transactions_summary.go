@@ -53,9 +53,9 @@ func getTransactionsSummary(w http.ResponseWriter, r *http.Request) {
 
 	var transactionsSum []ledgerstore.TransactionsSummary
 	if startTime == nil && endTime == nil {
-		transactionsSum, err = ledgerInstance.GetTransactionsSum(r.Context(), account)
+		transactionsSum, err = ledgerInstance.GetTransactionsSummary(r.Context(), account)
 	} else {
-		transactionsSum, err = ledgerInstance.GetTransactionsSumWithTimeRange(r.Context(), account, startTime, endTime)
+		transactionsSum, err = ledgerInstance.GetTransactionsSummaryWithTimeRange(r.Context(), account, startTime, endTime)
 	}
 	if err != nil {
 		api.InternalServerError(w, r, err)

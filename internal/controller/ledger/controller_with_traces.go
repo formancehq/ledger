@@ -602,26 +602,26 @@ func (c *ControllerWithTraces) GetStats(ctx context.Context) (Stats, error) {
 	)
 }
 
-func (c *ControllerWithTraces) GetTransactionsSum(ctx context.Context, account string) ([]ledgerstore.TransactionsSummary, error) {
+func (c *ControllerWithTraces) GetTransactionsSummary(ctx context.Context, account string) ([]ledgerstore.TransactionsSummary, error) {
 	return tracing.TraceWithMetric(
 		ctx,
-		"GetTransactionsSum",
+		"GetTransactionsSummary",
 		c.tracer,
 		c.getTransactionsSumHistogram,
 		func(ctx context.Context) ([]ledgerstore.TransactionsSummary, error) {
-			return c.underlying.GetTransactionsSum(ctx, account)
+			return c.underlying.GetTransactionsSummary(ctx, account)
 		},
 	)
 }
 
-func (c *ControllerWithTraces) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSummary, error) {
+func (c *ControllerWithTraces) GetTransactionsSummaryWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledgerstore.TransactionsSummary, error) {
 	return tracing.TraceWithMetric(
 		ctx,
-		"GetTransactionsSumWithTimeRange",
+		"GetTransactionsSummaryWithTimeRange",
 		c.tracer,
 		c.getTransactionsSumHistogram,
 		func(ctx context.Context) ([]ledgerstore.TransactionsSummary, error) {
-			return c.underlying.GetTransactionsSumWithTimeRange(ctx, account, startTime, endTime)
+			return c.underlying.GetTransactionsSummaryWithTimeRange(ctx, account, startTime, endTime)
 		},
 	)
 }

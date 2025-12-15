@@ -28,9 +28,9 @@ func TestGetTransactionsSummary(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockLedgerController := NewLedgerController(ctrl)
 
-		// Mock the GetTransactionsSum call
+		// Mock the GetTransactionsSummary call
 		mockLedgerController.EXPECT().
-			GetTransactionsSum(gomock.Any(), "expenses:salary").
+			GetTransactionsSummary(gomock.Any(), "expenses:salary").
 			Return([]ledgerstore.TransactionsSummary{
 				{
 					Asset: "USD",
@@ -81,9 +81,9 @@ func TestGetTransactionsSummary(t *testing.T) {
 		// Calculate expected sum: 1 + 2 + ... + 1000 = 1000*1001/2 = 500500
 		expectedSum := big.NewInt(500500)
 
-		// Mock the GetTransactionsSum call
+		// Mock the GetTransactionsSummary call
 		mockLedgerController.EXPECT().
-			GetTransactionsSum(gomock.Any(), "test:account").
+			GetTransactionsSummary(gomock.Any(), "test:account").
 			Return([]ledgerstore.TransactionsSummary{
 				{
 					Asset: "USD",
@@ -140,7 +140,7 @@ func TestGetTransactionsSummary(t *testing.T) {
 		mockLedgerController := NewLedgerController(ctrl)
 
 		mockLedgerController.EXPECT().
-			GetTransactionsSum(gomock.Any(), "expenses:salary").
+			GetTransactionsSummary(gomock.Any(), "expenses:salary").
 			Return([]ledgerstore.TransactionsSummary{
 				{
 					Asset: "USD",
@@ -188,7 +188,7 @@ func TestGetTransactionsSummary(t *testing.T) {
 		end := libtime.Now()
 
 		mockLedgerController.EXPECT().
-			GetTransactionsSumWithTimeRange(gomock.Any(), "expenses:salary", gomock.Any(), gomock.Any()).
+			GetTransactionsSummaryWithTimeRange(gomock.Any(), "expenses:salary", gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, account string, startTime, endTime *libtime.Time) ([]ledgerstore.TransactionsSummary, error) {
 				require.Equal(t, "expenses:salary", account)
 				require.WithinDuration(t, start.Time, startTime.Time, stdtime.Second)
@@ -229,7 +229,7 @@ func TestGetTransactionsSummary(t *testing.T) {
 		mockLedgerController := NewLedgerController(ctrl)
 
 		mockLedgerController.EXPECT().
-			GetTransactionsSum(gomock.Any(), "expenses:salary").
+			GetTransactionsSummary(gomock.Any(), "expenses:salary").
 			Return([]ledgerstore.TransactionsSummary{
 				{Asset: "USD", Count: 1, Sum: "50"},
 				{Asset: "EUR", Count: 2, Sum: "75"},
@@ -277,7 +277,7 @@ func TestGetTransactionsSummary(t *testing.T) {
 		mockLedgerController := NewLedgerController(ctrl)
 
 		mockLedgerController.EXPECT().
-			GetTransactionsSum(gomock.Any(), "expenses:salary").
+			GetTransactionsSummary(gomock.Any(), "expenses:salary").
 			Return(nil, fmt.Errorf("backend error"))
 
 		server := newTestServer(t, mockLedgerController)

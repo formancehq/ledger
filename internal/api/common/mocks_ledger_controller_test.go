@@ -260,34 +260,34 @@ func (mr *LedgerControllerMockRecorder) GetTransaction(ctx, query any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransaction", reflect.TypeOf((*LedgerController)(nil).GetTransaction), ctx, query)
 }
 
-// GetTransactionsSum mocks base method.
-func (m *LedgerController) GetTransactionsSum(ctx context.Context, account string) ([]ledger1.TransactionsSummary, error) {
+// GetTransactionsSummary mocks base method.
+func (m *LedgerController) GetTransactionsSummary(ctx context.Context, account string) ([]ledger1.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransactionsSum", ctx, account)
+	ret := m.ctrl.Call(m, "GetTransactionsSummary", ctx, account)
 	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetTransactionsSum indicates an expected call of GetTransactionsSum.
-func (mr *LedgerControllerMockRecorder) GetTransactionsSum(ctx, account any) *gomock.Call {
+// GetTransactionsSummary indicates an expected call of GetTransactionsSummary.
+func (mr *LedgerControllerMockRecorder) GetTransactionsSummary(ctx, account any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSum", reflect.TypeOf((*LedgerController)(nil).GetTransactionsSum), ctx, account)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSummary", reflect.TypeOf((*LedgerController)(nil).GetTransactionsSummary), ctx, account)
 }
 
-// GetTransactionsSumWithTimeRange mocks base method.
-func (m *LedgerController) GetTransactionsSumWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSummary, error) {
+// GetTransactionsSummaryWithTimeRange mocks base method.
+func (m *LedgerController) GetTransactionsSummaryWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSummary, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTransactionsSumWithTimeRange", ctx, account, startTime, endTime)
+	ret := m.ctrl.Call(m, "GetTransactionsSummaryWithTimeRange", ctx, account, startTime, endTime)
 	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetTransactionsSumWithTimeRange indicates an expected call of GetTransactionsSumWithTimeRange.
-func (mr *LedgerControllerMockRecorder) GetTransactionsSumWithTimeRange(ctx, account, startTime, endTime any) *gomock.Call {
+// GetTransactionsSummaryWithTimeRange indicates an expected call of GetTransactionsSummaryWithTimeRange.
+func (mr *LedgerControllerMockRecorder) GetTransactionsSummaryWithTimeRange(ctx, account, startTime, endTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSumWithTimeRange", reflect.TypeOf((*LedgerController)(nil).GetTransactionsSumWithTimeRange), ctx, account, startTime, endTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSummaryWithTimeRange", reflect.TypeOf((*LedgerController)(nil).GetTransactionsSummaryWithTimeRange), ctx, account, startTime, endTime)
 }
 
 // GetVolumesWithBalances mocks base method.
