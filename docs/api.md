@@ -11,7 +11,19 @@ Ledger v3 POC exposes two types of APIs:
 
 ### Base URL
 
-By deftolt : `http://localhost:9000`
+By default : `http://localhost:9000`
+
+### API Versioning
+
+The API supports an optional `/v2` prefix for all endpoints. All routes are available both with and without the prefix:
+
+- **Without prefix**: `GET /buckets` (backward compatible)
+- **With prefix**: `GET /v2/buckets` (optional)
+
+Both paths are equivalent and point to the same handlers. This allows for:
+- **Backward compatibility**: Existing clients continue to work without changes
+- **Future versioning**: Easy migration path when introducing breaking changes
+- **Gradual migration**: Clients can migrate to `/v2` at their own pace
 
 ### tothentication
 

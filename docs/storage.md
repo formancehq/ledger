@@ -312,39 +312,63 @@ The Log Store maintains an index of idempotency keys:
 
 ### Concept
 
-The Balances Store maintains a cache in memory of account balances for each ledger. It allows:
+The Balances Store provides persistent storage of account balances for each ledger. Balances are stored in the database and updated automatically via SQL triggers when transactions are inserted.
 
-- Quick calculation of balances
-- Verification of fund sufficiency
-- Incremental update during transactions
+**Key characteristics**:
+- **Persistent storage**: Balances are stored in the database, not cached in memory
+- **Automatic updates**: Balances are updated automatically via SQL triggers (SQLite) or direct inserts (ClickHouse)
+- **Concurrent access**: Locking mechanism ensures safe concurrent access during transactions
 
 ### Structure
 
 ```go
 type BalancesStore interface {
-    GetBalance(ctx context.Context, ledger, account, asset string) (*big.Int, error)
-    UpdateBalance(ctx context.Context, ledger, account, asset string, delta *big.Int) error
-    LockAccount(ctx context.Context, ledger, account string) error
-    UnlockAccount(ctx context.Context, ledger, account string) error
+    GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error)
 }
 ```
 
 ### Implementation
 
+#### SQLite
+
+**File**: `internal/service/log_store_sqlite.go`
+
+- Balances stored in a `balances` table: `(ledger, account, asset, balance)`
+- Automatic updates via SQL triggers on `logs` table insert
+- Trigger fires on `NEW_TRANSACTION` and `REVERTED_TRANSACTION` log types
+- Updates balances by subtracting from source accounts and adding to destination accounts
+
+**Schema**:
+```sql
+CREATE TABLE balances (
+    ledger TEXT NOT NULL,
+    account TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    balance TEXT NOT NULL DEFAULT '0',
+    PRIMARY KEY (ledger, account, asset)
+);
+```
+
+#### ClickHouse
+
+**File**: `internal/service/log_store_clickhouse.go`
+
+- Balances stored in a `balances` table with ReplacingMergeTree engine
+- Updates performed via direct INSERT statements
+- Uses `FINAL` keyword to get latest balance versions
+
+### Locked Balances Store
+
 **File**: `internal/service/balances_store_locked.go`
 
-- Cache in memory with locks per account
-- Update during the application of transactions
-- Reconstruction from the logs at startup
+The `DefaultLockedBalancesStore` wraps a `BalancesStore` and adds locking for concurrent access:
 
-### Balance Reconstruction
+- **Purpose**: Ensures safe concurrent access to balances during transaction processing
+- **Mechanism**: Uses mutexes keyed by `account:asset` combinations
+- **Behavior**: Locks are acquired before reading balances and released after transaction processing
+- **No caching**: Always reads from the underlying database store
 
-At startup of a bucket:
-
-1. Logs are read from the logstore
-2. Transactions are replayed
-3. Balances are recalculated
-4. The cache is rebuilt
+**Note**: This is NOT a cache. It only provides locking - balances are always read from the database.
 
 ## Data Organization
 
