@@ -15,6 +15,7 @@ func initBuckets() {
 	bucketsCmd.AddCommand(bucketsCreateCmd)
 	bucketsCmd.AddCommand(bucketsListCmd)
 	bucketsCmd.AddCommand(bucketsGetCmd)
+	bucketsCmd.AddCommand(bucketsRaftStateCmd)
 	bucketsCmd.AddCommand(bucketsDeleteCmd)
 	bucketsCmd.AddCommand(bucketsSnapshotCmd)
 }

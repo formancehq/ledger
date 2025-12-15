@@ -51,10 +51,9 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 		r.Post("/", server.handleCreateBucket)                 // POST /buckets/{bucketName}
 		r.Delete("/", server.handleDeleteBucket)               // DELETE /buckets/{bucketName}
 		r.Post("/snapshot", server.handleCreateBucketSnapshot) // POST /buckets/{bucketName}/snapshot
+		r.Get("/raft/state", server.handleGetBucketRaftState)  // GET /buckets/{bucketName}/raft/state
 	})
 
-	// Register ledger routes at root (without /ledgers prefix)
-	// Note: Routes with parameters must come before the root route
 	r.Post("/{ledgerName}", server.handleCreateLedger)                   // POST /{ledgerName}
 	r.Get("/{ledgerName}", server.handleGetLedger)                       // GET /{ledgerName}
 	r.Post("/{ledgerName}/transactions", server.handleCreateTransaction) // POST /{ledgerName}/transactions

@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 4de79be810e02f81a5be539daf3923bf
+  docChecksum: b12fd48a0b0f1b8acd565e6cf04b3bde
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.9
-  configChecksum: c34d6afc96e3c24ce325164b9f01b2fe
+  releaseVersion: 0.11.12
+  configChecksum: 1bd1c4c7d6f032acb76b5890d120823c
 features:
   go:
     additionalDependencies: 0.1.0
@@ -31,11 +31,9 @@ generatedFiles:
   - .gitattributes
   - /models/components/addmetadatarequest.go
   - /models/components/bucketinfo.go
-  - /models/components/bucketwithraftstate.go
   - /models/components/bulkelement.go
   - /models/components/bulkresponse.go
   - /models/components/bulkresult.go
-  - /models/components/clusterstate.go
   - /models/components/clusterstateresponse.go
   - /models/components/createbucketrequest.go
   - /models/components/createbucketresponse.go
@@ -68,6 +66,7 @@ generatedFiles:
   - /models/operations/createtransaction.go
   - /models/operations/deletebucket.go
   - /models/operations/getbucket.go
+  - /models/operations/getbucketraftstate.go
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
   - /models/operations/listallledgers.go
@@ -79,14 +78,11 @@ generatedFiles:
   - docs/models/components/action.md
   - docs/models/components/addmetadatarequest.md
   - docs/models/components/bucketinfo.md
-  - docs/models/components/bucketwithraftstate.md
-  - docs/models/components/bucketwithraftstatedriver.md
   - docs/models/components/bulkelement.md
   - docs/models/components/bulkelementdata.md
   - docs/models/components/bulkresponse.md
   - docs/models/components/bulkresult.md
   - docs/models/components/bulkresultdata.md
-  - docs/models/components/clusterstate.md
   - docs/models/components/clusterstateresponse.md
   - docs/models/components/clusterstateresponsedata.md
   - docs/models/components/createbucketrequest.md
@@ -136,6 +132,8 @@ generatedFiles:
   - docs/models/operations/createtransactionresponse.md
   - docs/models/operations/deletebucketrequest.md
   - docs/models/operations/deletebucketresponse.md
+  - docs/models/operations/getbucketraftstaterequest.md
+  - docs/models/operations/getbucketraftstateresponse.md
   - docs/models/operations/getbucketrequest.md
   - docs/models/operations/getbucketresponse.md
   - docs/models/operations/getclusterstateresponse.md
@@ -335,6 +333,20 @@ examples:
         "500":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  getBucketRaftState:
+    speakeasy-default-get-bucket-raft-state:
+      parameters:
+        path:
+          bucketName: "<value>"
+        query:
+          local: false
+      responses:
+        "200":
+          application/json: {"data": {"state": "Unknown", "localNode": 170828}}
+        "404":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
 examplesVersion: 1.0.2
 generatedTests: {}

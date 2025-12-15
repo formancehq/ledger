@@ -12,7 +12,6 @@ type LeaderOnly interface {
 }
 
 type Cluster interface {
-	GetClusterState(ctx context.Context) (*ledger.ClusterState, error)
 	IsHealthy() bool
 }
 
@@ -24,6 +23,7 @@ type BucketCluster interface {
 
 type Bucket interface {
 	Ledger
+	GetClusterState(ctx context.Context) (*ledger.ClusterState, error)
 	CreateLedger(ctx context.Context, name string, metadata metadata.Metadata) (*ledger.LedgerInfo, error)
 	GetLedger(ctx context.Context, name string) (*ledger.LedgerInfo, error)
 	GetLedgers(ctx context.Context) ([]ledger.LedgerInfo, error)
@@ -42,5 +42,7 @@ type MasterCluster interface {
 	Cluster
 	System
 	LeaderOnly
+	GetClusterState(ctx context.Context) (*ledger.ClusterState, error)
 	GetBucketCluster(ctx context.Context, name string) (BucketCluster, error)
+	GetBucketClusterLocal(ctx context.Context, name string) (BucketCluster, error)
 }

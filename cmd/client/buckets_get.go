@@ -13,7 +13,7 @@ var getBucketName string
 var bucketsGetCmd = &cobra.Command{
 	Use:          "get",
 	Short:        "Get a bucket",
-	Long:         "Retrieves a bucket with its Raft cluster state",
+	Long:         "Retrieves bucket information",
 	RunE:         runGetBucket,
 	SilenceUsage: true,
 }
@@ -66,45 +66,6 @@ func runGetBucket(cmd *cobra.Command, args []string) error {
 	pterm.DefaultHeader.WithFullWidth().Println("Bucket Information")
 	pterm.Println()
 	pterm.DefaultBox.WithTitle("Bucket Details").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(bucketInfo)
-
-	// Raft state panel
-	if data.RaftState != nil {
-		pterm.Println()
-		raftState := data.RaftState
-		raftInfo := ""
-		raftInfo += fmt.Sprintf("State: %s\n", raftState.State)
-		raftInfo += fmt.Sprintf("Local Node: %d\n", raftState.LocalNode)
-		if raftState.Leader != nil && *raftState.Leader != 0 {
-			raftInfo += fmt.Sprintf("Leader: %d\n", *raftState.Leader)
-		} else {
-			raftInfo += "Leader: (none)\n"
-		}
-
-		pterm.DefaultBox.WithTitle("Raft Cluster State").WithBoxStyle(pterm.NewStyle(pterm.FgLightMagenta)).Println(raftInfo)
-
-		if len(raftState.Nodes) > 0 {
-			pterm.Println()
-			tableData := pterm.TableData{
-				{"ID", "Address", "Suffrage", "Role"},
-			}
-			for _, node := range raftState.Nodes {
-				nodeID := fmt.Sprintf("%d", node.ID)
-				nodeAddr := node.Address
-				nodeSuffrage := string(node.Suffrage)
-				role := ""
-				if raftState.Leader != nil && node.ID == *raftState.Leader {
-					role = pterm.LightGreen("LEADER")
-				} else {
-					role = "Follower"
-				}
-				tableData = append(tableData, []string{nodeID, nodeAddr, nodeSuffrage, role})
-			}
-			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		}
-	} else {
-		pterm.Println()
-		pterm.Warning.Println("Raft Cluster State: Not available (Raft group not started)")
-	}
 
 	return nil
 }

@@ -9,6 +9,7 @@
 * [GetBucket](#getbucket) - Get a bucket
 * [CreateBucket](#createbucket) - Create a new bucket
 * [DeleteBucket](#deletebucket) - Delete a bucket
+* [GetBucketRaftState](#getbucketraftstate) - Get bucket Raft cluster state
 * [CreateBucketSnapshot](#createbucketsnapshot) - Create a snapshot for a bucket
 
 ## ListBuckets
@@ -62,7 +63,7 @@ func main() {
 
 ## GetBucket
 
-Retrieves a bucket with its Raft cluster state
+Retrieves bucket information
 
 ### Example Usage
 
@@ -224,6 +225,59 @@ func main() {
 | sdkerrors.ErrorResponse | 404                     | application/json        |
 | sdkerrors.ErrorResponse | 500                     | application/json        |
 | sdkerrors.ErrorResponse | 503                     | application/json        |
+| sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
+
+## GetBucketRaftState
+
+Returns the Raft cluster state for a specific bucket. Use query parameter 'local=true' to get the local state without checking if we're the leader.
+
+### Example Usage
+
+```go
+package main
+
+import(
+	"context"
+	"github.com/formancehq/ledger-v3-poc/pkg/client"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/models/operations"
+	"log"
+)
+
+func main() {
+    ctx := context.Background()
+
+    s := client.New()
+
+    res, err := s.Buckets.GetBucketRaftState(ctx, operations.GetBucketRaftStateRequest{
+        BucketName: "<value>",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    if res.ClusterStateResponse != nil {
+        // handle response
+    }
+}
+```
+
+### Parameters
+
+| Parameter                                                                                    | Type                                                                                         | Required                                                                                     | Description                                                                                  |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `ctx`                                                                                        | [context.Context](https://pkg.go.dev/context#Context)                                        | :heavy_check_mark:                                                                           | The context to use for the request.                                                          |
+| `request`                                                                                    | [operations.GetBucketRaftStateRequest](../../models/operations/getbucketraftstaterequest.md) | :heavy_check_mark:                                                                           | The request object to use for the request.                                                   |
+| `opts`                                                                                       | [][operations.Option](../../models/operations/option.md)                                     | :heavy_minus_sign:                                                                           | The options for this request.                                                                |
+
+### Response
+
+**[*operations.GetBucketRaftStateResponse](../../models/operations/getbucketraftstateresponse.md), error**
+
+### Errors
+
+| Error Type              | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | 404                     | application/json        |
+| sdkerrors.ErrorResponse | 500                     | application/json        |
 | sdkerrors.SDKError      | 4XX, 5XX                | \*/\*                   |
 
 ## CreateBucketSnapshot

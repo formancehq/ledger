@@ -322,7 +322,7 @@ paths:
   /buckets/{bucketName}:
     get:
       summary: Get a bucket
-      description: Retrieves a bucket with its Raft cluster state
+      description: Retrieves bucket information
       operationId: getBucket
       tags:
         - Buckets
@@ -426,6 +426,47 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /buckets/{bucketName}/raft/state:
+    get:
+      summary: Get bucket Raft cluster state
+      description: Returns the Raft cluster state for a specific bucket. Use query parameter 'local=true' to get the local state without checking if we're the leader.
+      operationId: getBucketRaftState
+      tags:
+        - Buckets
+      parameters:
+        - name: bucketName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the bucket
+        - name: local
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If true, returns the local Raft state without checking if we're the leader
+      responses:
+        '200':
+          description: Bucket Raft cluster state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStateResponse'
+        '404':
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
@@ -943,17 +984,7 @@ components:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/BucketWithRaftState'
-
-    BucketWithRaftState:
-      allOf:
-        - $ref: '#/components/schemas/BucketInfo'
-        - type: object
-          properties:
-            raftState:
-              $ref: '#/components/schemas/ClusterState'
-              nullable: true
-              description: Raft cluster state for this bucket (null if Raft group not started)
+          $ref: '#/components/schemas/BucketInfo'
 
     ClusterState:
       type: object

@@ -59,10 +59,11 @@ Ledger management commands are separated into individual files:
 
 ### HTTP Handlers
 
-HTTP handlers are organized into separate files, with one handler per file:
+HTTP handlers are organized into separate files, with **one handler per file**. This convention ensures clear separation of concerns and makes it easy to locate and maintain individual handlers.
 
 - **`server.go`** : Main file that defines the `Server` struct, routes, and middleware
-- **`handlers.go`** : Shared utility functions (e.g., `isLeader()`)
+- **`handler.go`** : Main router file that registers all routes and middleware
+- **`error_handler.go`** : Shared error handling utilities
 - **`handlers_types.go`** : Shared types (e.g., `LedgerResponse`)
 - **`handlers_snapshot.go`** : `handleSnapshot` handler for POST /snapshot
 - **`handlers_health.go`** : `handleHealth` handler for GET /health
@@ -71,18 +72,21 @@ HTTP handlers are organized into separate files, with one handler per file:
 - **`handlers_get_ledger.go`** : `handleGetLedger` handler for GET /{ledgerName}
 - **`handlers_list_all_ledgers.go`** : `handleListAllLedgers` handler for GET /
 - **`handlers_create_transaction.go`** : `handleCreateTransaction` handler for POST /{ledgerName}/transactions
+- **`handlers_bulk.go`** : `handleBulk` handler for POST /{ledgerName}/bulk
 - **`handlers_list_buckets.go`** : `handleListBuckets` handler for GET /buckets
 - **`handlers_create_bucket.go`** : `handleCreateBucket` handler for POST /buckets/{bucketName}
 - **`handlers_get_bucket.go`** : `handleGetBucket` handler for GET /buckets/{bucketName}
+- **`handlers_get_bucket_raft_state.go`** : `handleGetBucketRaftState` handler for GET /buckets/{bucketName}/raft/state
 - **`handlers_delete_bucket.go`** : `handleDeleteBucket` handler for DELETE /buckets/{bucketName}
 - **`handlers_create_bucket_snapshot.go`** : `handleCreateBucketSnapshot` handler for POST /buckets/{bucketName}/snapshot
 
 ## Conventions
 
 1. **One file per command** : Each sub-command (create, list, get, delete) has its own file
-2. **Parent file** : Each command group (buckets, ledgers) has a main file that defines the parent command and calls `init()` for each sub-command
-3. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function. This improves testability and avoids state pollution.
-4. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
+2. **One file per HTTP handler** : Each HTTP handler has its own file. This ensures clear separation of concerns and makes it easy to locate and maintain individual handlers.
+3. **Parent file** : Each command group (buckets, ledgers) has a main file that defines the parent command and calls `init()` for each sub-command
+4. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function. This improves testability and avoids state pollution.
+5. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
 
 ## Example: Adding a New Command
 
@@ -132,11 +136,19 @@ To add a new `handleUpdateBucket` handler:
 1. Create `handlers_update_bucket.go` with:
    - `handleUpdateBucket` function implementation
    - Any request/response structures specific to this handler (or add to `handlers_types.go` if shared)
+   - All necessary imports for the handler
 
-2. Modify `server.go` in the `Start()` method to register the route:
+2. Modify `handler.go` in the route registration section to register the route:
    ```go
-   r.Put("/buckets/{bucketName}", s.handleUpdateBucket)
+   r.Route("/buckets/{bucketName}", func(r chi.Router) {
+       // ... existing routes ...
+       r.Put("/", server.handleUpdateBucket) // PUT /buckets/{bucketName}
+   })
    ```
+
+**Important**: Follow the "one handler per file" convention. If a handler file contains multiple handlers, split them into separate files. For example, if `handlers_get_bucket.go` contains both `handleGetBucket` and `handleGetBucketRaftState`, create separate files:
+- `handlers_get_bucket.go` for `handleGetBucket`
+- `handlers_get_bucket_raft_state.go` for `handleGetBucketRaftState`
 
 This structure enables easy maintenance and clear separation of responsibilities.
 

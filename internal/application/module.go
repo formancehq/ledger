@@ -173,71 +173,8 @@ func (adapter *systemNodeAdapter) Snapshot(ctx context.Context) error {
 	return cluster.Snapshot(ctx)
 }
 
-//func (adapter *systemNodeAdapter) GetBucketInfo(ctx context.Context, name string) (service.BucketCluster, error) {
-//	group, err := adapter.GetBucketGroup(name)
-//	if err != nil {
-//		return nil, err
-//	}
-//	if group.IsLeader() {
-//		return group, nil
-//	}
-//	if group.GetLeader() == 0 {
-//		return nil, ledger.ErrNoLeader
-//	}
-//	target := system.NodeIDFromBucketNodeID(group.GetLeader())
-//
-//	return struct {
-//		service.Cluster
-//		service.Bucket
-//		service.BucketWriter
-//	}{
-//		Cluster:      group,
-//		Bucket: group,
-//		BucketWriter: service.NewBucketGrpcClient(name, service.NewBucketServiceClient(
-//			adapter.connectionPool.GetConnection(target),
-//		)),
-//	}, nil
-//}
-
-func (adapter *systemNodeAdapter) GetBucketOfLedger(ctx context.Context, name string) (service.BucketCluster, error) {
-
-	bucketName, _, err := adapter.ResolveLedger(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("getting bucket group of ledger '%s': %w", name, err)
-	}
-
-	group, err := adapter.GetBucketGroup(bucketName)
-	if err != nil {
-		return nil, err
-	}
-
-	if group.IsLeader() {
-		adapter.logger.Infof("Local adapter is the bucket leader, forwarding request to local adapter")
-		return group, nil
-	}
-	if group.GetLeader() == 0 {
-		return nil, ledger.ErrNoLeader
-	}
-
-	target := system.NodeIDFromBucketNodeID(group.GetLeader())
-	adapter.logger.WithFields(map[string]any{
-		"bucket": name,
-		"target": target,
-		"leader": group.GetLeader(),
-	}).Infof("Bucket Raft group is not leader, forwarding request to leader adapter")
-
-	grpcClient := service.NewBucketGrpcClient(name, service.NewBucketServiceClient(
-		adapter.connectionPool.GetConnection(target),
-	))
-	return struct {
-		service.Cluster
-		service.Bucket
-		service.LeaderOnly
-	}{
-		Cluster: group,
-		Bucket: grpcClient,
-		LeaderOnly: grpcClient,
-	}, nil
+func (adapter *systemNodeAdapter) GetBucketClusterLocal(ctx context.Context, name string) (service.BucketCluster, error) {
+	return adapter.GetBucketGroup(name)
 }
 
 var _ service.MasterCluster = (*systemNodeAdapter)(nil)

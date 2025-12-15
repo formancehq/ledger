@@ -89,6 +89,7 @@ func main() {
 * [GetBucket](docs/sdks/buckets/README.md#getbucket) - Get a bucket
 * [CreateBucket](docs/sdks/buckets/README.md#createbucket) - Create a new bucket
 * [DeleteBucket](docs/sdks/buckets/README.md#deletebucket) - Delete a bucket
+* [GetBucketRaftState](docs/sdks/buckets/README.md#getbucketraftstate) - Get bucket Raft cluster state
 * [CreateBucketSnapshot](docs/sdks/buckets/README.md#createbucketsnapshot) - Create a snapshot for a bucket
 
 ### [Cluster](docs/sdks/cluster/README.md)
