@@ -34,6 +34,7 @@ func createTestLogs(t *testing.T, ledgerName string) []ledger.Log {
 		}).
 			WithLedger(ledgerName).
 			WithID(1).
+			WithSequence(1).
 			WithIdempotencyKey("idempotency-key-1").
 			WithDate(now),
 
@@ -48,6 +49,7 @@ func createTestLogs(t *testing.T, ledgerName string) []ledger.Log {
 		}).
 			WithLedger(ledgerName).
 			WithID(2).
+			WithSequence(2).
 			WithIdempotencyKey("idempotency-key-2").
 			WithDate(now.Add(time.Second)),
 
@@ -61,6 +63,7 @@ func createTestLogs(t *testing.T, ledgerName string) []ledger.Log {
 		}).
 			WithLedger(ledgerName).
 			WithID(3).
+			WithSequence(3).
 			WithDate(now.Add(2 * time.Second)),
 
 		// Log 4: DeletedMetadata
@@ -71,6 +74,7 @@ func createTestLogs(t *testing.T, ledgerName string) []ledger.Log {
 		}).
 			WithLedger(ledgerName).
 			WithID(4).
+			WithSequence(4).
 			WithDate(now.Add(3 * time.Second)),
 
 		// Log 5: RevertedTransaction
@@ -90,6 +94,7 @@ func createTestLogs(t *testing.T, ledgerName string) []ledger.Log {
 		}).
 			WithLedger(ledgerName).
 			WithID(5).
+			WithSequence(5).
 			WithDate(now.Add(4 * time.Second)),
 	}
 

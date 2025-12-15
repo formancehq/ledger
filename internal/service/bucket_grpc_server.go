@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -44,9 +45,30 @@ func (impl *BucketServiceServerImpl) Snapshot(ctx context.Context, req *BucketSn
 }
 
 func (impl *BucketServiceServerImpl) CreateLedger(ctx context.Context, req *CreateLedgerRequest) (*CreateLedgerResponse, error) {
-	bucket, err := impl.cluster.GetBucketCluster(ctx, req.Bucket)
+	// If bucket is empty, use ledger name as bucket name
+	bucketName := req.Bucket
+	if bucketName == "" {
+		bucketName = req.Name
+	}
+
+	// Try to get the bucket cluster
+	bucket, err := impl.cluster.GetBucketCluster(ctx, bucketName)
 	if err != nil {
-		return nil, fmt.Errorf("getting bucket '%s': %w", req.Bucket, err)
+		// If bucket doesn't exist, create it automatically with SQLite driver and default config
+		if errors.Is(err, &ledger.NotFoundError{}) {
+			_, err = impl.cluster.CreateBucket(ctx, bucketName, "sqlite", make(map[string]interface{}), nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create bucket '%s': %w", bucketName, err)
+			}
+
+			// Get the newly created bucket
+			bucket, err = impl.cluster.GetBucketCluster(ctx, bucketName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get newly created bucket '%s': %w", bucketName, err)
+			}
+		} else {
+			return nil, fmt.Errorf("getting bucket '%s': %w", bucketName, err)
+		}
 	}
 
 	ledgerInfo, err := bucket.CreateLedger(ctx, req.Name, structToMetadata(req.Metadata))
@@ -57,7 +79,7 @@ func (impl *BucketServiceServerImpl) CreateLedger(ctx context.Context, req *Crea
 	return &CreateLedgerResponse{
 		Id:     ledgerInfo.ID,
 		Name:   ledgerInfo.Name,
-		Bucket: req.Bucket,
+		Bucket: bucketName,
 	}, nil
 }
 

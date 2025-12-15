@@ -113,6 +113,11 @@ func (l Log) WithIdempotencyKey(key string) Log {
 	return l
 }
 
+func (l Log) WithSequence(sequence uint64) Log {
+	l.Sequence = sequence
+	return l
+}
+
 func (l Log) ChainLog(previous *Log) Log {
 	ret := l
 	if previous != nil && previous.ID != nil {

@@ -181,7 +181,7 @@ func (fsm *FSM) GetBucket(name string) (*bucket.Node, error) {
 
 	bucket, ok := fsm.state.Buckets[name]
 	if !ok {
-		return nil, fmt.Errorf("bucket does not exist: %s", name)
+		return nil, ledger.NewNotFoundError("bucket %s does not exists", name)
 	}
 	return bucket, nil
 }

@@ -163,8 +163,193 @@ var _ = Describe("Simple cluster", func() {
 				})
 				Expect(err).To(Succeed())
 			})
-			FIt("Should succeed", func() {
-				time.Sleep(10 * time.Second)
+			It("Should succeed", func() {})
+		})
+	})
+
+	Context("When creating a ledger with automatic bucket creation", func() {
+		Context("When bucket is empty string", func() {
+			var ledgerName string
+			BeforeEach(func() {
+				ledgerName = "auto-ledger-empty-bucket"
+				// Create ledger with empty bucket - should create bucket with ledger name
+				_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledgerName,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						Bucket: "", // Empty bucket should trigger auto-creation
+					},
+				})
+				Expect(err).To(Succeed())
+			})
+
+			It("should create a bucket with the ledger name", func() {
+				// Verify the bucket was created with the ledger name
+				bucket, err := servers[0].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+					BucketName: ledgerName,
+				})
+				Expect(err).To(Succeed())
+				Expect(bucket.GetGetBucketResponse().Data.Name).To(Equal(ledgerName))
+				Expect(string(bucket.GetGetBucketResponse().Data.Driver)).To(Equal("sqlite"))
+			})
+
+			It("should have created the ledger in the auto-created bucket", func() {
+				ledger, err := servers[0].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+					LedgerName: ledgerName,
+				})
+				Expect(err).To(Succeed())
+				Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			})
+		})
+
+		Context("When bucket is not specified (omitted)", func() {
+			var ledgerName string
+			BeforeEach(func() {
+				ledgerName = "auto-ledger-no-bucket"
+				// Create ledger without bucket field - should create bucket with ledger name
+				_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledgerName,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						// Bucket field omitted
+					},
+				})
+				Expect(err).To(Succeed())
+			})
+
+			It("should create a bucket with the ledger name", func() {
+				// Verify the bucket was created with the ledger name
+				bucket, err := servers[0].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+					BucketName: ledgerName,
+				})
+				Expect(err).To(Succeed())
+				Expect(bucket.GetGetBucketResponse().Data.Name).To(Equal(ledgerName))
+				Expect(bucket.GetGetBucketResponse().Data.Driver).To(Equal("sqlite"))
+			})
+
+			It("should have created the ledger in the auto-created bucket", func() {
+				ledger, err := servers[0].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+					LedgerName: ledgerName,
+				})
+				Expect(err).To(Succeed())
+				Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			})
+		})
+
+		Context("When bucket does not exist", func() {
+			var bucketName string
+			var ledgerName string
+			BeforeEach(func() {
+				bucketName = "non-existent-bucket"
+				ledgerName = "ledger-in-new-bucket"
+				// Create ledger with a bucket that doesn't exist - should create the bucket automatically
+				_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledgerName,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						Bucket: bucketName,
+					},
+				})
+				Expect(err).To(Succeed())
+			})
+
+			It("should create the bucket automatically", func() {
+				// Verify the bucket was created
+				bucket, err := servers[0].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+					BucketName: bucketName,
+				})
+				Expect(err).To(Succeed())
+				Expect(bucket.GetGetBucketResponse().Data.Name).To(Equal(bucketName))
+				Expect(bucket.GetGetBucketResponse().Data.Driver).To(Equal("sqlite"))
+			})
+
+			It("should have created the ledger in the auto-created bucket", func() {
+				ledger, err := servers[0].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+					LedgerName: ledgerName,
+				})
+				Expect(err).To(Succeed())
+				Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			})
+		})
+
+		Context("When bucket already exists", func() {
+			var bucketName string
+			var ledgerName string
+			BeforeEach(func() {
+				bucketName = "existing-bucket"
+				ledgerName = "ledger-in-existing-bucket"
+				// Create bucket first
+				_, err := servers[0].client.Buckets.CreateBucket(ctx, operations.CreateBucketRequest{
+					BucketName: bucketName,
+					CreateBucketRequest: components.CreateBucketRequest{
+						Driver: "sqlite",
+					},
+				})
+				Expect(err).To(Succeed())
+
+				// Create ledger in existing bucket
+				_, err = servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledgerName,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						Bucket: bucketName,
+					},
+				})
+				Expect(err).To(Succeed())
+			})
+
+			It("should use the existing bucket", func() {
+				// Verify the bucket still exists and wasn't recreated
+				bucket, err := servers[0].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+					BucketName: bucketName,
+				})
+				Expect(err).To(Succeed())
+				Expect(bucket.GetGetBucketResponse().Data.Name).To(Equal(bucketName))
+			})
+
+			It("should have created the ledger in the existing bucket", func() {
+				ledger, err := servers[0].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
+					LedgerName: ledgerName,
+				})
+				Expect(err).To(Succeed())
+				Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
+			})
+		})
+
+		Context("When creating multiple ledgers with empty bucket", func() {
+			It("should create separate buckets for each ledger", func() {
+				ledger1Name := "multi-ledger-1"
+				ledger2Name := "multi-ledger-2"
+
+				// Create first ledger with empty bucket
+				_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledger1Name,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						Bucket: "",
+					},
+				})
+				Expect(err).To(Succeed())
+
+				// Create second ledger with empty bucket
+				_, err = servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
+					LedgerName: ledger2Name,
+					CreateLedgerRequest: components.CreateLedgerRequest{
+						Bucket: "",
+					},
+				})
+				Expect(err).To(Succeed())
+
+				// Verify both buckets were created
+				bucket1, err := servers[0].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+					BucketName: ledger1Name,
+				})
+				Expect(err).To(Succeed())
+				Expect(bucket1.GetGetBucketResponse().Data.Name).To(Equal(ledger1Name))
+
+				bucket2, err := servers[0].client.Buckets.GetBucket(ctx, operations.GetBucketRequest{
+					BucketName: ledger2Name,
+				})
+				Expect(err).To(Succeed())
+				Expect(bucket2.GetGetBucketResponse().Data.Name).To(Equal(ledger2Name))
+
+				// Verify they are different buckets
+				Expect(bucket1.GetGetBucketResponse().Data.Name).NotTo(Equal(bucket2.GetGetBucketResponse().Data.Name))
 			})
 		})
 	})

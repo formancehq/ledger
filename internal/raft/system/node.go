@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/raft/bucket"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
@@ -95,7 +94,7 @@ func (node *Node) GetBucketCluster(ctx context.Context, name string) (service.Bu
 func (node *Node) GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error) {
 	bucketCluster, err := node.Inner().GetBucket(name)
 	if err != nil {
-		return nil, ledger.ErrNotFound
+		return nil, ledger.NewNotFoundError("Bucket not found: " + name)
 	}
 	return pointer.For(bucketCluster.Info()), nil
 }
@@ -123,14 +122,6 @@ func (node *Node) DeleteBucket(ctx context.Context, name string) error {
 	return nil
 }
 
-func (node *Node) GetBucketGroup(name string) (*bucket.Node, error) {
-	bucketCluster, err := node.Inner().GetBucket(name)
-	if err != nil {
-		return nil, ledger.ErrNotFound
-	}
-	return bucketCluster, nil
-}
-
 func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint64, error) {
 	allBuckets := node.Inner().GetAllBuckets()
 	for bucketName := range allBuckets {
@@ -150,7 +141,7 @@ func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint6
 		}
 	}
 
-	return "", 0, ledger.ErrNotFound
+	return "", 0, ledger.NewNotFoundError("Ledger not found: " + name)
 }
 
 func (node *Node) Stop(ctx context.Context) error {

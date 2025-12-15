@@ -1,21 +1,24 @@
 set dotenv-load
 
-pre-commit: tidy generate-proto generate-sdk lint
+pre-commit: tidy generate-proto generate-sdk lint lint-client
 pc: pre-commit
 
 lint:
     golangci-lint run --fix --build-tags it,local --timeout 5m
+
+lint-client:
+    golangci-lint run --fix --build-tags it,local --timeout 5m ./cmd/client/...
 
 tidy:
     go mod tidy
 
 # Build the application
 build:
-    go build -o ledger-v3-poc ./cmd/server
+    go build -o server ./cmd/server
 
 # Build the client application
 build-client:
-    go build -o ledger-client ./cmd/client
+    go build -o client ./cmd/client
 
 # Run the application locally (single node)
 run:
@@ -32,7 +35,7 @@ install-client:
 
 # Run tests
 test:
-    go test ./...
+    go test ./... -tags it,e2e
 
 # Clean build artifacts
 clean:

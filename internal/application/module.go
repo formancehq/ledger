@@ -30,7 +30,7 @@ func Module() fx.Option {
 			},
 			func(systemNode *system.Node, pool *transport.ConnectionPool, logger logging.Logger) service.MasterCluster {
 				return &systemNodeAdapter{
-					Node:           systemNode,
+					systemNode:     systemNode,
 					connectionPool: pool,
 					logger:         logger,
 				}
@@ -111,9 +111,39 @@ func Module() fx.Option {
 }
 
 type systemNodeAdapter struct {
-	*system.Node
+	systemNode     *system.Node
 	logger         logging.Logger
 	connectionPool *transport.ConnectionPool
+}
+
+func (adapter *systemNodeAdapter) IsHealthy() bool {
+	return adapter.systemNode.IsHealthy()
+}
+
+func (adapter *systemNodeAdapter) GetAllBucketsInfo(ctx context.Context) map[string]ledger.BucketInfo {
+	mainCluster, err := adapter.getMainCluster()
+	if err != nil {
+		// todo: return error
+		panic(err)
+	}
+	return mainCluster.GetAllBucketsInfo(ctx)
+}
+
+func (adapter *systemNodeAdapter) GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error) {
+	mainCluster, err := adapter.getMainCluster()
+	if err != nil {
+		// todo: return error
+		panic(err)
+	}
+	return mainCluster.GetBucketInfo(ctx, name)
+}
+
+func (adapter *systemNodeAdapter) GetClusterState(ctx context.Context) (*ledger.ClusterState[ledger.SystemState], error) {
+	return adapter.systemNode.GetClusterState(ctx)
+}
+
+func (adapter *systemNodeAdapter) GetBucketCluster(ctx context.Context, name string) (service.BucketCluster, error) {
+	return adapter.systemNode.GetBucketCluster(ctx, name)
 }
 
 func (adapter *systemNodeAdapter) getMainCluster() (interface {
@@ -121,21 +151,21 @@ func (adapter *systemNodeAdapter) getMainCluster() (interface {
 	service.System
 	service.LeaderOnly
 }, error) {
-	if adapter.IsLeader() {
-		return adapter.Node, nil
+	if adapter.systemNode.IsLeader() {
+		return adapter.systemNode, nil
 	}
-	if adapter.GetLeader() == 0 {
+	if adapter.systemNode.GetLeader() == 0 {
 		return nil, ledger.ErrNoLeader
 	}
 
-	grpcConn := adapter.connectionPool.GetConnection(adapter.GetLeader())
+	grpcConn := adapter.connectionPool.GetConnection(adapter.systemNode.GetLeader())
 	grpcClient := service.NewGrpcSystemClient(service.NewSystemServiceClient(grpcConn))
 	return struct {
 		service.Cluster
 		service.System
 		service.LeaderOnly
 	}{
-		Cluster:    adapter,
+		Cluster:    adapter.systemNode,
 		System:     grpcClient,
 		LeaderOnly: grpcClient,
 	}, nil
@@ -174,7 +204,7 @@ func (adapter *systemNodeAdapter) Snapshot(ctx context.Context) error {
 }
 
 func (adapter *systemNodeAdapter) GetBucketClusterLocal(ctx context.Context, name string) (service.BucketCluster, error) {
-	return adapter.GetBucketGroup(name)
+	return adapter.systemNode.GetBucketCluster(ctx, name)
 }
 
 var _ service.MasterCluster = (*systemNodeAdapter)(nil)

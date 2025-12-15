@@ -83,7 +83,10 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Create a new ledger
-      description: Creates a new ledger in the specified bucket
+      description: |
+        Creates a new ledger in the specified bucket. If the bucket is not specified or empty, 
+        a bucket with the same name as the ledger will be created automatically. If the bucket 
+        doesn't exist, it will be created automatically with SQLite driver and default configuration.
       operationId: createLedger
       tags:
         - Ledgers
@@ -536,12 +539,14 @@ components:
   schemas:
     CreateLedgerRequest:
       type: object
-      required:
-        - bucket
+      required: []
       properties:
         bucket:
           type: string
-          description: Name of the bucket where the ledger will be created
+          description: |
+            Name of the bucket where the ledger will be created. If not specified or empty, 
+            a bucket with the same name as the ledger will be created automatically. If the 
+            bucket doesn't exist, it will be created automatically with SQLite driver and default configuration.
         metadata:
           type: object
           additionalProperties:

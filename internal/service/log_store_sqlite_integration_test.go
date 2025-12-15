@@ -91,10 +91,9 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get all logs
-		cursorPtr, err := store.GetAllLogs(ctx, 0, 0)
+		cursor, err := store.GetAllLogs(ctx, 0, 0)
 		require.NoError(t, err)
-		require.NotNil(t, cursorPtr)
-		cursor := *cursorPtr
+		require.NotNil(t, cursor)
 		t.Cleanup(func() { _ = cursor.Close() })
 
 		// Read all logs and filter by ledger
