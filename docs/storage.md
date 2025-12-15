@@ -171,8 +171,70 @@ When a node starts or recovers:
 
 1. The most recent snapshot is loaded
 2. The FSM state is restored from the snapshot
-3. WAL entries after the snapshot index are replayed
-4. The final state is reached
+3. Missing logs are streamed from the leader using range queries
+4. Commands buffered during synchronization are replayed from the spool
+5. The final state is reached
+
+#### Spool: Command Buffer During Synchronization
+
+When a node is synchronizing from a snapshot (e.g., after joining the cluster or recovering from a failure), it enters a "syncing" mode. During this mode:
+
+- **Committed entries are not applied directly to the FSM**: Instead, they are written to a spool file
+- **Spool purpose**: Buffers commands that arrive during synchronization, preventing them from being lost
+- **After synchronization**: Commands from the spool are replayed sequentially to catch up
+
+**File**: `internal/raft/spool.go`
+
+**Spool Operations**:
+
+```go
+// Append commands to the spool during synchronization
+func (s *spool) AppendCommittedEntries(ctx context.Context, commands ...Command) error
+
+// Read the next command from the spool (iterator pattern)
+func (s *spool) Next() (Command, error) // Returns io.EOF when no more commands
+
+// Reset the spool after replay is complete
+func (s *spool) Reset() error
+```
+
+**Spool File Format**:
+- Each record contains a magic number (`0x53504F4C` = "SPOL")
+- Record header: magic (4 bytes) + payload length (4 bytes) + CRC32 (4 bytes) + reserved (4 bytes)
+- Record payload: Binary-encoded Command (protobuf)
+
+**Spool Location**: `{dataDir}/spool`
+
+#### Syncer: FSM Synchronization Manager
+
+The syncer manages the synchronization process between the Raft log and the FSM:
+
+**File**: `internal/raft/syncer.go`
+
+**Responsibilities**:
+- Manages the "syncing" state flag
+- Buffers commands to the spool during synchronization
+- Replays spool commands after snapshot restoration
+- Provides a unified interface for snapshot creation and restoration
+
+**Synchronization Flow**:
+
+1. **Snapshot restoration starts**: `RestoreSnapshot()` is called
+2. **Syncing mode activated**: `syncing = true`
+3. **FSM restored**: Snapshot data is applied to the FSM
+4. **Spool replay**: Commands from the spool are replayed using `Next()`
+5. **Syncing mode deactivated**: `syncing = false` after replay completes
+6. **Spool reset**: Spool file is cleared
+
+**During Synchronization**:
+- New committed entries are appended to the spool instead of being applied directly
+- The node cannot serve writes until synchronization completes
+- Reads may be blocked or delayed depending on implementation
+
+**After Synchronization**:
+- Normal operation resumes
+- Committed entries are applied directly to the FSM
+- The spool is empty and ready for the next synchronization cycle
 
 ## Log Store
 
@@ -221,12 +283,22 @@ func (s *logstore) WriteLog(ctx context.Context, log *ledger.Log) error
 #### Read
 
 ```go
-func (s *logstore) ReadLogs(ctx context.Context, ledger string, from uint64) (*Cursor[ledger.Log], error)
+func (s *logstore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
 ```
 
-- Reads the logs of a ledger starting from an index
+- Reads logs starting from sequence `from` (inclusive)
+- Stops at sequence `to` (inclusive) if `to > 0`, otherwise reads until the end
 - Returns a cursor for iteration
-- Supports pagination
+- Supports range queries for efficient log streaming
+
+**Parameters**:
+- `from`: Starting sequence number (0 = from beginning)
+- `to`: Ending sequence number (0 = until end, inclusive)
+
+**Use Cases**:
+- **Full log streaming**: `GetAllLogs(ctx, 0, 0)` - Stream all logs
+- **Range queries**: `GetAllLogs(ctx, 100, 200)` - Stream logs from sequence 100 to 200
+- **Catch-up from snapshot**: `GetAllLogs(ctx, snapshotSequence, targetSequence)` - Stream logs needed for catch-up
 
 ### Idempotency Key Management
 

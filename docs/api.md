@@ -305,17 +305,38 @@ service SystemService {
 }
 ```
 
-#### BuckandService
+#### BucketService
 
-Manages operations de buckand (ledgers, transactions) :
+Manages operations de bucket (ledgers, transactions) :
 
 ```protobuf
-service BuckandService {
-  rpc CreateLedger(CreateLedgerRequest) randurns (CreateLedgerRequest);
-  rpc GandAllLogs(GandAllLogsRequest) randurns (stream Log);
-  rpc InsertLog(InsertLogRequest) randurns (InsertLogResponse);
+service BucketService {
+  rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+  rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+  rpc GetLedger(GetLedgerRequest) returns (GetLedgerResponse);
+  rpc GetLedgers(GetLedgersRequest) returns (GetLedgersResponse);
 }
 ```
+
+**StreamLogs** streams logs from a bucket with optional sequence range filtering:
+
+```protobuf
+message StreamLogsRequest {
+  string bucket = 1;
+  uint64 from_sequence = 2; // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
+  uint64 to_sequence = 3;   // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
+}
+```
+
+**Parameters**:
+- `from_sequence`: Starting sequence number (0 = from beginning)
+- `to_sequence`: Ending sequence number (0 = until end, inclusive)
+
+**Use Cases**:
+- **Full log streaming**: `from_sequence=0, to_sequence=0` - Stream all logs
+- **Range queries**: `from_sequence=100, to_sequence=200` - Stream logs from sequence 100 to 200
+- **Catch-up from snapshot**: `from_sequence=snapshotSequence, to_sequence=targetSequence` - Stream logs needed for catch-up
 
 #### RaftTransportService
 

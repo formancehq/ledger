@@ -39,7 +39,8 @@ Bucket management commands are separated into individual files:
 - **`buckets.go`** : Main file that defines the parent `buckets` command and initializes all sub-commands
 - **`buckets_create.go`** : `buckets create` command to create a new bucket
 - **`buckets_list.go`** : `buckets list` command to list all buckets
-- **`buckets_get.go`** : `buckets get` command to retrieve a bucket with its Raft state
+- **`buckets_get.go`** : `buckets get` command to retrieve bucket information
+- **`buckets_raft_state.go`** : `buckets raft-state` command to retrieve bucket Raft cluster state
 - **`buckets_delete.go`** : `buckets delete` command to delete a bucket
 
 ### Ledger Commands

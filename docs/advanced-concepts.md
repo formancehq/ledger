@@ -109,6 +109,88 @@ Connections are reused for :
 - They are reused as long as they are valid
 - They are closed during shutdown du nœud
 
+## Snapshot Restoration and Synchronization
+
+### Synchronization Process
+
+When a node joins the cluster or recovers from a failure, it must synchronize its state with the leader. The synchronization process involves:
+
+1. **Snapshot Restoration**: The node receives and restores a snapshot from the leader
+2. **Spool Buffering**: Commands arriving during synchronization are buffered in a spool file
+3. **Log Catch-up**: Missing logs are streamed from the leader using range queries
+4. **Spool Replay**: Buffered commands are replayed sequentially after catch-up completes
+
+### Spool: Command Buffer
+
+**File**: `internal/raft/spool.go`
+
+The spool is a persistent buffer that stores commands during synchronization:
+
+- **Purpose**: Prevents command loss during synchronization
+- **Location**: `{dataDir}/spool`
+- **Format**: Binary records with CRC32 checksums
+
+**Operations**:
+- `AppendCommittedEntries()`: Write commands to the spool during sync
+- `Next()`: Read the next command (iterator pattern, returns `io.EOF` when done)
+- `Reset()`: Clear the spool after replay completes
+
+**Record Format**:
+```
+[Magic: 4 bytes] [Length: 4 bytes] [CRC32: 4 bytes] [Reserved: 4 bytes] [Payload: variable]
+```
+
+### Syncer: Synchronization Manager
+
+**File**: `internal/raft/syncer.go`
+
+The syncer manages the synchronization lifecycle:
+
+- **Syncing State**: Tracks whether the node is currently synchronizing
+- **Command Routing**: Routes commands to spool during sync, to FSM during normal operation
+- **Replay Coordination**: Manages the replay of spool commands after catch-up
+
+**Synchronization Flow**:
+
+```mermaid
+sequenceDiagram
+    participant Node as Follower Node
+    participant Leader as Leader Node
+    participant Spool as Spool File
+    participant FSM as FSM
+    
+    Note over Node: Node starts/recovers
+    Node->>Leader: Request snapshot
+    Leader->>Node: Send snapshot
+    Node->>FSM: RestoreSnapshot()
+    Note over Node: syncing = true
+    Node->>Spool: AppendCommittedEntries()
+    Note over Node: Commands buffered
+    Node->>Leader: StreamLogs(from, to)
+    Leader->>Node: Stream logs
+    Node->>FSM: Apply logs
+    loop Replay spool
+        Node->>Spool: Next()
+        Spool->>Node: Command
+        Node->>FSM: ApplyEntries()
+    end
+    Node->>Spool: Reset()
+    Note over Node: syncing = false
+```
+
+### Log Range Queries
+
+During catch-up, the system uses range queries to efficiently stream only the needed logs:
+
+- **From Snapshot**: `GetAllLogs(ctx, snapshotSequence, targetSequence)`
+- **Efficient**: Only streams logs in the required range
+- **Inclusive**: Both `from` and `to` are inclusive boundaries
+
+**Implementation**:
+- SQLite: `WHERE sequence >= ? AND sequence <= ?`
+- ClickHouse: `WHERE sequence >= ? AND sequence <= ?`
+- gRPC: `StreamLogs` with `from_sequence` and `to_sequence` parameters
+
 ## Batching des Commandes
 
 ### Concept
