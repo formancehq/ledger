@@ -102,7 +102,7 @@ func TestClickHouseLogStoreIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get all logs
-		cursorPtr, err := store.GetAllLogs(ctx, 0)
+		cursorPtr, err := store.GetAllLogs(ctx, 0, 0)
 		require.NoError(t, err)
 		require.NotNil(t, cursorPtr)
 		cursor := *cursorPtr

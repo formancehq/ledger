@@ -75,7 +75,14 @@ func NewNode[State any, F FSM[State]](
 		cfg.SnapshotThreshold = 1000
 	}
 
-	err := restoreFromStorage(fsm, storage, logger)
+	spool, err := newSpool(filepath.Join(cfg.DataDir, "spool"))
+	if err != nil {
+		return nil, fmt.Errorf("creating spool: %w", err)
+	}
+
+	syncer := newSyncer[State, F](spool, fsm, logger)
+
+	err = restoreFromStorage(syncer, storage, logger)
 	if err != nil {
 		return nil, fmt.Errorf("restoring FSM from storage: %w", err)
 	}
@@ -124,16 +131,11 @@ func NewNode[State any, F FSM[State]](
 		return nil, fmt.Errorf("creating raw node: %w", err)
 	}
 
-	spool, err := newSpool(filepath.Join(cfg.DataDir, "spool"))
-	if err != nil {
-		return nil, fmt.Errorf("creating spool: %w", err)
-	}
-
 	return &Node[State, F]{
 		node:        node,
 		logger:      logger,
 		futures:     make(map[uint64]*applyFuture),
-		fsmSyncer:   newSyncer[State, F](spool, fsm, logger),
+		fsmSyncer:   syncer,
 		storage:     storage,
 		transport:   transport,
 		config:      cfg,
@@ -243,7 +245,7 @@ func (node *Node[State, F]) readyLoop() {
 		// Always check for ticks first (non-blocking) to ensure election timeouts work
 		select {
 		case <-ticker.C:
-			if !node.fsmSyncer.syncing.Load() {
+			if !node.fsmSyncer.IsSyncing() {
 				node.node.Tick()
 			}
 		case ch := <-node.stopChannel:
@@ -287,6 +289,9 @@ func (node *Node[State, F]) readyLoop() {
 				}
 
 				node.node.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+				// todo: since the snapshot is already written in storage at this point
+				// we must be able to detect a crash and restart the restoration process
+				// in case of node recover
 				node.fsmSyncer.RestoreSnapshot(context.Background(), rd.Snapshot.Data)
 			}
 
@@ -479,10 +484,10 @@ func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.Cluste
 	}
 
 	return &ledger.ClusterState[State]{
-		State:     stateStr,
-		Leader:    uint(leaderID),
-		Nodes:     nodes,
-		LocalNode: uint(node.config.NodeID),
+		State:      stateStr,
+		Leader:     uint(leaderID),
+		Nodes:      nodes,
+		LocalNode:  uint(node.config.NodeID),
 		InnerState: node.fsmSyncer.fsm.GetState(),
 	}, nil
 }
@@ -570,7 +575,7 @@ type applyFuture struct {
 
 // RestoreFromStorage restores the FSM state from storage by reading the last snapshot
 // and applying all entries after the snapshot
-func restoreFromStorage[State any](fsm FSM[State], storage *WALStorage, logger logging.Logger) error {
+func restoreFromStorage[State any, F FSM[State]](fsm *syncer[State, F], storage *WALStorage, logger logging.Logger) error {
 	logger.Infof("Restoring FSM from storage")
 	// Read the last snapshot
 	snapshot, err := storage.Snapshot()
@@ -614,6 +619,7 @@ func restoreFromStorage[State any](fsm FSM[State], storage *WALStorage, logger l
 			}
 
 			// Apply each entry to the FSM
+			// todo: bufferies entries application to speed up the recovery
 			for _, entry := range entries {
 				// Skip configuration change entries
 				if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {

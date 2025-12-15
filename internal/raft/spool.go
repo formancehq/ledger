@@ -39,8 +39,9 @@ func (s *spool) Close() error {
 }
 
 // AppendCommittedEntries écrit des committed entries (déjà ordonnées) dans le spool.
-// À appeler quand storageReady == false, au lieu d’appliquer au FSM.
+// À appeler quand storageReady == false, au lieu d'appliquer au FSM.
 func (s *spool) AppendCommittedEntries(ctx context.Context, commands ...Command) error {
+
 	// se placer en fin de fichier
 	if _, err := s.f.Seek(0, io.SeekEnd); err != nil {
 		return err
@@ -59,34 +60,28 @@ func (s *spool) AppendCommittedEntries(ctx context.Context, commands ...Command)
 	return s.f.Sync()
 }
 
-// Replay lit tous les records à partir de readOffset, appelle fn(entry) pour chacun,
-// et avance readOffset si fn réussit.
-func (s *spool) Replay(fn func(command Command) error) error {
-
+// Next lit le prochain record à partir de readOffset, l'avance si la lecture réussit,
+// et retourne la commande ou io.EOF s'il n'y a plus d'éléments à lire.
+func (s *spool) Next() (Command, error) {
 	if _, err := s.f.Seek(s.readOffset, io.SeekStart); err != nil {
-		return err
+		return Command{}, err
 	}
 	r := bufio.NewReaderSize(s.f, 1<<20)
 
-	for {
-		off := s.readOffset
-		cmd, n, err := readRecord(r)
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			// en cas de crash au milieu d’un record, tu peux choisir :
-			// - de tronquer à off et repartir propre
-			return err
-		}
-
-		if err := fn(cmd); err != nil {
-			return err
-		}
-
-		// record consommé
-		s.readOffset = off + int64(n)
+	off := s.readOffset
+	cmd, n, err := readRecord(r)
+	if err == io.EOF {
+		return Command{}, io.EOF
 	}
+	if err != nil {
+		// en cas de crash au milieu d'un record, tu peux choisir :
+		// - de tronquer à off et repartir propre
+		return Command{}, err
+	}
+
+	// todo: write somewhere to avoid replaying all commands if the node is restarted
+	s.readOffset = off + int64(n)
+	return cmd, nil
 }
 
 // Reset efface complètement le spool (ex: une fois que tu as fini le rattrapage + replay).
@@ -167,4 +162,3 @@ func readRecord(r *bufio.Reader) (Command, int, error) {
 
 	return cmd, 16 + n, nil
 }
-

@@ -385,7 +385,7 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(ctx context.Context, bucketInfo ledg
 
 	logger.Infof("Starting bucket Raft group...")
 
-	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64) (service.Cursor[ledger.Log], error) {
+	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
 		fsm.mu.RLock()
 		bucketNode := fsm.state.Buckets[bucketInfo.Name]
 		fsm.mu.RUnlock()
@@ -398,7 +398,7 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(ctx context.Context, bucketInfo ledg
 			NewBucketGrpcClient(bucketInfo.Name, service.NewBucketServiceClient(
 				fsm.multiplexedTransport.GetPeerConnection(bucketNode.GetLeader()),
 			)).
-			GetAllLogs(ctx, from)
+			GetAllLogs(ctx, from, to)
 	})
 
 	// Use bucket-specific snapshot threshold if set, otherwise use global config

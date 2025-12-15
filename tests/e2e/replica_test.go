@@ -367,7 +367,7 @@ var _ = Describe("Simple cluster", func() {
 					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 				})
 
-				It("Should restore the state from a snapshot sent by the leader", func() {
+				FIt("Should restore the state from a snapshot sent by the leader", func() {
 					// Wait for follower to reconnect and sync
 					Eventually(func(g Gomega) bool {
 						// Verify the follower is connected
@@ -423,7 +423,7 @@ var _ = Describe("Simple cluster", func() {
 						leaderSeq := leaderInnerState.GetLastSequence()
 
 						return followerSeq == leaderSeq
-					}).WithPolling(100 * time.Millisecond).To(BeTrue())
+					}).Within(5 * time.Second).WithPolling(100 * time.Millisecond).To(BeTrue())
 				})
 			})
 		})

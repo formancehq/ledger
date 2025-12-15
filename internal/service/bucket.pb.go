@@ -463,6 +463,7 @@ type StreamLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bucket        string                 `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
 	FromSequence  uint64                 `protobuf:"varint,2,opt,name=from_sequence,json=fromSequence,proto3" json:"from_sequence,omitempty"` // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
+	ToSequence    uint64                 `protobuf:"varint,3,opt,name=to_sequence,json=toSequence,proto3" json:"to_sequence,omitempty"`       // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -507,6 +508,13 @@ func (x *StreamLogsRequest) GetBucket() string {
 func (x *StreamLogsRequest) GetFromSequence() uint64 {
 	if x != nil {
 		return x.FromSequence
+	}
+	return 0
+}
+
+func (x *StreamLogsRequest) GetToSequence() uint64 {
+	if x != nil {
+		return x.ToSequence
 	}
 	return 0
 }
@@ -1269,10 +1277,12 @@ const file_proto_bucket_proto_rawDesc = "" +
 	"\x14CreateLedgerResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
-	"\x06bucket\x18\x03 \x01(\tR\x06bucket\"P\n" +
+	"\x06bucket\x18\x03 \x01(\tR\x06bucket\"q\n" +
 	"\x11StreamLogsRequest\x12\x16\n" +
 	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12#\n" +
-	"\rfrom_sequence\x18\x02 \x01(\x04R\ffromSequence\"3\n" +
+	"\rfrom_sequence\x18\x02 \x01(\x04R\ffromSequence\x12\x1f\n" +
+	"\vto_sequence\x18\x03 \x01(\x04R\n" +
+	"toSequence\"3\n" +
 	"\x12StreamLogsResponse\x12\x1d\n" +
 	"\x03log\x18\x01 \x01(\v2\v.bucket.LogR\x03log\"\x89\x02\n" +
 	"\x03Log\x12\x12\n" +

@@ -72,7 +72,7 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
 		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs(id);
 		CREATE INDEX IF NOT EXISTS idx_logs_ledger ON logs(ledger);
-		CREATE INDEX IF NOT EXISTS idx_logs_sequence ON logs(sequence);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_logs_sequence ON logs(sequence);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating logs table: %w", err)
@@ -224,6 +224,7 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO logs (type, data, date, ledger, idempotency_key, idempotency_hash, id, sequence)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (sequence) DO NOTHING 
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing insert statement: %w", err)
@@ -473,15 +474,26 @@ func (c *sqliteLogCursor) Close() error {
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
 // Logs are returned in ascending order by sequence
 // from: optional sequence number to start from (0 = from beginning)
-func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error) {
+func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) {
 	query := `
 		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
 		FROM logs
 	`
 	args := []interface{}{}
+	whereClauses := []string{}
 	if from > 0 {
-		query += ` WHERE sequence >= ?`
+		whereClauses = append(whereClauses, `sequence >= ?`)
 		args = append(args, int64(from))
+	}
+	if to > 0 {
+		whereClauses = append(whereClauses, `sequence <= ?`)
+		args = append(args, int64(to))
+	}
+	if len(whereClauses) > 0 {
+		query += ` WHERE ` + whereClauses[0]
+		for i := 1; i < len(whereClauses); i++ {
+			query += ` AND ` + whereClauses[i]
+		}
 	}
 	query += ` ORDER BY sequence ASC`
 

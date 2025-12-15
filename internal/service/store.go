@@ -23,13 +23,13 @@ type LogWriter interface {
 
 // LogReader handles log reading operations
 type LogReader interface {
-	GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error) // from: optional sequence number to start from (0 = from beginning)
+	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) // from: optional sequence number to start from (0 = from beginning), to: optional sequence number to stop at (0 = until end, inclusive)
 }
 
-type LogReaderFn func(ctx context.Context, from uint64) (Cursor[ledger.Log], error)
+type LogReaderFn func(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
 
-func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error) {
-	return fn(ctx, from)
+func (fn LogReaderFn) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) {
+	return fn(ctx, from, to)
 }
 
 func NewLogReaderFn(fn LogReaderFn) LogReader {

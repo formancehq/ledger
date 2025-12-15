@@ -159,7 +159,7 @@ func (impl *BucketServiceServerImpl) StreamLogs(req *StreamLogsRequest, stream B
 		return err
 	}
 
-	cursor, err := cluster.GetAllLogs(ctx, req.FromSequence)
+	cursor, err := cluster.GetAllLogs(ctx, req.FromSequence, req.ToSequence)
 	if err != nil {
 		return err
 	}
@@ -175,6 +175,7 @@ func (impl *BucketServiceServerImpl) StreamLogs(req *StreamLogsRequest, stream B
 			}
 			return fmt.Errorf("reading log: %w", err)
 		}
+
 
 		logProto, err := logToBucketProto(log)
 		if err != nil {

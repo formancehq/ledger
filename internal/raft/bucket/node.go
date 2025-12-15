@@ -62,8 +62,8 @@ type Node struct {
 	logStore      service.LogStore // Underlying log store for direct access
 }
 
-func (node *Node) GetAllLogs(ctx context.Context, from uint64) (service.Cursor[ledger.Log], error) {
-	return node.logStore.GetAllLogs(ctx, from)
+func (node *Node) GetAllLogs(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
+	return node.logStore.GetAllLogs(ctx, from, to)
 }
 
 // NewNode creates a new Raft group for a bucket

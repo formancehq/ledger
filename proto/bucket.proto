@@ -71,6 +71,7 @@ message CreateLedgerResponse {
 message StreamLogsRequest {
   string bucket = 1;
   uint64 from_sequence = 2; // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
+  uint64 to_sequence = 3;   // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
 }
 
 message StreamLogsResponse {

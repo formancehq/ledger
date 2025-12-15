@@ -7,7 +7,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
@@ -112,12 +111,13 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
 	}
 
 	f.mu.Lock()
-	// Generate sequence number in FSM
 	f.state.LastSequence++
 	log.Sequence = f.state.LastSequence
 	f.mu.Unlock()
 
-	f.logger.WithFields(map[string]any{"ledger": log.Ledger, "sequence": log.Sequence}).Infof("Log stored in memory and persisted to store via FSM")
+	f.logger.
+		WithFields(map[string]any{"ledger": log.Ledger, "sequence": log.Sequence}).
+		Infof("Log stored in memory and persisted to store via FSM")
 	return &log, nil
 }
 
@@ -214,8 +214,6 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
 		panic(err)
 	}
-	fmt.Println("restore snapshot")
-	spew.Dump(snapshotData)
 
 	f.mu.Lock()
 	f.state.Ledgers = snapshotData.Ledgers
@@ -238,8 +236,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
 		// Read all logs from the reader starting from the sequence after the snapshot
-		fromSequence := storeLastSequence
-		cursor, err := f.logReader.GetAllLogs(ctx, fromSequence)
+		cursor, err := f.logReader.GetAllLogs(ctx, storeLastSequence, snapshotData.LastSequence) // 0 = no limit
 		if err != nil {
 			panic(fmt.Errorf("getting logs from reader for catch-up: %w", err))
 		}
@@ -271,8 +268,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 				panic(fmt.Errorf("writing catch-up logs to store: %w", err))
 			}
 			f.logger.WithFields(map[string]any{
-				"logsWritten":  len(logsToWrite),
-				"fromSequence": fromSequence,
+				"logsWritten": len(logsToWrite),
 			}).Infof("Caught up logs from reader to writer")
 
 			// Update lastSequence to match the store's last sequence

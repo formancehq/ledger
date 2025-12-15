@@ -27,7 +27,7 @@ type Bucket interface {
 	CreateLedger(ctx context.Context, name string, metadata metadata.Metadata) (*ledger.LedgerInfo, error)
 	GetLedger(ctx context.Context, name string) (*ledger.LedgerInfo, error)
 	GetLedgers(ctx context.Context) ([]ledger.LedgerInfo, error)
-	GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error)
+	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
 }
 
 type System interface {

@@ -2,7 +2,8 @@ package raft
 
 import (
 	"context"
-	"sync/atomic"
+	"io"
+	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
 )
@@ -10,8 +11,9 @@ import (
 type syncer[State any, F FSM[State]] struct {
 	spool   *spool
 	fsm     F
-	syncing atomic.Bool
-	logger logging.Logger
+	mu      sync.Mutex
+	syncing bool
+	logger  logging.Logger
 }
 
 func (s *syncer[State, F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
@@ -19,27 +21,47 @@ func (s *syncer[State, F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
 }
 
 func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, data []byte) {
-	if s.syncing.Load() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.syncing {
 		// todo: handle the case
 		panic("cannot restore snapshot while syncing")
 	}
 	s.logger.Infof("Restoring snapshot - switching to syncing mode")
-	s.syncing.Store(true)
+	s.syncing = true
 	go func() {
-		defer func() {
-			if e := recover(); e != nil {
-				panic(e)
-			}
-			s.logger.Infof("Snapshot restored - switching to normal mode")
-			s.syncing.Store(false)
-		}()
-
 		s.fsm.RestoreSnapshot(ctx, data)
+
+		for {
+			s.mu.Lock()
+			command, err := s.spool.Next()
+			if err == io.EOF {
+				if err := s.spool.Reset(); err != nil {
+					panic(err)
+				}
+				s.syncing = false
+				s.mu.Unlock()
+				break
+			}
+			s.mu.Unlock()
+			if err != nil {
+				panic(err)
+			}
+
+			_ = s.fsm.ApplyEntries(ctx, command)
+		}
+
+		s.logger.Infof("Snapshot restored - switching to normal mode")
+		s.syncing = false
 	}()
 }
 
 func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command) []ApplyResult {
-	if s.syncing.Load() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.syncing {
 		s.logger.Debugf("Applying entries while syncing - appending to spool")
 		if err := s.spool.AppendCommittedEntries(ctx, commands...); err != nil {
 			panic(err)
@@ -53,10 +75,17 @@ func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command
 	return s.fsm.ApplyEntries(ctx, commands...)
 }
 
+func (s *syncer[State, F]) IsSyncing() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.syncing
+}
+
 func newSyncer[State any, F FSM[State]](spool *spool, fsm F, logger logging.Logger) *syncer[State, F] {
 	return &syncer[State, F]{
-		spool: spool,
-		fsm:   fsm,
+		spool:  spool,
+		fsm:    fsm,
 		logger: logger,
 	}
 }

@@ -191,10 +191,11 @@ func (c *channelLogCursor) Close() error {
 }
 
 // GetAllLogs returns a cursor to iterate over all logs (implements LogReader)
-func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64) (Cursor[ledger.Log], error) {
+func (g *BucketGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) {
 	req := &StreamLogsRequest{
 		Bucket:       g.name,
 		FromSequence: from,
+		ToSequence:   to, // 0 means no limit
 	}
 
 	stream, err := g.client.StreamLogs(ctx, req)
