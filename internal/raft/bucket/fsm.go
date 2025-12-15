@@ -65,9 +65,12 @@ func (f *FSM) handleCreateLedger(cmd raft.Command) (*ledger.LedgerInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// Check if ledger already exists in this bucket
+	// Check if the ledger already exists in this bucket
+	// todo: not true if ledgers are removed, be safe and keep nextLedgerID in the FSM
 	if _, exists := f.state.Ledgers[createCmd.Name]; exists {
-		f.logger.WithFields(map[string]any{"name": createCmd.Name}).Infof("WARN: Ledger already exists in bucket")
+		f.logger.
+			WithFields(map[string]any{"name": createCmd.Name}).
+			Infof("WARN: Ledger already exists in bucket")
 		return nil, fmt.Errorf("ledger already exists in bucket: %s", createCmd.Name)
 	}
 

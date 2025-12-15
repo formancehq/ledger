@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
@@ -139,13 +138,11 @@ var _ = Describe("Simple cluster", func() {
 	})
 
 	Context("When creating a new bucket and a ledger", func() {
-		It("should succeed", func() {
-			const snapshotThreshold = 100
+		BeforeEach(func() {
 			_, err := servers[0].client.Buckets.CreateBucket(ctx, operations.CreateBucketRequest{
 				BucketName: "bucket0",
 				CreateBucketRequest: components.CreateBucketRequest{
-					Driver:            "sqlite",
-					SnapshotThreshold: pointer.For(int64(snapshotThreshold)),
+					Driver: "sqlite",
 				},
 			})
 			Expect(err).To(Succeed())
@@ -157,21 +154,18 @@ var _ = Describe("Simple cluster", func() {
 				},
 			})
 			Expect(err).To(Succeed())
-
-			//for range snapshotThreshold {
-			//	_, err := servers[0].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-			//		LedgerName: "ledger0",
-			//		CreateTransactionRequest: components.CreateTransactionRequest{
-			//			Postings: []components.PostingRequest{{
-			//				Source:      "world",
-			//				Destination: "bank",
-			//				Amount:      big.NewInt(100),
-			//				Asset:       "",
-			//			}},
-			//		},
-			//	})
-			//	Expect(err).To(BeNil())
-			//}
+		})
+		It("should succeed", func() {})
+		Context("Then deleting the bucket", func() {
+			BeforeEach(func() {
+				_, err := servers[0].client.Buckets.DeleteBucket(ctx, operations.DeleteBucketRequest{
+					BucketName: "bucket0",
+				})
+				Expect(err).To(Succeed())
+			})
+			FIt("Should succeed", func() {
+				time.Sleep(10 * time.Second)
+			})
 		})
 	})
 
@@ -367,7 +361,7 @@ var _ = Describe("Simple cluster", func() {
 					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 				})
 
-				FIt("Should restore the state from a snapshot sent by the leader", func() {
+				It("Should restore the state from a snapshot sent by the leader", func() {
 					// Wait for follower to reconnect and sync
 					Eventually(func(g Gomega) bool {
 						// Verify the follower is connected

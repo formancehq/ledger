@@ -83,7 +83,7 @@ spec:
         {{- end }}
         {{- if .Values.config.raft.maxSizePerMsg }}
         - name: RAFT_MAX_SIZE_PER_MSG
-          value: {{ .Values.config.raft.maxSizePerMsg | quote }}
+          value: {{ include "stringOrNumber" .Values.config.raft.maxSizePerMsg | quote }}
         {{- end }}
         {{- if .Values.config.raft.maxInflightMsgs }}
         - name: RAFT_MAX_INFLIGHT_MSGS
@@ -126,36 +126,9 @@ spec:
           # Execute the application
           exec ./ledger-v3-poc \
             --node-id $NODE_ID \
-            --bind-addr {{ .Values.config.bindAddr }} \
             --advertise-addr "$ADVERTISE_ADDR" \
-            --data-dir {{ .Values.config.dataDir }} \
             {{- if .Values.extraData.enabled }}
             --extra-data-dir {{ .Values.extraData.mountPath }} \
-            {{- end }}
-            --http-port {{ .Values.config.httpPort }} \
-            {{- if .Values.config.raft.snapshotThreshold }}
-            --snapshot-threshold {{ .Values.config.raft.snapshotThreshold }} \
-            {{- end }}
-            {{- if .Values.config.raft.snapshotInterval }}
-            --snapshot-interval {{ .Values.config.raft.snapshotInterval }} \
-            {{- end }}
-            {{- if .Values.config.raft.electionTick }}
-            --raft-election-tick {{ .Values.config.raft.electionTick }} \
-            {{- end }}
-            {{- if .Values.config.raft.heartbeatTick }}
-            --raft-heartbeat-tick {{ .Values.config.raft.heartbeatTick }} \
-            {{- end }}
-            {{- if .Values.config.raft.maxSizePerMsg }}
-            --raft-max-size-per-msg {{ .Values.config.raft.maxSizePerMsg }} \
-            {{- end }}
-            {{- if .Values.config.raft.maxInflightMsgs }}
-            --raft-max-inflight-msgs {{ .Values.config.raft.maxInflightMsgs }} \
-            {{- end }}
-            {{- if .Values.config.raft.tickInterval }}
-            --raft-tick-interval {{ .Values.config.raft.tickInterval }} \
-            {{- end }}
-            {{- if .Values.config.debug }}
-            --debug \
             {{- end }}
             $PEERS_LIST
         volumeMounts:

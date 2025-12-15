@@ -141,18 +141,6 @@ func (fsm *FSM) handleDeleteBucket(ctx context.Context, cmd raft.Command) error 
 		return err
 	}
 
-	fsm.mu.Lock()
-	// Check if bucket exists
-	if _, exists := fsm.state.Buckets[deleteCmd.Name]; !exists {
-		fsm.mu.Unlock()
-		fsm.logger.WithFields(map[string]any{"name": deleteCmd.Name}).Infof("WARN: BucketCluster does not exist")
-		return fmt.Errorf("bucket does not exist: %s", deleteCmd.Name)
-	}
-
-	// Delete the bucket
-	delete(fsm.state.Buckets, deleteCmd.Name)
-	fsm.mu.Unlock()
-
 	fsm.logger.Infof("BucketCluster deleted")
 	return nil
 }

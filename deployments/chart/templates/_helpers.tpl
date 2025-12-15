@@ -68,3 +68,10 @@ Create the name of the headless service
 {{- printf "%s-headless" (include "ledger-v3-poc.fullname" .) }}
 {{- end }}
 
+{{- define "stringOrNumber" -}}
+{{- if kindIs "string" . }}
+  {{- print . -}}
+{{- else  }}
+  {{- int64 . | toString -}}
+{{- end -}}
+{{- end -}}
