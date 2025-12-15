@@ -130,7 +130,7 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft
 		if err := f.logWriter.InsertLogs(ctx, logs...); err != nil {
 			// Well, the panic is a bit brutal.
 			// But fundamentally, this is what we want.
-			// A raft node should be considered corrupted if it cannot persists its state.
+			// A raft node should be considered corrupted if it cannot persist in its state.
 			panic(err)
 		}
 	}
@@ -174,14 +174,14 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 }
 
 // RestoreSnapshot restores the bucket FSM from a snapshot
-func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
+func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 	var snapshotData struct {
 		Ledgers      map[string]ledger.LedgerInfo `json:"ledgers"`
 		LastSequence uint64                       `json:"lastSequence"`
 	}
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
-		return fmt.Errorf("unmarshaling snapshot data: %w", err)
+		panic(err)
 	}
 
 	f.ledgers = snapshotData.Ledgers
@@ -194,7 +194,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 	// Compare snapshot's lastSequence with the log store's lastSequenceID
 	storeLastSequence, err := f.logWriter.GetLastSequenceID(ctx)
 	if err != nil {
-		return fmt.Errorf("getting last sequence ID from log store: %w", err)
+		panic(fmt.Errorf("getting last sequence ID from log store: %w", err))
 	}
 
 	// If the log store is ahead of the snapshot, catch up by reading missing logs from the reader
@@ -208,7 +208,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 		fromSequence := storeLastSequence
 		cursor, err := f.logReader.GetAllLogs(ctx, fromSequence)
 		if err != nil {
-			return fmt.Errorf("getting logs from reader for catch-up: %w", err)
+			panic(fmt.Errorf("getting logs from reader for catch-up: %w", err))
 		}
 		defer func() {
 			_ = cursor.Close()
@@ -227,7 +227,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 				if err == io.EOF {
 					break
 				}
-				return fmt.Errorf("reading log during catch-up: %w", err)
+				panic(fmt.Errorf("reading log during catch-up: %w", err))
 			}
 
 			logsToWrite = append(logsToWrite, log)
@@ -237,7 +237,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 		// Write all collected logs to the writer
 		if len(logsToWrite) > 0 {
 			if err := f.logWriter.InsertLogs(ctx, logsToWrite...); err != nil {
-				return fmt.Errorf("writing catch-up logs to store: %w", err)
+				panic(fmt.Errorf("writing catch-up logs to store: %w", err))
 			}
 			f.logger.WithFields(map[string]any{
 				"logsWritten":  len(logsToWrite),
@@ -258,5 +258,4 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 		"lastSequence":  f.lastSequence,
 		"storeSequence": storeLastSequence,
 	}).Infof("BucketCluster FSM restored from snapshot")
-	return nil
 }

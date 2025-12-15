@@ -225,18 +225,18 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 }
 
 // RestoreSnapshot restores the FSM from a snapshot
-func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
+func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 
 	for _, node := range fsm.buckets {
 		if err := node.Stop(ctx); err != nil {
-			return fmt.Errorf("stopping bucket Raft group when restoring snapshot: %w", err)
+			panic(err)
 		}
 	}
 
 	// Unmarshal from protobuf
 	var snapshotProto SystemFSMSnapshot
 	if err := proto.Unmarshal(data, &snapshotProto); err != nil {
-		return fmt.Errorf("unmarshaling snapshot data: %w", err)
+		panic(fmt.Errorf("unmarshaling snapshot data: %w", err))
 	}
 
 	// Convert protobuf buckets to ledger.BucketInfo
@@ -249,7 +249,7 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 			var err error
 			configJSON, err = json.Marshal(configMap)
 			if err != nil {
-				return fmt.Errorf("marshaling bucket config: %w", err)
+				panic(fmt.Errorf("marshaling bucket config: %w", err))
 			}
 		}
 
@@ -273,15 +273,13 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) error {
 	for _, bucketInfo := range buckets {
 		err := fsm.startBucketRaftGroupFromFSM(ctx, bucketInfo)
 		if err != nil {
-			return err
+			panic(err)
 		}
 	}
 
 	fsm.nextBucketID = snapshotProto.NextBucketId
 
 	fsm.logger.Infof("FSM restored from snapshot")
-
-	return nil
 }
 
 // stopBucketRaftGroup stops a Raft group for a bucket

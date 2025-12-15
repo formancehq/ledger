@@ -370,7 +370,7 @@ var _ = Describe("Simple cluster", func() {
 					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 				})
 
-				FIt("Should restore the state from a snapshot sent by the leader", func() {
+				It("Should restore the state from a snapshot sent by the leader", func() {
 					fmt.Printf("waiting for snapshot to be sent by leader to follower %d...\r\n", followerID)
 					time.Sleep(10 * time.Second)
 				})

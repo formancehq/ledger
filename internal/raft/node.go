@@ -3,6 +3,7 @@ package raft
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -25,7 +26,7 @@ type Node[F FSM] struct {
 	logger      logging.Logger
 	mu          sync.RWMutex
 	futures     map[uint64]*applyFuture // Map of command ID -> future
-	fsm         F
+	fsmSyncer   *syncer[F]
 	storage     *WALStorage
 	transport   NodeTransport
 	config      NodeConfig
@@ -123,11 +124,16 @@ func NewNode[F FSM](
 		return nil, fmt.Errorf("creating raw node: %w", err)
 	}
 
+	spool, err := newSpool(filepath.Join(cfg.DataDir, "spool"))
+	if err != nil {
+		return nil, fmt.Errorf("creating spool: %w", err)
+	}
+
 	return &Node[F]{
 		node:        node,
 		logger:      logger,
 		futures:     make(map[uint64]*applyFuture),
-		fsm:         fsm,
+		fsmSyncer:   newSyncer(spool, fsm, logger),
 		storage:     storage,
 		transport:   transport,
 		config:      cfg,
@@ -136,7 +142,7 @@ func NewNode[F FSM](
 }
 
 func (node *Node[F]) Inner() F {
-	return node.fsm
+	return node.fsmSyncer.fsm
 }
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
@@ -237,7 +243,9 @@ func (node *Node[F]) readyLoop() {
 		// Always check for ticks first (non-blocking) to ensure election timeouts work
 		select {
 		case <-ticker.C:
-			node.node.Tick()
+			if !node.fsmSyncer.syncing.Load() {
+				node.node.Tick()
+			}
 		case ch := <-node.stopChannel:
 			close(ch)
 			return
@@ -277,16 +285,9 @@ func (node *Node[F]) readyLoop() {
 						Errorf("Failed to apply snapshot to storage")
 					continue
 				}
-				// Restore bucket FSM from snapshot
-				if err := node.fsm.RestoreSnapshot(context.Background(), rd.Snapshot.Data); err != nil {
-					node.logger.
-						WithFields(map[string]any{"error": err}).
-						Errorf("Failed to restore bucket FSM from snapshot")
-					node.node.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFailure)
-					continue
-				}
 
 				node.node.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+				node.fsmSyncer.RestoreSnapshot(context.Background(), rd.Snapshot.Data)
 			}
 
 			// Send messages via transport
@@ -301,7 +302,27 @@ func (node *Node[F]) readyLoop() {
 				commandIndexes = make([]uint64, 0, len(rd.CommittedEntries))
 			)
 			for _, entry := range rd.CommittedEntries {
-				if entry.Type == raftpb.EntryConfChange {
+				switch entry.Type {
+				case raftpb.EntryNormal:
+					if len(entry.Data) == 0 {
+						node.logger.
+							WithFields(map[string]any{"index": entry.Index}).
+							Debugf("Skipping empty entry")
+						continue
+					}
+
+					// Decode the command to get its ID
+					var cmd Command
+					if err := cmd.UnmarshalBinary(entry.Data); err != nil {
+						node.logger.
+							WithFields(map[string]any{"index": entry.Index, "error": err}).
+							Errorf("Failed to unmarshal command for notification")
+						continue
+					}
+
+					commands = append(commands, cmd)
+					commandIndexes = append(commandIndexes, entry.Index)
+				case raftpb.EntryConfChange:
 					var cc raftpb.ConfChange
 					if err := cc.Unmarshal(entry.Data); err != nil {
 						node.logger.
@@ -313,10 +334,7 @@ func (node *Node[F]) readyLoop() {
 						WithFields(map[string]any{"type": cc.Type.String(), "nodeID": fmt.Sprintf("%x", cc.NodeID)}).
 						Infof("Applying configuration change")
 					confState = node.node.ApplyConfChange(cc)
-					continue
-				}
-
-				if entry.Type == raftpb.EntryConfChangeV2 {
+				case raftpb.EntryConfChangeV2:
 					var cc raftpb.ConfChangeV2
 					if err := cc.Unmarshal(entry.Data); err != nil {
 						node.logger.
@@ -329,38 +347,11 @@ func (node *Node[F]) readyLoop() {
 						Infof("Applying configuration change V2")
 					// ApplyConfChange accepts ConfChangeI interface, which is implemented by both ConfChange and ConfChangeV2
 					confState = node.node.ApplyConfChange(cc)
-					continue
 				}
-
-				if entry.Type != raftpb.EntryNormal {
-					node.logger.
-						WithFields(map[string]any{"index": entry.Index, "type": uint64(entry.Type)}).
-						Debugf("Skipping non-normal entry")
-					continue
-				}
-				// Skip empty entries (they might be used for heartbeat or other Raft internal purposes)
-				if len(entry.Data) == 0 {
-					node.logger.
-						WithFields(map[string]any{"index": entry.Index}).
-						Debugf("Skipping empty entry")
-					continue
-				}
-
-				// Decode the command to get its ID
-				var cmd Command
-				if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-					node.logger.
-						WithFields(map[string]any{"index": entry.Index, "error": err}).
-						Errorf("Failed to unmarshal command for notification")
-					continue
-				}
-
-				commands = append(commands, cmd)
-				commandIndexes = append(commandIndexes, entry.Index)
 			}
 
 			// Apply bucket-specific entries to bucket FSM
-			results = node.fsm.ApplyEntries(context.Background(), commands...)
+			results = node.fsmSyncer.ApplyEntries(context.Background(), commands...)
 
 			for i, result := range results {
 				node.NotifyApplied(commands[i].ID, result.Result, commandIndexes[i], result.Error)
@@ -383,7 +374,7 @@ func (node *Node[F]) readyLoop() {
 			if status.Applied > 0 && status.Applied%node.config.SnapshotThreshold == 0 {
 
 				// Create snapshot: write logs to store and create snapshot data
-				snapshotData, err := node.fsm.CreateSnapshot(context.Background())
+				snapshotData, err := node.fsmSyncer.CreateSnapshot(context.Background())
 				if err != nil {
 					node.logger.
 						WithFields(map[string]any{"error": err}).
@@ -514,7 +505,7 @@ func (node *Node[F]) Snapshot(ctx context.Context) error {
 	if status.Applied > 0 {
 		node.logger.WithFields(map[string]any{"applied": status.Applied}).Debugf("Creating snapshot data via FSM")
 		// Create snapshot data via FSM
-		snapshotData, err := node.fsm.CreateSnapshot(ctx)
+		snapshotData, err := node.fsmSyncer.CreateSnapshot(ctx)
 		if err != nil {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to create snapshot data")
 			return fmt.Errorf("creating snapshot data: %w", err)
@@ -589,9 +580,7 @@ func restoreFromStorage(fsm FSM, storage *WALStorage, logger logging.Logger) err
 	// If snapshot exists, restore FSM from it
 	if snapshot.Metadata.Index > 0 {
 		logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
-		if err := fsm.RestoreSnapshot(context.Background(), snapshot.Data); err != nil {
-			return fmt.Errorf("restoring FSM from snapshot: %w", err)
-		}
+		fsm.RestoreSnapshot(context.Background(), snapshot.Data)
 	} else {
 		logger.Infof("No snapshot found, starting with empty FSM")
 	}
