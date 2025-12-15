@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -44,13 +43,11 @@ var _ = Describe("Simple cluster", func() {
 		servers = make([]serviceWithClient, 0, countInstances)
 		for i := range countInstances {
 			raftTmpDir := GinkgoT().TempDir()
-			Expect(removeGlob(filepath.Join(raftTmpDir, "*"))).To(Succeed())
 			DeferCleanup(func() {
 				Expect(os.RemoveAll(raftTmpDir)).To(Succeed())
 			})
 
 			extraDataTmpDir := GinkgoT().TempDir()
-			Expect(removeGlob(filepath.Join(extraDataTmpDir, "*"))).To(Succeed())
 			DeferCleanup(func() {
 				Expect(os.RemoveAll(extraDataTmpDir)).To(Succeed())
 			})
@@ -371,24 +368,64 @@ var _ = Describe("Simple cluster", func() {
 				})
 
 				It("Should restore the state from a snapshot sent by the leader", func() {
-					fmt.Printf("waiting for snapshot to be sent by leader to follower %d...\r\n", followerID)
-					time.Sleep(10 * time.Second)
+					// Wait for follower to reconnect and sync
+					Eventually(func(g Gomega) bool {
+						// Verify the follower is connected
+						state, err := servers[followerID-1].client.Cluster.GetClusterState(ctx)
+						g.Expect(err).To(Succeed())
+
+						return state.ClusterStateResponse.Data.Leader != nil &&
+							*state.ClusterStateResponse.Data.Leader != 0
+					}).Within(10 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
+
+					// Get the leader's bucket state (local) to compare
+					localTrue := true
+					leaderState, err := servers[leaderID-1].client.Buckets.GetBucketRaftState(ctx, operations.GetBucketRaftStateRequest{
+						BucketName: bucketName,
+						Local:      &localTrue,
+					})
+					Expect(err).To(Succeed())
+					leaderBucketState := leaderState.GetBucketClusterStateResponse()
+					Expect(leaderBucketState).NotTo(BeNil())
+					leaderInnerState := leaderBucketState.Data.GetInnerState()
+
+					// Verify the leader has the expected state
+					Expect(leaderInnerState.GetLedgers()).To(HaveKey(ledgerName))
+					Expect(leaderInnerState.GetLastSequence()).To(BeNumerically(">=", 11)) // At least 11 transactions
+
+					// Wait for follower to sync and verify its state matches
+					Eventually(func(g Gomega) bool {
+						// Get follower's local bucket state
+						followerState, err := servers[followerID-1].client.Buckets.GetBucketRaftState(ctx, operations.GetBucketRaftStateRequest{
+							BucketName: bucketName,
+							Local:      &localTrue,
+						})
+						if err != nil {
+							return false
+						}
+
+						followerBucketState := followerState.GetBucketClusterStateResponse()
+						if followerBucketState == nil {
+							return false
+						}
+
+						followerInnerState := followerBucketState.Data.GetInnerState()
+
+						// Verify follower has the ledger
+						followerLedgers := followerInnerState.GetLedgers()
+						if _, exists := followerLedgers[ledgerName]; !exists {
+							return false
+						}
+
+						// Verify follower's lastSequence matches leader's lastSequence
+						// (allowing for some delay in synchronization)
+						followerSeq := followerInnerState.GetLastSequence()
+						leaderSeq := leaderInnerState.GetLastSequence()
+
+						return followerSeq == leaderSeq
+					}).WithPolling(100 * time.Millisecond).To(BeTrue())
 				})
 			})
 		})
 	})
 })
-
-func removeGlob(path string) (err error) {
-	contents, err := filepath.Glob(path)
-	if err != nil {
-		return
-	}
-	for _, item := range contents {
-		err = os.RemoveAll(item)
-		if err != nil {
-			return
-		}
-	}
-	return
-}

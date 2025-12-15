@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
@@ -208,23 +209,19 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 
 // RestoreSnapshot restores the bucket FSM from a snapshot
 func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
-	var snapshotData struct {
-		Ledgers      map[string]ledger.LedgerInfo `json:"ledgers"`
-		LastSequence uint64                       `json:"lastSequence"`
-	}
+	var snapshotData ledger.BucketState
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
 		panic(err)
 	}
+	fmt.Println("restore snapshot")
+	spew.Dump(snapshotData)
 
 	f.mu.Lock()
 	f.state.Ledgers = snapshotData.Ledgers
 	if f.state.Ledgers == nil {
 		f.state.Ledgers = make(map[string]ledger.LedgerInfo)
 	}
-
-	f.state.LastSequence = snapshotData.LastSequence
-	lastSequence := snapshotData.LastSequence
 	f.mu.Unlock()
 
 	// Compare snapshot's lastSequence with the log store's lastSequenceID
@@ -234,9 +231,9 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 	}
 
 	// If the log store is ahead of the snapshot, catch up by reading missing logs from the reader
-	if storeLastSequence < lastSequence {
+	if storeLastSequence < snapshotData.LastSequence {
 		f.logger.WithFields(map[string]any{
-			"snapshotSequence": lastSequence,
+			"snapshotSequence": snapshotData.LastSequence,
 			"storeSequence":    storeLastSequence,
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
@@ -253,7 +250,6 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 		var (
 			// todo: flush regularly
 			logsToWrite []ledger.Log
-			maxSequence = lastSequence
 		)
 
 		// Collect all logs that need to be written
@@ -267,7 +263,6 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 			}
 
 			logsToWrite = append(logsToWrite, log)
-			maxSequence = log.Sequence
 		}
 
 		// Write all collected logs to the writer
@@ -278,29 +273,27 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 			f.logger.WithFields(map[string]any{
 				"logsWritten":  len(logsToWrite),
 				"fromSequence": fromSequence,
-				"toSequence":   maxSequence,
 			}).Infof("Caught up logs from reader to writer")
-		}
 
-		// Update lastSequence to match the store's last sequence
-		f.mu.Lock()
-		f.state.LastSequence = storeLastSequence
-		f.mu.Unlock()
+			// Update lastSequence to match the store's last sequence
+			f.mu.Lock()
+			f.state.LastSequence = logsToWrite[len(logsToWrite)-1].Sequence
+			f.mu.Unlock()
+		}
 	} else {
 		// Snapshot is up to date or ahead, use snapshot's sequence
 		f.mu.Lock()
-		f.state.LastSequence = lastSequence
+		f.state.LastSequence = snapshotData.LastSequence
 		f.mu.Unlock()
 	}
 
 	f.mu.RLock()
 	ledgerCount := len(f.state.Ledgers)
-	finalSequence := f.state.LastSequence
+	lastSequence := f.state.LastSequence
 	f.mu.RUnlock()
 
 	f.logger.WithFields(map[string]any{
 		"ledgerCount":   ledgerCount,
-		"lastSequence":  finalSequence,
-		"storeSequence": storeLastSequence,
+		"storeSequence": lastSequence,
 	}).Infof("BucketCluster FSM restored from snapshot")
 }
