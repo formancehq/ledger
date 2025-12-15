@@ -1263,12 +1263,12 @@ func (s *Buckets) GetBucketRaftState(ctx context.Context, request operations.Get
 				return nil, err
 			}
 
-			var out components.ClusterStateResponse
+			var out components.BucketClusterStateResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.ClusterStateResponse = &out
+			res.BucketClusterStateResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {

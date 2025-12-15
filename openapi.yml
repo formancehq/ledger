@@ -460,7 +460,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ClusterStateResponse'
+                $ref: '#/components/schemas/BucketClusterStateResponse'
         '404':
           description: Bucket not found
           content:
@@ -901,10 +901,11 @@ components:
           required:
             - state
             - localNode
+            - innerState
           properties:
             state:
               type: string
-              enum: [Leader, Follower, Candidate, Shutdown, Unknown]
+              enum: [Leader, Follower, Candidate, PreCandidate, Unknown]
               description: Current state of the local node
             leader:
               type: integer
@@ -921,6 +922,78 @@ components:
               items:
                 $ref: '#/components/schemas/NodeInfo'
               description: List of all nodes in the cluster
+            innerState:
+              $ref: '#/components/schemas/SystemState'
+              description: State contained in the FSM
+
+    BucketClusterStateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - state
+            - localNode
+            - innerState
+          properties:
+            state:
+              type: string
+              enum: [Leader, Follower, Candidate, PreCandidate, Unknown]
+              description: Current state of the local node
+            leader:
+              type: integer
+              format: int64
+              minimum: 0
+              description: ID of the current leader (0 if no leader)
+            localNode:
+              type: integer
+              format: int64
+              minimum: 0
+              description: ID of the local node
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/NodeInfo'
+              description: List of all nodes in the cluster
+            innerState:
+              $ref: '#/components/schemas/BucketState'
+              description: State contained in the FSM
+
+    SystemState:
+      type: object
+      required:
+        - nextBucketID
+        - buckets
+      properties:
+        nextBucketID:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Next sequential bucket ID
+        buckets:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/BucketInfo'
+          description: Map of bucket name to bucket information
+
+    BucketState:
+      type: object
+      required:
+        - ledgers
+        - lastSequence
+      properties:
+        ledgers:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/LedgerInfo'
+          description: Map of ledger name to ledger information
+        lastSequence:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Last global sequence number
 
     NodeInfo:
       type: object

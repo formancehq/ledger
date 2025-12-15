@@ -7,18 +7,18 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 )
 
-type syncer[F FSM] struct {
+type syncer[State any, F FSM[State]] struct {
 	spool   *spool
 	fsm     F
 	syncing atomic.Bool
 	logger logging.Logger
 }
 
-func (s *syncer[F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
+func (s *syncer[State, F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	return s.fsm.CreateSnapshot(ctx)
 }
 
-func (s *syncer[F]) RestoreSnapshot(ctx context.Context, data []byte) {
+func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, data []byte) {
 	if s.syncing.Load() {
 		// todo: handle the case
 		panic("cannot restore snapshot while syncing")
@@ -38,7 +38,7 @@ func (s *syncer[F]) RestoreSnapshot(ctx context.Context, data []byte) {
 	}()
 }
 
-func (s *syncer[F]) ApplyEntries(ctx context.Context, commands ...Command) []ApplyResult {
+func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command) []ApplyResult {
 	if s.syncing.Load() {
 		s.logger.Debugf("Applying entries while syncing - appending to spool")
 		if err := s.spool.AppendCommittedEntries(ctx, commands...); err != nil {
@@ -53,8 +53,8 @@ func (s *syncer[F]) ApplyEntries(ctx context.Context, commands ...Command) []App
 	return s.fsm.ApplyEntries(ctx, commands...)
 }
 
-func newSyncer[F FSM](spool *spool, fsm F, logger logging.Logger) *syncer[F] {
-	return &syncer[F]{
+func newSyncer[State any, F FSM[State]](spool *spool, fsm F, logger logging.Logger) *syncer[State, F] {
+	return &syncer[State, F]{
 		spool: spool,
 		fsm:   fsm,
 		logger: logger,

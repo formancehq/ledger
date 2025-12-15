@@ -54,7 +54,7 @@ func CreateLogStore(ctx context.Context, driver string, configJSON json.RawMessa
 
 // Node represents a Raft group for a specific bucket
 type Node struct {
-	*raft.Node[*FSM]
+	*raft.Node[ledger.BucketState, *FSM]
 	config        raft.NodeConfig
 	logger        logging.Logger
 	defaultLedger *service.DefaultLedger

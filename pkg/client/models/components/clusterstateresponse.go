@@ -11,11 +11,11 @@ import (
 type State string
 
 const (
-	StateLeader    State = "Leader"
-	StateFollower  State = "Follower"
-	StateCandidate State = "Candidate"
-	StateShutdown  State = "Shutdown"
-	StateUnknown   State = "Unknown"
+	StateLeader       State = "Leader"
+	StateFollower     State = "Follower"
+	StateCandidate    State = "Candidate"
+	StatePreCandidate State = "PreCandidate"
+	StateUnknown      State = "Unknown"
 )
 
 func (e State) ToPointer() *State {
@@ -33,7 +33,7 @@ func (e *State) UnmarshalJSON(data []byte) error {
 		fallthrough
 	case "Candidate":
 		fallthrough
-	case "Shutdown":
+	case "PreCandidate":
 		fallthrough
 	case "Unknown":
 		*e = State(v)
@@ -51,7 +51,8 @@ type ClusterStateResponseData struct {
 	// ID of the local node
 	LocalNode int64 `json:"localNode"`
 	// List of all nodes in the cluster
-	Nodes []NodeInfo `json:"nodes,omitempty"`
+	Nodes      []NodeInfo  `json:"nodes,omitempty"`
+	InnerState SystemState `json:"innerState"`
 }
 
 func (o *ClusterStateResponseData) GetState() State {
@@ -80,6 +81,13 @@ func (o *ClusterStateResponseData) GetNodes() []NodeInfo {
 		return nil
 	}
 	return o.Nodes
+}
+
+func (o *ClusterStateResponseData) GetInnerState() SystemState {
+	if o == nil {
+		return SystemState{}
+	}
+	return o.InnerState
 }
 
 type ClusterStateResponse struct {

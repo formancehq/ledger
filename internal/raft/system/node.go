@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
@@ -16,7 +15,7 @@ import (
 )
 
 type Node struct {
-	*raft.Node[*FSM]
+	*raft.Node[ledger.SystemState, *FSM]
 	raftConfig           Config
 	logger               logging.Logger
 	multiplexedTransport *multiplexedTransport
@@ -94,18 +93,16 @@ func (node *Node) GetBucketCluster(ctx context.Context, name string) (service.Bu
 }
 
 func (node *Node) GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error) {
-	info, ok := node.Inner().buckets[name]
-	if !ok {
+	bucketCluster, err := node.Inner().GetBucket(name)
+	if err != nil {
 		return nil, ledger.ErrNotFound
 	}
-	return pointer.For(info.Info()), nil
+	return pointer.For(bucketCluster.Info()), nil
 }
 
 // GetAllBucketsInfo returns all buckets
 func (node *Node) GetAllBucketsInfo(ctx context.Context) map[string]ledger.BucketInfo {
-	return collectionutils.ConvertMap(node.Inner().buckets, func(v *bucket.Node) ledger.BucketInfo {
-		return v.Info()
-	})
+	return node.Inner().GetAllBuckets()
 }
 
 // DeleteBucket deletes a bucket via a FSM command
@@ -127,23 +124,28 @@ func (node *Node) DeleteBucket(ctx context.Context, name string) error {
 }
 
 func (node *Node) GetBucketGroup(name string) (*bucket.Node, error) {
-	bucket, ok := node.Inner().buckets[name]
-	if !ok {
+	bucketCluster, err := node.Inner().GetBucket(name)
+	if err != nil {
 		return nil, ledger.ErrNotFound
 	}
-	return bucket, nil
+	return bucketCluster, nil
 }
 
 func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint64, error) {
-	for _, bucketNode := range node.Inner().buckets {
-		ledgers, err := bucketNode.GetLedgers(context.Background())
+	allBuckets := node.Inner().GetAllBuckets()
+	for bucketName := range allBuckets {
+		bucketCluster, err := node.Inner().GetBucket(bucketName)
+		if err != nil {
+			continue
+		}
+		ledgers, err := bucketCluster.GetLedgers(context.Background())
 		if err != nil {
 			// todo: better error handling
 			panic(err)
 		}
 		for _, info := range ledgers {
 			if info.Name == name {
-				return bucketNode.Info().Name, bucketNode.Info().ID, nil
+				return bucketCluster.Info().Name, bucketCluster.Info().ID, nil
 			}
 		}
 	}

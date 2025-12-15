@@ -254,7 +254,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res.ClusterStateResponse != nil {
+    if res.BucketClusterStateResponse != nil {
         // handle response
     }
 }

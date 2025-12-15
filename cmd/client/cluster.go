@@ -109,10 +109,41 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 
 			tableData = append(tableData, []string{nodeID, nodeAddr, nodeSuffrage, role})
 		}
-		return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		if err := pterm.DefaultTable.WithHasHeader().WithData(tableData).Render(); err != nil {
+			return err
+		}
 	} else {
 		pterm.Println()
 		pterm.Info.Println("No nodes found")
+	}
+
+	// Display FSM state (SystemState)
+	innerState := data.GetInnerState()
+	if len(innerState.GetBuckets()) > 0 {
+		pterm.Println()
+		pterm.DefaultHeader.WithFullWidth().Println("FSM State")
+		fsmInfo := ""
+		fsmInfo += fmt.Sprintf("Next Bucket ID: %d\n", innerState.GetNextBucketID())
+		fsmInfo += fmt.Sprintf("Number of Buckets: %d\n", len(innerState.GetBuckets()))
+
+		pterm.DefaultBox.WithTitle("FSM Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(fsmInfo)
+
+		// Buckets table
+		pterm.Println()
+		bucketTableData := pterm.TableData{
+			{"Name", "ID", "Driver"},
+		}
+		for name, bucketInfo := range innerState.GetBuckets() {
+			bucketTableData = append(bucketTableData, []string{
+				name,
+				fmt.Sprintf("%d", bucketInfo.ID),
+				string(bucketInfo.Driver),
+			})
+		}
+		return pterm.DefaultTable.WithHasHeader().WithData(bucketTableData).Render()
+	} else {
+		pterm.Println()
+		pterm.Info.Println("No buckets in FSM state")
 	}
 
 	return nil

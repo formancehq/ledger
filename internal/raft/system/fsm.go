@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/logging"
@@ -18,13 +19,19 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// State represents the state of the system FSM
+type State struct {
+	NextBucketID uint64                  // Next sequential bucket ID
+	Buckets      map[string]*bucket.Node // Map of bucket name -> bucket node
+}
+
 // FSM implements the raft.FSM interface
 type FSM struct {
+	mu                   sync.RWMutex // Protects access to state
+	state                State        // FSM state
 	logger               logging.Logger
-	nextBucketID         uint64 // Next sequential bucket ID
 	raftConfig           Config
 	multiplexedTransport *multiplexedTransport
-	buckets              map[string]*bucket.Node
 }
 
 func newFSM(
@@ -33,11 +40,30 @@ func newFSM(
 	multiplexedTransport *multiplexedTransport,
 ) *FSM {
 	return &FSM{
+		state: State{
+			Buckets:      make(map[string]*bucket.Node),
+			NextBucketID: 1, // Start at 1, first bucket will have ID 1
+		},
 		logger:               logger,
-		buckets:              make(map[string]*bucket.Node),
-		nextBucketID:         1, // Start at 1, first bucket will have ID 1
 		raftConfig:           raftConfig,
 		multiplexedTransport: multiplexedTransport,
+	}
+}
+
+// GetState returns a copy of the FSM state
+func (fsm *FSM) GetState() ledger.SystemState {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+
+	// Create a copy of the buckets map (shallow copy of the map, but nodes are pointers)
+	bucketsCopy := make(map[string]ledger.BucketInfo, len(fsm.state.Buckets))
+	for k, v := range fsm.state.Buckets {
+		bucketsCopy[k] = v.Info()
+	}
+
+	return ledger.SystemState{
+		NextBucketID: fsm.state.NextBucketID,
+		Buckets:      bucketsCopy,
 	}
 }
 
@@ -65,13 +91,16 @@ func (fsm *FSM) handleCreateBucket(cmd raft.Command) (*ledger.BucketInfo, error)
 		return nil, fmt.Errorf("invalid bucket configuration: %w", err)
 	}
 
-	if _, exists := fsm.buckets[createCmd.Name]; exists {
+	fsm.mu.Lock()
+	if _, exists := fsm.state.Buckets[createCmd.Name]; exists {
+		fsm.mu.Unlock()
 		return nil, fmt.Errorf("bucket already exists: %s", createCmd.Name)
 	}
 
 	// Assign sequential bucket ID
-	bucketID := fsm.nextBucketID
-	fsm.nextBucketID++
+	bucketID := fsm.state.NextBucketID
+	fsm.state.NextBucketID++
+	fsm.mu.Unlock()
 
 	// Convert config to json.RawMessage
 	configJSON, err := json.Marshal(configMap)
@@ -112,14 +141,17 @@ func (fsm *FSM) handleDeleteBucket(ctx context.Context, cmd raft.Command) error 
 		return err
 	}
 
+	fsm.mu.Lock()
 	// Check if bucket exists
-	if _, exists := fsm.buckets[deleteCmd.Name]; !exists {
+	if _, exists := fsm.state.Buckets[deleteCmd.Name]; !exists {
+		fsm.mu.Unlock()
 		fsm.logger.WithFields(map[string]any{"name": deleteCmd.Name}).Infof("WARN: BucketCluster does not exist")
 		return fmt.Errorf("bucket does not exist: %s", deleteCmd.Name)
 	}
 
 	// Delete the bucket
-	delete(fsm.buckets, deleteCmd.Name)
+	delete(fsm.state.Buckets, deleteCmd.Name)
+	fsm.mu.Unlock()
 
 	fsm.logger.Infof("BucketCluster deleted")
 	return nil
@@ -155,8 +187,11 @@ func (fsm *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []ra
 }
 
 // GetBucket returns the bucket info for a given name
-func (fsm *FSM) GetBucket(name string) (service.BucketCluster, error) {
-	bucket, ok := fsm.buckets[name]
+func (fsm *FSM) GetBucket(name string) (*bucket.Node, error) {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+
+	bucket, ok := fsm.state.Buckets[name]
 	if !ok {
 		return nil, fmt.Errorf("bucket does not exist: %s", name)
 	}
@@ -165,9 +200,12 @@ func (fsm *FSM) GetBucket(name string) (service.BucketCluster, error) {
 
 // GetAllBuckets returns all buckets
 func (fsm *FSM) GetAllBuckets() map[string]ledger.BucketInfo {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+
 	// Return a copy to avoid external modifications
-	result := make(map[string]ledger.BucketInfo, len(fsm.buckets))
-	for k, v := range fsm.buckets {
+	result := make(map[string]ledger.BucketInfo, len(fsm.state.Buckets))
+	for k, v := range fsm.state.Buckets {
 		result[k] = v.Info()
 	}
 	return result
@@ -175,9 +213,12 @@ func (fsm *FSM) GetAllBuckets() map[string]ledger.BucketInfo {
 
 // CreateSnapshot creates a snapshot of the FSM state
 func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+
 	// Convert buckets to protobuf format
-	bucketsProto := make(map[string]*BucketInfo, len(fsm.buckets))
-	for name, node := range fsm.buckets {
+	bucketsProto := make(map[string]*BucketInfo, len(fsm.state.Buckets))
+	for name, node := range fsm.state.Buckets {
 		bucketInfo := node.Info()
 
 		// Convert json.RawMessage to map[string]interface{} then to protobuf Struct
@@ -212,7 +253,7 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 
 	snapshotProto := &SystemFSMSnapshot{
 		Buckets:      bucketsProto,
-		NextBucketId: fsm.nextBucketID,
+		NextBucketId: fsm.state.NextBucketID,
 	}
 
 	// Marshal to protobuf
@@ -226,8 +267,14 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 
 // RestoreSnapshot restores the FSM from a snapshot
 func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
+	fsm.mu.Lock()
+	bucketsToStop := make([]*bucket.Node, 0, len(fsm.state.Buckets))
+	for _, node := range fsm.state.Buckets {
+		bucketsToStop = append(bucketsToStop, node)
+	}
+	fsm.mu.Unlock()
 
-	for _, node := range fsm.buckets {
+	for _, node := range bucketsToStop {
 		if err := node.Stop(ctx); err != nil {
 			panic(err)
 		}
@@ -269,7 +316,10 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 		}
 	}
 
-	fsm.buckets = make(map[string]*bucket.Node, len(buckets))
+	fsm.mu.Lock()
+	fsm.state.Buckets = make(map[string]*bucket.Node, len(buckets))
+	fsm.mu.Unlock()
+
 	for _, bucketInfo := range buckets {
 		err := fsm.startBucketRaftGroupFromFSM(ctx, bucketInfo)
 		if err != nil {
@@ -277,18 +327,23 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 		}
 	}
 
-	fsm.nextBucketID = snapshotProto.NextBucketId
+	fsm.mu.Lock()
+	fsm.state.NextBucketID = snapshotProto.NextBucketId
+	fsm.mu.Unlock()
 
 	fsm.logger.Infof("FSM restored from snapshot")
 }
 
 // stopBucketRaftGroup stops a Raft group for a bucket
 func (fsm *FSM) stopBucketRaftGroup(ctx context.Context, bucketName string) error {
-	group, exists := fsm.buckets[bucketName]
+	fsm.mu.Lock()
+	group, exists := fsm.state.Buckets[bucketName]
 	if !exists {
+		fsm.mu.Unlock()
 		fsm.logger.WithFields(map[string]any{"bucket": bucketName}).Infof("WARN: Bucket Raft group does not exist")
 		return nil
 	}
+	fsm.mu.Unlock()
 
 	// Stop the group
 	if err := group.Stop(ctx); err != nil {
@@ -296,14 +351,23 @@ func (fsm *FSM) stopBucketRaftGroup(ctx context.Context, bucketName string) erro
 	}
 
 	// Remove from map
-	delete(fsm.buckets, bucketName)
+	fsm.mu.Lock()
+	delete(fsm.state.Buckets, bucketName)
+	fsm.mu.Unlock()
 
 	fsm.logger.WithFields(map[string]any{"bucket": bucketName}).Infof("Bucket Raft group stopped")
 	return nil
 }
 
 func (fsm *FSM) Stop(ctx context.Context) error {
-	for _, group := range fsm.buckets {
+	fsm.mu.Lock()
+	bucketsToStop := make([]*bucket.Node, 0, len(fsm.state.Buckets))
+	for _, group := range fsm.state.Buckets {
+		bucketsToStop = append(bucketsToStop, group)
+	}
+	fsm.mu.Unlock()
+
+	for _, group := range bucketsToStop {
 		if err := group.Stop(ctx); err != nil {
 			return fmt.Errorf("stopping bucket Raft group: %w", err)
 		}
@@ -322,9 +386,17 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(ctx context.Context, bucketInfo ledg
 	logger.Infof("Starting bucket Raft group...")
 
 	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64) (service.Cursor[ledger.Log], error) {
+		fsm.mu.RLock()
+		bucketNode := fsm.state.Buckets[bucketInfo.Name]
+		fsm.mu.RUnlock()
+
+		if bucketNode == nil {
+			return nil, fmt.Errorf("bucket node not found: %s", bucketInfo.Name)
+		}
+
 		return service.
 			NewBucketGrpcClient(bucketInfo.Name, service.NewBucketServiceClient(
-				fsm.multiplexedTransport.GetPeerConnection(fsm.buckets[bucketInfo.Name].GetLeader()),
+				fsm.multiplexedTransport.GetPeerConnection(bucketNode.GetLeader()),
 			)).
 			GetAllLogs(ctx, from)
 	})
@@ -363,7 +435,9 @@ func (fsm *FSM) startBucketRaftGroupFromFSM(ctx context.Context, bucketInfo ledg
 		return fmt.Errorf("creating bucket Raft group: %w", err)
 	}
 
-	fsm.buckets[bucketInfo.Name] = group
+	fsm.mu.Lock()
+	fsm.state.Buckets[bucketInfo.Name] = group
+	fsm.mu.Unlock()
 
 	if err := group.Start(); err != nil {
 		return fmt.Errorf("starting bucket Raft group: %w", err)

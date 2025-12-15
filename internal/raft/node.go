@@ -21,12 +21,12 @@ type NodeTransport interface {
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
-type Node[F FSM] struct {
+type Node[State any, F FSM[State]] struct {
 	node        *raft.RawNode
 	logger      logging.Logger
 	mu          sync.RWMutex
 	futures     map[uint64]*applyFuture // Map of command ID -> future
-	fsmSyncer   *syncer[F]
+	fsmSyncer   *syncer[State, F]
 	storage     *WALStorage
 	transport   NodeTransport
 	config      NodeConfig
@@ -34,13 +34,13 @@ type Node[F FSM] struct {
 }
 
 // NewNode creates a new wrapper around a RawNode
-func NewNode[F FSM](
+func NewNode[State any, F FSM[State]](
 	cfg NodeConfig,
 	storage *WALStorage,
 	transport NodeTransport,
 	fsm F,
 	logger logging.Logger,
-) (*Node[F], error) {
+) (*Node[State, F], error) {
 
 	// Set defaults if not configured
 	electionTick := cfg.ElectionTick
@@ -129,11 +129,11 @@ func NewNode[F FSM](
 		return nil, fmt.Errorf("creating spool: %w", err)
 	}
 
-	return &Node[F]{
+	return &Node[State, F]{
 		node:        node,
 		logger:      logger,
 		futures:     make(map[uint64]*applyFuture),
-		fsmSyncer:   newSyncer(spool, fsm, logger),
+		fsmSyncer:   newSyncer[State, F](spool, fsm, logger),
 		storage:     storage,
 		transport:   transport,
 		config:      cfg,
@@ -141,13 +141,13 @@ func NewNode[F FSM](
 	}, nil
 }
 
-func (node *Node[F]) Inner() F {
+func (node *Node[State, F]) Inner() F {
 	return node.fsmSyncer.fsm
 }
 
 // Apply proposes a command and waits for it to be applied, returning the applied index
 // This is similar to hashicorp/raft's Apply() method
-func (node *Node[F]) Apply(cmd *Command, timeout time.Duration) (uint64, any, error) {
+func (node *Node[State, F]) Apply(cmd *Command, timeout time.Duration) (uint64, any, error) {
 	// Serialize the command to binary format
 	cmdData, err := cmd.MarshalBinary()
 	if err != nil {
@@ -198,7 +198,7 @@ func (node *Node[F]) Apply(cmd *Command, timeout time.Duration) (uint64, any, er
 
 // NotifyApplied notifies the wrapper that a command with the given ID has been applied
 // This should be called from the readyLoop when entries are applied
-func (node *Node[F]) NotifyApplied(commandID uint64, result any, index uint64, err error) {
+func (node *Node[State, F]) NotifyApplied(commandID uint64, result any, index uint64, err error) {
 	node.mu.RLock()
 	future, exists := node.futures[commandID]
 	node.mu.RUnlock()
@@ -224,7 +224,7 @@ func (node *Node[F]) NotifyApplied(commandID uint64, result any, index uint64, e
 }
 
 // readyLoop processes Ready structures from etcd/raft for this bucket group with a specific message channel
-func (node *Node[F]) readyLoop() {
+func (node *Node[State, F]) readyLoop() {
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
 		tickInterval = 100 * time.Millisecond
@@ -418,28 +418,28 @@ func (node *Node[F]) readyLoop() {
 }
 
 // Status returns the current status of the node
-func (node *Node[F]) Status() raft.Status {
+func (node *Node[State, F]) Status() raft.Status {
 	return node.node.Status()
 }
 
-func (node *Node[F]) Start() error {
+func (node *Node[State, F]) Start() error {
 	// Start the Ready loop - it will receive all messages and route them appropriately
 	go node.readyLoop()
 
 	return nil
 }
 
-func (node *Node[F]) IsLeader() bool {
+func (node *Node[State, F]) IsLeader() bool {
 	status := node.node.Status()
 	return status.Lead == status.ID
 }
 
-func (node *Node[F]) GetLeader() uint64 {
+func (node *Node[State, F]) GetLeader() uint64 {
 	return node.node.Status().Lead
 }
 
 // GetClusterState returns the current state of the Raft cluster
-func (node *Node[F]) GetClusterState(ctx context.Context) (*ledger.ClusterState, error) {
+func (node *Node[State, F]) GetClusterState(ctx context.Context) (*ledger.ClusterState[State], error) {
 	status := node.node.Status()
 
 	// Get leader
@@ -478,16 +478,17 @@ func (node *Node[F]) GetClusterState(ctx context.Context) (*ledger.ClusterState,
 		})
 	}
 
-	return &ledger.ClusterState{
+	return &ledger.ClusterState[State]{
 		State:     stateStr,
 		Leader:    uint(leaderID),
 		Nodes:     nodes,
 		LocalNode: uint(node.config.NodeID),
+		InnerState: node.fsmSyncer.fsm.GetState(),
 	}, nil
 }
 
 // Snapshot forces a snapshot of the Raft cluster
-func (node *Node[F]) Snapshot(ctx context.Context) error {
+func (node *Node[State, F]) Snapshot(ctx context.Context) error {
 	node.logger.Info("Snapshot request received")
 
 	// Check if we are the leader (only leader can create snapshots)
@@ -536,13 +537,13 @@ func (node *Node[F]) Snapshot(ctx context.Context) error {
 }
 
 // IsHealthy returns true if the node is connected to the cluster (leader or follower)
-func (node *Node[F]) IsHealthy() bool {
+func (node *Node[State, F]) IsHealthy() bool {
 	status := node.node.Status()
 	// Node is healthy if it's a leader or follower
 	return status.RaftState == raft.StateLeader || status.RaftState == raft.StateFollower
 }
 
-func (node *Node[F]) Stop(ctx context.Context) error {
+func (node *Node[State, F]) Stop(ctx context.Context) error {
 	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
@@ -569,7 +570,7 @@ type applyFuture struct {
 
 // RestoreFromStorage restores the FSM state from storage by reading the last snapshot
 // and applying all entries after the snapshot
-func restoreFromStorage(fsm FSM, storage *WALStorage, logger logging.Logger) error {
+func restoreFromStorage[State any](fsm FSM[State], storage *WALStorage, logger logging.Logger) error {
 	logger.Infof("Restoring FSM from storage")
 	// Read the last snapshot
 	snapshot, err := storage.Snapshot()
