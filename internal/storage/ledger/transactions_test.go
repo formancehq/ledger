@@ -887,7 +887,7 @@ func TestTransactionsList(t *testing.T) {
 	}
 }
 
-func TestMigrations2(t *testing.T) {
+func TestAdapters(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
@@ -992,16 +992,37 @@ from generate_series(0, 100) as seq;
 	require.NoError(t, err)
 	require.Equal(t, cursorFromLegacyStore, cursorFromNewStore)
 
-	cursor := ledgercontroller.ColumnPaginatedQuery[any]{}
-	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStore.Next, &cursor))
+	columnPaginatedQuery := ledgercontroller.ColumnPaginatedQuery[any]{}
+	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStore.Next, &columnPaginatedQuery))
 
-	cursorFromLegacyStorePage2, err := legacyStore.Transactions().Paginate(ctx, cursor)
+	cursorFromLegacyStorePage2, err := legacyStore.Transactions().Paginate(ctx, columnPaginatedQuery)
 	require.NoError(t, err)
 	require.Equal(t, 90, *cursorFromLegacyStorePage2.Data[0].ID)
 
-	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStorePage2.Next, &cursor))
+	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStorePage2.Next, &columnPaginatedQuery))
 
-	cursorFromLegacyStorePage3, err := legacyStore.Transactions().Paginate(ctx, cursor)
+	cursorFromLegacyStorePage3, err := legacyStore.Transactions().Paginate(ctx, columnPaginatedQuery)
 	require.NoError(t, err)
 	require.Equal(t, 80, *cursorFromLegacyStorePage3.Data[0].ID)
+
+	volumesCursorFromLegacyStore, err := legacyStore.Volumes().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		PageSize: 10,
+		Column:   "account",
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+			PIT: pointer.For(time.Now()),
+			Opts: ledgercontroller.GetVolumesOptions{
+				UseInsertionDate: true,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "fees", volumesCursorFromLegacyStore.Data[0].Account)
+
+	offsetPaginatedQuery := ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{}
+	require.NoError(t, bunpaginate.UnmarshalCursor(volumesCursorFromLegacyStore.Next, &offsetPaginatedQuery))
+
+	volumesCursorFromLegacyStorePage2, err := legacyStore.Volumes().Paginate(ctx, offsetPaginatedQuery)
+	require.NoError(t, err)
+	require.Equal(t, "orders:16", volumesCursorFromLegacyStorePage2.Data[0].Account)
 }

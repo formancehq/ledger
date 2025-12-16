@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"regexp"
+
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 
@@ -157,8 +158,11 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q ListAccountsQu
 		}
 	}
 
-	return paginateWithOffset[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes], ledger.Account](store, ctx,
+	return paginateWithOffset[PITFilterWithVolumes, ledger.Account](
+		store,
+		ctx,
 		(*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
+		q.Options.Options,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildAccountListQuery(query, q, where, args)
 		},

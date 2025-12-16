@@ -43,25 +43,35 @@ func fetch[T any](s *Store, addModel bool, ctx context.Context, builders ...func
 	return ret, nil
 }
 
-func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
-	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
+func paginateWithOffset[FILTERS any, RETURN any](
+	s *Store,
+	ctx context.Context,
+	q *bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]],
+	filters FILTERS,
+	builders ...func(query *bun.SelectQuery) *bun.SelectQuery,
+) (*bunpaginate.Cursor[RETURN], error) {
 
 	query := s.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
-	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
+	return UsingOffset[FILTERS, RETURN](ctx, query, *q, filters)
 }
 
-func paginateWithOffsetWithoutModel[FILTERS any, RETURN any](s *Store, ctx context.Context,
-	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
+func paginateWithOffsetWithoutModel[FILTERS any, RETURN any](
+	s *Store,
+	ctx context.Context,
+	q *bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]],
+	filters FILTERS,
+	builders ...func(query *bun.SelectQuery) *bun.SelectQuery,
+) (*bunpaginate.Cursor[RETURN], error) {
 
 	query := s.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
 
-	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
+	return UsingOffset[FILTERS, RETURN](ctx, query, *q, filters)
 }
 
 func paginateWithColumn[FILTERS any, RETURN any](
@@ -196,7 +206,7 @@ func filterOOT(oot *time.Time, column string) func(query *bun.SelectQuery) *bun.
 	}
 }
 
-func convertCursor[FILTERS any](cp *bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]], filters FILTERS) *ledgercontroller.ColumnPaginatedQuery[any] {
+func convertColumnCursor[FILTERS any](cp *bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]], filters FILTERS) *ledgercontroller.ColumnPaginatedQuery[any] {
 
 	var (
 		pitFilterWithVolumes *PITFilterWithVolumes
@@ -239,6 +249,63 @@ func convertCursor[FILTERS any](cp *bunpaginate.ColumnPaginatedQuery[ledgercontr
 			//Opts: filters,
 		},
 		Reverse: cp.Reverse,
+	}
+}
+
+func convertOffsetCursor[FILTERS any](cp *bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]], filters FILTERS) *ledgercontroller.OffsetPaginatedQuery[any] {
+
+	var (
+		pitFilterWithVolumes *PITFilterWithVolumes
+		filtersForVolumes    *FiltersForVolumes
+	)
+	switch (any)(filters).(type) {
+	case PITFilterWithVolumes:
+		pitFilterWithVolumes = pointer.For((any)(filters).(PITFilterWithVolumes))
+	case FiltersForVolumes:
+		filtersForVolumes = pointer.For((any)(filters).(FiltersForVolumes))
+	}
+
+	return &ledgercontroller.OffsetPaginatedQuery[any]{
+		Offset:   cp.Offset,
+		Order:    pointer.For(cp.Order),
+		PageSize: cp.PageSize,
+		Options: ledgercontroller.ResourceQuery[any]{
+			PIT: func() *time.Time {
+				if pitFilterWithVolumes != nil {
+					return pitFilterWithVolumes.PIT
+				}
+				if filtersForVolumes != nil {
+					return filtersForVolumes.PIT
+				}
+				return nil
+			}(),
+			OOT: func() *time.Time {
+				if pitFilterWithVolumes != nil {
+					return pitFilterWithVolumes.OOT
+				}
+				if filtersForVolumes != nil {
+					return filtersForVolumes.OOT
+				}
+				return nil
+			}(),
+			Builder: cp.Options.QueryBuilder,
+			Expand: func() []string {
+				ret := []string{}
+				if pitFilterWithVolumes != nil && pitFilterWithVolumes.ExpandVolumes {
+					ret = append(ret, "filters")
+				}
+				if pitFilterWithVolumes != nil && pitFilterWithVolumes.ExpandEffectiveVolumes {
+					ret = append(ret, "effectiveVolumes")
+				}
+				return ret
+			}(),
+			Opts: func() any {
+				if filtersForVolumes != nil {
+					return filtersForVolumes
+				}
+				return nil
+			}(),
+		},
 	}
 }
 
@@ -334,10 +401,10 @@ func UsingColumn[FILTERS, ENTITY any](ctx context.Context,
 		previousConverted *ledgercontroller.ColumnPaginatedQuery[any]
 	)
 	if next != nil {
-		nextConverted = convertCursor[FILTERS](next, filters)
+		nextConverted = convertColumnCursor[FILTERS](next, filters)
 	}
 	if previous != nil {
-		previousConverted = convertCursor[FILTERS](previous, filters)
+		previousConverted = convertColumnCursor[FILTERS](previous, filters)
 	}
 
 	return &bunpaginate.Cursor[ENTITY]{
@@ -347,4 +414,82 @@ func UsingColumn[FILTERS, ENTITY any](ctx context.Context,
 		Next:     ledgerstore.EncodeCursor[any, ledgercontroller.ColumnPaginatedQuery[any]](nextConverted),
 		Data:     ret,
 	}, nil
+}
+
+func usingOffset[FILTERS any, ENTITY any](
+	ctx context.Context,
+	sb *bun.SelectQuery,
+	query bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]],
+	filters FILTERS,
+	builders ...func(query *bun.SelectQuery) *bun.SelectQuery,
+) (*bunpaginate.Cursor[ENTITY], error) {
+
+	ret := make([]ENTITY, 0)
+
+	sb.Model(&ret)
+	for _, builder := range builders {
+		sb = sb.Apply(builder)
+	}
+
+	if query.Offset > 0 {
+		sb = sb.Offset(int(query.Offset))
+	}
+
+	if query.PageSize > 0 {
+		sb = sb.Limit(int(query.PageSize) + 1)
+	}
+
+	if err := sb.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	var previous, next *bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]]
+
+	// Page with transactions before
+	if query.Offset > 0 {
+		cp := query
+		offset := int(query.Offset) - int(query.PageSize)
+		if offset < 0 {
+			offset = 0
+		}
+		cp.Offset = uint64(offset)
+		previous = &cp
+	}
+
+	// Page with transactions after
+	if query.PageSize != 0 && len(ret) > int(query.PageSize) {
+		cp := query
+		cp.Offset = query.Offset + query.PageSize
+		next = &cp
+		ret = ret[:len(ret)-1]
+	}
+
+	var (
+		nextConverted     *ledgercontroller.OffsetPaginatedQuery[any]
+		previousConverted *ledgercontroller.OffsetPaginatedQuery[any]
+	)
+	if next != nil {
+		nextConverted = convertOffsetCursor[FILTERS](next, filters)
+	}
+	if previous != nil {
+		previousConverted = convertOffsetCursor[FILTERS](previous, filters)
+	}
+
+	return &bunpaginate.Cursor[ENTITY]{
+		PageSize: int(query.PageSize),
+		HasMore:  next != nil,
+		Previous: ledgerstore.EncodeCursor[any, ledgercontroller.OffsetPaginatedQuery[any]](previousConverted),
+		Next:     ledgerstore.EncodeCursor[any, ledgercontroller.OffsetPaginatedQuery[any]](nextConverted),
+		Data:     ret,
+	}, nil
+}
+
+func UsingOffset[FILTERS any, ENTITY any](
+	ctx context.Context,
+	sb *bun.SelectQuery,
+	query bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]],
+	filters FILTERS,
+	builders ...func(query *bun.SelectQuery) *bun.SelectQuery,
+) (*bunpaginate.Cursor[ENTITY], error) {
+	return usingOffset[FILTERS, ENTITY](ctx, sb, query, filters, builders...)
 }

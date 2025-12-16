@@ -180,6 +180,8 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 	// We can import only if the ledger is empty.
 	logs, err := ctrl.store.Logs().Paginate(ctx, ColumnPaginatedQuery[any]{
 		PageSize: 1,
+		//Column:   "id",
+		//Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
 	})
 	if err != nil {
 		return fmt.Errorf("error listing logs: %w", err)

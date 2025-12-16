@@ -3,8 +3,9 @@ package legacy
 import (
 	"context"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"regexp"
+
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	lquery "github.com/formancehq/go-libs/v2/query"
@@ -179,8 +180,11 @@ func (store *Store) GetVolumesWithBalances(ctx context.Context, q GetVolumesWith
 		}
 	}
 
-	return paginateWithOffsetWithoutModel[ledgercontroller.PaginatedQueryOptions[FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
-		store, ctx, (*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FiltersForVolumes]])(&q),
+	return paginateWithOffsetWithoutModel[FiltersForVolumes, ledger.VolumesWithBalanceByAssetByAccount](
+		store,
+		ctx,
+		(*bunpaginate.OffsetPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FiltersForVolumes]])(&q),
+		q.Options.Options,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildVolumesWithBalancesQuery(query, q, where, args, useMetadata)
 		},
