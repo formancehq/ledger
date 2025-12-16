@@ -37,3 +37,8 @@ type AccountsVolumes struct {
 	Input   *big.Int `bun:"input,type:numeric"`
 	Output  *big.Int `bun:"output,type:numeric"`
 }
+
+type AccountWithDefaultMetadata struct {
+	*Account
+	DefaultMetadata metadata.Metadata
+}

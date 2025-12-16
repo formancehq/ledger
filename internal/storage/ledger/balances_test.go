@@ -32,7 +32,7 @@ func TestBalancesGet(t *testing.T) {
 		UpdatedAt:     time.Now(),
 		FirstUsage:    time.Now(),
 	}
-	err := store.UpsertAccounts(ctx, nil, world)
+	err := store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{Account: world})
 	require.NoError(t, err)
 
 	_, err = store.UpdateVolumes(ctx, ledger.AccountsVolumes{
@@ -174,7 +174,7 @@ func TestBalancesAggregates(t *testing.T) {
 		).
 		WithTimestamp(now).
 		WithInsertedAt(now)
-	err := store.CommitTransaction(ctx, nil, &tx1, nil)
+	err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -185,7 +185,7 @@ func TestBalancesAggregates(t *testing.T) {
 		).
 		WithTimestamp(now.Add(-time.Minute)).
 		WithInsertedAt(now.Add(time.Minute))
-	err = store.CommitTransaction(ctx, nil, &tx2, nil)
+	err = commitTransactionAndUpsertAccounts(ctx, store, &tx2)
 	require.NoError(t, err)
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
