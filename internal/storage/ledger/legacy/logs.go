@@ -3,6 +3,7 @@ package legacy
 import (
 	"context"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -36,8 +37,9 @@ func (store *Store) logsQueryBuilder(q ledgercontroller.PaginatedQueryOptions[an
 }
 
 func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
-	logs, err := paginateWithColumn[ledgercontroller.PaginatedQueryOptions[any], ledgerstore.Log](store, ctx,
+	logs, err := paginateWithColumn[any, ledgerstore.Log](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[any]])(&q),
+		nil,
 		store.logsQueryBuilder(q.Options),
 	)
 	if err != nil {

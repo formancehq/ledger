@@ -3,6 +3,9 @@ package legacy
 import (
 	"context"
 	"database/sql"
+	"math/big"
+	"slices"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -11,12 +14,11 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
-	"math/big"
-	"slices"
 )
 
 type accountsPaginatedResourceAdapter struct {
-	store *Store
+	store        *Store
+	defaultOrder bunpaginate.Order
 }
 
 func (p accountsPaginatedResourceAdapter) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[any]) (*ledger.Account, error) {
@@ -53,7 +55,7 @@ func (p accountsPaginatedResourceAdapter) Count(ctx context.Context, query ledge
 }
 
 func (p accountsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledgercontroller.OffsetPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
-	return p.store.GetAccountsWithVolumes(ctx, NewListAccountsQuery(ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]{
+	listAccountsQuery := NewListAccountsQuery(ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]{
 		QueryBuilder: query.Options.Builder,
 		PageSize:     query.PageSize,
 		Options: PITFilterWithVolumes{
@@ -64,13 +66,23 @@ func (p accountsPaginatedResourceAdapter) Paginate(ctx context.Context, query le
 			ExpandVolumes:          slices.Contains(query.Options.Expand, "volumes"),
 			ExpandEffectiveVolumes: slices.Contains(query.Options.Expand, "effectiveVolumes"),
 		},
-	}))
+	})
+	listAccountsQuery.Offset = query.Offset
+	listAccountsQuery.PageSize = query.PageSize
+	if query.Order == nil {
+		listAccountsQuery.Order = p.defaultOrder
+	} else {
+		listAccountsQuery.Order = *query.Order
+	}
+
+	return p.store.GetAccountsWithVolumes(ctx, listAccountsQuery)
 }
 
 var _ ledgercontroller.PaginatedResource[ledger.Account, any, ledgercontroller.OffsetPaginatedQuery[any]] = (*accountsPaginatedResourceAdapter)(nil)
 
 type logsPaginatedResourceAdapter struct {
-	store *Store
+	store        *Store
+	defaultOrder bunpaginate.Order
 }
 
 func (p logsPaginatedResourceAdapter) GetOne(_ context.Context, _ ledgercontroller.ResourceQuery[any]) (*ledger.Log, error) {
@@ -82,7 +94,7 @@ func (p logsPaginatedResourceAdapter) Count(_ context.Context, _ ledgercontrolle
 }
 
 func (p logsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledgercontroller.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
-	return p.store.GetLogs(ctx, NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
+	listLogsQuery := NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
 		QueryBuilder: query.Options.Builder,
 		PageSize:     query.PageSize,
 		Options: PITFilterWithVolumes{
@@ -91,13 +103,27 @@ func (p logsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledger
 				OOT: query.Options.OOT,
 			},
 		},
-	}))
+	})
+	listLogsQuery.Column = query.Column
+	listLogsQuery.Bottom = query.Bottom
+	listLogsQuery.PageSize = query.PageSize
+	listLogsQuery.PaginationID = query.PaginationID
+	listLogsQuery.Order = *query.Order
+	listLogsQuery.Reverse = query.Reverse
+	if query.Order == nil {
+		listLogsQuery.Order = p.defaultOrder
+	} else {
+		listLogsQuery.Order = *query.Order
+	}
+
+	return p.store.GetLogs(ctx, listLogsQuery)
 }
 
 var _ ledgercontroller.PaginatedResource[ledger.Log, any, ledgercontroller.ColumnPaginatedQuery[any]] = (*logsPaginatedResourceAdapter)(nil)
 
 type transactionsPaginatedResourceAdapter struct {
-	store *Store
+	store        *Store
+	defaultOrder bunpaginate.Order
 }
 
 func (p transactionsPaginatedResourceAdapter) GetOne(ctx context.Context, query ledgercontroller.ResourceQuery[any]) (*ledger.Transaction, error) {
@@ -134,7 +160,7 @@ func (p transactionsPaginatedResourceAdapter) Count(ctx context.Context, query l
 }
 
 func (p transactionsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledgercontroller.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return p.store.GetTransactions(ctx, NewListTransactionsQuery(ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]{
+	listTxQuery := NewListTransactionsQuery(ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]{
 		QueryBuilder: query.Options.Builder,
 		PageSize:     query.PageSize,
 		Options: PITFilterWithVolumes{
@@ -145,7 +171,19 @@ func (p transactionsPaginatedResourceAdapter) Paginate(ctx context.Context, quer
 			ExpandVolumes:          slices.Contains(query.Options.Expand, "volumes"),
 			ExpandEffectiveVolumes: slices.Contains(query.Options.Expand, "effectiveVolumes"),
 		},
-	}))
+	})
+	listTxQuery.Column = query.Column
+	listTxQuery.Bottom = query.Bottom
+	listTxQuery.PageSize = query.PageSize
+	listTxQuery.PaginationID = query.PaginationID
+	if query.Order == nil {
+		listTxQuery.Order = p.defaultOrder
+	} else {
+		listTxQuery.Order = *query.Order
+	}
+	listTxQuery.Reverse = query.Reverse
+
+	return p.store.GetTransactions(ctx, listTxQuery)
 }
 
 var _ ledgercontroller.PaginatedResource[ledger.Transaction, any, ledgercontroller.ColumnPaginatedQuery[any]] = (*transactionsPaginatedResourceAdapter)(nil)
@@ -187,11 +225,13 @@ func (p aggregatedBalancesPaginatedResourceAdapter) Count(_ context.Context, _ l
 var _ ledgercontroller.Resource[ledger.AggregatedVolumes, ledgercontroller.GetAggregatedVolumesOptions] = (*aggregatedBalancesPaginatedResourceAdapter)(nil)
 
 type aggregatedVolumesPaginatedResourceAdapter struct {
-	store *Store
+	store        *Store
+	defaultOrder bunpaginate.Order
 }
 
 func (p aggregatedVolumesPaginatedResourceAdapter) Paginate(ctx context.Context, query ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
-	return p.store.GetVolumesWithBalances(ctx, NewGetVolumesWithBalancesQuery(ledgercontroller.PaginatedQueryOptions[FiltersForVolumes]{
+
+	getVolumeQuery := NewGetVolumesWithBalancesQuery(ledgercontroller.PaginatedQueryOptions[FiltersForVolumes]{
 		QueryBuilder: query.Options.Builder,
 		PageSize:     query.PageSize,
 		Options: FiltersForVolumes{
@@ -202,7 +242,16 @@ func (p aggregatedVolumesPaginatedResourceAdapter) Paginate(ctx context.Context,
 			UseInsertionDate: query.Options.Opts.UseInsertionDate,
 			GroupLvl:         query.Options.Opts.GroupLvl,
 		},
-	}))
+	})
+	getVolumeQuery.Offset = query.Offset
+	getVolumeQuery.PageSize = query.PageSize
+	if query.Order == nil {
+		getVolumeQuery.Order = p.defaultOrder
+	} else {
+		getVolumeQuery.Order = *query.Order
+	}
+
+	return p.store.GetVolumesWithBalances(ctx, getVolumeQuery)
 }
 
 func (p aggregatedVolumesPaginatedResourceAdapter) GetOne(_ context.Context, _ ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]) (*ledger.VolumesWithBalanceByAssetByAccount, error) {
@@ -223,21 +272,21 @@ type DefaultStoreAdapter struct {
 
 func (d *DefaultStoreAdapter) Accounts() ledgercontroller.PaginatedResource[ledger.Account, any, ledgercontroller.OffsetPaginatedQuery[any]] {
 	if !d.isFullUpToDate {
-		return &accountsPaginatedResourceAdapter{store: d.legacyStore}
+		return &accountsPaginatedResourceAdapter{store: d.legacyStore, defaultOrder: bunpaginate.OrderDesc}
 	}
 	return d.newStore.Accounts()
 }
 
 func (d *DefaultStoreAdapter) Logs() ledgercontroller.PaginatedResource[ledger.Log, any, ledgercontroller.ColumnPaginatedQuery[any]] {
 	if !d.isFullUpToDate {
-		return &logsPaginatedResourceAdapter{store: d.legacyStore}
+		return &logsPaginatedResourceAdapter{store: d.legacyStore, defaultOrder: bunpaginate.OrderDesc}
 	}
 	return d.newStore.Logs()
 }
 
 func (d *DefaultStoreAdapter) Transactions() ledgercontroller.PaginatedResource[ledger.Transaction, any, ledgercontroller.ColumnPaginatedQuery[any]] {
 	if !d.isFullUpToDate {
-		return &transactionsPaginatedResourceAdapter{store: d.legacyStore}
+		return &transactionsPaginatedResourceAdapter{store: d.legacyStore, defaultOrder: bunpaginate.OrderDesc}
 	}
 	return d.newStore.Transactions()
 }
@@ -251,7 +300,7 @@ func (d *DefaultStoreAdapter) AggregatedBalances() ledgercontroller.Resource[led
 
 func (d *DefaultStoreAdapter) Volumes() ledgercontroller.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgercontroller.GetVolumesOptions, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]] {
 	if !d.isFullUpToDate {
-		return &aggregatedVolumesPaginatedResourceAdapter{store: d.legacyStore}
+		return &aggregatedVolumesPaginatedResourceAdapter{store: d.legacyStore, defaultOrder: bunpaginate.OrderAsc}
 	}
 	return d.newStore.Volumes()
 }
@@ -303,8 +352,9 @@ func (d *DefaultStoreAdapter) LockLedger(ctx context.Context) (ledgercontroller.
 	}
 
 	return &DefaultStoreAdapter{
-		newStore:    store,
-		legacyStore: d.legacyStore.WithDB(db),
+		newStore:       store,
+		legacyStore:    d.legacyStore.WithDB(db),
+		isFullUpToDate: d.isFullUpToDate,
 	}, db, release, err
 }
 
@@ -329,8 +379,9 @@ func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) 
 	legacyStore := d.legacyStore.WithDB(store.GetDB())
 
 	return &DefaultStoreAdapter{
-		newStore:    store,
-		legacyStore: legacyStore,
+		newStore:       store,
+		legacyStore:    legacyStore,
+		isFullUpToDate: d.isFullUpToDate,
 	}, tx, nil
 }
 

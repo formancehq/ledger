@@ -2,15 +2,16 @@ package ledger
 
 import (
 	"fmt"
+	"math/big"
+	"reflect"
+	"strings"
+	libtime "time"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
-	"math/big"
-	"reflect"
-	"strings"
-	libtime "time"
 )
 
 type columnPaginator[ResourceType, OptionsType any] struct {
@@ -99,13 +100,13 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	}
 
 	var v ResourceType
-	fields := findPaginationFieldPath(v, paginationColumn)
+	fields := FindPaginationFieldPath(v, paginationColumn)
 
 	var (
 		paginationIDs = make([]*big.Int, 0)
 	)
 	for _, t := range ret {
-		paginationID := findPaginationField(t, fields...)
+		paginationID := FindPaginationField(t, fields...)
 		if query.Bottom == nil {
 			query.Bottom = paginationID
 		}
@@ -152,8 +153,8 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	return &bunpaginate.Cursor[ResourceType]{
 		PageSize: int(pageSize),
 		HasMore:  next != nil,
-		Previous: encodeCursor[OptionsType, ledgercontroller.ColumnPaginatedQuery[OptionsType]](previous),
-		Next:     encodeCursor[OptionsType, ledgercontroller.ColumnPaginatedQuery[OptionsType]](next),
+		Previous: EncodeCursor[OptionsType, ledgercontroller.ColumnPaginatedQuery[OptionsType]](previous),
+		Next:     EncodeCursor[OptionsType, ledgercontroller.ColumnPaginatedQuery[OptionsType]](next),
 		Data:     ret,
 	}, nil
 }
@@ -161,7 +162,7 @@ func (o columnPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 var _ paginator[any, ledgercontroller.ColumnPaginatedQuery[any]] = &columnPaginator[any, any]{}
 
 //nolint:unused
-func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructField {
+func FindPaginationFieldPath(v any, paginationColumn string) []reflect.StructField {
 
 	typeOfT := reflect.TypeOf(v)
 	for i := 0; i < typeOfT.NumField(); i++ {
@@ -191,7 +192,7 @@ func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructFie
 					return fields
 				}
 			} else {
-				fields := findPaginationFieldPath(reflect.New(fieldType).Elem().Interface(), paginationColumn)
+				fields := FindPaginationFieldPath(reflect.New(fieldType).Elem().Interface(), paginationColumn)
 				if len(fields) > 0 {
 					return fields
 				}
@@ -218,7 +219,7 @@ func checkTag(field reflect.StructField, paginationColumn string) []reflect.Stru
 }
 
 //nolint:unused
-func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
+func FindPaginationField(v any, fields ...reflect.StructField) *big.Int {
 	vOf := reflect.ValueOf(v)
 	field := vOf.FieldByName(fields[0].Name)
 	if len(fields) == 1 {
@@ -252,11 +253,11 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 		}
 	}
 
-	return findPaginationField(v, fields[1:]...)
+	return FindPaginationField(v, fields[1:]...)
 }
 
 //nolint:unused
-func encodeCursor[OptionsType any, PaginatedQueryType ledgercontroller.PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
+func EncodeCursor[OptionsType any, PaginatedQueryType ledgercontroller.PaginatedQuery[OptionsType]](v *PaginatedQueryType) string {
 	if v == nil {
 		return ""
 	}

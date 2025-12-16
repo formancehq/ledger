@@ -2,10 +2,11 @@ package ledger
 
 import (
 	"fmt"
+	"math"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
-	"math"
 )
 
 type offsetPaginator[ResourceType, OptionsType any] struct {
@@ -73,8 +74,8 @@ func (o offsetPaginator[ResourceType, OptionsType]) buildCursor(ret []ResourceTy
 	return &bunpaginate.Cursor[ResourceType]{
 		PageSize: int(query.PageSize),
 		HasMore:  next != nil,
-		Previous: encodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](previous),
-		Next:     encodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](next),
+		Previous: EncodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](previous),
+		Next:     EncodeCursor[OptionsType, ledgercontroller.OffsetPaginatedQuery[OptionsType]](next),
 		Data:     ret,
 	}, nil
 }

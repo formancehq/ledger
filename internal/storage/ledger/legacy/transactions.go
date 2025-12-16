@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"regexp"
+
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 
 	"github.com/formancehq/go-libs/v2/time"
 
@@ -168,8 +169,9 @@ func (store *Store) GetTransactions(ctx context.Context, q ListTransactionsQuery
 		}
 	}
 
-	return paginateWithColumn[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes], ledger.Transaction](store, ctx,
+	return paginateWithColumn[PITFilterWithVolumes, ledger.Transaction](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
+		q.Options.Options,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionListQuery(query, q.Options, where, args)
 		},

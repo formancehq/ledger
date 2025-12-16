@@ -4,6 +4,9 @@ package test_suite
 
 import (
 	"database/sql"
+	"io"
+	"math/big"
+
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/formancehq/go-libs/v2/pointer"
 	. "github.com/formancehq/go-libs/v2/testing/api"
@@ -14,8 +17,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
-	"io"
-	"math/big"
 )
 
 var _ = Context("Ledger engine tests", func() {

@@ -6,14 +6,26 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/alitto/pond"
 	"math/big"
+	"os"
 	"slices"
 	"testing"
 
+	"github.com/alitto/pond"
+	"github.com/formancehq/go-libs/v2/bun/bunconnect"
+	"github.com/formancehq/go-libs/v2/bun/bundebug"
+	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v2/testing/docker"
+	"github.com/formancehq/go-libs/v2/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/v2/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	legacyledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"errors"
 
@@ -873,4 +885,144 @@ func TestTransactionsList(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdapters(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	dockerPool := docker.NewPool(t, logging.Testing())
+	srv := pgtesting.CreatePostgresServer(t, dockerPool)
+
+	pgDatabase := srv.NewDatabase(t)
+
+	hooks := make([]bun.QueryHook, 0)
+	if os.Getenv("DEBUG") == "true" {
+		debugHook := bundebug.NewQueryHook()
+		debugHook.Debug = true
+		hooks = append(hooks, debugHook)
+	}
+	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
+	require.NoError(t, err)
+
+	migrator := systemstore.GetMigrator(db)
+	require.NoError(t, migrator.Up(ctx))
+
+	migrator = bucket.GetMigrator(db, "foo")
+	require.NoError(t, migrator.UpByOne(ctx))
+
+	_, err = db.Exec(`
+set search_path = "foo";
+create extension if not exists "uuid-ossp";
+
+insert into logs(seq, ledger, id, type, date, data, hash)
+select
+	seq,
+	'foo',
+	seq,
+	'NEW_TRANSACTION',
+	now(),
+	('{'
+		'"transaction": {'
+			'"id": ' || seq || ','
+			'"timestamp": "' || (to_json(now()::timestamp without time zone)#>>'{}') || 'Z",'
+			'"postings": ['
+				'{'
+					'"destination": "sellers:' || (seq % 5) || '",'
+		            '"source": "world",'
+		            '"asset": "SELL",'
+		            '"amount": 1'
+		        '},'
+	            '{'
+					'"source": "world",'
+					'"destination": "orders:' || seq || '",'
+					'"asset": "USD",'
+					'"amount": 100'
+				'},'
+				'{'
+					'"destination": "fees",'
+					'"source": "orders:' || seq || '",'
+					'"asset": "USD",'
+					'"amount": 1'
+				'},'
+				'{'
+					'"destination": "sellers:' || (seq % 5) || '",'
+					'"source": "orders:' || seq || '",'
+					'"asset": "USD",'
+					'"amount": 99'
+				'}'
+	        '],'
+	        '"metadata": { "tax": "1%" }'
+		'},'
+		'"accountMetadata": {'
+			'"orders:' || seq || '": { "tax": "1%" }'
+		'}'
+	'}')::jsonb,
+	'invalid-hash'
+from generate_series(0, 100) as seq;
+	`)
+	require.NoError(t, err)
+
+	for i := 0; i < 17; i++ {
+		require.NoError(t, migrator.UpByOne(ctx))
+	}
+
+	b := bucket.NewDefault(noop.Tracer{}, "foo")
+	configuration := ledger.NewDefaultConfiguration()
+	configuration.Bucket = "foo"
+	ledger, err := ledger.New("foo", configuration)
+	require.NoError(t, err)
+
+	newStore := ledgerstore.New(db, b, *ledger)
+
+	legacyStore := legacyledgerstore.NewDefaultStoreAdapter(false, newStore)
+	cursorFromLegacyStore, err := legacyStore.Transactions().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 10,
+		Column:   "id",
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+	})
+	require.NoError(t, err)
+
+	cursorFromNewStore, err := newStore.Transactions().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 10,
+		Column:   "id",
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, cursorFromLegacyStore, cursorFromNewStore)
+
+	columnPaginatedQuery := ledgercontroller.ColumnPaginatedQuery[any]{}
+	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStore.Next, &columnPaginatedQuery))
+
+	cursorFromLegacyStorePage2, err := legacyStore.Transactions().Paginate(ctx, columnPaginatedQuery)
+	require.NoError(t, err)
+	require.Equal(t, 90, *cursorFromLegacyStorePage2.Data[0].ID)
+
+	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStorePage2.Next, &columnPaginatedQuery))
+
+	cursorFromLegacyStorePage3, err := legacyStore.Transactions().Paginate(ctx, columnPaginatedQuery)
+	require.NoError(t, err)
+	require.Equal(t, 80, *cursorFromLegacyStorePage3.Data[0].ID)
+
+	volumesCursorFromLegacyStore, err := legacyStore.Volumes().Paginate(ctx, ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{
+		PageSize: 10,
+		Column:   "account",
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		Options: ledgercontroller.ResourceQuery[ledgercontroller.GetVolumesOptions]{
+			PIT: pointer.For(time.Now()),
+			Opts: ledgercontroller.GetVolumesOptions{
+				UseInsertionDate: true,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "fees", volumesCursorFromLegacyStore.Data[0].Account)
+
+	offsetPaginatedQuery := ledgercontroller.OffsetPaginatedQuery[ledgercontroller.GetVolumesOptions]{}
+	require.NoError(t, bunpaginate.UnmarshalCursor(volumesCursorFromLegacyStore.Next, &offsetPaginatedQuery))
+
+	volumesCursorFromLegacyStorePage2, err := legacyStore.Volumes().Paginate(ctx, offsetPaginatedQuery)
+	require.NoError(t, err)
+	require.Equal(t, "orders:16", volumesCursorFromLegacyStorePage2.Data[0].Account)
 }

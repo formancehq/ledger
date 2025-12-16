@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/migrations"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
@@ -16,6 +17,7 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	"errors"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
