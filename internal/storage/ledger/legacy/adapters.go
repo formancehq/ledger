@@ -3,6 +3,9 @@ package legacy
 import (
 	"context"
 	"database/sql"
+	"math/big"
+	"slices"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/metadata"
 	"github.com/formancehq/go-libs/v2/migrations"
@@ -11,8 +14,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
-	"math/big"
-	"slices"
 )
 
 type accountsPaginatedResourceAdapter struct {
@@ -82,7 +83,7 @@ func (p logsPaginatedResourceAdapter) Count(_ context.Context, _ ledgercontrolle
 }
 
 func (p logsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledgercontroller.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
-	return p.store.GetLogs(ctx, NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
+	listLogsQuery := NewListLogsQuery(ledgercontroller.PaginatedQueryOptions[any]{
 		QueryBuilder: query.Options.Builder,
 		PageSize:     query.PageSize,
 		Options: PITFilterWithVolumes{
@@ -91,7 +92,15 @@ func (p logsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledger
 				OOT: query.Options.OOT,
 			},
 		},
-	}))
+	})
+	listLogsQuery.Column = query.Column
+	listLogsQuery.Bottom = query.Bottom
+	listLogsQuery.PageSize = query.PageSize
+	listLogsQuery.PaginationID = query.PaginationID
+	listLogsQuery.Order = *query.Order
+	listLogsQuery.Reverse = query.Reverse
+
+	return p.store.GetLogs(ctx, listLogsQuery)
 }
 
 var _ ledgercontroller.PaginatedResource[ledger.Log, any, ledgercontroller.ColumnPaginatedQuery[any]] = (*logsPaginatedResourceAdapter)(nil)
@@ -134,7 +143,7 @@ func (p transactionsPaginatedResourceAdapter) Count(ctx context.Context, query l
 }
 
 func (p transactionsPaginatedResourceAdapter) Paginate(ctx context.Context, query ledgercontroller.ColumnPaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
-	return p.store.GetTransactions(ctx, NewListTransactionsQuery(ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]{
+	listTxQuery := NewListTransactionsQuery(ledgercontroller.PaginatedQueryOptions[PITFilterWithVolumes]{
 		QueryBuilder: query.Options.Builder,
 		PageSize:     query.PageSize,
 		Options: PITFilterWithVolumes{
@@ -145,7 +154,15 @@ func (p transactionsPaginatedResourceAdapter) Paginate(ctx context.Context, quer
 			ExpandVolumes:          slices.Contains(query.Options.Expand, "volumes"),
 			ExpandEffectiveVolumes: slices.Contains(query.Options.Expand, "effectiveVolumes"),
 		},
-	}))
+	})
+	listTxQuery.Column = query.Column
+	listTxQuery.Bottom = query.Bottom
+	listTxQuery.PageSize = query.PageSize
+	listTxQuery.PaginationID = query.PaginationID
+	listTxQuery.Order = *query.Order
+	listTxQuery.Reverse = query.Reverse
+
+	return p.store.GetTransactions(ctx, listTxQuery)
 }
 
 var _ ledgercontroller.PaginatedResource[ledger.Transaction, any, ledgercontroller.ColumnPaginatedQuery[any]] = (*transactionsPaginatedResourceAdapter)(nil)

@@ -968,14 +968,6 @@ from generate_series(0, 100) as seq;
 		require.NoError(t, migrator.UpByOne(ctx))
 	}
 
-	legacyStore := legacyledgerstore.New(db, "foo", "foo")
-	cursorFromLegacyStore, err := legacyStore.GetTransactions(ctx, legacyledgerstore.NewListTransactionsQuery(
-		ledgercontroller.PaginatedQueryOptions[legacyledgerstore.PITFilterWithVolumes]{
-			PageSize: 10,
-		},
-	))
-	require.NoError(t, err)
-
 	b := bucket.NewDefault(noop.Tracer{}, "foo")
 	configuration := ledger.NewDefaultConfiguration()
 	configuration.Bucket = "foo"
@@ -983,6 +975,15 @@ from generate_series(0, 100) as seq;
 	require.NoError(t, err)
 
 	newStore := ledgerstore.New(db, b, *ledger)
+
+	legacyStore := legacyledgerstore.NewDefaultStoreAdapter(false, newStore)
+	cursorFromLegacyStore, err := legacyStore.Transactions().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize: 10,
+		Column:   "id",
+		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+	})
+	require.NoError(t, err)
+
 	cursorFromNewStore, err := newStore.Transactions().Paginate(ctx, ledgercontroller.ColumnPaginatedQuery[any]{
 		PageSize: 10,
 		Column:   "id",
@@ -990,4 +991,17 @@ from generate_series(0, 100) as seq;
 	})
 	require.NoError(t, err)
 	require.Equal(t, cursorFromLegacyStore, cursorFromNewStore)
+
+	cursor := ledgercontroller.ColumnPaginatedQuery[any]{}
+	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStore.Next, &cursor))
+
+	cursorFromLegacyStorePage2, err := legacyStore.Transactions().Paginate(ctx, cursor)
+	require.NoError(t, err)
+	require.Equal(t, 90, *cursorFromLegacyStorePage2.Data[0].ID)
+
+	require.NoError(t, bunpaginate.UnmarshalCursor(cursorFromLegacyStorePage2.Next, &cursor))
+
+	cursorFromLegacyStorePage3, err := legacyStore.Transactions().Paginate(ctx, cursor)
+	require.NoError(t, err)
+	require.Equal(t, 80, *cursorFromLegacyStorePage3.Data[0].ID)
 }
