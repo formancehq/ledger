@@ -4,7 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/formancehq/go-libs/v2/platform/postgres"
+	"github.com/formancehq/go-libs/v2/pointer"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+
+	"math/big"
 	"reflect"
 	"strings"
 
@@ -58,13 +64,19 @@ func paginateWithOffsetWithoutModel[FILTERS any, RETURN any](s *Store, ctx conte
 	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
 }
 
-func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
+func paginateWithColumn[FILTERS any, RETURN any](
+	s *Store,
+	ctx context.Context,
+	q *bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]],
+	filters FILTERS,
+	builders ...func(query *bun.SelectQuery) *bun.SelectQuery,
+) (*bunpaginate.Cursor[RETURN], error) {
 	query := s.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
 
-	ret, err := bunpaginate.UsingColumn[FILTERS, RETURN](ctx, query, *q)
+	ret, err := UsingColumn[FILTERS, RETURN](ctx, query, *q, filters)
 	if err != nil {
 		return nil, postgres.ResolveError(err)
 	}
@@ -182,4 +194,157 @@ func filterOOT(oot *time.Time, column string) func(query *bun.SelectQuery) *bun.
 		}
 		return query.Where(fmt.Sprintf("%s >= ?", column), oot)
 	}
+}
+
+func convertCursor[FILTERS any](cp *bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]], filters FILTERS) *ledgercontroller.ColumnPaginatedQuery[any] {
+
+	var (
+		pitFilterWithVolumes *PITFilterWithVolumes
+	)
+	switch (any)(filters).(type) {
+	case PITFilterWithVolumes:
+		pitFilterWithVolumes = pointer.For((any)(filters).(PITFilterWithVolumes))
+	}
+
+	return &ledgercontroller.ColumnPaginatedQuery[any]{
+		PageSize:     cp.PageSize,
+		Bottom:       cp.Bottom,
+		Column:       cp.Column,
+		PaginationID: cp.PaginationID,
+		Order:        pointer.For(cp.Order),
+		Options: ledgercontroller.ResourceQuery[any]{
+			PIT: func() *time.Time {
+				if pitFilterWithVolumes != nil {
+					return pitFilterWithVolumes.PIT
+				}
+				return nil
+			}(),
+			OOT: func() *time.Time {
+				if pitFilterWithVolumes != nil {
+					return pitFilterWithVolumes.OOT
+				}
+				return nil
+			}(),
+			Builder: cp.Options.QueryBuilder,
+			Expand: func() []string {
+				ret := []string{}
+				if pitFilterWithVolumes != nil && pitFilterWithVolumes.ExpandVolumes {
+					ret = append(ret, "filters")
+				}
+				if pitFilterWithVolumes != nil && pitFilterWithVolumes.ExpandEffectiveVolumes {
+					ret = append(ret, "effectiveVolumes")
+				}
+				return ret
+			}(),
+			//Opts: filters,
+		},
+		Reverse: cp.Reverse,
+	}
+}
+
+func UsingColumn[FILTERS, ENTITY any](ctx context.Context,
+	sb *bun.SelectQuery,
+	query bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]],
+	filters FILTERS,
+) (*bunpaginate.Cursor[ENTITY], error) {
+	ret := make([]ENTITY, 0)
+
+	sb = sb.Model(&ret)
+	sb = sb.Limit(int(query.PageSize) + 1) // Fetch one additional item to find the next token
+	order := query.Order
+	if query.Reverse {
+		order = order.Reverse()
+	}
+	sb = sb.OrderExpr(fmt.Sprintf("%s %s", query.Column, order))
+
+	if query.PaginationID != nil {
+		if query.Reverse {
+			switch query.Order {
+			case bunpaginate.OrderAsc:
+				sb = sb.Where(fmt.Sprintf("%s < ?", query.Column), query.PaginationID)
+			case bunpaginate.OrderDesc:
+				sb = sb.Where(fmt.Sprintf("%s > ?", query.Column), query.PaginationID)
+			}
+		} else {
+			switch query.Order {
+			case bunpaginate.OrderAsc:
+				sb = sb.Where(fmt.Sprintf("%s >= ?", query.Column), query.PaginationID)
+			case bunpaginate.OrderDesc:
+				sb = sb.Where(fmt.Sprintf("%s <= ?", query.Column), query.PaginationID)
+			}
+		}
+	}
+
+	if err := sb.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	var v ENTITY
+	fields := ledgerstore.FindPaginationFieldPath(v, query.Column)
+
+	var (
+		paginationIDs = make([]*big.Int, 0)
+	)
+	for _, t := range ret {
+		paginationID := ledgerstore.FindPaginationField(t, fields...)
+		if query.Bottom == nil {
+			query.Bottom = paginationID
+		}
+		paginationIDs = append(paginationIDs, paginationID)
+	}
+
+	hasMore := len(ret) > int(query.PageSize)
+	if hasMore {
+		ret = ret[:len(ret)-1]
+	}
+	if query.Reverse {
+		for i := 0; i < len(ret)/2; i++ {
+			ret[i], ret[len(ret)-i-1] = ret[len(ret)-i-1], ret[i]
+		}
+	}
+
+	var previous, next *bunpaginate.ColumnPaginatedQuery[ledgercontroller.PaginatedQueryOptions[FILTERS]]
+
+	if query.Reverse {
+		cp := query
+		cp.Reverse = false
+		next = &cp
+
+		if hasMore {
+			cp := query
+			cp.PaginationID = paginationIDs[len(paginationIDs)-2]
+			previous = &cp
+		}
+	} else {
+		if hasMore {
+			cp := query
+			cp.PaginationID = paginationIDs[len(paginationIDs)-1]
+			next = &cp
+		}
+		if query.PaginationID != nil {
+			if (query.Order == bunpaginate.OrderAsc && query.PaginationID.Cmp(query.Bottom) > 0) || (query.Order == bunpaginate.OrderDesc && query.PaginationID.Cmp(query.Bottom) < 0) {
+				cp := query
+				cp.Reverse = true
+				previous = &cp
+			}
+		}
+	}
+	var (
+		nextConverted     *ledgercontroller.ColumnPaginatedQuery[any]
+		previousConverted *ledgercontroller.ColumnPaginatedQuery[any]
+	)
+	if next != nil {
+		nextConverted = convertCursor[FILTERS](next, filters)
+	}
+	if previous != nil {
+		previousConverted = convertCursor[FILTERS](previous, filters)
+	}
+
+	return &bunpaginate.Cursor[ENTITY]{
+		PageSize: int(query.PageSize),
+		HasMore:  next != nil,
+		Previous: ledgerstore.EncodeCursor[any, ledgercontroller.ColumnPaginatedQuery[any]](previousConverted),
+		Next:     ledgerstore.EncodeCursor[any, ledgercontroller.ColumnPaginatedQuery[any]](nextConverted),
+		Data:     ret,
+	}, nil
 }

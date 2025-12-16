@@ -3,6 +3,9 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"slices"
+
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v2/platform/postgres"
 	"github.com/formancehq/go-libs/v2/pointer"
@@ -10,8 +13,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
-	"regexp"
-	"slices"
 )
 
 func convertOperatorToSQL(operator string) string {

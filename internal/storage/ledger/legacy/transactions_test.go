@@ -5,12 +5,12 @@ package legacy_test
 import (
 	"context"
 	"fmt"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
 	"math/big"
 	"testing"
 
 	"github.com/formancehq/go-libs/v2/time"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger/legacy"
 
 	"github.com/pkg/errors"
 

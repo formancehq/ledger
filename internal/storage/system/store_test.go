@@ -5,6 +5,11 @@ package system
 import (
 	"context"
 	"fmt"
+	"os"
+	"slices"
+	"testing"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/bun/bunconnect"
 	"github.com/formancehq/go-libs/v2/bun/bundebug"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
@@ -15,10 +20,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
-	"os"
-	"slices"
-	"testing"
-	"time"
 
 	"github.com/formancehq/go-libs/v2/logging"
 	"github.com/stretchr/testify/require"
@@ -167,3 +168,4 @@ func newStore(t docker.T) Store {
 
 	return ret
 }
+
