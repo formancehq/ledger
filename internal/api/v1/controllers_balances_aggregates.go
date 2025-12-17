@@ -39,3 +39,33 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 
 	api.Ok(w, balances)
 }
+
+/**
+func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
+
+	pitFilter, err := getPITFilter(r)
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
+	}
+
+	queryBuilder, err := buildAggregatedBalancesQuery(r)
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
+	}
+
+	query := ledgerstore.NewGetAggregatedBalancesQuery(*pitFilter, queryBuilder,
+		// notes(gfyrag): if pit is not specified, always use insertion date to be backward compatible
+		r.URL.Query().Get("pit") == "" || sharedapi.QueryParamBool(r, "useInsertionDate") || sharedapi.QueryParamBool(r, "use_insertion_date"))
+
+	balances, err := backend.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), query)
+	if err != nil {
+		sharedapi.InternalServerError(w, r, err)
+		return
+	}
+
+	sharedapi.Ok(w, balances)
+}
+
+*/
