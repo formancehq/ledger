@@ -1025,4 +1025,13 @@ from generate_series(0, 100) as seq;
 	volumesCursorFromLegacyStorePage2, err := legacyStore.Volumes().Paginate(ctx, offsetPaginatedQuery)
 	require.NoError(t, err)
 	require.Equal(t, "orders:16", volumesCursorFromLegacyStorePage2.Data[0].Account)
+
+	_, err = legacyStore.AggregatedBalances().GetOne(ctx, ledgercontroller.ResourceQuery[ledgercontroller.GetAggregatedVolumesOptions]{
+		PIT: pointer.For(time.Now()),
+		Opts: ledgercontroller.GetAggregatedVolumesOptions{
+			UseInsertionDate: true,
+		},
+	})
+	require.NoError(t, err)
+
 }
