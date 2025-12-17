@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type ChartAccountRules struct{}
@@ -311,4 +313,14 @@ func (c *ChartOfAccounts) ValidatePosting(posting Posting) error {
 		return err
 	}
 	return nil
+}
+
+func (c *ChartAccount) DefaultMetadata() metadata.Metadata {
+	defaultMetadata := metadata.Metadata{}
+	for key, value := range c.Metadata {
+		if value.Default != nil {
+			defaultMetadata[key] = *value.Default
+		}
+	}
+	return defaultMetadata
 }

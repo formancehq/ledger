@@ -8,6 +8,7 @@ import (
 	"github.com/invopop/jsonschema"
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 )
@@ -229,4 +230,35 @@ func NewTransaction() Transaction {
 	return Transaction{
 		TransactionData: NewTransactionData(),
 	}
+}
+
+func (tx *Transaction) AccountsWithDefaultMetadata(schema *Schema, accountMetadata map[string]metadata.Metadata) []AccountWithDefaultMetadata {
+	if accountMetadata == nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+	}
+	accountsToUpsert := tx.InvolvedAccounts()
+	accountsToUpsert = append(accountsToUpsert, collectionutils.Keys(accountMetadata)...)
+
+	slices.Sort(accountsToUpsert)
+	accountsToUpsert = slices.Compact(accountsToUpsert)
+
+	return collectionutils.Map(accountsToUpsert, func(address string) AccountWithDefaultMetadata {
+		defaultMetadata := metadata.Metadata{}
+		if schema != nil {
+			accountSchema, _ := schema.Chart.FindAccountSchema(address)
+			if accountSchema != nil {
+				defaultMetadata = accountSchema.DefaultMetadata()
+			}
+		}
+		return AccountWithDefaultMetadata{
+			Account: &Account{
+				Address:       address,
+				FirstUsage:    tx.Timestamp,
+				Metadata:      accountMetadata[address],
+				InsertionDate: tx.InsertedAt,
+				UpdatedAt:     tx.InsertedAt,
+			},
+			DefaultMetadata: defaultMetadata,
+		}
+	})
 }

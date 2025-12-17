@@ -20,12 +20,14 @@ import "github.com/formancehq/ledger/internal"
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
 - [type AccountMetadata](<#AccountMetadata>)
+- [type AccountWithDefaultMetadata](<#AccountWithDefaultMetadata>)
 - [type AccountsVolumes](<#AccountsVolumes>)
 - [type AggregatedVolumes](<#AggregatedVolumes>)
 - [type Balances](<#Balances>)
 - [type BalancesByAssets](<#BalancesByAssets>)
 - [type BalancesByAssetsByAccounts](<#BalancesByAssetsByAccounts>)
 - [type ChartAccount](<#ChartAccount>)
+  - [func \(c \*ChartAccount\) DefaultMetadata\(\) metadata.Metadata](<#ChartAccount.DefaultMetadata>)
 - [type ChartAccountMetadata](<#ChartAccountMetadata>)
 - [type ChartAccountRules](<#ChartAccountRules>)
 - [type ChartOfAccounts](<#ChartOfAccounts>)
@@ -145,6 +147,7 @@ import "github.com/formancehq/ledger/internal"
 - [type SchemaData](<#SchemaData>)
 - [type Transaction](<#Transaction>)
   - [func NewTransaction\(\) Transaction](<#NewTransaction>)
+  - [func \(tx \*Transaction\) AccountsWithDefaultMetadata\(schema \*Schema, accountMetadata map\[string\]metadata.Metadata\) \[\]AccountWithDefaultMetadata](<#Transaction.AccountsWithDefaultMetadata>)
   - [func \(tx Transaction\) InvolvedAccounts\(\) \[\]string](<#Transaction.InvolvedAccounts>)
   - [func \(tx Transaction\) InvolvedDestinations\(\) map\[string\]\[\]string](<#Transaction.InvolvedDestinations>)
   - [func \(tx Transaction\) IsReverted\(\) bool](<#Transaction.IsReverted>)
@@ -317,7 +320,7 @@ func SpecMetadata(name string) string
 
 
 <a name="ValidateSegment"></a>
-## func [ValidateSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L44>)
+## func [ValidateSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L46>)
 
 ```go
 func ValidateSegment(addr string) bool
@@ -360,6 +363,18 @@ func (a Account) GetAddress() string
 
 ```go
 type AccountMetadata map[string]metadata.Metadata
+```
+
+<a name="AccountWithDefaultMetadata"></a>
+## type [AccountWithDefaultMetadata](<https://github.com/formancehq/ledger/blob/main/internal/account.go#L41-L44>)
+
+
+
+```go
+type AccountWithDefaultMetadata struct {
+    *Account
+    DefaultMetadata metadata.Metadata
+}
 ```
 
 <a name="AccountsVolumes"></a>
@@ -417,7 +432,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 ```
 
 <a name="ChartAccount"></a>
-## type [ChartAccount](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L16-L19>)
+## type [ChartAccount](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L18-L21>)
 
 
 
@@ -428,8 +443,17 @@ type ChartAccount struct {
 }
 ```
 
+<a name="ChartAccount.DefaultMetadata"></a>
+### func \(\*ChartAccount\) [DefaultMetadata](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L318>)
+
+```go
+func (c *ChartAccount) DefaultMetadata() metadata.Metadata
+```
+
+
+
 <a name="ChartAccountMetadata"></a>
-## type [ChartAccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L12-L14>)
+## type [ChartAccountMetadata](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L14-L16>)
 
 
 
@@ -440,7 +464,7 @@ type ChartAccountMetadata struct {
 ```
 
 <a name="ChartAccountRules"></a>
-## type [ChartAccountRules](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L10>)
+## type [ChartAccountRules](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L12>)
 
 
 
@@ -449,7 +473,7 @@ type ChartAccountRules struct{}
 ```
 
 <a name="ChartOfAccounts"></a>
-## type [ChartOfAccounts](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L40>)
+## type [ChartOfAccounts](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L42>)
 
 
 
@@ -458,7 +482,7 @@ type ChartOfAccounts map[string]ChartSegment
 ```
 
 <a name="ChartOfAccounts.FindAccountSchema"></a>
-### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L296>)
+### func \(\*ChartOfAccounts\) [FindAccountSchema](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L298>)
 
 ```go
 func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, error)
@@ -467,7 +491,7 @@ func (c *ChartOfAccounts) FindAccountSchema(account string) (*ChartAccount, erro
 
 
 <a name="ChartOfAccounts.MarshalJSON"></a>
-### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L186>)
+### func \(ChartOfAccounts\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L188>)
 
 ```go
 func (s ChartOfAccounts) MarshalJSON() ([]byte, error)
@@ -476,7 +500,7 @@ func (s ChartOfAccounts) MarshalJSON() ([]byte, error)
 
 
 <a name="ChartOfAccounts.UnmarshalJSON"></a>
-### func \(\*ChartOfAccounts\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L48>)
+### func \(\*ChartOfAccounts\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L50>)
 
 ```go
 func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
@@ -485,7 +509,7 @@ func (s *ChartOfAccounts) UnmarshalJSON(data []byte) error
 
 
 <a name="ChartOfAccounts.ValidatePosting"></a>
-### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L304>)
+### func \(\*ChartOfAccounts\) [ValidatePosting](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L306>)
 
 ```go
 func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
@@ -494,7 +518,7 @@ func (c *ChartOfAccounts) ValidatePosting(posting Posting) error
 
 
 <a name="ChartSegment"></a>
-## type [ChartSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L21-L25>)
+## type [ChartSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L23-L27>)
 
 
 
@@ -507,7 +531,7 @@ type ChartSegment struct {
 ```
 
 <a name="ChartSegment.MarshalJSON"></a>
-### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L230>)
+### func \(ChartSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L232>)
 
 ```go
 func (s ChartSegment) MarshalJSON() ([]byte, error)
@@ -516,7 +540,7 @@ func (s ChartSegment) MarshalJSON() ([]byte, error)
 
 
 <a name="ChartSegment.UnmarshalJSON"></a>
-### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L87>)
+### func \(\*ChartSegment\) [UnmarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L89>)
 
 ```go
 func (s *ChartSegment) UnmarshalJSON(data []byte) error
@@ -525,7 +549,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error
 
 
 <a name="ChartVariableSegment"></a>
-## type [ChartVariableSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L27-L32>)
+## type [ChartVariableSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L29-L34>)
 
 
 
@@ -539,7 +563,7 @@ type ChartVariableSegment struct {
 ```
 
 <a name="ChartVariableSegment.MarshalJSON"></a>
-### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L238>)
+### func \(ChartVariableSegment\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L240>)
 
 ```go
 func (s ChartVariableSegment) MarshalJSON() ([]byte, error)
@@ -1607,7 +1631,7 @@ type SchemaData struct {
 ```
 
 <a name="Transaction"></a>
-## type [Transaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L37-L51>)
+## type [Transaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L38-L52>)
 
 
 
@@ -1630,7 +1654,7 @@ type Transaction struct {
 ```
 
 <a name="NewTransaction"></a>
-### func [NewTransaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L228>)
+### func [NewTransaction](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L229>)
 
 ```go
 func NewTransaction() Transaction
@@ -1638,8 +1662,17 @@ func NewTransaction() Transaction
 
 
 
+<a name="Transaction.AccountsWithDefaultMetadata"></a>
+### func \(\*Transaction\) [AccountsWithDefaultMetadata](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L235>)
+
+```go
+func (tx *Transaction) AccountsWithDefaultMetadata(schema *Schema, accountMetadata map[string]metadata.Metadata) []AccountWithDefaultMetadata
+```
+
+
+
 <a name="Transaction.InvolvedAccounts"></a>
-### func \(Transaction\) [InvolvedAccounts](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L112>)
+### func \(Transaction\) [InvolvedAccounts](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L113>)
 
 ```go
 func (tx Transaction) InvolvedAccounts() []string
@@ -1648,7 +1681,7 @@ func (tx Transaction) InvolvedAccounts() []string
 
 
 <a name="Transaction.InvolvedDestinations"></a>
-### func \(Transaction\) [InvolvedDestinations](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L98>)
+### func \(Transaction\) [InvolvedDestinations](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L99>)
 
 ```go
 func (tx Transaction) InvolvedDestinations() map[string][]string
@@ -1657,7 +1690,7 @@ func (tx Transaction) InvolvedDestinations() map[string][]string
 
 
 <a name="Transaction.IsReverted"></a>
-### func \(Transaction\) [IsReverted](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L201>)
+### func \(Transaction\) [IsReverted](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L202>)
 
 ```go
 func (tx Transaction) IsReverted() bool
@@ -1666,7 +1699,7 @@ func (tx Transaction) IsReverted() bool
 
 
 <a name="Transaction.JSONSchemaExtend"></a>
-### func \(Transaction\) [JSONSchemaExtend](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L53>)
+### func \(Transaction\) [JSONSchemaExtend](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L54>)
 
 ```go
 func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema)
@@ -1675,7 +1708,7 @@ func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema)
 
 
 <a name="Transaction.MarshalJSON"></a>
-### func \(Transaction\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L184>)
+### func \(Transaction\) [MarshalJSON](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L185>)
 
 ```go
 func (tx Transaction) MarshalJSON() ([]byte, error)
@@ -1684,7 +1717,7 @@ func (tx Transaction) MarshalJSON() ([]byte, error)
 
 
 <a name="Transaction.Reverse"></a>
-### func \(Transaction\) [Reverse](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L62>)
+### func \(Transaction\) [Reverse](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L63>)
 
 ```go
 func (tx Transaction) Reverse() Transaction
@@ -1693,7 +1726,7 @@ func (tx Transaction) Reverse() Transaction
 
 
 <a name="Transaction.VolumeUpdates"></a>
-### func \(Transaction\) [VolumeUpdates](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L123>)
+### func \(Transaction\) [VolumeUpdates](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L124>)
 
 ```go
 func (tx Transaction) VolumeUpdates() []AccountsVolumes
@@ -1702,7 +1735,7 @@ func (tx Transaction) VolumeUpdates() []AccountsVolumes
 
 
 <a name="Transaction.WithID"></a>
-### func \(Transaction\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L67>)
+### func \(Transaction\) [WithID](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L68>)
 
 ```go
 func (tx Transaction) WithID(id uint64) Transaction
@@ -1711,7 +1744,7 @@ func (tx Transaction) WithID(id uint64) Transaction
 
 
 <a name="Transaction.WithInsertedAt"></a>
-### func \(Transaction\) [WithInsertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L92>)
+### func \(Transaction\) [WithInsertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L93>)
 
 ```go
 func (tx Transaction) WithInsertedAt(date time.Time) Transaction
@@ -1720,7 +1753,7 @@ func (tx Transaction) WithInsertedAt(date time.Time) Transaction
 
 
 <a name="Transaction.WithMetadata"></a>
-### func \(Transaction\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L87>)
+### func \(Transaction\) [WithMetadata](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L88>)
 
 ```go
 func (tx Transaction) WithMetadata(m metadata.Metadata) Transaction
@@ -1729,7 +1762,7 @@ func (tx Transaction) WithMetadata(m metadata.Metadata) Transaction
 
 
 <a name="Transaction.WithPostCommitEffectiveVolumes"></a>
-### func \(Transaction\) [WithPostCommitEffectiveVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L216>)
+### func \(Transaction\) [WithPostCommitEffectiveVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L217>)
 
 ```go
 func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) Transaction
@@ -1738,7 +1771,7 @@ func (tx Transaction) WithPostCommitEffectiveVolumes(volumes PostCommitVolumes) 
 
 
 <a name="Transaction.WithPostCommitVolumes"></a>
-### func \(Transaction\) [WithPostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L210>)
+### func \(Transaction\) [WithPostCommitVolumes](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L211>)
 
 ```go
 func (tx Transaction) WithPostCommitVolumes(volumes PostCommitVolumes) Transaction
@@ -1747,7 +1780,7 @@ func (tx Transaction) WithPostCommitVolumes(volumes PostCommitVolumes) Transacti
 
 
 <a name="Transaction.WithPostings"></a>
-### func \(Transaction\) [WithPostings](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L72>)
+### func \(Transaction\) [WithPostings](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L73>)
 
 ```go
 func (tx Transaction) WithPostings(postings ...Posting) Transaction
@@ -1756,7 +1789,7 @@ func (tx Transaction) WithPostings(postings ...Posting) Transaction
 
 
 <a name="Transaction.WithReference"></a>
-### func \(Transaction\) [WithReference](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L77>)
+### func \(Transaction\) [WithReference](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L78>)
 
 ```go
 func (tx Transaction) WithReference(ref string) Transaction
@@ -1765,7 +1798,7 @@ func (tx Transaction) WithReference(ref string) Transaction
 
 
 <a name="Transaction.WithRevertedAt"></a>
-### func \(Transaction\) [WithRevertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L205>)
+### func \(Transaction\) [WithRevertedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L206>)
 
 ```go
 func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction
@@ -1774,7 +1807,7 @@ func (tx Transaction) WithRevertedAt(timestamp time.Time) Transaction
 
 
 <a name="Transaction.WithTimestamp"></a>
-### func \(Transaction\) [WithTimestamp](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L82>)
+### func \(Transaction\) [WithTimestamp](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L83>)
 
 ```go
 func (tx Transaction) WithTimestamp(ts time.Time) Transaction
@@ -1783,7 +1816,7 @@ func (tx Transaction) WithTimestamp(ts time.Time) Transaction
 
 
 <a name="Transaction.WithUpdatedAt"></a>
-### func \(Transaction\) [WithUpdatedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L222>)
+### func \(Transaction\) [WithUpdatedAt](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L223>)
 
 ```go
 func (tx Transaction) WithUpdatedAt(at time.Time) Transaction
@@ -1792,7 +1825,7 @@ func (tx Transaction) WithUpdatedAt(at time.Time) Transaction
 
 
 <a name="TransactionData"></a>
-## type [TransactionData](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L19-L24>)
+## type [TransactionData](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L20-L25>)
 
 
 
@@ -1806,7 +1839,7 @@ type TransactionData struct {
 ```
 
 <a name="NewTransactionData"></a>
-### func [NewTransactionData](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L31>)
+### func [NewTransactionData](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L32>)
 
 ```go
 func NewTransactionData() TransactionData
@@ -1815,7 +1848,7 @@ func NewTransactionData() TransactionData
 
 
 <a name="TransactionData.WithPostings"></a>
-### func \(TransactionData\) [WithPostings](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L26>)
+### func \(TransactionData\) [WithPostings](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L27>)
 
 ```go
 func (data TransactionData) WithPostings(postings ...Posting) TransactionData
@@ -1824,7 +1857,7 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData
 
 
 <a name="Transactions"></a>
-## type [Transactions](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L15-L17>)
+## type [Transactions](<https://github.com/formancehq/ledger/blob/main/internal/transaction.go#L16-L18>)
 
 
 

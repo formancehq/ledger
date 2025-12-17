@@ -25,10 +25,7 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 )
 
-func (store *Store) CommitTransaction(ctx context.Context, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
-	if accountMetadata == nil {
-		accountMetadata = make(map[string]metadata.Metadata)
-	}
+func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
 
 	postCommitVolumes, err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
@@ -39,25 +36,6 @@ func (store *Store) CommitTransaction(ctx context.Context, schema *ledger.Schema
 	err = store.InsertTransaction(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("failed to insert transaction: %w", err)
-	}
-
-	accountsToUpsert := tx.InvolvedAccounts()
-	accountsToUpsert = append(accountsToUpsert, Keys(accountMetadata)...)
-
-	slices.Sort(accountsToUpsert)
-	accountsToUpsert = slices.Compact(accountsToUpsert)
-
-	err = store.UpsertAccounts(ctx, schema, Map(accountsToUpsert, func(address string) *ledger.Account {
-		return &ledger.Account{
-			Address:       address,
-			FirstUsage:    tx.Timestamp,
-			Metadata:      accountMetadata[address],
-			InsertionDate: tx.InsertedAt,
-			UpdatedAt:     tx.InsertedAt,
-		}
-	})...)
-	if err != nil {
-		return fmt.Errorf("upserting accounts: %w", err)
 	}
 
 	if store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {

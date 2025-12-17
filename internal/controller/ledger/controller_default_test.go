@@ -120,12 +120,14 @@ func testCreateTransaction(t *testing.T, withSchema bool) {
 
 	if withSchema {
 		store.EXPECT().
-			CommitTransaction(gomock.Any(), &schema, gomock.Any(), map[string]metadata.Metadata{}).
+			CommitTransaction(gomock.Any(), gomock.Any()).
 			Return(nil)
+		store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
 	} else {
 		store.EXPECT().
-			CommitTransaction(gomock.Any(), nil, gomock.Any(), map[string]metadata.Metadata{}).
+			CommitTransaction(gomock.Any(), gomock.Any()).
 			Return(nil)
+		store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
 	}
 
 	store.EXPECT().
@@ -191,7 +193,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(map[string]map[string]*big.Int{}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), nil, gomock.Any(), nil).
+		CommitTransaction(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	store.EXPECT().

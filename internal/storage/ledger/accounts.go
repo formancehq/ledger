@@ -100,7 +100,7 @@ func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key stri
 	return err
 }
 
-func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, accounts ...*ledger.Account) error {
+func (store *Store) UpsertAccounts(ctx context.Context, accounts ...ledger.AccountWithDefaultMetadata) error {
 	return tracing.SkipResult(tracing.TraceWithMetric(
 		ctx,
 		"UpsertAccounts",
@@ -108,7 +108,9 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 		store.upsertAccountsHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
 			span := trace.SpanFromContext(ctx)
-			span.SetAttributes(attribute.StringSlice("accounts", Map(accounts, (*ledger.Account).GetAddress)))
+			span.SetAttributes(attribute.StringSlice("accounts", Map(accounts, func(a ledger.AccountWithDefaultMetadata) string {
+				return a.Account.Address
+			})))
 
 			type account struct {
 				*ledger.Account `bun:",extend"`
@@ -117,32 +119,20 @@ func (store *Store) UpsertAccounts(ctx context.Context, schema *ledger.Schema, a
 				Index           int               `bun:"batch_index,type:jsonb"`
 			}
 
-			batch_idx := 0
-			rows := Map(accounts, func(from *ledger.Account) account {
-				// Set default metadata from schema
-				defaultMetadata := metadata.Metadata{}
-				if schema != nil {
-					accountSchema, _ := schema.Chart.FindAccountSchema(from.Address)
-					if accountSchema != nil {
-						for key, value := range accountSchema.Metadata {
-							if value.Default != nil {
-								defaultMetadata[key] = *value.Default
-							}
-						}
-					}
-				}
-
+			batchIdx := 0
+			rows := Map(accounts, func(from ledger.AccountWithDefaultMetadata) account {
+				idx := batchIdx
+				batchIdx += 1
 				if from.Metadata == nil {
 					from.Metadata = metadata.Metadata{}
 				}
-
-				idx := batch_idx
-				batch_idx += 1
-
+				if from.DefaultMetadata == nil {
+					from.DefaultMetadata = metadata.Metadata{}
+				}
 				return account{
-					Account:         from,
+					Account:         from.Account,
 					AddressArray:    strings.Split(from.Address, ":"),
-					DefaultMetadata: defaultMetadata,
+					DefaultMetadata: from.DefaultMetadata,
 					Index:           idx,
 				}
 			})

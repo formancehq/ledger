@@ -292,8 +292,11 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 						return nil, fmt.Errorf("failed to find schema: %w", err)
 					}
 				}
-				if err := store.CommitTransaction(ctx, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
+				if err := store.CommitTransaction(ctx, &payload.Transaction); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
+				}
+				if err := ctrl.upsertTransactionAccounts(ctx, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
+					return nil, fmt.Errorf("failed to upsert transaction accounts: %w", err)
 				}
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
 			case ledger.RevertedTransaction:
@@ -306,7 +309,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err != nil {
 					return nil, fmt.Errorf("failed to revert transaction: %w", err)
 				}
-				if err := store.CommitTransaction(ctx, nil, &payload.RevertTransaction, nil); err != nil {
+				if err := store.CommitTransaction(ctx, &payload.RevertTransaction); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
 			case ledger.SavedMetadata:
@@ -357,6 +360,19 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 	)
 	return err
+}
+
+func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata ledger.AccountMetadata) error {
+	accountsToUpsert := tx.AccountsWithDefaultMetadata(schema, accountMetadata)
+
+	err := ctrl.store.UpsertAccounts(
+		ctx,
+		accountsToUpsert...,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting accounts: %w", err)
+	}
+	return nil
 }
 
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
@@ -447,7 +463,11 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
 		WithReference(parameters.Input.Reference)
-	err = store.CommitTransaction(ctx, schema, &transaction, accountMetadata)
+	err = store.CommitTransaction(ctx, &transaction)
+	if err != nil {
+		return nil, err
+	}
+	err = ctrl.upsertTransactionAccounts(ctx, schema, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +537,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 		}
 	}
 
-	err = store.CommitTransaction(ctx, nil, &reversedTx, nil)
+	err = store.CommitTransaction(ctx, &reversedTx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert transaction: %w", err)
 	}
@@ -550,9 +570,19 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 }
 
 func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
-	if err := store.UpsertAccounts(ctx, schema, &ledger.Account{
-		Address:  parameters.Input.Address,
-		Metadata: parameters.Input.Metadata,
+	var defaultMetadata metadata.Metadata
+	if schema != nil {
+		accountSchema, _ := schema.Chart.FindAccountSchema(parameters.Input.Address)
+		if accountSchema != nil {
+			defaultMetadata = accountSchema.DefaultMetadata()
+		}
+	}
+	if err := store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{
+		Account: &ledger.Account{
+			Address:  parameters.Input.Address,
+			Metadata: parameters.Input.Metadata,
+		},
+		DefaultMetadata: defaultMetadata,
 	}); err != nil {
 		return nil, err
 	}
