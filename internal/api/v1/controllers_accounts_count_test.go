@@ -1,20 +1,21 @@
 package v1
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/storage/ledger"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/query"
-	"github.com/formancehq/go-libs/v3/time"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -31,7 +32,6 @@ func TestAccountsCount(t *testing.T) {
 		returnErr         error
 		expectBackendCall bool
 	}
-	before := time.Now()
 
 	testCases := []testCase{
 		{
@@ -118,13 +118,12 @@ func TestAccountsCount(t *testing.T) {
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
-			req := httptest.NewRequest(http.MethodHead, "/xxx/accounts?pit="+before.Format(time.RFC3339Nano), nil)
+			req := httptest.NewRequest(http.MethodHead, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()
 			params := url.Values{}
 			if testCase.queryParams != nil {
 				params = testCase.queryParams
 			}
-			params.Set("pit", before.Format(time.RFC3339Nano))
 			req.URL.RawQuery = params.Encode()
 
 			router.ServeHTTP(rec, req)
