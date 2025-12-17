@@ -628,3 +628,19 @@ $$
 select aggregate_objects(volumes_to_jsonb(volumes_with_asset))
 from get_all_account_volumes(_ledger, _account_address, _before := _before) volumes_with_asset
 $$ set search_path from current;
+
+create temporary table tmp_volumes as
+select
+	ledger,
+	accounts_address,
+	asset,
+	sum(case when is_source then amount else 0 end) as outputs,
+	sum(case when not is_source then amount else 0 end) as inputs
+from moves
+group by ledger, accounts_address, asset;
+
+insert into accounts_volumes (ledger, accounts_address, asset, input, output)
+select ledger, accounts_address, asset, inputs, outputs
+from tmp_volumes;
+
+drop table tmp_volumes;
