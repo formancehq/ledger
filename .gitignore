@@ -1,13 +1,26 @@
-cover.out
-go.work*
-*.jar
-node_modules
-dist
-vendor
-worktrees
-dumps
-.env
-!.envrc
-.envrc.*
-Pulumi.*.yaml
-coverage.txt
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Secrets
+*.env
+.env.*
+secrets/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Docker
+sandbox/.local/

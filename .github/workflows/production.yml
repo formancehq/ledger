@@ -1,0 +1,55 @@
+name: deploy-production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Formance Ledger version (e.g., v2.3.0, v2.4.0)'
+        required: true
+        default: 'v2.3.0'
+
+jobs:
+  pre:
+    runs-on: ubuntu-latest
+    steps:
+      - name: dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          echo "${GITHUB_CONTEXT}"
+
+  deploy-production-ecs:
+    name: Deploy Formance to Production ECS
+    needs: pre
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: aws/task-definition-prod.json
+          container-name: formance-ledger
+          image: ghcr.io/formancehq/ledger:${{ github.event.inputs.version }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: formance_ledger
+          cluster: tiiik
+          wait-for-service-stability: true
+

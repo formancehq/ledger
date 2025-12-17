@@ -1,65 +1,214 @@
-<p align="center">
-  <img src="https://formance01.b-cdn.net/Github-Attachements/banners/ledger-readme-banner.webp" alt="ledger" width="100%" />
-</p>
+# Formance Ledger Infrastructure
 
-#  Formance Ledger
+Deployment infrastructure for Formance Ledger v2 on AWS ECS.
 
-Formance Ledger is a programmable financial core ledger that provides a foundation for all kind of money-moving applications. It provides an atomic multi-postings transactions system, account-based modeling, and is programmable in [numscript](https://docs.formance.com/modules/numscript/introduction), a built-in DSL to model financial transactions.
+## 🚀 Quick Start
 
-The ledger can be used either as a standalone micro-service or as part of the [Formance Platform](https://www.formance.com/). It will shine for financial applications requiring a centralized state-keeping of the assets they orchestrate, such as:
+### Local Development
 
-* Users balances holding apps, where the ownership of funds held in FBO accounts need to be fine-grained in a ledger
-* Digital assets platforms and exchanges, where funds in various denominations are represented
-* Payment systems, where funds are cycled through a series of steps from acquiring to payouts
-* Loan managment systems, where a sophisticated structure of amounts dues and to be disbursed are orchestrated
+**Note:** This repository is the Formance Ledger source code. To run locally:
 
-Is uses PostgreSQL as its main transactional storage layer and comes with a built-in mechanism to ship ledger logs to replica data stores for OLAP optimized querying.
+```bash
+# Start Formance from source (requires Go)
+docker compose up
 
-## Localhost ⚡
+# Or build and run
+make up
 
-To quickly get started using the Formance Ledger on your computer, you can use the local-optimized, all-in-one docker image:
-
-```
-docker compose -f examples/standalone/docker-compose.yml up
+# Access API at http://localhost:3068
 ```
 
-Which will start:
-* A Postgres DB
-* 1 Gateway Server process (Caddy based reverse proxy)
-* 1 Ledger server process
-* 1 Ledger worker process
-* The Console UI
+### Deploy to Staging
+```bash
+# Automatic on push to main
+git push origin main
 
-With the system is up and running, you can now start using the ledger:
-
-```shell
-# Create a ledger
-http POST :8080/api/ledger/v2/quickstart
-# Create a first transaction
-http POST :8080/api/ledger/v2/quickstart/transactions postings:='[{"amount":100,"asset":"USD/2","destination":"users:1234","source":"world"}]'
+# Or manual trigger
+# GitHub Actions → deploy-staging → Run workflow
 ```
 
-And get a visual feedback on the Ledger Console UI started on [http://localhost:3000/formance/localhost?region=localhost](http://localhost:3000/formance/localhost?region=localhost):
+### Deploy to Production
+```bash
+# Manual via GitHub Actions
+# Actions → deploy-production → Run workflow
+# Input version: v2.3.0
+```
 
-![console](https://formance01.b-cdn.net/Github-Attachements/console-screenshot.png)
+## 🏗️ Architecture
 
-## Production 🛡️
+- **Service:** formance_ledger
+- **Port:** 3068  
+- **Image:** ghcr.io/formancehq/ledger:v2.3.0
+- **Database:** PostgreSQL (existing RDS)
+- **Service Discovery:** formance-ledger.internal.staging-api.tiiik.money
+- **ALB Route:** formance.internal.staging-api.tiiik.money
 
-Production usage of the Formance Ledger is (only) supported through the official k8s [operator](https://github.com/formancehq/operator) deployment mode. Follow the [installation instructions](https://docs.formance.com/build/deployment/operator/installation) to learn more.
+## 🔌 Integration
 
-## Artifacts 📦
+Your services can call Formance:
 
-Standalone binary builds can be downloaded from the [releases page](https://github.com/formancehq/ledger/releases).
-Container images can be found on the [ghcr registry](https://github.com/formancehq/ledger/pkgs/container/ledger).
+```kotlin
+// Kotlin services
+val formanceUrl = "http://formance-ledger.internal.staging-api.tiiik.money:3068"
+httpClient.post("$formanceUrl/v2/transactions") { ... }
+```
 
-## Docs 📚
+```typescript
+// TypeScript services
+const formanceUrl = 'http://formance-ledger.internal.staging-api.tiiik.money:3068';
+await axios.post(`${formanceUrl}/v2/transactions`, data);
+```
 
-You can find the exhaustive Formance Platform documentation at [docs.formance.com](https://docs.formance.com).
+## 📊 Monitoring
 
-## Community 💬
+- **Logs:** CloudWatch `/ecs/formance-ledger`
+- **Metrics:** ECS Container Insights
+- **Health:** `GET /_health`
 
-If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome in our [GitHub Discussions](https://github.com/orgs/formancehq/discussions) - looking forward to see you there!
+## 🔧 Configuration
 
-## Contributing 🛠️
+**Database credentials are managed automatically by Terraform!**
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md)
+The connection string flows like this:
+1. You set: `export TF_VAR_formance_db_master_password="YourPassword"`
+2. Terraform creates RDS and passes connection string to ECS
+3. Formance Ledger connects automatically
+
+**No manual configuration needed!** See [DEPLOYMENT_INSTRUCTIONS.md](./DEPLOYMENT_INSTRUCTIONS.md) for details.
+
+## 📚 API Reference
+
+### Create a Ledger
+```bash
+curl -X POST http://formance.internal.staging-api.tiiik.money/v2 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "main"}'
+```
+
+### Post a Transaction
+```bash
+curl -X POST http://formance.internal.staging-api.tiiik.money/v2/main/transactions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "postings": [{
+      "source": "world",
+      "destination": "users:001",
+      "amount": "10000",
+      "asset": "USD/2"
+    }]
+  }'
+```
+
+### Query Balance
+```bash
+curl http://formance.internal.staging-api.tiiik.money/v2/main/accounts/users:001/balances
+```
+
+## 🗂️ Repository Structure
+
+```
+ledger-infra/
+├── .github/workflows/
+│   ├── staging.yml          # Auto-deploy on push to main
+│   └── production.yml        # Manual deploy with version input
+├── aws/
+│   ├── task-definition-staging.json
+│   └── task-definition-prod.json
+├── sandbox/
+│   ├── docker-compose.yml   # Local Formance + PostgreSQL
+│   ├── start.sh
+│   ├── stop.sh
+│   └── test-api.sh
+└── README.md
+```
+
+## ⚙️ Prerequisites
+
+### One-Time Setup
+
+1. **Create Database**
+   ```sql
+   -- Connect to your RDS instance
+   CREATE DATABASE formance_ledger;
+   CREATE USER formance_user WITH ENCRYPTED PASSWORD 'your_secure_password';
+   GRANT ALL PRIVILEGES ON DATABASE formance_ledger TO formance_user;
+   ```
+
+2. **Add GitHub Secrets**
+   - `FORMANCE_DB_CONN_STRING_STAGING`: `postgresql://formance_user:password@staging-rds.ap-southeast-2.rds.amazonaws.com:5432/formance_ledger?sslmode=require`
+   - `FORMANCE_DB_CONN_STRING_PROD`: `postgresql://formance_user:password@prod-rds.ap-southeast-2.rds.amazonaws.com:5432/formance_ledger?sslmode=require`
+   - `AWS_ACCESS_KEY_ID_STAGING`
+   - `AWS_SECRET_ACCESS_KEY_STAGING`
+   - `AWS_ACCESS_KEY_ID_PROD`
+   - `AWS_SECRET_ACCESS_KEY_PROD`
+   - `AWS_DEFAULT_REGION`: `ap-southeast-2`
+
+3. **Update Task Definitions**
+   - Edit `aws/task-definition-staging.json`
+   - Edit `aws/task-definition-prod.json`
+   - Update the `STORAGE_POSTGRES_CONN_STRING` with actual RDS endpoint
+
+4. **Deploy Infrastructure**
+   ```bash
+   cd ../tiiik-devops/terraform/staging
+   terraform plan
+   terraform apply
+   ```
+
+## 🚢 Deployment Process
+
+### Staging Deployment
+
+**Triggered by:** Push to `main` branch or manual workflow dispatch
+
+1. Checkout code
+2. Configure AWS credentials
+3. Render ECS task definition with Formance image
+4. Deploy to ECS cluster `tiiik`
+5. Wait for service stability
+
+### Production Deployment
+
+**Triggered by:** Manual workflow dispatch with version input
+
+1. Select "deploy-production" workflow in GitHub Actions
+2. Click "Run workflow"
+3. Enter Formance version (e.g., `v2.3.0`, `v2.4.0`)
+4. Confirm deployment
+
+## 🔍 Troubleshooting
+
+### Task won't start
+```bash
+# Check logs
+aws logs tail /ecs/formance-ledger --follow --region ap-southeast-2
+
+# Check task status
+aws ecs describe-tasks \
+  --cluster tiiik \
+  --tasks $(aws ecs list-tasks --cluster tiiik --service formance_ledger --query 'taskArns[0]' --output text) \
+  --region ap-southeast-2
+```
+
+### Database connection fails
+```bash
+# Test from bastion/EC2
+psql -h your-rds.ap-southeast-2.rds.amazonaws.com -U formance_user -d formance_ledger
+
+# Check security group allows ECS → RDS on port 5432
+```
+
+### Health check failing
+```bash
+# Test health endpoint
+curl http://formance.internal.staging-api.tiiik.money/_health
+
+# Should return: {"status":"ok"}
+```
+
+## 📖 Documentation
+
+- [Formance Docs](https://docs.formance.com/)
+- [API Reference](https://docs.formance.com/api-reference/ledgerv2/list-ledgers)
+- [Numscript Language](https://docs.formance.com/modules/ledger/numscript)
+- [Example Implementations](https://docs.formance.com/modules/ledger/example-implementations/overview)

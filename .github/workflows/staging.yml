@@ -1,0 +1,57 @@
+name: deploy-staging
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'devops/**'
+    paths:
+      - 'aws/**'
+      - '.github/workflows/**'
+
+jobs:
+  pre:
+    runs-on: ubuntu-latest
+    steps:
+      - name: dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          echo "${GITHUB_CONTEXT}"
+
+  deploy-staging-ecs:
+    name: Deploy Formance to Staging ECS
+    needs: pre
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: aws/task-definition-staging.json
+          container-name: formance-ledger
+          image: ghcr.io/formancehq/ledger:v2.3.0
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: formance_ledger
+          cluster: tiiik
+          wait-for-service-stability: true
+
