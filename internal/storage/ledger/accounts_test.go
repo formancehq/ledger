@@ -500,8 +500,6 @@ func TestAccountsCount(t *testing.T) {
 	)
 	err := commitTransactionAndUpsertAccounts(ctx, store, pointer.For(tx))
 	require.NoError(t, err)
-	err = store.UpsertAccounts(ctx, tx.AccountsWithDefaultMetadata(nil, nil)...)
-	require.NoError(t, err)
 
 	countAccounts, err := store.Accounts().Count(ctx, common.ResourceQuery[any]{})
 	require.NoError(t, err)
