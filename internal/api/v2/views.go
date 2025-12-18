@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	. "github.com/formancehq/go-libs/v3/collectionutils"
 
 	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 const HeaderBigIntAsString = "Formance-Bigint-As-String"
@@ -224,4 +226,37 @@ func renderLog(r *http.Request, v ledger.Log) any {
 func needBigIntAsString(r *http.Request) bool {
 	v := strings.ToLower(r.Header.Get(HeaderBigIntAsString))
 	return v == "true" || v == "yes" || v == "y" || v == "1"
+}
+
+func renderTransactionSummary(r *http.Request, account string, ts ledgerstore.TransactionsSummary) (any, error) {
+	if needBigIntAsString(r) {
+		return struct {
+			Account string `json:"account"`
+			Asset   string `json:"asset"`
+			Count   int64  `json:"count"`
+			Sum     string `json:"sum"`
+		}{
+			Account: account,
+			Asset:   ts.Asset,
+			Count:   ts.Count,
+			Sum:     ts.Sum,
+		}, nil
+	}
+
+	sum := new(big.Int)
+	if _, ok := sum.SetString(ts.Sum, 10); !ok {
+		return nil, fmt.Errorf("invalid sum format: %q", ts.Sum)
+	}
+
+	return struct {
+		Account string   `json:"account"`
+		Asset   string   `json:"asset"`
+		Count   int64    `json:"count"`
+		Sum     *big.Int `json:"sum"`
+	}{
+		Account: account,
+		Asset:   ts.Asset,
+		Count:   ts.Count,
+		Sum:     sum,
+	}, nil
 }

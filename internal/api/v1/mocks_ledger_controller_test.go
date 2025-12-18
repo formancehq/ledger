@@ -14,6 +14,7 @@ import (
 
 	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	migrations "github.com/formancehq/go-libs/v3/migrations"
+	time "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
@@ -591,6 +592,84 @@ func (c *LedgerControllerGetTransactionCall) Do(f func(context.Context, common.R
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *LedgerControllerGetTransactionCall) DoAndReturn(f func(context.Context, common.ResourceQuery[any]) (*ledger.Transaction, error)) *LedgerControllerGetTransactionCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetTransactionsSummary mocks base method.
+func (m *LedgerController) GetTransactionsSummary(ctx context.Context, account string) ([]ledger1.TransactionsSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTransactionsSummary", ctx, account)
+	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTransactionsSummary indicates an expected call of GetTransactionsSummary.
+func (mr *LedgerControllerMockRecorder) GetTransactionsSummary(ctx, account any) *LedgerControllerGetTransactionsSumCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSummary", reflect.TypeOf((*LedgerController)(nil).GetTransactionsSummary), ctx, account)
+	return &LedgerControllerGetTransactionsSumCall{Call: call}
+}
+
+// LedgerControllerGetTransactionsSumCall wrap *gomock.Call
+type LedgerControllerGetTransactionsSumCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *LedgerControllerGetTransactionsSumCall) Return(arg0 []ledger1.TransactionsSummary, arg1 error) *LedgerControllerGetTransactionsSumCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *LedgerControllerGetTransactionsSumCall) Do(f func(context.Context, string) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *LedgerControllerGetTransactionsSumCall) DoAndReturn(f func(context.Context, string) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetTransactionsSummaryWithTimeRange mocks base method.
+func (m *LedgerController) GetTransactionsSummaryWithTimeRange(ctx context.Context, account string, startTime, endTime *time.Time) ([]ledger1.TransactionsSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTransactionsSummaryWithTimeRange", ctx, account, startTime, endTime)
+	ret0, _ := ret[0].([]ledger1.TransactionsSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTransactionsSummaryWithTimeRange indicates an expected call of GetTransactionsSummaryWithTimeRange.
+func (mr *LedgerControllerMockRecorder) GetTransactionsSummaryWithTimeRange(ctx, account, startTime, endTime any) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionsSummaryWithTimeRange", reflect.TypeOf((*LedgerController)(nil).GetTransactionsSummaryWithTimeRange), ctx, account, startTime, endTime)
+	return &LedgerControllerGetTransactionsSumWithTimeRangeCall{Call: call}
+}
+
+// LedgerControllerGetTransactionsSumWithTimeRangeCall wrap *gomock.Call
+type LedgerControllerGetTransactionsSumWithTimeRangeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) Return(arg0 []ledger1.TransactionsSummary, arg1 error) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) Do(f func(context.Context, string, *time.Time, *time.Time) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *LedgerControllerGetTransactionsSumWithTimeRangeCall) DoAndReturn(f func(context.Context, string, *time.Time, *time.Time) ([]ledger1.TransactionsSummary, error)) *LedgerControllerGetTransactionsSumWithTimeRangeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
