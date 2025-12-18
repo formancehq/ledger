@@ -42,6 +42,7 @@ func NewRouter(
 		router.Use(auth.Middleware(authenticator))
 
 		router.Get("/_info", v1.GetInfo(systemController, version))
+		router.Get("/sleep", sleep(systemController))
 
 		router.Route("/_", func(router chi.Router) {
 			if routerOptions.exporters {

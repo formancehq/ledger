@@ -10,6 +10,7 @@ package common
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
@@ -500,6 +501,20 @@ func (m *SystemController) StopPipeline(ctx context.Context, id string) error {
 func (mr *SystemControllerMockRecorder) StopPipeline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopPipeline", reflect.TypeOf((*SystemController)(nil).StopPipeline), ctx, id)
+}
+
+// Sleep mocks base method.
+func (m *SystemController) Sleep(ctx context.Context, duration time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Sleep", ctx, duration)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Sleep indicates an expected call of Sleep.
+func (mr *SystemControllerMockRecorder) Sleep(ctx, duration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sleep", reflect.TypeOf((*SystemController)(nil).Sleep), ctx, duration)
 }
 
 // UpdateExporter mocks base method.

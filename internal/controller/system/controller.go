@@ -52,6 +52,7 @@ type Controller interface {
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	DeleteBucket(ctx context.Context, bucket string) error
 	RestoreBucket(ctx context.Context, bucket string) error
+	Sleep(ctx context.Context, duration time.Duration) error
 }
 
 type DefaultController struct {
@@ -243,6 +244,12 @@ func (ctrl *DefaultController) DeleteBucket(ctx context.Context, bucket string) 
 func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucket string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "RestoreBucket", tracing.NoResult(func(ctx context.Context) error {
 		return ctrl.driver.GetSystemStore().RestoreBucket(ctx, bucket)
+	})))
+}
+
+func (ctrl *DefaultController) Sleep(ctx context.Context, duration time.Duration) error {
+	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "Sleep", tracing.NoResult(func(ctx context.Context) error {
+		return ctrl.driver.GetSystemStore().Sleep(ctx, duration)
 	})))
 }
 

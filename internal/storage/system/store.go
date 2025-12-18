@@ -36,6 +36,11 @@ type Store interface {
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
 	IsUpToDate(ctx context.Context) (bool, error)
+
+	// Sleep blocks for the given duration by executing a `SELECT pg_sleep(duration)`
+	// query against the underlying PostgreSQL database. The duration is passed to
+	// PostgreSQL as a number of seconds.
+	Sleep(ctx context.Context, duration time.Duration) error
 }
 
 const (
@@ -201,6 +206,16 @@ func (d *DefaultStore) Migrate(ctx context.Context, options ...migrations.Option
 
 func (d *DefaultStore) GetMigrator(options ...migrations.Option) *migrations.Migrator {
 	return GetMigrator(d.db, append(options, migrations.WithTracer(d.tracer))...)
+}
+
+func (d *DefaultStore) Sleep(ctx context.Context, duration time.Duration) error {
+	// Use a raw query to call PostgreSQL's pg_sleep with the duration expressed
+	// in seconds as a floating-point value.
+	_, err := d.db.NewRaw(`SELECT pg_sleep(?)`, duration.Seconds()).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("sleep: %w", postgres.ResolveError(err))
+	}
+	return nil
 }
 
 func New(db bun.IDB, opts ...Option) *DefaultStore {
