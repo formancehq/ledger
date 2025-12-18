@@ -18,6 +18,7 @@ func buildAggregatedBalancesQuery(r *http.Request) query.Builder {
 }
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
+
 	rq, err := getResourceQuery[ledgerstore.GetAggregatedVolumesOptions](r, func(q *ledgerstore.GetAggregatedVolumesOptions) error {
 		q.UseInsertionDate = true
 
