@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -80,8 +81,43 @@ func getResourceQuery[v any](r *http.Request, modifiers ...func(*v) error) (*sto
 		}
 	}
 
+	pit, err := getPIT(r)
+	if err != nil {
+		return nil, err
+	}
+
+	oot, err := getOOT(r)
+	if err != nil {
+		return nil, err
+	}
+
 	return &storagecommon.ResourceQuery[v]{
 		Expand: r.URL.Query()["expand"],
 		Opts:   options,
+		PIT:    pit,
+		OOT:    oot,
 	}, nil
+}
+
+func getPIT(r *http.Request) (*time.Time, error) {
+	return getDate(r, "pit")
+}
+
+func getOOT(r *http.Request) (*time.Time, error) {
+	return getDate(r, "oot")
+}
+
+func getDate(r *http.Request, key string) (*time.Time, error) {
+	dateString := r.URL.Query().Get(key)
+
+	if dateString == "" {
+		return nil, nil
+	}
+
+	date, err := time.ParseTime(dateString)
+	if err != nil {
+		return nil, err
+	}
+
+	return &date, nil
 }
