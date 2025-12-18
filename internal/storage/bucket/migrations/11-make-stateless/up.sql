@@ -324,13 +324,13 @@ as
 $$
 begin
 	insert into accounts_metadata (ledger, accounts_address, revision, date, metadata)
-	values (new.ledger, new.address, (
+	values (new.ledger, new.address, coalesce((
 		select revision + 1
 		from accounts_metadata
 		where accounts_metadata.accounts_address = new.address
 		order by revision desc
 		limit 1
-	), new.updated_at, new.metadata);
+	), 1), new.updated_at, new.metadata);
 
 	return new;
 end;
