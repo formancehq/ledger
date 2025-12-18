@@ -292,13 +292,13 @@ as
 $$
 begin
 	insert into transactions_metadata (ledger, transactions_id, revision, date, metadata)
-	values (new.ledger, new.id, (
+	values (new.ledger, new.id, coalesce((
 		select revision + 1
 		from transactions_metadata
 		where transactions_metadata.transactions_id = new.id and transactions_metadata.ledger = new.ledger
 		order by revision desc
 		limit 1
-	), new.updated_at, new.metadata);
+	), 1), new.updated_at, new.metadata);
 
 	return new;
 end;
