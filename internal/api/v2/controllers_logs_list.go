@@ -2,15 +2,20 @@ package v2
 
 import (
 	"errors"
+	"net/http"
+	"time"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"net/http"
 )
 
 func listLogs(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
+		time.Sleep(time.Hour)
+
 		l := common.LedgerFromContext(r.Context())
 
 		rq, err := getColumnPaginatedQuery[any](r, paginationConfig, "id", bunpaginate.OrderDesc)
