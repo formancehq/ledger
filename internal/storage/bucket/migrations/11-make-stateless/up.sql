@@ -644,3 +644,9 @@ select ledger, accounts_address, asset, inputs, outputs
 from tmp_volumes;
 
 drop table tmp_volumes;
+
+do $$
+	begin
+		ASSERT (select coalesce(sum(input), 0) from accounts_volumes) = (select coalesce(sum(output), 0) from accounts_volumes);
+	end;
+$$ LANGUAGE plpgsql;
