@@ -327,7 +327,7 @@ begin
 	values (new.ledger, new.address, coalesce((
 		select revision + 1
 		from accounts_metadata
-		where accounts_metadata.accounts_address = new.address
+		where accounts_metadata.accounts_address = new.address and accounts_metadata.ledger = new.ledger
 		order by revision desc
 		limit 1
 	), 1), new.updated_at, new.metadata);
