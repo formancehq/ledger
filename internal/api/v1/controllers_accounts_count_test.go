@@ -1,18 +1,19 @@
 package v1
 
 import (
-	"github.com/formancehq/ledger/internal/api/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/api/common"
+
 	"errors"
+
 	"github.com/formancehq/go-libs/v2/api"
 	"github.com/formancehq/go-libs/v2/auth"
 	"github.com/formancehq/go-libs/v2/query"
-	"github.com/formancehq/go-libs/v2/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -30,7 +31,6 @@ func TestAccountsCount(t *testing.T) {
 		returnErr         error
 		expectBackendCall bool
 	}
-	before := time.Now()
 
 	testCases := []testCase{
 		{
@@ -117,13 +117,12 @@ func TestAccountsCount(t *testing.T) {
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
-			req := httptest.NewRequest(http.MethodHead, "/xxx/accounts?pit="+before.Format(time.RFC3339Nano), nil)
+			req := httptest.NewRequest(http.MethodHead, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()
 			params := url.Values{}
 			if testCase.queryParams != nil {
 				params = testCase.queryParams
 			}
-			params.Set("pit", before.Format(time.RFC3339Nano))
 			req.URL.RawQuery = params.Encode()
 
 			router.ServeHTTP(rec, req)
