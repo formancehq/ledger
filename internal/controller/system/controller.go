@@ -52,6 +52,8 @@ type Controller interface {
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	DeleteBucket(ctx context.Context, bucket string) error
 	RestoreBucket(ctx context.Context, bucket string) error
+
+	GetSchemaEnforcementMode(ctx context.Context) ledgercontroller.SchemaEnforcementMode
 }
 
 type DefaultController struct {
@@ -246,6 +248,10 @@ func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucket string)
 	})))
 }
 
+func (ctrl *DefaultController) GetSchemaEnforcementMode(ctx context.Context) ledgercontroller.SchemaEnforcementMode {
+	return ctrl.schemaEnforcementMode
+}
+
 // NewDefaultController creates a DefaultController configured with the provided
 // store, listener, replication backend, and optional functional options.
 //
@@ -259,11 +265,12 @@ func NewDefaultController(
 	opts ...Option,
 ) *DefaultController {
 	ret := &DefaultController{
-		driver:             store,
-		listener:           listener,
-		registry:           ledgercontroller.NewStateRegistry(),
-		defaultParser:      ledgercontroller.NewDefaultNumscriptParser(),
-		replicationBackend: replicationBackend,
+		driver:                store,
+		listener:              listener,
+		registry:              ledgercontroller.NewStateRegistry(),
+		defaultParser:         ledgercontroller.NewDefaultNumscriptParser(),
+		replicationBackend:    replicationBackend,
+		schemaEnforcementMode: ledgercontroller.SchemaEnforcementAudit,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
