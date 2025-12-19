@@ -48,7 +48,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 						return &transactionRequest.Timestamp.Time
 					}(),
 					Script: &components.V2PostTransactionScript{
-						Plain: transactionRequest.Script.Plain,
+						Plain: pointer.For(transactionRequest.Script.Plain),
 						Vars: collectionutils.ConvertMap(transactionRequest.Script.Vars, func(from any) string {
 							return fmt.Sprint(from)
 						}),

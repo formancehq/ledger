@@ -401,6 +401,20 @@ func (mr *SystemControllerMockRecorder) GetPipeline(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPipeline", reflect.TypeOf((*SystemController)(nil).GetPipeline), ctx, id)
 }
 
+// GetSchemaEnforcementMode mocks base method.
+func (m *SystemController) GetSchemaEnforcementMode(ctx context.Context) ledger0.SchemaEnforcementMode {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSchemaEnforcementMode", ctx)
+	ret0, _ := ret[0].(ledger0.SchemaEnforcementMode)
+	return ret0
+}
+
+// GetSchemaEnforcementMode indicates an expected call of GetSchemaEnforcementMode.
+func (mr *SystemControllerMockRecorder) GetSchemaEnforcementMode(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchemaEnforcementMode", reflect.TypeOf((*SystemController)(nil).GetSchemaEnforcementMode), ctx)
+}
+
 // ListExporters mocks base method.
 func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()

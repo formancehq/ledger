@@ -10,6 +10,7 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/controller/system"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
@@ -22,7 +23,8 @@ type ConfigInfo struct {
 }
 
 type LedgerConfig struct {
-	LedgerStorage *LedgerStorage `json:"storage"`
+	LedgerStorage         *LedgerStorage                         `json:"storage"`
+	SchemaEnforcementMode ledgercontroller.SchemaEnforcementMode `json:"schemaEnforcementMode"`
 }
 
 type LedgerStorage struct {
@@ -53,6 +55,7 @@ func GetInfo(systemController system.Controller, version string) func(w http.Res
 			Server:  "ledger",
 			Version: version,
 			Config: &LedgerConfig{
+				SchemaEnforcementMode: systemController.GetSchemaEnforcementMode(r.Context()),
 				LedgerStorage: &LedgerStorage{
 					Driver:  "postgres",
 					Ledgers: ledgerNames,

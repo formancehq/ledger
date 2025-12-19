@@ -103,7 +103,7 @@ type TransactionRequest struct {
 	Reference       string                       `json:"reference"`
 	Metadata        metadata.Metadata            `json:"metadata" swaggertype:"object"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
-	Runtime         ledgercontroller.RuntimeType `json:"runtime,omitempty"`
+	Runtime         ledger.RuntimeType           `json:"runtime,omitempty"`
 	Force           bool                         `json:"force"`
 }
 
@@ -123,7 +123,7 @@ func (req TransactionRequest) ToCore() (*ledgercontroller.CreateTransaction, err
 		}
 
 		runScript = ledgercontroller.TxToScriptData(txData, req.Force)
-	} else {
+	} else if req.Script.Plain != "" || req.Script.Template != "" {
 		runScript = ledgercontroller.RunScript{
 			Script:    req.Script.ToCore(),
 			Timestamp: req.Timestamp,

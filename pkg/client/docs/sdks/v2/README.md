@@ -278,6 +278,11 @@ func main() {
                     },
                 },
             },
+            Transactions: map[string]components.V2TransactionTemplate{
+                "key": components.V2TransactionTemplate{
+                    Script: "<value>",
+                },
+            },
         },
     })
     if err != nil {
@@ -1223,14 +1228,15 @@ func main() {
                 },
             },
             Script: &components.V2PostTransactionScript{
-                Plain: "vars {\n" +
+                Template: client.String("CUSTOMER_DEPOSIT"),
+                Plain: client.String("vars {\n" +
                 "account $user\n" +
                 "}\n" +
                 "send [COIN 10] (\n" +
                 "	source = @world\n" +
                 "	destination = $user\n" +
                 ")\n" +
-                "",
+                ""),
                 Vars: map[string]string{
                     "user": "users:042",
                 },
