@@ -9,7 +9,7 @@ import (
 
 type CreateTransactionRequest struct {
 	// Metadata for accounts involved in the transaction
-	AccountMetadata map[string]any `json:"accountMetadata,omitempty"`
+	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 	// Transaction timestamp (ISO 8601 format). If not provided, current time is used.
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 	// Transaction metadata
@@ -38,7 +38,7 @@ func (c *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *CreateTransactionRequest) GetAccountMetadata() map[string]any {
+func (o *CreateTransactionRequest) GetAccountMetadata() map[string]map[string]string {
 	if o == nil {
 		return nil
 	}

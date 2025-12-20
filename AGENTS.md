@@ -598,3 +598,39 @@ func runServer(cmd *cobra.Command, args []string) error {
 - **Context management**: Provides lifecycle context with ready/stopped channels
 
 **Reference**: See `github.com/formancehq/ledger` for examples of how the service package is used in production.
+
+## Testing Conventions
+
+### Using the SDK in Tests
+
+**CRITICAL**: Always use the generated SDK client (`pkg/client`) in tests instead of making manual HTTP requests.
+
+**Rules**:
+- **Never use `http.NewRequest` or `http.DefaultClient` directly in tests** - Always use the SDK client methods
+- **If a method doesn't exist in the SDK**, it means the OpenAPI specification is incomplete and needs to be updated
+- **After updating OpenAPI**, regenerate the SDK using `just generate-sdk` before writing tests
+- **SDK methods are type-safe** and provide better error handling than manual HTTP calls
+- **SDK usage ensures consistency** between tests and actual client usage
+
+**Example**:
+```go
+// ✅ Good: Using SDK
+resp, err := client.Accounts.SaveAccountMetadata(ctx, operations.SaveAccountMetadataRequest{
+    LedgerName:  ledgerName,
+    Address:     "account-1",
+    RequestBody: map[string]string{"key": "value"},
+})
+
+// ❌ Bad: Manual HTTP request
+req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+resp, err := http.DefaultClient.Do(req)
+```
+
+**Benefits**:
+- **Type safety**: Compile-time checking of request/response types
+- **Consistency**: Tests use the same client as external users
+- **Maintainability**: Changes to API automatically reflected in tests after SDK regeneration
+- **Error handling**: SDK provides structured error types
+- **Documentation**: SDK methods are self-documenting
+
+- I would like you to respect the concepts of DRY (Don't Repeat Yourself).

@@ -83,6 +83,10 @@ func main() {
 <details open>
 <summary>Available methods</summary>
 
+### [Accounts](docs/sdks/accounts/README.md)
+
+* [SaveAccountMetadata](docs/sdks/accounts/README.md#saveaccountmetadata) - Save account metadata
+
 ### [Cluster](docs/sdks/cluster/README.md)
 
 * [CreateSnapshot](docs/sdks/cluster/README.md#createsnapshot) - Create a Raft snapshot

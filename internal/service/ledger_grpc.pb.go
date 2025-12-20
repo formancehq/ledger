@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_Snapshot_FullMethodName          = "/ledger.LedgerService/Snapshot"
-	LedgerService_CreateTransaction_FullMethodName = "/ledger.LedgerService/CreateTransaction"
-	LedgerService_StreamLogs_FullMethodName        = "/ledger.LedgerService/StreamLogs"
+	LedgerService_Snapshot_FullMethodName            = "/ledger.LedgerService/Snapshot"
+	LedgerService_CreateTransaction_FullMethodName   = "/ledger.LedgerService/CreateTransaction"
+	LedgerService_SaveAccountMetadata_FullMethodName = "/ledger.LedgerService/SaveAccountMetadata"
+	LedgerService_StreamLogs_FullMethodName          = "/ledger.LedgerService/StreamLogs"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -34,6 +35,8 @@ type LedgerServiceClient interface {
 	Snapshot(ctx context.Context, in *LedgerSnapshotRequest, opts ...grpc.CallOption) (*LedgerSnapshotResponse, error)
 	// CreateTransaction creates a new transaction
 	CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*CreateTransactionResponse, error)
+	// SaveAccountMetadata saves metadata for an account
+	SaveAccountMetadata(ctx context.Context, in *SaveAccountMetadataRequest, opts ...grpc.CallOption) (*SaveAccountMetadataResponse, error)
 	// StreamLogs streams logs from a ledger, optionally starting from a sequence number
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamLogsResponse], error)
 }
@@ -60,6 +63,16 @@ func (c *ledgerServiceClient) CreateTransaction(ctx context.Context, in *CreateT
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateTransactionResponse)
 	err := c.cc.Invoke(ctx, LedgerService_CreateTransaction_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) SaveAccountMetadata(ctx context.Context, in *SaveAccountMetadataRequest, opts ...grpc.CallOption) (*SaveAccountMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SaveAccountMetadataResponse)
+	err := c.cc.Invoke(ctx, LedgerService_SaveAccountMetadata_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +108,8 @@ type LedgerServiceServer interface {
 	Snapshot(context.Context, *LedgerSnapshotRequest) (*LedgerSnapshotResponse, error)
 	// CreateTransaction creates a new transaction
 	CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error)
+	// SaveAccountMetadata saves metadata for an account
+	SaveAccountMetadata(context.Context, *SaveAccountMetadataRequest) (*SaveAccountMetadataResponse, error)
 	// StreamLogs streams logs from a ledger, optionally starting from a sequence number
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error
 	mustEmbedUnimplementedLedgerServiceServer()
@@ -112,6 +127,9 @@ func (UnimplementedLedgerServiceServer) Snapshot(context.Context, *LedgerSnapsho
 }
 func (UnimplementedLedgerServiceServer) CreateTransaction(context.Context, *CreateTransactionRequest) (*CreateTransactionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTransaction not implemented")
+}
+func (UnimplementedLedgerServiceServer) SaveAccountMetadata(context.Context, *SaveAccountMetadataRequest) (*SaveAccountMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SaveAccountMetadata not implemented")
 }
 func (UnimplementedLedgerServiceServer) StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[StreamLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
@@ -173,6 +191,24 @@ func _LedgerService_CreateTransaction_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_SaveAccountMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveAccountMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).SaveAccountMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_SaveAccountMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).SaveAccountMetadata(ctx, req.(*SaveAccountMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LedgerService_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(StreamLogsRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -198,6 +234,10 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateTransaction",
 			Handler:    _LedgerService_CreateTransaction_Handler,
+		},
+		{
+			MethodName: "SaveAccountMetadata",
+			Handler:    _LedgerService_SaveAccountMetadata_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

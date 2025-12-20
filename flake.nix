@@ -102,6 +102,7 @@
             protoc-gen-go
             protoc-gen-go-grpc
             yq-go
+            helm
           ];
           unstablePackages = with pkgs-unstable; [
             golangci-lint

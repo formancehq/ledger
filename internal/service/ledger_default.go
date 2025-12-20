@@ -36,6 +36,34 @@ func NewDefaultLedger(logWriter LogWriter, lockedVolumesStore LockedBalancesStor
 	}
 }
 
+// checkIdempotency checks if a log with the given idempotency key already exists.
+// If it exists and the hash matches, returns the existing log.
+// If it exists but the hash doesn't match, returns ErrIdempotencyKeyConflict.
+// If it doesn't exist, returns nil, nil.
+func (l *DefaultLedger) checkIdempotency(ctx context.Context, idempotencyKey string, input interface{}) (*ledger.Log, error) {
+	if idempotencyKey == "" {
+		return nil, nil
+	}
+
+	existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	if existingLog == nil {
+		return nil, nil
+	}
+
+	// Log already exists with this idempotency key
+	// Verify that the idempotency hash matches
+	expectedHash := ledger.ComputeIdempotencyHash(input)
+	if existingLog.IdempotencyHash != expectedHash {
+		return nil, ErrIdempotencyKeyConflict
+	}
+
+	// Same operation, return the existing log
+	return existingLog, nil
+}
+
 // getNextLogID returns the next log ID for a ledger and increments the counter (thread-safe)
 // It initializes the counter from the last log if not already initialized
 func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (uint64, error) {
@@ -116,30 +144,21 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 
 	// Check idempotency: if idempotency key is provided, check if a log already exists
-	if parameters.IdempotencyKey != "" {
-		// todo: get from hot storage
-		existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
-		if err != nil {
-			return nil, nil, err
+	existingLog, err := l.checkIdempotency(ctx, parameters.IdempotencyKey, input)
+	if err != nil {
+		return nil, nil, err
+	}
+	if existingLog != nil {
+		// Same transaction, return the existing log
+		createdTx, ok := existingLog.Data.(*ledger.CreatedTransaction)
+		if !ok {
+			return nil, nil, ErrIdempotencyKeyConflict
 		}
-		if existingLog != nil {
-			// Log already exists with this idempotency key
-			// Verify that the idempotency hash matches
-			expectedHash := ledger.ComputeIdempotencyHash(input)
-			if existingLog.IdempotencyHash != expectedHash {
-				return nil, nil, ErrIdempotencyKeyConflict
-			}
-			// Same transaction, return the existing log
-			createdTx, ok := existingLog.Data.(*ledger.CreatedTransaction)
-			if !ok {
-				return nil, nil, ErrIdempotencyKeyConflict
-			}
-			// Assign log ID to transaction
-			if existingLog.ID != nil {
-				createdTx.Transaction = createdTx.Transaction.WithID(*existingLog.ID)
-			}
-			return existingLog, createdTx, nil
+		// Assign log ID to transaction
+		if existingLog.ID != nil {
+			createdTx.Transaction = createdTx.Transaction.WithID(*existingLog.ID)
 		}
+		return existingLog, createdTx, nil
 	}
 
 	// Group postings by source account and asset to check balances
@@ -371,9 +390,63 @@ func (l *DefaultLedger) SaveTransactionMetadata(ctx context.Context, ledgerName 
 	return nil, ErrNotFound
 }
 
-// SaveAccountMetadata is not implemented yet
+// SaveAccountMetadata saves metadata for an account
 func (l *DefaultLedger) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	return nil, ErrNotFound
+	input := parameters.Input
+
+	// Validate input
+	if input.Address == "" {
+		return nil, fmt.Errorf("account address is required")
+	}
+	if len(input.Metadata) == 0 {
+		return nil, fmt.Errorf("metadata is required")
+	}
+
+	// Check idempotency: if idempotency key is provided, check if a log already exists
+	existingLog, err := l.checkIdempotency(ctx, parameters.IdempotencyKey, input)
+	if err != nil {
+		return nil, err
+	}
+	if existingLog != nil {
+		// Same metadata operation, return the existing log
+		return existingLog, nil
+	}
+
+	// Get next log ID from counter
+	nextLogID, err := l.getNextLogID(ctx, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("getting next log ID: %w", err)
+	}
+
+	// Create SavedMetadata payload
+	savedMetadata := &ledger.SavedMetadata{
+		TargetType: "ACCOUNT",
+		TargetID:   input.Address,
+		Metadata:   input.Metadata,
+	}
+
+	// Create log with ID from counter
+	now := time.Now()
+	log := ledger.NewLog(savedMetadata).
+		WithDate(now).
+		WithID(nextLogID)
+
+	if parameters.IdempotencyKey != "" {
+		log = log.WithIdempotencyKey(parameters.IdempotencyKey)
+		idempotencyHash := ledger.ComputeIdempotencyHash(input)
+		log.IdempotencyHash = idempotencyHash
+	}
+
+	// If not dry run, write the log via LogWriter (which will use Raft)
+	if !parameters.DryRun {
+		if err := l.logWriter.InsertLogs(ctx, log); err != nil {
+			return nil, fmt.Errorf("inserting log: %w", err)
+		}
+
+		l.logger.WithFields(map[string]any{"account": input.Address, "count": 1}).Debugf("Account metadata log written successfully")
+	}
+
+	return &log, nil
 }
 
 // DeleteTransactionMetadata is not implemented yet

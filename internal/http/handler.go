@@ -20,6 +20,7 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
+	r.Use(contentTypeMiddleware)
 	r.Use(loggingMiddleware(logger))
 
 	// Create bulker factory
@@ -46,12 +47,13 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 		r.Get("/health", server.handleHealth)
 		r.Get("/cluster/state", server.handleClusterState)
 
-		r.Post("/{ledgerName}", server.handleCreateLedger)                   // POST /{ledgerName}
-		r.Get("/{ledgerName}", server.handleGetLedger)                       // GET /{ledgerName}
-		r.Post("/{ledgerName}/transactions", server.handleCreateTransaction) // POST /{ledgerName}/transactions
-		r.Post("/{ledgerName}/bulk", server.handleBulk)                      // POST /{ledgerName}/bulk
-		r.Post("/{ledgerName}/_bulk", server.handleBulk)                     // For compat
-		r.Get("/", server.handleListAllLedgers)                              // GET / - must be last
+		r.Post("/{ledgerName}", server.handleCreateLedger)                                    // POST /{ledgerName}
+		r.Get("/{ledgerName}", server.handleGetLedger)                                        // GET /{ledgerName}
+		r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                  // POST /{ledgerName}/transactions
+		r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata) // POST /{ledgerName}/accounts/{address}/metadata
+		r.Post("/{ledgerName}/bulk", server.handleBulk)                                       // POST /{ledgerName}/bulk
+		r.Post("/{ledgerName}/_bulk", server.handleBulk)                                      // For compat
+		r.Get("/", server.handleListAllLedgers)                                               // GET / - must be last
 	}
 
 	// Register routes without prefix (backward compatibility)
@@ -66,6 +68,56 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 	)
 
 	return handler
+}
+
+// contentTypeMiddleware sets Content-Type header for JSON responses
+// For 204 No Content responses, no Content-Type header is set
+func contentTypeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Wrap the response writer to intercept WriteHeader calls
+		rw := &contentTypeResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(rw, r)
+	})
+}
+
+// contentTypeResponseWriter wraps http.ResponseWriter to set Content-Type automatically
+type contentTypeResponseWriter struct {
+	http.ResponseWriter
+	statusCode     int
+	wroteHeader    bool
+	contentTypeSet bool
+}
+
+func (rw *contentTypeResponseWriter) WriteHeader(code int) {
+	if !rw.wroteHeader {
+		rw.statusCode = code
+		rw.wroteHeader = true
+
+		// Set Content-Type to application/json if:
+		// 1. Status code is not 204 No Content
+		// 2. Content-Type hasn't been explicitly set
+		if code != http.StatusNoContent && !rw.contentTypeSet {
+			rw.ResponseWriter.Header().Set("Content-Type", "application/json")
+		}
+
+		rw.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (rw *contentTypeResponseWriter) Write(b []byte) (int, error) {
+	if !rw.wroteHeader {
+		rw.WriteHeader(http.StatusOK)
+	}
+	return rw.ResponseWriter.Write(b)
+}
+
+func (rw *contentTypeResponseWriter) Header() http.Header {
+	// Track if Content-Type is explicitly set
+	header := rw.ResponseWriter.Header()
+	if header.Get("Content-Type") != "" {
+		rw.contentTypeSet = true
+	}
+	return header
 }
 
 // loggingMiddleware logs HTTP requests (chi middleware)

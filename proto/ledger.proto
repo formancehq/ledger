@@ -14,6 +14,8 @@ service LedgerService {
   rpc Snapshot(LedgerSnapshotRequest) returns (LedgerSnapshotResponse);
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
+  // SaveAccountMetadata saves metadata for an account
+  rpc SaveAccountMetadata(SaveAccountMetadataRequest) returns (SaveAccountMetadataResponse);
   // StreamLogs streams logs from a ledger, optionally starting from a sequence number
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
 }
@@ -47,6 +49,18 @@ message CreateTransactionRequest {
 message CreateTransactionResponse {
   common.Transaction transaction = 1;
   map<string, google.protobuf.Struct> account_metadata = 2;
+}
+
+message SaveAccountMetadataRequest {
+  string ledger = 1;
+  string address = 2;
+  google.protobuf.Struct metadata = 3;
+  bool dry_run = 4;
+  string idempotency_key = 5;
+}
+
+message SaveAccountMetadataResponse {
+  Log log = 1;
 }
 
 message StreamLogsRequest {

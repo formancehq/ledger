@@ -169,6 +169,58 @@ func (impl *LedgerServiceServerImpl) StreamLogs(req *service.StreamLogsRequest, 
 	return nil
 }
 
+func (impl *LedgerServiceServerImpl) SaveAccountMetadata(ctx context.Context, req *service.SaveAccountMetadataRequest) (*service.SaveAccountMetadataResponse, error) {
+	impl.logger.WithFields(map[string]any{"address": req.Address}).Debugf("SaveAccountMetadata request received")
+
+	// Validate request
+	if req.Address == "" {
+		return nil, fmt.Errorf("account address is required")
+	}
+	if req.Metadata == nil {
+		return nil, fmt.Errorf("metadata is required")
+	}
+
+	// Convert metadata
+	accountMetadata := service.StructToMetadata(req.Metadata)
+
+	// Extract ledger name from request
+	ledgerName := req.Ledger
+	if ledgerName == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
+	}
+
+	// Create parameters
+	params := service.Parameters[service.SaveAccountMetadata]{
+		DryRun:         req.DryRun,
+		IdempotencyKey: req.IdempotencyKey,
+		Input: service.SaveAccountMetadata{
+			Address:  req.Address,
+			Metadata: accountMetadata,
+		},
+	}
+
+	// Call ledger service
+	log, err := ledgerNode.SaveAccountMetadata(ctx, ledgerName, params)
+	if err != nil {
+		return nil, fmt.Errorf("saving account metadata: %w", err)
+	}
+
+	// Convert log to protobuf
+	logProto, err := logToLedgerProto(*log)
+	if err != nil {
+		return nil, fmt.Errorf("converting log to proto: %w", err)
+	}
+
+	return &service.SaveAccountMetadataResponse{
+		Log: logProto,
+	}, nil
+}
+
 func RegisterLedgerService(server *grpc.Server, ledgerServiceServer service.LedgerServiceServer) {
 	service.RegisterLedgerServiceServer(server, ledgerServiceServer)
 }

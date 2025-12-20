@@ -172,6 +172,63 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/accounts/{address}/metadata:
+    post:
+      summary: Save account metadata
+      description: Saves metadata for a specific account in the ledger
+      operationId: saveAccountMetadata
+      tags:
+        - Accounts
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Account address
+        - name: dryRun
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If true, the operation is validated but not executed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+              description: Metadata key-value pairs
+              example:
+                account_type: asset
+                label: Bank Account
+      responses:
+        '204':
+          description: Account metadata saved successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -412,7 +469,10 @@ components:
       properties:
         accountMetadata:
           type: object
-          additionalProperties: true
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
           description: Metadata for accounts involved in the transaction
         timestamp:
           type: string
@@ -621,7 +681,10 @@ components:
               $ref: '#/components/schemas/TransactionResponse'
             accountMetadata:
               type: object
-              additionalProperties: true
+              additionalProperties:
+                type: object
+                additionalProperties:
+                  type: string
               description: Metadata for accounts involved in the transaction
 
     TransactionResponse:

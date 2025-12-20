@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: 357220bb6ac9995799ffc5007a7205d0
+  docChecksum: e9d3f8735540bd7bcee6eae613d37ae7
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.14
-  configChecksum: f0642836cddc0e08e7b3467282e710c9
+  releaseVersion: 0.11.17
+  configChecksum: 3d33e1611b5a1e4359c6491fc05acc01
 features:
   go:
     additionalDependencies: 0.1.0
@@ -59,8 +59,10 @@ generatedFiles:
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
   - /models/operations/listallledgers.go
+  - /models/operations/saveaccountmetadata.go
   - /models/sdkerrors/errorresponse.go
   - USAGE.md
+  - accounts.go
   - cluster.go
   - docs/models/components/action.md
   - docs/models/components/addmetadatarequest.md
@@ -111,7 +113,10 @@ generatedFiles:
   - docs/models/operations/getledgerresponse.md
   - docs/models/operations/listallledgersresponse.md
   - docs/models/operations/option.md
+  - docs/models/operations/saveaccountmetadatarequest.md
+  - docs/models/operations/saveaccountmetadataresponse.md
   - docs/models/sdkerrors/errorresponse.md
+  - docs/sdks/accounts/README.md
   - docs/sdks/cluster/README.md
   - docs/sdks/formance/README.md
   - docs/sdks/ledgers/README.md
@@ -315,6 +320,25 @@ examples:
         "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  saveAccountMetadata:
+    speakeasy-default-save-account-metadata:
+      parameters:
+        path:
+          ledgerName: "<value>"
+          address: "7143 Myrtie Court"
+        query:
+          dryRun: false
+      requestBody:
+        application/json: {"account_type": "asset", "label": "Bank Account"}
+      responses:
+        "201":
+          application/json: {"type": "<value>", "date": "2023-08-15T07:23:40.282Z"}
+        "400":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
 examplesVersion: 1.0.2
 generatedTests: {}

@@ -65,7 +65,36 @@ func (g *LedgerGrpcClient) SaveTransactionMetadata(ctx context.Context, ledgerNa
 }
 
 func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[SaveAccountMetadata]) (*ledger.Log, error) {
-	return nil, ErrNotFound
+	input := parameters.Input
+
+	// Convert metadata to protobuf
+	mdStruct, err := MetadataToStruct(input.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("converting metadata to struct: %w", err)
+	}
+
+	// Create protobuf request
+	req := &SaveAccountMetadataRequest{
+		Ledger:         g.name,
+		Address:        input.Address,
+		Metadata:       mdStruct,
+		DryRun:         parameters.DryRun,
+		IdempotencyKey: parameters.IdempotencyKey,
+	}
+
+	// Call leader via gRPC
+	resp, err := g.client.SaveAccountMetadata(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC call failed: %w", err)
+	}
+
+	// Convert protobuf response to service types
+	log, err := logFromLedgerProto(resp.Log)
+	if err != nil {
+		return nil, fmt.Errorf("converting log from protobuf: %w", err)
+	}
+
+	return &log, nil
 }
 
 func (g *LedgerGrpcClient) DeleteTransactionMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteTransactionMetadata]) (*ledger.Log, error) {
