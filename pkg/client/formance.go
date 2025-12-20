@@ -54,7 +54,6 @@ type Formance struct {
 	Ledgers      *Ledgers
 	Transactions *Transactions
 	Cluster      *Cluster
-	Buckets      *Buckets
 
 	sdkConfiguration config.SDKConfiguration
 	hooks            *hooks.Hooks
@@ -114,9 +113,9 @@ func WithTimeout(timeout time.Duration) SDKOption {
 // New creates a new instance of the SDK with the provided options
 func New(opts ...SDKOption) *Formance {
 	sdk := &Formance{
-		SDKVersion: "0.11.13",
+		SDKVersion: "0.11.14",
 		sdkConfiguration: config.SDKConfiguration{
-			UserAgent:  "speakeasy-sdk/go 0.11.13 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
+			UserAgent:  "speakeasy-sdk/go 0.11.14 2.629.1 1.0.0 github.com/formancehq/ledger-v3-poc/pkg/client",
 			ServerList: ServerList,
 		},
 		hooks: hooks.New(),
@@ -135,7 +134,6 @@ func New(opts ...SDKOption) *Formance {
 	sdk.Ledgers = newLedgers(sdk, sdk.sdkConfiguration, sdk.hooks)
 	sdk.Transactions = newTransactions(sdk, sdk.sdkConfiguration, sdk.hooks)
 	sdk.Cluster = newCluster(sdk, sdk.sdkConfiguration, sdk.hooks)
-	sdk.Buckets = newBuckets(sdk, sdk.sdkConfiguration, sdk.hooks)
 
 	return sdk
 }

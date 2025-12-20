@@ -20,8 +20,9 @@ type DefaultLedger struct {
 	lockedVolumesStore LockedBalancesStore
 	logStore           LogStore // Needed for GetLastLog, GetLogWithIdempotencyKey, and GetAllLogs
 	logger             logging.Logger
-	nextLogIDs         map[string]uint64 // Counter for log IDs per ledger
-	nextLogIDMutex     sync.RWMutex      // Protects nextLogIDs access
+	// todo: clean on leader change
+	nextLogIDs     map[string]uint64 // Counter for log IDs per ledger
+	nextLogIDMutex sync.RWMutex      // Protects nextLogIDs access
 }
 
 // NewDefaultLedger creates a new default ledger service
@@ -50,7 +51,7 @@ func (l *DefaultLedger) getNextLogID(ctx context.Context, ledgerName string) (ui
 		_, exists = l.nextLogIDs[ledgerName]
 		if !exists {
 			// Initialize counter from last log
-			lastLog, err := l.logStore.GetLastLog(ctx, ledgerName)
+			lastLog, err := l.logStore.GetLastLog(ctx)
 			if err != nil {
 				l.nextLogIDMutex.Unlock()
 				return 0, fmt.Errorf("getting last log to initialize counter: %w", err)
@@ -117,7 +118,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	// Check idempotency: if idempotency key is provided, check if a log already exists
 	if parameters.IdempotencyKey != "" {
 		// todo: get from hot storage
-		existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, ledgerName, parameters.IdempotencyKey)
+		existingLog, err := l.logStore.GetLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -178,7 +179,7 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	}
 
 	// Lock and check sufficient funds for all source accounts
-	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, ledgerName, balanceQuery)
+	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQuery)
 	if err != nil {
 		// GetBalance failed in LockBalances, return the error
 		// Locks are already released in LockBalances on error
@@ -280,7 +281,6 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 	// Create log with ID from counter
 	log := ledger.NewLog(createdTx).
 		WithDate(*timestamp).
-		WithLedger(ledgerName).
 		WithID(nextLogID)
 
 	// Assign log ID to transaction
@@ -411,7 +411,7 @@ func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.Bal
 	}
 
 	// Get balances using our locked volumes store
-	balances, _, err := s.lockedVolumesStore.LockBalances(ctx, s.ledgerName, balanceQuery)
+	balances, _, err := s.lockedVolumesStore.LockBalances(ctx, balanceQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -428,13 +428,32 @@ func (s *numscriptStoreAdapter) GetBalances(ctx context.Context, q numscript.Bal
 	return result, nil
 }
 
-// todo: implements GetAccountsMetadata
+// GetAccountsMetadata retrieves account metadata for accounts in the query
 func (s *numscriptStoreAdapter) GetAccountsMetadata(ctx context.Context, q numscript.MetadataQuery) (numscript.AccountsMetadata, error) {
-	// For now, return empty metadata as we don't have account metadata stored separately
-	// This can be enhanced later if needed
-	result := make(numscript.AccountsMetadata)
+	// Convert numscript.MetadataQuery (map[string]struct{}) to []string
+	accounts := make([]string, 0, len(q))
 	for address := range q {
-		result[address] = make(map[string]string)
+		accounts = append(accounts, address)
 	}
+
+	// Get metadata from the log store
+	metadataMap, err := s.logStore.GetAccountMetadata(ctx, s.ledgerName, accounts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to numscript.AccountsMetadata format (map[string]map[string]string)
+	result := make(numscript.AccountsMetadata)
+	for address, accountMetadata := range metadataMap {
+		result[address] = accountMetadata
+	}
+
+	// Ensure all requested accounts are in the result (even if empty)
+	for address := range q {
+		if _, exists := result[address]; !exists {
+			result[address] = make(map[string]string)
+		}
+	}
+
 	return result, nil
 }

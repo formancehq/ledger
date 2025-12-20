@@ -83,10 +83,9 @@ generate-proto:
         proto/common.proto \
         proto/raft_transport.proto \
         proto/system.proto \
-        proto/bucket.proto \
+        proto/ledger.proto \
         proto/commands/commands.proto \
-        proto/commands/system_commands.proto \
-        proto/commands/bucket_commands.proto
+        proto/commands/system_commands.proto
     @echo "gRPC code generated in internal/raft/, internal/service/, and internal/raft/fsm/, internal/raft/bucketfsm/"
 
 docker-build:

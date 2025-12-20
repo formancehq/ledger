@@ -20,6 +20,7 @@ type Ledger interface {
 	DeleteAccountMetadata(ctx context.Context, ledgerName string, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, error)
 	Import(ctx context.Context, ledgerName string, stream chan ledger.Log) error
 	Export(ctx context.Context, ledgerName string, w ExportWriter) error
+	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
 }
 
 type Parameters[INPUT any] struct {

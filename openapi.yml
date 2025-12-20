@@ -27,8 +27,8 @@ x-speakeasy-retries:
 paths:
   /:
     get:
-      summary: List all ledgers across all buckets
-      description: Returns a list of all ledgers from all buckets
+      summary: List all ledgers
+      description: Returns a list of all ledgers in the cluster
       operationId: listAllLedgers
       tags:
         - Ledgers
@@ -49,7 +49,7 @@ paths:
   /{ledgerName}:
     get:
       summary: Get a ledger
-      description: Retrieves a ledger by its name (bucket is found automatically)
+      description: Retrieves a ledger by its name
       operationId: getLedger
       tags:
         - Ledgers
@@ -84,9 +84,8 @@ paths:
     post:
       summary: Create a new ledger
       description: |
-        Creates a new ledger in the specified bucket. If the bucket is not specified or empty, 
-        a bucket with the same name as the ledger will be created automatically. If the bucket 
-        doesn't exist, it will be created automatically with SQLite driver and default configuration.
+        Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
+        SQLite will be used by default. Each ledger has its own Raft group for data consistency.
       operationId: createLedger
       tags:
         - Ledgers
@@ -299,225 +298,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /buckets:
-    get:
-      summary: List all buckets
-      description: Returns a list of all buckets in the cluster
-      operationId: listBuckets
-      tags:
-        - Buckets
-      responses:
-        '200':
-          description: List of buckets retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListBucketsResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /buckets/{bucketName}:
-    get:
-      summary: Get a bucket
-      description: Retrieves bucket information
-      operationId: getBucket
-      tags:
-        - Buckets
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket to retrieve
-      responses:
-        '200':
-          description: Bucket retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetBucketResponse'
-        '404':
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    post:
-      summary: Create a new bucket
-      description: Creates a new bucket with the specified name, driver, and configuration
-      operationId: createBucket
-      tags:
-        - Buckets
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket to create
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateBucketRequest'
-      responses:
-        '201':
-          description: Bucket created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateBucketResponse'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Bucket already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      summary: Delete a bucket
-      description: Deletes a bucket with the specified name
-      operationId: deleteBucket
-      tags:
-        - Buckets
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket to delete
-      responses:
-        '200':
-          description: Bucket deleted successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeleteBucketResponse'
-        '404':
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /buckets/{bucketName}/raft/state:
-    get:
-      summary: Get bucket Raft cluster state
-      description: Returns the Raft cluster state for a specific bucket. Use query parameter 'local=true' to get the local state without checking if we're the leader.
-      operationId: getBucketRaftState
-      tags:
-        - Buckets
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket
-        - name: local
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: false
-          description: If true, returns the local Raft state without checking if we're the leader
-      responses:
-        '200':
-          description: Bucket Raft cluster state retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BucketClusterStateResponse'
-        '404':
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /buckets/{bucketName}/snapshot:
-    post:
-      summary: Create a snapshot for a bucket
-      description: Creates a snapshot of the bucket's Raft cluster state
-      operationId: createBucketSnapshot
-      tags:
-        - Buckets
-      parameters:
-        - name: bucketName
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Name of the bucket to create a snapshot for
-      responses:
-        '200':
-          description: Snapshot created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateBucketSnapshotResponse'
-        '400':
-          description: Bad request (e.g., not leader)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   responses:
@@ -541,17 +321,23 @@ components:
       type: object
       required: []
       properties:
-        bucket:
+        driver:
           type: string
-          description: |
-            Name of the bucket where the ledger will be created. If not specified or empty, 
-            a bucket with the same name as the ledger will be created automatically. If the 
-            bucket doesn't exist, it will be created automatically with SQLite driver and default configuration.
+          enum: [sqlite]
+          default: sqlite
+          description: Storage driver name (defaults to sqlite)
+        config:
+          $ref: '#/components/schemas/SQLiteConfig'
+          description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
         metadata:
           type: object
           additionalProperties:
             type: string
           description: Optional metadata for the ledger
+        snapshotThreshold:
+          type: integer
+          format: int64
+          description: Number of logs before triggering a snapshot (optional, uses global config if not set)
 
     CreateLedgerResponse:
       type: object
@@ -578,22 +364,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LedgerInfo'
-          description: List of all ledgers across all buckets
-
-    GetLedgerFromBucketResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          $ref: '#/components/schemas/LedgerInfo'
+          description: List of all ledgers in the cluster
 
     LedgerInfo:
       type: object
       required:
         - id
         - name
-        - bucket
+        - driver
         - createdAt
       properties:
         id:
@@ -603,9 +381,13 @@ components:
         name:
           type: string
           description: Name of the ledger
-        bucket:
+        driver:
           type: string
-          description: Name of the bucket containing the ledger
+          enum: [sqlite]
+          description: Storage driver name
+        config:
+          $ref: '#/components/schemas/SQLiteConfig'
+          description: Driver-specific configuration
         metadata:
           type: object
           additionalProperties:
@@ -615,6 +397,10 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
+        snapshotThreshold:
+          type: integer
+          format: int64
+          description: Number of logs before triggering a snapshot (0 means use global config)
         lastLogId:
           type: integer
           format: int64
@@ -931,7 +717,7 @@ components:
               $ref: '#/components/schemas/SystemState'
               description: State contained in the FSM
 
-    BucketClusterStateResponse:
+    LedgerClusterStateResponse:
       type: object
       required:
         - data
@@ -963,37 +749,35 @@ components:
                 $ref: '#/components/schemas/NodeInfo'
               description: List of all nodes in the cluster
             innerState:
-              $ref: '#/components/schemas/BucketState'
+              $ref: '#/components/schemas/LedgerState'
               description: State contained in the FSM
 
     SystemState:
       type: object
       required:
-        - nextBucketID
-        - buckets
+        - nextLedgerID
+        - ledgers
       properties:
-        nextBucketID:
+        nextLedgerID:
           type: integer
           format: int64
           minimum: 1
-          description: Next sequential bucket ID
-        buckets:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/BucketInfo'
-          description: Map of bucket name to bucket information
-
-    BucketState:
-      type: object
-      required:
-        - ledgers
-        - lastSequence
-      properties:
+          description: Next sequential ledger ID
         ledgers:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/LedgerInfo'
           description: Map of ledger name to ledger information
+
+    LedgerState:
+      type: object
+      required:
+        - ledgerInfo
+        - lastSequence
+      properties:
+        ledgerInfo:
+          $ref: '#/components/schemas/LedgerInfo'
+          description: Ledger information
         lastSequence:
           type: integer
           format: int64
@@ -1020,50 +804,6 @@ components:
           enum: [Voter, Nonvoter, Learner]
           description: Node suffrage (Voter, Nonvoter, or Learner)
 
-    CreateBucketRequest:
-      type: object
-      required:
-        - driver
-      properties:
-        driver:
-          type: string
-          enum: [sqlite]
-          description: Driver name (e.g., "sqlite")
-        config:
-          $ref: '#/components/schemas/SQLiteConfig'
-          description: Driver-specific configuration (optional for SQLite - DSN is auto-generated)
-        snapshotThreshold:
-          type: integer
-          format: int64
-          description: Number of logs before triggering a snapshot (optional, uses global config if not set)
-
-    CreateBucketResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          $ref: '#/components/schemas/BucketInfo'
-
-    ListBucketsResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/BucketInfo'
-          description: List of buckets
-
-    GetBucketResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          $ref: '#/components/schemas/BucketInfo'
-
     ClusterState:
       type: object
       required:
@@ -1088,61 +828,6 @@ components:
           format: int64
           minimum: 0
           description: ID of the local node
-
-    BucketInfo:
-      type: object
-      required:
-        - id
-        - name
-        - driver
-        - config
-        - createdAt
-      properties:
-        id:
-          type: integer
-          format: int64
-          description: Sequential bucket ID
-        name:
-          type: string
-          description: Bucket name
-        driver:
-          type: string
-          enum: [sqlite]
-          description: Driver name
-        config:
-          $ref: '#/components/schemas/SQLiteConfig'
-          description: Driver-specific configuration
-        createdAt:
-          type: string
-          format: date-time
-          description: Creation timestamp (ISO 8601 format)
-        snapshotThreshold:
-          type: integer
-          format: int64
-          description: Number of logs before triggering a snapshot (0 means use global config)
-
-    CreateBucketSnapshotResponse:
-      type: object
-      required:
-        - message
-      properties:
-        message:
-          type: string
-          description: Success message
-
-    DeleteBucketResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - message
-          properties:
-            message:
-              type: string
-              description: Success message
 
     SQLiteConfig:
       type: object

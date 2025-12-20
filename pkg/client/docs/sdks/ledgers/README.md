@@ -5,13 +5,13 @@
 
 ### Available Operations
 
-* [ListAllLedgers](#listallledgers) - List all ledgers across all buckets
+* [ListAllLedgers](#listallledgers) - List all ledgers
 * [GetLedger](#getledger) - Get a ledger
 * [CreateLedger](#createledger) - Create a new ledger
 
 ## ListAllLedgers
 
-Returns a list of all ledgers from all buckets
+Returns a list of all ledgers in the cluster
 
 ### Example Usage
 
@@ -59,7 +59,7 @@ func main() {
 
 ## GetLedger
 
-Retrieves a ledger by its name (bucket is found automatically)
+Retrieves a ledger by its name
 
 ### Example Usage
 
@@ -113,7 +113,9 @@ func main() {
 
 ## CreateLedger
 
-Creates a new ledger in the specified bucket
+Creates a new ledger with the specified name, driver, and configuration. If driver is not specified, 
+SQLite will be used by default. Each ledger has its own Raft group for data consistency.
+
 
 ### Example Usage
 
@@ -136,7 +138,7 @@ func main() {
     res, err := s.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
         LedgerName: "<value>",
         CreateLedgerRequest: components.CreateLedgerRequest{
-            Bucket: "<value>",
+            Config: &components.SQLiteConfig{},
         },
     })
     if err != nil {

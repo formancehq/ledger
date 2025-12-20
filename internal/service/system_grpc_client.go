@@ -5,107 +5,162 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-type grpcSystemClient struct {
+type SystemGRPCClient struct {
 	client SystemServiceClient
 }
 
-func (g *grpcSystemClient) Snapshot(ctx context.Context) error {
+func (g *SystemGRPCClient) ResolveLedgerLeader(ctx context.Context, ledgerName string) (uint64, error) {
+	ret, err := g.client.ResolveLedgerLeader(ctx, &ResolveLedgerLeaderRequest{LedgerName: ledgerName})
+	if err != nil {
+		return 0, err
+	}
+	return ret.LeaderId, nil
+}
+
+func (g *SystemGRPCClient) Snapshot(ctx context.Context) error {
 	_, err := g.client.Snapshot(ctx, &SnapshotRequest{})
 	return err
 }
 
-func (g *grpcSystemClient) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error) {
+func (g *SystemGRPCClient) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, md map[string]string, snapshotThreshold *uint64) (*ledger.LedgerInfo, error) {
 	cfg, err := structpb.NewStruct(config)
 	if err != nil {
 		return nil, err
 	}
-	req := &CreateBucketRequest{
-		Name:   name,
-		Driver: driver,
-		Config: cfg,
+
+	var mdStruct *structpb.Struct
+	if len(md) > 0 {
+		// Convert map[string]string to map[string]interface{}
+		mdMap := make(map[string]interface{})
+		for k, v := range md {
+			mdMap[k] = v
+		}
+		mdStruct, err = structpb.NewStruct(mdMap)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	req := &CreateLedgerRequest{
+		Name:     name,
+		Driver:   driver,
+		Config:   cfg,
+		Metadata: mdStruct,
 	}
 	if snapshotThreshold != nil && *snapshotThreshold > 0 {
 		req.SnapshotThreshold = *snapshotThreshold
 	}
-	bucket, err := g.client.CreateBucket(ctx, req)
+	ledgerResp, err := g.client.CreateLedger(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert protobuf Struct to json.RawMessage
-	configJSON, err := json.Marshal(bucket.Config.AsMap())
+	configJSON, err := json.Marshal(ledgerResp.Config.AsMap())
 	if err != nil {
 		return nil, err
 	}
 
-	result := &ledger.BucketInfo{
-		ID:        bucket.Id,
-		Name:      bucket.Name,
-		Driver:    bucket.Driver,
-		Config:    configJSON,
-		CreatedAt: time.New(bucket.CreatedAt.AsTime()),
+	// Convert metadata
+	var ledgerMetadata metadata.Metadata
+	if ledgerResp.Metadata != nil {
+		mdMap := ledgerResp.Metadata.AsMap()
+		ledgerMetadata = make(map[string]string)
+		for k, v := range mdMap {
+			if str, ok := v.(string); ok {
+				ledgerMetadata[k] = str
+			}
+		}
 	}
-	if bucket.SnapshotThreshold > 0 {
-		result.SnapshotThreshold = bucket.SnapshotThreshold
+
+	result := &ledger.LedgerInfo{
+		ID:        ledgerResp.Id,
+		Name:      ledgerResp.Name,
+		Driver:    ledgerResp.Driver,
+		Config:    configJSON,
+		Metadata:  ledgerMetadata,
+		CreatedAt: time.New(ledgerResp.CreatedAt.AsTime()),
+	}
+	if ledgerResp.SnapshotThreshold > 0 {
+		result.SnapshotThreshold = ledgerResp.SnapshotThreshold
 	}
 	return result, nil
 }
 
-func (g *grpcSystemClient) DeleteBucket(ctx context.Context, name string) error {
-	_, err := g.client.DeleteBucket(ctx, &DeleteBucketRequest{Name: name})
+func (g *SystemGRPCClient) DeleteLedger(ctx context.Context, name string) error {
+	_, err := g.client.DeleteLedger(ctx, &DeleteLedgerRequest{Name: name})
 	return err
 }
 
-func (g *grpcSystemClient) ResolveLedger(ctx context.Context, ledgerName string) (string, uint64, error) {
+func (g *SystemGRPCClient) ResolveLedger(ctx context.Context, ledgerName string) (string, uint64, error) {
 	resp, err := g.client.ResolveLedger(ctx, &ResolveLedgerRequest{LedgerName: ledgerName})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return "", 0, ledger.NewNotFoundError("%s", err)
+		}
 		return "", 0, err
 	}
-	return resp.BucketName, resp.BucketId, nil
+	return resp.LedgerName, resp.LedgerId, nil
 }
 
-func (g *grpcSystemClient) GetAllBucketsInfo(ctx context.Context) map[string]ledger.BucketInfo {
-	resp, err := g.client.GetAllBucketsInfo(ctx, &GetAllBucketsRequest{})
+func (g *SystemGRPCClient) GetAllLedgersInfo(ctx context.Context) map[string]ledger.LedgerInfo {
+	resp, err := g.client.GetAllLedgersInfo(ctx, &GetAllLedgersRequest{})
 	if err != nil {
 		// Return empty map on error - this is a limitation of the interface
-		// In practice, this should not happen as GetAllBucketsInfo is typically called locally
-		return make(map[string]ledger.BucketInfo)
+		// In practice, this should not happen as GetAllLedgersInfo is typically called locally
+		return make(map[string]ledger.LedgerInfo)
 	}
 
-	// Convert []*CreateBucketResponse to map[string]ledger.BucketInfo
-	result := make(map[string]ledger.BucketInfo, len(resp.Buckets))
-	for _, bucketResp := range resp.Buckets {
+	// Convert []*CreateLedgerResponse to map[string]ledger.LedgerInfo
+	result := make(map[string]ledger.LedgerInfo, len(resp.Ledgers))
+	for _, ledgerResp := range resp.Ledgers {
 		// Convert protobuf Struct to json.RawMessage
-		configJSON, err := json.Marshal(bucketResp.Config.AsMap())
+		configJSON, err := json.Marshal(ledgerResp.Config.AsMap())
 		if err != nil {
-			// Skip this bucket if config conversion fails
+			// Skip this ledger if config conversion fails
 			continue
 		}
 
-		bucketInfo := ledger.BucketInfo{
-			ID:        bucketResp.Id,
-			Name:      bucketResp.Name,
-			Driver:    bucketResp.Driver,
-			Config:    configJSON,
-			CreatedAt: time.New(bucketResp.CreatedAt.AsTime()),
-		}
-		if bucketResp.SnapshotThreshold > 0 {
-			bucketInfo.SnapshotThreshold = bucketResp.SnapshotThreshold
+		// Convert metadata
+		var ledgerMetadata metadata.Metadata
+		if ledgerResp.Metadata != nil {
+			mdMap := ledgerResp.Metadata.AsMap()
+			ledgerMetadata = make(map[string]string)
+			for k, v := range mdMap {
+				if str, ok := v.(string); ok {
+					ledgerMetadata[k] = str
+				}
+			}
 		}
 
-		result[bucketInfo.Name] = bucketInfo
+		ledgerInfo := ledger.LedgerInfo{
+			ID:        ledgerResp.Id,
+			Name:      ledgerResp.Name,
+			Driver:    ledgerResp.Driver,
+			Config:    configJSON,
+			Metadata:  ledgerMetadata,
+			CreatedAt: time.New(ledgerResp.CreatedAt.AsTime()),
+		}
+		if ledgerResp.SnapshotThreshold > 0 {
+			ledgerInfo.SnapshotThreshold = ledgerResp.SnapshotThreshold
+		}
+
+		result[ledgerInfo.Name] = ledgerInfo
 	}
 
 	return result
 }
 
-func (g *grpcSystemClient) GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error) {
-	resp, err := g.client.GetBucketInfo(ctx, &GetBucketByNameRequest{Name: name})
+func (g *SystemGRPCClient) GetLedgerInfo(ctx context.Context, name string) (*ledger.LedgerInfo, error) {
+	resp, err := g.client.GetLedgerInfo(ctx, &GetLedgerByNameRequest{Name: name})
 	if err != nil {
 		return nil, err
 	}
@@ -113,25 +168,38 @@ func (g *grpcSystemClient) GetBucketInfo(ctx context.Context, name string) (*led
 	// Convert protobuf Struct to json.RawMessage
 	configJSON, err := json.Marshal(resp.Config.AsMap())
 	if err != nil {
-		return nil, fmt.Errorf("marshaling bucket config: %w", err)
+		return nil, fmt.Errorf("marshaling ledger config: %w", err)
 	}
 
-	bucketInfo := ledger.BucketInfo{
+	// Convert metadata
+	var ledgerMetadata metadata.Metadata
+	if resp.Metadata != nil {
+		mdMap := resp.Metadata.AsMap()
+		ledgerMetadata = make(map[string]string)
+		for k, v := range mdMap {
+			if str, ok := v.(string); ok {
+				ledgerMetadata[k] = str
+			}
+		}
+	}
+
+	ledgerInfo := ledger.LedgerInfo{
 		ID:        resp.Id,
 		Name:      resp.Name,
 		Driver:    resp.Driver,
 		Config:    configJSON,
+		Metadata:  ledgerMetadata,
 		CreatedAt: time.New(resp.CreatedAt.AsTime()),
 	}
 	if resp.SnapshotThreshold > 0 {
-		bucketInfo.SnapshotThreshold = resp.SnapshotThreshold
+		ledgerInfo.SnapshotThreshold = resp.SnapshotThreshold
 	}
 
-	return &bucketInfo, nil
+	return &ledgerInfo, nil
 }
 
-var _ System = (*grpcSystemClient)(nil)
+var _ System = (*SystemGRPCClient)(nil)
 
-func NewGrpcSystemClient(client SystemServiceClient) *grpcSystemClient {
-	return &grpcSystemClient{client}
+func NewGrpcSystemClient(client SystemServiceClient) *SystemGRPCClient {
+	return &SystemGRPCClient{client}
 }

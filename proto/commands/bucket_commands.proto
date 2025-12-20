@@ -61,11 +61,10 @@ message Log {
   int32 type = 1;                           // LogType enum value
   LogPayload data = 2;
   google.protobuf.Timestamp date = 3;
-  string ledger = 4;
-  string idempotency_key = 5;
-  string idempotency_hash = 6;
-  uint64 id = 7;                            // Optional log ID
-  uint64 sequence = 8;                      // Global sequence number, auto-incremented by database
+  string idempotency_key = 4;
+  string idempotency_hash = 5;
+  uint64 id = 6;                            // Optional log ID
+  uint64 sequence = 7;                      // Global sequence number, auto-incremented by database
 }
 
 // InsertLogCommand represents the data for an insert log command

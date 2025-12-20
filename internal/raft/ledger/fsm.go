@@ -1,4 +1,4 @@
-package bucket
+package ledger
 
 import (
 	"context"
@@ -8,94 +8,46 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
 )
 
-// FSM represents the finite state machine for a bucket Raft group
-// It manages ledgers within a specific bucket
+// FSM represents the finite state machine for a ledger Raft group
+// It manages a single ledger
 type FSM struct {
 	mu        sync.RWMutex       // Protects access to state
-	state     ledger.BucketState // FSM state
+	state     ledger.LedgerState  // FSM state
 	logger    logging.Logger
 	logWriter service.LogWriter
 	logReader service.LogReader // LogReader to catch up logs from leader via gRPC
 }
 
-// newFSM creates a new bucket FSM
-func newFSM(logger logging.Logger, logStore service.LogWriter, logReader service.LogReader) *FSM {
+// newFSM creates a new ledger FSM
+func newFSM(logger logging.Logger, logStore service.LogWriter, logReader service.LogReader, ledgerInfo ledger.LedgerInfo) *FSM {
 	return &FSM{
-		state: ledger.BucketState{
-			Ledgers:      make(map[string]ledger.LedgerInfo),
+		state: ledger.LedgerState{
+			LedgerInfo:   ledgerInfo,
 			LastSequence: 0,
 		},
-		logger:    logger,
+		logger: logger.WithFields(map[string]any{
+			"service": "ledger.fsm",
+			"ledger":  ledgerInfo.Name,
+		}),
 		logWriter: logStore,
 		logReader: logReader,
 	}
 }
 
 // GetState returns a copy of the FSM state
-func (f *FSM) GetState() ledger.BucketState {
+func (f *FSM) GetState() ledger.LedgerState {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	// Create a deep copy of the state
-	ledgersCopy := make(map[string]ledger.LedgerInfo, len(f.state.Ledgers))
-	for k, v := range f.state.Ledgers {
-		ledgersCopy[k] = v
-	}
-
-	return ledger.BucketState{
-		Ledgers:      ledgersCopy,
+	return ledger.LedgerState{
+		LedgerInfo:   f.state.LedgerInfo,
 		LastSequence: f.state.LastSequence,
 	}
-}
-
-// handleCreateLedger handles the create ledger command for this bucket
-func (f *FSM) handleCreateLedger(cmd raft.Command) (*ledger.LedgerInfo, error) {
-	var createCmd CreateLedgerCommand
-	if err := UnmarshalCommandData(cmd.Data, &createCmd); err != nil {
-		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal create ledger command")
-		return nil, fmt.Errorf("unmarshaling create ledger command: %w", err)
-	}
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	// Check if the ledger already exists in this bucket
-	// todo: not true if ledgers are removed, be safe and keep nextLedgerID in the FSM
-	if _, exists := f.state.Ledgers[createCmd.Name]; exists {
-		f.logger.
-			WithFields(map[string]any{"name": createCmd.Name}).
-			Infof("WARN: Ledger already exists in bucket")
-		return nil, fmt.Errorf("ledger already exists in bucket: %s", createCmd.Name)
-	}
-
-	// Assign sequential ID to the ledger (IDs start at 1, so next ID is len(ledgers) + 1)
-	ledgerID := uint64(len(f.state.Ledgers) + 1)
-
-	// Convert protobuf Struct to metadata.Metadata
-	var md metadata.Metadata
-	if createCmd.Metadata != nil {
-		md = structToMetadata(createCmd.Metadata)
-	}
-
-	// Create ledger info using the command date
-	ledgerInfo := ledger.LedgerInfo{
-		ID:        ledgerID,
-		Name:      createCmd.Name,
-		CreatedAt: cmd.Date,
-		Metadata:  md,
-	}
-
-	// Store the ledger
-	f.state.Ledgers[createCmd.Name] = ledgerInfo
-
-	f.logger.Infof("Ledger created in bucket")
-	return &ledgerInfo, nil
 }
 
 // processInsertLog handles the insert log command by storing the log in memory and persisting it to the store
@@ -119,28 +71,17 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
 	f.mu.Unlock()
 
 	f.logger.
-		WithFields(map[string]any{"ledger": log.Ledger, "sequence": log.Sequence}).
+		WithFields(map[string]any{"sequence": log.Sequence}).
 		Infof("Log stored in memory and persisted to store via FSM")
 	return &log, nil
 }
 
-func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft.ApplyResult {
+func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raft.ApplyResult, error) {
 	// Assume the majority of commands are logs insertion while allocating
 	ret := make([]raft.ApplyResult, 0, len(commands))
 	logs := make([]ledger.Log, 0, len(commands))
 	for _, command := range commands {
 		switch command.Type {
-		case CommandTypeCreateLedger:
-			info, err := f.handleCreateLedger(command)
-			if err != nil {
-				ret = append(ret, raft.ApplyResult{
-					Error: err,
-				})
-				continue
-			}
-			ret = append(ret, raft.ApplyResult{
-				Result: info,
-			})
 		case CommandTypeInsertLog:
 			log, err := f.processInsertLog(command)
 			if err != nil {
@@ -157,39 +98,11 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) []raft
 	}
 	if len(logs) > 0 {
 		if err := f.logWriter.InsertLogs(ctx, logs...); err != nil {
-			// Well, the panic is a bit brutal.
-			// But fundamentally, this is what we want.
-			// A raft node should be considered corrupted if it cannot persist in its state.
-			panic(err)
+			return nil, err
 		}
 	}
 
-	return ret
-}
-
-// GetLedger returns the ledger info for a given name in this bucket
-func (f *FSM) GetLedger(name string) (*ledger.LedgerInfo, error) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	info, ok := f.state.Ledgers[name]
-	if !ok {
-		return nil, fmt.Errorf("ledger does not exist: %s", name)
-	}
-	return &info, nil
-}
-
-// GetAllLedgers returns all ledgers in this bucket
-func (f *FSM) GetAllLedgers() []ledger.LedgerInfo {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	// Return a copy to avoid external modifications
-	result := make([]ledger.LedgerInfo, 0, len(f.state.Ledgers))
-	for _, v := range f.state.Ledgers {
-		result = append(result, v)
-	}
-	return result
+	return ret, nil
 }
 
 func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
@@ -197,7 +110,7 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	defer f.mu.RUnlock()
 
 	snapshotData := map[string]interface{}{
-		"ledgers":      f.state.Ledgers,
+		"ledgerInfo":   f.state.LedgerInfo,
 		"lastSequence": f.state.LastSequence,
 	}
 
@@ -210,19 +123,16 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	return data, nil
 }
 
-// RestoreSnapshot restores the bucket FSM from a snapshot
+// RestoreSnapshot restores the ledger FSM from a snapshot
 func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
-	var snapshotData ledger.BucketState
+	var snapshotData ledger.LedgerState
 
 	if err := json.Unmarshal(data, &snapshotData); err != nil {
 		panic(err)
 	}
 
 	f.mu.Lock()
-	f.state.Ledgers = snapshotData.Ledgers
-	if f.state.Ledgers == nil {
-		f.state.Ledgers = make(map[string]ledger.LedgerInfo)
-	}
+	f.state.LedgerInfo = snapshotData.LedgerInfo
 	f.mu.Unlock()
 
 	// Compare snapshot's lastSequence with the log store's lastSequenceID
@@ -287,12 +197,12 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 	}
 
 	f.mu.RLock()
-	ledgerCount := len(f.state.Ledgers)
 	lastSequence := f.state.LastSequence
 	f.mu.RUnlock()
 
 	f.logger.WithFields(map[string]any{
-		"ledgerCount":   ledgerCount,
+		"ledger":        f.state.LedgerInfo.Name,
 		"storeSequence": lastSequence,
-	}).Infof("BucketCluster FSM restored from snapshot")
+	}).Infof("Ledger FSM restored from snapshot")
 }
+

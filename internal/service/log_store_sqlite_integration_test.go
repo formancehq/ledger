@@ -8,8 +8,11 @@ import (
 	"io"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/stretchr/testify/require"
 )
@@ -38,19 +41,13 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test with existing idempotency key
-		log, err := store.GetLogWithIdempotencyKey(ctx, ledgerName, "idempotency-key-1")
+		log, err := store.GetLogWithIdempotencyKey(ctx, "idempotency-key-1")
 		require.NoError(t, err)
 		require.NotNil(t, log)
 		require.Equal(t, "idempotency-key-1", log.IdempotencyKey)
-		require.Equal(t, ledgerName, log.Ledger)
 
 		// Test with non-existing idempotency key
-		log, err = store.GetLogWithIdempotencyKey(ctx, ledgerName, "non-existing-key")
-		require.NoError(t, err)
-		require.Nil(t, log)
-
-		// Test with different ledger
-		log, err = store.GetLogWithIdempotencyKey(ctx, "other-ledger", "idempotency-key-1")
+		log, err = store.GetLogWithIdempotencyKey(ctx, "non-existing-key")
 		require.NoError(t, err)
 		require.Nil(t, log)
 	})
@@ -64,10 +61,9 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get last log
-		lastLog, err := store.GetLastLog(ctx, ledgerName)
+		lastLog, err := store.GetLastLog(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, lastLog)
-		require.Equal(t, ledgerName, lastLog.Ledger)
 		// The last log should be the one with the highest ID
 		if len(testLogs) > 0 {
 			expectedID := testLogs[len(testLogs)-1].ID
@@ -75,11 +71,6 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 				require.Equal(t, *expectedID, *lastLog.ID)
 			}
 		}
-
-		// Test with non-existing ledger
-		lastLog, err = store.GetLastLog(ctx, "non-existing-ledger")
-		require.NoError(t, err)
-		require.Nil(t, lastLog)
 	})
 
 	t.Run("GetAllLogs", func(t *testing.T) {
@@ -104,10 +95,8 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 				break
 			}
 			require.NoError(t, err)
-			// Filter by ledger name
-			if log.Ledger == ledgerName {
-				logs = append(logs, log)
-			}
+			// All logs belong to this ledger (each store is for a single ledger)
+			logs = append(logs, log)
 		}
 
 		// Verify we got all logs for this ledger
@@ -136,7 +125,7 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		err := store.InsertLogs(ctx, testLogs...)
 		require.NoError(t, err)
 
-		balances, err := store.GetBalances(ctx, ledgerName, map[string][]string{
+		balances, err := store.GetBalances(ctx, map[string][]string{
 			"world": {"USD"},
 			"bank":  {"USD"},
 			"user":  {"USD"},
@@ -146,6 +135,117 @@ func TestSQLiteLogStoreIntegration(t *testing.T) {
 		require.Equal(t, big.NewInt(-50), balances["bank"]["USD"])
 		require.Equal(t, big.NewInt(50), balances["user"]["USD"])
 	})
+
+	t.Run("GetAccountMetadata", func(t *testing.T) {
+		t.Parallel()
+		store := createSQLiteStore(t)
+		testLogs := createTestLogs(t, ledgerName)
+
+		// Insert logs
+		err := store.InsertLogs(ctx, testLogs...)
+		require.NoError(t, err)
+
+		// Test GetAccountMetadata for multiple accounts
+		accountsMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{"bank", "user", "world", "non-existing"})
+		require.NoError(t, err)
+		require.NotNil(t, accountsMetadata)
+
+		// Verify "bank" account metadata
+		// Should have account_type from accountMetadata and label from SET_METADATA
+		bankMetadata, exists := accountsMetadata["bank"]
+		require.True(t, exists)
+		require.Equal(t, "asset", bankMetadata["account_type"])
+		require.Equal(t, "Bank Account", bankMetadata["label"])
+
+		// Verify "user" account metadata (no metadata set)
+		userMetadata, exists := accountsMetadata["user"]
+		require.True(t, exists)
+		require.Empty(t, userMetadata)
+
+		// Verify "world" account metadata (no metadata set)
+		worldMetadata, exists := accountsMetadata["world"]
+		require.True(t, exists)
+		require.Empty(t, worldMetadata)
+
+		// Verify non-existing account (should return empty metadata)
+		nonExistingMetadata, exists := accountsMetadata["non-existing"]
+		require.True(t, exists)
+		require.Empty(t, nonExistingMetadata)
+
+		// Test with empty array
+		emptyMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{})
+		require.NoError(t, err)
+		require.NotNil(t, emptyMetadata)
+		require.Empty(t, emptyMetadata)
+	})
+
+	t.Run("GetAccountMetadataWithMergeAndDelete", func(t *testing.T) {
+		t.Parallel()
+		store := createSQLiteStore(t)
+		now := libtime.New(time.Now())
+
+		// Create logs with account metadata
+		logs := []ledger.Log{
+			// Transaction with account metadata
+			ledger.NewLog(&ledger.CreatedTransaction{
+				Transaction: ledger.NewTransaction().
+					WithPostings(
+						ledger.NewPosting("world", "test-account", "USD", big.NewInt(100)),
+					).
+					WithID(1).
+					WithTimestamp(now),
+				AccountMetadata: ledger.AccountMetadata{
+					"test-account": metadata.Metadata{
+						"key1": "value1",
+						"key2": "value2",
+					},
+				},
+			}).
+				WithID(1).
+				WithSequence(1).
+				WithDate(now),
+
+			// SET_METADATA for the same account
+			ledger.NewLog(&ledger.SavedMetadata{
+				TargetType: "ACCOUNT",
+				TargetID:   "test-account",
+				Metadata: metadata.Metadata{
+					"key3": "value3",
+					"key2": "updated_value2", // This should override key2
+				},
+			}).
+				WithID(2).
+				WithSequence(2).
+				WithDate(now.Add(time.Second)),
+
+			// DELETE_METADATA for the same account
+			ledger.NewLog(&ledger.DeletedMetadata{
+				TargetType: "ACCOUNT",
+				TargetID:   "test-account",
+				Key:        "key1",
+			}).
+				WithID(3).
+				WithSequence(3).
+				WithDate(now.Add(2 * time.Second)),
+		}
+
+		err := store.InsertLogs(ctx, logs...)
+		require.NoError(t, err)
+
+		// Get account metadata and verify
+		accountsMetadata, err := store.GetAccountMetadata(ctx, ledgerName, []string{"test-account"})
+		require.NoError(t, err)
+		require.NotNil(t, accountsMetadata)
+
+		accountMetadata, exists := accountsMetadata["test-account"]
+		require.True(t, exists)
+
+		// Verify metadata: key1 should be deleted, key2 should be updated, key3 should exist
+		require.NotContains(t, accountMetadata, "key1")
+		require.Equal(t, "updated_value2", accountMetadata["key2"])
+		require.Equal(t, "value3", accountMetadata["key3"])
+	})
+
 }
 
 func createSQLiteStore(t *testing.T) *SQLiteLogStore {

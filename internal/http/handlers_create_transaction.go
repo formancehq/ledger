@@ -41,20 +41,14 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		Input:          input,
 	}
 
-	bucketName, _, err := s.cluster.ResolveLedger(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-		return
-	}
-
-	bucket, err := s.cluster.GetBucketCluster(r.Context(), bucketName)
+	ledgerCluster, err := s.cluster.GetLedgerCluster(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
 
 	// Call ledger service
-	_, createdTx, err := bucket.CreateTransaction(r.Context(), ledgerName, params)
+	_, createdTx, err := ledgerCluster.CreateTransaction(r.Context(), ledgerName, params)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "error": err}).Errorf("Failed to create transaction")
 		handleError(w, r, err)

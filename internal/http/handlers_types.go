@@ -4,8 +4,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal"
 )
 
-// LedgerResponse represents a ledger with its bucket name
+// LedgerResponse represents a ledger
 type LedgerResponse struct {
 	ledger.LedgerInfo
-	Bucket string `json:"bucket"`
 }

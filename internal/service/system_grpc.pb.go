@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SystemService_Snapshot_FullMethodName          = "/ledger.SystemService/Snapshot"
-	SystemService_CreateBucket_FullMethodName      = "/ledger.SystemService/CreateBucket"
-	SystemService_DeleteBucket_FullMethodName      = "/ledger.SystemService/DeleteBucket"
-	SystemService_ResolveLedger_FullMethodName     = "/ledger.SystemService/ResolveLedger"
-	SystemService_GetAllBucketsInfo_FullMethodName = "/ledger.SystemService/GetAllBucketsInfo"
-	SystemService_GetBucketInfo_FullMethodName     = "/ledger.SystemService/GetBucketInfo"
+	SystemService_Snapshot_FullMethodName            = "/ledger.SystemService/Snapshot"
+	SystemService_CreateLedger_FullMethodName        = "/ledger.SystemService/CreateLedger"
+	SystemService_DeleteLedger_FullMethodName        = "/ledger.SystemService/DeleteLedger"
+	SystemService_ResolveLedger_FullMethodName       = "/ledger.SystemService/ResolveLedger"
+	SystemService_GetAllLedgersInfo_FullMethodName   = "/ledger.SystemService/GetAllLedgersInfo"
+	SystemService_GetLedgerInfo_FullMethodName       = "/ledger.SystemService/GetLedgerInfo"
+	SystemService_ResolveLedgerLeader_FullMethodName = "/ledger.SystemService/ResolveLedgerLeader"
 )
 
 // SystemServiceClient is the client API for SystemService service.
@@ -35,16 +36,18 @@ const (
 type SystemServiceClient interface {
 	// Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
 	Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
-	// CreateBucket creates a new bucket
-	CreateBucket(ctx context.Context, in *CreateBucketRequest, opts ...grpc.CallOption) (*CreateBucketResponse, error)
-	// DeleteBucket deletes a bucket
-	DeleteBucket(ctx context.Context, in *DeleteBucketRequest, opts ...grpc.CallOption) (*DeleteBucketResponse, error)
-	// ResolveLedger resolves a ledger name to its bucket
+	// CreateLedger creates a new ledger
+	CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*CreateLedgerResponse, error)
+	// DeleteLedger deletes a ledger
+	DeleteLedger(ctx context.Context, in *DeleteLedgerRequest, opts ...grpc.CallOption) (*DeleteLedgerResponse, error)
+	// ResolveLedger resolves a ledger name to its ID
 	ResolveLedger(ctx context.Context, in *ResolveLedgerRequest, opts ...grpc.CallOption) (*ResolveLedgerResponse, error)
-	// GetAllBucketsInfo returns all buckets info in the cluster
-	GetAllBucketsInfo(ctx context.Context, in *GetAllBucketsRequest, opts ...grpc.CallOption) (*GetAllBucketsResponse, error)
-	// GetBucketInfo returns a bucket info by its name
-	GetBucketInfo(ctx context.Context, in *GetBucketByNameRequest, opts ...grpc.CallOption) (*GetBucketByNameResponse, error)
+	// GetAllLedgersInfo returns all ledgers info in the cluster
+	GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error)
+	// GetLedgerInfo returns a ledger info by its name
+	GetLedgerInfo(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*GetLedgerByNameResponse, error)
+	// ResolveLedgerLeader
+	ResolveLedgerLeader(ctx context.Context, in *ResolveLedgerLeaderRequest, opts ...grpc.CallOption) (*ResolveLedgerLeaderResponse, error)
 }
 
 type systemServiceClient struct {
@@ -65,20 +68,20 @@ func (c *systemServiceClient) Snapshot(ctx context.Context, in *SnapshotRequest,
 	return out, nil
 }
 
-func (c *systemServiceClient) CreateBucket(ctx context.Context, in *CreateBucketRequest, opts ...grpc.CallOption) (*CreateBucketResponse, error) {
+func (c *systemServiceClient) CreateLedger(ctx context.Context, in *CreateLedgerRequest, opts ...grpc.CallOption) (*CreateLedgerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateBucketResponse)
-	err := c.cc.Invoke(ctx, SystemService_CreateBucket_FullMethodName, in, out, cOpts...)
+	out := new(CreateLedgerResponse)
+	err := c.cc.Invoke(ctx, SystemService_CreateLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *systemServiceClient) DeleteBucket(ctx context.Context, in *DeleteBucketRequest, opts ...grpc.CallOption) (*DeleteBucketResponse, error) {
+func (c *systemServiceClient) DeleteLedger(ctx context.Context, in *DeleteLedgerRequest, opts ...grpc.CallOption) (*DeleteLedgerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteBucketResponse)
-	err := c.cc.Invoke(ctx, SystemService_DeleteBucket_FullMethodName, in, out, cOpts...)
+	out := new(DeleteLedgerResponse)
+	err := c.cc.Invoke(ctx, SystemService_DeleteLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -95,20 +98,30 @@ func (c *systemServiceClient) ResolveLedger(ctx context.Context, in *ResolveLedg
 	return out, nil
 }
 
-func (c *systemServiceClient) GetAllBucketsInfo(ctx context.Context, in *GetAllBucketsRequest, opts ...grpc.CallOption) (*GetAllBucketsResponse, error) {
+func (c *systemServiceClient) GetAllLedgersInfo(ctx context.Context, in *GetAllLedgersRequest, opts ...grpc.CallOption) (*GetAllLedgersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetAllBucketsResponse)
-	err := c.cc.Invoke(ctx, SystemService_GetAllBucketsInfo_FullMethodName, in, out, cOpts...)
+	out := new(GetAllLedgersResponse)
+	err := c.cc.Invoke(ctx, SystemService_GetAllLedgersInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *systemServiceClient) GetBucketInfo(ctx context.Context, in *GetBucketByNameRequest, opts ...grpc.CallOption) (*GetBucketByNameResponse, error) {
+func (c *systemServiceClient) GetLedgerInfo(ctx context.Context, in *GetLedgerByNameRequest, opts ...grpc.CallOption) (*GetLedgerByNameResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetBucketByNameResponse)
-	err := c.cc.Invoke(ctx, SystemService_GetBucketInfo_FullMethodName, in, out, cOpts...)
+	out := new(GetLedgerByNameResponse)
+	err := c.cc.Invoke(ctx, SystemService_GetLedgerInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *systemServiceClient) ResolveLedgerLeader(ctx context.Context, in *ResolveLedgerLeaderRequest, opts ...grpc.CallOption) (*ResolveLedgerLeaderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveLedgerLeaderResponse)
+	err := c.cc.Invoke(ctx, SystemService_ResolveLedgerLeader_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -123,16 +136,18 @@ func (c *systemServiceClient) GetBucketInfo(ctx context.Context, in *GetBucketBy
 type SystemServiceServer interface {
 	// Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
 	Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
-	// CreateBucket creates a new bucket
-	CreateBucket(context.Context, *CreateBucketRequest) (*CreateBucketResponse, error)
-	// DeleteBucket deletes a bucket
-	DeleteBucket(context.Context, *DeleteBucketRequest) (*DeleteBucketResponse, error)
-	// ResolveLedger resolves a ledger name to its bucket
+	// CreateLedger creates a new ledger
+	CreateLedger(context.Context, *CreateLedgerRequest) (*CreateLedgerResponse, error)
+	// DeleteLedger deletes a ledger
+	DeleteLedger(context.Context, *DeleteLedgerRequest) (*DeleteLedgerResponse, error)
+	// ResolveLedger resolves a ledger name to its ID
 	ResolveLedger(context.Context, *ResolveLedgerRequest) (*ResolveLedgerResponse, error)
-	// GetAllBucketsInfo returns all buckets info in the cluster
-	GetAllBucketsInfo(context.Context, *GetAllBucketsRequest) (*GetAllBucketsResponse, error)
-	// GetBucketInfo returns a bucket info by its name
-	GetBucketInfo(context.Context, *GetBucketByNameRequest) (*GetBucketByNameResponse, error)
+	// GetAllLedgersInfo returns all ledgers info in the cluster
+	GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error)
+	// GetLedgerInfo returns a ledger info by its name
+	GetLedgerInfo(context.Context, *GetLedgerByNameRequest) (*GetLedgerByNameResponse, error)
+	// ResolveLedgerLeader
+	ResolveLedgerLeader(context.Context, *ResolveLedgerLeaderRequest) (*ResolveLedgerLeaderResponse, error)
 	mustEmbedUnimplementedSystemServiceServer()
 }
 
@@ -146,20 +161,23 @@ type UnimplementedSystemServiceServer struct{}
 func (UnimplementedSystemServiceServer) Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
 }
-func (UnimplementedSystemServiceServer) CreateBucket(context.Context, *CreateBucketRequest) (*CreateBucketResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateBucket not implemented")
+func (UnimplementedSystemServiceServer) CreateLedger(context.Context, *CreateLedgerRequest) (*CreateLedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateLedger not implemented")
 }
-func (UnimplementedSystemServiceServer) DeleteBucket(context.Context, *DeleteBucketRequest) (*DeleteBucketResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteBucket not implemented")
+func (UnimplementedSystemServiceServer) DeleteLedger(context.Context, *DeleteLedgerRequest) (*DeleteLedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteLedger not implemented")
 }
 func (UnimplementedSystemServiceServer) ResolveLedger(context.Context, *ResolveLedgerRequest) (*ResolveLedgerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveLedger not implemented")
 }
-func (UnimplementedSystemServiceServer) GetAllBucketsInfo(context.Context, *GetAllBucketsRequest) (*GetAllBucketsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllBucketsInfo not implemented")
+func (UnimplementedSystemServiceServer) GetAllLedgersInfo(context.Context, *GetAllLedgersRequest) (*GetAllLedgersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAllLedgersInfo not implemented")
 }
-func (UnimplementedSystemServiceServer) GetBucketInfo(context.Context, *GetBucketByNameRequest) (*GetBucketByNameResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetBucketInfo not implemented")
+func (UnimplementedSystemServiceServer) GetLedgerInfo(context.Context, *GetLedgerByNameRequest) (*GetLedgerByNameResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLedgerInfo not implemented")
+}
+func (UnimplementedSystemServiceServer) ResolveLedgerLeader(context.Context, *ResolveLedgerLeaderRequest) (*ResolveLedgerLeaderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveLedgerLeader not implemented")
 }
 func (UnimplementedSystemServiceServer) mustEmbedUnimplementedSystemServiceServer() {}
 func (UnimplementedSystemServiceServer) testEmbeddedByValue()                       {}
@@ -200,38 +218,38 @@ func _SystemService_Snapshot_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SystemService_CreateBucket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateBucketRequest)
+func _SystemService_CreateLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateLedgerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SystemServiceServer).CreateBucket(ctx, in)
+		return srv.(SystemServiceServer).CreateLedger(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SystemService_CreateBucket_FullMethodName,
+		FullMethod: SystemService_CreateLedger_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SystemServiceServer).CreateBucket(ctx, req.(*CreateBucketRequest))
+		return srv.(SystemServiceServer).CreateLedger(ctx, req.(*CreateLedgerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SystemService_DeleteBucket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteBucketRequest)
+func _SystemService_DeleteLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteLedgerRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SystemServiceServer).DeleteBucket(ctx, in)
+		return srv.(SystemServiceServer).DeleteLedger(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SystemService_DeleteBucket_FullMethodName,
+		FullMethod: SystemService_DeleteLedger_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SystemServiceServer).DeleteBucket(ctx, req.(*DeleteBucketRequest))
+		return srv.(SystemServiceServer).DeleteLedger(ctx, req.(*DeleteLedgerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -254,38 +272,56 @@ func _SystemService_ResolveLedger_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SystemService_GetAllBucketsInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAllBucketsRequest)
+func _SystemService_GetAllLedgersInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAllLedgersRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SystemServiceServer).GetAllBucketsInfo(ctx, in)
+		return srv.(SystemServiceServer).GetAllLedgersInfo(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SystemService_GetAllBucketsInfo_FullMethodName,
+		FullMethod: SystemService_GetAllLedgersInfo_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SystemServiceServer).GetAllBucketsInfo(ctx, req.(*GetAllBucketsRequest))
+		return srv.(SystemServiceServer).GetAllLedgersInfo(ctx, req.(*GetAllLedgersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SystemService_GetBucketInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetBucketByNameRequest)
+func _SystemService_GetLedgerInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLedgerByNameRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SystemServiceServer).GetBucketInfo(ctx, in)
+		return srv.(SystemServiceServer).GetLedgerInfo(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SystemService_GetBucketInfo_FullMethodName,
+		FullMethod: SystemService_GetLedgerInfo_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SystemServiceServer).GetBucketInfo(ctx, req.(*GetBucketByNameRequest))
+		return srv.(SystemServiceServer).GetLedgerInfo(ctx, req.(*GetLedgerByNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SystemService_ResolveLedgerLeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveLedgerLeaderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SystemServiceServer).ResolveLedgerLeader(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SystemService_ResolveLedgerLeader_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SystemServiceServer).ResolveLedgerLeader(ctx, req.(*ResolveLedgerLeaderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -302,24 +338,28 @@ var SystemService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SystemService_Snapshot_Handler,
 		},
 		{
-			MethodName: "CreateBucket",
-			Handler:    _SystemService_CreateBucket_Handler,
+			MethodName: "CreateLedger",
+			Handler:    _SystemService_CreateLedger_Handler,
 		},
 		{
-			MethodName: "DeleteBucket",
-			Handler:    _SystemService_DeleteBucket_Handler,
+			MethodName: "DeleteLedger",
+			Handler:    _SystemService_DeleteLedger_Handler,
 		},
 		{
 			MethodName: "ResolveLedger",
 			Handler:    _SystemService_ResolveLedger_Handler,
 		},
 		{
-			MethodName: "GetAllBucketsInfo",
-			Handler:    _SystemService_GetAllBucketsInfo_Handler,
+			MethodName: "GetAllLedgersInfo",
+			Handler:    _SystemService_GetAllLedgersInfo_Handler,
 		},
 		{
-			MethodName: "GetBucketInfo",
-			Handler:    _SystemService_GetBucketInfo_Handler,
+			MethodName: "GetLedgerInfo",
+			Handler:    _SystemService_GetLedgerInfo_Handler,
+		},
+		{
+			MethodName: "ResolveLedgerLeader",
+			Handler:    _SystemService_ResolveLedgerLeader_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

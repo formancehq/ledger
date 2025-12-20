@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
@@ -40,10 +41,11 @@ func NewLogReaderFn(fn LogReaderFn) LogReader {
 type LogStore interface {
 	// todo: relax ?
 	BalancesStore
+	AccountStore
 	LogWriter
 	LogReader
-	GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error)
-	GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error)
+	GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error)
+	GetLastLog(ctx context.Context) (*ledger.Log, error)
 }
 
 // Store embeds LogWriter and LogReader
@@ -54,5 +56,9 @@ type Store interface {
 
 // BalancesStore handles balance/volume queries
 type BalancesStore interface {
-	GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error)
+	GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error)
+}
+
+type AccountStore interface {
+	GetAccountMetadata(ctx context.Context, ledgerName string, accounts []string) (map[string]metadata.Metadata, error)
 }

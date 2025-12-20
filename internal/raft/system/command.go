@@ -8,25 +8,40 @@ import (
 )
 
 const (
-	// CommandTypeCreateBucket is the command type for creating a new bucket
-	CommandTypeCreateBucket raft.CommandType = "create_bucket"
-	// CommandTypeDeleteBucket is the command type for deleting a bucket
-	CommandTypeDeleteBucket raft.CommandType = "delete_bucket"
+	// CommandTypeCreateLedger is the command type for creating a new ledger
+	CommandTypeCreateLedger raft.CommandType = "create_ledger"
+	// CommandTypeDeleteLedger is the command type for deleting a ledger
+	CommandTypeDeleteLedger raft.CommandType = "delete_ledger"
 )
 
-// NewCreateBucketCommand creates a new CreateBucketCommand
+// NewCreateLedgerCommand creates a new CreateLedgerCommand
 // snapshotThreshold is optional: if nil or 0, uses global config
-func NewCreateBucketCommand(name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*raft.Command, error) {
-	// Convert raftConfig map to protobuf Struct
+func NewCreateLedgerCommand(name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*raft.Command, error) {
+	// Convert config map to protobuf Struct
 	configStruct, err := structpb.NewStruct(config)
 	if err != nil {
 		return nil, err
 	}
 
-	cmdProto := &CreateBucketCommand{
-		Name:   name,
-		Driver: driver,
-		Config: configStruct,
+	// Convert metadata map to protobuf Struct
+	var metadataStruct *structpb.Struct
+	if len(metadata) > 0 {
+		// Convert map[string]string to map[string]interface{}
+		metadataMap := make(map[string]interface{})
+		for k, v := range metadata {
+			metadataMap[k] = v
+		}
+		metadataStruct, err = structpb.NewStruct(metadataMap)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	cmdProto := &CreateLedgerCommand{
+		Name:     name,
+		Driver:   driver,
+		Config:   configStruct,
+		Metadata: metadataStruct,
 	}
 	if snapshotThreshold != nil && *snapshotThreshold > 0 {
 		cmdProto.SnapshotThreshold = *snapshotThreshold
@@ -39,15 +54,15 @@ func NewCreateBucketCommand(name, driver string, config map[string]interface{}, 
 
 	return &raft.Command{
 		ID:   raft.GenerateRandomID(),
-		Type: CommandTypeCreateBucket,
+		Type: CommandTypeCreateLedger,
 		Data: data,
 		Date: time.Now(),
 	}, nil
 }
 
-// NewDeleteBucketCommand creates a new DeleteBucketCommand
-func NewDeleteBucketCommand(name string) (*raft.Command, error) {
-	cmdProto := &DeleteBucketCommand{
+// NewDeleteLedgerCommand creates a new DeleteLedgerCommand
+func NewDeleteLedgerCommand(name string) (*raft.Command, error) {
+	cmdProto := &DeleteLedgerCommand{
 		Name: name,
 	}
 
@@ -58,7 +73,7 @@ func NewDeleteBucketCommand(name string) (*raft.Command, error) {
 
 	return &raft.Command{
 		ID:   raft.GenerateRandomID(),
-		Type: CommandTypeDeleteBucket,
+		Type: CommandTypeDeleteLedger,
 		Data: data,
 		Date: time.Now(),
 	}, nil
@@ -67,9 +82,9 @@ func NewDeleteBucketCommand(name string) (*raft.Command, error) {
 // UnmarshalCommandData unmarshals FSM command data from binary format using protobuf
 func UnmarshalCommandData(data []byte, v interface{}) error {
 	switch cmd := v.(type) {
-	case *CreateBucketCommand:
+	case *CreateLedgerCommand:
 		return proto.Unmarshal(data, cmd)
-	case *DeleteBucketCommand:
+	case *DeleteLedgerCommand:
 		return proto.Unmarshal(data, cmd)
 	default:
 		return proto.Unmarshal(data, v.(proto.Message))

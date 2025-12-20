@@ -119,31 +119,31 @@ func runClusterState(cmd *cobra.Command, args []string) error {
 
 	// Display FSM state (SystemState)
 	innerState := data.GetInnerState()
-	if len(innerState.GetBuckets()) > 0 {
+	if innerState.GetLedgers() != nil && len(innerState.GetLedgers()) > 0 {
 		pterm.Println()
 		pterm.DefaultHeader.WithFullWidth().Println("FSM State")
 		fsmInfo := ""
-		fsmInfo += fmt.Sprintf("Next Bucket ID: %d\n", innerState.GetNextBucketID())
-		fsmInfo += fmt.Sprintf("Number of Buckets: %d\n", len(innerState.GetBuckets()))
+		fsmInfo += fmt.Sprintf("Next Ledger ID: %d\n", innerState.GetNextLedgerID())
+		fsmInfo += fmt.Sprintf("Number of Ledgers: %d\n", len(innerState.GetLedgers()))
 
 		pterm.DefaultBox.WithTitle("FSM Information").WithBoxStyle(pterm.NewStyle(pterm.FgLightCyan)).Println(fsmInfo)
 
-		// Buckets table
+		// Ledgers table
 		pterm.Println()
-		bucketTableData := pterm.TableData{
+		ledgerTableData := pterm.TableData{
 			{"Name", "ID", "Driver"},
 		}
-		for name, bucketInfo := range innerState.GetBuckets() {
-			bucketTableData = append(bucketTableData, []string{
+		for name, ledgerInfo := range innerState.GetLedgers() {
+			ledgerTableData = append(ledgerTableData, []string{
 				name,
-				fmt.Sprintf("%d", bucketInfo.ID),
-				string(bucketInfo.Driver),
+				fmt.Sprintf("%d", ledgerInfo.ID),
+				string(ledgerInfo.Driver),
 			})
 		}
-		return pterm.DefaultTable.WithHasHeader().WithData(bucketTableData).Render()
+		return pterm.DefaultTable.WithHasHeader().WithData(ledgerTableData).Render()
 	} else {
 		pterm.Println()
-		pterm.Info.Println("No buckets in FSM state")
+		pterm.Info.Println("No ledgers in FSM state")
 	}
 
 	return nil

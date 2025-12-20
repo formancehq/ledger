@@ -46,22 +46,12 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 		r.Get("/health", server.handleHealth)
 		r.Get("/cluster/state", server.handleClusterState)
 
-		// Register bucket routes
-		r.Get("/buckets", server.handleListBuckets) // GET /buckets
-		r.Route("/buckets/{bucketName}", func(r chi.Router) {
-			r.Get("/", server.handleGetBucket)                     // GET /buckets/{bucketName}
-			r.Post("/", server.handleCreateBucket)                 // POST /buckets/{bucketName}
-			r.Delete("/", server.handleDeleteBucket)               // DELETE /buckets/{bucketName}
-			r.Post("/snapshot", server.handleCreateBucketSnapshot) // POST /buckets/{bucketName}/snapshot
-			r.Get("/raft/state", server.handleGetBucketRaftState)  // GET /buckets/{bucketName}/raft/state
-		})
-
 		r.Post("/{ledgerName}", server.handleCreateLedger)                   // POST /{ledgerName}
 		r.Get("/{ledgerName}", server.handleGetLedger)                       // GET /{ledgerName}
 		r.Post("/{ledgerName}/transactions", server.handleCreateTransaction) // POST /{ledgerName}/transactions
 		r.Post("/{ledgerName}/bulk", server.handleBulk)                      // POST /{ledgerName}/bulk
 		r.Post("/{ledgerName}/_bulk", server.handleBulk)                     // For compat
-		r.Get("/", server.handleListAllLedgers)                              // GET / (cross-bucket) - must be last
+		r.Get("/", server.handleListAllLedgers)                              // GET / - must be last
 	}
 
 	// Register routes without prefix (backward compatibility)

@@ -11,7 +11,7 @@ import (
 
 // LockedBalancesStore provides locking for concurrent access to volumes
 type LockedBalancesStore interface {
-	LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error)
+	LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error)
 }
 
 // DefaultLockedBalancesStore is a default implementation of LockedBalancesStore
@@ -38,7 +38,7 @@ func NewDefaultLockedBalancesStore(balancesStore BalancesStore) *DefaultLockedBa
 }
 
 // LockBalances locks the requested account:asset combinations and returns balances with a release function
-func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
+func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, func(), error) {
 	// Extract all account:asset combinations from the query
 	lockKeys := make([]string, 0)
 	for account, assets := range balanceQuery {
@@ -60,7 +60,7 @@ func (s *DefaultLockedBalancesStore) LockBalances(ctx context.Context, ledgerNam
 	}
 
 	// Get balances from the underlying store
-	balances, err := s.balancesStore.GetBalances(ctx, ledgerName, balanceQuery)
+	balances, err := s.balancesStore.GetBalances(ctx, balanceQuery)
 	if err != nil {
 		// Release all locks on error
 		s.releaseLocks(lockedKeys)

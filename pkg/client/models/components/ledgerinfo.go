@@ -3,21 +3,51 @@
 package components
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
 	"time"
 )
+
+// Driver - Storage driver name
+type Driver string
+
+const (
+	DriverSqlite Driver = "sqlite"
+)
+
+func (e Driver) ToPointer() *Driver {
+	return &e
+}
+func (e *Driver) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "sqlite":
+		*e = Driver(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for Driver: %v", v)
+	}
+}
 
 type LedgerInfo struct {
 	// Sequential ID for the ledger
 	ID int64 `json:"id"`
 	// Name of the ledger
 	Name string `json:"name"`
-	// Name of the bucket containing the ledger
-	Bucket string `json:"bucket"`
+	// Storage driver name
+	Driver Driver `json:"driver"`
+	// SQLite driver configuration (empty object - DSN is automatically generated)
+	Config *SQLiteConfig `json:"config,omitempty"`
 	// Metadata for the ledger
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Creation timestamp (ISO 8601 format)
 	CreatedAt time.Time `json:"createdAt"`
+	// Number of logs before triggering a snapshot (0 means use global config)
+	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
 	// ID of the last log for this ledger
 	LastLogID *int64 `json:"lastLogId,omitempty"`
 }
@@ -47,11 +77,18 @@ func (o *LedgerInfo) GetName() string {
 	return o.Name
 }
 
-func (o *LedgerInfo) GetBucket() string {
+func (o *LedgerInfo) GetDriver() Driver {
 	if o == nil {
-		return ""
+		return Driver("")
 	}
-	return o.Bucket
+	return o.Driver
+}
+
+func (o *LedgerInfo) GetConfig() *SQLiteConfig {
+	if o == nil {
+		return nil
+	}
+	return o.Config
 }
 
 func (o *LedgerInfo) GetMetadata() map[string]string {
@@ -66,6 +103,13 @@ func (o *LedgerInfo) GetCreatedAt() time.Time {
 		return time.Time{}
 	}
 	return o.CreatedAt
+}
+
+func (o *LedgerInfo) GetSnapshotThreshold() *int64 {
+	if o == nil {
+		return nil
+	}
+	return o.SnapshotThreshold
 }
 
 func (o *LedgerInfo) GetLastLogID() *int64 {

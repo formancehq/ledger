@@ -23,6 +23,94 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ResolveLedgerLeaderRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LedgerName    string                 `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveLedgerLeaderRequest) Reset() {
+	*x = ResolveLedgerLeaderRequest{}
+	mi := &file_proto_system_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveLedgerLeaderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveLedgerLeaderRequest) ProtoMessage() {}
+
+func (x *ResolveLedgerLeaderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveLedgerLeaderRequest.ProtoReflect.Descriptor instead.
+func (*ResolveLedgerLeaderRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ResolveLedgerLeaderRequest) GetLedgerName() string {
+	if x != nil {
+		return x.LedgerName
+	}
+	return ""
+}
+
+type ResolveLedgerLeaderResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LeaderId      uint64                 `protobuf:"varint,1,opt,name=leader_id,json=leaderId,proto3" json:"leader_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveLedgerLeaderResponse) Reset() {
+	*x = ResolveLedgerLeaderResponse{}
+	mi := &file_proto_system_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveLedgerLeaderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveLedgerLeaderResponse) ProtoMessage() {}
+
+func (x *ResolveLedgerLeaderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveLedgerLeaderResponse.ProtoReflect.Descriptor instead.
+func (*ResolveLedgerLeaderResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ResolveLedgerLeaderResponse) GetLeaderId() uint64 {
+	if x != nil {
+		return x.LeaderId
+	}
+	return 0
+}
+
 type SnapshotRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -31,7 +119,7 @@ type SnapshotRequest struct {
 
 func (x *SnapshotRequest) Reset() {
 	*x = SnapshotRequest{}
-	mi := &file_proto_system_proto_msgTypes[0]
+	mi := &file_proto_system_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +131,7 @@ func (x *SnapshotRequest) String() string {
 func (*SnapshotRequest) ProtoMessage() {}
 
 func (x *SnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[0]
+	mi := &file_proto_system_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +144,7 @@ func (x *SnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotRequest.ProtoReflect.Descriptor instead.
 func (*SnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{0}
+	return file_proto_system_proto_rawDescGZIP(), []int{2}
 }
 
 type SnapshotResponse struct {
@@ -68,7 +156,7 @@ type SnapshotResponse struct {
 
 func (x *SnapshotResponse) Reset() {
 	*x = SnapshotResponse{}
-	mi := &file_proto_system_proto_msgTypes[1]
+	mi := &file_proto_system_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -80,7 +168,7 @@ func (x *SnapshotResponse) String() string {
 func (*SnapshotResponse) ProtoMessage() {}
 
 func (x *SnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[1]
+	mi := &file_proto_system_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -93,7 +181,7 @@ func (x *SnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotResponse.ProtoReflect.Descriptor instead.
 func (*SnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{1}
+	return file_proto_system_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SnapshotResponse) GetMessage() string {
@@ -103,31 +191,32 @@ func (x *SnapshotResponse) GetMessage() string {
 	return ""
 }
 
-type CreateBucketRequest struct {
+type CreateLedgerRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Driver            string                 `protobuf:"bytes,2,opt,name=driver,proto3" json:"driver,omitempty"`
 	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
-	SnapshotThreshold uint64                 `protobuf:"varint,4,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
+	Metadata          *structpb.Struct       `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	SnapshotThreshold uint64                 `protobuf:"varint,5,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (optional, uses global config if 0)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
-func (x *CreateBucketRequest) Reset() {
-	*x = CreateBucketRequest{}
-	mi := &file_proto_system_proto_msgTypes[2]
+func (x *CreateLedgerRequest) Reset() {
+	*x = CreateLedgerRequest{}
+	mi := &file_proto_system_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateBucketRequest) String() string {
+func (x *CreateLedgerRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateBucketRequest) ProtoMessage() {}
+func (*CreateLedgerRequest) ProtoMessage() {}
 
-func (x *CreateBucketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[2]
+func (x *CreateLedgerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -138,66 +227,74 @@ func (x *CreateBucketRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateBucketRequest.ProtoReflect.Descriptor instead.
-func (*CreateBucketRequest) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use CreateLedgerRequest.ProtoReflect.Descriptor instead.
+func (*CreateLedgerRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *CreateBucketRequest) GetName() string {
+func (x *CreateLedgerRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *CreateBucketRequest) GetDriver() string {
+func (x *CreateLedgerRequest) GetDriver() string {
 	if x != nil {
 		return x.Driver
 	}
 	return ""
 }
 
-func (x *CreateBucketRequest) GetConfig() *structpb.Struct {
+func (x *CreateLedgerRequest) GetConfig() *structpb.Struct {
 	if x != nil {
 		return x.Config
 	}
 	return nil
 }
 
-func (x *CreateBucketRequest) GetSnapshotThreshold() uint64 {
+func (x *CreateLedgerRequest) GetMetadata() *structpb.Struct {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *CreateLedgerRequest) GetSnapshotThreshold() uint64 {
 	if x != nil {
 		return x.SnapshotThreshold
 	}
 	return 0
 }
 
-type CreateBucketResponse struct {
+type CreateLedgerResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	Driver            string                 `protobuf:"bytes,4,opt,name=driver,proto3" json:"driver,omitempty"`
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	SnapshotThreshold uint64                 `protobuf:"varint,6,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
+	Metadata          *structpb.Struct       `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
-func (x *CreateBucketResponse) Reset() {
-	*x = CreateBucketResponse{}
-	mi := &file_proto_system_proto_msgTypes[3]
+func (x *CreateLedgerResponse) Reset() {
+	*x = CreateLedgerResponse{}
+	mi := &file_proto_system_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateBucketResponse) String() string {
+func (x *CreateLedgerResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateBucketResponse) ProtoMessage() {}
+func (*CreateLedgerResponse) ProtoMessage() {}
 
-func (x *CreateBucketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[3]
+func (x *CreateLedgerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -208,75 +305,82 @@ func (x *CreateBucketResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateBucketResponse.ProtoReflect.Descriptor instead.
-func (*CreateBucketResponse) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{3}
+// Deprecated: Use CreateLedgerResponse.ProtoReflect.Descriptor instead.
+func (*CreateLedgerResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *CreateBucketResponse) GetId() uint64 {
+func (x *CreateLedgerResponse) GetId() uint64 {
 	if x != nil {
 		return x.Id
 	}
 	return 0
 }
 
-func (x *CreateBucketResponse) GetName() string {
+func (x *CreateLedgerResponse) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *CreateBucketResponse) GetConfig() *structpb.Struct {
+func (x *CreateLedgerResponse) GetConfig() *structpb.Struct {
 	if x != nil {
 		return x.Config
 	}
 	return nil
 }
 
-func (x *CreateBucketResponse) GetDriver() string {
+func (x *CreateLedgerResponse) GetDriver() string {
 	if x != nil {
 		return x.Driver
 	}
 	return ""
 }
 
-func (x *CreateBucketResponse) GetCreatedAt() *timestamppb.Timestamp {
+func (x *CreateLedgerResponse) GetMetadata() *structpb.Struct {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *CreateLedgerResponse) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *CreateBucketResponse) GetSnapshotThreshold() uint64 {
+func (x *CreateLedgerResponse) GetSnapshotThreshold() uint64 {
 	if x != nil {
 		return x.SnapshotThreshold
 	}
 	return 0
 }
 
-type DeleteBucketRequest struct {
+type DeleteLedgerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteBucketRequest) Reset() {
-	*x = DeleteBucketRequest{}
-	mi := &file_proto_system_proto_msgTypes[4]
+func (x *DeleteLedgerRequest) Reset() {
+	*x = DeleteLedgerRequest{}
+	mi := &file_proto_system_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteBucketRequest) String() string {
+func (x *DeleteLedgerRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteBucketRequest) ProtoMessage() {}
+func (*DeleteLedgerRequest) ProtoMessage() {}
 
-func (x *DeleteBucketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[4]
+func (x *DeleteLedgerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -287,40 +391,40 @@ func (x *DeleteBucketRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteBucketRequest.ProtoReflect.Descriptor instead.
-func (*DeleteBucketRequest) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{4}
+// Deprecated: Use DeleteLedgerRequest.ProtoReflect.Descriptor instead.
+func (*DeleteLedgerRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *DeleteBucketRequest) GetName() string {
+func (x *DeleteLedgerRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-type DeleteBucketResponse struct {
+type DeleteLedgerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeleteBucketResponse) Reset() {
-	*x = DeleteBucketResponse{}
-	mi := &file_proto_system_proto_msgTypes[5]
+func (x *DeleteLedgerResponse) Reset() {
+	*x = DeleteLedgerResponse{}
+	mi := &file_proto_system_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeleteBucketResponse) String() string {
+func (x *DeleteLedgerResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeleteBucketResponse) ProtoMessage() {}
+func (*DeleteLedgerResponse) ProtoMessage() {}
 
-func (x *DeleteBucketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[5]
+func (x *DeleteLedgerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -331,12 +435,12 @@ func (x *DeleteBucketResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeleteBucketResponse.ProtoReflect.Descriptor instead.
-func (*DeleteBucketResponse) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{5}
+// Deprecated: Use DeleteLedgerResponse.ProtoReflect.Descriptor instead.
+func (*DeleteLedgerResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *DeleteBucketResponse) GetMessage() string {
+func (x *DeleteLedgerResponse) GetMessage() string {
 	if x != nil {
 		return x.Message
 	}
@@ -352,7 +456,7 @@ type ResolveLedgerRequest struct {
 
 func (x *ResolveLedgerRequest) Reset() {
 	*x = ResolveLedgerRequest{}
-	mi := &file_proto_system_proto_msgTypes[6]
+	mi := &file_proto_system_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -364,7 +468,7 @@ func (x *ResolveLedgerRequest) String() string {
 func (*ResolveLedgerRequest) ProtoMessage() {}
 
 func (x *ResolveLedgerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[6]
+	mi := &file_proto_system_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -377,7 +481,7 @@ func (x *ResolveLedgerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveLedgerRequest.ProtoReflect.Descriptor instead.
 func (*ResolveLedgerRequest) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{6}
+	return file_proto_system_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ResolveLedgerRequest) GetLedgerName() string {
@@ -389,15 +493,15 @@ func (x *ResolveLedgerRequest) GetLedgerName() string {
 
 type ResolveLedgerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	BucketName    string                 `protobuf:"bytes,1,opt,name=bucket_name,json=bucketName,proto3" json:"bucket_name,omitempty"`
-	BucketId      uint64                 `protobuf:"varint,2,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	LedgerName    string                 `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
+	LedgerId      uint64                 `protobuf:"varint,2,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ResolveLedgerResponse) Reset() {
 	*x = ResolveLedgerResponse{}
-	mi := &file_proto_system_proto_msgTypes[7]
+	mi := &file_proto_system_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -409,7 +513,7 @@ func (x *ResolveLedgerResponse) String() string {
 func (*ResolveLedgerResponse) ProtoMessage() {}
 
 func (x *ResolveLedgerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[7]
+	mi := &file_proto_system_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -422,44 +526,44 @@ func (x *ResolveLedgerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveLedgerResponse.ProtoReflect.Descriptor instead.
 func (*ResolveLedgerResponse) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{7}
+	return file_proto_system_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *ResolveLedgerResponse) GetBucketName() string {
+func (x *ResolveLedgerResponse) GetLedgerName() string {
 	if x != nil {
-		return x.BucketName
+		return x.LedgerName
 	}
 	return ""
 }
 
-func (x *ResolveLedgerResponse) GetBucketId() uint64 {
+func (x *ResolveLedgerResponse) GetLedgerId() uint64 {
 	if x != nil {
-		return x.BucketId
+		return x.LedgerId
 	}
 	return 0
 }
 
-type GetAllBucketsRequest struct {
+type GetAllLedgersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetAllBucketsRequest) Reset() {
-	*x = GetAllBucketsRequest{}
-	mi := &file_proto_system_proto_msgTypes[8]
+func (x *GetAllLedgersRequest) Reset() {
+	*x = GetAllLedgersRequest{}
+	mi := &file_proto_system_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetAllBucketsRequest) String() string {
+func (x *GetAllLedgersRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetAllBucketsRequest) ProtoMessage() {}
+func (*GetAllLedgersRequest) ProtoMessage() {}
 
-func (x *GetAllBucketsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[8]
+func (x *GetAllLedgersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -470,33 +574,33 @@ func (x *GetAllBucketsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetAllBucketsRequest.ProtoReflect.Descriptor instead.
-func (*GetAllBucketsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{8}
+// Deprecated: Use GetAllLedgersRequest.ProtoReflect.Descriptor instead.
+func (*GetAllLedgersRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{10}
 }
 
-type GetAllBucketsResponse struct {
+type GetAllLedgersResponse struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Buckets       []*CreateBucketResponse `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"`
+	Ledgers       []*CreateLedgerResponse `protobuf:"bytes,1,rep,name=ledgers,proto3" json:"ledgers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetAllBucketsResponse) Reset() {
-	*x = GetAllBucketsResponse{}
-	mi := &file_proto_system_proto_msgTypes[9]
+func (x *GetAllLedgersResponse) Reset() {
+	*x = GetAllLedgersResponse{}
+	mi := &file_proto_system_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetAllBucketsResponse) String() string {
+func (x *GetAllLedgersResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetAllBucketsResponse) ProtoMessage() {}
+func (*GetAllLedgersResponse) ProtoMessage() {}
 
-func (x *GetAllBucketsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[9]
+func (x *GetAllLedgersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -507,40 +611,40 @@ func (x *GetAllBucketsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetAllBucketsResponse.ProtoReflect.Descriptor instead.
-func (*GetAllBucketsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{9}
+// Deprecated: Use GetAllLedgersResponse.ProtoReflect.Descriptor instead.
+func (*GetAllLedgersResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *GetAllBucketsResponse) GetBuckets() []*CreateBucketResponse {
+func (x *GetAllLedgersResponse) GetLedgers() []*CreateLedgerResponse {
 	if x != nil {
-		return x.Buckets
+		return x.Ledgers
 	}
 	return nil
 }
 
-type GetBucketByNameRequest struct {
+type GetLedgerByNameRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetBucketByNameRequest) Reset() {
-	*x = GetBucketByNameRequest{}
-	mi := &file_proto_system_proto_msgTypes[10]
+func (x *GetLedgerByNameRequest) Reset() {
+	*x = GetLedgerByNameRequest{}
+	mi := &file_proto_system_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetBucketByNameRequest) String() string {
+func (x *GetLedgerByNameRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetBucketByNameRequest) ProtoMessage() {}
+func (*GetLedgerByNameRequest) ProtoMessage() {}
 
-func (x *GetBucketByNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[10]
+func (x *GetLedgerByNameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -551,45 +655,46 @@ func (x *GetBucketByNameRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetBucketByNameRequest.ProtoReflect.Descriptor instead.
-func (*GetBucketByNameRequest) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{10}
+// Deprecated: Use GetLedgerByNameRequest.ProtoReflect.Descriptor instead.
+func (*GetLedgerByNameRequest) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *GetBucketByNameRequest) GetName() string {
+func (x *GetLedgerByNameRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-type GetBucketByNameResponse struct {
+type GetLedgerByNameResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Config            *structpb.Struct       `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	Driver            string                 `protobuf:"bytes,4,opt,name=driver,proto3" json:"driver,omitempty"`
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	SnapshotThreshold uint64                 `protobuf:"varint,6,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
+	Metadata          *structpb.Struct       `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	SnapshotThreshold uint64                 `protobuf:"varint,7,opt,name=snapshot_threshold,json=snapshotThreshold,proto3" json:"snapshot_threshold,omitempty"` // Number of logs before triggering a snapshot (0 means use global config)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
-func (x *GetBucketByNameResponse) Reset() {
-	*x = GetBucketByNameResponse{}
-	mi := &file_proto_system_proto_msgTypes[11]
+func (x *GetLedgerByNameResponse) Reset() {
+	*x = GetLedgerByNameResponse{}
+	mi := &file_proto_system_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetBucketByNameResponse) String() string {
+func (x *GetLedgerByNameResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetBucketByNameResponse) ProtoMessage() {}
+func (*GetLedgerByNameResponse) ProtoMessage() {}
 
-func (x *GetBucketByNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_system_proto_msgTypes[11]
+func (x *GetLedgerByNameResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_system_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,47 +705,54 @@ func (x *GetBucketByNameResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetBucketByNameResponse.ProtoReflect.Descriptor instead.
-func (*GetBucketByNameResponse) Descriptor() ([]byte, []int) {
-	return file_proto_system_proto_rawDescGZIP(), []int{11}
+// Deprecated: Use GetLedgerByNameResponse.ProtoReflect.Descriptor instead.
+func (*GetLedgerByNameResponse) Descriptor() ([]byte, []int) {
+	return file_proto_system_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *GetBucketByNameResponse) GetId() uint64 {
+func (x *GetLedgerByNameResponse) GetId() uint64 {
 	if x != nil {
 		return x.Id
 	}
 	return 0
 }
 
-func (x *GetBucketByNameResponse) GetName() string {
+func (x *GetLedgerByNameResponse) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *GetBucketByNameResponse) GetConfig() *structpb.Struct {
+func (x *GetLedgerByNameResponse) GetConfig() *structpb.Struct {
 	if x != nil {
 		return x.Config
 	}
 	return nil
 }
 
-func (x *GetBucketByNameResponse) GetDriver() string {
+func (x *GetLedgerByNameResponse) GetDriver() string {
 	if x != nil {
 		return x.Driver
 	}
 	return ""
 }
 
-func (x *GetBucketByNameResponse) GetCreatedAt() *timestamppb.Timestamp {
+func (x *GetLedgerByNameResponse) GetMetadata() *structpb.Struct {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+func (x *GetLedgerByNameResponse) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *GetBucketByNameResponse) GetSnapshotThreshold() uint64 {
+func (x *GetLedgerByNameResponse) GetSnapshotThreshold() uint64 {
 	if x != nil {
 		return x.SnapshotThreshold
 	}
@@ -651,54 +763,63 @@ var File_proto_system_proto protoreflect.FileDescriptor
 
 const file_proto_system_proto_rawDesc = "" +
 	"\n" +
-	"\x12proto/system.proto\x12\x06ledger\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x11\n" +
+	"\x12proto/system.proto\x12\x06ledger\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"=\n" +
+	"\x1aResolveLedgerLeaderRequest\x12\x1f\n" +
+	"\vledger_name\x18\x01 \x01(\tR\n" +
+	"ledgerName\":\n" +
+	"\x1bResolveLedgerLeaderResponse\x12\x1b\n" +
+	"\tleader_id\x18\x01 \x01(\x04R\bleaderId\"\x11\n" +
 	"\x0fSnapshotRequest\",\n" +
 	"\x10SnapshotResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"\xa1\x01\n" +
-	"\x13CreateBucketRequest\x12\x12\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\xd6\x01\n" +
+	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06driver\x18\x02 \x01(\tR\x06driver\x12/\n" +
-	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12-\n" +
-	"\x12snapshot_threshold\x18\x04 \x01(\x04R\x11snapshotThreshold\"\xed\x01\n" +
-	"\x14CreateBucketResponse\x12\x0e\n" +
+	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x123\n" +
+	"\bmetadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12-\n" +
+	"\x12snapshot_threshold\x18\x05 \x01(\x04R\x11snapshotThreshold\"\xa2\x02\n" +
+	"\x14CreateLedgerResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
 	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x16\n" +
-	"\x06driver\x18\x04 \x01(\tR\x06driver\x129\n" +
+	"\x06driver\x18\x04 \x01(\tR\x06driver\x123\n" +
+	"\bmetadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
-	"\x12snapshot_threshold\x18\x06 \x01(\x04R\x11snapshotThreshold\")\n" +
-	"\x13DeleteBucketRequest\x12\x12\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold\")\n" +
+	"\x13DeleteLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"0\n" +
-	"\x14DeleteBucketResponse\x12\x18\n" +
+	"\x14DeleteLedgerResponse\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\"7\n" +
 	"\x14ResolveLedgerRequest\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\"U\n" +
 	"\x15ResolveLedgerResponse\x12\x1f\n" +
-	"\vbucket_name\x18\x01 \x01(\tR\n" +
-	"bucketName\x12\x1b\n" +
-	"\tbucket_id\x18\x02 \x01(\x04R\bbucketId\"\x16\n" +
-	"\x14GetAllBucketsRequest\"O\n" +
-	"\x15GetAllBucketsResponse\x126\n" +
-	"\abuckets\x18\x01 \x03(\v2\x1c.ledger.CreateBucketResponseR\abuckets\",\n" +
-	"\x16GetBucketByNameRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xf0\x01\n" +
-	"\x17GetBucketByNameResponse\x12\x0e\n" +
+	"\vledger_name\x18\x01 \x01(\tR\n" +
+	"ledgerName\x12\x1b\n" +
+	"\tledger_id\x18\x02 \x01(\x04R\bledgerId\"\x16\n" +
+	"\x14GetAllLedgersRequest\"O\n" +
+	"\x15GetAllLedgersResponse\x126\n" +
+	"\aledgers\x18\x01 \x03(\v2\x1c.ledger.CreateLedgerResponseR\aledgers\",\n" +
+	"\x16GetLedgerByNameRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa5\x02\n" +
+	"\x17GetLedgerByNameResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
 	"\x06config\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x16\n" +
-	"\x06driver\x18\x04 \x01(\tR\x06driver\x129\n" +
+	"\x06driver\x18\x04 \x01(\tR\x06driver\x123\n" +
+	"\bmetadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\bmetadata\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
-	"\x12snapshot_threshold\x18\x06 \x01(\x04R\x11snapshotThreshold2\xd6\x03\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12-\n" +
+	"\x12snapshot_threshold\x18\a \x01(\x04R\x11snapshotThreshold2\xb6\x04\n" +
 	"\rSystemService\x12=\n" +
 	"\bSnapshot\x12\x17.ledger.SnapshotRequest\x1a\x18.ledger.SnapshotResponse\x12I\n" +
-	"\fCreateBucket\x12\x1b.ledger.CreateBucketRequest\x1a\x1c.ledger.CreateBucketResponse\x12I\n" +
-	"\fDeleteBucket\x12\x1b.ledger.DeleteBucketRequest\x1a\x1c.ledger.DeleteBucketResponse\x12L\n" +
+	"\fCreateLedger\x12\x1b.ledger.CreateLedgerRequest\x1a\x1c.ledger.CreateLedgerResponse\x12I\n" +
+	"\fDeleteLedger\x12\x1b.ledger.DeleteLedgerRequest\x1a\x1c.ledger.DeleteLedgerResponse\x12L\n" +
 	"\rResolveLedger\x12\x1c.ledger.ResolveLedgerRequest\x1a\x1d.ledger.ResolveLedgerResponse\x12P\n" +
-	"\x11GetAllBucketsInfo\x12\x1c.ledger.GetAllBucketsRequest\x1a\x1d.ledger.GetAllBucketsResponse\x12P\n" +
-	"\rGetBucketInfo\x12\x1e.ledger.GetBucketByNameRequest\x1a\x1f.ledger.GetBucketByNameResponseB6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
+	"\x11GetAllLedgersInfo\x12\x1c.ledger.GetAllLedgersRequest\x1a\x1d.ledger.GetAllLedgersResponse\x12P\n" +
+	"\rGetLedgerInfo\x12\x1e.ledger.GetLedgerByNameRequest\x1a\x1f.ledger.GetLedgerByNameResponse\x12^\n" +
+	"\x13ResolveLedgerLeader\x12\".ledger.ResolveLedgerLeaderRequest\x1a#.ledger.ResolveLedgerLeaderResponseB6Z4github.com/formancehq/ledger-v3-poc/internal/serviceb\x06proto3"
 
 var (
 	file_proto_system_proto_rawDescOnce sync.Once
@@ -712,47 +833,54 @@ func file_proto_system_proto_rawDescGZIP() []byte {
 	return file_proto_system_proto_rawDescData
 }
 
-var file_proto_system_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_proto_system_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_proto_system_proto_goTypes = []any{
-	(*SnapshotRequest)(nil),         // 0: ledger.SnapshotRequest
-	(*SnapshotResponse)(nil),        // 1: ledger.SnapshotResponse
-	(*CreateBucketRequest)(nil),     // 2: ledger.CreateBucketRequest
-	(*CreateBucketResponse)(nil),    // 3: ledger.CreateBucketResponse
-	(*DeleteBucketRequest)(nil),     // 4: ledger.DeleteBucketRequest
-	(*DeleteBucketResponse)(nil),    // 5: ledger.DeleteBucketResponse
-	(*ResolveLedgerRequest)(nil),    // 6: ledger.ResolveLedgerRequest
-	(*ResolveLedgerResponse)(nil),   // 7: ledger.ResolveLedgerResponse
-	(*GetAllBucketsRequest)(nil),    // 8: ledger.GetAllBucketsRequest
-	(*GetAllBucketsResponse)(nil),   // 9: ledger.GetAllBucketsResponse
-	(*GetBucketByNameRequest)(nil),  // 10: ledger.GetBucketByNameRequest
-	(*GetBucketByNameResponse)(nil), // 11: ledger.GetBucketByNameResponse
-	(*structpb.Struct)(nil),         // 12: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),   // 13: google.protobuf.Timestamp
+	(*ResolveLedgerLeaderRequest)(nil),  // 0: ledger.ResolveLedgerLeaderRequest
+	(*ResolveLedgerLeaderResponse)(nil), // 1: ledger.ResolveLedgerLeaderResponse
+	(*SnapshotRequest)(nil),             // 2: ledger.SnapshotRequest
+	(*SnapshotResponse)(nil),            // 3: ledger.SnapshotResponse
+	(*CreateLedgerRequest)(nil),         // 4: ledger.CreateLedgerRequest
+	(*CreateLedgerResponse)(nil),        // 5: ledger.CreateLedgerResponse
+	(*DeleteLedgerRequest)(nil),         // 6: ledger.DeleteLedgerRequest
+	(*DeleteLedgerResponse)(nil),        // 7: ledger.DeleteLedgerResponse
+	(*ResolveLedgerRequest)(nil),        // 8: ledger.ResolveLedgerRequest
+	(*ResolveLedgerResponse)(nil),       // 9: ledger.ResolveLedgerResponse
+	(*GetAllLedgersRequest)(nil),        // 10: ledger.GetAllLedgersRequest
+	(*GetAllLedgersResponse)(nil),       // 11: ledger.GetAllLedgersResponse
+	(*GetLedgerByNameRequest)(nil),      // 12: ledger.GetLedgerByNameRequest
+	(*GetLedgerByNameResponse)(nil),     // 13: ledger.GetLedgerByNameResponse
+	(*structpb.Struct)(nil),             // 14: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),       // 15: google.protobuf.Timestamp
 }
 var file_proto_system_proto_depIdxs = []int32{
-	12, // 0: ledger.CreateBucketRequest.config:type_name -> google.protobuf.Struct
-	12, // 1: ledger.CreateBucketResponse.config:type_name -> google.protobuf.Struct
-	13, // 2: ledger.CreateBucketResponse.created_at:type_name -> google.protobuf.Timestamp
-	3,  // 3: ledger.GetAllBucketsResponse.buckets:type_name -> ledger.CreateBucketResponse
-	12, // 4: ledger.GetBucketByNameResponse.config:type_name -> google.protobuf.Struct
-	13, // 5: ledger.GetBucketByNameResponse.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: ledger.SystemService.Snapshot:input_type -> ledger.SnapshotRequest
-	2,  // 7: ledger.SystemService.CreateBucket:input_type -> ledger.CreateBucketRequest
-	4,  // 8: ledger.SystemService.DeleteBucket:input_type -> ledger.DeleteBucketRequest
-	6,  // 9: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
-	8,  // 10: ledger.SystemService.GetAllBucketsInfo:input_type -> ledger.GetAllBucketsRequest
-	10, // 11: ledger.SystemService.GetBucketInfo:input_type -> ledger.GetBucketByNameRequest
-	1,  // 12: ledger.SystemService.Snapshot:output_type -> ledger.SnapshotResponse
-	3,  // 13: ledger.SystemService.CreateBucket:output_type -> ledger.CreateBucketResponse
-	5,  // 14: ledger.SystemService.DeleteBucket:output_type -> ledger.DeleteBucketResponse
-	7,  // 15: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
-	9,  // 16: ledger.SystemService.GetAllBucketsInfo:output_type -> ledger.GetAllBucketsResponse
-	11, // 17: ledger.SystemService.GetBucketInfo:output_type -> ledger.GetBucketByNameResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	14, // 0: ledger.CreateLedgerRequest.config:type_name -> google.protobuf.Struct
+	14, // 1: ledger.CreateLedgerRequest.metadata:type_name -> google.protobuf.Struct
+	14, // 2: ledger.CreateLedgerResponse.config:type_name -> google.protobuf.Struct
+	14, // 3: ledger.CreateLedgerResponse.metadata:type_name -> google.protobuf.Struct
+	15, // 4: ledger.CreateLedgerResponse.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 5: ledger.GetAllLedgersResponse.ledgers:type_name -> ledger.CreateLedgerResponse
+	14, // 6: ledger.GetLedgerByNameResponse.config:type_name -> google.protobuf.Struct
+	14, // 7: ledger.GetLedgerByNameResponse.metadata:type_name -> google.protobuf.Struct
+	15, // 8: ledger.GetLedgerByNameResponse.created_at:type_name -> google.protobuf.Timestamp
+	2,  // 9: ledger.SystemService.Snapshot:input_type -> ledger.SnapshotRequest
+	4,  // 10: ledger.SystemService.CreateLedger:input_type -> ledger.CreateLedgerRequest
+	6,  // 11: ledger.SystemService.DeleteLedger:input_type -> ledger.DeleteLedgerRequest
+	8,  // 12: ledger.SystemService.ResolveLedger:input_type -> ledger.ResolveLedgerRequest
+	10, // 13: ledger.SystemService.GetAllLedgersInfo:input_type -> ledger.GetAllLedgersRequest
+	12, // 14: ledger.SystemService.GetLedgerInfo:input_type -> ledger.GetLedgerByNameRequest
+	0,  // 15: ledger.SystemService.ResolveLedgerLeader:input_type -> ledger.ResolveLedgerLeaderRequest
+	3,  // 16: ledger.SystemService.Snapshot:output_type -> ledger.SnapshotResponse
+	5,  // 17: ledger.SystemService.CreateLedger:output_type -> ledger.CreateLedgerResponse
+	7,  // 18: ledger.SystemService.DeleteLedger:output_type -> ledger.DeleteLedgerResponse
+	9,  // 19: ledger.SystemService.ResolveLedger:output_type -> ledger.ResolveLedgerResponse
+	11, // 20: ledger.SystemService.GetAllLedgersInfo:output_type -> ledger.GetAllLedgersResponse
+	13, // 21: ledger.SystemService.GetLedgerInfo:output_type -> ledger.GetLedgerByNameResponse
+	1,  // 22: ledger.SystemService.ResolveLedgerLeader:output_type -> ledger.ResolveLedgerLeaderResponse
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_proto_system_proto_init() }
@@ -766,7 +894,7 @@ func file_proto_system_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_system_proto_rawDesc), len(file_proto_system_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

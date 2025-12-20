@@ -9,8 +9,8 @@ import (
 
 var ledgersListCmd = &cobra.Command{
 	Use:          "list",
-	Short:        "List all ledgers across all buckets",
-	Long:         "Returns a list of all ledgers from all buckets",
+	Short:        "List all ledgers",
+	Long:         "Returns a list of all ledgers",
 	RunE:         runListLedgers,
 	SilenceUsage: true,
 }
@@ -46,19 +46,19 @@ func runListLedgers(cmd *cobra.Command, args []string) error {
 
 	// Create table data
 	tableData := pterm.TableData{
-		{"ID", "Name", "Bucket", "Created At", "Last Log ID"},
+		{"ID", "Name", "Driver", "Created At", "Last Log ID"},
 	}
 
 	for _, ledger := range ledgers {
 		id := fmt.Sprintf("%d", ledger.ID)
 		name := ledger.Name
-		bucket := ledger.Bucket
+		driver := string(ledger.Driver)
 		createdAt := ledger.CreatedAt.Format("2006-01-02 15:04:05")
 		lastLogID := "N/A"
 		if ledger.LastLogID != nil {
 			lastLogID = fmt.Sprintf("%d", *ledger.LastLogID)
 		}
-		tableData = append(tableData, []string{id, name, bucket, createdAt, lastLogID})
+		tableData = append(tableData, []string{id, name, driver, createdAt, lastLogID})
 	}
 
 	pterm.DefaultSection.Println("All Ledgers")

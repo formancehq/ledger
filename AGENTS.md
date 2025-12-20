@@ -88,6 +88,28 @@ HTTP handlers are organized into separate files, with **one handler per file**. 
 3. **Parent file** : Each command group (buckets, ledgers) has a main file that defines the parent command and calls `init()` for each sub-command
 4. **No global variables** : Avoid using global variables for command flags. Instead, use a struct to hold command options and extract values from flags in the `RunE` function. This improves testability and avoids state pollution.
 5. **`init()` function** : Each command file uses `init()` to define its flags and mark required flags
+6. **Group variable declarations** : When initializing multiple variables, group them in a block using parentheses. This improves readability and consistency.
+
+   **Example**:
+   ```go
+   // Good: Grouped variables
+   var (
+       address          string
+       metadataJSON     string
+       firstUsageStr    sql.NullString
+       insertionDateStr sql.NullString
+       updatedAtStr     sql.NullString
+       volumesJSON      string
+   )
+   
+   // Bad: Separate declarations
+   var address string
+   var metadataJSON string
+   var firstUsageStr sql.NullString
+   var insertionDateStr sql.NullString
+   var updatedAtStr sql.NullString
+   var volumesJSON string
+   ```
 
 ## Example: Adding a New Command
 

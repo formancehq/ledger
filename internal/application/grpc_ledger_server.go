@@ -1,0 +1,305 @@
+package application
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"math/big"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"github.com/formancehq/ledger-v3-poc/internal/raft/system"
+	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+type LedgerServiceServerImpl struct {
+	service.UnimplementedLedgerServiceServer
+	logger     logging.Logger
+	systemNode *system.Node
+}
+
+func NewLedgerServiceServer(logger logging.Logger, systemNode *system.Node) service.LedgerServiceServer {
+	return &LedgerServiceServerImpl{
+		logger:     logger,
+		systemNode: systemNode,
+	}
+}
+
+func (impl *LedgerServiceServerImpl) Snapshot(ctx context.Context, req *service.LedgerSnapshotRequest) (*service.LedgerSnapshotResponse, error) {
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.Ledger)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ledgerNode.Snapshot(ctx); err != nil {
+		return nil, err
+	}
+
+	return &service.LedgerSnapshotResponse{
+		Message: "Snapshotting completed successfully",
+	}, nil
+}
+
+func (impl *LedgerServiceServerImpl) CreateTransaction(ctx context.Context, req *service.CreateTransactionRequest) (*service.CreateTransactionResponse, error) {
+	impl.logger.WithFields(map[string]any{"reference": req.Reference}).Debugf("CreateTransaction request received")
+
+	// Convert protobuf request to service types
+	postings := make(ledger.Postings, 0, len(req.Postings))
+	for _, p := range req.Postings {
+		amount, ok := new(big.Int).SetString(p.Amount, 10)
+		if !ok {
+			return nil, fmt.Errorf("invalid amount: %s", p.Amount)
+		}
+		postings = append(postings, ledger.NewPosting(p.Source, p.Destination, p.Asset, amount))
+	}
+
+	// Convert account metadata
+	accountMetadata := make(map[string]metadata.Metadata)
+	for addr, md := range req.AccountMetadata {
+		if md != nil {
+			accountMetadata[addr] = service.StructToMetadata(md)
+		}
+	}
+
+	// Convert metadata
+	var txMetadata metadata.Metadata
+	if req.Metadata != nil {
+		txMetadata = service.StructToMetadata(req.Metadata)
+	}
+
+	// Convert timestamp
+	var timestamp *time.Time
+	if req.Timestamp != nil {
+		t := time.New(req.Timestamp.AsTime())
+		timestamp = &t
+	}
+
+	// Convert script if provided
+	var script *service.TransactionScript
+	if req.Script != nil {
+		script = &service.TransactionScript{
+			Plain: req.Script.Plain,
+			Vars:  req.Script.Vars,
+		}
+	}
+
+	// Create transaction parameters
+	params := service.Parameters[service.CreateTransaction]{
+		DryRun:         req.DryRun,
+		IdempotencyKey: req.IdempotencyKey,
+		Input: service.CreateTransaction{
+			AccountMetadata: accountMetadata,
+			Timestamp:       timestamp,
+			Metadata:        txMetadata,
+			Reference:       req.Reference,
+			Postings:        postings,
+			Script:          script,
+			Runtime:         req.Runtime,
+		},
+	}
+
+	// Extract ledger name from request
+	ledgerName := req.Ledger
+	if ledgerName == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("getting ledger '%s': %w", ledgerName, err)
+	}
+
+	// Call ledger service
+	_, createdTx, err := ledgerNode.CreateTransaction(ctx, ledgerName, params)
+	if err != nil {
+		return nil, fmt.Errorf("creating transaction: %w", err)
+	}
+
+	// Convert response to protobuf
+	response := &service.CreateTransactionResponse{
+		Transaction:     transactionToProto(createdTx.Transaction),
+		AccountMetadata: metadataMapToProto(createdTx.AccountMetadata),
+	}
+
+	return response, nil
+}
+
+func (impl *LedgerServiceServerImpl) StreamLogs(req *service.StreamLogsRequest, stream service.LedgerService_StreamLogsServer) error {
+	ctx := stream.Context()
+
+	ledgerNode, err := impl.systemNode.GetLedgerNode(ctx, req.GetLedger())
+	if err != nil {
+		return err
+	}
+
+	cursor, err := ledgerNode.GetAllLogs(ctx, req.FromSequence, req.ToSequence)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	for {
+		log, err := cursor.Next(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("reading log: %w", err)
+		}
+
+		logProto, err := logToLedgerProto(log)
+		if err != nil {
+			return fmt.Errorf("converting log to proto: %w", err)
+		}
+
+		if err := stream.Send(&service.StreamLogsResponse{
+			Log: logProto,
+		}); err != nil {
+			return fmt.Errorf("sending log: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func RegisterLedgerService(server *grpc.Server, ledgerServiceServer service.LedgerServiceServer) {
+	service.RegisterLedgerServiceServer(server, ledgerServiceServer)
+}
+
+// logToLedgerProto converts a ledger.Log to ledger.proto Log
+func logToLedgerProto(l ledger.Log) (*service.Log, error) {
+	logProto := &service.Log{
+		Type:            int32(l.Type),
+		IdempotencyKey:  l.IdempotencyKey,
+		IdempotencyHash: l.IdempotencyHash,
+		Sequence:        l.Sequence,
+	}
+
+	if l.ID != nil {
+		logProto.Id = *l.ID
+	}
+
+	if !l.Date.IsZero() {
+		logProto.Date = timestamppb.New(l.Date.Time)
+	}
+
+	// Convert LogPayload to protobuf
+	logPayloadProto, err := logPayloadToLedgerProto(l.Data)
+	if err != nil {
+		return nil, fmt.Errorf("converting log payload to proto: %w", err)
+	}
+	logProto.Data = logPayloadProto
+
+	return logProto, nil
+}
+
+// logPayloadToLedgerProto converts a ledger.LogPayload to ledger.proto LogPayload
+func logPayloadToLedgerProto(payload ledger.LogPayload) (*service.LogPayload, error) {
+	switch p := payload.(type) {
+	case *ledger.CreatedTransaction:
+		return &service.LogPayload{
+			Payload: &service.LogPayload_CreatedTransaction{
+				CreatedTransaction: transactionToProto(p.Transaction),
+			},
+		}, nil
+	case *ledger.RevertedTransaction:
+		return &service.LogPayload{
+			Payload: &service.LogPayload_RevertedTransaction{
+				RevertedTransaction: &service.RevertedTransaction{
+					RevertedTransaction: transactionToProto(p.RevertedTransaction),
+					RevertTransaction:   transactionToProto(p.RevertTransaction),
+				},
+			},
+		}, nil
+	case *ledger.SavedMetadata:
+		mdStruct, _ := service.MetadataToStruct(p.Metadata)
+		proto := &service.SavedMetadata{
+			TargetType: p.TargetType,
+			Metadata:   mdStruct,
+		}
+		switch id := p.TargetID.(type) {
+		case string:
+			proto.TargetId = &service.SavedMetadata_AccountId{AccountId: id}
+		case uint64:
+			proto.TargetId = &service.SavedMetadata_TransactionId{TransactionId: id}
+		}
+		return &service.LogPayload{
+			Payload: &service.LogPayload_SavedMetadata{
+				SavedMetadata: proto,
+			},
+		}, nil
+	case *ledger.DeletedMetadata:
+		proto := &service.DeletedMetadata{
+			TargetType: p.TargetType,
+			Key:        p.Key,
+		}
+		switch id := p.TargetID.(type) {
+		case string:
+			proto.TargetId = &service.DeletedMetadata_AccountId{AccountId: id}
+		case uint64:
+			proto.TargetId = &service.DeletedMetadata_TransactionId{TransactionId: id}
+		}
+		return &service.LogPayload{
+			Payload: &service.LogPayload_DeletedMetadata{
+				DeletedMetadata: proto,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown log payload type: %T", payload)
+	}
+}
+
+func transactionToProto(tx ledger.Transaction) *service.Transaction {
+	postings := make([]*service.Posting, 0, len(tx.Postings))
+	for _, p := range tx.Postings {
+		postings = append(postings, &service.Posting{
+			Source:      p.Source,
+			Destination: p.Destination,
+			Amount:      p.Amount.String(),
+			Asset:       p.Asset,
+		})
+	}
+
+	var metadata *structpb.Struct
+	if len(tx.Metadata) > 0 {
+		if md, err := service.MetadataToStruct(tx.Metadata); err == nil {
+			metadata = md
+		}
+	}
+
+	var timestamp *timestamppb.Timestamp
+	if !tx.Timestamp.IsZero() {
+		timestamp = timestamppb.New(tx.Timestamp.Time)
+	}
+
+	var id uint64
+	if tx.ID != nil {
+		id = *tx.ID
+	}
+
+	return &service.Transaction{
+		Postings:  postings,
+		Metadata:  metadata,
+		Timestamp: timestamp,
+		Reference: tx.Reference,
+		Id:        id,
+	}
+}
+
+func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.Struct {
+	result := make(map[string]*structpb.Struct)
+	for k, v := range md {
+		if s, err := service.MetadataToStruct(v); err == nil {
+			result[k] = s
+		}
+	}
+	return result
+}
+

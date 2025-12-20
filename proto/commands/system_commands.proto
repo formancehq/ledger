@@ -7,32 +7,46 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/system";
 
-// CreateBucketCommand represents the data for a create bucket command
-message CreateBucketCommand {
-  string name = 1;                          // Bucket name/ID (required)
+// CreateLedgerCommand represents the data for a create ledger command
+message CreateLedgerCommand {
+  string name = 1;                          // Ledger name/ID (required)
   string driver = 2;                        // Driver name (required)
   google.protobuf.Struct config = 3;        // Driver-specific configuration (required)
-  uint64 snapshot_threshold = 4;            // Number of logs before triggering a snapshot (optional, uses global config if not set)
+  google.protobuf.Struct metadata = 4;      // Optional metadata
+  uint64 snapshot_threshold = 5;             // Number of logs before triggering a snapshot (optional, uses global config if not set)
 }
 
-// DeleteBucketCommand represents the data for a delete bucket command
-message DeleteBucketCommand {
-  string name = 1;                          // Bucket name/ID (required)
+// DeleteLedgerCommand represents the data for a delete ledger command
+message DeleteLedgerCommand {
+  string name = 1;                          // Ledger name/ID (required)
 }
 
-// BucketInfo represents information about a bucket in the snapshot
-message BucketInfo {
-  uint64 id = 1;                            // Sequential bucket ID
-  string name = 2;                          // Bucket name/ID
+// LedgerInfo represents information about a ledger in the snapshot
+message LedgerInfo {
+  uint64 id = 1;                            // Sequential ledger ID
+  string name = 2;                          // Ledger name/ID
   string driver = 3;                        // Driver name (e.g., "sqlite", "s3", etc.)
   google.protobuf.Struct config = 4;       // Driver-specific configuration
-  google.protobuf.Timestamp created_at = 5; // Creation timestamp
-  uint64 snapshot_threshold = 6;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
+  google.protobuf.Struct metadata = 5;      // Optional metadata
+  google.protobuf.Timestamp created_at = 6; // Creation timestamp
+  uint64 snapshot_threshold = 7;            // Number of logs before triggering a snapshot (optional, uses global config if 0)
 }
 
 // SystemFSMSnapshot represents the snapshot data for the system FSM
 message SystemFSMSnapshot {
-  map<string, BucketInfo> buckets = 1;      // Map of bucket name to bucket info
-  uint64 next_bucket_id = 2;               // Next sequential bucket ID
+  map<string, LedgerInfo> ledgers = 1;      // Map of ledger name to ledger info
+  uint64 next_ledger_id = 2;               // Next sequential ledger ID
+  // Legacy fields for backward compatibility
+  map<string, BucketInfo> buckets = 3;      // Deprecated: use ledgers instead
+  uint64 next_bucket_id = 4;               // Deprecated: use next_ledger_id instead
 }
 
+// BucketInfo is kept for backward compatibility during migration
+message BucketInfo {
+  uint64 id = 1;
+  string name = 2;
+  string driver = 3;
+  google.protobuf.Struct config = 4;
+  google.protobuf.Timestamp created_at = 5;
+  uint64 snapshot_threshold = 6;
+}

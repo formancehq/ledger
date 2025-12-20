@@ -50,12 +50,10 @@ func init() {
 	_ = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 
 	// Initialize sub-commands
-	initBuckets()
 	initLedgers()
 
 	// Add commands to root
 	rootCmd.AddCommand(snapshotCmd)
 	rootCmd.AddCommand(clusterStateCmd)
-	rootCmd.AddCommand(bucketsCmd)
 	rootCmd.AddCommand(ledgersCmd)
 }

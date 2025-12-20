@@ -14,28 +14,28 @@ import (
 
 // createLedgerOptions holds all the flags for the create ledger command
 type createLedgerOptions struct {
-	bucket   string
 	name     string
+	driver   string
 	metadata map[string]string
 }
 
 var ledgersCreateCmd = &cobra.Command{
 	Use:          "create",
 	Short:        "Create a new ledger",
-	Long:         "Creates a new ledger in the specified bucket",
+	Long:         "Creates a new ledger with the specified storage driver",
 	RunE:         runCreateLedger,
 	SilenceUsage: true,
 }
 
 func init() {
-	ledgersCreateCmd.Flags().String("bucket", "", "Bucket name")
 	ledgersCreateCmd.Flags().String("name", "", "Ledger name")
+	ledgersCreateCmd.Flags().String("driver", "sqlite", "Storage driver (sqlite, clickhouse)")
 	ledgersCreateCmd.Flags().String("metadata", "{}", "Metadata as JSON (default: {})")
-	// Bucket and name are no longer required - wizard will prompt if not provided
+	// Name is no longer required - wizard will prompt if not provided
 
 	// Register completions
-	ledgersCreateCmd.RegisterFlagCompletionFunc("bucket", completeBucketNames())
 	ledgersCreateCmd.RegisterFlagCompletionFunc("name", completeLedgerNames())
+	ledgersCreateCmd.RegisterFlagCompletionFunc("driver", completeDriverNames())
 }
 
 func runCreateLedger(cmd *cobra.Command, args []string) error {
@@ -43,8 +43,8 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 
 	// Extract options from flags
 	opts := &createLedgerOptions{}
-	opts.bucket, _ = cmd.Flags().GetString("bucket")
 	opts.name, _ = cmd.Flags().GetString("name")
+	opts.driver, _ = cmd.Flags().GetString("driver")
 	metadataStr, _ := cmd.Flags().GetString("metadata")
 
 	// Parse metadata JSON
@@ -57,26 +57,27 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 	// Create SDK instance once
 	sdk := newSDKClient()
 
-	// Run wizard if bucket or name not provided
-	if opts.bucket == "" || opts.name == "" {
+	// Run wizard if name not provided
+	if opts.name == "" {
 		if err := runCreateLedgerWizard(ctx, sdk, opts); err != nil {
 			return err
 		}
 	}
 
 	// Validate required fields after wizard
-	if opts.bucket == "" {
-		return fmt.Errorf("bucket name is required")
-	}
 	if opts.name == "" {
 		return fmt.Errorf("ledger name is required")
 	}
+	if opts.driver == "" {
+		opts.driver = "sqlite" // Default driver
+	}
 
 	// Create ledger request
+	driverEnum := components.CreateLedgerRequestDriver(opts.driver)
 	req := operations.CreateLedgerRequest{
 		LedgerName: opts.name,
 		CreateLedgerRequest: components.CreateLedgerRequest{
-			Bucket:   opts.bucket,
+			Driver:   &driverEnum,
 			Metadata: opts.metadata,
 		},
 	}
@@ -105,7 +106,7 @@ func runCreateLedger(cmd *cobra.Command, args []string) error {
 	// Create info panel
 	panelData := ""
 	panelData += fmt.Sprintf("Name: %s\n", data.Name)
-	panelData += fmt.Sprintf("Bucket: %s\n", data.Bucket)
+	panelData += fmt.Sprintf("Driver: %s\n", string(data.Driver))
 	if len(data.Metadata) > 0 {
 		panelData += "Metadata:\n"
 		for k, v := range data.Metadata {
@@ -123,49 +124,7 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 	pterm.DefaultHeader.WithFullWidth().Println("Ledger Creation Wizard")
 	pterm.Println()
 
-	// Step 1: Select bucket if not provided
-	if opts.bucket == "" {
-		// Fetch available buckets
-		res, err := sdk.Buckets.ListBuckets(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list buckets: %w", err)
-		}
-
-		bucketsResponse := res.GetListBucketsResponse()
-		if bucketsResponse == nil || bucketsResponse.Data == nil || len(bucketsResponse.Data) == 0 {
-			return fmt.Errorf("no buckets available. Please create a bucket first using 'buckets create'")
-		}
-
-		buckets := bucketsResponse.Data
-
-		// Build options list for selection
-		options := make([]string, 0, len(buckets))
-		bucketMap := make(map[string]string) // Maps display string to bucket name
-
-		for _, bucket := range buckets {
-			bucketName := bucket.Name
-			driver := string(bucket.Driver)
-			displayName := fmt.Sprintf("%s (%s)", bucketName, driver)
-			options = append(options, displayName)
-			bucketMap[displayName] = bucketName
-		}
-
-		selectedOption, err := pterm.DefaultInteractiveSelect.
-			WithOptions(options).
-			Show("Select a bucket")
-		if err != nil {
-			return fmt.Errorf("failed to select bucket: %w", err)
-		}
-
-		opts.bucket = bucketMap[selectedOption]
-		if opts.bucket == "" {
-			return fmt.Errorf("failed to parse bucket from selection")
-		}
-		pterm.Success.Printf("Selected bucket: %s\n", opts.bucket)
-		pterm.Println()
-	}
-
-	// Step 2: Get ledger name if not provided
+	// Step 1: Get ledger name if not provided
 	if opts.name == "" {
 		pterm.Info.Println("Ledger Name")
 		pterm.Println("Enter a unique name for the ledger.")
@@ -181,6 +140,21 @@ func runCreateLedgerWizard(ctx context.Context, sdk *client.Formance, opts *crea
 		}
 		opts.name = name
 		pterm.Success.Printf("Ledger name: %s\n", opts.name)
+		pterm.Println()
+	}
+
+	// Step 2: Get driver if not provided
+	if opts.driver == "" {
+		driverOptions := []string{"sqlite", "clickhouse"}
+		selectedDriver, err := pterm.DefaultInteractiveSelect.
+			WithOptions(driverOptions).
+			WithDefaultOption("sqlite").
+			Show("Select storage driver")
+		if err != nil {
+			return fmt.Errorf("failed to select driver: %w", err)
+		}
+		opts.driver = selectedDriver
+		pterm.Success.Printf("Selected driver: %s\n", opts.driver)
 		pterm.Println()
 	}
 

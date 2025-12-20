@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 )
 
@@ -13,29 +12,24 @@ type LeaderOnly interface {
 
 type Cluster interface {
 	IsHealthy() bool
+	GetLeader() uint64
 }
 
-type BucketCluster interface {
+type LedgerCluster interface {
 	LeaderOnly
 	Cluster
-	Bucket
-}
-
-type Bucket interface {
 	Ledger
-	GetClusterState(ctx context.Context) (*ledger.ClusterState[ledger.BucketState], error)
-	CreateLedger(ctx context.Context, name string, metadata metadata.Metadata) (*ledger.LedgerInfo, error)
-	GetLedger(ctx context.Context, name string) (*ledger.LedgerInfo, error)
-	GetLedgers(ctx context.Context) ([]ledger.LedgerInfo, error)
-	GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error)
+	GetClusterState(ctx context.Context) (*ledger.ClusterState[ledger.LedgerState], error)
 }
 
 type System interface {
-	CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error)
-	DeleteBucket(ctx context.Context, name string) error
-	GetAllBucketsInfo(ctx context.Context) map[string]ledger.BucketInfo
-	GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error)
+	LeaderOnly
+	CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledger.LedgerInfo, error)
+	DeleteLedger(ctx context.Context, name string) error
+	GetAllLedgersInfo(ctx context.Context) map[string]ledger.LedgerInfo
+	GetLedgerInfo(ctx context.Context, name string) (*ledger.LedgerInfo, error)
 	ResolveLedger(ctx context.Context, ledgerName string) (string, uint64, error)
+	ResolveLedgerLeader(ctx context.Context, ledgerName string) (uint64, error)
 }
 
 type MasterCluster interface {
@@ -43,6 +37,6 @@ type MasterCluster interface {
 	System
 	LeaderOnly
 	GetClusterState(ctx context.Context) (*ledger.ClusterState[ledger.SystemState], error)
-	GetBucketCluster(ctx context.Context, name string) (BucketCluster, error)
-	GetBucketClusterLocal(ctx context.Context, name string) (BucketCluster, error)
+	GetLedgerCluster(ctx context.Context, name string) (LedgerCluster, error)
+	GetLedgerClusterLocal(ctx context.Context, name string) (LedgerCluster, error)
 }

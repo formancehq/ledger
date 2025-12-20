@@ -79,7 +79,7 @@ func (s *spool) Next() (Command, error) {
 		return Command{}, err
 	}
 
-	// todo: write somewhere to avoid replaying all commands if the node is restarted
+	// todo: write somewhere to avoid replaying all commands if the rawNode is restarted
 	s.readOffset = off + int64(n)
 	return cmd, nil
 }

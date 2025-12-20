@@ -5,9 +5,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-
-
-func structToMetadata(s *structpb.Struct) metadata.Metadata {
+func StructToMetadata(s *structpb.Struct) metadata.Metadata {
 	if s == nil {
 		return metadata.Metadata{}
 	}
@@ -18,7 +16,7 @@ func structToMetadata(s *structpb.Struct) metadata.Metadata {
 	return md
 }
 
-func metadataToStruct(md metadata.Metadata) (*structpb.Struct, error) {
+func MetadataToStruct(md metadata.Metadata) (*structpb.Struct, error) {
 	if len(md) == 0 {
 		return nil, nil
 	}

@@ -3,7 +3,7 @@
 package components
 
 type ListAllLedgersResponse struct {
-	// List of all ledgers across all buckets
+	// List of all ledgers in the cluster
 	Data []LedgerInfo `json:"data"`
 }
 

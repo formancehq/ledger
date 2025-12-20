@@ -27,16 +27,16 @@ graph TB
     subgraph "Data Directory Structure"
         DataDir[data/]
         SystemDir[system/]
-        bucketDir[buckets/]
-        bucket1[bucket1/]
-        bucket2[bucket2/]
+        ledgerDir[ledgers/]
+        ledger1[ledger-1/]
+        ledger2[ledger-2/]
     end
     
     WAL --> DataDir
     HardState --> DataDir
     Snapshot --> DataDir
-    logstore --> bucket1
-    logstore --> bucket2
+    logstore --> ledger1
+    logstore --> ledger2
 ```
 
 ## WAL (Write-Ahead Log)
@@ -137,14 +137,14 @@ Snapshots are created automatically when:
 #### System Snapshot
 
 Contains the system FSM state:
-- List of buckets with their metadata
-- Next bucket ID to assign
+- List of ledgers with their metadata
+- Next ledger ID to assign
 - Cluster configuration
 
-#### Bucket Snapshot
+#### Ledger Snapshot
 
-Contains the bucket FSM state:
-- List of ledgers with their metadata
+Contains the ledger FSM state:
+- Ledger metadata
 - Last sequence number
 - Index of idempotency keys
 
@@ -159,8 +159,8 @@ Snapshots are serialized in JSON:
     "term": 5
   },
   "data": {
-    "buckets": [...],
-    "nextBucketID": 10
+    "ledgers": {...},
+    "nextLedgerID": 10
   }
 }
 ```
@@ -240,7 +240,7 @@ The syncer manages the synchronization process between the Raft log and the FSM:
 
 ### Concept
 
-The Log Store is responsible for persistent storage of transactions (logs) for each bucket. It implements the interfaces `LogWriter` and `LogReader`.
+The Log Store is responsible for persistent storage of transactions (logs) for each ledger. It implements the interfaces `LogWriter` and `LogReader`. Each ledger has its own LogStore instance.
 
 ### Implementations
 
@@ -249,23 +249,27 @@ The Log Store is responsible for persistent storage of transactions (logs) for e
 **File**: `internal/service/log_store_sqlite.go`
 
 **Characteristics**:
-- Storage in a SQLite file per bucket
+- Storage in a SQLite file per ledger
 - No external dependencies
 - Ideal for development and small deployments
 
 **Schema**:
 ```sql
 CREATE TABLE logs (
-    sequence INTEGER PRIMARY KEY,
-    ledger TEXT NOT NULL,
+    id INTEGER,
     type TEXT NOT NULL,
     data TEXT NOT NULL,
+    date TEXT,
     idempotency_key TEXT,
-    created_at TIMESTAMP NOT NULL
+    idempotency_hash TEXT,
+    sequence INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(idempotency_key),
+    UNIQUE(idempotency_hash)
 );
 
-CREATE INDEX idx_ledger ON logs(ledger);
-CREATE INDEX idx_idempotency ON logs(idempotency_key);
+CREATE INDEX idx_logs_idempotency_key ON logs(idempotency_key);
+CREATE INDEX idx_logs_id ON logs(id);
+CREATE UNIQUE INDEX idx_logs_sequence ON logs(sequence);
 ```
 
 ### Log Store Operations
@@ -333,19 +337,19 @@ type BalancesStore interface {
 
 **File**: `internal/service/log_store_sqlite.go`
 
-- Balances stored in a `balances` table: `(ledger, account, asset, balance)`
+- Balances stored in a `balances` table: `(account, asset, balance)`
 - Automatic updates via SQL triggers on `logs` table insert
 - Trigger fires on `NEW_TRANSACTION` and `REVERTED_TRANSACTION` log types
 - Updates balances by subtracting from source accounts and adding to destination accounts
+- Each ledger has its own LogStore, so no need to filter by ledger
 
 **Schema**:
 ```sql
 CREATE TABLE balances (
-    ledger TEXT NOT NULL,
     account TEXT NOT NULL,
     asset TEXT NOT NULL,
     balance TEXT NOT NULL DEFAULT '0',
-    PRIMARY KEY (ledger, account, asset)
+    PRIMARY KEY (account, asset)
 );
 ```
 
@@ -380,22 +384,22 @@ data/
 │   ├── wal/                       # System WAL
 │   ├── raft-hardstate.json        # System HardState
 │   └── raft-snapshot.json         # System Snapshot
-└── buckets/                       # Bucket data
-    ├── bucket1/                   # bucket 1
-    │   ├── raft/                  # Bucket Raft data
+└── ledgers/                       # Ledger data
+    ├── ledger-1/                  # Ledger 1
+    │   ├── raft/                  # Ledger Raft data
     │   │   ├── wal/
     │   │   ├── raft-hardstate.json
     │   │   └── raft-snapshot.json
-    │   └── logs.db                # SQLite LogStore (if SQLite)
-    └── bucket2/                   # bucket 2
+    │   └── ledger-1.db            # SQLite LogStore (if SQLite)
+    └── ledger-2/                  # Ledger 2
         └── ...
 ```
 
 ### Data Isolation
 
 - **System**: System Raft data in `data/raft/`
-- **Buckets**: Each bucket in `data/buckets/{name}/`
-- **Ledgers**: Stored logs in the bucket's LogStore
+- **Ledgers**: Each ledger in `data/ledgers/ledger-{id}/`
+- **Logs**: Stored logs in each ledger's LogStore
 
 ## Durability and Guarantees
 
@@ -435,9 +439,9 @@ The system can recover completely from:
 
 ### Indexing
 
-- **Logs per ledger**: Index for fast reads
 - **Idempotency keys**: Index for fast verifications
 - **Sequences**: Primary index for ordering
+- **Log IDs**: Index for fast lookups
 
 ## Next Steps
 

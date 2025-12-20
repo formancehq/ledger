@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -9,11 +10,12 @@ import (
 )
 
 type syncer[State any, F FSM[State]] struct {
-	spool   *spool
-	fsm     F
-	mu      sync.Mutex
-	syncing bool
-	logger  logging.Logger
+	spool        *spool
+	fsm          F
+	mu           sync.Mutex
+	syncing      bool
+	syncingError error
+	logger       logging.Logger
 }
 
 func (s *syncer[State, F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
@@ -49,27 +51,37 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, data []byte) {
 				panic(err)
 			}
 
-			_ = s.fsm.ApplyEntries(ctx, command)
+			_, err = s.fsm.ApplyEntries(ctx, command)
+			if err != nil {
+				s.syncingError = err
+			}
 		}
 
-		s.logger.Infof("Snapshot restored - switching to normal mode")
+		if s.syncingError != nil {
+			s.logger.Errorf("Snapshot restore failed: %v", s.syncingError)
+		} else {
+			s.logger.Infof("Snapshot restored - switching to normal mode")
+		}
 		s.syncing = false
 	}()
 }
 
-func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command) []ApplyResult {
+func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command) ([]ApplyResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.syncing {
 		s.logger.Debugf("Applying entries while syncing - appending to spool")
 		if err := s.spool.AppendCommittedEntries(ctx, commands...); err != nil {
-			panic(err)
+			return nil, fmt.Errorf("appending committed entries to spool: %w", err)
 		}
-		// Since: the node is syncing, the node is forcibly a follower,
+		// Since: the rawNode is syncing, the rawNode is forcibly a follower,
 		// so we don't care about the result of applying the commands
 		// because the commands are applied on the leader
-		return make([]ApplyResult, 0)
+		return make([]ApplyResult, 0), nil
+	}
+	if s.syncingError != nil {
+		return nil, s.syncingError
 	}
 
 	return s.fsm.ApplyEntries(ctx, commands...)

@@ -13,6 +13,7 @@ import (
 	"strings"
 	stdtime "time"
 
+	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"modernc.org/sqlite"
@@ -61,17 +62,15 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 			type TEXT NOT NULL,
 			data TEXT NOT NULL,
 			date TEXT,
-			ledger TEXT NOT NULL,
 			idempotency_key TEXT,
 			idempotency_hash TEXT,
 			sequence INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(ledger, idempotency_key),
-			UNIQUE(ledger, idempotency_hash)
+			UNIQUE(idempotency_key),
+			UNIQUE(idempotency_hash)
 		);
 		
 		CREATE INDEX IF NOT EXISTS idx_logs_idempotency_key ON logs(idempotency_key);
 		CREATE INDEX IF NOT EXISTS idx_logs_id ON logs(id);
-		CREATE INDEX IF NOT EXISTS idx_logs_ledger ON logs(ledger);
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_logs_sequence ON logs(sequence);
 	`)
 	if err != nil {
@@ -81,18 +80,33 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 	// Create balances table
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS balances (
-			ledger TEXT NOT NULL,
 			account TEXT NOT NULL,
 			asset TEXT NOT NULL,
 			balance TEXT NOT NULL DEFAULT '0',
-			PRIMARY KEY (ledger, account, asset)
+			PRIMARY KEY (account, asset)
 		);
 		
-		CREATE INDEX IF NOT EXISTS idx_balances_ledger ON balances(ledger);
-		CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(ledger, account);
+		CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(account);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating balances table: %w", err)
+	}
+
+	// Create accounts table
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS accounts (
+			address TEXT PRIMARY KEY,
+			metadata TEXT NOT NULL DEFAULT '{}',
+			first_usage TEXT,
+			insertion_date TEXT,
+			updated_at TEXT,
+			volumes TEXT NOT NULL DEFAULT '{}'
+		);
+		
+		CREATE INDEX IF NOT EXISTS idx_accounts_address ON accounts(address);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating accounts table: %w", err)
 	}
 
 	// Custom SQLite functions are registered globally before opening connections
@@ -106,14 +120,13 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 		WHEN NEW.type = 'NEW_TRANSACTION' OR NEW.type = 'REVERTED_TRANSACTION'
 		BEGIN
 			-- Update balances for source accounts (subtract amount)
-			INSERT OR REPLACE INTO balances (ledger, account, asset, balance)
+			INSERT OR REPLACE INTO balances (account, asset, balance)
 			SELECT 
-				NEW.ledger,
 				json_extract(posting.value, '$.source') AS account,
 				json_extract(posting.value, '$.asset') AS asset,
 				bigint_sub(
 					COALESCE(
-						(SELECT balance FROM balances WHERE ledger = NEW.ledger AND account = json_extract(posting.value, '$.source') AND asset = json_extract(posting.value, '$.asset')),
+						(SELECT balance FROM balances WHERE account = json_extract(posting.value, '$.source') AND asset = json_extract(posting.value, '$.asset')),
 						'0'
 					),
 					CAST(json_extract(posting.value, '$.amount') AS TEXT)
@@ -123,14 +136,13 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 			  AND json_extract(posting.value, '$.source') != '';
 			
 			-- Update balances for destination accounts (add amount)
-			INSERT OR REPLACE INTO balances (ledger, account, asset, balance)
+			INSERT OR REPLACE INTO balances (account, asset, balance)
 			SELECT 
-				NEW.ledger,
 				json_extract(posting.value, '$.destination') AS account,
 				json_extract(posting.value, '$.asset') AS asset,
 				bigint_add(
 					COALESCE(
-						(SELECT balance FROM balances WHERE ledger = NEW.ledger AND account = json_extract(posting.value, '$.destination') AND asset = json_extract(posting.value, '$.asset')),
+						(SELECT balance FROM balances WHERE account = json_extract(posting.value, '$.destination') AND asset = json_extract(posting.value, '$.asset')),
 						'0'
 					),
 					CAST(json_extract(posting.value, '$.amount') AS TEXT)
@@ -142,6 +154,190 @@ func (s *SQLiteLogStore) createTables(ctx context.Context) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("creating new transaction balances trigger: %w", err)
+	}
+
+	// Create trigger to update accounts on NEW_TRANSACTION log insert
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TRIGGER IF NOT EXISTS update_accounts_on_transaction
+		AFTER INSERT ON logs
+		WHEN NEW.type = 'NEW_TRANSACTION'
+		BEGIN
+			-- Process each unique account to update volumes
+			INSERT OR REPLACE INTO accounts (address, metadata, first_usage, insertion_date, updated_at, volumes)
+			SELECT 
+				account_address,
+				COALESCE(
+					(SELECT metadata FROM accounts WHERE address = account_address),
+					'{}'
+				) AS metadata,
+				COALESCE(
+					(SELECT first_usage FROM accounts WHERE address = account_address),
+					NEW.date
+				) AS first_usage,
+				COALESCE(
+					(SELECT insertion_date FROM accounts WHERE address = account_address),
+					NEW.date
+				) AS insertion_date,
+				NEW.date AS updated_at,
+				json_compute_volumes_from_postings(
+					COALESCE(
+						(SELECT volumes FROM accounts WHERE address = account_address),
+						'{}'
+					),
+					json_extract(NEW.data, '$.transaction.postings'),
+					account_address,
+					0
+				) AS volumes
+			FROM (
+				SELECT DISTINCT account_address
+				FROM (
+					SELECT json_extract(posting.value, '$.source') AS account_address
+					FROM json_each(json_extract(NEW.data, '$.transaction.postings')) AS posting
+					WHERE json_extract(posting.value, '$.source') IS NOT NULL
+					  AND json_extract(posting.value, '$.source') != ''
+					UNION
+					SELECT json_extract(posting.value, '$.destination') AS account_address
+					FROM json_each(json_extract(NEW.data, '$.transaction.postings')) AS posting
+					WHERE json_extract(posting.value, '$.destination') IS NOT NULL
+					  AND json_extract(posting.value, '$.destination') != ''
+				)
+			);
+			
+			-- Update account metadata from accountMetadata in transaction (if accountMetadata exists)
+			INSERT OR REPLACE INTO accounts (address, metadata, first_usage, insertion_date, updated_at, volumes)
+			SELECT 
+				account_meta.key AS account_key,
+				json_merge(
+					COALESCE(
+						(SELECT metadata FROM accounts WHERE address = account_meta.key),
+						'{}'
+					),
+					json(account_meta.value)
+				) AS metadata,
+				COALESCE(
+					(SELECT first_usage FROM accounts WHERE address = account_meta.key),
+					NEW.date
+				) AS first_usage,
+				COALESCE(
+					(SELECT insertion_date FROM accounts WHERE address = account_meta.key),
+					NEW.date
+				) AS insertion_date,
+				NEW.date AS updated_at,
+				COALESCE(
+					(SELECT volumes FROM accounts WHERE address = account_meta.key),
+					'{}'
+				) AS volumes
+			FROM json_each(COALESCE(json_extract(NEW.data, '$.accountMetadata'), '{}')) AS account_meta
+			WHERE json_extract(NEW.data, '$.accountMetadata') IS NOT NULL;
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating update accounts on transaction trigger: %w", err)
+	}
+
+	// Create trigger to update accounts on REVERTED_TRANSACTION log insert (reverse volumes)
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TRIGGER IF NOT EXISTS update_accounts_on_reverted_transaction
+		AFTER INSERT ON logs
+		WHEN NEW.type = 'REVERTED_TRANSACTION'
+		BEGIN
+			-- Process each unique account to reverse volumes (source becomes destination and vice versa)
+			INSERT OR REPLACE INTO accounts (address, metadata, first_usage, insertion_date, updated_at, volumes)
+			SELECT 
+				account_address,
+				COALESCE(
+					(SELECT metadata FROM accounts WHERE address = account_address),
+					'{}'
+				) AS metadata,
+				COALESCE(
+					(SELECT first_usage FROM accounts WHERE address = account_address),
+					NEW.date
+				) AS first_usage,
+				COALESCE(
+					(SELECT insertion_date FROM accounts WHERE address = account_address),
+					NEW.date
+				) AS insertion_date,
+				NEW.date AS updated_at,
+				json_compute_volumes_from_postings(
+					COALESCE(
+						(SELECT volumes FROM accounts WHERE address = account_address),
+						'{}'
+					),
+					json_extract(NEW.data, '$.revertedTransaction.postings'),
+					account_address,
+					1
+				) AS volumes
+			FROM (
+				SELECT DISTINCT account_address
+				FROM (
+					SELECT json_extract(posting.value, '$.source') AS account_address
+					FROM json_each(json_extract(NEW.data, '$.revertedTransaction.postings')) AS posting
+					WHERE json_extract(posting.value, '$.source') IS NOT NULL
+					  AND json_extract(posting.value, '$.source') != ''
+					UNION
+					SELECT json_extract(posting.value, '$.destination') AS account_address
+					FROM json_each(json_extract(NEW.data, '$.revertedTransaction.postings')) AS posting
+					WHERE json_extract(posting.value, '$.destination') IS NOT NULL
+					  AND json_extract(posting.value, '$.destination') != ''
+				)
+			);
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating update accounts on reverted transaction trigger: %w", err)
+	}
+
+	// Create trigger to update accounts on SET_METADATA log insert (for ACCOUNT type)
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TRIGGER IF NOT EXISTS update_accounts_on_set_metadata
+		AFTER INSERT ON logs
+		WHEN NEW.type = 'SET_METADATA' AND json_extract(NEW.data, '$.targetType') = 'ACCOUNT'
+		BEGIN
+			INSERT OR REPLACE INTO accounts (address, metadata, first_usage, insertion_date, updated_at, volumes)
+			VALUES (
+				json_extract(NEW.data, '$.targetId'),
+				json_merge(
+					COALESCE(
+						(SELECT metadata FROM accounts WHERE address = json_extract(NEW.data, '$.targetId')),
+						'{}'
+					),
+					json_extract(NEW.data, '$.metadata')
+				),
+				COALESCE(
+					(SELECT first_usage FROM accounts WHERE address = json_extract(NEW.data, '$.targetId')),
+					NEW.date
+				),
+				COALESCE(
+					(SELECT insertion_date FROM accounts WHERE address = json_extract(NEW.data, '$.targetId')),
+					NEW.date
+				),
+				NEW.date,
+				COALESCE(
+					(SELECT volumes FROM accounts WHERE address = json_extract(NEW.data, '$.targetId')),
+					'{}'
+				)
+			);
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating update accounts on set metadata trigger: %w", err)
+	}
+
+	// Create trigger to update accounts on DELETE_METADATA log insert (for ACCOUNT type)
+	_, err = s.db.ExecContext(ctx, `
+		CREATE TRIGGER IF NOT EXISTS update_accounts_on_delete_metadata
+		AFTER INSERT ON logs
+		WHEN NEW.type = 'DELETE_METADATA' AND json_extract(NEW.data, '$.targetType') = 'ACCOUNT'
+		BEGIN
+			UPDATE accounts
+			SET 
+				metadata = json_remove(metadata, '$.' || json_extract(NEW.data, '$.key')),
+				updated_at = NEW.date
+			WHERE address = json_extract(NEW.data, '$.targetId');
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("creating update accounts on delete metadata trigger: %w", err)
 	}
 
 	return nil
@@ -199,6 +395,203 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	// Register json_merge function to merge two JSON objects
+	err = sqlite.RegisterFunction("json_merge", &sqlite.FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) != 2 {
+				return "{}", nil
+			}
+			json1, ok1 := args[0].(string)
+			json2, ok2 := args[1].(string)
+			if !ok1 || !ok2 {
+				return "{}", nil
+			}
+
+			var map1, map2 map[string]interface{}
+			if err := json.Unmarshal([]byte(json1), &map1); err != nil {
+				return json1, nil // Return first if second is invalid
+			}
+			if err := json.Unmarshal([]byte(json2), &map2); err != nil {
+				return json1, nil // Return first if second is invalid
+			}
+
+			// Merge map2 into map1
+			for k, v := range map2 {
+				map1[k] = v
+			}
+
+			result, err := json.Marshal(map1)
+			if err != nil {
+				return json1, nil
+			}
+			return string(result), nil
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Register json_add_volume function to add input/output to volumes JSON
+	// Args: volumes_json (string), asset (string), input_amount (string), output_amount (string)
+	err = sqlite.RegisterFunction("json_add_volume", &sqlite.FunctionImpl{
+		NArgs:         4,
+		Deterministic: true,
+		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) != 4 {
+				return "{}", nil
+			}
+			volumesJSON, ok1 := args[0].(string)
+			asset, ok2 := args[1].(string)
+			inputStr, ok3 := args[2].(string)
+			outputStr, ok4 := args[3].(string)
+			if !ok1 || !ok2 || !ok3 || !ok4 {
+				return volumesJSON, nil
+			}
+
+			var volumes map[string]map[string]string
+			if volumesJSON == "" || volumesJSON == "{}" {
+				volumes = make(map[string]map[string]string)
+			} else {
+				if err := json.Unmarshal([]byte(volumesJSON), &volumes); err != nil {
+					return volumesJSON, nil
+				}
+			}
+
+			// Initialize asset if needed
+			if volumes[asset] == nil {
+				volumes[asset] = make(map[string]string)
+				volumes[asset]["input"] = "0"
+				volumes[asset]["output"] = "0"
+			}
+
+			// Add input
+			currentInput, _ := new(big.Int).SetString(volumes[asset]["input"], 10)
+			addInput, _ := new(big.Int).SetString(inputStr, 10)
+			volumes[asset]["input"] = new(big.Int).Add(currentInput, addInput).String()
+
+			// Add output
+			currentOutput, _ := new(big.Int).SetString(volumes[asset]["output"], 10)
+			addOutput, _ := new(big.Int).SetString(outputStr, 10)
+			volumes[asset]["output"] = new(big.Int).Add(currentOutput, addOutput).String()
+
+			result, err := json.Marshal(volumes)
+			if err != nil {
+				return volumesJSON, nil
+			}
+			return string(result), nil
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Register json_compute_volumes_from_postings function
+	// Args: current_volumes_json (string), postings_json (string), account_address (string), reverse (int, 0=false, 1=true)
+	// Returns: updated volumes JSON with all volumes from postings added
+	err = sqlite.RegisterFunction("json_compute_volumes_from_postings", &sqlite.FunctionImpl{
+		NArgs:         4,
+		Deterministic: true,
+		Scalar: func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if len(args) != 4 {
+				return "{}", nil
+			}
+			currentVolumesJSON, ok1 := args[0].(string)
+			postingsJSON, ok2 := args[1].(string)
+			accountAddr, ok3 := args[2].(string)
+			reverseInt, ok4 := args[3].(int64)
+			if !ok1 || !ok2 || !ok3 || !ok4 {
+				return currentVolumesJSON, nil
+			}
+			reverse := reverseInt != 0
+
+			// Parse current volumes
+			var volumes map[string]map[string]string
+			if currentVolumesJSON == "" || currentVolumesJSON == "{}" {
+				volumes = make(map[string]map[string]string)
+			} else {
+				if err := json.Unmarshal([]byte(currentVolumesJSON), &volumes); err != nil {
+					return currentVolumesJSON, nil
+				}
+			}
+
+			// Parse postings
+			var postings []struct {
+				Source      string `json:"source"`
+				Destination string `json:"destination"`
+				Asset       string `json:"asset"`
+				Amount      string `json:"amount"`
+			}
+			if err := json.Unmarshal([]byte(postingsJSON), &postings); err != nil {
+				return currentVolumesJSON, nil
+			}
+
+			// Process each posting
+			for _, posting := range postings {
+				// Initialize asset if needed
+				if volumes[posting.Asset] == nil {
+					volumes[posting.Asset] = make(map[string]string)
+					volumes[posting.Asset]["input"] = "0"
+					volumes[posting.Asset]["output"] = "0"
+				}
+
+				amount, _ := new(big.Int).SetString(posting.Amount, 10)
+				if amount == nil {
+					amount = big.NewInt(0)
+				}
+
+				if reverse {
+					// For reverted transactions: reverse the logic
+					// What was input becomes output, what was output becomes input
+					if posting.Source == accountAddr {
+						// Source becomes destination (input)
+						currentInput, _ := new(big.Int).SetString(volumes[posting.Asset]["input"], 10)
+						if currentInput == nil {
+							currentInput = big.NewInt(0)
+						}
+						volumes[posting.Asset]["input"] = new(big.Int).Add(currentInput, amount).String()
+					}
+					if posting.Destination == accountAddr {
+						// Destination becomes source (output)
+						currentOutput, _ := new(big.Int).SetString(volumes[posting.Asset]["output"], 10)
+						if currentOutput == nil {
+							currentOutput = big.NewInt(0)
+						}
+						volumes[posting.Asset]["output"] = new(big.Int).Add(currentOutput, amount).String()
+					}
+				} else {
+					// Normal transaction: add to input if account is destination
+					if posting.Destination == accountAddr {
+						currentInput, _ := new(big.Int).SetString(volumes[posting.Asset]["input"], 10)
+						if currentInput == nil {
+							currentInput = big.NewInt(0)
+						}
+						volumes[posting.Asset]["input"] = new(big.Int).Add(currentInput, amount).String()
+					}
+
+					// Add to output if account is source
+					if posting.Source == accountAddr {
+						currentOutput, _ := new(big.Int).SetString(volumes[posting.Asset]["output"], 10)
+						if currentOutput == nil {
+							currentOutput = big.NewInt(0)
+						}
+						volumes[posting.Asset]["output"] = new(big.Int).Add(currentOutput, amount).String()
+					}
+				}
+			}
+
+			result, err := json.Marshal(volumes)
+			if err != nil {
+				return currentVolumesJSON, nil
+			}
+			return string(result), nil
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Close closes the database connection
@@ -222,8 +615,8 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO logs (type, data, date, ledger, idempotency_key, idempotency_hash, id, sequence)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO logs (type, data, date, idempotency_key, idempotency_hash, id, sequence)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (sequence) DO NOTHING 
 	`)
 	if err != nil {
@@ -277,7 +670,6 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 			log.Type.String(),
 			string(dataJSON),
 			dateStr,
-			log.Ledger,
 			idempotencyKey,
 			idempotencyHash,
 			id,
@@ -297,12 +689,12 @@ func (s *SQLiteLogStore) InsertLogs(ctx context.Context, logs ...ledger.Log) err
 }
 
 // GetLogWithIdempotencyKey retrieves a log by its idempotency key (implements LogReader)
-func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerName string, idempotencyKey string) (*ledger.Log, error) {
+func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, idempotencyKey string) (*ledger.Log, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
+		SELECT id, type, data, date, idempotency_key, idempotency_hash, sequence
 		FROM logs
-		WHERE ledger = ? AND idempotency_key = ?
-	`, ledgerName, idempotencyKey)
+		WHERE idempotency_key = ?
+	`, idempotencyKey)
 
 	log, err := s.scanLog(row)
 	if err != nil {
@@ -314,15 +706,14 @@ func (s *SQLiteLogStore) GetLogWithIdempotencyKey(ctx context.Context, ledgerNam
 	return log, nil
 }
 
-// GetLastLog retrieves the last log by ID for a specific ledger (implements LogReader)
-func (s *SQLiteLogStore) GetLastLog(ctx context.Context, ledgerName string) (*ledger.Log, error) {
+// GetLastLog retrieves the last log by ID (implements LogReader)
+func (s *SQLiteLogStore) GetLastLog(ctx context.Context) (*ledger.Log, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
+		SELECT id, type, data, date, idempotency_key, idempotency_hash, sequence
 		FROM logs
-		WHERE ledger = ?
 		ORDER BY id DESC
 		LIMIT 1
-	`, ledgerName)
+	`)
 
 	log, err := s.scanLog(row)
 	if err != nil {
@@ -340,12 +731,11 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledger.Log, error) {
 	var logType string
 	var dataJSON string
 	var dateStr sql.NullString
-	var ledgerName string
 	var idempotencyKey sql.NullString
 	var idempotencyHash sql.NullString
 	var sequence uint64
 
-	err := row.Scan(&id, &logType, &dataJSON, &dateStr, &ledgerName, &idempotencyKey, &idempotencyHash, &sequence)
+	err := row.Scan(&id, &logType, &dataJSON, &dateStr, &idempotencyKey, &idempotencyHash, &sequence)
 	if err != nil {
 		return nil, err
 	}
@@ -379,9 +769,6 @@ func (s *SQLiteLogStore) scanLog(row *sql.Row) (*ledger.Log, error) {
 		log.Date = libtime.New(date)
 	}
 
-	// Set ledger
-	log.Ledger = ledgerName
-
 	// Set idempotency fields
 	if idempotencyKey.Valid {
 		log.IdempotencyKey = idempotencyKey.String
@@ -411,12 +798,11 @@ func (c *sqliteLogCursor) Next(ctx context.Context) (ledger.Log, error) {
 	var logType string
 	var dataJSON string
 	var dateStr sql.NullString
-	var ledgerName string
 	var idempotencyKey sql.NullString
 	var idempotencyHash sql.NullString
 	var sequence uint64
 
-	err := c.rows.Scan(&id, &logType, &dataJSON, &dateStr, &ledgerName, &idempotencyKey, &idempotencyHash, &sequence)
+	err := c.rows.Scan(&id, &logType, &dataJSON, &dateStr, &idempotencyKey, &idempotencyHash, &sequence)
 	if err != nil {
 		return ledger.Log{}, fmt.Errorf("scanning log row: %w", err)
 	}
@@ -450,9 +836,6 @@ func (c *sqliteLogCursor) Next(ctx context.Context) (ledger.Log, error) {
 		log.Date = libtime.New(date)
 	}
 
-	// Set ledger
-	log.Ledger = ledgerName
-
 	// Set idempotency fields
 	if idempotencyKey.Valid {
 		log.IdempotencyKey = idempotencyKey.String
@@ -476,7 +859,7 @@ func (c *sqliteLogCursor) Close() error {
 // from: optional sequence number to start from (0 = from beginning)
 func (s *SQLiteLogStore) GetAllLogs(ctx context.Context, from uint64, to uint64) (Cursor[ledger.Log], error) {
 	query := `
-		SELECT id, type, data, date, ledger, idempotency_key, idempotency_hash, sequence
+		SELECT id, type, data, date, idempotency_key, idempotency_hash, sequence
 		FROM logs
 	`
 	args := []interface{}{}
@@ -523,7 +906,7 @@ func (s *SQLiteLogStore) GetLastSequenceID(ctx context.Context) (uint64, error) 
 }
 
 // GetBalances retrieves balances from the balances table (implements BalancesStore)
-func (s *SQLiteLogStore) GetBalances(ctx context.Context, ledgerName string, balanceQuery map[string][]string) (ledger.Balances, error) {
+func (s *SQLiteLogStore) GetBalances(ctx context.Context, balanceQuery map[string][]string) (ledger.Balances, error) {
 	result := make(ledger.Balances)
 
 	// If no query provided, return empty balances
@@ -542,18 +925,17 @@ func (s *SQLiteLogStore) GetBalances(ctx context.Context, ledgerName string, bal
 
 		// Build placeholders for IN clause
 		placeholders := make([]string, len(assets))
-		args := make([]interface{}, len(assets)+2)
-		args[0] = ledgerName
-		args[1] = account
+		args := make([]interface{}, len(assets)+1)
+		args[0] = account
 
 		for i, asset := range assets {
 			placeholders[i] = "?"
-			args[i+2] = asset
+			args[i+1] = asset
 		}
 
 		query := fmt.Sprintf(`
 			SELECT asset, balance FROM balances
-			WHERE ledger = ? AND account = ? AND asset IN (%s)
+			WHERE account = ? AND asset IN (%s)
 		`, strings.Join(placeholders, ", "))
 
 		rows, err := s.db.QueryContext(ctx, query, args...)
@@ -586,6 +968,63 @@ func (s *SQLiteLogStore) GetBalances(ctx context.Context, ledgerName string, bal
 				result[account][asset] = big.NewInt(0)
 			}
 		}
+	}
+
+	return result, nil
+}
+
+// GetAccountMetadata retrieves account metadata for multiple accounts from the accounts table (implements AccountStore)
+func (s *SQLiteLogStore) GetAccountMetadata(ctx context.Context, ledgerName string, accounts []string) (map[string]metadata.Metadata, error) {
+	result := make(map[string]metadata.Metadata)
+
+	// If no accounts requested, return empty map
+	if len(accounts) == 0 {
+		return result, nil
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(accounts))
+	args := make([]interface{}, len(accounts))
+	for i, account := range accounts {
+		placeholders[i] = "?"
+		args[i] = account
+		// Initialize with empty metadata for all requested accounts
+		result[account] = make(metadata.Metadata)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT address, metadata
+		FROM accounts
+		WHERE address IN (%s)
+	`, strings.Join(placeholders, ", "))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying account metadata: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var address string
+		var metadataJSON string
+
+		if err := rows.Scan(&address, &metadataJSON); err != nil {
+			return nil, fmt.Errorf("scanning account metadata row: %w", err)
+		}
+
+		// Parse metadata
+		accountMetadata := make(metadata.Metadata)
+		if metadataJSON != "" && metadataJSON != "{}" {
+			if err := json.Unmarshal([]byte(metadataJSON), &accountMetadata); err != nil {
+				return nil, fmt.Errorf("unmarshaling metadata for account %s: %w", address, err)
+			}
+		}
+
+		result[address] = accountMetadata
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating account metadata rows: %w", err)
 	}
 
 	return result, nil

@@ -2,18 +2,70 @@
 
 package components
 
-type CreateLedgerRequest struct {
-	// Name of the bucket where the ledger will be created
-	Bucket string `json:"bucket"`
-	// Optional metadata for the ledger
-	Metadata map[string]string `json:"metadata,omitempty"`
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/formancehq/ledger-v3-poc/pkg/client/internal/utils"
+)
+
+// CreateLedgerRequestDriver - Storage driver name (defaults to sqlite)
+type CreateLedgerRequestDriver string
+
+const (
+	CreateLedgerRequestDriverSqlite CreateLedgerRequestDriver = "sqlite"
+)
+
+func (e CreateLedgerRequestDriver) ToPointer() *CreateLedgerRequestDriver {
+	return &e
+}
+func (e *CreateLedgerRequestDriver) UnmarshalJSON(data []byte) error {
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch v {
+	case "sqlite":
+		*e = CreateLedgerRequestDriver(v)
+		return nil
+	default:
+		return fmt.Errorf("invalid value for CreateLedgerRequestDriver: %v", v)
+	}
 }
 
-func (o *CreateLedgerRequest) GetBucket() string {
-	if o == nil {
-		return ""
+type CreateLedgerRequest struct {
+	// Storage driver name (defaults to sqlite)
+	Driver *CreateLedgerRequestDriver `default:"sqlite" json:"driver"`
+	// SQLite driver configuration (empty object - DSN is automatically generated)
+	Config *SQLiteConfig `json:"config,omitempty"`
+	// Optional metadata for the ledger
+	Metadata map[string]string `json:"metadata,omitempty"`
+	// Number of logs before triggering a snapshot (optional, uses global config if not set)
+	SnapshotThreshold *int64 `json:"snapshotThreshold,omitempty"`
+}
+
+func (c CreateLedgerRequest) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(c, "", false)
+}
+
+func (c *CreateLedgerRequest) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &c, "", false, false); err != nil {
+		return err
 	}
-	return o.Bucket
+	return nil
+}
+
+func (o *CreateLedgerRequest) GetDriver() *CreateLedgerRequestDriver {
+	if o == nil {
+		return nil
+	}
+	return o.Driver
+}
+
+func (o *CreateLedgerRequest) GetConfig() *SQLiteConfig {
+	if o == nil {
+		return nil
+	}
+	return o.Config
 }
 
 func (o *CreateLedgerRequest) GetMetadata() map[string]string {
@@ -21,4 +73,11 @@ func (o *CreateLedgerRequest) GetMetadata() map[string]string {
 		return nil
 	}
 	return o.Metadata
+}
+
+func (o *CreateLedgerRequest) GetSnapshotThreshold() *int64 {
+	if o == nil {
+		return nil
+	}
+	return o.SnapshotThreshold
 }

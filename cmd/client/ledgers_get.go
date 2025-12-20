@@ -13,7 +13,7 @@ var getLedgerName string
 var ledgersGetCmd = &cobra.Command{
 	Use:          "get",
 	Short:        "Get a ledger",
-	Long:         "Retrieves a ledger by its name (bucket is found automatically)",
+	Long:         "Retrieves a ledger by its name",
 	RunE:         runGetLedger,
 	SilenceUsage: true,
 }
@@ -65,7 +65,7 @@ func runGetLedger(cmd *cobra.Command, args []string) error {
 	panelData := ""
 	panelData += fmt.Sprintf("ID: %d\n", data.ID)
 	panelData += fmt.Sprintf("Name: %s\n", data.Name)
-	panelData += fmt.Sprintf("Bucket: %s\n", data.Bucket)
+	panelData += fmt.Sprintf("Driver: %s\n", string(data.Driver))
 	panelData += fmt.Sprintf("Created At: %s\n", data.CreatedAt.Format("2006-01-02 15:04:05"))
 	if data.LastLogID != nil {
 		panelData += fmt.Sprintf("Last Log ID: %d\n", *data.LastLogID)

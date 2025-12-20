@@ -18,7 +18,7 @@ type receptionsChannels struct {
 type multiplexedTransport struct {
 	grpcTransport         *raft.GRPCTransport
 	mainReceptionChannels receptionsChannels
-	buckets               map[uint64]receptionsChannels
+	ledgers               map[uint64]receptionsChannels
 	stopChannel           chan chan struct{}
 	mu                    sync.RWMutex
 	logger                logging.Logger
@@ -30,37 +30,37 @@ func (r *multiplexedTransport) Start() {
 		case ch := <-r.stopChannel:
 			close(ch)
 		case msg := <-r.grpcTransport.Recv():
-			bucketID := bucketIDFromBucketNodeID(msg.To)
-			if bucketID == 0 {
+			ledgerID := ledgerIDFromLedgerNodeID(msg.To)
+			if ledgerID == 0 {
 				r.logger.Debugf("Received message from main transport: %s", msg.String())
 				r.mainReceptionChannels.recv <- msg
 				continue
 			}
 
 			r.mu.RLock()
-			bucket, ok := r.buckets[bucketID]
+			ledger, ok := r.ledgers[ledgerID]
 			r.mu.RUnlock()
 			if ok {
-				r.logger.Debugf("Received message from bucket transport: %s", msg.String())
-				bucket.recv <- msg
+				r.logger.Debugf("Received message from ledger transport: %s", msg.String())
+				ledger.recv <- msg
 			} else {
-				r.logger.Infof("Received message from unknown bucket: %d (%s)", msg.To, msg.Type)
+				r.logger.Infof("Received message from unknown ledger: %d (%s)", msg.To, msg.Type)
 			}
 		case nodeID := <-r.grpcTransport.Unreachable():
-			bucketID := bucketIDFromBucketNodeID(nodeID)
-			if bucketID == 0 {
+			ledgerID := ledgerIDFromLedgerNodeID(nodeID)
+			if ledgerID == 0 {
 				r.mainReceptionChannels.unreachable <- nodeID
 				continue
 			}
 
 			r.mu.RLock()
-			bucket, ok := r.buckets[bucketID]
+			ledger, ok := r.ledgers[ledgerID]
 			r.mu.RUnlock()
 			if ok {
-				r.logger.Debugf("Received unreachable from bucket transport: %d", nodeID)
-				bucket.unreachable <- nodeID
+				r.logger.Debugf("Received unreachable from ledger transport: %d", nodeID)
+				ledger.unreachable <- nodeID
 			} else {
-				r.logger.Infof("Received unreachable from unknown bucket: %d", nodeID)
+				r.logger.Infof("Received unreachable from unknown ledger: %d", nodeID)
 			}
 		}
 	}
@@ -83,7 +83,7 @@ func (r *multiplexedTransport) MainTransport() raft.NodeTransport {
 	}
 }
 
-func (r *multiplexedTransport) NewBucketTransport(bucketID uint64) raft.NodeTransport {
+func (r *multiplexedTransport) NewLedgerTransport(ledgerID uint64) raft.NodeTransport {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -91,20 +91,20 @@ func (r *multiplexedTransport) NewBucketTransport(bucketID uint64) raft.NodeTran
 		recv:        make(chan raftpb.Message, 100),
 		unreachable: make(chan uint64, 100),
 	}
-	r.buckets[bucketID] = channels
+	r.ledgers[ledgerID] = channels
 
 	return &channelsTransport{
 		sender:   r.grpcTransport,
 		channels: channels,
 		logger: r.logger.WithFields(map[string]any{
-			"channel": fmt.Sprintf("bucket/%d", bucketID),
+			"channel": fmt.Sprintf("ledger/%d", ledgerID),
 		}),
 		grpcTransport: r.grpcTransport,
 	}
 }
 
 func (r *multiplexedTransport) GetPeerConnection(nodeID uint64) grpc.ClientConnInterface {
-	return r.grpcTransport.GetPeerConnection(NodeIDFromBucketNodeID(nodeID))
+	return r.grpcTransport.GetPeerConnection(NodeIDFromLedgerNodeID(nodeID))
 }
 
 func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTransport) *multiplexedTransport {
@@ -114,7 +114,7 @@ func newMultiplexedTransport(logger logging.Logger, grpcTransport *raft.GRPCTran
 			recv:        make(chan raftpb.Message, 100),
 			unreachable: make(chan uint64, 100),
 		},
-		buckets:     make(map[uint64]receptionsChannels),
+		ledgers:     make(map[uint64]receptionsChannels),
 		stopChannel: make(chan chan struct{}),
 		logger:      logger,
 	}
@@ -144,9 +144,17 @@ func (m *channelsTransport) Recv() <-chan raftpb.Message {
 }
 
 func (m *channelsTransport) Send(msg raftpb.Message) {
-	target := NodeIDFromBucketNodeID(msg.To)
+	target := NodeIDFromLedgerNodeID(msg.To)
 	m.logger.Debugf("Sending message to node: %d (%d)", msg.To, target)
 	m.sender.Send(target, msg)
 }
 
 var _ raft.NodeTransport = (*channelsTransport)(nil)
+
+func ledgerIDFromLedgerNodeID(v uint64) uint64 {
+	return (v & 0xFFFF0000) >> 16
+}
+
+func NodeIDFromLedgerNodeID(ledgerNodeID uint64) uint64 {
+	return ledgerNodeID & 0x0000FFFF
+}

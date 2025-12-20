@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package bucket;
+package ledger;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
@@ -9,26 +9,20 @@ import "proto/common.proto";
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/service";
 
 // LedgerService provides ledger operations
-service BucketService {
-  // Snapshot creates a snapshot of the root Raft cluster (alias for CreateClusterSnapshot)
-  rpc Snapshot(BucketSnapshotRequest) returns (BucketSnapshotResponse);
-  // CreateLedger
-  rpc CreateLedger(CreateLedgerRequest) returns (CreateLedgerResponse);
+service LedgerService {
+  // Snapshot creates a snapshot of the ledger Raft cluster
+  rpc Snapshot(LedgerSnapshotRequest) returns (LedgerSnapshotResponse);
   // CreateTransaction creates a new transaction
   rpc CreateTransaction(CreateTransactionRequest) returns (CreateTransactionResponse);
-  // StreamLogs streams logs from a bucket, optionally filtered by ledger and starting from a sequence number
+  // StreamLogs streams logs from a ledger, optionally starting from a sequence number
   rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
-  // GetLedger returns information about a specific ledger by name
-  rpc GetLedger(GetLedgerRequest) returns (GetLedgerResponse);
-  // GetLedgers returns a list of all ledgers in the bucket with their information
-  rpc GetLedgers(GetLedgersRequest) returns (GetLedgersResponse);
 }
 
-message BucketSnapshotRequest {
-  string bucket = 1;
+message LedgerSnapshotRequest {
+  string ledger = 1;
 }
 
-message BucketSnapshotResponse {
+message LedgerSnapshotResponse {
   string message = 1;
 }
 
@@ -38,7 +32,7 @@ message Script {
 }
 
 message CreateTransactionRequest {
-  string bucket = 1;
+  string ledger = 1;
   map<string, google.protobuf.Struct> account_metadata = 2;
   google.protobuf.Timestamp timestamp = 3;
   google.protobuf.Struct metadata = 4;
@@ -46,9 +40,8 @@ message CreateTransactionRequest {
   repeated common.Posting postings = 6;
   bool dry_run = 7;
   string idempotency_key = 8;
-  string ledger = 9;
-  Script script = 10;
-  string runtime = 11;
+  Script script = 9;
+  string runtime = 10;
 }
 
 message CreateTransactionResponse {
@@ -56,20 +49,8 @@ message CreateTransactionResponse {
   map<string, google.protobuf.Struct> account_metadata = 2;
 }
 
-message CreateLedgerRequest {
-  string bucket = 1;
-  string name = 2;
-  google.protobuf.Struct metadata = 3;
-}
-
-message CreateLedgerResponse {
-  uint64 id = 1;
-  string name = 2;
-  string bucket = 3;
-}
-
 message StreamLogsRequest {
-  string bucket = 1;
+  string ledger = 1;
   uint64 from_sequence = 2; // Optional: start streaming from this sequence number (inclusive). If 0, streams from the beginning
   uint64 to_sequence = 3;   // Optional: stop streaming at this sequence number (inclusive). If 0, streams until the end
 }
@@ -82,11 +63,10 @@ message Log {
   int32 type = 1;                           // LogType enum value
   LogPayload data = 2;
   google.protobuf.Timestamp date = 3;
-  string ledger = 4;
-  string idempotency_key = 5;
-  string idempotency_hash = 6;
-  uint64 id = 7;                            // Optional log ID
-  uint64 sequence = 8;                      // Global sequence number
+  string idempotency_key = 4;
+  string idempotency_hash = 5;
+  uint64 id = 6;                            // Optional log ID
+  uint64 sequence = 7;                      // Global sequence number
 }
 
 message LogPayload {
@@ -121,22 +101,3 @@ message DeletedMetadata {
   string key = 4;                           // Metadata key to delete
 }
 
-message GetLedgerRequest {
-  string bucket = 1;
-  string name = 2;
-}
-
-message GetLedgerResponse {
-  uint64 id = 1;
-  string name = 2;
-  google.protobuf.Timestamp created_at = 3;
-  google.protobuf.Struct metadata = 4;
-}
-
-message GetLedgersRequest {
-  string bucket = 1;
-}
-
-message GetLedgersResponse {
-  repeated GetLedgerResponse ledgers = 1;
-}

@@ -83,15 +83,6 @@ func main() {
 <details open>
 <summary>Available methods</summary>
 
-### [Buckets](docs/sdks/buckets/README.md)
-
-* [ListBuckets](docs/sdks/buckets/README.md#listbuckets) - List all buckets
-* [GetBucket](docs/sdks/buckets/README.md#getbucket) - Get a bucket
-* [CreateBucket](docs/sdks/buckets/README.md#createbucket) - Create a new bucket
-* [DeleteBucket](docs/sdks/buckets/README.md#deletebucket) - Delete a bucket
-* [GetBucketRaftState](docs/sdks/buckets/README.md#getbucketraftstate) - Get bucket Raft cluster state
-* [CreateBucketSnapshot](docs/sdks/buckets/README.md#createbucketsnapshot) - Create a snapshot for a bucket
-
 ### [Cluster](docs/sdks/cluster/README.md)
 
 * [CreateSnapshot](docs/sdks/cluster/README.md#createsnapshot) - Create a Raft snapshot
@@ -100,7 +91,7 @@ func main() {
 
 ### [Ledgers](docs/sdks/ledgers/README.md)
 
-* [ListAllLedgers](docs/sdks/ledgers/README.md#listallledgers) - List all ledgers across all buckets
+* [ListAllLedgers](docs/sdks/ledgers/README.md#listallledgers) - List all ledgers
 * [GetLedger](docs/sdks/ledgers/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
 

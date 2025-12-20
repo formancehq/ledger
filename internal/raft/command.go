@@ -32,6 +32,10 @@ type Command struct {
 	Date time.Time // Creation date in UTC, rounded to microsecond
 }
 
+func (c *Command) String() string {
+	return string(c.Type)
+}
+
 // MarshalBinary encodes the command to binary format using protobuf
 func (c *Command) MarshalBinary() ([]byte, error) {
 	cmdProto := &CommandProto{

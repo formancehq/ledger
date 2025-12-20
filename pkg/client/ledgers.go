@@ -31,8 +31,8 @@ func newLedgers(rootSDK *Formance, sdkConfig config.SDKConfiguration, hooks *hoo
 	}
 }
 
-// ListAllLedgers - List all ledgers across all buckets
-// Returns a list of all ledgers from all buckets
+// ListAllLedgers - List all ledgers
+// Returns a list of all ledgers in the cluster
 func (s *Ledgers) ListAllLedgers(ctx context.Context, opts ...operations.Option) (*operations.ListAllLedgersResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
@@ -261,7 +261,7 @@ func (s *Ledgers) ListAllLedgers(ctx context.Context, opts ...operations.Option)
 }
 
 // GetLedger - Get a ledger
-// Retrieves a ledger by its name (bucket is found automatically)
+// Retrieves a ledger by its name
 func (s *Ledgers) GetLedger(ctx context.Context, request operations.GetLedgerRequest, opts ...operations.Option) (*operations.GetLedgerResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{
@@ -534,7 +534,8 @@ func (s *Ledgers) GetLedger(ctx context.Context, request operations.GetLedgerReq
 }
 
 // CreateLedger - Create a new ledger
-// Creates a new ledger in the specified bucket
+// Creates a new ledger with the specified name, driver, and configuration. If driver is not specified,
+// SQLite will be used by default. Each ledger has its own Raft group for data consistency.
 func (s *Ledgers) CreateLedger(ctx context.Context, request operations.CreateLedgerRequest, opts ...operations.Option) (*operations.CreateLedgerResponse, error) {
 	o := operations.Options{}
 	supportedOptions := []string{

@@ -17,12 +17,12 @@ type NodeInfo struct {
 }
 
 type SystemState struct {
-	NextBucketID uint64                // Next sequential bucket ID
-	Buckets      map[string]BucketInfo // Map of bucket name -> bucket node
+	NextLedgerID uint64                // Next sequential ledger ID
+	Ledgers      map[string]LedgerInfo // Map of ledger name -> ledger info
 }
 
-// BucketState represents the state of the bucket FSM
-type BucketState struct {
-	Ledgers      map[string]LedgerInfo // Map of ledger name -> ledger info
-	LastSequence uint64                // Last global sequence number
+// LedgerState represents the state of the ledger FSM
+type LedgerState struct {
+	LedgerInfo   LedgerInfo // Ledger information
+	LastSequence uint64     // Last global sequence number
 }

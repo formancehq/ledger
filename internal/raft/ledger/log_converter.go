@@ -1,4 +1,4 @@
-package bucket
+package ledger
 
 import (
 	"fmt"
@@ -21,7 +21,6 @@ func LogToProto(l ledger.Log) (*Log, error) {
 func logToProto(l ledger.Log) (*Log, error) {
 	logProto := &Log{
 		Type:            int32(l.Type),
-		Ledger:          l.Ledger,
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
 		Sequence:        l.Sequence,
@@ -54,7 +53,6 @@ func LogFromProto(l *Log) (ledger.Log, error) {
 func logFromProto(l *Log) (ledger.Log, error) {
 	log := ledger.Log{
 		Type:            ledger.LogType(l.Type),
-		Ledger:          l.Ledger,
 		IdempotencyKey:  l.IdempotencyKey,
 		IdempotencyHash: l.IdempotencyHash,
 		Sequence:        l.Sequence,

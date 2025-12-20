@@ -1,14 +1,14 @@
 # Data Flows
 
-This document describes in dandail the data flows for the main system operations.
+This document describes in detail the data flows for the main system operations.
 
-## bucket Creation
+## Ledger Creation
 
 ### Overview
 
-bucket creation is a distributed operation that goes throrgh the system Raft grorp.
+Ledger creation is a distributed operation that goes through the system Raft group.
 
-### complete Flow
+### Complete Flow
 
 ```mermaid
 sequenceDiagram
@@ -17,141 +17,141 @@ sequenceDiagram
     participant Adapter as SystemNodeAdapter
     participant SystemNode as System Raft Node
     participant SystemFSM as System FSM
-    participant bucketNode as bucket Raft Node
+    participant LedgerNode as Ledger Raft Node
     participant Storage as Storage
     
-    Client->>HTTP: POST /buckets/my-bucket
-    HTTP->>Adapter: Createbucket(name, driver, config)
+    Client->>HTTP: POST /ledgers/my-ledger
+    HTTP->>Adapter: CreateLedger(name, driver, config)
     
     alt Node is leader
-        Adapter->>SystemNode: Createbucket()
-        SystemNode->>SystemFSM: Propose CreatebucketCommand
+        Adapter->>SystemNode: CreateLedger()
+        SystemNode->>SystemFSM: Propose CreateLedgerCommand
         SystemFSM->>SystemFSM: Validate Config
-        SystemFSM->>SystemFSM: Assign bucket ID
-        SystemFSM->>bucketNode: Start bucket Raft Grorp
-        bucketNode->>Storage: initialize Storage
-        SystemFSM->>SystemFSM: Store bucket info
-        SystemFSM-->>SystemNode: bucketinfo
-        SystemNode-->>Adapter: bucketinfo
+        SystemFSM->>SystemFSM: Assign Ledger ID
+        SystemFSM->>LedgerNode: Start Ledger Raft Group
+        LedgerNode->>Storage: Initialize Storage
+        SystemFSM->>SystemFSM: Store ledger info
+        SystemFSM-->>SystemNode: LedgerInfo
+        SystemNode-->>Adapter: LedgerInfo
     else Node is Follower
-        Adapter->>Adapter: Gand leader
-        Adapter->>leader: forward via gRPC
-        leader->>SystemNode: Createbucket()
+        Adapter->>Adapter: Find leader
+        Adapter->>leader: Forward via gRPC
+        leader->>SystemNode: CreateLedger()
         Note over SystemNode,Storage: Same as leader path
-        leader-->>Adapter: bucketinfo
+        leader-->>Adapter: LedgerInfo
     end
     
-    Adapter-->>HTTP: bucketinfo
+    Adapter-->>HTTP: LedgerInfo
     HTTP-->>Client: 201 Created
 ```
 
-### detailed Steps
+### Detailed Steps
 
-1. **Réception de la requête HTTP**
-   - Le handler HTTP reçoit `POST /buckets/{name}`
-   - Validation du body (driver, config)
-   - Appel to `cluster.Createbucket()`
+1. **HTTP Request Reception**
+   - The HTTP handler receives `POST /ledgers/{name}`
+   - Validates the body (driver, config)
+   - Calls `cluster.CreateLedger()`
 
-2. **Vérification from the leader**
-   - Le `SystemNodeAdapter` vérifie si le nœud est leader
-   - if not leader, identification from the leader and forwarding
+2. **Leader Verification**
+   - The `SystemNodeAdapter` checks if the node is the leader
+   - If not leader, identifies the leader and forwards the request
 
-3. **Proposition de la Commande**
-   - Le leader crée une `CreatebucketCommand`
-   - La commande is proposed to groupe Raft System
-   - La commande est répliquée to tors les followers
+3. **Command Proposal**
+   - The leader creates a `CreateLedgerCommand`
+   - The command is proposed to the System Raft group
+   - The command is replicated to all followers
 
-4. **Application in the FSM**
-   - La FSM System reçoit la commande committée
-   - Validation de the configuration du driver
-   - Assignation d'un ID séquentiel to bucket
-   - Création du bucket info
+4. **FSM Application**
+   - The System FSM receives the committed command
+   - Validates the driver configuration
+   - Assigns a sequential ID to the ledger
+   - Creates the ledger info
 
-5. **Starting du groupe Raft du bucket**
-   - La FSM démarre un nouvando groupe Raft for the bucket
-   - initialisation du storage (WAL, logstore)
-   - Le groupe Raft rejoint le cluster
+5. **Starting the Ledger Raft Group**
+   - The FSM starts a new Raft group for the ledger
+   - Initializes storage (WAL, logstore)
+   - The Raft group joins the cluster
 
-6. **Persistance**
-   - Les métaData du bucket sont stockées in the FSM System
-   - Un snapshot peut être créé if necessary
+6. **Persistence**
+   - The ledger metadata is stored in the System FSM
+   - A snapshot can be created if necessary
 
-## Création d'une Transaction
+## Transaction Creation
 
 ### Overview
 
-La création d'une transaction passe par le groupe Raft du bucket contenant le ledger.
+Transaction creation goes through the ledger's Raft group.
 
-### complete Flow
+### Complete Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant HTTP as HTTP Handler
-    participant bucketNode as bucket Raft Node
+    participant LedgerNode as Ledger Raft Node
     participant LedgerService as Ledger Service
     participant BalancesStore as Balances Store
-    participant bucketFSM as bucket FSM
+    participant LedgerFSM as Ledger FSM
     participant logstore as Log Store
     
-    Client->>HTTP: POST /ledger1/transactions
-    HTTP->>bucketNode: GandbucketofLedger("ledger1")
-    bucketNode->>bucketNode: Find bucket Raft Grorp
+    Client->>HTTP: POST /ledgers/my-ledger/transactions
+    HTTP->>LedgerNode: FindLedgerRaftGroup("my-ledger")
+    LedgerNode->>LedgerNode: Find Ledger Raft Group
     
     alt Node is leader
-        bucketNode->>LedgerService: CreateTransaction()
+        LedgerNode->>LedgerService: CreateTransaction()
         LedgerService->>BalancesStore: Check Balances
         BalancesStore-->>LedgerService: Balances OK
         LedgerService->>LedgerService: Validate Transaction
-        LedgerService->>bucketFSM: Propose insertLogCommand
-        bucketFSM->>bucketFSM: Generate Sequence
-        bucketFSM->>logstore: Write Log
-        bucketFSM->>BalancesStore: Update Balances
-        bucketFSM-->>LedgerService: Log with Sequence
-        LedgerService-->>bucketNode: CreatedTransaction
+        LedgerService->>LedgerFSM: Propose InsertLogCommand
+        LedgerFSM->>LedgerFSM: Generate Sequence
+        LedgerFSM->>logstore: Write Log
+        LedgerFSM->>BalancesStore: Update Balances
+        LedgerFSM-->>LedgerService: Log with Sequence
+        LedgerService-->>LedgerNode: CreatedTransaction
     else Node is Follower
-        bucketNode->>leader: forward via gRPC
+        LedgerNode->>leader: Forward via gRPC
         Note over leader,logstore: Same as leader path
-        leader-->>bucketNode: CreatedTransaction
+        leader-->>LedgerNode: CreatedTransaction
     end
     
-    bucketNode-->>HTTP: CreatedTransaction
+    LedgerNode-->>HTTP: CreatedTransaction
     HTTP-->>Client: 201 Created
 ```
 
-### detailed Steps
+### Detailed Steps
 
-1. **Identification du bucket**
-   - Le System identifie le bucket contenant le ledger
-   - Récupération du groupe Raft du bucket
+1. **Ledger Identification**
+   - The system identifies the ledger and its Raft group
+   - Retrieves the ledger's Raft group
 
-2. **Validation de la Transaction**
-   - Vérification des postings (comptes valides, montants positifs)
-   - Vérification of balances (if necessary)
-   - Vérification de la clé of idempotency
-   - Exécution du script si présent
+2. **Transaction Validation**
+   - Validates postings (valid accounts, positive amounts)
+   - Checks balances (if necessary)
+   - Verifies the idempotency key
+   - Executes script if present
 
-3. **Proposition de la Commande**
-   - Création d'une `insertLogCommand` with la transaction
-   - Proposition to groupe Raft du bucket
-   - Réplication to tors les nœuds du groupe
+3. **Command Proposal**
+   - Creates an `InsertLogCommand` with the transaction
+   - Proposes to the ledger's Raft group
+   - Replicates to all nodes in the group
 
-4. **Application in the FSM**
-   - La FSM du bucket génère un numéro of sequence
-   - Le log est écrit in the LogStore
-   - Les balances sont mises to jorr
+4. **FSM Application**
+   - The ledger FSM generates a sequence number
+   - The log is written to the LogStore
+   - Balances are updated
 
-5. **retour de la Réponse**
-   - La transaction créée est retournée to client
-   - inclut l'ID de transaction, le timestamp, andc.
+5. **Response Return**
+   - The created transaction is returned to the client
+   - Includes transaction ID, timestamp, etc.
 
-## Raft replication
+## Raft Replication
 
 ### Overview
 
-All writes sont répliquées via le protocole Raft to guarantee la Consistency.
+All writes are replicated via the Raft protocol to guarantee consistency.
 
-### Flux of replication
+### Replication Flow
 
 ```mermaid
 sequenceDiagram
@@ -179,40 +179,40 @@ sequenceDiagram
     leader-->>Client: Response
 ```
 
-### detailed Steps
+### Detailed Steps
 
-1. **Réception de la Commande**
-   - Le leader reçoit une commande d'Write
-   - La commande est sérialisée en protobuf
-   - Une entrée Raft est créée
+1. **Command Reception**
+   - The leader receives a write command
+   - The command is serialized to protobuf
+   - A Raft entry is created
 
-2. **Ajort to Log Local**
-   - The entry is added to log local from the leader
-   - The entry is written in the WAL
+2. **Append to Local Log**
+   - The entry is added to the leader's local log
+   - The entry is written to the WAL
    - The WAL is synchronized on disk
 
-3. **Réplication tox followers**
-   - Le leader envoie `AppendEntries` to tors les followers
-   - Chaque follower valide le terme
-   - Chaque follower ajorte l'entrée to son log local
+3. **Replication to Followers**
+   - The leader sends `AppendEntries` to all followers
+   - Each follower validates the term
+   - Each follower appends the entry to its local log
 
 4. **Commit**
-   - Quand une majorité confirme, le leader committe l'entrée
-   - L'entrée est marquée like committée
-   - Le commit index est mis to jorr
+   - When a majority confirms, the leader commits the entry
+   - The entry is marked as committed
+   - The commit index is updated
 
 5. **Application**
-   - Les entrées committées sont appliquées to la FSM
-   - La FSM traite la commande and mand to jorr l'état
-   - Le résultat est retourné to client
+   - Committed entries are applied to the FSM
+   - The FSM processes the command and updates the state
+   - The result is returned to the client
 
-## Synchronisation d'un Follower
+## Follower Synchronization
 
 ### Overview
 
-When a follower rejoint le cluster or recovers après a failure, il doit synchronize with le leader.
+When a follower joins the cluster or recovers after a failure, it must synchronize with the leader.
 
-### Flux de Synchronisation
+### Synchronization Flow
 
 ```mermaid
 sequenceDiagram
@@ -234,39 +234,39 @@ sequenceDiagram
         Follower->>Follower: Apply to FSM
     end
     
-    Follower->>Follower: Catch Up complete
+    Follower->>Follower: Catch Up Complete
     Follower->>leader: Ready for Replication
 ```
 
-### detailed Steps
+### Detailed Steps
 
-1. **Chargement du Snapshot**
-   - Le follower charge The most recent snapshot
-   - The FSM state is restored from le snapshot
-   - Le dernier index du snapshot est noté
+1. **Snapshot Loading**
+   - The follower loads the most recent snapshot
+   - The FSM state is restored from the snapshot
+   - The last snapshot index is noted
 
-2. **Demande de logs**
-   - Le follower demande les logs from the snapshot index
-   - Le leader vérifie la disponibilité des logs
-   - Le leader envoie les logs manquants
+2. **Log Request**
+   - The follower requests logs from the snapshot index
+   - The leader checks log availability
+   - The leader sends missing logs
 
-3. **Application des logs**
-   - Chaque log est ajorté to log local
-   - Chaque log est appliqué to la FSM
-   - L'état est progressivement mis to jorr
+3. **Log Application**
+   - Each log is appended to the local log
+   - Each log is applied to the FSM
+   - The state is progressively updated
 
-4. **Catch-up complet**
-   - Une fois tors les logs appliqués, le follower est to jorr
-   - Le follower peut maintenant participer to la réplication
-   - Le follower vote lors des élections
+4. **Catch-up Complete**
+   - Once all logs are applied, the follower is up to date
+   - The follower can now participate in replication
+   - The follower votes during elections
 
-## Création d'un Snapshot
+## Snapshot Creation
 
 ### Overview
 
-Snapshots are Created periodically for compacter les logs and accélérer la récupération.
+Snapshots are created periodically to compact logs and accelerate recovery.
 
-### Flux de Création
+### Creation Flow
 
 ```mermaid
 sequenceDiagram
@@ -280,7 +280,7 @@ sequenceDiagram
     
     leader->>FSM: Create Snapshot
     FSM->>FSM: Serialize State
-    FSM->>FSM: include Mandadata
+    FSM->>FSM: Include Metadata
     FSM-->>leader: Snapshot Data
     
     leader->>Storage: Save Snapshot
@@ -289,32 +289,32 @@ sequenceDiagram
     
     leader->>WAL: Compact logs
     WAL->>WAL: Remove Old Entries
-    WAL-->>leader: Compaction complete
+    WAL-->>leader: Compaction Complete
 ```
 
-### Conditions de Création
+### Creation Conditions
 
-1. **Seuil de logs**
-   - Si `SnapshotThreshold` logs ont été créés from The last snapshot
-   - Configurable per bucket or globalement
+1. **Log Threshold**
+   - If `SnapshotThreshold` logs have been created since the last snapshot
+   - Configurable per ledger or globally
 
-2. **Minimum interval**
-   - Si `Snapshotinterval` has elapsed from The last snapshot
-   - Évite de créer trop of Snapshots
+2. **Minimum Interval**
+   - If `SnapshotInterval` has elapsed since the last snapshot
+   - Prevents creating too many snapshots
 
-### Contenu du Snapshot
+### Snapshot Contents
 
-- **MétaData** : index, terme, timestamp
-- **État de la FSM** : Data complètes de la FSM
-- **index** : Index of the last entrée incluse
+- **Metadata**: index, term, timestamp
+- **FSM State**: Complete FSM data
+- **Index**: Index of the last included entry
 
-## Request forwarding
+## Request Forwarding
 
 ### Overview
 
-When a follower receives a request d'Write, it forwards it to the leader.
+When a follower receives a write request, it forwards it to the leader.
 
-### Flux de forwarding
+### Forwarding Flow
 
 ```mermaid
 sequenceDiagram
@@ -325,13 +325,13 @@ sequenceDiagram
     participant FSM
     
     Client->>Follower: Write Request
-    Follower->>Follower: Check Isleader()
-    Follower->>Follower: Gand leader ID
+    Follower->>Follower: Check IsLeader()
+    Follower->>Follower: Find leader ID
     
-    Follower->>ConnectionPool: Gand Connection(leaderID)
+    Follower->>ConnectionPool: Get Connection(leaderID)
     ConnectionPool-->>Follower: gRPC Connection
     
-    Follower->>leader: forward Request (gRPC)
+    Follower->>leader: Forward Request (gRPC)
     leader->>leader: Process Request
     leader->>FSM: Apply Command
     FSM-->>leader: Result
@@ -342,28 +342,28 @@ sequenceDiagram
 
 ### Error Handling
 
-Si le leader n'est pas available :
+If the leader is not available:
 
-1. Le follower détecte `Gandleader() == 0`
-2. Une erreur `ErrNoleader` est retournée
-3. Le handler HTTP retourne `503 Service Unavailable`
-4. the header `Randry-After: 1` est ajorté
-5. Le client SDK randry automaticment
+1. The follower detects `GetLeader() == 0`
+2. An `ErrNoLeader` error is returned
+3. The HTTP handler returns `503 Service Unavailable`
+4. The header `Retry-After: 1` is added
+5. The client SDK retries automatically
 
 ## Bulk Operations
 
 ### Overview
 
-Les Bulk Operations permandtent d'Send multiple opérations en une seule requête.
+Bulk operations allow sending multiple operations in a single request.
 
-### Flux Bulk
+### Bulk Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant BulkHandler
     participant Bulker
-    participant bucketNode
+    participant LedgerNode
     participant FSM
     
     Client->>BulkHandler: POST /_bulk (stream)
@@ -371,10 +371,10 @@ sequenceDiagram
     
     loop for each element
         BulkHandler->>Bulker: Send Element
-        Bulker->>bucketNode: Process Element
-        bucketNode->>FSM: Apply Command
-        FSM-->>bucketNode: Result
-        bucketNode-->>Bulker: Result
+        Bulker->>LedgerNode: Process Element
+        LedgerNode->>FSM: Apply Command
+        FSM-->>LedgerNode: Result
+        LedgerNode-->>Bulker: Result
         Bulker-->>BulkHandler: Result
     end
     
@@ -383,15 +383,14 @@ sequenceDiagram
 
 ### Bulk Options
 
-- **continueOnFailure** : Continue even if an operation fails
-- **atomic** : tortes les opérations or nothing
-- **parallel** : Execute in parallel (not compatible with atomic)
+- **continueOnFailure**: Continue even if an operation fails
+- **atomic**: All operations or nothing
+- **parallel**: Execute in parallel (not compatible with atomic)
 
 ## Next Steps
 
-for approfondir :
+To deepen your understanding:
 
-1. [Consensus Raft](./raft-consensus.md) - Détails sur la Raft replication
-2. [storage and Persistance](./storage.md) - likent les Data sont persistées
-3. [API and interfaces](./API.md) - Documentation des endpoints
-
+1. [Raft Consensus](./raft-consensus.md) - Details on Raft replication
+2. [Storage and Persistence](./storage.md) - How data is persisted
+3. [API and Interfaces](./api.md) - API endpoint documentation

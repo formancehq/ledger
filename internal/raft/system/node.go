@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
-	"github.com/formancehq/ledger-v3-poc/internal/service"
+	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 )
 
 type Node struct {
@@ -60,88 +60,85 @@ func NewNode(config Config, logger logging.Logger, transport *raft.GRPCTransport
 	}, nil
 }
 
-func (node *Node) Start() error {
+func (node *Node) Start(ctx context.Context) error {
 	go node.multiplexedTransport.Start()
 
-	return node.Node.Start()
+	return node.Node.Start(ctx)
 }
 
-// CreateBucket creates a new bucket via a FSM command
-func (node *Node) CreateBucket(ctx context.Context, name, driver string, config map[string]interface{}, snapshotThreshold *uint64) (*ledger.BucketInfo, error) {
+// CreateLedger creates a new ledger via a FSM command
+func (node *Node) CreateLedger(ctx context.Context, name, driver string, config map[string]interface{}, metadata map[string]string, snapshotThreshold *uint64) (*ledger.LedgerInfo, error) {
 	// Create the command
-	cmd, err := NewCreateBucketCommand(name, driver, config, snapshotThreshold)
+	cmd, err := NewCreateLedgerCommand(name, driver, config, metadata, snapshotThreshold)
 	if err != nil {
-		return nil, fmt.Errorf("creating create bucket command: %w", err)
+		return nil, fmt.Errorf("creating create ledger command: %w", err)
 	}
 
 	// Apply the command via Raft (waits for application)
-	_, ret, err := node.Apply(cmd, 5*time.Second)
+	_, ret, err := node.Apply(cmd, 10*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("applying command via etcdraft: %w", err)
+		return nil, fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
 	node.logger.
 		WithFields(map[string]any{"name": name, "driver": driver, "commandID": cmd.ID}).
-		Infof("Bucket created via Raft")
-	return ret.(*ledger.BucketInfo), nil
+		Infof("Ledger created on leader")
+
+	return ret.(*ledger.LedgerInfo), nil
 }
 
-// GetBucket returns the bucket info for a given name
-func (node *Node) GetBucketCluster(ctx context.Context, name string) (service.BucketCluster, error) {
-	return node.Inner().GetBucket(name)
+// GetLedgerNode returns the ledger node for a given name
+func (node *Node) GetLedgerNode(ctx context.Context, name string) (*ledgerraft.Node, error) {
+	return node.Inner().GetLedger(name)
 }
 
-func (node *Node) GetBucketInfo(ctx context.Context, name string) (*ledger.BucketInfo, error) {
-	bucketCluster, err := node.Inner().GetBucket(name)
+func (node *Node) GetLedgerInfo(ctx context.Context, name string) (*ledger.LedgerInfo, error) {
+	ledgerNode, err := node.Inner().GetLedger(name)
 	if err != nil {
-		return nil, ledger.NewNotFoundError("Bucket not found: " + name)
+		return nil, ledger.NewNotFoundError("Ledger not found: %s", name)
 	}
-	return pointer.For(bucketCluster.Info()), nil
+	return pointer.For(ledgerNode.Info()), nil
 }
 
-// GetAllBucketsInfo returns all buckets
-func (node *Node) GetAllBucketsInfo(ctx context.Context) map[string]ledger.BucketInfo {
-	return node.Inner().GetAllBuckets()
+// GetAllLedgersInfo returns all ledgers
+func (node *Node) GetAllLedgersInfo(ctx context.Context) map[string]ledger.LedgerInfo {
+	return node.Inner().GetAllLedgers()
 }
 
-// DeleteBucket deletes a bucket via a FSM command
-func (node *Node) DeleteBucket(ctx context.Context, name string) error {
+// DeleteLedger deletes a ledger via a FSM command
+func (node *Node) DeleteLedger(ctx context.Context, name string) error {
 	// Create the command
-	cmd, err := NewDeleteBucketCommand(name)
+	cmd, err := NewDeleteLedgerCommand(name)
 	if err != nil {
-		return fmt.Errorf("creating delete bucket command: %w", err)
+		return fmt.Errorf("creating delete ledger command: %w", err)
 	}
 
 	// Apply the command via Raft (waits for application)
 	_, _, err = node.Apply(cmd, 5*time.Second)
 	if err != nil {
-		return fmt.Errorf("applying command via etcdraft: %w", err)
+		return fmt.Errorf("applying command '%s' via etcdraft: %w", cmd, err)
 	}
 
-	node.logger.WithFields(map[string]any{"name": name, "commandID": cmd.ID}).Infof("Bucket deleted via Raft")
+	node.logger.WithFields(map[string]any{"name": name, "commandID": cmd.ID}).Infof("Ledger deleted via Raft")
 	return nil
 }
 
 func (node *Node) ResolveLedger(ctx context.Context, name string) (string, uint64, error) {
-	allBuckets := node.Inner().GetAllBuckets()
-	for bucketName := range allBuckets {
-		bucketCluster, err := node.Inner().GetBucket(bucketName)
-		if err != nil {
-			continue
-		}
-		ledgers, err := bucketCluster.GetLedgers(context.Background())
-		if err != nil {
-			// todo: better error handling
-			panic(err)
-		}
-		for _, info := range ledgers {
-			if info.Name == name {
-				return bucketCluster.Info().Name, bucketCluster.Info().ID, nil
-			}
-		}
+	allLedgers := node.Inner().GetAllLedgers()
+	ledgerInfo, ok := allLedgers[name]
+	if !ok {
+		return "", 0, ledger.NewNotFoundError("Ledger not found: %s", name)
+	}
+	return ledgerInfo.Name, ledgerInfo.ID, nil
+}
+
+func (node *Node) ResolveLedgerLeader(ctx context.Context, name string) (uint64, error) {
+	ledgerNode, err := node.Inner().GetLedger(name)
+	if err != nil {
+		return 0, err
 	}
 
-	return "", 0, ledger.NewNotFoundError("Ledger not found: " + name)
+	return ledgerNode.GetLeader(), nil
 }
 
 func (node *Node) Stop(ctx context.Context) error {
