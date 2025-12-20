@@ -7,21 +7,21 @@ import (
 	"fmt"
 )
 
-// State - Current state of the local node
-type State string
+// ClusterStateResponseState - Current state of the local node
+type ClusterStateResponseState string
 
 const (
-	StateLeader       State = "Leader"
-	StateFollower     State = "Follower"
-	StateCandidate    State = "Candidate"
-	StatePreCandidate State = "PreCandidate"
-	StateUnknown      State = "Unknown"
+	ClusterStateResponseStateLeader       ClusterStateResponseState = "Leader"
+	ClusterStateResponseStateFollower     ClusterStateResponseState = "Follower"
+	ClusterStateResponseStateCandidate    ClusterStateResponseState = "Candidate"
+	ClusterStateResponseStatePreCandidate ClusterStateResponseState = "PreCandidate"
+	ClusterStateResponseStateUnknown      ClusterStateResponseState = "Unknown"
 )
 
-func (e State) ToPointer() *State {
+func (e ClusterStateResponseState) ToPointer() *ClusterStateResponseState {
 	return &e
 }
-func (e *State) UnmarshalJSON(data []byte) error {
+func (e *ClusterStateResponseState) UnmarshalJSON(data []byte) error {
 	var v string
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
@@ -36,16 +36,16 @@ func (e *State) UnmarshalJSON(data []byte) error {
 	case "PreCandidate":
 		fallthrough
 	case "Unknown":
-		*e = State(v)
+		*e = ClusterStateResponseState(v)
 		return nil
 	default:
-		return fmt.Errorf("invalid value for State: %v", v)
+		return fmt.Errorf("invalid value for ClusterStateResponseState: %v", v)
 	}
 }
 
 type ClusterStateResponseData struct {
 	// Current state of the local node
-	State State `json:"state"`
+	State ClusterStateResponseState `json:"state"`
 	// ID of the current leader (0 if no leader)
 	Leader *int64 `json:"leader,omitempty"`
 	// ID of the local node
@@ -55,9 +55,9 @@ type ClusterStateResponseData struct {
 	InnerState SystemState `json:"innerState"`
 }
 
-func (o *ClusterStateResponseData) GetState() State {
+func (o *ClusterStateResponseData) GetState() ClusterStateResponseState {
 	if o == nil {
-		return State("")
+		return ClusterStateResponseState("")
 	}
 	return o.State
 }

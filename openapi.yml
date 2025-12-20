@@ -130,6 +130,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /{ledgerName}/raft/state:
+    get:
+      summary: Get ledger Raft cluster state
+      description: Returns the current state of the Raft cluster for the specified ledger, including the list of nodes, the current leader, and the ledger state
+      operationId: getLedgerRaftState
+      tags:
+        - Ledgers
+      parameters:
+        - name: ledgerName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the ledger
+      responses:
+        '200':
+          description: Ledger Raft cluster state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerClusterStateResponse'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/transactions:
     post:
       summary: Create a new transaction

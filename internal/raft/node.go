@@ -178,19 +178,24 @@ func (node *Node[State, F]) readyLoop() {
 	for {
 		// Process ticks and messages first, then Ready structures
 		// Always check for ticks first (non-blocking) to ensure election timeouts work
-		select {
-		case <-ticker.C:
-			if !node.fsmSyncer.IsSyncing() {
-				node.rawNode.Tick()
-			}
-		case <-node.ctx.Done():
-			close(node.stopped)
-			return
-		case nodeID := <-node.transport.Unreachable():
-			node.rawNode.ReportUnreachable(nodeID)
-		case msg := <-node.transport.Recv():
-			if err := node.rawNode.Step(msg); err != nil {
-				panic(err)
+		// Also, check for incoming messages repeatdly as the queue can become fulleasily
+		for {
+			select {
+			case <-ticker.C:
+				if !node.fsmSyncer.IsSyncing() {
+					node.rawNode.Tick()
+				}
+			case <-node.ctx.Done():
+				close(node.stopped)
+				return
+			case nodeID := <-node.transport.Unreachable():
+				node.rawNode.ReportUnreachable(nodeID)
+			case msg := <-node.transport.Recv():
+				if err := node.rawNode.Step(msg); err != nil {
+					panic(err)
+				}
+			default:
+				break
 			}
 		}
 

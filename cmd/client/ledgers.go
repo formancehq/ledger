@@ -15,5 +15,6 @@ func initLedgers() {
 	ledgersCmd.AddCommand(ledgersCreateCmd)
 	ledgersCmd.AddCommand(ledgersListCmd)
 	ledgersCmd.AddCommand(ledgersGetCmd)
+	ledgersCmd.AddCommand(ledgersRaftStateCmd)
 	ledgersCmd.AddCommand(ledgersDeleteCmd)
 }

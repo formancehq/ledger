@@ -98,6 +98,7 @@ func main() {
 * [ListAllLedgers](docs/sdks/ledgers/README.md#listallledgers) - List all ledgers
 * [GetLedger](docs/sdks/ledgers/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/ledgers/README.md#createledger) - Create a new ledger
+* [GetLedgerRaftState](docs/sdks/ledgers/README.md#getledgerraftstate) - Get ledger Raft cluster state
 
 ### [Transactions](docs/sdks/transactions/README.md)
 

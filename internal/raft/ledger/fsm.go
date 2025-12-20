@@ -17,7 +17,7 @@ import (
 // It manages a single ledger
 type FSM struct {
 	mu        sync.RWMutex       // Protects access to state
-	state     ledger.LedgerState  // FSM state
+	state     ledger.LedgerState // FSM state
 	logger    logging.Logger
 	logWriter service.LogWriter
 	logReader service.LogReader // LogReader to catch up logs from leader via gRPC
@@ -94,6 +94,10 @@ func (f *FSM) ApplyEntries(ctx context.Context, commands ...raft.Command) ([]raf
 				Result: log,
 			})
 			logs = append(logs, *log)
+		default:
+			ret = append(ret, raft.ApplyResult{
+				Error: fmt.Errorf("unknown command type: %s", command.Type),
+			})
 		}
 	}
 	if len(logs) > 0 {
@@ -205,4 +209,3 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 		"storeSequence": lastSequence,
 	}).Infof("Ledger FSM restored from snapshot")
 }
-

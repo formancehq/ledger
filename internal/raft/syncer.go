@@ -76,9 +76,10 @@ func (s *syncer[State, F]) ApplyEntries(ctx context.Context, commands ...Command
 			return nil, fmt.Errorf("appending committed entries to spool: %w", err)
 		}
 		// Since: the rawNode is syncing, the rawNode is forcibly a follower,
-		// so we don't care about the result of applying the commands
+		// so, we don't care about the result of applying the commands
 		// because the commands are applied on the leader
-		return make([]ApplyResult, 0), nil
+		// so, we can return an empty slice
+		return make([]ApplyResult, len(commands)), nil
 	}
 	if s.syncingError != nil {
 		return nil, s.syncingError

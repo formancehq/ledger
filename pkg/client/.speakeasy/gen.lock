@@ -1,12 +1,12 @@
 lockVersion: 2.0.0
 id: fdb51b36-3c3f-48ad-873f-ddbbcfaad947
 management:
-  docChecksum: e9d3f8735540bd7bcee6eae613d37ae7
+  docChecksum: f54a9cb5ddc8cdbb4db833990c21c168
   docVersion: 1.0.0
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
-  releaseVersion: 0.11.17
-  configChecksum: 3d33e1611b5a1e4359c6491fc05acc01
+  releaseVersion: 0.11.18
+  configChecksum: 2ed995981e40fe9ea68df5b7f248843c
 features:
   go:
     additionalDependencies: 0.1.0
@@ -41,7 +41,9 @@ generatedFiles:
   - /models/components/deletemetadatarequest.go
   - /models/components/getledgerresponse.go
   - /models/components/httpmetadata.go
+  - /models/components/ledgerclusterstateresponse.go
   - /models/components/ledgerinfo.go
+  - /models/components/ledgerstate.go
   - /models/components/listallledgersresponse.go
   - /models/components/nodeinfo.go
   - /models/components/postingrequest.go
@@ -58,6 +60,7 @@ generatedFiles:
   - /models/operations/createtransaction.go
   - /models/operations/getclusterstate.go
   - /models/operations/getledger.go
+  - /models/operations/getledgerraftstate.go
   - /models/operations/listallledgers.go
   - /models/operations/saveaccountmetadata.go
   - /models/sdkerrors/errorresponse.go
@@ -73,11 +76,13 @@ generatedFiles:
   - docs/models/components/bulkresultdata.md
   - docs/models/components/clusterstateresponse.md
   - docs/models/components/clusterstateresponsedata.md
+  - docs/models/components/clusterstateresponsestate.md
   - docs/models/components/createledgerrequest.md
   - docs/models/components/createledgerrequestdriver.md
   - docs/models/components/createledgerresponse.md
   - docs/models/components/createtransactionrequest.md
   - docs/models/components/createtransactionresponse.md
+  - docs/models/components/createtransactionresponsedata.md
   - docs/models/components/data.md
   - docs/models/components/deletemetadatarequest.md
   - docs/models/components/deletemetadatarequesttargetid.md
@@ -85,7 +90,9 @@ generatedFiles:
   - docs/models/components/driver.md
   - docs/models/components/getledgerresponse.md
   - docs/models/components/httpmetadata.md
+  - docs/models/components/ledgerclusterstateresponse.md
   - docs/models/components/ledgerinfo.md
+  - docs/models/components/ledgerstate.md
   - docs/models/components/listallledgersresponse.md
   - docs/models/components/nodeinfo.md
   - docs/models/components/postingrequest.md
@@ -109,6 +116,8 @@ generatedFiles:
   - docs/models/operations/createtransactionrequest.md
   - docs/models/operations/createtransactionresponse.md
   - docs/models/operations/getclusterstateresponse.md
+  - docs/models/operations/getledgerraftstaterequest.md
+  - docs/models/operations/getledgerraftstateresponse.md
   - docs/models/operations/getledgerrequest.md
   - docs/models/operations/getledgerresponse.md
   - docs/models/operations/listallledgersresponse.md
@@ -335,6 +344,20 @@ examples:
         "201":
           application/json: {"type": "<value>", "date": "2023-08-15T07:23:40.282Z"}
         "400":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "500":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+        "503":
+          application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
+  getLedgerRaftState:
+    speakeasy-default-get-ledger-raft-state:
+      parameters:
+        path:
+          ledgerName: "<value>"
+      responses:
+        "200":
+          application/json: {"data": {"state": "Leader", "localNode": 926706, "innerState": {"ledgerInfo": {"id": 590904, "name": "<value>", "driver": "sqlite", "config": {}, "createdAt": "2024-12-22T17:41:17.836Z"}, "lastSequence": 317198}}}
+        "404":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}
         "500":
           application/json: {"errorCode": "<value>", "errorMessage": "<value>"}

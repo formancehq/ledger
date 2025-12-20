@@ -113,3 +113,5 @@ k8s-describe-ss:
 k8s-describe-pod:
     kubectl describe pods/ledger-v3-poc-0
 
+k8s-rollout-restart:
+    kubectl rollout restart statefulsets/ledger-v3-poc

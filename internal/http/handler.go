@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"net/http/pprof"
 	stdtime "time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -42,6 +43,22 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 
 	// Register routes function - can be called with different prefixes
 	registerRoutes := func(r chi.Router) {
+		// Register pprof routes (for profiling and debugging)
+		// These routes are available at /debug/pprof/*
+		r.Route("/debug/pprof", func(r chi.Router) {
+			r.Get("/", pprof.Index)
+			r.Get("/cmdline", pprof.Cmdline)
+			r.Get("/profile", pprof.Profile)
+			r.Get("/symbol", pprof.Symbol)
+			r.Get("/trace", pprof.Trace)
+			r.Handle("/allocs", pprof.Handler("allocs"))
+			r.Handle("/block", pprof.Handler("block"))
+			r.Handle("/goroutine", pprof.Handler("goroutine"))
+			r.Handle("/heap", pprof.Handler("heap"))
+			r.Handle("/mutex", pprof.Handler("mutex"))
+			r.Handle("/threadcreate", pprof.Handler("threadcreate"))
+		})
+
 		// Register known routes (specific routes first)
 		r.Post("/snapshot", server.handleSnapshot)
 		r.Get("/health", server.handleHealth)
@@ -49,6 +66,7 @@ func NewHandler(logger logging.Logger, cluster service.MasterCluster) http.Handl
 
 		r.Post("/{ledgerName}", server.handleCreateLedger)                                    // POST /{ledgerName}
 		r.Get("/{ledgerName}", server.handleGetLedger)                                        // GET /{ledgerName}
+		r.Get("/{ledgerName}/raft/state", server.handleGetLedgerRaftState)                    // GET /{ledgerName}/raft/state
 		r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                  // POST /{ledgerName}/transactions
 		r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata) // POST /{ledgerName}/accounts/{address}/metadata
 		r.Post("/{ledgerName}/bulk", server.handleBulk)                                       // POST /{ledgerName}/bulk
@@ -132,8 +150,15 @@ func loggingMiddleware(logger logging.Logger) func(http.Handler) http.Handler {
 			// Call next handler
 			next.ServeHTTP(rw, r)
 
-			// Skip logging for health check requests
-			if r.URL.Path == "/health" {
+			// Skip logging for health check and pprof requests
+			if r.URL.Path == "/health" || r.URL.Path == "/v2/health" {
+				return
+			}
+			// Skip pprof routes
+			if len(r.URL.Path) >= 12 && r.URL.Path[:12] == "/debug/pprof" {
+				return
+			}
+			if len(r.URL.Path) >= 15 && r.URL.Path[:15] == "/v2/debug/pprof" {
 				return
 			}
 
