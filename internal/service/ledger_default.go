@@ -128,21 +128,6 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		return nil, nil, fmt.Errorf("you need to pass either a posting array or a numscript script")
 	}
 
-	var (
-		// If script is provided, compile and execute it to generate postings
-		scriptMetadata        metadata.Metadata
-		scriptAccountMetadata map[string]metadata.Metadata
-	)
-	if hasScript {
-		postings, metadata, accountMetadata, err := l.executeNumscript(ctx, ledgerName, input.Script)
-		if err != nil {
-			return nil, nil, fmt.Errorf("executing numscript: %w", err)
-		}
-		input.Postings = postings
-		scriptMetadata = metadata
-		scriptAccountMetadata = accountMetadata
-	}
-
 	// Check idempotency: if idempotency key is provided, check if a log already exists
 	existingLog, err := l.checkIdempotency(ctx, parameters.IdempotencyKey, input)
 	if err != nil {
@@ -161,68 +146,83 @@ func (l *DefaultLedger) CreateTransaction(ctx context.Context, ledgerName string
 		return existingLog, createdTx, nil
 	}
 
-	// Group postings by source account and asset to check balances
-	// Build balance query: map[account] = [assets]
-	balanceQuery := make(map[string][]string)
-	requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
-
-	for _, posting := range input.Postings {
-		if posting.Source == ledger.WORLD {
-			continue // WORLD account has infinite funds
+	var (
+		// If script is provided, compile and execute it to generate postings
+		scriptMetadata        metadata.Metadata
+		scriptAccountMetadata map[string]metadata.Metadata
+	)
+	if hasScript {
+		postings, metadata, accountMetadata, err := l.executeNumscript(ctx, ledgerName, input.Script)
+		if err != nil {
+			return nil, nil, fmt.Errorf("executing numscript: %w", err)
 		}
+		input.Postings = postings
+		scriptMetadata = metadata
+		scriptAccountMetadata = accountMetadata
+	} else {
+		// Group postings by source account and asset to check balances
+		// Build balance query: map[account] = [assets]
+		balanceQuery := make(map[string][]string)
+		requiredFunds := make(map[string]map[string]*big.Int) // account -> asset -> amount
 
-		// Add account and asset to query
-		if balanceQuery[posting.Source] == nil {
-			balanceQuery[posting.Source] = make([]string, 0)
-		}
-		// Check if asset is already in the list
-		assetExists := false
-		for _, asset := range balanceQuery[posting.Source] {
-			if asset == posting.Asset {
-				assetExists = true
-				break
-			}
-		}
-		if !assetExists {
-			balanceQuery[posting.Source] = append(balanceQuery[posting.Source], posting.Asset)
-		}
-
-		// Track required funds
-		if requiredFunds[posting.Source] == nil {
-			requiredFunds[posting.Source] = make(map[string]*big.Int)
-		}
-		if requiredFunds[posting.Source][posting.Asset] == nil {
-			requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
-		}
-		requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount)
-	}
-
-	// Lock and check sufficient funds for all source accounts
-	balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQuery)
-	if err != nil {
-		// GetBalance failed in LockBalances, return the error
-		// Locks are already released in LockBalances on error
-		return nil, nil, err
-	}
-
-	// Ensure locks are released when we're done
-	defer release()
-
-	// Check if accounts have sufficient funds
-	for account, assets := range requiredFunds {
-		accountBalances, ok := balances[account]
-		if !ok {
-			accountBalances = make(map[string]*big.Int)
-		}
-
-		for asset, requiredAmount := range assets {
-			balance, ok := accountBalances[asset]
-			if !ok {
-				balance = big.NewInt(0)
+		for _, posting := range input.Postings {
+			if posting.Source == ledger.WORLD {
+				continue // WORLD account has infinite funds
 			}
 
-			if balance.Cmp(requiredAmount) < 0 {
-				return nil, nil, ErrInsufficientFunds
+			// Add account and asset to query
+			if balanceQuery[posting.Source] == nil {
+				balanceQuery[posting.Source] = make([]string, 0)
+			}
+			// Check if asset is already in the list
+			assetExists := false
+			for _, asset := range balanceQuery[posting.Source] {
+				if asset == posting.Asset {
+					assetExists = true
+					break
+				}
+			}
+			if !assetExists {
+				balanceQuery[posting.Source] = append(balanceQuery[posting.Source], posting.Asset)
+			}
+
+			// Track required funds
+			if requiredFunds[posting.Source] == nil {
+				requiredFunds[posting.Source] = make(map[string]*big.Int)
+			}
+			if requiredFunds[posting.Source][posting.Asset] == nil {
+				requiredFunds[posting.Source][posting.Asset] = big.NewInt(0)
+			}
+			requiredFunds[posting.Source][posting.Asset].Add(requiredFunds[posting.Source][posting.Asset], posting.Amount)
+
+			// Lock and check sufficient funds for all source accounts
+			balances, release, err := l.lockedVolumesStore.LockBalances(ctx, balanceQuery)
+			if err != nil {
+				// GetBalance failed in LockBalances, return the error
+				// Locks are already released in LockBalances on error
+				return nil, nil, err
+			}
+
+			// Ensure locks are released when we're done
+			defer release()
+
+			// Check if accounts have sufficient funds
+			for account, assets := range requiredFunds {
+				accountBalances, ok := balances[account]
+				if !ok {
+					accountBalances = make(map[string]*big.Int)
+				}
+
+				for asset, requiredAmount := range assets {
+					balance, ok := accountBalances[asset]
+					if !ok {
+						balance = big.NewInt(0)
+					}
+
+					if balance.Cmp(requiredAmount) < 0 {
+						return nil, nil, ErrInsufficientFunds
+					}
+				}
 			}
 		}
 	}

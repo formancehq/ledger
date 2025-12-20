@@ -92,13 +92,24 @@ docker-build:
     docker build --platform linux/amd64 -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest .
     docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
 
-install: docker-build
+k8s-install: docker-build
     helm upgrade --install ledger-v3-poc \
         ./deployments/chart \
-        --set image.repository=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc
+        --set image.repository=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc \
+        --values ./deployments/chart/dev-values.yaml
 
-uninstall:
+k8s-uninstall:
     helm uninstall ledger-v3-poc
 
-watch:
+k8s-watch:
     watch -n 1 kubectl get pods -l app.kubernetes.io/name=ledger-v3-poc
+
+k8s-logs:
+    kubectl logs -f statefulset/ledger-v3-poc
+
+k8s-describe-ss:
+    kubectl describe statefulset/ledger-v3-poc
+
+k8s-describe-pod:
+    kubectl describe pods/ledger-v3-poc-0
+

@@ -37,6 +37,7 @@ data/
 .DS_Store
 Thumbs.db
 
-# Server binary
+# Binaries
 server
 client
+performance
