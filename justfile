@@ -93,9 +93,12 @@ docker-build:
     docker push ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest
 
 install: docker-build
-    helm install ledger-v3-poc \
+    helm upgrade --install ledger-v3-poc \
         ./deployments/chart \
-        --set image.repository=${REGISTRY:-ghcr.io}rmancehq/ledger-v3-poc
+        --set image.repository=${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc
 
 uninstall:
-    helm uninstall ledger-v3-podc
+    helm uninstall ledger-v3-poc
+
+watch:
+    watch -n 1 kubectl get pods -l app.kubernetes.io/name=ledger-v3-poc

@@ -11,7 +11,10 @@ COPY pkg/client/go.* pkg/client/
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY main.go .
+COPY internal internal
+COPY cmd cmd
+COPY pkg pkg
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ledger-v3-poc .

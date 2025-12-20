@@ -102,7 +102,7 @@
             protoc-gen-go
             protoc-gen-go-grpc
             yq-go
-            helm
+            kubernetes-helm
           ];
           unstablePackages = with pkgs-unstable; [
             golangci-lint
