@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
+	"google.golang.org/grpc"
 )
 
 // Cursor provides a way to iterate over a stream of items
@@ -14,6 +15,30 @@ type Cursor[T any] interface {
 	Next(ctx context.Context) (T, error)
 	// Close closes the cursor and releases any resources
 	Close() error
+}
+
+type GRPCStreamCursor[Res, To any] struct {
+	client grpc.ServerStreamingClient[Res]
+	mapper func(Res) (To, error)
+}
+
+func (cursor GRPCStreamCursor[Res, To]) Next(ctx context.Context) (To, error) {
+	next, err := cursor.client.Recv()
+	if err != nil {
+		var zero To
+		return zero, err
+	}
+	return cursor.mapper(*next)
+}
+
+func (cursor GRPCStreamCursor[Res, To]) Close() error {
+	return cursor.client.CloseSend()
+}
+
+var _ Cursor[any] = (*GRPCStreamCursor[any, any])(nil)
+
+func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], mapper func(Res) (To, error)) Cursor[To] {
+	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
 }
 
 // LogWriter handles log writing operations

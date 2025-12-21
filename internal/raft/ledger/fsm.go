@@ -11,20 +11,21 @@ import (
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
 // FSM represents the finite state machine for a ledger Raft group
 // It manages a single ledger
 type FSM struct {
-	mu        sync.RWMutex       // Protects access to state
-	state     ledger.LedgerState // FSM state
-	logger    logging.Logger
-	logWriter service.LogWriter
-	logReader service.LogReader // LogReader to catch up logs from leader via gRPC
+	mu                sync.RWMutex       // Protects access to state
+	state             ledger.LedgerState // FSM state
+	logger            logging.Logger
+	logWriter         service.LogWriter
+	logReaderProvider func(uint64) service.LogReader // LogReader to catch up logs from leader via gRPC
 }
 
 // newFSM creates a new ledger FSM
-func newFSM(logger logging.Logger, logStore service.LogWriter, logReader service.LogReader, ledgerInfo ledger.LedgerInfo) *FSM {
+func newFSM(logger logging.Logger, logStore service.LogWriter, logReaderProvider func(uint64) service.LogReader, ledgerInfo ledger.LedgerInfo) *FSM {
 	return &FSM{
 		state: ledger.LedgerState{
 			LedgerInfo:   ledgerInfo,
@@ -34,8 +35,8 @@ func newFSM(logger logging.Logger, logStore service.LogWriter, logReader service
 			"service": "ledger.fsm",
 			"ledger":  ledgerInfo.Name,
 		}),
-		logWriter: logStore,
-		logReader: logReader,
+		logWriter:         logStore,
+		logReaderProvider: logReaderProvider,
 	}
 }
 
@@ -59,7 +60,7 @@ func (f *FSM) processInsertLog(cmd raft.Command) (*ledger.Log, error) {
 	}
 
 	// Convert protobuf Log to ledger.Log
-	log, err := logFromProto(insertCmd.Log)
+	log, err := service.LogFromProto(insertCmd.Log)
 	if err != nil {
 		f.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to convert log from proto")
 		return nil, err
@@ -128,10 +129,10 @@ func (f *FSM) CreateSnapshot(ctx context.Context) ([]byte, error) {
 }
 
 // RestoreSnapshot restores the ledger FSM from a snapshot
-func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
+func (f *FSM) RestoreSnapshot(ctx context.Context, leader uint64, snapshot raftpb.Snapshot) {
 	var snapshotData ledger.LedgerState
 
-	if err := json.Unmarshal(data, &snapshotData); err != nil {
+	if err := json.Unmarshal(snapshot.Data, &snapshotData); err != nil {
 		panic(err)
 	}
 
@@ -153,7 +154,7 @@ func (f *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 		}).Infof("Log store is ahead of snapshot, catching up logs")
 
 		// Read all logs from the reader starting from the sequence after the snapshot
-		cursor, err := f.logReader.GetAllLogs(ctx, storeLastSequence, snapshotData.LastSequence) // 0 = no limit
+		cursor, err := f.logReaderProvider(leader).GetAllLogs(ctx, storeLastSequence, snapshotData.LastSequence) // 0 = no limit
 		if err != nil {
 			panic(fmt.Errorf("getting logs from reader for catch-up: %w", err))
 		}

@@ -74,7 +74,7 @@ func createTestLogs(t *testing.T, ledgerName string) []ledger.Log {
 			WithDate(now.Add(3 * time.Second)),
 
 		// Log 5: RevertedTransaction
-		ledger.NewLog(ledger.RevertedTransaction{
+		ledger.NewLog(&ledger.RevertedTransaction{
 			RevertedTransaction: ledger.NewTransaction().
 				WithPostings(
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),

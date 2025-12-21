@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
@@ -132,25 +133,45 @@ var _ = Describe("Simple cluster", func() {
 			Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 		})
 		It("Should properly rejoin the cluster", func() {
-			Eventually(func(g Gomega) bool {
+			Eventually(func(g Gomega) error {
 				clusterState, err := servers[followerID-1].client.Cluster.GetClusterState(ctx)
 				g.Expect(err).To(Succeed())
 
 				if clusterState.ClusterStateResponse.Data.Leader == nil {
-					return false
+					return fmt.Errorf("leader is nil")
 				}
-				if *clusterState.ClusterStateResponse.Data.Leader == 0 {
-					return false
+				if *clusterState.ClusterStateResponse.Data.Leader != leaderID {
+					return fmt.Errorf("expected leader to be %d, got %d", leaderID, *clusterState.ClusterStateResponse.Data.Leader)
+				}
+				// The node should not trigger an election
+				if *clusterState.ClusterStateResponse.Data.Leader == clusterState.ClusterStateResponse.Data.LocalNode {
+					return fmt.Errorf("expected leader to be different from local node")
 				}
 
-				return true
+				return nil
 			}).
-				Within(5 * time.Second).
+				Within(10 * time.Second).
 				WithPolling(500 * time.Millisecond).
-				To(BeTrue())
+				To(BeNil())
+
+			Consistently(func(g Gomega) error {
+				clusterState, err := servers[followerID-1].client.Cluster.GetClusterState(ctx)
+				g.Expect(err).To(Succeed())
+
+				if clusterState.ClusterStateResponse.Data.Leader == nil {
+					return fmt.Errorf("leader is nil")
+				}
+				if *clusterState.ClusterStateResponse.Data.Leader != leaderID {
+					return fmt.Errorf("expected leader to be %d, got %d", leaderID, *clusterState.ClusterStateResponse.Data.Leader)
+				}
+
+				return nil
+			}).
+				Within(2 * time.Second).
+				WithPolling(500 * time.Millisecond).
+				To(BeNil())
 		})
 	})
-
 	Context("when the leader is down", func() {
 		BeforeEach(func() {
 			Eventually(func(g Gomega) int64 {
@@ -173,10 +194,12 @@ var _ = Describe("Simple cluster", func() {
 				return state.ClusterStateResponse.Data.Leader != nil &&
 					*state.ClusterStateResponse.Data.Leader != 0 &&
 					*state.ClusterStateResponse.Data.Leader != leaderID
-			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
+			}).
+				Within(5 * time.Second).
+				WithPolling(500 * time.Millisecond).
+				To(BeTrue())
 		})
 	})
-
 	Context("When creating a new ledger", func() {
 		BeforeEach(func() {
 			_, err := servers[0].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
@@ -196,7 +219,6 @@ var _ = Describe("Simple cluster", func() {
 			It("Should succeed", func() {})
 		})
 	})
-
 	Context("When creating transactions through all nodes", func() {
 		var ledgerName string
 
@@ -239,32 +261,13 @@ var _ = Describe("Simple cluster", func() {
 			}
 		})
 	})
-
 	Context("When losing a follower", func() {
 		var (
-			leaderID   uint64
-			followerID uint64
+			followerID int64
 		)
 		BeforeEach(func() {
-			// Wait for leader election
-			Eventually(func(g Gomega) uint64 {
-				state, err := servers[0].client.Cluster.GetClusterState(ctx)
-				g.Expect(err).To(Succeed())
-
-				leaderID = uint64(*state.ClusterStateResponse.Data.Leader)
-				return leaderID
-			}).Within(5 * time.Second).WithPolling(500 * time.Millisecond).NotTo(BeZero())
-
 			// Find a follower (any node that is not the leader)
-			for i := range countInstances {
-				if uint64(i+1) != leaderID {
-					followerID = uint64(i + 1)
-					break
-				}
-			}
-			Expect(followerID).NotTo(BeZero(), "followerID should not be zero - all nodes cannot be leaders")
-			Expect(followerID).To(BeNumerically(">", 0))
-			Expect(followerID).To(BeNumerically("<=", countInstances))
+			followerID = ((leaderID + 1) % countInstances) + 1
 
 			// Stop the follower
 			Expect(servers[followerID-1].service.Stop(ctx)).To(Succeed())
@@ -311,7 +314,9 @@ var _ = Describe("Simple cluster", func() {
 			}
 		})
 		Context("Then creating a new ledger", func() {
-			var ledgerName string
+			var (
+				ledgerName string
+			)
 			BeforeEach(func() {
 				ledgerName = "ledger2"
 				// Create a ledger while follower is down
@@ -362,76 +367,102 @@ var _ = Describe("Simple cluster", func() {
 					Expect(ledger.GetGetLedgerResponse().Data.Name).To(Equal(ledgerName))
 				})
 			})
-		})
-		Context("Then creating more transactions than the snapshot threshold", func() {
-			var ledgerName string
-			BeforeEach(func() {
-				// Create a ledger
-				ledgerName = "ledger-snapshot"
 
-				_, err := servers[leaderID-1].client.Ledgers.CreateLedger(ctx, operations.CreateLedgerRequest{
-					LedgerName: ledgerName,
-					CreateLedgerRequest: components.CreateLedgerRequest{
-						Driver: components.CreateLedgerRequestDriverSqlite.ToPointer(),
-					},
-				})
-				Expect(err).To(Succeed())
-
-				// Create enough transactions to trigger a snapshot
-				// snapshotThreshold is 10, so we create 11 transactions to ensure a snapshot is created
-				for i := 0; i < 11; i++ {
-					_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
-						LedgerName: ledgerName,
-						CreateTransactionRequest: components.CreateTransactionRequest{
-							Postings: []components.PostingRequest{{
-								Source:      "world",
-								Destination: "bank",
-								Amount:      big.NewInt(100),
-								Asset:       "USD",
-							}},
-						},
-					})
-					Expect(err).To(Succeed())
-				}
-
-				// Wait for snapshot to be created (verify by checking that ledger exists)
-				Eventually(func(g Gomega) bool {
-					// Verify the ledger exists
-					ledger, err := servers[leaderID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-						LedgerName: ledgerName,
-					})
-					g.Expect(err).To(Succeed())
-					return ledger.GetGetLedgerResponse().Data.Name == ledgerName
-				}).Within(5 * time.Second).WithPolling(200 * time.Millisecond).Should(BeTrue())
-			})
-
-			Context("Then the follower come back", func() {
+			Context("Then creating more transactions than the snapshot threshold", func() {
 				BeforeEach(func() {
-					// Restart the follower
-					Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
+					// Create enough transactions to trigger a snapshot
+					// snapshotThreshold is 10, so we create 11 transactions to ensure a snapshot is created
+					for i := 0; i < 11; i++ {
+						_, err := servers[leaderID-1].client.Transactions.CreateTransaction(ctx, operations.CreateTransactionRequest{
+							LedgerName: ledgerName,
+							CreateTransactionRequest: components.CreateTransactionRequest{
+								Postings: []components.PostingRequest{{
+									Source:      "world",
+									Destination: "bank",
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+								}},
+							},
+						})
+						Expect(err).To(Succeed())
+					}
+
+					// todo: check the snapshot has been created
 				})
 
-				It("Should restore the state from a snapshot sent by the leader", func() {
-					// Wait for follower to reconnect and sync
-					Eventually(func(g Gomega) bool {
-						// Verify the follower is connected
-						state, err := servers[followerID-1].client.Cluster.GetClusterState(ctx)
-						g.Expect(err).To(Succeed())
+				Context("Then the follower come back", func() {
+					var (
+						leaderState *operations.GetLedgerRaftStateResponse
+						err         error
+					)
+					BeforeEach(func() {
+						// Restart the follower
+						By("Starting the follower", func() {
+							leaderState, err = servers[leaderID-1].client.Ledgers.GetLedgerRaftState(ctx, operations.GetLedgerRaftStateRequest{
+								LedgerName: ledgerName,
+							})
+							Expect(err).To(Succeed())
 
-						// todo: check the number of servers
+							spew.Dump(leaderState.LedgerClusterStateResponse.Data.InnerState)
 
-						return state.ClusterStateResponse.Data.Leader != nil &&
-							*state.ClusterStateResponse.Data.Leader != 0
-					}).Within(10 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
-
-					// Verify the follower can see the ledger
-					Eventually(func(g Gomega) bool {
-						ledger, err := servers[followerID-1].client.Ledgers.GetLedger(ctx, operations.GetLedgerRequest{
-							LedgerName: ledgerName,
+							Expect(servers[followerID-1].service.Start(ctx)).To(Succeed())
 						})
-						g.Expect(err).To(Succeed())
-						return ledger.GetGetLedgerResponse().Data.Name == ledgerName
-					}).Within(5 * time.Second).WithPolling(100 * time.Millisecond).To(BeTrue())
+
+						Eventually(func(g Gomega) error {
+							clusterState, err := servers[followerID-1].client.Cluster.GetClusterState(ctx)
+							g.Expect(err).To(Succeed())
+
+							if clusterState.ClusterStateResponse.Data.Leader == nil {
+								return fmt.Errorf("leader is nil")
+							}
+							if *clusterState.ClusterStateResponse.Data.Leader != leaderID {
+								return fmt.Errorf("expected leader to be %d, got %d", leaderID, *clusterState.ClusterStateResponse.Data.Leader)
+							}
+							// The node should not trigger an election
+							if *clusterState.ClusterStateResponse.Data.Leader == clusterState.ClusterStateResponse.Data.LocalNode {
+								return fmt.Errorf("expected leader to be different from local node")
+							}
+
+							return nil
+						}).
+							Within(10 * time.Second).
+							WithPolling(500 * time.Millisecond).
+							To(BeNil())
+					})
+
+					It("Should restore the state from a snapshot sent by the leader", func() {
+						// Wait for follower to reconnect and sync
+						Eventually(func(g Gomega) error {
+							clusterState, err := servers[followerID-1].client.Ledgers.GetLedgerRaftState(ctx, operations.GetLedgerRaftStateRequest{
+								LedgerName: ledgerName,
+							})
+							g.Expect(err).To(Succeed())
+
+							if clusterState.LedgerClusterStateResponse.Data.Leader == nil {
+								return fmt.Errorf("leader is nil")
+							}
+							if *clusterState.LedgerClusterStateResponse.Data.Leader != *leaderState.LedgerClusterStateResponse.Data.Leader {
+								return fmt.Errorf("expected leader to be %d, got %d", leaderID, *clusterState.LedgerClusterStateResponse.Data.Leader)
+							}
+							// The node should not trigger an election
+							if *clusterState.LedgerClusterStateResponse.Data.Leader == clusterState.LedgerClusterStateResponse.Data.LocalNode {
+								return fmt.Errorf("expected leader to be different from local node")
+							}
+
+							if clusterState.LedgerClusterStateResponse.Data.InnerState.LastSequence !=
+								leaderState.LedgerClusterStateResponse.Data.InnerState.LastSequence {
+								return fmt.Errorf("expected last sequence to be %d, got %d",
+									leaderState.LedgerClusterStateResponse.Data.InnerState.LastSequence,
+									clusterState.LedgerClusterStateResponse.Data.InnerState.LastSequence,
+								)
+							}
+
+							return nil
+						}).
+							Within(10 * time.Second).
+							WithPolling(500 * time.Millisecond).
+							To(BeNil())
+					})
 				})
 			})
 		})

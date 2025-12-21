@@ -72,7 +72,7 @@ func Module() fx.Option {
 					OnStart: func(ctx context.Context) error {
 						go func() {
 							if err := grpcServer.Start(); err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("gRPC server error")
+								panic(err)
 							}
 						}()
 						return nil
@@ -80,6 +80,11 @@ func Module() fx.Option {
 					OnStop: func(ctx context.Context) error {
 						return grpcServer.Stop()
 					},
+				})
+			},
+			func(lc fx.Lifecycle, raftTransport *raft.GRPCTransport, logger logging.Logger) {
+				lc.Append(fx.Hook{
+					OnStop: raftTransport.Stop,
 				})
 			},
 			func(lc fx.Lifecycle, systemNode *system.Node, logger logging.Logger) (*system.Node, error) {

@@ -85,11 +85,16 @@ message Log {
 
 message LogPayload {
   oneof payload {
-    common.Transaction created_transaction = 1;
+    CreatedTransaction created_transaction = 1;
     RevertedTransaction reverted_transaction = 2;
     SavedMetadata saved_metadata = 3;
     DeletedMetadata deleted_metadata = 4;
   }
+}
+
+message CreatedTransaction {
+  common.Transaction transaction = 1;
+  map<string, google.protobuf.Struct> account_metadata = 2;
 }
 
 message RevertedTransaction {

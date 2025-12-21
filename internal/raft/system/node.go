@@ -20,7 +20,11 @@ type Node struct {
 	multiplexedTransport *multiplexedTransport
 }
 
-func NewNode(config Config, logger logging.Logger, transport *raft.GRPCTransport) (*Node, error) {
+func NewNode(
+	config Config,
+	logger logging.Logger,
+	transport *raft.GRPCTransport,
+) (*Node, error) {
 	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -162,17 +166,18 @@ func (node *Node) ResolveLedgerLeader(ctx context.Context, name string) (uint64,
 }
 
 func (node *Node) Stop(ctx context.Context) error {
-	node.logger.Info("Stopping multiplexed transport")
-	node.multiplexedTransport.Stop()
-
-	node.logger.Info("Stopping FSM")
+	node.logger.Info("Stopping system FSM...")
 	if err := node.Inner().Stop(ctx); err != nil {
 		return nil
 	}
 
-	node.logger.Info("Stopping raft node")
-	defer func() {
-		node.logger.Info("Raft node stopped")
-	}()
-	return node.Node.Stop(ctx)
+	node.logger.Info("Stopping raft node...")
+	if err := node.Node.Stop(ctx); err != nil {
+		return err
+	}
+
+	node.logger.Info("Stopping multiplexed transport...")
+	node.multiplexedTransport.Stop()
+
+	return nil
 }

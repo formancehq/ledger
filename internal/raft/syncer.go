@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
 type syncer[State any, F FSM[State]] struct {
@@ -22,7 +23,7 @@ func (s *syncer[State, F]) CreateSnapshot(ctx context.Context) ([]byte, error) {
 	return s.fsm.CreateSnapshot(ctx)
 }
 
-func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, data []byte) {
+func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, leader uint64, data raftpb.Snapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -33,7 +34,7 @@ func (s *syncer[State, F]) RestoreSnapshot(ctx context.Context, data []byte) {
 	s.logger.Infof("Restoring snapshot - switching to syncing mode")
 	s.syncing = true
 	go func() {
-		s.fsm.RestoreSnapshot(ctx, data)
+		s.fsm.RestoreSnapshot(ctx, leader, data)
 
 		for {
 			s.mu.Lock()

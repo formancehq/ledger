@@ -434,12 +434,12 @@ func (s *WALStorage) Append(entries []raftpb.Entry) error {
 // CreateSnapshot creates a snapshot at the given index
 func (s *WALStorage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte) (raftpb.Snapshot, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Allow creating snapshot at index 0 if storage is empty (for initial cluster setup)
 	// Otherwise, prevent creating snapshot at same or lower index
 	isEmptyInitial := i == 0 && s.snapshot.Metadata.Index == 0 && len(s.snapshot.Metadata.ConfState.Voters) == 0 && len(s.entries) == 0
 	if !isEmptyInitial && i <= s.snapshot.Metadata.Index {
-		s.mu.Unlock()
 		return raftpb.Snapshot{}, ErrSnapOutOfDate
 	}
 
@@ -453,7 +453,6 @@ func (s *WALStorage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte)
 	} else {
 		term, err = s.termLocked(i)
 		if err != nil {
-			s.mu.Unlock()
 			return raftpb.Snapshot{}, err
 		}
 	}
@@ -467,7 +466,6 @@ func (s *WALStorage) CreateSnapshot(i uint64, cs *raftpb.ConfState, data []byte)
 		Data: data,
 	}
 	snap := s.snapshot
-	s.mu.Unlock()
 
 	// Save to disk (outside of lock to avoid blocking)
 	if err := s.saveSnapshotAndHardState(); err != nil {

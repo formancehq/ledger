@@ -73,7 +73,7 @@ func NewNode(
 	cfg raft.NodeConfig,
 	logger logging.Logger,
 	extraDataDir string,
-	logReader service.LogReader,
+	recoveryLogReader func(uint64) service.LogReader,
 ) (*Node, error) {
 
 	// Create Raft storage for this ledger
@@ -89,8 +89,8 @@ func NewNode(
 	}
 
 	// Create ledger FSM for managing the ledger
-	// logReader is used for catching up logs from leader via gRPC
-	ledgerFSM := newFSM(logger, appLogStore, logReader, ledgerInfo)
+	// recoveryLogReader is used for catching up logs from leader via gRPC
+	ledgerFSM := newFSM(logger, appLogStore, recoveryLogReader, ledgerInfo)
 
 	ret := &Node{
 		config:     cfg,

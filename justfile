@@ -85,8 +85,8 @@ generate-proto:
         proto/system.proto \
         proto/ledger.proto \
         proto/commands/commands.proto \
+        proto/commands/ledger_commands.proto \
         proto/commands/system_commands.proto
-    @echo "gRPC code generated in internal/raft/, internal/service/, and internal/raft/fsm/, internal/raft/bucketfsm/"
 
 docker-build:
     docker build --platform linux/amd64 -t ${REGISTRY:-ghcr.io}/formancehq/ledger-v3-poc:latest .

@@ -3,58 +3,66 @@ package raft
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/transport"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+type Incoming struct {
+	Msg raftpb.Message
+	Rsp chan error
+}
 
 // GRPCTransport handles network communication between Raft nodes using gRPC
 // It wraps GRPCClientPool and manages Raft-specific message routing and channels
 type GRPCTransport struct {
+	UnimplementedRaftTransportServiceServer
 	connectionPool *transport.ConnectionPool
 
-	// Channel for incoming messages
-	recvCh chan raftpb.Message
+	// Channel for Incoming messages
+	recvCh chan Incoming
 
 	// Channels for outgoing messages per peer
-	sendChs map[uint64]chan raftpb.Message
+	peers map[uint64]peerConnection
 
 	// Channel for reporting unreachable peers
 	unreachableCh chan uint64
 
 	logger logging.Logger
-	ctx    context.Context
-	cancel context.CancelFunc
 }
 
 // NewTransport creates a new transport with a gRPC connection pool and client pool
 func NewTransport(logger logging.Logger, connectionPool *transport.ConnectionPool) *GRPCTransport {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &GRPCTransport{
 		connectionPool: connectionPool,
-		recvCh:         make(chan raftpb.Message, 100),
-		sendChs:        make(map[uint64]chan raftpb.Message),
+		recvCh:         make(chan Incoming, 100),
+		peers:          make(map[uint64]peerConnection),
 		unreachableCh:  make(chan uint64, 100),
 		logger:         logger,
-		ctx:            ctx,
-		cancel:         cancel,
 	}
 }
 
 // Stop stops the transport
-func (t *GRPCTransport) Stop() {
-	t.cancel()
-	close(t.recvCh)
-	close(t.unreachableCh)
-	for _, ch := range t.sendChs {
-		close(ch)
+func (t *GRPCTransport) Stop(ctx context.Context) error {
+	t.logger.Infof("Stopping raft transport")
+	for _, peerConnection := range t.peers {
+		if err := peerConnection.stop(ctx); err != nil {
+			return err
+		}
 	}
-	t.connectionPool.Close()
+
+	if err := t.connectionPool.Close(); err != nil {
+		return err
+	}
+
+	//close(t.recvCh)
+	close(t.unreachableCh)
+
+	return nil
 }
 
 // AddPeer adds a peer to the transport
@@ -64,30 +72,28 @@ func (t *GRPCTransport) AddPeer(id uint64, addr string) {
 		return
 	}
 
-	if _, exists := t.sendChs[id]; !exists {
-		t.sendChs[id] = make(chan raftpb.Message, 100)
-		go t.sendLoop(id, addr)
-	}
-}
+	if _, exists := t.peers[id]; !exists {
+		conn := peerConnection{
+			sendCh:        make(chan raftpb.Message, 100),
+			closeCh:       make(chan chan struct{}),
+			unreachableCh: t.unreachableCh,
+			connection:    t.connectionPool.GetConnection(id),
+			logger:        t.logger.WithFields(map[string]any{"peer": fmt.Sprintf("%x", id)}),
+			peerID:        id,
+		}
+		t.peers[id] = conn
 
-// RemovePeer removes a peer from the transport
-func (t *GRPCTransport) RemovePeer(id uint64) {
-	t.connectionPool.RemovePeer(id)
-
-	if ch, exists := t.sendChs[id]; exists {
-		close(ch)
-		delete(t.sendChs, id)
+		go conn.loop()
 	}
 }
 
 // Send sends a message to a peer
 func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
-	ch, exists := t.sendChs[peerID]
+	peer, exists := t.peers[peerID]
 
 	if exists {
 		select {
-		case ch <- msg:
-		case <-t.ctx.Done():
+		case peer.sendCh <- msg:
 		default:
 			t.logger.
 				WithFields(map[string]any{
@@ -107,7 +113,7 @@ func (t *GRPCTransport) Send(peerID uint64, msg raftpb.Message) {
 }
 
 // Recv returns the channel for receiving messages
-func (t *GRPCTransport) Recv() <-chan raftpb.Message {
+func (t *GRPCTransport) Recv() <-chan Incoming {
 	return t.recvCh
 }
 
@@ -127,96 +133,63 @@ func (t *GRPCTransport) GetPeerAddress(peerID uint64) string {
 	return t.connectionPool.GetPeerAddress(peerID)
 }
 
-// sendLoop sends messages to a peer using gRPC
-func (t *GRPCTransport) sendLoop(peerID uint64, addr string) {
+// HandleStreamMessages handles client streaming gRPC connection for receiving messages
+// This maintains a persistent connection to avoid frequent reconnections
+// The server receives all messages and sends a single response at the end
+func (t *GRPCTransport) StreamMessages(stream grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]) error {
+
+	// Receive all messages from the stream
 	for {
-		select {
-		case <-t.ctx.Done():
-			return
-		case msg, ok := <-t.sendChs[peerID]:
-			if !ok {
-				return
-			}
-
-			// Send message via gRPC with timeout
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			t.logger.WithFields(map[string]any{"type": msg.Type.String(), "peer": fmt.Sprintf("%x", peerID), "addr": addr}).Debugf("Sending message to peer via gRPC")
-
-			data, err := msg.Marshal()
-			if err != nil {
-				panic(err)
-			}
-
-			conn := NewRaftTransportServiceClient(t.connectionPool.GetConnection(peerID))
-			if _, err := conn.SendMessage(ctx, &SendMessageRequest{
-				Message: data,
-			}); err != nil {
-				status, ok := status.FromError(err)
-				if ok && status.Code() == codes.Unavailable {
-					t.logger.
-						WithFields(map[string]any{
-							"peer":   fmt.Sprintf("%x", peerID),
-							"status": status,
-						}).
-						Errorf("Peer offline")
-				} else {
-					t.logger.
-						WithFields(map[string]any{"peer": fmt.Sprintf("%x", peerID), "error": err}).
-						Errorf("Failed to send message via gRPC")
-				}
-				cancel()
-				// Report peer as unreachable
-				select {
-				case t.unreachableCh <- peerID:
-				case <-t.ctx.Done():
-					return
-				default:
-				}
-				continue
-			}
-			cancel()
+		req, err := stream.Recv()
+		if err != nil {
+			return err
 		}
-	}
-}
 
-// HandleSendMessage handles unary gRPC calls for sending messages
-// This method can be called from an external gRPC server
-func (t *GRPCTransport) HandleSendMessage(ctx context.Context, req *SendMessageRequest) (*SendMessageResponse, error) {
-	var msg raftpb.Message
-	if err := msg.Unmarshal(req.Message); err != nil {
-		return &SendMessageResponse{
-			Error: fmt.Sprintf("failed to unmarshal message: %v", err),
-		}, nil
-	}
+		var msg raftpb.Message
+		if err := msg.Unmarshal(req.Message); err != nil {
+			if err := stream.Send(&SendMessageResponse{
+				Error:     fmt.Sprintf("failed to unmarshal message: %v", err),
+				RequestId: req.Id,
+			}); err != nil {
+				return err
+			}
+			continue
+		}
 
-	// Send message to recvChs for processing
-	select {
-	case t.recvCh <- msg:
-		t.logger.
-			WithFields(map[string]any{
-				"type": msg.Type.String(),
-				"from": fmt.Sprintf("%x", msg.From),
-				"to":   fmt.Sprintf("%x", msg.To),
-			}).
-			Debugf("Received message via gRPC")
-		return &SendMessageResponse{Success: true}, nil
-	case <-ctx.Done():
-		return &SendMessageResponse{
-			Success: false,
-			Error:   "context cancelled",
-		}, nil
-	default:
-		t.logger.
-			WithFields(map[string]any{
-				"type": msg.Type.String(),
-				"from": fmt.Sprintf("%x", msg.From),
-				"to":   fmt.Sprintf("%x", msg.To),
-			}).
-			Errorf("Recv channel full, dropping message")
-		return &SendMessageResponse{
-			Success: false,
-			Error:   "recv channel full",
-		}, nil
+		// Send message to recvCh for processing
+		rspChan := make(chan error)
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case t.recvCh <- Incoming{
+			Msg: msg,
+			Rsp: rspChan,
+		}:
+			select {
+			case <-stream.Context().Done():
+				return stream.Context().Err()
+			case ret := <-rspChan:
+				if err := stream.Send(&SendMessageResponse{
+					Success: ret == nil,
+					Error: func() string {
+						if ret != nil {
+							return ret.Error()
+						}
+						return ""
+					}(),
+					RequestId: req.Id,
+				}); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := stream.Send(&SendMessageResponse{
+				Error:     "recv channel full, dropping message",
+				RequestId: req.Id,
+			}); err != nil {
+				return err
+			}
+		}
 	}
 }
 
@@ -227,16 +200,144 @@ func RegisterRaftTransportService(server *grpc.Server, transport *GRPCTransport)
 
 // RegisterRaftService registers the RaftTransportService on the given gRPC server
 func (t *GRPCTransport) RegisterRaftService(server *grpc.Server) {
-	grpcTransportServer := &grpcTransportServerWrapper{transport: t}
-	RegisterRaftTransportServiceServer(server, grpcTransportServer)
+	RegisterRaftTransportServiceServer(server, t)
 }
 
-// grpcTransportServerWrapper wraps the transport to implement RaftTransportServiceServer
-type grpcTransportServerWrapper struct {
-	UnimplementedRaftTransportServiceServer
-	transport *GRPCTransport
+type peerConnection struct {
+	sendCh        chan raftpb.Message
+	closeCh       chan chan struct{}
+	unreachableCh chan uint64
+	connection    *grpc.ClientConn
+	logger        logging.Logger
+	peerID        uint64
 }
 
-func (s *grpcTransportServerWrapper) SendMessage(ctx context.Context, req *SendMessageRequest) (*SendMessageResponse, error) {
-	return s.transport.HandleSendMessage(ctx, req)
+func (conn *peerConnection) loop() {
+	// Retry loop to reconnect if stream is closed
+
+	messageID := uint64(0)
+	for {
+		select {
+		case ch := <-conn.closeCh:
+			close(ch)
+			return
+		default:
+		}
+
+		// Create client streaming connection
+		client := NewRaftTransportServiceClient(conn.connection)
+		stream, err := client.StreamMessages(context.Background())
+		if err != nil {
+			conn.logger.
+				WithFields(map[string]any{
+					"error": err,
+				}).
+				Errorf("Failed to create stream to peer")
+			// Report peer as unreachable
+			select {
+			case conn.unreachableCh <- conn.peerID:
+			default:
+				conn.logger.Errorf("Unreachable channel full, dropping unreachable")
+			}
+			// Wait before retrying
+			select {
+			case ch := <-conn.closeCh:
+				close(ch)
+				return
+			case <-time.After(300 * time.Millisecond): //todo: make configurable
+			}
+			continue
+		}
+		conn.logger.Infof("Created stream to peer")
+
+		pending := make(map[uint64]uint64)
+		mu := sync.Mutex{}
+		go func() {
+			for {
+				res, err := stream.Recv()
+				if err != nil {
+					return
+				}
+				if !res.Success {
+					mu.Lock()
+					nodeID, ok := pending[res.RequestId]
+					if ok {
+						delete(pending, res.RequestId)
+					}
+					mu.Unlock()
+					if ok {
+						conn.unreachableCh <- nodeID
+					}
+				}
+			}
+		}()
+
+	l:
+		for {
+			select {
+			case ch := <-conn.closeCh:
+				close(ch)
+				return
+			case msg := <-conn.sendCh:
+				data, err := msg.Marshal()
+				if err != nil {
+					conn.logger.
+						WithFields(map[string]any{
+							"error": err,
+						}).
+						Errorf("Failed to marshal message")
+					continue
+				}
+
+				conn.logger.
+					WithFields(map[string]any{
+						"type": msg.Type.String(),
+					}).
+					Debugf("Sending message to peer via stream")
+
+				mu.Lock()
+				pending[messageID] = msg.To
+				mu.Unlock()
+				messageID++
+
+				if err := stream.Send(&SendMessageRequest{
+					Message: data,
+					Id:      messageID,
+				}); err != nil {
+					conn.logger.
+						WithFields(map[string]any{
+							"error": err,
+						}).
+						Errorf("Failed to send message via stream")
+					// Report peer as unreachable
+					select {
+					case conn.unreachableCh <- msg.To:
+					default:
+						conn.logger.Errorf("Unreachable channel full, dropping unreachable")
+					}
+					break l
+				}
+			}
+		}
+
+		_ = stream.CloseSend()
+	}
+}
+
+func (conn *peerConnection) stop(ctx context.Context) error {
+	conn.logger.Infof("Stopping peer connection")
+	ch := make(chan struct{})
+	select {
+	case conn.closeCh <- ch:
+		select {
+		case <-ch:
+			close(conn.closeCh)
+			close(conn.sendCh)
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

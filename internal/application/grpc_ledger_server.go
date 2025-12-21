@@ -258,7 +258,10 @@ func logPayloadToLedgerProto(payload ledger.LogPayload) (*service.LogPayload, er
 	case *ledger.CreatedTransaction:
 		return &service.LogPayload{
 			Payload: &service.LogPayload_CreatedTransaction{
-				CreatedTransaction: transactionToProto(p.Transaction),
+				CreatedTransaction: &service.CreatedTransaction{
+					Transaction:     transactionToProto(p.Transaction),
+					AccountMetadata: metadataMapToProto(p.AccountMetadata),
+				},
 			},
 		}, nil
 	case *ledger.RevertedTransaction:
@@ -304,7 +307,7 @@ func logPayloadToLedgerProto(payload ledger.LogPayload) (*service.LogPayload, er
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("unknown log payload type: %T", payload)
+		return nil, fmt.Errorf("unknown log payload type: %#T", payload)
 	}
 }
 
@@ -354,4 +357,3 @@ func metadataMapToProto(md map[string]metadata.Metadata) map[string]*structpb.St
 	}
 	return result
 }
-

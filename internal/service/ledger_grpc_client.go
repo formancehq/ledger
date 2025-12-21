@@ -89,7 +89,7 @@ func (g *LedgerGrpcClient) SaveAccountMetadata(ctx context.Context, ledgerName s
 	}
 
 	// Convert protobuf response to service types
-	log, err := logFromLedgerProto(resp.Log)
+	log, err := LogFromLedgerProto(resp.Log)
 	if err != nil {
 		return nil, fmt.Errorf("converting log from protobuf: %w", err)
 	}
@@ -172,7 +172,7 @@ func (g *LedgerGrpcClient) GetAllLogs(ctx context.Context, from uint64, to uint6
 			}
 
 			// Convert protobuf Log to ledger.Log
-			log, err := logFromLedgerProto(resp.Log)
+			log, err := LogFromLedgerProto(resp.Log)
 			if err != nil {
 				// Conversion error - channel will be closed
 				panic(err)
@@ -238,7 +238,7 @@ func (g *LedgerGrpcClient) createTransactionRequestToProto(ledgerName string, pa
 	}
 
 	return &CreateTransactionRequest{
-		Ledger:         g.name,
+		Ledger:          g.name,
 		AccountMetadata: accountMetadata,
 		Timestamp:       timestamp,
 		Metadata:        metadata,
@@ -309,8 +309,8 @@ func (g *LedgerGrpcClient) createTransactionResponseFromProto(resp *CreateTransa
 	return &log, createdTx, nil
 }
 
-// logFromLedgerProto converts a ledger.proto Log to ledger.Log
-func logFromLedgerProto(l *Log) (ledger.Log, error) {
+// LogFromLedgerProto converts a ledger.proto Log to ledger.Log
+func LogFromLedgerProto(l *Log) (ledger.Log, error) {
 	log := ledger.Log{
 		Type:            ledger.LogType(l.Type),
 		IdempotencyKey:  l.IdempotencyKey,
@@ -345,12 +345,21 @@ func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
 
 	switch p := payload.Payload.(type) {
 	case *LogPayload_CreatedTransaction:
-		tx, err := transactionFromLedgerProto(p.CreatedTransaction)
+		tx, err := transactionFromLedgerProto(p.CreatedTransaction.Transaction)
 		if err != nil {
 			return nil, err
 		}
+
+		accountMetadata := make(ledger.AccountMetadata)
+		for addr, md := range p.CreatedTransaction.AccountMetadata {
+			if md != nil {
+				accountMetadata[addr] = StructToMetadata(md)
+			}
+		}
+
 		return &ledger.CreatedTransaction{
-			Transaction: tx,
+			Transaction:     tx,
+			AccountMetadata: accountMetadata,
 		}, nil
 	case *LogPayload_RevertedTransaction:
 		revertedTx, err := transactionFromLedgerProto(p.RevertedTransaction.RevertedTransaction)
@@ -396,7 +405,7 @@ func logPayloadFromLedgerProto(payload *LogPayload) (ledger.LogPayload, error) {
 			Key:        p.DeletedMetadata.Key,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unknown log payload type: %T", payload.Payload)
+		return nil, fmt.Errorf("unknown log payload type: %T", payload)
 	}
 }
 
@@ -432,4 +441,3 @@ func transactionFromLedgerProto(tx *Transaction) (ledger.Transaction, error) {
 
 	return txResult, nil
 }
-

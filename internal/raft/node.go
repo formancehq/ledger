@@ -173,23 +173,30 @@ func (node *Node[State, F]) readyLoop() {
 	}()
 
 	var (
+		leader    uint64
 		confState *raftpb.ConfState
 		err       error
 	)
+
+	_, initialConfState, err := node.storage.InitialState()
+	if err != nil {
+		panic(err)
+	}
+	confState = &initialConfState
+
 	for {
-		// Process ticks and messages first, then Ready structures
-		// Always check for ticks first (non-blocking) to ensure election timeouts work
-		// Also, check for incoming messages repeatdly as the queue can become fulleasily
 		select {
 		case <-ticker.C:
+			// Prevent election timeouts from happening while syncing the FSM
 			if !node.fsmSyncer.IsSyncing() {
 				node.rawNode.Tick()
 			}
 		case <-node.ctx.Done():
+			node.logger.Infof("Stopping readyLoop as context was cancelled")
 			close(node.stopped)
 			return
 		case nodeID := <-node.transport.Unreachable():
-			node.logger.Errorf("Node %d is unreachable", nodeID)
+			node.logger.Errorf("Node %x is unreachable", nodeID)
 			node.rawNode.ReportUnreachable(nodeID)
 		case msg := <-node.transport.Recv():
 			if err := node.rawNode.Step(msg); err != nil {
@@ -197,26 +204,28 @@ func (node *Node[State, F]) readyLoop() {
 			}
 		}
 
-		//for node.rawNode.HasReady() {
 		if node.rawNode.HasReady() {
-			confState, err = node.processReady(confState, node.ctx)
+			leader, confState, err = node.processReady(node.ctx, leader, confState)
 			if err != nil {
-				if errors.Is(err, context.Canceled) {
+				if !errors.Is(err, context.Canceled) {
 					break
 				}
-				panic(err)
 			}
 		}
 	}
 }
 
-func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx context.Context) (*raftpb.ConfState, error) {
+func (node *Node[State, F]) processReady(ctx context.Context, leader uint64, confState *raftpb.ConfState) (uint64, *raftpb.ConfState, error) {
 
+	node.logger.Debugf("Processing ready")
 	rd := node.rawNode.Ready()
+	if rd.SoftState != nil {
+		leader = rd.Lead
+	}
 
 	if len(rd.Entries) > 0 {
 		if err := node.storage.Append(rd.Entries); err != nil {
-			return nil, fmt.Errorf("appending entries to storage: %w", err)
+			return 0, nil, fmt.Errorf("appending entries to storage: %w", err)
 		}
 	}
 
@@ -231,14 +240,14 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 			Infof("Applying snapshot sent from leader")
 
 		if err := node.storage.ApplySnapshot(rd.Snapshot); err != nil {
-			return nil, fmt.Errorf("applying snapshot to storage: %w", err)
+			return 0, nil, fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
 		// todo: since the snapshot is already written in storage at this point
 		// we must be able to detect a crash and restart the restoration process
 		// in case of rawNode recover
-		node.fsmSyncer.RestoreSnapshot(context.Background(), rd.Snapshot.Data)
+		node.fsmSyncer.RestoreSnapshot(context.Background(), leader, rd.Snapshot)
 	}
 
 	// Send messages via transport
@@ -265,7 +274,7 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 			// Decode the command to get its ID
 			var cmd Command
 			if err := cmd.UnmarshalBinary(entry.Data); err != nil {
-				return nil, fmt.Errorf("unmarshaling command: %w", err)
+				return 0, nil, fmt.Errorf("unmarshaling command: %w", err)
 			}
 
 			commands = append(commands, cmd)
@@ -301,7 +310,7 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 	// Apply bucket-specific entries to bucket FSM
 	results, err := node.fsmSyncer.ApplyEntries(node.ctx, commands...)
 	if err != nil {
-		return nil, fmt.Errorf("applying entries to FSM: %w", err)
+		return 0, nil, fmt.Errorf("applying entries to FSM: %w", err)
 	}
 
 	for i, result := range results {
@@ -324,10 +333,12 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 	status := node.rawNode.Status()
 	if status.Applied > 0 && status.Applied%node.config.SnapshotThreshold == 0 {
 
+		node.logger.Infof("Creating new snapshot for ledger")
+
 		// Create snapshot: write logs to store and create snapshot data
 		snapshotData, err := node.fsmSyncer.CreateSnapshot(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("creating snapshot data: %w", err)
+			return 0, nil, fmt.Errorf("creating snapshot data: %w", err)
 		}
 
 		// Create snapshot in storage
@@ -335,16 +346,18 @@ func (node *Node[State, F]) processReady(confState *raftpb.ConfState, ctx contex
 		if err != nil {
 			// Check if error is ErrSnapOutOfDate (expected if snapshot was already created)
 			if err != ErrSnapOutOfDate {
-				return nil, fmt.Errorf("creating snapshot in storage: %w", err)
+				return 0, nil, fmt.Errorf("creating snapshot in storage: %w", err)
 			}
 
-			return confState, nil
+			node.logger.Infof("Snapshot already up to date, skipping creation")
+
+			return leader, confState, nil
 		}
 
 		node.logger.Infof("Snapshot created for bucket")
 	}
 
-	return confState, nil
+	return leader, confState, nil
 }
 
 // Status returns the current status of the rawNode
@@ -589,19 +602,25 @@ func (node *Node[State, F]) IsHealthy() bool {
 }
 
 func (node *Node[State, F]) Stop(ctx context.Context) error {
+	node.logger.Infof("Stopping node")
 	node.mu.Lock()
 	isStarted := node.stopped != nil
 	node.mu.Unlock()
 	if !isStarted {
+		node.logger.Infof("Node is not started, skipping stop")
 		return nil
 	}
 
+	node.logger.Infof("Cancelling context...")
 	node.cancel()
 
+	node.logger.Infof("Waiting for node to stop...")
 	select {
 	case <-ctx.Done():
+		node.logger.Infof("Context timed out while waiting for node to stop")
 		return ctx.Err()
 	case <-node.stopped:
+		node.logger.Infof("Node stopped as expected")
 		return nil
 	}
 }
@@ -634,7 +653,7 @@ func restoreFromStorage[State any, F FSM[State]](
 	// If snapshot exists, restore FSM from it
 	if snapshot.Metadata.Index > 0 {
 		logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring FSM from snapshot")
-		fsm.RestoreSnapshot(context.Background(), snapshot.Data)
+		fsm.RestoreSnapshot(context.Background(), 0, snapshot)
 	} else {
 		logger.Infof("No snapshot found, starting with empty FSM")
 	}
@@ -652,7 +671,9 @@ func restoreFromStorage[State any, F FSM[State]](
 
 	// If there are entries after the snapshot, apply them to the FSM
 	if firstIndex <= lastIndex {
-		logger.WithFields(map[string]any{"firstIndex": firstIndex, "lastIndex": lastIndex}).Infof("Applying entries after snapshot")
+		logger.
+			WithFields(map[string]any{"firstIndex": firstIndex, "lastIndex": lastIndex}).
+			Infof("Applying entries after snapshot")
 		// Read entries in batches to avoid loading everything in memory at once
 		const maxBatchSize = 1000
 		for i := firstIndex; i <= lastIndex; i += maxBatchSize {

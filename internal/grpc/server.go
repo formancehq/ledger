@@ -39,13 +39,15 @@ func (s *Server) GetServer() *grpc.Server {
 }
 
 func (s *Server) Start() error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	lis, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s.listener = lis
 
-	s.logger.WithFields(map[string]any{"port": s.port}).Infof("Starting gRPC server")
+	s.logger.
+		WithFields(map[string]any{"addr": lis.Addr().String()}).
+		Infof("Starting gRPC server")
 
 	if err := s.server.Serve(lis); err != nil {
 		return fmt.Errorf("gRPC server failed: %w", err)
@@ -54,9 +56,15 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
+	s.logger.Infof("Stopping gRPC server")
 	if s.server != nil {
-		s.logger.Infof("Stopping gRPC server")
-		s.server.GracefulStop()
+		// todo: could be a graceful shutdown but we need to handle properly in the raft transport
+		s.server.Stop()
+		s.server = nil
+	}
+	if s.listener != nil {
+		_ = s.listener.Close()
+		s.listener = nil
 	}
 	return nil
 }

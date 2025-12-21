@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger-v3-poc/internal"
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
+	"github.com/formancehq/ledger-v3-poc/internal/service"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -14,7 +15,7 @@ const (
 
 // NewInsertLogCommand creates a new InsertLogCommand
 func NewInsertLogCommand(log ledger.Log) (*raft.Command, error) {
-	logProto, err := logToProto(log)
+	logProto, err := service.LogToProto(log)
 	if err != nil {
 		return nil, err
 	}
@@ -45,4 +46,3 @@ func UnmarshalCommandData(data []byte, v interface{}) error {
 		return proto.Unmarshal(data, v.(proto.Message))
 	}
 }
-

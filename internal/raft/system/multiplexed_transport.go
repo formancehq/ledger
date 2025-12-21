@@ -30,11 +30,12 @@ func (r *multiplexedTransport) Start() {
 		case ch := <-r.stopChannel:
 			close(ch)
 			return
-		case msg := <-r.grpcTransport.Recv():
-			ledgerID := ledgerIDFromLedgerNodeID(msg.To)
+		case incoming := <-r.grpcTransport.Recv():
+			ledgerID := ledgerIDFromLedgerNodeID(incoming.Msg.To)
 			if ledgerID == 0 {
-				r.logger.Debugf("Received message from main transport: %s", msg.String())
-				r.mainReceptionChannels.recv <- msg
+				r.logger.Debugf("Received message from main transport: %s", incoming.Msg.String())
+				r.mainReceptionChannels.recv <- incoming.Msg
+				incoming.Rsp <- nil
 				continue
 			}
 
@@ -42,19 +43,22 @@ func (r *multiplexedTransport) Start() {
 			ledger, ok := r.ledgers[ledgerID]
 			r.mu.RUnlock()
 			if ok {
-				r.logger.Debugf("Received message from ledger transport: %s", msg.String())
+				r.logger.Debugf("Received message from ledger transport: %s", incoming.Msg.String())
 				select {
-				case ledger.recv <- msg:
+				case ledger.recv <- incoming.Msg:
+					incoming.Rsp <- nil
 				default:
+					incoming.Rsp <- fmt.Errorf("ledger transport channel full")
 					r.logger.
 						WithFields(map[string]any{
 							"channel": fmt.Sprintf("ledger/%d", ledgerID),
-							"type":    msg.Type.String(),
+							"type":    incoming.Msg.Type.String(),
 						}).
 						Errorf("Ledger transport channel full, dropping message")
 				}
 			} else {
-				r.logger.Infof("Received message from unknown ledger: %d (%s)", msg.To, msg.Type)
+				incoming.Rsp <- fmt.Errorf("unknown ledger")
+				r.logger.Infof("Received message from %x to unknown ledger: %x (%s)", incoming.Msg.From, incoming.Msg.To, incoming.Msg.Type)
 			}
 		case nodeID := <-r.grpcTransport.Unreachable():
 			ledgerID := ledgerIDFromLedgerNodeID(nodeID)

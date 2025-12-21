@@ -62,6 +62,6 @@ type SystemState struct {
 
 // LedgerState represents the state of the ledger FSM
 type LedgerState struct {
-	LedgerInfo   LedgerInfo // Ledger information
-	LastSequence uint64     // Last global sequence number
+	LedgerInfo   LedgerInfo `json:"ledgerInfo"`
+	LastSequence uint64 `json:"lastSequence"`
 }

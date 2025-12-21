@@ -2,8 +2,10 @@ package transport
 
 import (
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -24,7 +26,20 @@ func NewConnectionPool() *ConnectionPool {
 
 // AddPeer adds a peer to the pool and creates a raw gRPC connection
 func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// TODO: Make that configuration
+		// TOneverDO: Configure a MaxDelay greater than the election timeout
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.Config{
+				BaseDelay:  100 * time.Millisecond,
+				Multiplier: 1.6,
+				Jitter:     0.2,
+				MaxDelay:   time.Second,
+			},
+			MinConnectTimeout: 0,
+		}),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection for peer %x: %w", id, err)
 	}
@@ -63,10 +78,14 @@ func (p *ConnectionPool) GetAllConnections() map[uint64]*grpc.ClientConn {
 }
 
 // Close closes all gRPC connections
-func (p *ConnectionPool) Close() {
+func (p *ConnectionPool) Close() error {
 	for _, conn := range p.connections {
-		_ = conn.Close()
+		if err := conn.Close(); err != nil {
+			return err
+		}
 	}
 	p.connections = make(map[uint64]*grpc.ClientConn)
 	p.peers = make(map[uint64]string)
+
+	return nil
 }

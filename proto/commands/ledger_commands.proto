@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package bucket_commands;
+
+import "google/protobuf/struct.proto";
+import "proto/ledger.proto";
+
+option go_package = "github.com/formancehq/ledger-v3-poc/internal/raft/ledger";
+
+// CreateLedgerCommand represents the data for a create ledger command
+message CreateLedgerCommand {
+  string name = 1;                          // Ledger name/ID (required)
+  google.protobuf.Struct metadata = 2;       // Optional metadata
+}
+
+// InsertLogCommand represents the data for an insert log command
+message InsertLogCommand {
+  ledger.Log log = 1;
+}
+

@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/raft"
 	ledgerraft "github.com/formancehq/ledger-v3-poc/internal/raft/ledger"
 	"github.com/formancehq/ledger-v3-poc/internal/service"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -286,7 +287,7 @@ func (fsm *FSM) CreateSnapshot(_ context.Context) ([]byte, error) {
 }
 
 // RestoreSnapshot restores the FSM from a snapshot
-func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
+func (fsm *FSM) RestoreSnapshot(ctx context.Context, _ uint64, snapshot raftpb.Snapshot) {
 	fsm.mu.Lock()
 	ledgersToStop := make([]*ledgerraft.Node, 0, len(fsm.state.Ledgers))
 	for _, node := range fsm.state.Ledgers {
@@ -302,7 +303,7 @@ func (fsm *FSM) RestoreSnapshot(ctx context.Context, data []byte) {
 
 	// Unmarshal from protobuf
 	var snapshotProto SystemFSMSnapshot
-	if err := proto.Unmarshal(data, &snapshotProto); err != nil {
+	if err := proto.Unmarshal(snapshot.Data, &snapshotProto); err != nil {
 		panic(fmt.Errorf("unmarshaling snapshot data: %w", err))
 	}
 
@@ -394,16 +395,18 @@ func (fsm *FSM) stopLedgerRaftGroup(ctx context.Context, ledgerName string) erro
 
 func (fsm *FSM) Stop(ctx context.Context) error {
 	fsm.mu.Lock()
-	ledgersToStop := make([]*ledgerraft.Node, 0, len(fsm.state.Ledgers))
-	for _, group := range fsm.state.Ledgers {
-		ledgersToStop = append(ledgersToStop, group)
-	}
-	fsm.mu.Unlock()
+	defer fsm.mu.Unlock()
 
-	for _, group := range ledgersToStop {
+	for _, group := range fsm.state.Ledgers {
+		fsm.logger.
+			WithFields(map[string]any{"ledger": group.Info().Name}).
+			Infof("Stopping ledger Raft group...")
 		if err := group.Stop(ctx); err != nil {
 			return fmt.Errorf("stopping ledger Raft group: %w", err)
 		}
+		fsm.logger.
+			WithFields(map[string]any{"ledger": group.Info().Name}).
+			Infof("Ledger Raft group stopped")
 	}
 
 	return nil
@@ -417,18 +420,6 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 	})
 
 	logger.Infof("Creating ledger Raft group...")
-
-	logReader := service.NewLogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
-		fsm.mu.RLock()
-		ledgerNode := fsm.state.Ledgers[ledgerInfo.Name]
-		fsm.mu.RUnlock()
-
-		if ledgerNode == nil {
-			return nil, fmt.Errorf("ledger node not found: %s", ledgerInfo.Name)
-		}
-
-		return ledgerNode.GetAllLogs(ctx, from, to)
-	})
 
 	// Use ledger-specific snapshot threshold if set, otherwise use global config
 	snapshotThreshold := fsm.raftConfig.SnapshotThreshold
@@ -460,7 +451,25 @@ func (fsm *FSM) startLedgerRaftGroupFromFSM(ctx context.Context, ledgerInfo ledg
 		},
 		logger,
 		fsm.raftConfig.ExtraDataDir,
-		logReader,
+		func(peerID uint64) service.LogReader {
+			return service.NewLogReaderFn(func(ctx context.Context, from uint64, to uint64) (service.Cursor[ledger.Log], error) {
+
+				conn := fsm.multiplexedTransport.GetPeerConnection(NodeIDFromLedgerNodeID(peerID))
+				client := service.NewLedgerServiceClient(conn)
+				streamLogs, err := client.StreamLogs(ctx, &service.StreamLogsRequest{
+					Ledger:       ledgerInfo.Name,
+					FromSequence: from,
+					ToSequence:   to,
+				})
+				if err != nil {
+					return nil, err
+				}
+
+				return service.NewGRPCStreamCursor(streamLogs, func(res service.StreamLogsResponse) (ledger.Log, error) {
+					return service.LogFromLedgerProto(res.Log)
+				}), nil
+			})
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("creating ledger Raft group: %w", err)

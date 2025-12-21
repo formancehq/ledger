@@ -168,13 +168,13 @@ type CreatedTransaction struct {
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
-func (p CreatedTransaction) Type() LogType {
+func (p *CreatedTransaction) Type() LogType {
 	return NewTransactionLogType
 }
 
 var _ LogPayload = (*CreatedTransaction)(nil)
 
-func (p CreatedTransaction) GetMemento() any {
+func (p *CreatedTransaction) GetMemento() any {
 	// Exclude postCommitVolumes and postCommitEffectiveVolumes fields from transactions.
 	// We don't want those fields to be part of the hash as they are not part of the decision-making process.
 	type transactionResume struct {
@@ -209,7 +209,7 @@ type SavedMetadata struct {
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func (s SavedMetadata) Type() LogType {
+func (s *SavedMetadata) Type() LogType {
 	return SetMetadataLogType
 }
 
@@ -254,7 +254,7 @@ type DeletedMetadata struct {
 	Key        string `json:"key"`
 }
 
-func (s DeletedMetadata) Type() LogType {
+func (s *DeletedMetadata) Type() LogType {
 	return DeleteMetadataLogType
 }
 
@@ -298,13 +298,13 @@ type RevertedTransaction struct {
 	RevertTransaction   Transaction `json:"transaction"`
 }
 
-func (r RevertedTransaction) Type() LogType {
+func (r *RevertedTransaction) Type() LogType {
 	return RevertedTransactionLogType
 }
 
 var _ LogPayload = (*RevertedTransaction)(nil)
 
-func (r RevertedTransaction) GetMemento() any {
+func (r *RevertedTransaction) GetMemento() any {
 
 	type transactionResume struct {
 		Postings  Postings          `json:"postings"`
@@ -356,7 +356,7 @@ func HydrateLog(_type LogType, data []byte) (LogPayload, error) {
 		return nil, err
 	}
 
-	return reflect.ValueOf(payload).Elem().Interface().(LogPayload), nil
+	return reflect.ValueOf(payload).Interface().(LogPayload), nil
 }
 
 func ComputeIdempotencyHash(inputs any) string {
